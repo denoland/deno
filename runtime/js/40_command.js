@@ -91,7 +91,7 @@
       this.#rid = rid;
       this.#pid = pid;
 
-      if (stdinRid !== undefined) {
+      if (stdinRid !== null) {
         this.#stdin = new WritableStream({
           async write(chunk) {
             await write(stdinRid, chunk);
@@ -102,7 +102,7 @@
         });
       }
 
-      if (stdoutRid !== undefined) {
+      if (stdoutRid !== null) {
         this.#stdoutRid = stdoutRid;
         // TODO(crowlkats): BYOB Stream
         this.#stdout = new ReadableStream({
@@ -122,7 +122,7 @@
         });
       }
 
-      if (stderrRid !== undefined) {
+      if (stderrRid !== null) {
         this.#stderrRid = stderrRid;
         // TODO(crowlkats): BYOB Stream
         this.#stderr = new ReadableStream({
