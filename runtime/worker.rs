@@ -212,7 +212,10 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, AnyError> {
-    self.js_runtime.load_module(module_specifier, None).await
+    self
+      .js_runtime
+      .load_main_module(module_specifier, None)
+      .await
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
