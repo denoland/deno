@@ -163,8 +163,8 @@ mod windows {
 
         let result = CreatePseudoConsole(
           size,
-          stdin_read_handle.as_raw(),
-          stdout_write_handle.as_raw(),
+          stdin_read_handle.as_raw_handle(),
+          stdout_write_handle.as_raw_handle(),
           0,
           &mut console_handle,
         );
@@ -216,12 +216,12 @@ mod windows {
           let thread_handle = thread_handle.duplicate();
           let console_handle = WinHandle::new(console_handle);
           move || {
-            WaitForSingleObject(thread_handle.as_raw(), INFINITE);
+            WaitForSingleObject(thread_handle.as_raw_handle(), INFINITE);
             // wait for the reading thread to catch up
             std::thread::sleep(Duration::from_millis(200));
             // close the console handle which will close the
             // stdout pipe for the reader
-            ClosePseudoConsole(console_handle.take());
+            ClosePseudoConsole(console_handle.into_raw_handle());
           }
         });
 
@@ -243,7 +243,7 @@ mod windows {
         // don't bother checking the result of this call as it will be false
         // when the stdout pipe is closed and bytes_read will be 0 in that case
         ReadFile(
-          self.stdout_read_handle.as_raw(),
+          self.stdout_read_handle.as_raw_handle(),
           buf.as_mut_ptr() as _,
           buf.len() as u32,
           &mut bytes_read,
@@ -269,7 +269,7 @@ mod windows {
       unsafe {
         let mut bytes_written = 0;
         assert_win_success!(WriteFile(
-          self.stdin_write_handle.as_raw(),
+          self.stdin_write_handle.as_raw_handle(),
           buffer.as_ptr() as *const _,
           buffer.len() as u32,
           &mut bytes_written,
@@ -286,15 +286,11 @@ mod windows {
 
   struct WinHandle {
     inner: HANDLE,
-    close_on_drop: bool,
   }
 
   impl WinHandle {
     pub fn new(handle: HANDLE) -> Self {
-      WinHandle {
-        inner: handle,
-        close_on_drop: true,
-      }
+      WinHandle { inner: handle }
     }
 
     pub fn duplicate(&self) -> WinHandle {
@@ -315,13 +311,15 @@ mod windows {
       }
     }
 
-    pub fn as_raw(&self) -> HANDLE {
+    pub fn as_raw_handle(&self) -> HANDLE {
       self.inner
     }
 
-    pub fn take(mut self) -> HANDLE {
-      self.close_on_drop = false;
-      self.inner
+    pub fn into_raw_handle(self) -> HANDLE {
+      let handle = self.inner;
+      // skip the drop implementation in order to not close the handle
+      std::mem::forget(self);
+      handle
     }
   }
 
@@ -330,11 +328,9 @@ mod windows {
 
   impl Drop for WinHandle {
     fn drop(&mut self) {
-      if self.close_on_drop {
-        unsafe {
-          if !self.inner.is_null() && self.inner != INVALID_HANDLE_VALUE {
-            winapi::um::handleapi::CloseHandle(self.inner);
-          }
+      unsafe {
+        if !self.inner.is_null() && self.inner != INVALID_HANDLE_VALUE {
+          winapi::um::handleapi::CloseHandle(self.inner);
         }
       }
     }
@@ -421,17 +417,21 @@ mod windows {
   }
 
   fn get_env_vars(env_vars: HashMap<String, String>) -> Vec<u16> {
-    // each environment variable is in the form `name=value\0`
-    // and the entire block is then terminated by NULL (\0)
-    format!(
-      "{}\0",
-      env_vars
-        .into_iter()
-        .map(|(key, value)| format!("{}={}\0", key, value))
-        .collect::<Vec<_>>()
-        .join("")
-    )
-    .encode_utf16()
-    .collect::<Vec<_>>()
+    // See lpEnvironment: https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw
+    let mut parts = env_vars
+      .into_iter()
+      // each environment variable is in the form `name=value\0`
+      .map(|(key, value)| format!("{}={}\0", key, value))
+      .collect::<Vec<_>>();
+
+    // all strings in an environment block must be case insensitively
+    // sorted alphabetically by name
+    // https://docs.microsoft.com/en-us/windows/win32/procthread/changing-environment-variables
+    parts.sort_by_key(|part| part.to_lowercase());
+
+    // the entire block is terminated by NULL (\0)
+    format!("{}\0", parts.join(""))
+      .encode_utf16()
+      .collect::<Vec<_>>()
   }
 }
