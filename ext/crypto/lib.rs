@@ -789,8 +789,15 @@ pub async fn op_crypto_derive_bits(
 pub struct EncryptArg {
   key: KeyData,
   algorithm: Algorithm,
+  // RSA-OAEP
   hash: Option<CryptoHash>,
   label: Option<ZeroCopyBuf>,
+  // AES-CBC
+  iv: Option<ZeroCopyBuf>,
+  // AES-CTR
+  // TODO(@littledivy): Can we just call it IV?
+  counter: Option<ZeroCopyBuf>,
+  length: Option<usize>, 
 }
 
 pub async fn op_crypto_encrypt_key(
@@ -842,6 +849,30 @@ pub async fn op_crypto_encrypt_key(
           })?
           .into(),
       )
+    }
+    Algorithm::AesCbc => {
+      let key = &*args.key.data;
+      let iv = args.iv.ok_or_else(|| type_error("Missing argument iv".to_string()));
+
+      // 2.
+      // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+      type Aes128Cbc = Cbc<Aes128, Pkcs7>;
+      
+      // 3.
+      let aes = Aes128Cbc::new_from_slices(key, &iv);
+      let ciphertext = cipher.encrypt_vec(data);
+      Ok(ciphertext.into())
+    }
+    Algorithm::AesCtr => {
+      let key = &*args.key.data;
+      let counter = args.counter.ok_or_else(|| type_error("Missing argument counter".to_string()));
+      let length = args.length.ok_or_else(|| type_error("Missing argument length".to_string()));
+      
+      let cipher = aes::Aes128Ctr::from_block_cipher(&key, &counter)?;
+
+      let mut cipher_text = data;
+      cipher.apply_keystream(&mut data);
+      Ok(cipher_text.into())
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }
