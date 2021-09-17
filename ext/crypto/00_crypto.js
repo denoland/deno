@@ -1510,7 +1510,7 @@
       // 8-10.
 
       // 11.
-      if (normalizedAlgorithm.name !== baseKey[_algorithm]) {
+      if (normalizedAlgorithm.name !== baseKey[_algorithm].name) {
         throw new DOMException(
           "InvalidAccessError",
           "Invalid algorithm name",
@@ -1546,8 +1546,8 @@
 
       // 16.
       if (
-        result[_type] == "secret" ||
-        result[_type] == "private" && keyUsages.length == 0
+        ArrayPrototypeIncludes(["private", "secret"], result[_type]) &&
+        keyUsages.length == 0
       ) {
         throw new SyntaxError("Invalid key usages");
       }
