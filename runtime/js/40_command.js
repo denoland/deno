@@ -17,6 +17,8 @@
       cwd = undefined,
       clearEnv = false,
       env = {},
+      gid = undefined,
+      uid = undefined,
     } = {}) {
       this.#options = {
         cmd: pathFromURL(command),
@@ -24,6 +26,8 @@
         cwd: pathFromURL(cwd),
         clearEnv,
         env: ObjectEntries(env),
+        gid,
+        uid,
       };
     }
 

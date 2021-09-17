@@ -1264,6 +1264,8 @@ declare namespace Deno {
     cwd?: string | URL;
     clearEnv?: boolean;
     env?: Record<string, string>;
+    gid?: number;
+    uid?: number;
   }
 
   interface ProcessIoOptions {
