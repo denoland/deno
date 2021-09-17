@@ -121,6 +121,10 @@
     "decrypt": {
       "RSA-OAEP": "RsaOaepParams",
     },
+    "wrapKey": {
+      // TODO(@littledivy): Enable this once implemented.
+      // "AES-KW": "AesKeyWrapParams",
+    },
   };
 
   // Decodes the unpadded base64 to the octet sequence containing key value `k` defined in RFC7518 Section 6.4
