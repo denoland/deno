@@ -107,7 +107,7 @@ function checkFileCanRead(filePath: string) {
       file.close();
     }
     return true;
-  } catch (err) {
+  } catch {
     return false;
   }
 }
@@ -116,7 +116,7 @@ function checkFileCanWrite(filePath: string) {
   try {
     Deno.openSync(filePath, { write: true }).close();
     return true;
-  } catch (err) {
+  } catch {
     return false;
   }
 }
