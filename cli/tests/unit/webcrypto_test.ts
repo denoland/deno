@@ -525,5 +525,6 @@ unitTest(async function testWrapKey() {
     },
   );
 
-  assert(wrappedKey);
+  assert(wrappedKey instanceof ArrayBuffer);
+  assertEquals(wrappedKey.byteLength, 512);
 });
