@@ -125,6 +125,10 @@ interface Pbkdf2Params extends Algorithm {
   salt: BufferSource;
 }
 
+interface AesDerivedKeyParams extends Algorithm {
+  length: number;
+}
+
 /** The CryptoKey dictionary of the Web Crypto API represents a cryptographic key. */
 interface CryptoKey {
   readonly algorithm: KeyAlgorithm;
@@ -215,6 +219,18 @@ interface SubtleCrypto {
     baseKey: CryptoKey,
     length: number,
   ): Promise<ArrayBuffer>;
+  deriveKey(
+    algorithm: AlgorithmIdentifier | HkdfParams | Pbkdf2Params,
+    baseKey: CryptoKey,
+    derivedKeyType:
+      | AlgorithmIdentifier
+      | AesDerivedKeyParams
+      | HmacImportParams
+      | HkdfParams
+      | Pbkdf2Params,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
 }
 
 declare interface Crypto {
