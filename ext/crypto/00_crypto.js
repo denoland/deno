@@ -325,6 +325,67 @@
   /** @type {WeakMap<object, object>} */
   const KEY_STORE = new WeakMap();
 
+  function getKeyLength(algorithm) {
+    switch (algorithm.name) {
+      case "AES-CBC":
+      case "AES-GCM":
+      case "AES-KW": {
+        // 1.
+        if (!ArrayPrototypeIncludes([128, 192, 256], algorithm.length)) {
+          throw new DOMException(
+            "length must be 128, 192, or 256",
+            "OperationError",
+          );
+        }
+
+        // 2.
+        return algorithm.length;
+      }
+      case "HMAC": {
+        // 1.
+        let length;
+        if (algorithm.length === undefined) {
+          switch (algorithm.hash.name) {
+            case "SHA-1":
+              length = 160;
+              break;
+            case "SHA-256":
+              length = 256;
+              break;
+            case "SHA-384":
+              length = 384;
+              break;
+            case "SHA-512":
+              length = 512;
+              break;
+            default:
+              throw new DOMException(
+                "Unrecognized hash algorithm",
+                "NotSupportedError",
+              );
+          }
+        } else if (algorithm.length !== 0) {
+          length == algorithm.length;
+        } else {
+          throw new TypeError("Invalid length.");
+        }
+
+        // 2.
+        return length;
+      }
+      case "HKDF": {
+        // 1.
+        return null;
+      }
+      case "PBKDF2": {
+        // 1.
+        return null;
+      }
+      default:
+        throw new TypeError("unreachable");
+    }
+  }
+
   class SubtleCrypto {
     constructor() {
       webidl.illegalConstructor();
@@ -1447,7 +1508,7 @@
       );
 
       // 8-10.
-      normalizedDerivedKeyAlgorithmLength;
+
       // 11.
       if (normalizedAlgorithm.name !== baseKey[_algorithm]) {
         throw new DOMException(
@@ -1464,11 +1525,14 @@
         );
       }
 
-      // 13-14.
+      // 13.
+      const length = getKeyLength(normalizedDerivedKeyAlgorithmLength);
+
+      // 14.
       const secret = await this.deriveBits(
         normalizedAlgorithm,
         baseKey,
-        normalizedDerivedKeyAlgorithmLength,
+        length,
       );
 
       // 15.
@@ -1479,6 +1543,7 @@
         extractable,
         keyUsages,
       );
+
       // 16.
       if (
         result[_type] == "secret" ||
