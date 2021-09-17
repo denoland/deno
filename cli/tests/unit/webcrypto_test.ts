@@ -480,6 +480,3 @@ unitTest(async function testHkdfDeriveBits() {
   );
   assertEquals(result.byteLength, 128 / 8);
 });
-
-unitTest(async function testHkdfDeriveBits() {
-});
