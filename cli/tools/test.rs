@@ -306,7 +306,7 @@ async fn test_specifier(
     None
   };
 
-  worker.execute_module(&test_specifier).await?;
+  worker.execute_main_module(&test_specifier).await?;
 
   worker.js_runtime.execute_script(
     &located_script_name!(),
