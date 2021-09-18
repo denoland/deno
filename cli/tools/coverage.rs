@@ -11,7 +11,7 @@ use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
-use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
 use deno_core::LocalInspectorSession;
 use deno_runtime::permissions::Permissions;
 use regex::Regex;
@@ -197,7 +197,7 @@ fn create_reporter(
 }
 
 trait CoverageReporter {
-  fn report_result(&mut self, result: &CoverageResult, source: &str);
+  fn report_result(&mut self, specifier: &ModuleSpecifier, result: &CoverageResult, source: &str);
 }
 
 pub struct PrettyCoverageReporter {}
@@ -211,7 +211,9 @@ impl PrettyCoverageReporter {
 const PRETTY_LINE_WIDTH: usize = 4;
 const PRETTY_LINE_SEPERATOR: &str = "|";
 impl CoverageReporter for PrettyCoverageReporter {
-  fn report_result(&mut self, result: &CoverageResult, source: &str) {
+  fn report_result(&mut self, specifier: &ModuleSpecifier, result: &CoverageResult, source: &str) {
+    print!("cover {} ... ", specifier);
+
     let enumerated_lines = result
       .lines
       .iter()
@@ -673,15 +675,16 @@ pub async fn cover_scripts(
     let result =
       cover_script(program_state.clone(), script_coverage.clone()).await?;
 
+    let module_specifier = resolve_url_or_path(&script_coverage.url)?;
     let file = program_state
       .file_fetcher
       .fetch(
-        &resolve_url_or_path(&script_coverage.url).unwrap(),
+        &module_specifier,
         &mut Permissions::allow_all(),
       )
       .await?;
 
-    reporter.report_result(&result, &file.source);
+    reporter.report_result(&module_specifier, &result, &file.source);
   }
 
   Ok(())
