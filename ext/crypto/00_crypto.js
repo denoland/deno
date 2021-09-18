@@ -117,7 +117,6 @@
     },
     "encrypt": {
       "RSA-OAEP": "RsaOaepParams",
-      "AES-CTR": "AesCtrParams",
       "AES-CBC": "AesCbcParams",
     },
     "decrypt": {

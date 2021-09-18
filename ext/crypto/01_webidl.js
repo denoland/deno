@@ -367,24 +367,6 @@
   webidl.converters.Pbkdf2Params = webidl
     .createDictionaryConverter("Pbkdf2Params", dictPbkdf2Params);
 
-  const dictAesCtrParams = [
-    ...dictAlgorithm,
-    {
-      key: "counter",
-      converter: webidl.converters["BufferSource"],
-      required: true,
-    },
-    {
-      key: "length",
-      converter: (V, opts) =>
-        webidl.converters["octet"](V, { ...opts, enforceRange: true }),
-      required: true,
-    },
-  ];
-
-  webidl.converters.AesCtrParams = webidl
-    .createDictionaryConverter("AesCtrParams", dictAesCtrParams);
-
   const dictAesCbcParams = [
     ...dictAlgorithm,
     {
