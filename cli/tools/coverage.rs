@@ -425,14 +425,13 @@ async fn cover_script(
     )
   .await?;
 
+  let compiled_source = program_state.load(module_specifier.clone(), None)?.code;
+
   // TODO(caspervonb): source mapping is still a bit of a mess and we should try look into avoiding
   // doing any loads at this stage of execution but it'll do for now.
   let maybe_raw_source_map = program_state.get_source_map(&script.url);
   if let Some(raw_source_map) = maybe_raw_source_map {
     let source_map = SourceMap::from_slice(&raw_source_map)?;
-
-    let compiled_source =
-      program_state.load(module_specifier.clone(), None)?.code;
 
     // To avoid false positives we base our line ranges on the ranges of the compiled lines 
     let compiled_line_offsets = {
