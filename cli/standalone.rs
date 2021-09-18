@@ -271,7 +271,7 @@ pub async fn run(
     js_runtime.sync_ops_cache();
   }
   worker.bootstrap(&options);
-  worker.execute_module(&main_module).await?;
+  worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",

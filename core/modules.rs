@@ -1663,4 +1663,80 @@ mod tests {
     );
     assert_eq!(modules.get_children(d_id), Some(&vec![]));
   }
+
+  #[test]
+  fn main_and_side_module() {
+    struct ModsLoader {}
+
+    let main_specifier = crate::resolve_url("file:///main_module.js").unwrap();
+    let side_specifier = crate::resolve_url("file:///side_module.js").unwrap();
+
+    impl ModuleLoader for ModsLoader {
+      fn resolve(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, AnyError> {
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        let module_source = match module_specifier.as_str() {
+          "file:///main_module.js" => Ok(ModuleSource {
+            module_url_specified: "file:///main_module.js".to_string(),
+            module_url_found: "file:///main_module.js".to_string(),
+            code: "if (!import.meta.main) throw Error();".to_owned(),
+          }),
+          "file:///side_module.js" => Ok(ModuleSource {
+            module_url_specified: "file:///side_module.js".to_string(),
+            module_url_found: "file:///side_module.js".to_string(),
+            code: "if (import.meta.main) throw Error();".to_owned(),
+          }),
+          _ => unreachable!(),
+        };
+        async move { module_source }.boxed()
+      }
+    }
+
+    let loader = Rc::new(ModsLoader {});
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    let main_id_fut = runtime
+      .load_main_module(&main_specifier, None)
+      .boxed_local();
+    let main_id =
+      futures::executor::block_on(main_id_fut).expect("Failed to load");
+
+    let _ = runtime.mod_evaluate(main_id);
+    futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
+
+    // Try to add another main module - it should error.
+    let side_id_fut = runtime
+      .load_main_module(&side_specifier, None)
+      .boxed_local();
+    futures::executor::block_on(side_id_fut)
+      .expect_err("Should have failed to load second main module");
+
+    // And now try to load it as a side module
+    let side_id_fut = runtime
+      .load_side_module(&side_specifier, None)
+      .boxed_local();
+    let side_id =
+      futures::executor::block_on(side_id_fut).expect("Failed to load");
+
+    let _ = runtime.mod_evaluate(side_id);
+    futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
+  }
 }
