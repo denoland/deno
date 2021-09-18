@@ -1391,7 +1391,7 @@ pub async fn op_crypto_decrypt_key(
 
       // 4-5.
       let plaintext = &padded_plaintext[p..];
-      if p == 0 || p > 16 || plaintext != &vec![p as u8; p] {
+      if p == 0 || p > 16 || *plaintext != *vec![p as u8; p] {
         return Err(custom_error(
           "DOMExceptionOperationError",
           "Invalid padding".to_string(),
