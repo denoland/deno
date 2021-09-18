@@ -257,7 +257,8 @@ async fn op_run_status(
 }
 
 #[cfg(unix)]
-pub fn kill(pid: i32, signo: i32) -> Result<(), AnyError> {
+pub fn kill(pid: i32, signo: &str) -> Result<(), AnyError> {
+  let signo = super::signal::signal_str_to_int(signo)?;
   use nix::sys::signal::{kill as unix_kill, Signal};
   use nix::unistd::Pid;
   use std::convert::TryFrom;
@@ -279,14 +280,10 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
   use winapi::um::processthreadsapi::TerminateProcess;
   use winapi::um::winnt::PROCESS_TERMINATE;
 
-  const SIGINT: i32 = 2;
-  const SIGKILL: i32 = 9;
-  const SIGTERM: i32 = 15;
-
-  if !matches!(signal, SIGINT | SIGKILL | SIGTERM) {
-    Err(type_error("unsupported signal"))
+  if !matches!(signal, "SIGINT" | "SIGKILL" | "SIGTERM") {
+    Err(type_error(format!("Invalid signal: {}", signal)))
   } else if pid <= 0 {
-    Err(type_error("unsupported pid"))
+    Err(type_error("Invalid pid"))
   } else {
     let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
     if handle.is_null() {
@@ -316,8 +313,6 @@ struct KillArgs {
 fn op_kill(state: &mut OpState, args: KillArgs, _: ()) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
-
-  let signo = super::signal::signal_str_to_int(&args.signo)?;
-  kill(args.pid, signo)?;
+  kill(args.pid, &args.signo)?;
   Ok(())
 }
