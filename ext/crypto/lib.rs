@@ -20,6 +20,7 @@ use std::convert::TryInto;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
+use block_modes::BlockMode;
 use lazy_static::lazy_static;
 use num_traits::cast::FromPrimitive;
 use rand::rngs::OsRng;
@@ -794,10 +795,17 @@ pub struct EncryptArg {
   label: Option<ZeroCopyBuf>,
   // AES-CBC
   iv: Option<ZeroCopyBuf>,
-  // AES-CTR
-  // TODO(@littledivy): Can we just call it IV?
-  counter: Option<ZeroCopyBuf>,
   length: Option<usize>,
+}
+
+macro_rules! cipher_cbc {
+  ($length: ty, $key: expr, $iv: expr, $data: expr) => {{
+    // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+    type AesCbc = block_modes::Cbc<$length, block_modes::block_padding::Pkcs7>;
+    let cipher = AesCbc::new_from_slices($key, $iv)?;
+    let ciphertext = cipher.encrypt_vec($data);
+    Ok(ciphertext.into())
+  }};
 }
 
 pub async fn op_crypto_encrypt_key(
@@ -852,18 +860,20 @@ pub async fn op_crypto_encrypt_key(
     }
     Algorithm::AesCbc => {
       let key = &*args.key.data;
+      let length = args
+        .length
+        .ok_or_else(|| type_error("Missing argument length".to_string()))?;
       let iv = args
         .iv
-        .ok_or_else(|| type_error("Missing argument iv".to_string()));
+        .ok_or_else(|| type_error("Missing argument iv".to_string()))?;
 
-      // 2.
-      // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
-      type Aes128Cbc = Cbc<Aes128, Pkcs7>;
-
-      // 3.
-      let aes = Aes128Cbc::new_from_slices(key, &iv);
-      let ciphertext = cipher.encrypt_vec(data);
-      Ok(ciphertext.into())
+      // 2-3.
+      match length {
+        128 => cipher_cbc!(aes::Aes128, key, &iv, data),
+        192 => cipher_cbc!(aes::Aes192, key, &iv, data),
+        256 => cipher_cbc!(aes::Aes256, key, &iv, data),
+        _ => unreachable!(),
+      }
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }
