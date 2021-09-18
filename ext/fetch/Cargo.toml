@@ -18,9 +18,7 @@ bytes = "1.1.0"
 data-url = "0.1.0"
 deno_core = { version = "0.99.0", path = "../../core" }
 deno_tls = { version = "0.4.0", path = "../tls" }
-deno_web = { version = "0.48.0", path = "../web" }
 http = "0.2.4"
-lazy_static = "1.4.0"
 reqwest = { version = "0.11.4", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 serde = { version = "1.0.129", features = ["derive"] }
 tokio = { version = "1.10.1", features = ["full"] }

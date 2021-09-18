@@ -52,19 +52,19 @@ cut.**
 
 13. Wait for CI pipeline on the created tag branch to pass.
 
-The CI pipeline will create a release draft on GitHub
-(https://github.com/denoland/deno/releases).
+    The CI pipeline will create a release draft on GitHub
+    (https://github.com/denoland/deno/releases).
 
-11. Upload Apple M1 build to the release draft & to dl.deno.land.
+14. Upload Apple M1 build to the release draft & to dl.deno.land.
 
-12. Publish the release on Github
+15. Publish the release on Github
 
-13. Update the Deno version on the website by updating
+16. Update the Deno version on the website by updating
     https://github.com/denoland/deno_website2/blob/main/versions.json.
 
-14. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
-    must match the tag from point 9; you don't need to create dedicated commit
-    for that purpose, it's enough to tag the latest commit in that repo.
+17. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
+    must match the CLI tag; you don't need to create dedicated commit for that
+    purpose, it's enough to tag the latest commit in that repo.
 
 ## Updating `deno_docker`
 

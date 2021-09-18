@@ -364,7 +364,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)"#;
 
-static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
+static DENO_HELP: &str = "A modern JavaScript and TypeScript runtime
 
 Docs: https://deno.land/manual
 Modules: https://deno.land/std/ https://deno.land/x/
