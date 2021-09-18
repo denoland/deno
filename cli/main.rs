@@ -3,7 +3,6 @@
 mod ast;
 mod auth_tokens;
 mod checksum;
-mod colors;
 mod config_file;
 mod deno_dir;
 mod diagnostics;
@@ -18,12 +17,10 @@ mod fmt_errors;
 mod fs_util;
 mod http_cache;
 mod http_util;
-mod import_map;
 mod info;
 mod lockfile;
 mod logger;
 mod lsp;
-mod media_type;
 mod module_graph;
 mod module_loader;
 mod ops;
@@ -40,26 +37,43 @@ mod version;
 
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
+use crate::flags::BundleFlags;
+use crate::flags::CacheFlags;
+use crate::flags::CompileFlags;
+use crate::flags::CompletionsFlags;
+use crate::flags::CoverageFlags;
 use crate::flags::DenoSubcommand;
+use crate::flags::DocFlags;
+use crate::flags::EvalFlags;
 use crate::flags::Flags;
+use crate::flags::FmtFlags;
+use crate::flags::InfoFlags;
+use crate::flags::InstallFlags;
+use crate::flags::LintFlags;
+use crate::flags::ReplFlags;
+use crate::flags::RunFlags;
+use crate::flags::TestFlags;
+use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
-use crate::media_type::MediaType;
-use crate::module_graph::GraphBuilder;
-use crate::module_graph::Module;
 use crate::module_loader::CliModuleLoader;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
 use crate::tools::installer::infer_name_from_url;
+use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::located_script_name;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
+use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
+use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::web_worker::WebWorker;
@@ -68,7 +82,6 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use log::debug;
 use log::info;
-use std::collections::HashSet;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -77,8 +90,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
-use tools::test_runner;
 
 fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
@@ -91,8 +102,6 @@ fn create_web_worker_callback(
       PrettyJsError::create(source_mapped_error)
     });
 
-    let attach_inspector = program_state.maybe_inspector_server.is_some()
-      || program_state.coverage_dir.is_some();
     let maybe_inspector_server = program_state.maybe_inspector_server.clone();
 
     let module_loader = CliModuleLoader::new_for_worker(
@@ -110,24 +119,33 @@ fn create_web_worker_callback(
         .log_level
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
-      ca_data: program_state.ca_data.clone(),
+      enable_testing_features: program_state.flags.enable_testing_features,
+      unsafely_ignore_certificate_errors: program_state
+        .flags
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      root_cert_store: program_state.root_cert_store.clone(),
       user_agent: version::get_user_agent(),
       seed: program_state.flags.seed,
       module_loader,
       create_web_worker_cb,
       js_error_create_fn: Some(js_error_create_fn),
       use_deno_namespace: args.use_deno_namespace,
-      attach_inspector,
+      worker_type: args.worker_type,
       maybe_inspector_server,
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
       no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
-      blob_url_store: program_state.blob_url_store.clone(),
+      blob_store: program_state.blob_store.clone(),
       broadcast_channel: program_state.broadcast_channel.clone(),
+      shared_array_buffer_store: Some(
+        program_state.shared_array_buffer_store.clone(),
+      ),
+      cpu_count: num_cpus::get(),
     };
 
-    let mut worker = WebWorker::from_options(
+    let (mut worker, external_handle) = WebWorker::from_options(
       args.name,
       args.permissions,
       args.main_module,
@@ -153,7 +171,7 @@ fn create_web_worker_callback(
     }
     worker.bootstrap(&options);
 
-    worker
+    (worker, external_handle)
   })
 }
 
@@ -161,7 +179,7 @@ pub fn create_main_worker(
   program_state: &Arc<ProgramState>,
   main_module: ModuleSpecifier,
   permissions: Permissions,
-  enable_testing: bool,
+  maybe_op_init: Option<&dyn Fn(&mut JsRuntime)>,
 ) -> MainWorker {
   let module_loader = CliModuleLoader::new(program_state.clone());
 
@@ -173,9 +191,6 @@ pub fn create_main_worker(
     PrettyJsError::create(source_mapped_error)
   });
 
-  let attach_inspector = program_state.maybe_inspector_server.is_some()
-    || program_state.flags.repl
-    || program_state.coverage_dir.is_some();
   let maybe_inspector_server = program_state.maybe_inspector_server.clone();
   let should_break_on_first_statement =
     program_state.flags.inspect_brk.is_some();
@@ -190,12 +205,16 @@ pub fn create_main_worker(
       .log_level
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
-    ca_data: program_state.ca_data.clone(),
+    enable_testing_features: program_state.flags.enable_testing_features,
+    unsafely_ignore_certificate_errors: program_state
+      .flags
+      .unsafely_ignore_certificate_errors
+      .clone(),
+    root_cert_store: program_state.root_cert_store.clone(),
     user_agent: version::get_user_agent(),
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
     create_web_worker_cb,
-    attach_inspector,
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
@@ -213,8 +232,12 @@ pub fn create_main_worker(
         .join("location_data")
         .join(checksum::gen(&[loc.to_string().as_bytes()]))
     }),
-    blob_url_store: program_state.blob_url_store.clone(),
+    blob_store: program_state.blob_store.clone(),
     broadcast_channel: program_state.broadcast_channel.clone(),
+    shared_array_buffer_store: Some(
+      program_state.shared_array_buffer_store.clone(),
+    ),
+    cpu_count: num_cpus::get(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
@@ -232,8 +255,8 @@ pub fn create_main_worker(
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
 
-    if enable_testing {
-      ops::testing::init(js_runtime);
+    if let Some(op_init) = maybe_op_init {
+      op_init(js_runtime);
     }
 
     js_runtime.sync_ops_cache();
@@ -340,6 +363,7 @@ pub fn get_types(unstable: bool) -> String {
     crate::tsc::DENO_WEBSTORAGE_LIB,
     crate::tsc::DENO_CRYPTO_LIB,
     crate::tsc::DENO_BROADCAST_CHANNEL_LIB,
+    crate::tsc::DENO_NET_LIB,
     crate::tsc::SHARED_GLOBALS_LIB,
     crate::tsc::WINDOW_LIB,
   ];
@@ -353,21 +377,20 @@ pub fn get_types(unstable: bool) -> String {
 
 async fn compile_command(
   flags: Flags,
-  source_file: String,
-  output: Option<PathBuf>,
-  args: Vec<String>,
-  target: Option<String>,
+  compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
-  let run_flags =
-    tools::standalone::compile_to_runtime_flags(flags.clone(), args)?;
+  let run_flags = tools::standalone::compile_to_runtime_flags(
+    flags.clone(),
+    compile_flags.args,
+  )?;
 
-  let module_specifier = resolve_url_or_path(&source_file)?;
+  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   let program_state = ProgramState::build(flags.clone()).await?;
   let deno_dir = &program_state.dir;
 
-  let output = output.or_else(|| {
+  let output = compile_flags.output.or_else(|| {
     infer_name_from_url(&module_specifier).map(PathBuf::from)
   }).ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
@@ -396,7 +419,8 @@ async fn compile_command(
 
   // Select base binary based on target
   let original_binary =
-    tools::standalone::get_base_binary(deno_dir, target.clone()).await?;
+    tools::standalone::get_base_binary(deno_dir, compile_flags.target.clone())
+      .await?;
 
   let final_bin = tools::standalone::create_standalone_binary(
     original_binary,
@@ -406,20 +430,23 @@ async fn compile_command(
 
   info!("{} {}", colors::green("Emit"), output.display());
 
-  tools::standalone::write_standalone_binary(output.clone(), target, final_bin)
-    .await?;
+  tools::standalone::write_standalone_binary(
+    output.clone(),
+    compile_flags.target,
+    final_bin,
+  )
+  .await?;
 
   Ok(())
 }
 
 async fn info_command(
   flags: Flags,
-  maybe_specifier: Option<String>,
-  json: bool,
+  info_flags: InfoFlags,
 ) -> Result<(), AnyError> {
   let location = flags.location.clone();
   let program_state = ProgramState::build(flags).await?;
-  if let Some(specifier) = maybe_specifier {
+  if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
     let handler = Arc::new(Mutex::new(specifier_handler::FetchHandler::new(
       &program_state,
@@ -434,10 +461,13 @@ async fn info_command(
       program_state.lockfile.clone(),
     );
     builder.add(&specifier, false).await?;
+    builder
+      .analyze_config_file(&program_state.maybe_config_file)
+      .await?;
     let graph = builder.get_graph();
     let info = graph.info()?;
 
-    if json {
+    if info_flags.json {
       write_json_to_stdout(&json!(info))
     } else {
       write_to_stdout_ignore_sigpipe(info.to_string().as_bytes())
@@ -445,53 +475,71 @@ async fn info_command(
     }
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&program_state, json, location)
+    print_cache_info(&program_state, info_flags.json, location)
   }
 }
 
 async fn install_command(
   flags: Flags,
-  module_url: String,
-  args: Vec<String>,
-  name: Option<String>,
-  root: Option<PathBuf>,
-  force: bool,
+  install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
   let mut preload_flags = flags.clone();
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
   let permissions = Permissions::from_options(&preload_flags.clone().into());
   let program_state = ProgramState::build(preload_flags).await?;
-  let main_module = resolve_url_or_path(&module_url)?;
+  let main_module = resolve_url_or_path(&install_flags.module_url)?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
-  tools::installer::install(flags, &module_url, args, name, root, force)
+  tools::installer::install(
+    flags,
+    &install_flags.module_url,
+    install_flags.args,
+    install_flags.name,
+    install_flags.root,
+    install_flags.force,
+  )
 }
 
 async fn lsp_command() -> Result<(), AnyError> {
   lsp::start().await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn lint_command(
-  _flags: Flags,
-  files: Vec<PathBuf>,
-  list_rules: bool,
-  ignore: Vec<PathBuf>,
-  json: bool,
+  flags: Flags,
+  lint_flags: LintFlags,
 ) -> Result<(), AnyError> {
-  if list_rules {
-    tools::lint::print_rules_list(json);
+  if lint_flags.rules {
+    tools::lint::print_rules_list(lint_flags.json);
     return Ok(());
   }
 
-  tools::lint::lint_files(files, ignore, json).await
+  let program_state = ProgramState::build(flags.clone()).await?;
+  let maybe_lint_config =
+    if let Some(config_file) = &program_state.maybe_config_file {
+      config_file.to_lint_config()?
+    } else {
+      None
+    };
+
+  tools::lint::lint_files(
+    maybe_lint_config,
+    lint_flags.rules_tags,
+    lint_flags.rules_include,
+    lint_flags.rules_exclude,
+    lint_flags.files,
+    lint_flags.ignore,
+    lint_flags.json,
+  )
+  .await
 }
 
 async fn cache_command(
   flags: Flags,
-  files: Vec<String>,
+  cache_flags: CacheFlags,
 ) -> Result<(), AnyError> {
   let lib = if flags.unstable {
     module_graph::TypeLib::UnstableDenoWindow
@@ -500,7 +548,7 @@ async fn cache_command(
   };
   let program_state = ProgramState::build(flags).await?;
 
-  for file in files {
+  for file in cache_flags.files {
     let specifier = resolve_url_or_path(&file)?;
     program_state
       .prepare_module_load(
@@ -519,38 +567,37 @@ async fn cache_command(
 
 async fn eval_command(
   flags: Flags,
-  code: String,
-  ext: String,
-  print: bool,
+  eval_flags: EvalFlags,
 ) -> Result<(), AnyError> {
   // Force TypeScript compile.
   let main_module = resolve_url_or_path("./$deno$eval.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
   // Create a dummy source file.
-  let source_code = if print {
-    format!("console.log({})", code)
+  let source_code = if eval_flags.print {
+    format!("console.log({})", eval_flags.code)
   } else {
-    code
+    eval_flags.code
   }
   .into_bytes();
 
   let file = File {
     local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
-    media_type: if ext.as_str() == "ts" {
+    media_type: if eval_flags.ext.as_str() == "ts" {
       MediaType::TypeScript
-    } else if ext.as_str() == "tsx" {
+    } else if eval_flags.ext.as_str() == "tsx" {
       MediaType::Tsx
-    } else if ext.as_str() == "js" {
+    } else if eval_flags.ext.as_str() == "js" {
       MediaType::JavaScript
     } else {
       MediaType::Jsx
     },
-    source: String::from_utf8(source_code)?,
+    source: Arc::new(String::from_utf8(source_code)?),
     specifier: main_module.clone(),
+    maybe_headers: None,
   };
 
   // Save our fake file into file fetcher cache
@@ -558,9 +605,15 @@ async fn eval_command(
   program_state.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker.run_event_loop(false).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
   Ok(())
 }
 
@@ -582,6 +635,9 @@ async fn create_module_graph_and_maybe_check(
     program_state.lockfile.clone(),
   );
   builder.add(&module_specifier, false).await?;
+  builder
+    .analyze_config_file(&program_state.maybe_config_file)
+    .await?;
   let module_graph = builder.get_graph();
 
   if !program_state.flags.no_check {
@@ -598,6 +654,7 @@ async fn create_module_graph_and_maybe_check(
         lib,
         maybe_config_file: program_state.maybe_config_file.clone(),
         reload: program_state.flags.reload,
+        ..Default::default()
       })?;
 
     debug!("{}", result_info.stats);
@@ -635,15 +692,14 @@ fn bundle_module_graph(
 
 async fn bundle_command(
   flags: Flags,
-  source_file: String,
-  out_file: Option<PathBuf>,
+  bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
   let resolver = |_| {
     let flags = flags.clone();
-    let source_file1 = source_file.clone();
-    let source_file2 = source_file.clone();
+    let source_file1 = bundle_flags.source_file.clone();
+    let source_file2 = bundle_flags.source_file.clone();
     async move {
       let module_specifier = resolve_url_or_path(&source_file1)?;
 
@@ -689,7 +745,7 @@ async fn bundle_command(
     module_graph::Graph,
   )| {
     let flags = flags.clone();
-    let out_file = out_file.clone();
+    let out_file = bundle_flags.out_file.clone();
     async move {
       info!("{} {}", colors::green("Bundle"), module_graph.info()?.root);
 
@@ -733,38 +789,50 @@ async fn bundle_command(
 
 async fn doc_command(
   flags: Flags,
-  source_file: Option<String>,
-  json: bool,
-  maybe_filter: Option<String>,
-  private: bool,
+  doc_flags: DocFlags,
 ) -> Result<(), AnyError> {
-  tools::doc::print_docs(flags, source_file, json, maybe_filter, private).await
+  tools::doc::print_docs(
+    flags,
+    doc_flags.source_file,
+    doc_flags.json,
+    doc_flags.filter,
+    doc_flags.private,
+  )
+  .await
 }
 
 async fn format_command(
   flags: Flags,
-  args: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
-  check: bool,
-  ext: String,
+  fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
-  if args.len() == 1 && args[0].to_string_lossy() == "-" {
-    return tools::fmt::format_stdin(check, ext);
+  let program_state = ProgramState::build(flags.clone()).await?;
+  let maybe_fmt_config =
+    if let Some(config_file) = &program_state.maybe_config_file {
+      config_file.to_fmt_config()?
+    } else {
+      None
+    };
+
+  if fmt_flags.files.len() == 1 && fmt_flags.files[0].to_string_lossy() == "-" {
+    return tools::fmt::format_stdin(
+      fmt_flags,
+      maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
+    );
   }
 
-  tools::fmt::format(args, ignore, check, flags.watch).await?;
+  tools::fmt::format(fmt_flags, flags.watch, maybe_fmt_config).await?;
   Ok(())
 }
 
-async fn run_repl(flags: Flags) -> Result<(), AnyError> {
+async fn run_repl(flags: Flags, repl_flags: ReplFlags) -> Result<(), AnyError> {
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
   worker.run_event_loop(false).await?;
 
-  tools::repl::run(&program_state, worker).await
+  tools::repl::run(&program_state, worker, repl_flags.eval).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
@@ -775,7 +843,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     &program_state.clone(),
     main_module.clone(),
     permissions,
-    false,
+    None,
   );
 
   let mut source = Vec::new();
@@ -785,8 +853,9 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::TypeScript,
-    source: String::from_utf8(source)?,
+    source: Arc::new(String::from_utf8(source)?),
     specifier: main_module.clone(),
+    maybe_headers: None,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
@@ -794,9 +863,15 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker.run_event_loop(false).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
   Ok(())
 }
 
@@ -819,6 +894,9 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         program_state.lockfile.clone(),
       );
       builder.add(&main_module, false).await?;
+      builder
+        .analyze_config_file(&program_state.maybe_config_file)
+        .await?;
       let module_graph = builder.get_graph();
 
       // Find all local files in graph
@@ -849,23 +927,81 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     })
   };
 
+  /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
+  /// state of any pending events and emitting accordingly on drop in the case of a future
+  /// cancellation.
+  struct FileWatcherModuleExecutor {
+    worker: MainWorker,
+    pending_unload: bool,
+  }
+
+  impl FileWatcherModuleExecutor {
+    pub fn new(worker: MainWorker) -> FileWatcherModuleExecutor {
+      FileWatcherModuleExecutor {
+        worker,
+        pending_unload: false,
+      }
+    }
+
+    /// Execute the given main module emitting load and unload events before and after execution
+    /// respectively.
+    pub async fn execute(
+      &mut self,
+      main_module: &ModuleSpecifier,
+    ) -> Result<(), AnyError> {
+      self.worker.execute_module(main_module).await?;
+      self.worker.execute_script(
+        &located_script_name!(),
+        "window.dispatchEvent(new Event('load'))",
+      )?;
+      self.pending_unload = true;
+
+      let result = self.worker.run_event_loop(false).await;
+      self.pending_unload = false;
+
+      if let Err(err) = result {
+        return Err(err);
+      }
+
+      self.worker.execute_script(
+        &located_script_name!(),
+        "window.dispatchEvent(new Event('unload'))",
+      )?;
+
+      Ok(())
+    }
+  }
+
+  impl Drop for FileWatcherModuleExecutor {
+    fn drop(&mut self) {
+      if self.pending_unload {
+        self
+          .worker
+          .execute_script(
+            &located_script_name!(),
+            "window.dispatchEvent(new Event('unload'))",
+          )
+          .unwrap();
+      }
+    }
+  }
+
   let operation =
     |(program_state, main_module): (Arc<ProgramState>, ModuleSpecifier)| {
       let flags = flags.clone();
       let permissions = Permissions::from_options(&flags.into());
       async move {
-        let main_module = main_module.clone();
-        let mut worker = create_main_worker(
+        // We make use an module executor guard to ensure that unload is always fired when an
+        // operation is called.
+        let mut executor = FileWatcherModuleExecutor::new(create_main_worker(
           &program_state,
           main_module.clone(),
           permissions,
-          false,
-        );
-        debug!("main_module {}", main_module);
-        worker.execute_module(&main_module).await?;
-        worker.execute("window.dispatchEvent(new Event('load'))")?;
-        worker.run_event_loop(false).await?;
-        worker.execute("window.dispatchEvent(new Event('unload'))")?;
+          None,
+        ));
+
+        executor.execute(&main_module).await?;
+
         Ok(())
       }
     };
@@ -873,21 +1009,24 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   file_watcher::watch_func(resolver, operation, "Process").await
 }
 
-async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
+async fn run_command(
+  flags: Flags,
+  run_flags: RunFlags,
+) -> Result<(), AnyError> {
   // Read script content from stdin
-  if script == "-" {
+  if run_flags.script == "-" {
     return run_from_stdin(flags).await;
   }
 
   if flags.watch {
-    return run_with_watch(flags, script).await;
+    return run_with_watch(flags, run_flags.script).await;
   }
 
-  let main_module = resolve_url_or_path(&script)?;
+  let main_module = resolve_url_or_path(&run_flags.script)?;
   let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = program_state.coverage_dir {
@@ -906,11 +1045,17 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
@@ -922,39 +1067,26 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
 async fn coverage_command(
   flags: Flags,
-  files: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
-  include: Vec<String>,
-  exclude: Vec<String>,
-  lcov: bool,
+  coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
-  if files.is_empty() {
-    println!("No matching coverage profiles found");
-    std::process::exit(1);
+  if coverage_flags.files.is_empty() {
+    return Err(generic_error("No matching coverage profiles found"));
   }
 
   tools::coverage::cover_files(
     flags.clone(),
-    files,
-    ignore,
-    include,
-    exclude,
-    lcov,
+    coverage_flags.files,
+    coverage_flags.ignore,
+    coverage_flags.include,
+    coverage_flags.exclude,
+    coverage_flags.lcov,
   )
   .await
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn test_command(
   flags: Flags,
-  include: Option<Vec<String>>,
-  no_run: bool,
-  doc: bool,
-  fail_fast: bool,
-  quiet: bool,
-  allow_none: bool,
-  filter: Option<String>,
-  concurrent_jobs: usize,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
     std::fs::create_dir_all(&coverage_dir)?;
@@ -964,224 +1096,36 @@ async fn test_command(
     );
   }
 
-  // TODO(caspervonb) move this chunk into tools::test_runner.
-
-  let program_state = ProgramState::build(flags.clone()).await?;
-
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let cwd = std::env::current_dir().expect("No current directory");
-
-  let permissions = Permissions::from_options(&flags.clone().into());
-  let lib = if flags.unstable {
-    module_graph::TypeLib::UnstableDenoWindow
-  } else {
-    module_graph::TypeLib::DenoWindow
-  };
-
   if flags.watch {
-    let handler = Arc::new(Mutex::new(FetchHandler::new(
-      &program_state,
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-    )?));
-
-    let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-
-    // TODO(caspervonb) clean this up.
-    let resolver = |changed: Option<Vec<PathBuf>>| {
-      let doc_modules_result = test_runner::collect_test_module_specifiers(
-        include.clone(),
-        &cwd,
-        fs_util::is_supported_ext,
-      );
-
-      let test_modules_result = test_runner::collect_test_module_specifiers(
-        include.clone(),
-        &cwd,
-        tools::test_runner::is_supported,
-      );
-
-      let paths_to_watch = paths_to_watch.clone();
-      let paths_to_watch_clone = paths_to_watch.clone();
-
-      let handler = handler.clone();
-      let program_state = program_state.clone();
-      let files_changed = changed.is_some();
-      async move {
-        let doc_modules = if doc { doc_modules_result? } else { Vec::new() };
-
-        let test_modules = test_modules_result?;
-
-        let mut paths_to_watch = paths_to_watch_clone;
-        let mut modules_to_reload = if files_changed {
-          Vec::new()
-        } else {
-          test_modules
-            .iter()
-            .filter_map(|url| deno_core::resolve_url(url.as_str()).ok())
-            .collect()
-        };
-
-        let mut builder = GraphBuilder::new(
-          handler,
-          program_state.maybe_import_map.clone(),
-          program_state.lockfile.clone(),
-        );
-        for specifier in test_modules.iter() {
-          builder.add(specifier, false).await?;
-        }
-        let graph = builder.get_graph();
-
-        for specifier in doc_modules {
-          if let Ok(path) = specifier.to_file_path() {
-            paths_to_watch.push(path);
-          }
-        }
-
-        for specifier in test_modules {
-          fn get_dependencies<'a>(
-            graph: &'a module_graph::Graph,
-            module: &'a Module,
-            // This needs to be accessible to skip getting dependencies if they're already there,
-            // otherwise this will cause a stack overflow with circular dependencies
-            output: &mut HashSet<&'a ModuleSpecifier>,
-          ) -> Result<(), AnyError> {
-            for dep in module.dependencies.values() {
-              if let Some(specifier) = &dep.maybe_code {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-
-                  get_dependencies(
-                    &graph,
-                    graph.get_specifier(specifier)?,
-                    output,
-                  )?;
-                }
-              }
-              if let Some(specifier) = &dep.maybe_type {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-
-                  get_dependencies(
-                    &graph,
-                    graph.get_specifier(specifier)?,
-                    output,
-                  )?;
-                }
-              }
-            }
-
-            Ok(())
-          }
-
-          // This test module and all it's dependencies
-          let mut modules = HashSet::new();
-          modules.insert(&specifier);
-          get_dependencies(
-            &graph,
-            graph.get_specifier(&specifier)?,
-            &mut modules,
-          )?;
-
-          paths_to_watch.extend(
-            modules
-              .iter()
-              .filter_map(|specifier| specifier.to_file_path().ok()),
-          );
-
-          if let Some(changed) = &changed {
-            for path in changed.iter().filter_map(|path| {
-              deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
-            }) {
-              if modules.contains(&&path) {
-                modules_to_reload.push(specifier);
-                break;
-              }
-            }
-          }
-        }
-
-        Ok((paths_to_watch, modules_to_reload))
-      }
-      .map(move |result| {
-        if files_changed
-          && matches!(result, Ok((_, ref modules)) if modules.is_empty())
-        {
-          ResolutionResult::Ignore
-        } else {
-          match result {
-            Ok((paths_to_watch, modules_to_reload)) => {
-              ResolutionResult::Restart {
-                paths_to_watch,
-                result: Ok(modules_to_reload),
-              }
-            }
-            Err(e) => ResolutionResult::Restart {
-              paths_to_watch,
-              result: Err(e),
-            },
-          }
-        }
-      })
-    };
-
-    file_watcher::watch_func(
-      resolver,
-      |modules_to_reload| {
-        test_runner::run_tests(
-          program_state.clone(),
-          permissions.clone(),
-          lib.clone(),
-          modules_to_reload.clone(),
-          modules_to_reload,
-          no_run,
-          fail_fast,
-          quiet,
-          true,
-          filter.clone(),
-          concurrent_jobs,
-        )
-        .map(|res| res.map(|_| ()))
-      },
-      "Test",
-    )
-    .await?;
-  } else {
-    let doc_modules = if doc {
-      test_runner::collect_test_module_specifiers(
-        include.clone(),
-        &cwd,
-        fs_util::is_supported_ext,
-      )?
-    } else {
-      Vec::new()
-    };
-
-    let test_modules = test_runner::collect_test_module_specifiers(
-      include.clone(),
-      &cwd,
-      tools::test_runner::is_supported,
-    )?;
-
-    let failed = test_runner::run_tests(
-      program_state.clone(),
-      permissions,
-      lib,
-      doc_modules,
-      test_modules,
-      no_run,
-      fail_fast,
-      quiet,
-      allow_none,
-      filter,
-      concurrent_jobs,
+    tools::test::run_tests_with_watch(
+      flags,
+      test_flags.include,
+      test_flags.ignore,
+      test_flags.doc,
+      test_flags.no_run,
+      test_flags.fail_fast,
+      test_flags.filter,
+      test_flags.shuffle,
+      test_flags.concurrent_jobs,
     )
     .await?;
 
-    if failed {
-      std::process::exit(1);
-    }
+    return Ok(());
   }
+
+  tools::test::run_tests(
+    flags,
+    test_flags.include,
+    test_flags.ignore,
+    test_flags.doc,
+    test_flags.no_run,
+    test_flags.fail_fast,
+    test_flags.allow_none,
+    test_flags.filter,
+    test_flags.shuffle,
+    test_flags.concurrent_jobs,
+  )
+  .await?;
 
   Ok(())
 }
@@ -1214,87 +1158,47 @@ fn get_subcommand(
   flags: Flags,
 ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
   match flags.clone().subcommand {
-    DenoSubcommand::Bundle {
-      source_file,
-      out_file,
-    } => bundle_command(flags, source_file, out_file).boxed_local(),
-    DenoSubcommand::Doc {
-      source_file,
-      json,
-      filter,
-      private,
-    } => doc_command(flags, source_file, json, filter, private).boxed_local(),
-    DenoSubcommand::Eval { print, code, ext } => {
-      eval_command(flags, code, ext, print).boxed_local()
+    DenoSubcommand::Bundle(bundle_flags) => {
+      bundle_command(flags, bundle_flags).boxed_local()
     }
-    DenoSubcommand::Cache { files } => {
-      cache_command(flags, files).boxed_local()
+    DenoSubcommand::Doc(doc_flags) => {
+      doc_command(flags, doc_flags).boxed_local()
     }
-    DenoSubcommand::Compile {
-      source_file,
-      output,
-      args,
-      target,
-    } => {
-      compile_command(flags, source_file, output, args, target).boxed_local()
+    DenoSubcommand::Eval(eval_flags) => {
+      eval_command(flags, eval_flags).boxed_local()
     }
-    DenoSubcommand::Coverage {
-      files,
-      ignore,
-      include,
-      exclude,
-      lcov,
-    } => coverage_command(flags, files, ignore, include, exclude, lcov)
-      .boxed_local(),
-    DenoSubcommand::Fmt {
-      check,
-      files,
-      ignore,
-      ext,
-    } => format_command(flags, files, ignore, check, ext).boxed_local(),
-    DenoSubcommand::Info { file, json } => {
-      info_command(flags, file, json).boxed_local()
+    DenoSubcommand::Cache(cache_flags) => {
+      cache_command(flags, cache_flags).boxed_local()
     }
-    DenoSubcommand::Install {
-      module_url,
-      args,
-      name,
-      root,
-      force,
-    } => {
-      install_command(flags, module_url, args, name, root, force).boxed_local()
+    DenoSubcommand::Compile(compile_flags) => {
+      compile_command(flags, compile_flags).boxed_local()
+    }
+    DenoSubcommand::Coverage(coverage_flags) => {
+      coverage_command(flags, coverage_flags).boxed_local()
+    }
+    DenoSubcommand::Fmt(fmt_flags) => {
+      format_command(flags, fmt_flags).boxed_local()
+    }
+    DenoSubcommand::Info(info_flags) => {
+      info_command(flags, info_flags).boxed_local()
+    }
+    DenoSubcommand::Install(install_flags) => {
+      install_command(flags, install_flags).boxed_local()
     }
     DenoSubcommand::Lsp => lsp_command().boxed_local(),
-    DenoSubcommand::Lint {
-      files,
-      rules,
-      ignore,
-      json,
-    } => lint_command(flags, files, rules, ignore, json).boxed_local(),
-    DenoSubcommand::Repl => run_repl(flags).boxed_local(),
-    DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
-    DenoSubcommand::Test {
-      no_run,
-      doc,
-      fail_fast,
-      quiet,
-      include,
-      allow_none,
-      filter,
-      concurrent_jobs,
-    } => test_command(
-      flags,
-      include,
-      no_run,
-      doc,
-      fail_fast,
-      quiet,
-      allow_none,
-      filter,
-      concurrent_jobs,
-    )
-    .boxed_local(),
-    DenoSubcommand::Completions { buf } => {
+    DenoSubcommand::Lint(lint_flags) => {
+      lint_command(flags, lint_flags).boxed_local()
+    }
+    DenoSubcommand::Repl(repl_flags) => {
+      run_repl(flags, repl_flags).boxed_local()
+    }
+    DenoSubcommand::Run(run_flags) => {
+      run_command(flags, run_flags).boxed_local()
+    }
+    DenoSubcommand::Test(test_flags) => {
+      test_command(flags, test_flags).boxed_local()
+    }
+    DenoSubcommand::Completions(CompletionsFlags { buf }) => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
         std::process::exit(1);
@@ -1309,18 +1213,31 @@ fn get_subcommand(
       }
       std::process::exit(0);
     }
-    DenoSubcommand::Upgrade {
-      force,
-      dry_run,
-      canary,
-      version,
-      output,
-      ca_file,
-    } => tools::upgrade::upgrade_command(
-      dry_run, force, canary, version, output, ca_file,
-    )
-    .boxed_local(),
+    DenoSubcommand::Upgrade(upgrade_flags) => {
+      let UpgradeFlags {
+        force,
+        dry_run,
+        canary,
+        version,
+        output,
+        ca_file,
+      } = upgrade_flags;
+      tools::upgrade::upgrade_command(
+        dry_run, force, canary, version, output, ca_file,
+      )
+      .boxed_local()
+    }
   }
+}
+
+fn setup_exit_process_panic_hook() {
+  // tokio does not exit the process when a task panics, so we
+  // define a custom panic hook to implement this behaviour
+  let orig_hook = std::panic::take_hook();
+  std::panic::set_hook(Box::new(move |panic_info| {
+    orig_hook(panic_info);
+    std::process::exit(1);
+  }));
 }
 
 fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
@@ -1334,6 +1251,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 }
 
 pub fn main() {
+  setup_exit_process_panic_hook();
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
   unix_util::raise_fd_limit();

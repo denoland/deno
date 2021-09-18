@@ -7,10 +7,8 @@ use crate::ops;
 use crate::permissions::Permissions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
-use deno_core::error::Context as ErrorContext;
-use deno_core::futures::future::poll_fn;
-use deno_core::futures::stream::StreamExt;
 use deno_core::futures::Future;
+use deno_core::located_script_name;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -23,7 +21,9 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
-use deno_web::BlobUrlStore;
+use deno_core::SharedArrayBufferStore;
+use deno_tls::rustls::RootCertStore;
+use deno_web::BlobStore;
 use log::debug;
 use std::env;
 use std::pin::Pin;
@@ -50,7 +50,9 @@ pub struct WorkerOptions {
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
-  pub ca_data: Option<Vec<u8>>,
+  pub enable_testing_features: bool,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
@@ -58,7 +60,6 @@ pub struct WorkerOptions {
   // of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
-  pub attach_inspector: bool,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
   /// Sets `Deno.version.deno` in JS runtime.
@@ -70,8 +71,10 @@ pub struct WorkerOptions {
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub location: Option<Url>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
-  pub blob_url_store: BlobUrlStore,
+  pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub cpu_count: usize,
 }
 
 impl MainWorker {
@@ -82,10 +85,12 @@ impl MainWorker {
   ) -> Self {
     // Permissions: many ops depend on this
     let unstable = options.unstable;
+    let enable_testing_features = options.enable_testing_features;
     let perm_ext = Extension::builder()
       .state(move |state| {
         state.put::<Permissions>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
+        state.put(ops::TestingFeaturesEnabled(enable_testing_features));
         Ok(())
       })
       .build();
@@ -96,14 +101,19 @@ impl MainWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init(options.blob_url_store.clone(), options.location.clone()),
+      deno_web::init(options.blob_store.clone(), options.location.clone()),
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
-        options.ca_data.clone(),
+        options.root_cert_store.clone(),
+        None,
+        None,
+        options.unsafely_ignore_certificate_errors.clone(),
+        None,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
-        options.ca_data.clone(),
+        options.root_cert_store.clone(),
+        options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::init(options.origin_storage_dir.clone()),
       deno_crypto::init(options.seed),
@@ -113,24 +123,30 @@ impl MainWorker {
       ),
       deno_webgpu::init(options.unstable),
       deno_timers::init::<Permissions>(),
+      // ffi
+      deno_ffi::init::<Permissions>(options.unstable),
       // Metrics
       metrics::init(),
       // Runtime ops
-      ops::runtime::init(main_module),
+      ops::runtime::init(main_module.clone()),
       ops::worker_host::init(options.create_web_worker_cb.clone()),
       ops::fs_events::init(),
       ops::fs::init(),
-      ops::http::init(),
       ops::io::init(),
       ops::io::init_stdio(),
-      ops::net::init(),
+      deno_tls::init(),
+      deno_net::init::<Permissions>(
+        options.root_cert_store.clone(),
+        options.unstable,
+        options.unsafely_ignore_certificate_errors.clone(),
+      ),
       ops::os::init(),
       ops::permissions::init(),
-      ops::plugin::init(),
       ops::process::init(),
       ops::signal::init(),
-      ops::tls::init(),
       ops::tty::init(),
+      deno_http::init(),
+      ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
@@ -140,25 +156,18 @@ impl MainWorker {
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
+      shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       extensions,
-      attach_inspector: options.attach_inspector,
       ..Default::default()
     });
 
-    let mut should_break_on_first_statement = false;
-
-    if let Some(inspector) = js_runtime.inspector() {
-      if let Some(server) = options.maybe_inspector_server.clone() {
-        let session_sender = inspector.get_session_sender();
-        let deregister_rx = inspector.add_deregister_handler();
-        server.register_inspector(session_sender, deregister_rx);
-      }
-      should_break_on_first_statement = options.should_break_on_first_statement;
+    if let Some(server) = options.maybe_inspector_server.clone() {
+      server.register_inspector(main_module.to_string(), &mut js_runtime);
     }
 
     Self {
       js_runtime,
-      should_break_on_first_statement,
+      should_break_on_first_statement: options.should_break_on_first_statement,
     }
   }
 
@@ -176,6 +185,7 @@ impl MainWorker {
       "unstableFlag": options.unstable,
       "v8Version": deno_core::v8_version(),
       "location": options.location,
+      "cpuCount": options.cpu_count,
     });
 
     let script = format!(
@@ -183,17 +193,18 @@ impl MainWorker {
       serde_json::to_string_pretty(&runtime_options).unwrap()
     );
     self
-      .execute(&script)
+      .execute_script(&located_script_name!(), &script)
       .expect("Failed to execute bootstrap script");
   }
 
-  /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
-  pub fn execute(&mut self, js_source: &str) -> Result<(), AnyError> {
-    let path = env::current_dir()
-      .context("Failed to get current working directory")?
-      .join("__anonymous__");
-    let url = Url::from_file_path(path).unwrap();
-    self.js_runtime.execute(url.as_str(), js_source)
+  /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
+  pub fn execute_script(
+    &mut self,
+    name: &str,
+    source_code: &str,
+  ) -> Result<(), AnyError> {
+    self.js_runtime.execute_script(name, source_code)?;
+    Ok(())
   }
 
   /// Loads and instantiates specified JavaScript module.
@@ -213,17 +224,15 @@ impl MainWorker {
     self.wait_for_inspector_session();
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
-      maybe_result = receiver.next() => {
+      maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
-        let result = maybe_result.expect("Module evaluation result not provided.");
-        return result;
+        maybe_result.expect("Module evaluation result not provided.")
       }
 
       event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
-        let maybe_result = receiver.next().await;
-        let result = maybe_result.expect("Module evaluation result not provided.");
-        return result;
+        let maybe_result = receiver.await;
+        maybe_result.expect("Module evaluation result not provided.")
       }
     }
   }
@@ -233,7 +242,6 @@ impl MainWorker {
       self
         .js_runtime
         .inspector()
-        .unwrap()
         .wait_for_session_and_break_on_next_statement()
     }
   }
@@ -241,7 +249,7 @@ impl MainWorker {
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
-    let inspector = self.js_runtime.inspector().unwrap();
+    let inspector = self.js_runtime.inspector();
     inspector.create_local_session()
   }
 
@@ -257,7 +265,7 @@ impl MainWorker {
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
+    self.js_runtime.run_event_loop(wait_for_inspector).await
   }
 
   /// A utility function that runs provided future concurrently with the event loop.
@@ -293,11 +301,12 @@ mod tests {
       args: vec![],
       debug_flag: false,
       unstable: false,
-      ca_data: None,
+      enable_testing_features: false,
+      unsafely_ignore_certificate_errors: None,
+      root_cert_store: None,
       seed: None,
       js_error_create_fn: None,
       create_web_worker_cb: Arc::new(|_| unreachable!()),
-      attach_inspector: false,
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
       module_loader: Rc::new(deno_core::FsModuleLoader),
@@ -307,8 +316,10 @@ mod tests {
       get_error_class_fn: None,
       location: None,
       origin_storage_dir: None,
-      blob_url_store: BlobUrlStore::default(),
+      blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
+      shared_array_buffer_store: None,
+      cpu_count: 1,
     };
 
     MainWorker::from_options(main_module, permissions, &options)
@@ -316,10 +327,7 @@ mod tests {
 
   #[tokio::test]
   async fn execute_mod_esm_imports_a() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/esm_imports_a.js");
+    let p = test_util::testdata_path().join("esm_imports_a.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_module(&module_specifier).await;
@@ -362,10 +370,7 @@ mod tests {
     // This assumes cwd is project root (an assumption made throughout the
     // tests).
     let mut worker = create_test_worker();
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/001_hello.js");
+    let p = test_util::testdata_path().join("001_hello.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let result = worker.execute_module(&module_specifier).await;
     assert!(result.is_ok());

@@ -111,7 +111,7 @@ declare namespace WebAssembly {
     /**
      * Given a `Module` and string, returns a copy of the contents of all custom sections in the
      * module with the given string name.
-     * */
+     */
     static customSections(
       moduleObject: Module,
       sectionName: string,
@@ -225,6 +225,18 @@ declare namespace WebAssembly {
   export function compile(bytes: BufferSource): Promise<Module>;
 
   /**
+   * The `WebAssembly.compileStreaming()` function compiles a `WebAssembly.Module`
+   * directly from a streamed underlying source. This function is useful if it is
+   * necessary to a compile a module before it can be instantiated (otherwise, the
+   * `WebAssembly.instantiateStreaming()` function should be used).
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/compileStreaming)
+   */
+  export function compileStreaming(
+    source: Response | Promise<Response>,
+  ): Promise<Module>;
+
+  /**
    * The WebAssembly.instantiate() function allows you to compile and instantiate
    * WebAssembly code.
    *
@@ -254,6 +266,18 @@ declare namespace WebAssembly {
     moduleObject: Module,
     importObject?: Imports,
   ): Promise<Instance>;
+
+  /**
+   * The `WebAssembly.instantiateStreaming()` function compiles and instantiates a
+   * WebAssembly module directly from a streamed underlying source. This is the most
+   * efficient, optimized way to load wasm code.
+   *
+   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiateStreaming)
+   */
+  export function instantiateStreaming(
+    response: Response | PromiseLike<Response>,
+    importObject?: Imports,
+  ): Promise<WebAssemblyInstantiatedSource>;
 
   /**
    * The `WebAssembly.validate()` function validates a given typed array of
@@ -347,24 +371,6 @@ type BufferSource = ArrayBufferView | ArrayBuffer;
 
 declare var console: Console;
 
-interface MessageEventInit<T = any> extends EventInit {
-  data?: T;
-  origin?: string;
-  lastEventId?: string;
-}
-
-declare class MessageEvent<T = any> extends Event {
-  /**
-   * Returns the data of the message.
-   */
-  readonly data: T;
-  /**
-   * Returns the last event ID string, for server-sent events.
-   */
-  readonly lastEventId: string;
-  constructor(type: string, eventInitDict?: MessageEventInit);
-}
-
 interface ErrorEventInit extends EventInit {
   message?: string;
   filename?: string;
@@ -380,10 +386,6 @@ declare class ErrorEvent extends Event {
   readonly colno: number;
   readonly error: any;
   constructor(type: string, eventInitDict?: ErrorEventInit);
-}
-
-interface PostMessageOptions {
-  transfer?: any[];
 }
 
 interface AbstractWorkerEventMap {
@@ -405,11 +407,11 @@ declare class Worker extends EventTarget {
   onmessage?: (e: MessageEvent) => void;
   onmessageerror?: (e: MessageEvent) => void;
   constructor(
-    specifier: string,
+    specifier: string | URL,
     options?: WorkerOptions,
   );
-  postMessage(message: any, transfer: ArrayBuffer[]): void;
-  postMessage(message: any, options?: PostMessageOptions): void;
+  postMessage(message: any, transfer: Transferable[]): void;
+  postMessage(message: any, options?: StructuredSerializeOptions): void;
   addEventListener<K extends keyof WorkerEventMap>(
     type: K,
     listener: (this: Worker, ev: WorkerEventMap[K]) => any,
@@ -492,7 +494,7 @@ declare interface PerformanceMeasureOptions {
   detail?: any;
 
   /** Timestamp to be used as the start time or string to be used as start
-   * mark.*/
+   * mark. */
   start?: string | number;
 
   /** Duration between the start and end times. */

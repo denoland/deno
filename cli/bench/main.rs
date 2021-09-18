@@ -36,29 +36,46 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   // invalidating that cache.
   (
     "cold_hello",
-    &["run", "--reload", "cli/tests/002_hello.ts"],
+    &["run", "--reload", "cli/tests/testdata/002_hello.ts"],
     None,
   ),
   (
     "cold_relative_import",
-    &["run", "--reload", "cli/tests/003_relative_import.ts"],
+    &[
+      "run",
+      "--reload",
+      "cli/tests/testdata/003_relative_import.ts",
+    ],
     None,
   ),
-  ("hello", &["run", "cli/tests/002_hello.ts"], None),
+  ("hello", &["run", "cli/tests/testdata/002_hello.ts"], None),
   (
     "relative_import",
-    &["run", "cli/tests/003_relative_import.ts"],
+    &["run", "cli/tests/testdata/003_relative_import.ts"],
     None,
   ),
-  ("error_001", &["run", "cli/tests/error_001.ts"], Some(1)),
+  (
+    "error_001",
+    &["run", "cli/tests/testdata/error_001.ts"],
+    Some(1),
+  ),
   (
     "no_check_hello",
-    &["run", "--reload", "--no-check", "cli/tests/002_hello.ts"],
+    &[
+      "run",
+      "--reload",
+      "--no-check",
+      "cli/tests/testdata/002_hello.ts",
+    ],
     None,
   ),
   (
     "workers_startup",
-    &["run", "--allow-read", "cli/tests/workers/bench_startup.ts"],
+    &[
+      "run",
+      "--allow-read",
+      "cli/tests/testdata/workers/bench_startup.ts",
+    ],
     None,
   ),
   (
@@ -66,7 +83,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/workers/bench_round_robin.ts",
+      "cli/tests/testdata/workers/bench_round_robin.ts",
     ],
     None,
   ),
@@ -75,23 +92,23 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/workers/bench_large_message.ts",
+      "cli/tests/testdata/workers/bench_large_message.ts",
     ],
     None,
   ),
   (
     "text_decoder",
-    &["run", "cli/tests/text_decoder_perf.js"],
+    &["run", "cli/tests/testdata/text_decoder_perf.js"],
     None,
   ),
   (
     "text_encoder",
-    &["run", "cli/tests/text_encoder_perf.js"],
+    &["run", "cli/tests/testdata/text_encoder_perf.js"],
     None,
   ),
   (
     "text_encoder_into",
-    &["run", "cli/tests/text_encoder_into_perf.js"],
+    &["run", "cli/tests/testdata/text_encoder_into_perf.js"],
     None,
   ),
   (
@@ -234,11 +251,11 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, u64>> {
   );
 
   // add up size for everything in target/release/deps/libswc*
-  let swc_size = rlib_size(&target_dir, "libswc");
+  let swc_size = rlib_size(target_dir, "libswc");
   println!("swc {} bytes", swc_size);
   sizes.insert("swc_rlib".to_string(), swc_size);
 
-  let rusty_v8_size = rlib_size(&target_dir, "librusty_v8");
+  let rusty_v8_size = rlib_size(target_dir, "librusty_v8");
   println!("rusty_v8 {} bytes", rusty_v8_size);
   sizes.insert("rusty_v8_rlib".to_string(), rusty_v8_size);
 
@@ -340,10 +357,10 @@ fn run_strace_benchmarks(
   let mut thread_count = HashMap::<String, u64>::new();
   let mut syscall_count = HashMap::<String, u64>::new();
 
-  for (name, args, _) in EXEC_TIME_BENCHMARKS {
+  for (name, args, expected_exit_code) in EXEC_TIME_BENCHMARKS {
     let mut file = tempfile::NamedTempFile::new()?;
 
-    Command::new("strace")
+    let exit_status = Command::new("strace")
       .args(&[
         "-c",
         "-f",
@@ -352,9 +369,11 @@ fn run_strace_benchmarks(
         deno_exe.to_str().unwrap(),
       ])
       .args(args.iter())
-      .stdout(Stdio::inherit())
+      .stdout(Stdio::null())
       .spawn()?
       .wait()?;
+    let expected_exit_code = expected_exit_code.unwrap_or(0);
+    assert_eq!(exit_status.code(), Some(expected_exit_code));
 
     let mut output = String::new();
     file.as_file_mut().read_to_string(&mut output)?;
@@ -439,7 +458,7 @@ struct BenchResult {
  we replace the harness with our own runner here.
 */
 fn main() -> Result<()> {
-  if env::args().find(|s| s == "--bench").is_none() {
+  if !env::args().any(|s| s == "--bench") {
     return Ok(());
   }
 

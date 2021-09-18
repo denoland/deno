@@ -50,6 +50,7 @@ declare class WorkerGlobalScope extends EventTarget {
 declare class WorkerNavigator {
   constructor();
   readonly gpu: GPU;
+  readonly hardwareConcurrency: number;
 }
 
 declare var navigator: WorkerNavigator;
@@ -68,7 +69,8 @@ declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
     | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
     | null;
   close(): void;
-  postMessage(message: any): void;
+  postMessage(message: any, transfer: Transferable[]): void;
+  postMessage(message: any, options?: StructuredSerializeOptions): void;
   addEventListener<K extends keyof DedicatedWorkerGlobalScopeEventMap>(
     type: K,
     listener: (
@@ -105,7 +107,11 @@ declare var onmessageerror:
   | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
   | null;
 declare function close(): void;
-declare function postMessage(message: any): void;
+declare function postMessage(message: any, transfer: Transferable[]): void;
+declare function postMessage(
+  message: any,
+  options?: StructuredSerializeOptions,
+): void;
 declare var navigator: WorkerNavigator;
 declare var onerror:
   | ((this: DedicatedWorkerGlobalScope, ev: ErrorEvent) => any)

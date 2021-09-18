@@ -31,7 +31,7 @@ export async function runWithTestUtil<T>(
     }
     const passedTime = performance.now() - start;
     if (passedTime > 15000) {
-      proc.kill(2);
+      proc.kill("SIGINT");
       await proc.status();
       proc.close();
       throw new Error("Timed out while trying to start wpt test util.");
@@ -44,7 +44,7 @@ export async function runWithTestUtil<T>(
     return await f();
   } finally {
     if (verbose) console.log("Killing wpt test util.");
-    proc.kill(2);
+    proc.kill("SIGINT");
     await proc.status();
     proc.close();
   }
@@ -82,60 +82,66 @@ export async function runSingleTest(
     prefix: "wpt-bundle-",
     suffix: ".js",
   });
-  await Deno.writeTextFile(tempFile, bundle);
 
-  const startTime = new Date().getTime();
+  try {
+    await Deno.writeTextFile(tempFile, bundle);
 
-  const proc = Deno.run({
-    cmd: [
-      denoBinary(),
-      "run",
-      "-A",
-      "--unstable",
-      "--location",
-      url.toString(),
-      "--cert",
-      join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`),
-      tempFile,
-      "[]",
-    ],
-    env: {
-      NO_COLOR: "1",
-    },
-    stdout: "null",
-    stderr: "piped",
-  });
+    const startTime = new Date().getTime();
 
-  const cases = [];
-  let stderr = "";
+    const proc = Deno.run({
+      cmd: [
+        denoBinary(),
+        "run",
+        "-A",
+        "--unstable",
+        "--enable-testing-features-do-not-use",
+        "--location",
+        url.toString(),
+        "--cert",
+        join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`),
+        tempFile,
+        "[]",
+      ],
+      env: {
+        NO_COLOR: "1",
+      },
+      stdout: "null",
+      stderr: "piped",
+    });
 
-  let harnessStatus = null;
+    const cases = [];
+    let stderr = "";
 
-  const lines = readLines(proc.stderr);
-  for await (const line of lines) {
-    if (line.startsWith("{")) {
-      const data = JSON.parse(line);
-      const result = { ...data, passed: data.status == 0 };
-      cases.push(result);
-      reporter(result);
-    } else if (line.startsWith("#$#$#{")) {
-      harnessStatus = JSON.parse(line.slice(5));
-    } else {
-      stderr += line + "\n";
-      console.error(stderr);
+    let harnessStatus = null;
+
+    const lines = readLines(proc.stderr);
+    for await (const line of lines) {
+      if (line.startsWith("{")) {
+        const data = JSON.parse(line);
+        const result = { ...data, passed: data.status == 0 };
+        cases.push(result);
+        reporter(result);
+      } else if (line.startsWith("#$#$#{")) {
+        harnessStatus = JSON.parse(line.slice(5));
+      } else {
+        stderr += line + "\n";
+        console.error(line);
+      }
     }
+
+    const duration = new Date().getTime() - startTime;
+
+    const { code } = await proc.status();
+    return {
+      status: code,
+      harnessStatus,
+      duration,
+      cases,
+      stderr,
+    };
+  } finally {
+    await Deno.remove(tempFile);
   }
-
-  const duration = new Date().getTime() - startTime;
-
-  const { code } = await proc.status();
-  return {
-    status: code,
-    harnessStatus,
-    duration,
-    cases,
-    stderr,
-  };
 }
 
 async function generateBundle(location: URL): Promise<string> {

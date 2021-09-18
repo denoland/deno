@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Used for benchmarking Deno's tcp proxy performance.
+import { copy } from "../../test_util/std/io/util.ts";
+
 const addr = Deno.args[0] || "127.0.0.1:4500";
 const originAddr = Deno.args[1] || "127.0.0.1:4501";
 
@@ -14,7 +16,7 @@ async function handle(conn: Deno.Conn): Promise<void> {
     port: Number(originPort),
   });
   try {
-    await Promise.all([Deno.copy(conn, origin), Deno.copy(origin, conn)]);
+    await Promise.all([copy(conn, origin), copy(origin, conn)]);
   } catch (e) {
     if (
       !(e instanceof Deno.errors.BrokenPipe) &&

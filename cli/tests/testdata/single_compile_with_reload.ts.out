@@ -1,0 +1,9 @@
+Check [WILDCARD]single_compile_with_reload.ts
+Hello
+1
+2
+Check [WILDCARD]single_compile_with_reload_worker.ts
+Hello from worker
+3
+Hello from worker
+4

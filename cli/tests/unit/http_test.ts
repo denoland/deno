@@ -6,8 +6,11 @@ import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 import {
   assert,
   assertEquals,
-  assertThrowsAsync,
+  assertRejects,
+  assertThrows,
   deferred,
+  delay,
+  fail,
   unitTest,
 } from "./test_util.ts";
 
@@ -55,9 +58,12 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
   const resp = await fetch("http://127.0.0.1:4501/", {
     headers: { "connection": "close" },
   });
+  const clone = resp.clone();
   const text = await resp.text();
   assertEquals(text, "Hello World");
   assertEquals(resp.headers.get("foo"), "bar");
+  const cloneText = await clone.text();
+  assertEquals(cloneText, "Hello World");
   await promise;
 });
 
@@ -181,7 +187,7 @@ unitTest({ perms: { net: true } }, async function httpServerInvalidMethod() {
   const client = await Deno.connect({ port: 4501 });
   const httpConn = Deno.serveHttp(await listener.accept());
   await client.write(new Uint8Array([1, 2, 3]));
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await httpConn.nextRequest();
     },
@@ -195,7 +201,7 @@ unitTest({ perms: { net: true } }, async function httpServerInvalidMethod() {
 
 unitTest(
   { perms: { read: true, net: true } },
-  async function httpServerWithTls(): Promise<void> {
+  async function httpServerWithTls() {
     const hostname = "localhost";
     const port = 4501;
 
@@ -203,8 +209,8 @@ unitTest(
       const listener = Deno.listenTls({
         hostname,
         port,
-        certFile: "cli/tests/tls/localhost.crt",
-        keyFile: "cli/tests/tls/localhost.key",
+        certFile: "cli/tests/testdata/tls/localhost.crt",
+        keyFile: "cli/tests/testdata/tls/localhost.key",
       });
       const conn = await listener.accept();
       const httpConn = Deno.serveHttp(conn);
@@ -221,7 +227,7 @@ unitTest(
       listener.close();
     })();
 
-    const caData = Deno.readTextFileSync("cli/tests/tls/RootCA.pem");
+    const caData = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caData });
     const resp = await fetch(`https://${hostname}:${port}/`, {
       client,
@@ -271,8 +277,8 @@ unitTest(
       const event = await httpConn.nextRequest();
       assert(event);
       const { respondWith } = event;
-      let cancelReason = null;
-      const responseError = await assertThrowsAsync(
+      let cancelReason: string;
+      await assertRejects(
         async () => {
           let interval = 0;
           await respondWith(
@@ -293,8 +299,9 @@ unitTest(
           );
         },
         Deno.errors.Http,
+        cancelReason!,
       );
-      assertEquals(cancelReason, responseError);
+      assert(cancelReason!);
       httpConn.close();
       listener.close();
     })();
@@ -317,7 +324,7 @@ unitTest(
       // Start polling for the next request before awaiting response.
       const nextRequestPromise = httpConn.nextRequest();
       const { respondWith } = event;
-      await assertThrowsAsync(
+      await assertRejects(
         async () => {
           let interval = 0;
           await respondWith(
@@ -375,8 +382,6 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function httpServerNextRequestResolvesOnClose() {
-    const delay = (n: number) =>
-      new Promise((resolve) => setTimeout(resolve, n));
     const httpConnList: Deno.HttpConn[] = [];
 
     async function serve(l: Deno.Listener) {
@@ -539,5 +544,383 @@ unitTest(
     await finished;
     clientConn.close();
     listener.close();
+  },
+);
+
+unitTest({ perms: { net: true } }, async function httpRequestLatin1Headers() {
+  const promise = (async () => {
+    const listener = Deno.listen({ port: 4501 });
+    for await (const conn of listener) {
+      const httpConn = Deno.serveHttp(conn);
+      for await (const { request, respondWith } of httpConn) {
+        assertEquals(request.headers.get("X-Header-Test"), "á");
+        await respondWith(
+          new Response("", { headers: { "X-Header-Test": "Æ" } }),
+        );
+        httpConn.close();
+      }
+      break;
+    }
+  })();
+
+  const clientConn = await Deno.connect({ port: 4501 });
+  const requestText =
+    "GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nX-Header-Test: á\r\n\r\n";
+  const requestBytes = new Uint8Array(requestText.length);
+  for (let i = 0; i < requestText.length; i++) {
+    requestBytes[i] = requestText.charCodeAt(i);
+  }
+  let written = 0;
+  while (written < requestBytes.byteLength) {
+    written += await clientConn.write(requestBytes.slice(written));
+  }
+
+  let responseText = "";
+  const buf = new Uint8Array(1024);
+  let read;
+  while ((read = await clientConn.read(buf)) !== null) {
+    for (let i = 0; i < read; i++) {
+      responseText += String.fromCharCode(buf[i]);
+    }
+  }
+  clientConn.close();
+
+  assert(/\r\n[Xx]-[Hh]eader-[Tt]est: Æ\r\n/.test(responseText));
+
+  await promise;
+});
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerRequestWithoutPath() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      for await (const conn of listener) {
+        const httpConn = Deno.serveHttp(conn);
+        for await (const { request, respondWith } of httpConn) {
+          assertEquals(new URL(request.url).href, "http://127.0.0.1/");
+          assertEquals(await request.text(), "");
+          respondWith(new Response());
+        }
+        break;
+      }
+    })();
+
+    const clientConn = await Deno.connect({ port: 4501 });
+
+    async function writeRequest(conn: Deno.Conn) {
+      const encoder = new TextEncoder();
+
+      const w = new BufWriter(conn);
+      const r = new BufReader(conn);
+      const body =
+        `CONNECT 127.0.0.1:4501 HTTP/1.1\r\nHost: 127.0.0.1:4501\r\n\r\n`;
+      const writeResult = await w.write(encoder.encode(body));
+      assertEquals(body.length, writeResult);
+      await w.flush();
+      const tpr = new TextProtoReader(r);
+      const statusLine = await tpr.readLine();
+      assert(statusLine !== null);
+      const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
+      assert(m !== null, "must be matched");
+      const [_, _proto, status, _ok] = m;
+      assertEquals(status, "200");
+      const headers = await tpr.readMIMEHeader();
+      assert(headers !== null);
+    }
+
+    await writeRequest(clientConn);
+    clientConn.close();
+    await promise;
+  },
+);
+
+unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
+  const promise = (async () => {
+    const listener = Deno.listen({ port: 4501 });
+    for await (const conn of listener) {
+      const httpConn = Deno.serveHttp(conn);
+      const { request, respondWith } = (await httpConn.nextRequest())!;
+      const {
+        response,
+        socket,
+      } = Deno.upgradeWebSocket(request);
+      socket.onerror = () => fail();
+      socket.onmessage = (m) => {
+        socket.send(m.data);
+        socket.close(1001);
+      };
+      await respondWith(response);
+      break;
+    }
+  })();
+
+  const def = deferred();
+  const ws = new WebSocket("ws://localhost:4501");
+  ws.onmessage = (m) => assertEquals(m.data, "foo");
+  ws.onerror = () => fail();
+  ws.onclose = () => def.resolve();
+  ws.onopen = () => ws.send("foo");
+  await def;
+  await promise;
+});
+
+unitTest(function httpUpgradeWebSocket() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "Upgrade",
+      upgrade: "websocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+  assertEquals(response.headers.get("connection"), "Upgrade");
+  assertEquals(response.headers.get("upgrade"), "websocket");
+  assertEquals(
+    response.headers.get("sec-websocket-accept"),
+    "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
+  );
+});
+
+unitTest(function httpUpgradeWebSocketLowercaseUpgradeHeader() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "upgrade",
+      upgrade: "websocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+});
+
+unitTest(function httpUpgradeWebSocketMultipleConnectionOptions() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "keep-alive, upgrade",
+      upgrade: "websocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+});
+
+unitTest(function httpUpgradeWebSocketCaseInsensitiveUpgradeHeader() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "upgrade",
+      upgrade: "websocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+});
+
+unitTest(function httpUpgradeWebSocketInvalidUpgradeHeader() {
+  assertThrows(
+    () => {
+      const request = new Request("https://deno.land/", {
+        headers: {
+          connection: "upgrade",
+          upgrade: "invalid",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+      });
+      Deno.upgradeWebSocket(request);
+    },
+    TypeError,
+    "Invalid Header: 'upgrade' header must be 'websocket'",
+  );
+});
+
+unitTest(function httpUpgradeWebSocketWithoutUpgradeHeader() {
+  assertThrows(
+    () => {
+      const request = new Request("https://deno.land/", {
+        headers: {
+          connection: "upgrade",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+      });
+      Deno.upgradeWebSocket(request);
+    },
+    TypeError,
+    "Invalid Header: 'upgrade' header must be 'websocket'",
+  );
+});
+
+unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {
+  const promise = (async () => {
+    const listener = Deno.listen({ port: 4501 });
+    for await (const conn of listener) {
+      const httpConn = Deno.serveHttp(conn);
+      for await (const { request, respondWith } of httpConn) {
+        assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
+        assertEquals(await request.text(), "");
+        assertEquals(request.headers.get("cookie"), "foo=bar; bar=foo");
+        respondWith(new Response("ok"));
+      }
+      break;
+    }
+  })();
+
+  const resp = await fetch("http://127.0.0.1:4501/", {
+    headers: [
+      ["connection", "close"],
+      ["cookie", "foo=bar"],
+      ["cookie", "bar=foo"],
+    ],
+  });
+  const text = await resp.text();
+  assertEquals(text, "ok");
+  await promise;
+});
+
+// https://github.com/denoland/deno/issues/11651
+unitTest({ perms: { net: true } }, async function httpServerPanic() {
+  const listener = Deno.listen({ port: 4501 });
+  const client = await Deno.connect({ port: 4501 });
+  const conn = await listener.accept();
+  const httpConn = Deno.serveHttp(conn);
+
+  // This message is incomplete on purpose, we'll forcefully close client connection
+  // after it's flushed to cause connection to error out on the server side.
+  const encoder = new TextEncoder();
+  await client.write(encoder.encode("GET / HTTP/1.1"));
+
+  httpConn.nextRequest();
+  await client.write(encoder.encode("\r\n\r\n"));
+  httpConn.close();
+
+  client.close();
+  listener.close();
+});
+
+// https://github.com/denoland/deno/issues/11595
+unitTest(
+  { perms: { net: true } },
+  async function httpServerIncompleteMessage() {
+    const listener = Deno.listen({ port: 4501 });
+
+    const client = await Deno.connect({ port: 4501 });
+    await client.write(new TextEncoder().encode(
+      `GET / HTTP/1.0\r\n\r\n`,
+    ));
+
+    const conn = await listener.accept();
+    const httpConn = Deno.serveHttp(conn);
+    const ev = await httpConn.nextRequest();
+    const { respondWith } = ev!;
+
+    const { readable, writable } = new TransformStream<Uint8Array>();
+    const writer = writable.getWriter();
+
+    async function writeResponse() {
+      await writer.write(
+        new TextEncoder().encode(
+          "written to the writable side of a TransformStream",
+        ),
+      );
+      await writer.close();
+    }
+
+    const errors: Error[] = [];
+
+    const writePromise = writeResponse()
+      .catch((error: Error) => {
+        errors.push(error);
+      });
+
+    const res = new Response(readable);
+
+    const respondPromise = respondWith(res)
+      .catch((error: Error) => errors.push(error));
+
+    client.close();
+
+    await Promise.all([
+      writePromise,
+      respondPromise,
+    ]);
+
+    listener.close();
+
+    assert(errors.length >= 1);
+    for (const error of errors) {
+      assertEquals(error.name, "Http");
+      assertEquals(
+        error.message,
+        "connection closed before message completed",
+      );
+    }
+  },
+);
+
+// https://github.com/denoland/deno/issues/11743
+unitTest(
+  { perms: { net: true } },
+  async function httpServerDoesntLeakResources() {
+    const listener = Deno.listen({ port: 4505 });
+    const [conn, clientConn] = await Promise.all([
+      listener.accept(),
+      Deno.connect({ port: 4505 }),
+    ]);
+    const httpConn = Deno.serveHttp(conn);
+
+    await Promise.all([
+      httpConn.nextRequest(),
+      clientConn.write(new TextEncoder().encode(
+        `GET / HTTP/1.1\r\nHost: 127.0.0.1:4505\r\n\r\n`,
+      )),
+    ]);
+
+    httpConn.close();
+    listener.close();
+    clientConn.close();
+  },
+);
+
+// https://github.com/denoland/deno/issues/11926
+unitTest(
+  { perms: { net: true } },
+  async function httpServerDoesntLeakResources2() {
+    let listener: Deno.Listener;
+    let httpConn: Deno.HttpConn;
+
+    const promise = (async () => {
+      listener = Deno.listen({ port: 4502 });
+      for await (const conn of listener) {
+        httpConn = Deno.serveHttp(conn);
+        for await (const { request, respondWith } of httpConn) {
+          assertEquals(new URL(request.url).href, "http://127.0.0.1:4502/");
+          // not reading request body on purpose
+          respondWith(new Response("ok"));
+        }
+      }
+    })();
+
+    const resourcesBefore = Deno.resources();
+    const response = await fetch("http://127.0.0.1:4502", {
+      method: "POST",
+      body: "hello world",
+    });
+    await response.text();
+    const resourcesAfter = Deno.resources();
+    // verify that the only new resource is "httpConnection", to make
+    // sure "request" resource is closed even if its body was not read
+    // by server handler
+
+    for (const rid of Object.keys(resourcesBefore)) {
+      delete resourcesAfter[Number(rid)];
+    }
+
+    assertEquals(Object.keys(resourcesAfter).length, 1);
+
+    listener!.close();
+    httpConn!.close();
+    await promise;
   },
 );

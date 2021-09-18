@@ -2,6 +2,10 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
+  const { Error } = window.__bootstrap.primordials;
+  const { BadResource, Interrupted } = core;
+
   class NotFound extends Error {
     constructor(msg) {
       super(msg);
@@ -86,13 +90,6 @@
     }
   }
 
-  class Interrupted extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "Interrupted";
-    }
-  }
-
   class WriteZero extends Error {
     constructor(msg) {
       super(msg);
@@ -104,13 +101,6 @@
     constructor(msg) {
       super(msg);
       this.name = "UnexpectedEof";
-    }
-  }
-
-  class BadResource extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "BadResource";
     }
   }
 

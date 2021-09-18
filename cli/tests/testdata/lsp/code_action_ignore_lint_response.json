@@ -1,0 +1,92 @@
+[
+  {
+    "title": "Disable prefer-const for this line",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": { "line": 1, "character": 5 },
+          "end": { "line": 1, "character": 12 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'message' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }
+    ],
+    "edit": {
+      "changes": {
+        "file:///a/file.ts": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 }
+            },
+            "newText": "// deno-lint-ignore prefer-const\n"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "title": "Disable prefer-const for the entire file",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": { "line": 1, "character": 5 },
+          "end": { "line": 1, "character": 12 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'message' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }
+    ],
+    "edit": {
+      "changes": {
+        "file:///a/file.ts": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "// deno-lint-ignore-file prefer-const\n"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "title": "Ignore lint errors for the entire file",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": { "line": 1, "character": 5 },
+          "end": { "line": 1, "character": 12 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'message' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }
+    ],
+    "edit": {
+      "changes": {
+        "file:///a/file.ts": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "// deno-lint-ignore-file\n"
+          }
+        ]
+      }
+    }
+  }
+]

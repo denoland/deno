@@ -4,12 +4,18 @@
   const { stat, statSync, chmod, chmodSync } = window.__bootstrap.fs;
   const { open, openSync } = window.__bootstrap.files;
   const { build } = window.__bootstrap.build;
+  const {
+    TypedArrayPrototypeSubarray,
+  } = window.__bootstrap.primordials;
 
   function writeFileSync(
     path,
     data,
     options = {},
   ) {
+    if (options?.signal?.aborted) {
+      throw new DOMException("The write operation was aborted.", "AbortError");
+    }
     if (options.create !== undefined) {
       const create = !!options.create;
       if (!create) {
@@ -33,7 +39,7 @@
 
     let nwritten = 0;
     while (nwritten < data.length) {
-      nwritten += file.writeSync(data.subarray(nwritten));
+      nwritten += file.writeSync(TypedArrayPrototypeSubarray(data, nwritten));
     }
 
     file.close();
@@ -65,12 +71,17 @@
       await chmod(path, options.mode);
     }
 
+    const signal = options?.signal ?? null;
     let nwritten = 0;
-    while (nwritten < data.length) {
-      nwritten += await file.write(data.subarray(nwritten));
+    while (!signal?.aborted && nwritten < data.length) {
+      nwritten += await file.write(TypedArrayPrototypeSubarray(data, nwritten));
     }
 
     file.close();
+
+    if (signal?.aborted) {
+      throw new DOMException("The write operation was aborted.", "AbortError");
+    }
   }
 
   function writeTextFileSync(

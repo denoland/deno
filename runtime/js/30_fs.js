@@ -3,6 +3,12 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const {
+    Date,
+    MathTrunc,
+    SymbolAsyncIterator,
+    SymbolIterator,
+  } = window.__bootstrap.primordials;
   const { pathFromURL } = window.__bootstrap.util;
   const build = window.__bootstrap.build.build;
 
@@ -103,7 +109,7 @@
 
   function readDirSync(path) {
     return core.opSync("op_read_dir_sync", pathFromURL(path))[
-      Symbol.iterator
+      SymbolIterator
     ]();
   }
 
@@ -113,7 +119,7 @@
       pathFromURL(path),
     );
     return {
-      async *[Symbol.asyncIterator]() {
+      async *[SymbolAsyncIterator]() {
         yield* await array;
       },
     };
@@ -273,8 +279,8 @@
   function toUnixTimeFromEpoch(value) {
     if (value instanceof Date) {
       const time = value.valueOf();
-      const seconds = Math.trunc(time / 1e3);
-      const nanoseconds = Math.trunc(time - (seconds * 1e3)) * 1e6;
+      const seconds = MathTrunc(time / 1e3);
+      const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;
 
       return [
         seconds,
@@ -379,6 +385,22 @@
     await core.opAsync("op_fsync_async", rid);
   }
 
+  function flockSync(rid, exclusive) {
+    core.opSync("op_flock_sync", rid, exclusive === true);
+  }
+
+  async function flock(rid, exclusive) {
+    await core.opAsync("op_flock_async", rid, exclusive === true);
+  }
+
+  function funlockSync(rid) {
+    core.opSync("op_funlock_sync", rid);
+  }
+
+  async function funlock(rid) {
+    await core.opAsync("op_funlock_async", rid);
+  }
+
   window.__bootstrap.fs = {
     cwd,
     chdir,
@@ -427,5 +449,9 @@
     fdatasyncSync,
     fsync,
     fsyncSync,
+    flock,
+    flockSync,
+    funlock,
+    funlockSync,
   };
 })(this);

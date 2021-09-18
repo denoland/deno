@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 /// FLAGS
 
-import { parse } from "https://deno.land/std@0.84.0/flags/mod.ts";
-import { join, ROOT_PATH } from "../util.js";
+import { parse } from "../../test_util/std/flags/mod.ts";
+import { join, resolve, ROOT_PATH } from "../util.js";
 
 export const {
   json,
@@ -21,7 +21,7 @@ export const {
 
 export function denoBinary() {
   if (binary) {
-    return binary;
+    return resolve(binary);
   }
   return join(ROOT_PATH, `./target/${release ? "release" : "debug"}/deno`);
 }
@@ -152,6 +152,16 @@ export async function cargoBuild() {
   const status = await proc.status();
   proc.close();
   assert(status.success, "cargo build failed");
+}
+
+export function escapeLoneSurrogates(input: string): string;
+export function escapeLoneSurrogates(input: string | null): string | null;
+export function escapeLoneSurrogates(input: string | null): string | null {
+  if (input === null) return null;
+  return input.replace(
+    /[\uD800-\uDFFF]/gu,
+    (match) => `U+${match.charCodeAt(0).toString(16)}`,
+  );
 }
 
 /// WPTREPORT

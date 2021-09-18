@@ -7,7 +7,7 @@ import {
   unitTest,
 } from "./test_util.ts";
 
-unitTest({ perms: { write: true } }, function makeTempDirSyncSuccess(): void {
+unitTest({ perms: { write: true } }, function makeTempDirSyncSuccess() {
   const dir1 = Deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
   const dir2 = Deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
   // Check that both dirs are different.
@@ -30,7 +30,7 @@ unitTest({ perms: { write: true } }, function makeTempDirSyncSuccess(): void {
 
 unitTest(
   { perms: { read: true, write: true } },
-  function makeTempDirSyncMode(): void {
+  function makeTempDirSyncMode() {
     const path = Deno.makeTempDirSync();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "windows") {
@@ -39,7 +39,7 @@ unitTest(
   },
 );
 
-unitTest(function makeTempDirSyncPerm(): void {
+unitTest(function makeTempDirSyncPerm() {
   // makeTempDirSync should require write permissions (for now).
   assertThrows(() => {
     Deno.makeTempDirSync({ dir: "/baddir" });
@@ -48,7 +48,7 @@ unitTest(function makeTempDirSyncPerm(): void {
 
 unitTest(
   { perms: { write: true } },
-  async function makeTempDirSuccess(): Promise<void> {
+  async function makeTempDirSuccess() {
     const dir1 = await Deno.makeTempDir({ prefix: "hello", suffix: "world" });
     const dir2 = await Deno.makeTempDir({ prefix: "hello", suffix: "world" });
     // Check that both dirs are different.
@@ -72,7 +72,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function makeTempDirMode(): Promise<void> {
+  async function makeTempDirMode() {
     const path = await Deno.makeTempDir();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "windows") {
@@ -81,7 +81,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess(): void {
+unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess() {
   const file1 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
   const file2 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
   // Check that both dirs are different.
@@ -105,7 +105,7 @@ unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess(): void {
 
 unitTest(
   { perms: { read: true, write: true } },
-  function makeTempFileSyncMode(): void {
+  function makeTempFileSyncMode() {
     const path = Deno.makeTempFileSync();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "windows") {
@@ -114,7 +114,7 @@ unitTest(
   },
 );
 
-unitTest(function makeTempFileSyncPerm(): void {
+unitTest(function makeTempFileSyncPerm() {
   // makeTempFileSync should require write permissions (for now).
   assertThrows(() => {
     Deno.makeTempFileSync({ dir: "/baddir" });
@@ -123,7 +123,7 @@ unitTest(function makeTempFileSyncPerm(): void {
 
 unitTest(
   { perms: { write: true } },
-  async function makeTempFileSuccess(): Promise<void> {
+  async function makeTempFileSuccess() {
     const file1 = await Deno.makeTempFile({ prefix: "hello", suffix: "world" });
     const file2 = await Deno.makeTempFile({ prefix: "hello", suffix: "world" });
     // Check that both dirs are different.
@@ -148,7 +148,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function makeTempFileMode(): Promise<void> {
+  async function makeTempFileMode() {
     const path = await Deno.makeTempFile();
     const pathInfo = Deno.statSync(path);
     if (Deno.build.os !== "windows") {

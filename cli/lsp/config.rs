@@ -4,17 +4,19 @@ use crate::tokio_util::create_basic_runtime;
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::RwLock;
 use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use log::error;
+use lsp::WorkspaceFolder;
 use lspower::lsp;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::RwLock;
 use std::thread;
 use tokio::sync::mpsc;
 
@@ -22,17 +24,18 @@ pub const SETTINGS_SECTION: &str = "deno";
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
+  pub code_action_disabled_support: bool,
+  pub line_folding_only: bool,
   pub status_notification: bool,
   pub workspace_configuration: bool,
   pub workspace_did_change_watched_files: bool,
-  pub line_folding_only: bool,
 }
 
 fn is_true() -> bool {
   true
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
   /// Flag for providing implementation code lenses.
@@ -77,7 +80,7 @@ impl Default for CodeLensSpecifierSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionSettings {
   #[serde(default)]
@@ -104,7 +107,7 @@ impl Default for CompletionSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCompletionSettings {
   /// A flag that indicates if non-explicitly set origins should be checked for
@@ -139,12 +142,16 @@ pub struct SpecifierSettings {
 }
 
 /// Deno language server specific settings that are applied to a workspace.
-#[derive(Debug, Default, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
   #[serde(default)]
   pub enable: bool,
+
+  /// An option that points to a path string of the path to utilise as the
+  /// cache/DENO_DIR for the language server.
+  pub cache: Option<String>,
 
   /// An option that points to a path string of the config file to apply to
   /// code within the workspace.
@@ -188,6 +195,7 @@ pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
   pub root_uri: Option<Url>,
   pub settings: Settings,
+  pub workspace_folders: Option<Vec<lsp::WorkspaceFolder>>,
 }
 
 impl ConfigSnapshot {
@@ -218,6 +226,7 @@ pub struct Config {
   pub root_uri: Option<Url>,
   settings: Arc<RwLock<Settings>>,
   tx: mpsc::Sender<ConfigRequest>,
+  pub workspace_folders: Option<Vec<WorkspaceFolder>>,
 }
 
 impl Config {
@@ -238,7 +247,7 @@ impl Config {
                 Vec<(ModuleSpecifier, ModuleSpecifier)>,
                 Vec<lsp::ConfigurationItem>,
               ) = {
-                let settings = settings_ref.read().unwrap();
+                let settings = settings_ref.read();
                 (
                   settings
                     .specifiers
@@ -256,7 +265,7 @@ impl Config {
                 )
               };
               if let Ok(configs) = client.configuration(items).await {
-                let mut settings = settings_ref.write().unwrap();
+                let mut settings = settings_ref.write();
                 for (i, value) in configs.into_iter().enumerate() {
                   match serde_json::from_value::<SpecifierSettings>(value) {
                     Ok(specifier_settings) => {
@@ -273,12 +282,7 @@ impl Config {
               }
             }
             Some(ConfigRequest::Specifier(specifier, uri)) => {
-              if settings_ref
-                .read()
-                .unwrap()
-                .specifiers
-                .contains_key(&specifier)
-              {
+              if settings_ref.read().specifiers.contains_key(&specifier) {
                 continue;
               }
               if let Ok(value) = client
@@ -294,7 +298,6 @@ impl Config {
                   Ok(specifier_settings) => {
                     settings_ref
                       .write()
-                      .unwrap()
                       .specifiers
                       .insert(specifier, (uri, specifier_settings));
                   }
@@ -319,18 +322,19 @@ impl Config {
       root_uri: None,
       settings,
       tx,
+      workspace_folders: None,
     }
   }
 
   pub fn get_workspace_settings(&self) -> WorkspaceSettings {
-    self.settings.read().unwrap().workspace.clone()
+    self.settings.read().workspace.clone()
   }
 
   /// Set the workspace settings directly, which occurs during initialization
   /// and when the client does not support workspace configuration requests
   pub fn set_workspace_settings(&self, value: Value) -> Result<(), AnyError> {
     let workspace_settings = serde_json::from_value(value)?;
-    self.settings.write().unwrap().workspace = workspace_settings;
+    self.settings.write().workspace = workspace_settings;
     Ok(())
   }
 
@@ -341,13 +345,14 @@ impl Config {
       settings: self
         .settings
         .try_read()
-        .map_err(|_| anyhow!("Error reading settings."))?
+        .ok_or_else(|| anyhow!("Error reading settings."))?
         .clone(),
+      workspace_folders: self.workspace_folders.clone(),
     })
   }
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
-    let settings = self.settings.read().unwrap();
+    let settings = self.settings.read();
     settings
       .specifiers
       .get(specifier)
@@ -356,7 +361,7 @@ impl Config {
   }
 
   pub fn specifier_code_lens_test(&self, specifier: &ModuleSpecifier) -> bool {
-    let settings = self.settings.read().unwrap();
+    let settings = self.settings.read();
     let value = settings
       .specifiers
       .get(specifier)
@@ -390,6 +395,11 @@ impl Config {
         .folding_range
         .as_ref()
         .and_then(|it| it.line_folding_only)
+        .unwrap_or(false);
+      self.client_capabilities.code_action_disabled_support = text_document
+        .code_action
+        .as_ref()
+        .and_then(|it| it.disabled_support)
         .unwrap_or(false);
     }
   }
@@ -475,6 +485,7 @@ mod tests {
       config.get_workspace_settings(),
       WorkspaceSettings {
         enable: false,
+        cache: None,
         config: None,
         import_map: None,
         code_lens: CodeLensSettings {

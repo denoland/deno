@@ -12,6 +12,7 @@ export {
   assertEquals,
   assertMatch,
   assertNotEquals,
+  assertRejects,
   assertStrictEquals,
   assertStringIncludes,
   assertThrows,
@@ -22,6 +23,7 @@ export {
 } from "../../../test_util/std/testing/asserts.ts";
 export { deferred } from "../../../test_util/std/async/deferred.ts";
 export type { Deferred } from "../../../test_util/std/async/deferred.ts";
+export { delay } from "../../../test_util/std/async/delay.ts";
 export { readLines } from "../../../test_util/std/io/bufio.ts";
 export { parse as parseArgs } from "../../../test_util/std/flags/mod.ts";
 
@@ -31,7 +33,7 @@ interface UnitTestPermissions {
   net?: boolean;
   env?: boolean;
   run?: boolean;
-  plugin?: boolean;
+  ffi?: boolean;
   hrtime?: boolean;
 }
 
@@ -83,7 +85,7 @@ export function unitTest(
       net: false,
       env: false,
       run: false,
-      plugin: false,
+      ffi: false,
       hrtime: false,
     }, options.perms),
   };

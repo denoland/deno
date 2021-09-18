@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::import_map::ImportMap;
 use crate::module_graph::BundleType;
 use crate::module_graph::EmitOptions;
 use crate::module_graph::GraphBuilder;
@@ -13,18 +12,19 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
+use import_map::ImportMap;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_async(rt, "op_emit", op_emit);
@@ -47,7 +47,7 @@ struct EmitArgs {
   import_map: Option<Value>,
   import_map_path: Option<String>,
   root_specifier: String,
-  sources: Option<HashMap<String, String>>,
+  sources: Option<HashMap<String, Arc<String>>>,
 }
 
 async fn op_emit(
@@ -108,6 +108,9 @@ async fn op_emit(
       &root_specifier
     ))
   })?;
+  builder
+    .analyze_compiler_options(&args.compiler_options)
+    .await?;
   let bundle_type = match args.bundle {
     Some(RuntimeBundleType::Module) => BundleType::Module,
     Some(RuntimeBundleType::Classic) => BundleType::Classic,
@@ -115,12 +118,14 @@ async fn op_emit(
   };
   let graph = builder.get_graph();
   let debug = program_state.flags.log_level == Some(log::Level::Debug);
-  let (files, result_info) = graph.emit(EmitOptions {
+  let graph_errors = graph.get_errors();
+  let (files, mut result_info) = graph.emit(EmitOptions {
     bundle_type,
     check: args.check.unwrap_or(true),
     debug,
     maybe_user_config: args.compiler_options,
   })?;
+  result_info.diagnostics.extend_graph_errors(graph_errors);
 
   Ok(json!({
     "diagnostics": result_info.diagnostics,

@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 //! This module is meant to eventually implement HTTP cache
-//! as defined in RFC 7234 (https://tools.ietf.org/html/rfc7234).
+//! as defined in RFC 7234 (<https://tools.ietf.org/html/rfc7234>).
 //! Currently it's a very simplified version to fulfill Deno needs
 //! at hand.
 use crate::fs_util;
@@ -93,7 +93,7 @@ impl Metadata {
 
   #[cfg(test)]
   pub fn read(cache_filename: &Path) -> Result<Metadata, AnyError> {
-    let metadata_filename = Metadata::filename(&cache_filename);
+    let metadata_filename = Metadata::filename(cache_filename);
     let metadata = fs::read_to_string(metadata_filename)?;
     let metadata: Metadata = serde_json::from_str(&metadata)?;
     Ok(metadata)

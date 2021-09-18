@@ -8,7 +8,7 @@ use std::path::PathBuf;
 /// Similar to `fs::canonicalize()` but doesn't resolve symlinks.
 ///
 /// Taken from Cargo
-/// https://github.com/rust-lang/cargo/blob/af307a38c20a753ec60f0ad18be5abed3db3c9ac/src/cargo/util/paths.rs#L60-L85
+/// <https://github.com/rust-lang/cargo/blob/af307a38c20a753ec60f0ad18be5abed3db3c9ac/src/cargo/util/paths.rs#L60-L85>
 pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
   let mut components = path.as_ref().components().peekable();
   let mut ret =

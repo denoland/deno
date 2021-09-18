@@ -64,7 +64,6 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-env` permission.
-   *
    */
   export function osRelease(): string;
 
@@ -80,7 +79,6 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-env` permission.
-   *
    */
   export function systemMemoryInfo(): SystemMemoryInfo;
 
@@ -105,59 +103,44 @@ declare namespace Deno {
     swapFree: number;
   }
 
-  /** **Unstable** new API. yet to be vetted.
-   *
-   * Returns the total number of logical cpus in the system along with
-   * the speed measured in MHz. If either the syscall to get the core
-   * count or speed of the cpu is unsuccessful the value of the it
-   * is undefined.
-   *
-   * ```ts
-   * console.log(Deno.systemCpuInfo());
-   * ```
-   *
-   * Requires `allow-env` permission.
-   *
-   */
-  export function systemCpuInfo(): SystemCpuInfo;
+  /** All possible types for interfacing with foreign functions */
+  export type NativeType =
+    | "void"
+    | "u8"
+    | "i8"
+    | "u16"
+    | "i16"
+    | "u32"
+    | "i32"
+    | "u64"
+    | "i64"
+    | "usize"
+    | "isize"
+    | "f32"
+    | "f64";
 
-  export interface SystemCpuInfo {
-    /** Total number of logical cpus in the system */
-    cores: number | undefined;
-    /** The speed of the cpu measured in MHz */
-    speed: number | undefined;
+  /** A foreign function as defined by its parameter and result types */
+  export interface ForeignFunction {
+    parameters: NativeType[];
+    result: NativeType;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /** A dynamic library resource */
+  export interface DynamicLibrary<S extends Record<string, ForeignFunction>> {
+    /** All of the registered symbols along with functions for calling them */
+    symbols: { [K in keyof S]: (...args: unknown[]) => unknown };
+
+    close(): void;
+  }
+
+  /** **UNSTABLE**: new API
    *
-   * Open and initialize a plugin.
-   *
-   * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
-   * const rid = Deno.openPlugin("./path/to/some/plugin.so");
-   *
-   * // The Deno.core namespace is needed to interact with plugins, but this is
-   * // internal so we use ts-ignore to skip type checking these calls.
-   * // @ts-ignore
-   * const { op_test_sync, op_test_async } = Deno.core.ops();
-   *
-   * assert(op_test_sync);
-   * assert(op_test_async);
-   *
-   * // @ts-ignore
-   * const result = Deno.core.opSync("op_test_sync");
-   *
-   * // @ts-ignore
-   * const result = await Deno.core.opAsync("op_test_sync");
-   * ```
-   *
-   * Requires `allow-plugin` permission.
-   *
-   * The plugin system is not stable and will change in the future, hence the
-   * lack of docs. For now take a look at the example
-   * https://github.com/denoland/deno/tree/main/test_plugin
+   * Opens a dynamic library and registers symbols
    */
-  export function openPlugin(filename: string): number;
+  export function dlopen<S extends Record<string, ForeignFunction>>(
+    filename: string | URL,
+    symbols: S,
+  ): DynamicLibrary<S>;
 
   /** The log category for a diagnostic message. */
   export enum DiagnosticCategory {
@@ -168,7 +151,7 @@ declare namespace Deno {
   }
 
   export interface DiagnosticMessageChain {
-    message: string;
+    messageText: string;
     category: DiagnosticCategory;
     code: number;
     next?: DiagnosticMessageChain[];
@@ -325,6 +308,7 @@ declare namespace Deno {
       | "umd"
       | "es6"
       | "es2015"
+      | "es2020"
       | "esnext";
     /** Do not generate custom helper functions like `__extends` in compiled
      * output. Defaults to `false`. */
@@ -421,11 +405,25 @@ declare namespace Deno {
       | "es2019"
       | "es2020"
       | "esnext";
-    /** List of names of type definitions to include. Defaults to `undefined`.
+    /** List of names of type definitions to include when type checking.
+     * Defaults to `undefined`.
      *
      * The type definitions are resolved according to the normal Deno resolution
-     * irrespective of if sources are provided on the call. Like other Deno
-     * modules, there is no "magical" resolution. For example:
+     * irrespective of if sources are provided on the call. In addition, unlike
+     * passing the `--config` option on startup, there is no base to resolve
+     * relative specifiers, so the specifiers here have to be fully qualified
+     * URLs or paths.  For example:
+     *
+     * ```ts
+     * Deno.emit("./a.ts", {
+     *   compilerOptions: {
+     *     types: [
+     *       "https://deno.land/x/pkg/types.d.ts",
+     *       "/Users/me/pkg/types.d.ts",
+     *     ]
+     *   }
+     * });
+     * ```
      */
     types?: string[];
     /** Emit class fields with ECMAScript-standard semantics. Defaults to
@@ -564,77 +562,40 @@ declare namespace Deno {
    */
   export function applySourceMap(location: Location): Location;
 
-  enum LinuxSignal {
-    SIGHUP = 1,
-    SIGINT = 2,
-    SIGQUIT = 3,
-    SIGILL = 4,
-    SIGTRAP = 5,
-    SIGABRT = 6,
-    SIGBUS = 7,
-    SIGFPE = 8,
-    SIGKILL = 9,
-    SIGUSR1 = 10,
-    SIGSEGV = 11,
-    SIGUSR2 = 12,
-    SIGPIPE = 13,
-    SIGALRM = 14,
-    SIGTERM = 15,
-    SIGSTKFLT = 16,
-    SIGCHLD = 17,
-    SIGCONT = 18,
-    SIGSTOP = 19,
-    SIGTSTP = 20,
-    SIGTTIN = 21,
-    SIGTTOU = 22,
-    SIGURG = 23,
-    SIGXCPU = 24,
-    SIGXFSZ = 25,
-    SIGVTALRM = 26,
-    SIGPROF = 27,
-    SIGWINCH = 28,
-    SIGIO = 29,
-    SIGPWR = 30,
-    SIGSYS = 31,
-  }
-  enum MacOSSignal {
-    SIGHUP = 1,
-    SIGINT = 2,
-    SIGQUIT = 3,
-    SIGILL = 4,
-    SIGTRAP = 5,
-    SIGABRT = 6,
-    SIGEMT = 7,
-    SIGFPE = 8,
-    SIGKILL = 9,
-    SIGBUS = 10,
-    SIGSEGV = 11,
-    SIGSYS = 12,
-    SIGPIPE = 13,
-    SIGALRM = 14,
-    SIGTERM = 15,
-    SIGURG = 16,
-    SIGSTOP = 17,
-    SIGTSTP = 18,
-    SIGCONT = 19,
-    SIGCHLD = 20,
-    SIGTTIN = 21,
-    SIGTTOU = 22,
-    SIGIO = 23,
-    SIGXCPU = 24,
-    SIGXFSZ = 25,
-    SIGVTALRM = 26,
-    SIGPROF = 27,
-    SIGWINCH = 28,
-    SIGINFO = 29,
-    SIGUSR1 = 30,
-    SIGUSR2 = 31,
-  }
-
-  /** **UNSTABLE**: Further changes required to make platform independent.
-   *
-   * Signals numbers. This is platform dependent. */
-  export const Signal: typeof MacOSSignal | typeof LinuxSignal;
+  export type Signal =
+    | "SIGABRT"
+    | "SIGALRM"
+    | "SIGBUS"
+    | "SIGCHLD"
+    | "SIGCONT"
+    | "SIGEMT"
+    | "SIGFPE"
+    | "SIGHUP"
+    | "SIGILL"
+    | "SIGINFO"
+    | "SIGINT"
+    | "SIGIO"
+    | "SIGKILL"
+    | "SIGPIPE"
+    | "SIGPROF"
+    | "SIGPWR"
+    | "SIGQUIT"
+    | "SIGSEGV"
+    | "SIGSTKFLT"
+    | "SIGSTOP"
+    | "SIGSYS"
+    | "SIGTERM"
+    | "SIGTRAP"
+    | "SIGTSTP"
+    | "SIGTTIN"
+    | "SIGTTOU"
+    | "SIGURG"
+    | "SIGUSR1"
+    | "SIGUSR2"
+    | "SIGVTALRM"
+    | "SIGWINCH"
+    | "SIGXCPU"
+    | "SIGXFSZ";
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -642,7 +603,7 @@ declare namespace Deno {
    * `PromiseLike`. */
   export class SignalStream
     implements AsyncIterableIterator<void>, PromiseLike<void> {
-    constructor(signal: typeof Deno.Signal);
+    constructor(signal: Signal);
     then<T, S>(
       f: (v: void) => T | Promise<T>,
       g?: (v: void) => S | Promise<S>,
@@ -658,7 +619,7 @@ declare namespace Deno {
    * iterator.
    *
    * ```ts
-   * for await (const _ of Deno.signal(Deno.Signal.SIGTERM)) {
+   * for await (const _ of Deno.signal("SIGTERM")) {
    *   console.log("got SIGTERM!");
    * }
    * ```
@@ -667,7 +628,7 @@ declare namespace Deno {
    * first one.
    *
    * ```ts
-   * await Deno.signal(Deno.Signal.SIGTERM);
+   * await Deno.signal("SIGTERM");
    * console.log("SIGTERM received!")
    * ```
    *
@@ -675,7 +636,7 @@ declare namespace Deno {
    * of the signal stream object.
    *
    * ```ts
-   * const sig = Deno.signal(Deno.Signal.SIGTERM);
+   * const sig = Deno.signal("SIGTERM");
    * setTimeout(() => { sig.dispose(); }, 5000);
    * for await (const _ of sig) {
    *   console.log("SIGTERM!")
@@ -687,55 +648,7 @@ declare namespace Deno {
    *
    * NOTE: This functionality is not yet implemented on Windows.
    */
-  export function signal(signo: number): SignalStream;
-
-  /** **UNSTABLE**: new API, yet to be vetted. */
-  export const signals: {
-    /** Returns the stream of SIGALRM signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGALRM)`. */
-    alarm: () => SignalStream;
-    /** Returns the stream of SIGCHLD signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGCHLD)`. */
-    child: () => SignalStream;
-    /** Returns the stream of SIGHUP signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGHUP)`. */
-    hungup: () => SignalStream;
-    /** Returns the stream of SIGINT signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGINT)`. */
-    interrupt: () => SignalStream;
-    /** Returns the stream of SIGIO signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGIO)`. */
-    io: () => SignalStream;
-    /** Returns the stream of SIGPIPE signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGPIPE)`. */
-    pipe: () => SignalStream;
-    /** Returns the stream of SIGQUIT signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGQUIT)`. */
-    quit: () => SignalStream;
-    /** Returns the stream of SIGTERM signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGTERM)`. */
-    terminate: () => SignalStream;
-    /** Returns the stream of SIGUSR1 signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGUSR1)`. */
-    userDefined1: () => SignalStream;
-    /** Returns the stream of SIGUSR2 signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGUSR2)`. */
-    userDefined2: () => SignalStream;
-    /** Returns the stream of SIGWINCH signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGWINCH)`. */
-    windowChange: () => SignalStream;
-  };
+  export function signal(sig: Signal): SignalStream;
 
   export type SetRawOptions = {
     cbreak: boolean;
@@ -796,6 +709,303 @@ declare namespace Deno {
     atime: number | Date,
     mtime: number | Date,
   ): Promise<void>;
+
+  export function run<
+    T extends RunOptions & {
+      clearEnv?: boolean;
+      gid?: number;
+      uid?: number;
+    } = RunOptions & {
+      clearEnv?: boolean;
+      gid?: number;
+      uid?: number;
+    },
+  >(opt: T): Process<T>;
+
+  /** **UNSTABLE**: Send a signal to process under given `pid`. This
+   * functionality only works on Linux and Mac OS.
+   *
+   * If `pid` is negative, the signal will be sent to the process group
+   * identified by `pid`.
+   *
+   *      const p = Deno.run({
+   *        cmd: ["sleep", "10000"]
+   *      });
+   *
+   *      Deno.kill(p.pid, "SIGINT");
+   *
+   * Requires `allow-run` permission. */
+  export function kill(pid: number, signo: Signal): void;
+
+  /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
+   * necessary around the permissions required.
+   *
+   * Get the `hostname` of the machine the Deno process is running on.
+   *
+   * ```ts
+   * console.log(Deno.hostname());
+   * ```
+   *
+   *  Requires `allow-env` permission.
+   */
+  export function hostname(): string;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * A custom HttpClient for use with `fetch`.
+   *
+   * ```ts
+   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
+   * const req = await fetch("https://myserver.com", { client });
+   * ```
+   */
+  export class HttpClient {
+    rid: number;
+    close(): void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * The options used when creating a [HttpClient].
+   */
+  export interface CreateHttpClientOptions {
+    /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
+     */
+    caData?: string;
+    proxy?: Proxy;
+    certChain?: string;
+    privateKey?: string;
+  }
+
+  export interface Proxy {
+    url: string;
+    basicAuth?: BasicAuth;
+  }
+
+  export interface BasicAuth {
+    username: string;
+    password: string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Create a custom HttpClient for to use with `fetch`.
+   *
+   * ```ts
+   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
+   * const response = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * ```ts
+   * const client = Deno.createHttpClient({ proxy: { url: "http://myproxy.com:8080" } });
+   * const response = await fetch("https://myserver.com", { client });
+   * ```
+   */
+  export function createHttpClient(
+    options: CreateHttpClientOptions,
+  ): HttpClient;
+
+  /** **UNSTABLE**: needs investigation into high precision time.
+   *
+   * Synchronously changes the access (`atime`) and modification (`mtime`) times
+   * of a file stream resource referenced by `rid`. Given times are either in
+   * seconds (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * const file = Deno.openSync("file.txt", { create: true, write: true });
+   * Deno.futimeSync(file.rid, 1556495550, new Date());
+   * ```
+   */
+  export function futimeSync(
+    rid: number,
+    atime: number | Date,
+    mtime: number | Date,
+  ): void;
+
+  /** **UNSTABLE**: needs investigation into high precision time.
+   *
+   * Changes the access (`atime`) and modification (`mtime`) times of a file
+   * stream resource referenced by `rid`. Given times are either in seconds
+   * (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * const file = await Deno.open("file.txt", { create: true, write: true });
+   * await Deno.futime(file.rid, 1556495550, new Date());
+   * ```
+   */
+  export function futime(
+    rid: number,
+    atime: number | Date,
+    mtime: number | Date,
+  ): Promise<void>;
+
+  /** *UNSTABLE**: new API, yet to be vetted.
+   *
+   * SleepSync puts the main thread to sleep synchronously for a given amount of
+   * time in milliseconds.
+   *
+   * ```ts
+   * Deno.sleepSync(10);
+   * ```
+   */
+  export function sleepSync(millis: number): void;
+
+  export interface Metrics extends OpMetrics {
+    ops: Record<string, OpMetrics>;
+  }
+
+  export interface OpMetrics {
+    opsDispatched: number;
+    opsDispatchedSync: number;
+    opsDispatchedAsync: number;
+    opsDispatchedAsyncUnref: number;
+    opsCompleted: number;
+    opsCompletedSync: number;
+    opsCompletedAsync: number;
+    opsCompletedAsyncUnref: number;
+    bytesSentControl: number;
+    bytesSentData: number;
+    bytesReceived: number;
+  }
+
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestDefinition {
+    /** Specifies the permissions that should be used to run the test.
+     * Set this to "inherit" to keep the calling thread's permissions.
+     * Set this to "none" to revoke all permissions.
+     *
+     * Defaults to "inherit".
+     */
+    permissions?: "inherit" | "none" | {
+      /** Specifies if the `net` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `env` permission will be inherited.
+       * If set to `true`, the global `net` permission will be requested.
+       * If set to `false`, the global `net` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      env?: "inherit" | boolean | string[];
+
+      /** Specifies if the `hrtime` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `hrtime` permission will be inherited.
+       * If set to `true`, the global `hrtime` permission will be requested.
+       * If set to `false`, the global `hrtime` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      hrtime?: "inherit" | boolean;
+
+      /** Specifies if the `net` permission should be requested or revoked.
+       * if set to `"inherit"`, the current `net` permission will be inherited.
+       * if set to `true`, the global `net` permission will be requested.
+       * if set to `false`, the global `net` permission will be revoked.
+       * if set to `string[]`, the `net` permission will be requested with the
+       * specified host strings with the format `"<host>[:<port>]`.
+       *
+       * Defaults to "inherit".
+       *
+       * Examples:
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "inherit",
+       *   permissions: {
+       *     net: "inherit",
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" })
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "true",
+       *   permissions: {
+       *     net: true,
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" });
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "false",
+       *   permissions: {
+       *     net: false,
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" });
+       *     assertEquals(status.state, "denied");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "localhost:8080",
+       *   permissions: {
+       *     net: ["localhost:8080"],
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       */
+      net?: "inherit" | boolean | string[];
+
+      /** Specifies if the `ffi` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `ffi` permission will be inherited.
+       * If set to `true`, the global `ffi` permission will be requested.
+       * If set to `false`, the global `ffi` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      ffi?: "inherit" | boolean;
+
+      /** Specifies if the `read` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `read` permission will be inherited.
+       * If set to `true`, the global `read` permission will be requested.
+       * If set to `false`, the global `read` permission will be revoked.
+       * If set to `Array<string | URL>`, the `read` permission will be requested with the
+       * specified file paths.
+       *
+       * Defaults to "inherit".
+       */
+      read?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `run` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `run` permission will be inherited.
+       * If set to `true`, the global `run` permission will be requested.
+       * If set to `false`, the global `run` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      run?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `write` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `write` permission will be inherited.
+       * If set to `true`, the global `write` permission will be requested.
+       * If set to `false`, the global `write` permission will be revoked.
+       * If set to `Array<string | URL>`, the `write` permission will be requested with the
+       * specified file paths.
+       *
+       * Defaults to "inherit".
+       */
+      write?: "inherit" | boolean | Array<string | URL>;
+    };
+  }
 
   /** The type of the resource record.
    * Only the listed types are supported currently. */
@@ -984,6 +1194,32 @@ declare namespace Deno {
     options: ConnectOptions | UnixConnectOptions,
   ): Promise<Conn>;
 
+  export interface ConnectTlsClientCertOptions {
+    /** PEM formatted client certificate chain. */
+    certChain: string;
+    /** PEM formatted (RSA or PKCS8) private key of client certificate. */
+    privateKey: string;
+  }
+
+  /** **UNSTABLE** New API, yet to be vetted.
+   *
+   * Create a TLS connection with an attached client certificate.
+   *
+   * ```ts
+   * const conn = await Deno.connectTls({
+   *   hostname: "deno.land",
+   *   port: 443,
+   *   certChain: "---- BEGIN CERTIFICATE ----\n ...",
+   *   privateKey: "---- BEGIN PRIVATE KEY ----\n ...",
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   */
+  export function connectTls(
+    options: ConnectTlsOptions & ConnectTlsClientCertOptions,
+  ): Promise<Conn>;
+
   export interface StartTlsOptions {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `127.0.0.1`. */
@@ -1021,320 +1257,6 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
-  }
-
-  /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
-   * enum.
-   *
-   * Send a signal to process under given `pid`. This functionality currently
-   * only works on Linux and Mac OS.
-   *
-   * If `pid` is negative, the signal will be sent to the process group
-   * identified by `pid`.
-   *
-   *      const p = Deno.run({
-   *        cmd: ["sleep", "10000"]
-   *      });
-   *
-   *      Deno.kill(p.pid, Deno.Signal.SIGINT);
-   *
-   * Requires `allow-run` permission. */
-  export function kill(pid: number, signo: number): void;
-
-  /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
-   * necessary around the permissions required.
-   *
-   * Get the `hostname` of the machine the Deno process is running on.
-   *
-   * ```ts
-   * console.log(Deno.hostname());
-   * ```
-   *
-   *  Requires `allow-env` permission.
-   */
-  export function hostname(): string;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * The pid of the current process's parent.
-   */
-  export const ppid: number;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * A custom HttpClient for use with `fetch`.
-   *
-   * ```ts
-   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
-   * const req = await fetch("https://myserver.com", { client });
-   * ```
-   */
-  export class HttpClient {
-    rid: number;
-    close(): void;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * The options used when creating a [HttpClient].
-   */
-  export interface CreateHttpClientOptions {
-    /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
-     */
-    caData?: string;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * Create a custom HttpClient for to use with `fetch`.
-   *
-   * ```ts
-   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
-   * const req = await fetch("https://myserver.com", { client });
-   * ```
-   */
-  export function createHttpClient(
-    options: CreateHttpClientOptions,
-  ): HttpClient;
-
-  /** **UNSTABLE**: needs investigation into high precision time.
-   *
-   * Synchronously changes the access (`atime`) and modification (`mtime`) times
-   * of a file stream resource referenced by `rid`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = Deno.openSync("file.txt", { create: true, write: true });
-   * Deno.futimeSync(file.rid, 1556495550, new Date());
-   * ```
-   */
-  export function futimeSync(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): void;
-
-  /** **UNSTABLE**: needs investigation into high precision time.
-   *
-   * Changes the access (`atime`) and modification (`mtime`) times of a file
-   * stream resource referenced by `rid`. Given times are either in seconds
-   * (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = await Deno.open("file.txt", { create: true, write: true });
-   * await Deno.futime(file.rid, 1556495550, new Date());
-   * ```
-   */
-  export function futime(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): Promise<void>;
-
-  /** *UNSTABLE**: new API, yet to be vetted.
-   *
-   * SleepSync puts the main thread to sleep synchronously for a given amount of
-   * time in milliseconds.
-   *
-   * ```ts
-   * Deno.sleepSync(10);
-   * ```
-   */
-  export function sleepSync(millis: number): void;
-
-  export interface Metrics extends OpMetrics {
-    ops: Record<string, OpMetrics>;
-  }
-
-  export interface OpMetrics {
-    opsDispatched: number;
-    opsDispatchedSync: number;
-    opsDispatchedAsync: number;
-    opsDispatchedAsyncUnref: number;
-    opsCompleted: number;
-    opsCompletedSync: number;
-    opsCompletedAsync: number;
-    opsCompletedAsyncUnref: number;
-    bytesSentControl: number;
-    bytesSentData: number;
-    bytesReceived: number;
-  }
-
-  export interface MemoryUsage {
-    rss: number;
-    heapTotal: number;
-    heapUsed: number;
-    external: number;
-  }
-
-  export function memoryUsage(): MemoryUsage;
-
-  export interface RequestEvent {
-    readonly request: Request;
-    respondWith(r: Response | Promise<Response>): Promise<void>;
-  }
-
-  export interface HttpConn extends AsyncIterable<RequestEvent> {
-    readonly rid: number;
-
-    nextRequest(): Promise<RequestEvent | null>;
-    close(): void;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Services HTTP requests given a TCP or TLS socket.
-   *
-   * ```ts
-   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const httpConn = Deno.serveHttp(conn);
-   * const e = await httpConn.nextRequest();
-   * if (e) {
-   *   e.respondWith(new Response("Hello World"));
-   * }
-   * ```
-   *
-   * If `httpConn.nextRequest()` encounters an error or returns `null`
-   * then the underlying HttpConn resource is closed automatically.
-   */
-  export function serveHttp(conn: Conn): HttpConn;
-
-  /** **UNSTABLE**: New option, yet to be vetted. */
-  export interface TestDefinition {
-    /** Specifies the permissions that should be used to run the test.
-     * Set this to "inherit" to keep the calling thread's permissions.
-     * Set this to "none" to revoke all permissions.
-     *
-     * Defaults to "inherit".
-    */
-    permissions?: "inherit" | "none" | {
-      /** Specifies if the `net` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `env` permission will be inherited.
-      * If set to `true`, the global `net` permission will be requested.
-      * If set to `false`, the global `net` permission will be revoked.
-      *
-      * Defaults to "inherit".
-      */
-      env?: "inherit" | boolean;
-
-      /** Specifies if the `hrtime` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `hrtime` permission will be inherited.
-      * If set to `true`, the global `hrtime` permission will be requested.
-      * If set to `false`, the global `hrtime` permission will be revoked.
-      *
-      * Defaults to "inherit".
-      */
-      hrtime?: "inherit" | boolean;
-
-      /** Specifies if the `net` permission should be requested or revoked.
-      * if set to `"inherit"`, the current `net` permission will be inherited.
-      * if set to `true`, the global `net` permission will be requested.
-      * if set to `false`, the global `net` permission will be revoked.
-      * if set to `string[]`, the `net` permission will be requested with the
-      * specified host strings with the format `"<host>[:<port>]`.
-      *
-      * Defaults to "inherit".
-      *
-      * Examples:
-      *
-      * ```ts
-      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-      *
-      * Deno.test({
-      *   name: "inherit",
-      *   permissions: {
-      *     net: "inherit",
-      *   },
-      *   async fn() {
-      *     const status = await Deno.permissions.query({ name: "net" })
-      *     assertEquals(status.state, "granted");
-      *   },
-      * });
-      * ```
-      *
-      * ```ts
-      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-      *
-      * Deno.test({
-      *   name: "true",
-      *   permissions: {
-      *     net: true,
-      *   },
-      *   async fn() {
-      *     const status = await Deno.permissions.query({ name: "net" });
-      *     assertEquals(status.state, "granted");
-      *   },
-      * });
-      * ```
-      *
-      * ```ts
-      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-      *
-      * Deno.test({
-      *   name: "false",
-      *   permissions: {
-      *     net: false,
-      *   },
-      *   async fn() {
-      *     const status = await Deno.permissions.query({ name: "net" });
-      *     assertEquals(status.state, "denied");
-      *   },
-      * });
-      * ```
-      *
-      * ```ts
-      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-      *
-      * Deno.test({
-      *   name: "localhost:8080",
-      *   permissions: {
-      *     net: ["localhost:8080"],
-      *   },
-      *   async fn() {
-      *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
-      *     assertEquals(status.state, "granted");
-      *   },
-      * });
-      * ```
-      */
-      net?: "inherit" | boolean | string[];
-
-      /** Specifies if the `plugin` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `plugin` permission will be inherited.
-      * If set to `true`, the global `plugin` permission will be requested.
-      * If set to `false`, the global `plugin` permission will be revoked.
-      *
-      * Defaults to "inherit".
-      */
-      plugin?: "inherit" | boolean;
-
-      /** Specifies if the `read` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `read` permission will be inherited.
-      * If set to `true`, the global `read` permission will be requested.
-      * If set to `false`, the global `read` permission will be revoked.
-      * If set to `Array<string | URL>`, the `read` permission will be requested with the
-      * specified file paths.
-      *
-      * Defaults to "inherit".
-      */
-      read?: "inherit" | boolean | Array<string | URL>;
-
-      /** Specifies if the `run` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `run` permission will be inherited.
-      * If set to `true`, the global `run` permission will be requested.
-      * If set to `false`, the global `run` permission will be revoked.
-      *
-      * Defaults to "inherit".
-      */
-      run?: "inherit" | boolean;
-
-      /** Specifies if the `write` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `write` permission will be inherited.
-      * If set to `true`, the global `write` permission will be requested.
-      * If set to `false`, the global `write` permission will be revoked.
-      * If set to `Array<string | URL>`, the `write` permission will be requested with the
-      * specified file paths.
-      *
-      * Defaults to "inherit".
-      */
-      write?: "inherit" | boolean | Array<string | URL>;
-    };
   }
 }
 
@@ -1381,7 +1303,7 @@ declare interface WorkerOptions {
     namespace?: boolean;
     /** Set to `"none"` to disable all the permissions in the worker. */
     permissions?: "inherit" | "none" | {
-      env?: "inherit" | boolean;
+      env?: "inherit" | boolean | string[];
       hrtime?: "inherit" | boolean;
       /** The format of the net access list must be `hostname[:port]`
        * in order to be resolved.
@@ -1389,10 +1311,35 @@ declare interface WorkerOptions {
        * For example: `["https://deno.land", "localhost:8080"]`.
        */
       net?: "inherit" | boolean | string[];
-      plugin?: "inherit" | boolean;
+      ffi?: "inherit" | boolean;
       read?: "inherit" | boolean | Array<string | URL>;
-      run?: "inherit" | boolean;
+      run?: "inherit" | boolean | Array<string | URL>;
       write?: "inherit" | boolean | Array<string | URL>;
     };
   };
+}
+
+declare interface WebSocketStreamOptions {
+  protocols?: string[];
+  signal?: AbortSignal;
+}
+
+declare interface WebSocketConnection {
+  readable: ReadableStream<string | Uint8Array>;
+  writable: WritableStream<string | Uint8Array>;
+  extensions: string;
+  protocol: string;
+}
+
+declare interface WebSocketCloseInfo {
+  code?: number;
+  reason?: string;
+}
+
+declare class WebSocketStream {
+  constructor(url: string, options?: WebSocketStreamOptions);
+  url: string;
+  connection: Promise<WebSocketConnection>;
+  closed: Promise<WebSocketCloseInfo>;
+  close(closeInfo?: WebSocketCloseInfo): void;
 }

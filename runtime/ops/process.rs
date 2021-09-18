@@ -61,7 +61,12 @@ fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
 pub struct RunArgs {
   cmd: Vec<String>,
   cwd: Option<String>,
+  clear_env: bool,
   env: Vec<(String, String)>,
+  #[cfg(unix)]
+  gid: Option<u32>,
+  #[cfg(unix)]
+  uid: Option<u32>,
   stdin: String,
   stdout: String,
   stderr: String,
@@ -113,8 +118,31 @@ fn op_run(
     c.arg(arg);
   });
   cwd.map(|d| c.current_dir(d));
+
+  if run_args.clear_env {
+    super::check_unstable(state, "Deno.run.clearEnv");
+    c.env_clear();
+  }
   for (key, value) in &env {
     c.env(key, value);
+  }
+
+  #[cfg(unix)]
+  if let Some(gid) = run_args.gid {
+    super::check_unstable(state, "Deno.run.gid");
+    c.gid(gid);
+  }
+  #[cfg(unix)]
+  if let Some(uid) = run_args.uid {
+    super::check_unstable(state, "Deno.run.uid");
+    c.uid(uid);
+  }
+  #[cfg(unix)]
+  unsafe {
+    c.pre_exec(|| {
+      libc::setgroups(0, std::ptr::null());
+      Ok(())
+    });
   }
 
   // TODO: make this work with other resources, eg. sockets
@@ -192,7 +220,7 @@ fn op_run(
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RunStatus {
+struct ProcessStatus {
   got_signal: bool,
   exit_code: i32,
   exit_signal: i32,
@@ -202,12 +230,11 @@ async fn op_run_status(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),
-) -> Result<RunStatus, AnyError> {
+) -> Result<ProcessStatus, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ChildResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<ChildResource>(rid)?;
   let mut child = resource.borrow_mut().await;
   let run_status = child.wait().await?;
   let code = run_status.code();
@@ -222,7 +249,7 @@ async fn op_run_status(
     .expect("Should have either an exit code or a signal.");
   let got_signal = signal.is_some();
 
-  Ok(RunStatus {
+  Ok(ProcessStatus {
     got_signal,
     exit_code: code.unwrap_or(-1),
     exit_signal: signal.unwrap_or(-1),
@@ -283,13 +310,14 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
 #[derive(Deserialize)]
 struct KillArgs {
   pid: i32,
-  signo: i32,
+  signo: String,
 }
 
 fn op_kill(state: &mut OpState, args: KillArgs, _: ()) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
 
-  kill(args.pid, args.signo)?;
+  let signo = super::signal::signal_str_to_int(&args.signo)?;
+  kill(args.pid, signo)?;
   Ok(())
 }
