@@ -441,51 +441,6 @@
           // 6.
           return cipherText.buffer;
         }
-        case "AES-CTR": {
-          if (ArrayBufferIsView(normalizedAlgorithm.counter)) {
-            normalizedAlgorithm.counter = new Uint8Array(
-              normalizedAlgorithm.counter.buffer,
-              normalizedAlgorithm.counter.byteOffset,
-              normalizedAlgorithm.counter.byteLength,
-            );
-          } else {
-            normalizedAlgorithm.counter = new Uint8Array(
-              normalizedAlgorithm.counter,
-            );
-          }
-          normalizedAlgorithm.counter = TypedArrayPrototypeSlice(
-            normalizedAlgorithm.counter,
-          );
-
-          // 1.
-          if (normalizedAlgorithm.counter.byteLength !== 16) {
-            throw new DOMException(
-              "Counter must be 16 bytes",
-              "OperationError",
-            );
-          }
-
-          // 2.
-          if (
-            normalizedAlgorithm.length == 0 || normalizedAlgorithm.length > 128
-          ) {
-            throw new DOMException(
-              "Invalid length",
-              "OperationError",
-            );
-          }
-
-          // 3.
-          const cipherText = await core.opAsync("op_crypto_encrypt_key", {
-            key: keyData,
-            algorithm: "AES-CTR",
-            length: normalizedAlgorithm.length,
-            counter: normalizedAlgorithm.counter,
-          }, data);
-
-          // 4.
-          return cipherText.buffer;
-        }
         case "AES-CBC": {
           if (ArrayBufferIsView(normalizedAlgorithm.iv)) {
             normalizedAlgorithm.iv = new Uint8Array(
