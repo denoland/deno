@@ -14,7 +14,7 @@ description = "Web Cryptography API implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-aes = { version = "0.7.5", features = ["ctr"] }
+aes = "0.7.5"
 block-modes = "0.8.1"
 deno_core = { version = "0.99.0", path = "../../core" }
 deno_web = { version = "0.48.0", path = "../web" }
