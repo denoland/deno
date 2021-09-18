@@ -47,6 +47,8 @@ struct FunctionCoverage {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct LineCoverage {
+  pub start_offset: usize,
+  pub end_offset: usize,
   pub ranges: Vec<CoverageRange>,
 }
 
@@ -248,7 +250,7 @@ impl CoverageReporter for PrettyCoverageReporter {
     }
 
     let mut maybe_last_index = None;
-    for (index, coverage) in missed_lines {
+    for (index, line) in missed_lines {
       if let Some(last_index) = maybe_last_index {
         if last_index + 1 != index {
           let dash = colors::gray("-".repeat(PRETTY_LINE_WIDTH + 1));
@@ -256,14 +258,13 @@ impl CoverageReporter for PrettyCoverageReporter {
         }
       }
 
-      let range = &coverage.ranges[0];
-      let line = &source[range.start_offset..range.end_offset];
+      let slice = &source[line.start_offset..line.end_offset];
 
       println!(
         "{:width$} {} {}",
         index + 1,
         colors::gray(PRETTY_LINE_SEPERATOR),
-        colors::red(&line),
+        colors::red(&slice),
         width = PRETTY_LINE_WIDTH,
       );
 
@@ -550,7 +551,7 @@ async fn cover_script(
           })
           .collect();
 
-        LineCoverage { ranges }
+        LineCoverage { start_offset: *start_offset, end_offset: *end_offset, ranges }
       })
       .collect();
 
@@ -615,7 +616,7 @@ async fn cover_script(
     .map(|(start_offset, end_offset)| {
       let line = &source[*start_offset..*end_offset];
       if line == "\n" {
-        return LineCoverage { ranges: Vec::new() };
+        return LineCoverage { start_offset: *start_offset, end_offset: *end_offset, ranges: Vec::new() };
       }
 
       let ranges = script
@@ -644,7 +645,7 @@ async fn cover_script(
         .flatten()
         .collect();
 
-      LineCoverage { ranges }
+      LineCoverage { start_offset: *start_offset, end_offset: *end_offset, ranges }
     })
     .collect();
 
