@@ -809,12 +809,12 @@ macro_rules! cipher_cbc {
 }
 
 macro_rules! decipher_cbc {
-  ($length: ty, $key: expr, $iv: expr, $data: ciphertext) => {{
+  ($length: ty, $key: expr, $iv: expr, $ciphertext: expr) => {{
     // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
     type AesCbc = block_modes::Cbc<$length, block_modes::block_padding::Pkcs7>;
     let cipher = AesCbc::new_from_slices($key, $iv)?;
-    let plaintext = cipher.decrypt_vec($ciphertext);
-    Ok(plaintext.into())
+    let plaintext = cipher.decrypt_vec($ciphertext)?;
+    plaintext
   }};
 }
 
@@ -1368,7 +1368,7 @@ pub async fn op_crypto_decrypt_key(
           .into(),
       )
     }
-    Algotithm::AesCbc => {
+    Algorithm::AesCbc => {
       let key = &*args.key.data;
       let length = args
         .length
@@ -1387,11 +1387,11 @@ pub async fn op_crypto_decrypt_key(
 
       // 3.
       // padded_plaintext.len() > 0 so this should never panic.
-      let p = padded_plaintext.last().unwrap();
+      let p = *padded_plaintext.last().unwrap() as usize;
 
       // 4-5.
-      let plaintext = padded_plaintext[p..];
-      if p == 0 || p > 16 || &plaintext != &vec![p; p] {
+      let plaintext = &padded_plaintext[p..];
+      if p == 0 || p > 16 || plaintext != &vec![p as u8; p] {
         return Err(custom_error(
           "DOMExceptionOperationError",
           "Invalid padding".to_string(),
@@ -1399,7 +1399,7 @@ pub async fn op_crypto_decrypt_key(
       }
 
       // 6.
-      Ok(plaintext.into())
+      Ok(plaintext.to_vec().into())
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }
