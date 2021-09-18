@@ -121,6 +121,7 @@
     },
     "decrypt": {
       "RSA-OAEP": "RsaOaepParams",
+      "AES-CBC": "AesCbcParams",
     },
   };
 
@@ -555,6 +556,40 @@
             algorithm: "RSA-OAEP",
             hash: hashAlgorithm,
             label: normalizedAlgorithm.label,
+          }, data);
+
+          // 6.
+          return plainText.buffer;
+        }
+        case "AES-CBC": {
+          if (ArrayBufferIsView(normalizedAlgorithm.iv)) {
+            normalizedAlgorithm.iv = new Uint8Array(
+              normalizedAlgorithm.iv.buffer,
+              normalizedAlgorithm.iv.byteOffset,
+              normalizedAlgorithm.iv.byteLength,
+            );
+          } else {
+            normalizedAlgorithm.iv = new Uint8Array(
+              normalizedAlgorithm.iv,
+            );
+          }
+          normalizedAlgorithm.iv = TypedArrayPrototypeSlice(
+            normalizedAlgorithm.iv,
+          );
+
+          // 1.
+          if (normalizedAlgorithm.iv.byteLength !== 16) {
+            throw new DOMException(
+              "Counter must be 16 bytes",
+              "OperationError",
+            );
+          }
+
+          const plainText = await core.opAsync("op_crypto_decrypt_key", {
+            key: keyData,
+            algorithm: "AES-CBC",
+            iv: normalizedAlgorithm.iv,
+            length: key[_algorithm].length,
           }, data);
 
           // 6.

@@ -808,6 +808,16 @@ macro_rules! cipher_cbc {
   }};
 }
 
+macro_rules! decipher_cbc {
+  ($length: ty, $key: expr, $iv: expr, $data: ciphertext) => {{
+    // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+    type AesCbc = block_modes::Cbc<$length, block_modes::block_padding::Pkcs7>;
+    let cipher = AesCbc::new_from_slices($key, $iv)?;
+    let plaintext = cipher.decrypt_vec($ciphertext);
+    Ok(plaintext.into())
+  }};
+}
+
 pub async fn op_crypto_encrypt_key(
   _state: Rc<RefCell<OpState>>,
   args: EncryptArg,
@@ -1301,8 +1311,12 @@ pub async fn op_crypto_import_key(
 pub struct DecryptArg {
   key: KeyData,
   algorithm: Algorithm,
+  // RSA-OAEP
   hash: Option<CryptoHash>,
   label: Option<ZeroCopyBuf>,
+  // AES-CBC
+  iv: Option<ZeroCopyBuf>,
+  length: Option<usize>,
 }
 
 pub async fn op_crypto_decrypt_key(
@@ -1353,6 +1367,39 @@ pub async fn op_crypto_decrypt_key(
           })?
           .into(),
       )
+    }
+    Algotithm::AesCbc => {
+      let key = &*args.key.data;
+      let length = args
+        .length
+        .ok_or_else(|| type_error("Missing argument length".to_string()))?;
+      let iv = args
+        .iv
+        .ok_or_else(|| type_error("Missing argument iv".to_string()))?;
+
+      // 2.
+      let padded_plaintext = match length {
+        128 => decipher_cbc!(aes::Aes128, key, &iv, data),
+        192 => decipher_cbc!(aes::Aes192, key, &iv, data),
+        256 => decipher_cbc!(aes::Aes256, key, &iv, data),
+        _ => unreachable!(),
+      };
+
+      // 3.
+      // padded_plaintext.len() > 0 so this should never panic.
+      let p = padded_plaintext.last().unwrap();
+
+      // 4-5.
+      let plaintext = padded_plaintext[p..];
+      if p == 0 || p > 16 || &plaintext != &vec![p; p] {
+        return Err(custom_error(
+          "DOMExceptionOperationError",
+          "Invalid padding".to_string(),
+        ));
+      }
+
+      // 6.
+      Ok(plaintext.into())
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }
