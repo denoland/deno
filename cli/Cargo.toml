@@ -10,6 +10,10 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 description = "Provides the deno executable"
 
+[lib]
+name = "deno"
+path = "lib.rs"
+
 [[bin]]
 name = "deno"
 path = "main.rs"
