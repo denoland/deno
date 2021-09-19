@@ -802,6 +802,13 @@ declare namespace Deno {
     options: CreateHttpClientOptions,
   ): HttpClient;
 
+  export interface File {
+    lock(exclusive?: boolean): Promise<void>;
+    lockSync(exclusive?: boolean): void;
+    unlock(): Promise<void>;
+    unlockSync(): void;
+  }
+
   /** **UNSTABLE**: needs investigation into high precision time.
    *
    * Synchronously changes the access (`atime`) and modification (`mtime`) times

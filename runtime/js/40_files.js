@@ -4,7 +4,16 @@
 ((window) => {
   const core = window.Deno.core;
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
-  const { ftruncate, ftruncateSync, fstat, fstatSync } = window.__bootstrap.fs;
+  const {
+    ftruncate,
+    ftruncateSync,
+    fstat,
+    fstatSync,
+    flock,
+    flockSync,
+    funlock,
+    funlockSync,
+  } = window.__bootstrap.fs;
   const { pathFromURL } = window.__bootstrap.util;
   const {
     Error,
@@ -123,6 +132,22 @@
 
     statSync() {
       return fstatSync(this.rid);
+    }
+
+    lock(exclusive) {
+      return flock(this.rid, exclusive);
+    }
+
+    lockSync(exclusive) {
+      return flockSync(this.rid, exclusive);
+    }
+
+    unlock() {
+      return funlock(this.rid);
+    }
+
+    unlockSync() {
+      return funlockSync(this.rid);
     }
 
     close() {
