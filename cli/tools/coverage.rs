@@ -200,6 +200,116 @@ trait CoverageReporter {
   fn report_result(&mut self, specifier: &ModuleSpecifier, result: &CoverageResult, source: &str);
 }
 
+
+pub struct LcovCoverageReporter {}
+
+impl LcovCoverageReporter {
+  pub fn new() -> LcovCoverageReporter {
+    LcovCoverageReporter {}
+  }
+}
+
+impl CoverageReporter for LcovCoverageReporter {
+  fn report_result(&mut self, specifier: &ModuleSpecifier, result: &CoverageResult, source: &str) {
+    println!("SF:{}", specifier.as_str().unwrap());
+
+    let found_functions = result
+        .functions
+        .iter()
+        .filter(|block| block.function_name.is_empty())
+        .collect();
+
+    for block in found_functions {
+      let index = source[0..block.ranges[0].start_offset]
+        .split('\n')
+        .count();
+
+      println!("FN:{},{}", index + 1, block.function_name);
+    }
+
+    let hit_functions = found_functions
+        .iter
+        .filter(|block| block.ranges[0].count > 0)
+        .collect();
+
+    for block in hit_functions {
+      println!("FNDA:{},{}", block.ranges[0].count, block.function_name);
+    }
+
+    println!("FNF:{}", found_functions.len());
+    println!("FNH:{}", hit_functions.len());
+
+    let mut branches_found = 0;
+    let mut branches_hit = 0;
+    for (block_number, block) in result.functions.iter().enumerate() {
+      let block_hits = block.ranges[0].count;
+      for (branch_number, range) in block.ranges[1..].iter().enumerate() {
+        let line_index = source[0..range.start_offset].split('\n').count();
+
+        // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
+        //
+        // Block number and branch number are gcc internal IDs for the branch. Taken is either '-'
+        // if the basic block containing the branch was never executed or a number indicating how
+        // often that branch was taken.
+        //
+        // However with the data we get from v8 coverage profiles it seems we can't actually hit
+        // this as appears it won't consider any nested branches it hasn't seen but its here for
+        // the sake of accuracy.
+        let taken = if block_hits > 0 {
+          range.count.to_string()
+        } else {
+          "-".to_string()
+        };
+
+        println!(
+          "BRDA:{},{},{},{}",
+          line_index + 1,
+          block_number,
+          branch_number,
+          taken
+        );
+
+        branches_found += 1;
+        if range.count > 0 {
+          branches_hit += 1;
+        }
+      }
+    }
+
+    println!("BRF:{}", branches_found);
+    println!("BRH:{}", branches_hit);
+
+    let enumerated_lines = result
+      .lines
+      .iter()
+      .enumerate()
+      .filter(|line| line.ranges.len() > 0)
+      .collect::<Vec<(usize, &LineCoverage)>>();
+
+    for (index, line) in found_lines {
+      println!("DA: {}", index + 1, count);
+    }
+
+    let lines_hit = enumerated_lines
+      .iter()
+      .filter(|(_, coverage)| coverage.ranges.len() > 0)
+      .count();
+
+    println!("LH:{}", lines_hit);
+
+    let lines_found = found_lines
+      .iter()
+      .filter(|(_, coverage)| {
+        coverage.ranges.iter().any(|range| range.count == 0)
+      })
+    .count();
+
+    println!("LF:{}", lines_found);
+
+    println!("end_of_record");
+  }
+}
+
 pub struct PrettyCoverageReporter {}
 
 impl PrettyCoverageReporter {
