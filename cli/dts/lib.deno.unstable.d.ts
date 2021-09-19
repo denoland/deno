@@ -1258,6 +1258,32 @@ declare namespace Deno {
      */
     alpnProtocols?: string[];
   }
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Acquire an advisory file-system lock for the provided file. `exclusive`
+   * defaults to `false`.
+   */
+  export function flock(rid: number, exclusive?: boolean): Promise<void>;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Acquire an advisory file-system lock for the provided file. `exclusive`
+   * defaults to `false`.
+   */
+  export function flockSync(rid: number, exclusive?: boolean): void;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Release an advisory file-system lock for the provided file.
+   */
+  export function funlock(rid: number): Promise<void>;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Release an advisory file-system lock for the provided file.
+   */
+  export function funlockSync(rid: number): void;
 }
 
 declare function fetch(
