@@ -741,6 +741,7 @@ declare namespace Deno {
   ): Promise<number>;
 
   /**
+   * @deprecated Use `Deno.File.prototype.syncSync` instead.
    * Synchronously flushes any pending data and metadata operations of the given file stream to disk.
    *  ```ts
    * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
@@ -753,6 +754,7 @@ declare namespace Deno {
   export function fsyncSync(rid: number): void;
 
   /**
+   * @deprecated Use `Deno.File.prototype.sync` instead.
    * Flushes any pending data and metadata operations of the given file stream to disk.
    *  ```ts
    * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
@@ -764,7 +766,8 @@ declare namespace Deno {
    */
   export function fsync(rid: number): Promise<void>;
 
-  /*
+  /**
+   * @deprecated Use `Deno.File.prototype.datasyncSync` instead.
    * Synchronously flushes any pending data operations of the given file stream to disk.
    *  ```ts
    * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
@@ -776,6 +779,7 @@ declare namespace Deno {
   export function fdatasyncSync(rid: number): void;
 
   /**
+   * @deprecated Use `Deno.File.prototype.datasync` instead.
    * Flushes any pending data operations of the given file stream to disk.
    *  ```ts
    * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
