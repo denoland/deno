@@ -846,6 +846,10 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): number;
     stat(): Promise<FileInfo>;
     statSync(): FileInfo;
+    datasync(): Promise<void>;
+    datasyncSync(): void;
+    sync(): Promise<void>;
+    syncSync(): void;
     close(): void;
   }
 
