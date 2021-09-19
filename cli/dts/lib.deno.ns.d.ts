@@ -786,32 +786,6 @@ declare namespace Deno {
    */
   export function fdatasync(rid: number): Promise<void>;
 
-  /** **UNSTABLE**: New API should be tested first.
-   *
-   * Acquire an advisory file-system lock for the provided file. `exclusive`
-   * defaults to `false`.
-   */
-  export function flock(rid: number, exclusive?: boolean): Promise<void>;
-
-  /** **UNSTABLE**: New API should be tested first.
-   *
-   * Acquire an advisory file-system lock for the provided file. `exclusive`
-   * defaults to `false`.
-   */
-  export function flockSync(rid: number, exclusive?: boolean): void;
-
-  /** **UNSTABLE**: New API should be tested first.
-   *
-   * Release an advisory file-system lock for the provided file.
-   */
-  export function funlock(rid: number): Promise<void>;
-
-  /** **UNSTABLE**: New API should be tested first.
-   *
-   * Release an advisory file-system lock for the provided file.
-   */
-  export function funlockSync(rid: number): void;
-
   /** Close the given resource ID (rid) which has been previously opened, such
    * as via opening or creating a file.  Closing a file when you are finished
    * with it is important to avoid leaking resources.
