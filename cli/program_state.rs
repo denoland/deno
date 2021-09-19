@@ -23,6 +23,7 @@ use deno_core::error::Context;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::url::Url;
+use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
@@ -62,6 +63,7 @@ pub struct ProgramState {
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: SharedArrayBufferStore,
+  pub compiled_wasm_module_store: CompiledWasmModuleStore,
 }
 
 impl ProgramState {
@@ -144,6 +146,7 @@ impl ProgramState {
     let blob_store = BlobStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();
     let shared_array_buffer_store = SharedArrayBufferStore::default();
+    let compiled_wasm_module_store = CompiledWasmModuleStore::default();
 
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -214,6 +217,7 @@ impl ProgramState {
       blob_store,
       broadcast_channel,
       shared_array_buffer_store,
+      compiled_wasm_module_store,
     };
     Ok(Arc::new(program_state))
   }

@@ -142,6 +142,9 @@ fn create_web_worker_callback(
       shared_array_buffer_store: Some(
         program_state.shared_array_buffer_store.clone(),
       ),
+      compiled_wasm_module_store: Some(
+        program_state.compiled_wasm_module_store.clone(),
+      ),
       cpu_count: num_cpus::get(),
     };
 
@@ -236,6 +239,9 @@ pub fn create_main_worker(
     broadcast_channel: program_state.broadcast_channel.clone(),
     shared_array_buffer_store: Some(
       program_state.shared_array_buffer_store.clone(),
+    ),
+    compiled_wasm_module_store: Some(
+      program_state.compiled_wasm_module_store.clone(),
     ),
     cpu_count: num_cpus::get(),
   };

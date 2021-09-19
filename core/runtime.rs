@@ -99,35 +99,47 @@ struct ModEvaluate {
   sender: oneshot::Sender<Result<(), AnyError>>,
 }
 
-#[derive(Default, Clone)]
-pub struct SharedArrayBufferStore(Arc<Mutex<SharedArrayBufferStoreInner>>);
+pub struct CrossIsolateStore<T>(Arc<Mutex<CrossIsolateStoreInner<T>>>);
 
-#[derive(Default)]
-pub struct SharedArrayBufferStoreInner {
-  buffers: HashMap<u32, v8::SharedRef<v8::BackingStore>>,
+struct CrossIsolateStoreInner<T> {
+  map: HashMap<u32, T>,
   last_id: u32,
 }
 
-impl SharedArrayBufferStore {
-  pub(crate) fn insert(
-    &self,
-    backing_store: v8::SharedRef<v8::BackingStore>,
-  ) -> u32 {
-    let mut buffers = self.0.lock().unwrap();
-    let last_id = buffers.last_id;
-    buffers.buffers.insert(last_id, backing_store);
-    buffers.last_id += 1;
+impl<T> CrossIsolateStore<T> {
+  pub(crate) fn insert(&self, value: T) -> u32 {
+    let mut store = self.0.lock().unwrap();
+    let last_id = store.last_id;
+    store.map.insert(last_id, value);
+    store.last_id += 1;
     last_id
   }
 
-  pub(crate) fn take(
-    &self,
-    id: u32,
-  ) -> Option<v8::SharedRef<v8::BackingStore>> {
-    let mut buffers = self.0.lock().unwrap();
-    buffers.buffers.remove(&id)
+  pub(crate) fn take(&self, id: u32) -> Option<T> {
+    let mut store = self.0.lock().unwrap();
+    store.map.remove(&id)
   }
 }
+
+impl<T> Default for CrossIsolateStore<T> {
+  fn default() -> Self {
+    CrossIsolateStore(Arc::new(Mutex::new(CrossIsolateStoreInner {
+      map: Default::default(),
+      last_id: 0,
+    })))
+  }
+}
+
+impl<T> Clone for CrossIsolateStore<T> {
+  fn clone(&self) -> Self {
+    Self(self.0.clone())
+  }
+}
+
+pub type SharedArrayBufferStore =
+  CrossIsolateStore<v8::SharedRef<v8::BackingStore>>;
+
+pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
@@ -149,6 +161,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   waker: AtomicWaker,
 }
 
@@ -238,11 +251,20 @@ pub struct RuntimeOptions {
   /// (which it only does once), otherwise it's silenty dropped.
   pub v8_platform: Option<v8::SharedRef<v8::Platform>>,
 
-  /// The buffer to use for transferring SharedArrayBuffers between isolates.
+  /// The store to use for transferring SharedArrayBuffers between isolates.
   /// If multiple isolates should have the possibility of sharing
-  /// SharedArrayBuffers, they should use the same SharedArrayBufferStore. If no
-  /// SharedArrayBufferStore is specified, SharedArrayBuffer can not be serialized.
+  /// SharedArrayBuffers, they should use the same [SharedArrayBufferStore]. If
+  /// no [SharedArrayBufferStore] is specified, SharedArrayBuffer can not be
+  /// serialized.
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+
+  /// The store to use for transferring `WebAssembly.Module` objects between
+  /// isolates.
+  /// If multiple isolates should have the possibility of sharing
+  /// `WebAssembly.Module` objects, they should use the same
+  /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
+  /// `WebAssembly.Module` objects cannot be serialized.
+  pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
 }
 
 impl JsRuntime {
@@ -334,6 +356,7 @@ impl JsRuntime {
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
+      compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),
