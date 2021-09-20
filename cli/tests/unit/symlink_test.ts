@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
+  assertRejects,
   assertThrows,
   pathToAbsoluteFileUrl,
   unitTest,
@@ -75,5 +76,117 @@ unitTest(
     const newNameInfoStat = Deno.statSync(newname);
     assert(newNameInfoLStat.isSymlink, "NOT SYMLINK");
     assert(newNameInfoStat.isDirectory, "NOT DIRECTORY");
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function symlinkPermissionDeniedOnMissingSourceRead() {
+    const testDir = Deno.makeTempDirSync();
+    const oldname = testDir + "/oldname";
+    const newname = testDir + "/newname";
+    Deno.mkdirSync(oldname);
+    await Deno.permissions.revoke({ name: "read", path: oldname });
+    await assertRejects(async () => {
+      await Deno.symlink(oldname, newname);
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function symlinkPermissionDeniedOnMissingDestinationRead() {
+    const testDir = Deno.makeTempDirSync();
+    const oldname = testDir + "/oldname";
+    const newname = testDir + "/newname";
+    Deno.mkdirSync(oldname);
+    await Deno.permissions.revoke({ name: "read", path: newname });
+    await assertRejects(async () => {
+      await Deno.symlink(oldname, newname);
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function symlinkPermissionDeniedOnMissingSourceWrite() {
+    const testDir = Deno.makeTempDirSync();
+    const oldname = testDir + "/oldname";
+    const newname = testDir + "/newname";
+    Deno.mkdirSync(oldname);
+    await Deno.permissions.revoke({ name: "write", path: oldname });
+    await assertRejects(async () => {
+      await Deno.symlink(oldname, newname);
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function symlinkPermissionDeniedOnMissingDestinationWrite() {
+    const testDir = Deno.makeTempDirSync();
+    const oldname = testDir + "/oldname";
+    const newname = testDir + "/newname";
+    Deno.mkdirSync(oldname);
+    await Deno.permissions.revoke({ name: "write", path: newname });
+    await assertRejects(async () => {
+      await Deno.symlink(oldname, newname);
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function symlinkPermissionDeniedOnMissingSourceReadSync() {
+    const testDir = Deno.makeTempDirSync();
+    const oldname = testDir + "/oldname";
+    const newname = testDir + "/newname";
+    Deno.mkdirSync(oldname);
+    await Deno.permissions.revoke({ name: "read", path: oldname });
+    assertThrows(() => {
+      Deno.symlinkSync(oldname, newname);
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function symlinkPermissionDeniedOnMissingDestinationReadSync() {
+    const testDir = Deno.makeTempDirSync();
+    const oldname = testDir + "/oldname";
+    const newname = testDir + "/newname";
+    Deno.mkdirSync(oldname);
+    await Deno.permissions.revoke({ name: "read", path: newname });
+    assertThrows(() => {
+      Deno.symlinkSync(oldname, newname);
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function symlinkPermissionDeniedOnMissingSourceWriteSync() {
+    const testDir = Deno.makeTempDirSync();
+    const oldname = testDir + "/oldname";
+    const newname = testDir + "/newname";
+    Deno.mkdirSync(oldname);
+    await Deno.permissions.revoke({ name: "write", path: oldname });
+    assertThrows(() => {
+      Deno.symlinkSync(oldname, newname);
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function symlinkPermissionDeniedOnMissingDestinationWriteSync() {
+    const testDir = Deno.makeTempDirSync();
+    const oldname = testDir + "/oldname";
+    const newname = testDir + "/newname";
+    Deno.mkdirSync(oldname);
+    await Deno.permissions.revoke({ name: "write", path: newname });
+    assertThrows(() => {
+      Deno.symlinkSync(oldname, newname);
+    }, Deno.errors.PermissionDenied);
   },
 );

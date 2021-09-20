@@ -1252,6 +1252,9 @@ fn op_symlink_sync(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
+  state.borrow_mut::<Permissions>().read.check(&oldpath)?;
+  state.borrow_mut::<Permissions>().write.check(&oldpath)?;
+  state.borrow_mut::<Permissions>().read.check(&newpath)?;
   state.borrow_mut::<Permissions>().write.check(&newpath)?;
 
   debug!(
@@ -1303,6 +1306,9 @@ async fn op_symlink_async(
 
   {
     let mut state = state.borrow_mut();
+    state.borrow_mut::<Permissions>().read.check(&oldpath)?;
+    state.borrow_mut::<Permissions>().write.check(&oldpath)?;
+    state.borrow_mut::<Permissions>().read.check(&newpath)?;
     state.borrow_mut::<Permissions>().write.check(&newpath)?;
   }
 

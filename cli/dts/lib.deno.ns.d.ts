@@ -2288,7 +2288,7 @@ declare namespace Deno {
    * Deno.symlinkSync("old/name", "new/name");
    * ```
    *
-   * Requires `allow-write` permission. */
+   * Requires `allow-read` and `allow-write` permission for both paths. */
   export function symlinkSync(
     oldpath: string | URL,
     newpath: string | URL,
@@ -2305,7 +2305,7 @@ declare namespace Deno {
    * await Deno.symlink("old/name", "new/name");
    * ```
    *
-   * Requires `allow-write` permission. */
+   * Requires `allow-read` and `allow-write` permission for both paths. */
   export function symlink(
     oldpath: string | URL,
     newpath: string | URL,
