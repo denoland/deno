@@ -1229,3 +1229,82 @@ async fn listen_tls_alpn_fail() {
     })
     .await;
 }
+
+#[test]
+fn symlink_permissions() {
+  let temp_dir = TempDir::new().expect("tempdir fail");
+
+  let oldname = temp_dir.path().join("oldname");
+  let newname = temp_dir.path().join("newname");
+  std::fs::create_dir(&oldname).unwrap();
+
+  let oldname_str = oldname.to_str().unwrap();
+  let newname_str = newname.to_str().unwrap();
+
+  let cases = vec![
+    (
+      format!("--allow-read={}", oldname_str),
+      format!("--allow-write={},{}", oldname_str, newname_str),
+      "Requires read access",
+      newname_str,
+    ),
+    (
+      format!("--allow-read={}", newname_str),
+      format!("--allow-write={},{}", oldname_str, newname_str),
+      "Requires read access",
+      oldname_str,
+    ),
+    (
+      format!("--allow-read={},{}", oldname_str, newname_str),
+      format!("--allow-write={}", oldname_str),
+      "Requires write access",
+      newname_str,
+    ),
+    (
+      format!("--allow-read={},{}", oldname_str, newname_str),
+      format!("--allow-write={}", newname_str),
+      "Requires write access",
+      oldname_str,
+    ),
+  ];
+
+  // sync
+  for case in &cases {
+    let output = Command::new(util::deno_exe_path())
+      .env("NO_COLOR", "1")
+      .current_dir(util::testdata_path())
+      .arg("run")
+      .arg(&case.0)
+      .arg(&case.1)
+      .arg("symlink_permission_sync.ts")
+      .arg(oldname_str)
+      .arg(newname_str)
+      .output()
+      .expect("Failed to spawn script");
+    assert!(!output.status.success());
+    let out = std::str::from_utf8(&output.stderr).unwrap();
+    assert!(out.contains("PermissionDenied"));
+    assert!(out.contains(case.2));
+    assert!(out.contains(case.3));
+  }
+
+  // async
+  for case in &cases {
+    let output = Command::new(util::deno_exe_path())
+      .env("NO_COLOR", "1")
+      .current_dir(util::testdata_path())
+      .arg("run")
+      .arg(&case.0)
+      .arg(&case.1)
+      .arg("symlink_permission.ts")
+      .arg(oldname_str)
+      .arg(newname_str)
+      .output()
+      .expect("Failed to spawn script");
+    assert!(!output.status.success());
+    let out = std::str::from_utf8(&output.stderr).unwrap();
+    assert!(out.contains("PermissionDenied"));
+    assert!(out.contains(case.2));
+    assert!(out.contains(case.3));
+  }
+}
