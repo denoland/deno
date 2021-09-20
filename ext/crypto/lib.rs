@@ -874,6 +874,38 @@ const MASK_GEN_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
 const SALT_LENGTH_TAG: rsa::pkcs8::der::TagNumber =
   rsa::pkcs8::der::TagNumber::new(2);
 
+lazy_static! {
+  // Default HashAlgorithm for RSASSA-PSS-params (sha1)
+  //
+  // sha1 HashAlgorithm ::= {
+  //   algorithm   id-sha1,
+  //   parameters  SHA1Parameters : NULL
+  // }
+  //
+  // SHA1Parameters ::= NULL
+  static ref SHA1_HASH_ALGORITHM: rsa::pkcs8::AlgorithmIdentifier<'static> = rsa::pkcs8::AlgorithmIdentifier {
+    // id-sha1
+    oid: ID_SHA1_OID,
+    // NULL
+    parameters: Some(asn1::Any::from(asn1::Null)),
+  };
+
+  // TODO(@littledivy): `pkcs8` should provide AlgorithmIdentifier to Any conversion.
+  static ref ENCODED_SHA1_HASH_ALGORITHM: Vec<u8> = SHA1_HASH_ALGORITHM.to_vec().unwrap();
+  // Default MaskGenAlgrithm for RSASSA-PSS-params (mgf1SHA1)
+  //
+  // mgf1SHA1 MaskGenAlgorithm ::= {
+  //   algorithm   id-mgf1,
+  //   parameters  HashAlgorithm : sha1
+  // }
+  static ref MGF1_SHA1_MASK_ALGORITHM: rsa::pkcs8::AlgorithmIdentifier<'static> = rsa::pkcs8::AlgorithmIdentifier {
+    // id-mgf1
+    oid: ID_MFG1,
+    // sha1
+    parameters: Some(asn1::Any::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap()),
+  };
+}
+
 impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
   for PssPrivateKeyParameters<'a>
 {
@@ -887,13 +919,13 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
         .context_specific(HASH_ALGORITHM_TAG)?
         .map(TryInto::try_into)
         .transpose()?
-        .unwrap();
+        .unwrap_or(*SHA1_HASH_ALGORITHM);
 
       let mask_gen_algorithm = decoder
         .context_specific(MASK_GEN_ALGORITHM_TAG)?
         .map(TryInto::try_into)
         .transpose()?
-        .unwrap();
+        .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
 
       let salt_length = decoder
         .context_specific(SALT_LENGTH_TAG)?
