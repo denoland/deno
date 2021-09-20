@@ -160,6 +160,8 @@ pub struct UnaryPermission<T: Eq + Hash> {
   pub granted_list: HashSet<T>,
   pub denied_list: HashSet<T>,
   #[serde(skip)]
+  pub prompt_list: HashSet<T>,
+  #[serde(skip)]
   pub prompt: bool,
 }
 
@@ -216,14 +218,20 @@ impl UnaryPermission<ReadDescriptor> {
       }
     {
       PermissionState::Denied
-    } else if self.global_state == PermissionState::Granted
-      || match path.as_ref() {
-        None => false,
-        Some(path) => self
-          .granted_list
+    } else if match path.as_ref() {
+      None => false,
+      Some(path) => self
+        .granted_list
+        .iter()
+        .any(|path_| path.starts_with(&path_.0)),
+    } || (self.global_state == PermissionState::Granted
+      && match path.as_ref() {
+        None => true,
+        Some(path) => !self
+          .prompt_list
           .iter()
           .any(|path_| path.starts_with(&path_.0)),
-      }
+      })
     {
       PermissionState::Granted
     } else {
@@ -276,9 +284,15 @@ impl UnaryPermission<ReadDescriptor> {
   pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
     if let Some(path) = path {
       let path = resolve_from_cwd(path).unwrap();
-      self
-        .granted_list
-        .retain(|path_| !path_.0.starts_with(&path));
+      if self.granted_list.is_empty()
+        && self.global_state == PermissionState::Granted
+      {
+        self.prompt_list.insert(ReadDescriptor(path));
+      } else {
+        self
+          .granted_list
+          .retain(|path_| !path_.0.starts_with(&path));
+      }
     } else {
       self.granted_list.clear();
       if self.global_state == PermissionState::Granted {
@@ -344,14 +358,20 @@ impl UnaryPermission<WriteDescriptor> {
       }
     {
       PermissionState::Denied
-    } else if self.global_state == PermissionState::Granted
-      || match path.as_ref() {
-        None => false,
-        Some(path) => self
-          .granted_list
+    } else if match path.as_ref() {
+      None => false,
+      Some(path) => self
+        .granted_list
+        .iter()
+        .any(|path_| path.starts_with(&path_.0)),
+    } || (self.global_state == PermissionState::Granted
+      && match path.as_ref() {
+        None => true,
+        Some(path) => !self
+          .prompt_list
           .iter()
           .any(|path_| path.starts_with(&path_.0)),
-      }
+      })
     {
       PermissionState::Granted
     } else {
@@ -404,9 +424,15 @@ impl UnaryPermission<WriteDescriptor> {
   pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
     if let Some(path) = path {
       let path = resolve_from_cwd(path).unwrap();
-      self
-        .granted_list
-        .retain(|path_| !path_.0.starts_with(&path));
+      if self.granted_list.is_empty()
+        && self.global_state == PermissionState::Granted
+      {
+        self.prompt_list.insert(WriteDescriptor(path));
+      } else {
+        self
+          .granted_list
+          .retain(|path_| !path_.0.starts_with(&path));
+      }
     } else {
       self.granted_list.clear();
       if self.global_state == PermissionState::Granted {
@@ -453,17 +479,25 @@ impl UnaryPermission<NetDescriptor> {
       }
     {
       PermissionState::Denied
-    } else if self.global_state == PermissionState::Granted
-      || match host.as_ref() {
-        None => false,
+    } else if match host.as_ref() {
+      None => false,
+      Some(host) => {
+        self
+          .granted_list
+          .contains(&NetDescriptor::new(&&(host.0.as_ref().to_string(), None)))
+          || self.granted_list.contains(&NetDescriptor::new(host))
+      }
+    } || (self.global_state == PermissionState::Granted
+      && match host.as_ref() {
+        None => true,
         Some(host) => {
-          self.granted_list.contains(&NetDescriptor::new(&&(
+          !(self.prompt_list.contains(&NetDescriptor::new(&&(
             host.0.as_ref().to_string(),
             None,
           )))
-            || self.granted_list.contains(&NetDescriptor::new(host))
+            || self.prompt_list.contains(&NetDescriptor::new(host)))
         }
-      }
+      })
     {
       PermissionState::Granted
     } else {
@@ -518,9 +552,15 @@ impl UnaryPermission<NetDescriptor> {
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
     if let Some(host) = host {
-      self.granted_list.remove(&NetDescriptor::new(&host));
-      if host.1.is_none() {
-        self.granted_list.retain(|h| h.0 != host.0.as_ref());
+      if self.granted_list.is_empty()
+        && self.global_state == PermissionState::Granted
+      {
+        self.prompt_list.insert(NetDescriptor::new(&host));
+      } else {
+        self.granted_list.remove(&NetDescriptor::new(&host));
+        if host.1.is_none() {
+          self.granted_list.retain(|h| h.0 != host.0.as_ref());
+        }
       }
     } else {
       self.granted_list.clear();
@@ -592,11 +632,14 @@ impl UnaryPermission<EnvDescriptor> {
       }
     {
       PermissionState::Denied
-    } else if self.global_state == PermissionState::Granted
-      || match env {
-        None => false,
-        Some(env) => self.granted_list.iter().any(|env_| env_.0 == env),
-      }
+    } else if match env {
+      None => false,
+      Some(env) => self.granted_list.iter().any(|env_| env_.0 == env),
+    } || (self.global_state == PermissionState::Granted
+      && match env {
+        None => true,
+        Some(env) => !self.prompt_list.iter().any(|env_| env_.0 == env),
+      })
     {
       PermissionState::Granted
     } else {
@@ -647,7 +690,13 @@ impl UnaryPermission<EnvDescriptor> {
     if let Some(env) = env {
       #[cfg(windows)]
       let env = env.to_uppercase();
-      self.granted_list.retain(|env_| env_.0 != env);
+      if self.granted_list.is_empty()
+        && self.global_state == PermissionState::Granted
+      {
+        self.prompt_list.insert(EnvDescriptor(env.to_string()));
+      } else {
+        self.granted_list.retain(|env_| env_.0 != env);
+      }
     } else {
       self.granted_list.clear();
       if self.global_state == PermissionState::Granted {
@@ -699,11 +748,14 @@ impl UnaryPermission<RunDescriptor> {
       }
     {
       PermissionState::Denied
-    } else if self.global_state == PermissionState::Granted
-      || match cmd {
-        None => false,
-        Some(cmd) => self.granted_list.iter().any(|cmd_| cmd_.0 == cmd),
-      }
+    } else if match cmd {
+      None => false,
+      Some(cmd) => self.granted_list.iter().any(|cmd_| cmd_.0 == cmd),
+    } || (self.global_state == PermissionState::Granted
+      && match cmd {
+        None => true,
+        Some(cmd) => !self.prompt_list.iter().any(|cmd_| cmd_.0 == cmd),
+      })
     {
       PermissionState::Granted
     } else {
@@ -747,7 +799,13 @@ impl UnaryPermission<RunDescriptor> {
 
   pub fn revoke(&mut self, cmd: Option<&str>) -> PermissionState {
     if let Some(cmd) = cmd {
-      self.granted_list.retain(|cmd_| cmd_.0 != cmd);
+      if self.granted_list.is_empty()
+        && self.global_state == PermissionState::Granted
+      {
+        self.prompt_list.insert(RunDescriptor(cmd.to_string()));
+      } else {
+        self.granted_list.retain(|cmd_| cmd_.0 != cmd);
+      }
     } else {
       self.granted_list.clear();
       if self.global_state == PermissionState::Granted {
@@ -797,11 +855,14 @@ impl UnaryPermission<FfiDescriptor> {
       }
     {
       PermissionState::Denied
-    } else if self.global_state == PermissionState::Granted
-      || match lib {
-        None => false,
-        Some(lib) => self.granted_list.iter().any(|lib_| lib_.0 == lib),
-      }
+    } else if match lib {
+      None => false,
+      Some(lib) => self.granted_list.iter().any(|lib_| lib_.0 == lib),
+    } || (self.global_state == PermissionState::Granted
+      && match lib {
+        None => true,
+        Some(lib) => !self.prompt_list.iter().any(|lib_| lib_.0 == lib),
+      })
     {
       PermissionState::Granted
     } else {
@@ -845,7 +906,13 @@ impl UnaryPermission<FfiDescriptor> {
 
   pub fn revoke(&mut self, lib: Option<&str>) -> PermissionState {
     if let Some(lib) = lib {
-      self.granted_list.retain(|lib_| lib_.0 != lib);
+      if self.granted_list.is_empty()
+        && self.global_state == PermissionState::Granted
+      {
+        self.prompt_list.insert(FfiDescriptor(lib.to_string()));
+      } else {
+        self.granted_list.retain(|lib_| lib_.0 != lib);
+      }
     } else {
       self.granted_list.clear();
       if self.global_state == PermissionState::Granted {
@@ -920,6 +987,7 @@ impl Permissions {
       global_state: global_state_from_option(state),
       granted_list: resolve_read_allowlist(state),
       denied_list: Default::default(),
+      prompt_list: Default::default(),
       prompt,
     }
   }
@@ -934,6 +1002,7 @@ impl Permissions {
       global_state: global_state_from_option(state),
       granted_list: resolve_write_allowlist(state),
       denied_list: Default::default(),
+      prompt_list: Default::default(),
       prompt,
     }
   }
@@ -955,6 +1024,7 @@ impl Permissions {
         })
         .unwrap_or_else(HashSet::new),
       denied_list: Default::default(),
+      prompt_list: Default::default(),
       prompt,
     }
   }
@@ -982,6 +1052,7 @@ impl Permissions {
         })
         .unwrap_or_else(HashSet::new),
       denied_list: Default::default(),
+      prompt_list: Default::default(),
       prompt,
     }
   }
@@ -999,6 +1070,7 @@ impl Permissions {
         .map(|v| v.iter().map(|x| RunDescriptor(x.clone())).collect())
         .unwrap_or_else(HashSet::new),
       denied_list: Default::default(),
+      prompt_list: Default::default(),
       prompt,
     }
   }
@@ -1016,6 +1088,7 @@ impl Permissions {
         .map(|v| v.iter().map(|x| FfiDescriptor(x.clone())).collect())
         .unwrap_or_else(HashSet::new),
       denied_list: Default::default(),
+      prompt_list: Default::default(),
       prompt,
     }
   }
