@@ -239,17 +239,22 @@ mod windows {
   impl Read for WinPseudoConsole {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
       unsafe {
-        let mut bytes_read = 0;
-        // don't bother checking the result of this call as it will be false
-        // when the stdout pipe is closed and bytes_read will be 0 in that case
-        ReadFile(
-          self.stdout_read_handle.as_raw_handle(),
-          buf.as_mut_ptr() as _,
-          buf.len() as u32,
-          &mut bytes_read,
-          ptr::null_mut(),
-        );
-        Ok(bytes_read as usize)
+        loop {
+          let mut bytes_read = 0;
+          let success = ReadFile(
+            self.stdout_read_handle.as_raw_handle(),
+            buf.as_mut_ptr() as _,
+            buf.len() as u32,
+            &mut bytes_read,
+            ptr::null_mut(),
+          );
+
+          // ignore zero-byte writes
+          let is_zero_byte_write = bytes_read == 0 && success == TRUE;
+          if !is_zero_byte_write {
+            return Ok(bytes_read as usize);
+          }
+        }
       }
     }
   }
