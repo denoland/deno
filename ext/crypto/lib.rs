@@ -876,7 +876,7 @@ pub async fn op_crypto_encrypt_key(
       let iv = args
         .iv
         .ok_or_else(|| type_error("Missing argument iv".to_string()))?;
-
+      println!("{}", iv.len());
       // 2-3.
       match length {
         128 => cipher_cbc!(aes::Aes128, key, &iv, data),
