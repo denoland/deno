@@ -96,6 +96,12 @@ pub struct DefaultTlsOptions {
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 
+impl Default for UnsafelyIgnoreCertificateErrors {
+  fn default() -> Self {
+    Self(None)
+  }
+}
+
 pub fn init<P: NetPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,
   unstable: bool,
