@@ -1656,9 +1656,11 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
 }
 
 pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Box<dyn pty::Pty>)) {
+  #[cfg(target_os = "windows")]
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-    eprintln!("Ignoring non-tty environment.");
-    return;
+    unsafe {
+      winapi::um::consoleapi::AllocConsole();
+    }
   }
 
   let deno_dir = new_deno_dir();
