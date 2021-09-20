@@ -16,7 +16,6 @@
   const core = window.Deno.core;
   const { BadResource, Interrupted } = core;
   const { ReadableStream } = window.__bootstrap.streams;
-  const abortSignal = window.__bootstrap.abortSignal;
   const { WebSocket, _rid, _readyState, _eventLoop, _protocol, _server } =
     window.__bootstrap.webSocket;
   const {
@@ -104,8 +103,7 @@
         headersList,
         body !== null ? new InnerBody(body) : null,
       );
-      const signal = abortSignal.newSignal();
-      const request = fromInnerRequest(innerRequest, signal, "immutable");
+      const request = fromInnerRequest(innerRequest, "immutable");
 
       SetPrototypeAdd(this.managedResources, responseSenderRid);
       const respondWith = createRespondWith(
