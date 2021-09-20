@@ -1887,6 +1887,36 @@ mod tests {
   }
 
   #[test]
+  fn test_allow_all_revoke() {
+    let mut perms = Permissions::allow_all();
+    #[rustfmt::skip]
+    {
+      assert_eq!(perms.read.revoke(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert!(perms.read.check(Path::new("/foo/bar")).is_err());
+
+      assert_eq!(perms.write.revoke(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert!(perms.write.check(Path::new("/foo/bar")).is_err());
+
+      assert_eq!(perms.net.revoke(Some(&("127.0.0.1", Some(8000)))), PermissionState::Prompt);
+      assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
+      assert_eq!(perms.net.revoke(Some(&("127.0.0.1", None))), PermissionState::Prompt);
+      assert!(perms.net.check(&("127.0.0.1", None)).is_err());
+
+      assert_eq!(perms.env.revoke(Some(&"HOME".to_string())), PermissionState::Prompt);
+      assert!(perms.env.check("HOME").is_err());
+
+      assert_eq!(perms.run.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
+      assert!(perms.run.check("deno").is_err());
+
+      assert_eq!(perms.ffi.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
+      assert!(perms.ffi.check("deno").is_err());
+
+      assert_eq!(perms.hrtime.revoke(), PermissionState::Prompt);
+      assert!(perms.hrtime.check().is_err());
+    };
+  }
+
+  #[test]
   fn test_check() {
     let mut perms = Permissions {
       read: Permissions::new_read(&None, true),
