@@ -622,6 +622,12 @@ itest!(error_026_remote_import_error {
   http_server: true,
 });
 
+itest!(error_for_await {
+  args: "run --reload error_for_await.ts",
+  output: "error_for_await.ts.out",
+  exit_code: 1,
+});
+
 itest!(error_missing_module_named_import {
   args: "run --reload error_missing_module_named_import.ts",
   output: "error_missing_module_named_import.ts.out",
@@ -1877,5 +1883,11 @@ fn issue9750() {
 itest!(dom_exception_formatting {
   args: "run dom_exception_formatting.ts",
   output: "dom_exception_formatting.ts.out",
+  exit_code: 1,
+});
+
+itest!(long_data_url_formatting {
+  args: "run long_data_url_formatting.ts",
+  output: "long_data_url_formatting.ts.out",
   exit_code: 1,
 });

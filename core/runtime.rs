@@ -1350,11 +1350,14 @@ impl JsRuntime {
     state_rc.borrow_mut().pending_dyn_mod_evaluate = still_pending;
   }
 
-  /// Asynchronously load specified module and all of its dependencies
+  /// Asynchronously load specified module and all of its dependencies.
+  ///
+  /// The module will be marked as "main", and because of that
+  /// "import.meta.main" will return true when checked inside that module.
   ///
   /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
   /// manually after load is finished.
-  pub async fn load_module(
+  pub async fn load_main_module(
     &mut self,
     specifier: &ModuleSpecifier,
     code: Option<String>,
@@ -1363,6 +1366,7 @@ impl JsRuntime {
     if let Some(code) = code {
       module_map_rc.borrow_mut().new_module(
         &mut self.handle_scope(),
+        // main module
         true,
         specifier.as_str(),
         &code,
@@ -1381,6 +1385,59 @@ impl JsRuntime {
     let root_id = load.root_module_id.expect("Root module should be loaded");
     self.instantiate_module(root_id)?;
     Ok(root_id)
+  }
+
+  /// Asynchronously load specified ES module and all of its dependencies.
+  ///
+  /// This method is meant to be used when loading some utility code that
+  /// might be later imported by the main module (ie. an entry point module).
+  ///
+  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
+  /// manually after load is finished.
+  pub async fn load_side_module(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    code: Option<String>,
+  ) -> Result<ModuleId, AnyError> {
+    let module_map_rc = Self::module_map(self.v8_isolate());
+    if let Some(code) = code {
+      module_map_rc.borrow_mut().new_module(
+        &mut self.handle_scope(),
+        // not main module
+        false,
+        specifier.as_str(),
+        &code,
+      )?;
+    }
+
+    let mut load =
+      ModuleMap::load_side(module_map_rc.clone(), specifier.as_str()).await?;
+
+    while let Some(info_result) = load.next().await {
+      let info = info_result?;
+      let scope = &mut self.handle_scope();
+      load.register_and_recurse(scope, &info)?;
+    }
+
+    let root_id = load.root_module_id.expect("Root module should be loaded");
+    self.instantiate_module(root_id)?;
+    Ok(root_id)
+  }
+
+  /// Asynchronously load specified module and all of its dependencies
+  ///
+  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
+  /// manually after load is finished.
+  #[deprecated(
+    since = "0.100.0",
+    note = "This method had a bug, marking multiple modules loaded as \"main\". Use `load_main_module` or `load_side_module` instead."
+  )]
+  pub async fn load_module(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    code: Option<String>,
+  ) -> Result<ModuleId, AnyError> {
+    self.load_main_module(specifier, code).await
   }
 
   fn poll_pending_ops(
@@ -2040,7 +2097,7 @@ pub mod tests {
     let source_code = "Deno.core.print('hello\\n')".to_string();
 
     let module_id = futures::executor::block_on(
-      runtime.load_module(&specifier, Some(source_code)),
+      runtime.load_main_module(&specifier, Some(source_code)),
     )
     .unwrap();
 

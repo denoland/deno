@@ -3,7 +3,6 @@
 mod ast;
 mod auth_tokens;
 mod checksum;
-mod colors;
 mod config_file;
 mod deno_dir;
 mod diagnostics;
@@ -18,7 +17,6 @@ mod fmt_errors;
 mod fs_util;
 mod http_cache;
 mod http_util;
-mod import_map;
 mod info;
 mod lockfile;
 mod logger;
@@ -75,6 +73,7 @@ use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
+use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::web_worker::WebWorker;
@@ -493,7 +492,7 @@ async fn install_command(
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions, None);
   // First, fetch and compile the module; this step ensures that the module exists.
-  worker.preload_module(&main_module).await?;
+  worker.preload_module(&main_module, true).await?;
   tools::installer::install(
     flags,
     &install_flags.module_url,
@@ -605,7 +604,7 @@ async fn eval_command(
   // to allow module access by TS compiler.
   program_state.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
-  worker.execute_module(&main_module).await?;
+  worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
@@ -806,17 +805,22 @@ async fn format_command(
   flags: Flags,
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
+  let program_state = ProgramState::build(flags.clone()).await?;
+  let maybe_fmt_config =
+    if let Some(config_file) = &program_state.maybe_config_file {
+      config_file.to_fmt_config()?
+    } else {
+      None
+    };
+
   if fmt_flags.files.len() == 1 && fmt_flags.files[0].to_string_lossy() == "-" {
-    return tools::fmt::format_stdin(fmt_flags.check, fmt_flags.ext);
+    return tools::fmt::format_stdin(
+      fmt_flags,
+      maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
+    );
   }
 
-  tools::fmt::format(
-    fmt_flags.files,
-    fmt_flags.ignore,
-    fmt_flags.check,
-    flags.watch,
-  )
-  .await?;
+  tools::fmt::format(fmt_flags, flags.watch, maybe_fmt_config).await?;
   Ok(())
 }
 
@@ -858,7 +862,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   program_state.file_fetcher.insert_cached(source_file);
 
   debug!("main_module {}", main_module);
-  worker.execute_module(&main_module).await?;
+  worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
@@ -945,7 +949,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       &mut self,
       main_module: &ModuleSpecifier,
     ) -> Result<(), AnyError> {
-      self.worker.execute_module(main_module).await?;
+      self.worker.execute_main_module(main_module).await?;
       self.worker.execute_script(
         &located_script_name!(),
         "window.dispatchEvent(new Event('load'))",
@@ -1040,7 +1044,7 @@ async fn run_command(
     };
 
   debug!("main_module {}", main_module);
-  worker.execute_module(&main_module).await?;
+  worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",

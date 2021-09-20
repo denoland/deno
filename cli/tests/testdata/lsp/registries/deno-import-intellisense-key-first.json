@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "registries": [
+    {
+      "schema": "/:module([a-zA-Z0-9-_]+)@:tag([a-zA-Z0-9-_\\.]+)",
+      "variables": [
+        {
+          "key": "module",
+          "url": "http://localhost:4545/lsp/registries/key_first.json"
+        },
+        {
+          "key": "tag",
+          "url": "http://localhost:4545/lsp/registries/${module}_tags.json"
+        }
+      ]
+    }
+  ]
+}

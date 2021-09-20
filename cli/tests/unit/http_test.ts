@@ -848,7 +848,7 @@ unitTest(
 
     listener.close();
 
-    assertEquals(errors.length, 2);
+    assert(errors.length >= 1);
     for (const error of errors) {
       assertEquals(error.name, "Http");
       assertEquals(

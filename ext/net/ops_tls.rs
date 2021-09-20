@@ -751,7 +751,7 @@ where
   })
 }
 
-async fn op_connect_tls<NP>(
+pub async fn op_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
   _: (),

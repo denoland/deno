@@ -186,6 +186,8 @@ impl ModuleLoader for FsModuleLoader {
 enum LoadInit {
   /// Main module specifier.
   Main(String),
+  /// Module specifier for side module.
+  Side(String),
   /// Dynamic import specifier with referrer.
   DynamicImport(String, String),
 }
@@ -219,6 +221,10 @@ impl RecursiveModuleLoad {
   /// Starts a new parallel load of the given URL of the main module.
   pub fn main(specifier: &str, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
     Self::new(LoadInit::Main(specifier.to_string()), module_map_rc)
+  }
+
+  pub fn side(specifier: &str, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
+    Self::new(LoadInit::Side(specifier.to_string()), module_map_rc)
   }
 
   pub fn dynamic_import(
@@ -267,6 +273,11 @@ impl RecursiveModuleLoad {
           .loader
           .resolve(self.op_state.clone(), specifier, ".", true)
       }
+      LoadInit::Side(ref specifier) => {
+        self
+          .loader
+          .resolve(self.op_state.clone(), specifier, ".", false)
+      }
       LoadInit::DynamicImport(ref specifier, ref referrer) => self
         .loader
         .resolve(self.op_state.clone(), specifier, referrer, false),
@@ -281,6 +292,13 @@ impl RecursiveModuleLoad {
           self
             .loader
             .resolve(op_state.clone(), specifier, ".", true)?;
+        (spec, None)
+      }
+      LoadInit::Side(ref specifier) => {
+        let spec =
+          self
+            .loader
+            .resolve(op_state.clone(), specifier, ".", false)?;
         (spec, None)
       }
       LoadInit::DynamicImport(ref specifier, ref referrer) => {
@@ -305,7 +323,9 @@ impl RecursiveModuleLoad {
   }
 
   pub fn is_currently_loading_main_module(&self) -> bool {
-    !self.is_dynamic_import() && self.state == LoadState::LoadingRoot
+    !self.is_dynamic_import()
+      && matches!(self.init, LoadInit::Main(..))
+      && self.state == LoadState::LoadingRoot
   }
 
   pub fn register_and_recurse(
@@ -575,6 +595,17 @@ impl ModuleMap {
       import_specifiers.push(module_specifier);
     }
 
+    if main {
+      let maybe_main_module = self.info.values().find(|module| module.main);
+      if let Some(main_module) = maybe_main_module {
+        return Err(generic_error(
+          format!("Trying to create \"main\" module ({:?}), when one already exists ({:?})",
+          name,
+          main_module.name,
+        )));
+      }
+    }
+
     let handle = v8::Global::<v8::Module>::new(tc_scope, module);
     let id = self.next_module_id;
     self.next_module_id += 1;
@@ -640,6 +671,15 @@ impl ModuleMap {
     specifier: &str,
   ) -> Result<RecursiveModuleLoad, AnyError> {
     let load = RecursiveModuleLoad::main(specifier, module_map_rc.clone());
+    load.prepare().await?;
+    Ok(load)
+  }
+
+  pub async fn load_side(
+    module_map_rc: Rc<RefCell<ModuleMap>>,
+    specifier: &str,
+  ) -> Result<RecursiveModuleLoad, AnyError> {
+    let load = RecursiveModuleLoad::side(specifier, module_map_rc.clone());
     load.prepare().await?;
     Ok(load)
   }
@@ -903,7 +943,7 @@ mod tests {
       ..Default::default()
     });
     let spec = crate::resolve_url("file:///a.js").unwrap();
-    let a_id_fut = runtime.load_module(&spec, None);
+    let a_id_fut = runtime.load_main_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
     let _ = runtime.mod_evaluate(a_id);
@@ -1363,7 +1403,7 @@ mod tests {
 
     let fut = async move {
       let spec = crate::resolve_url("file:///circular1.js").unwrap();
-      let result = runtime.load_module(&spec, None).await;
+      let result = runtime.load_main_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
       let _ = runtime.mod_evaluate(circular1_id);
@@ -1435,7 +1475,7 @@ mod tests {
 
     let fut = async move {
       let spec = crate::resolve_url("file:///redirect1.js").unwrap();
-      let result = runtime.load_module(&spec, None).await;
+      let result = runtime.load_main_module(&spec, None).await;
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
@@ -1500,7 +1540,8 @@ mod tests {
         ..Default::default()
       });
       let spec = crate::resolve_url("file:///main.js").unwrap();
-      let mut recursive_load = runtime.load_module(&spec, None).boxed_local();
+      let mut recursive_load =
+        runtime.load_main_module(&spec, None).boxed_local();
 
       let result = recursive_load.poll_unpin(&mut cx);
       assert!(result.is_pending());
@@ -1548,7 +1589,7 @@ mod tests {
         ..Default::default()
       });
       let spec = crate::resolve_url("file:///bad_import.js").unwrap();
-      let mut load_fut = runtime.load_module(&spec, None).boxed_local();
+      let mut load_fut = runtime.load_main_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(&mut cx);
       if let Poll::Ready(Err(err)) = result {
         assert_eq!(
@@ -1583,7 +1624,7 @@ mod tests {
     // The behavior should be very similar to /a.js.
     let spec = crate::resolve_url("file:///main_with_code.js").unwrap();
     let main_id_fut = runtime
-      .load_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
+      .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
       .boxed_local();
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
@@ -1621,5 +1662,81 @@ mod tests {
       Some(&vec![crate::resolve_url("file:///d.js").unwrap()])
     );
     assert_eq!(modules.get_children(d_id), Some(&vec![]));
+  }
+
+  #[test]
+  fn main_and_side_module() {
+    struct ModsLoader {}
+
+    let main_specifier = crate::resolve_url("file:///main_module.js").unwrap();
+    let side_specifier = crate::resolve_url("file:///side_module.js").unwrap();
+
+    impl ModuleLoader for ModsLoader {
+      fn resolve(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, AnyError> {
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        let module_source = match module_specifier.as_str() {
+          "file:///main_module.js" => Ok(ModuleSource {
+            module_url_specified: "file:///main_module.js".to_string(),
+            module_url_found: "file:///main_module.js".to_string(),
+            code: "if (!import.meta.main) throw Error();".to_owned(),
+          }),
+          "file:///side_module.js" => Ok(ModuleSource {
+            module_url_specified: "file:///side_module.js".to_string(),
+            module_url_found: "file:///side_module.js".to_string(),
+            code: "if (import.meta.main) throw Error();".to_owned(),
+          }),
+          _ => unreachable!(),
+        };
+        async move { module_source }.boxed()
+      }
+    }
+
+    let loader = Rc::new(ModsLoader {});
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    let main_id_fut = runtime
+      .load_main_module(&main_specifier, None)
+      .boxed_local();
+    let main_id =
+      futures::executor::block_on(main_id_fut).expect("Failed to load");
+
+    let _ = runtime.mod_evaluate(main_id);
+    futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
+
+    // Try to add another main module - it should error.
+    let side_id_fut = runtime
+      .load_main_module(&side_specifier, None)
+      .boxed_local();
+    futures::executor::block_on(side_id_fut)
+      .expect_err("Should have failed to load second main module");
+
+    // And now try to load it as a side module
+    let side_id_fut = runtime
+      .load_side_module(&side_specifier, None)
+      .boxed_local();
+    let side_id =
+      futures::executor::block_on(side_id_fut).expect("Failed to load");
+
+    let _ = runtime.mod_evaluate(side_id);
+    futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
   }
 }

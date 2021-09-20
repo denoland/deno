@@ -11,8 +11,6 @@ use crate::config_file::ConfigFile;
 use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
-use crate::import_map::ImportMap;
-use crate::import_map::ImportMapError;
 use crate::info;
 use crate::lockfile::Lockfile;
 use crate::specifier_handler::CachedModule;
@@ -51,6 +49,8 @@ use deno_core::ModuleResolutionError;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_graph::analyze_dependencies;
+use import_map::ImportMap;
+use import_map::ImportMapError;
 use log::debug;
 use regex::Regex;
 use std::collections::HashMap;
@@ -308,7 +308,7 @@ impl Module {
       specifier: cached_module.specifier,
       maybe_import_map,
       media_type,
-      text_info: SourceTextInfo::new(BytePos(0), cached_module.source),
+      text_info: SourceTextInfo::new(cached_module.source),
       source_path: cached_module.source_path,
       maybe_emit: cached_module.maybe_emit,
       maybe_emit_path: cached_module.maybe_emit_path,

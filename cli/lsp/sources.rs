@@ -13,11 +13,11 @@ use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::flags::Flags;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
-use crate::import_map::ImportMap;
 use crate::module_graph::GraphBuilder;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
+use import_map::ImportMap;
 
 use deno_ast::MediaType;
 use deno_core::error::anyhow;

@@ -69,6 +69,10 @@ interface EcdsaParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
 }
 
+interface RsaHashedImportParams extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+}
+
 interface RsaHashedKeyGenParams extends RsaKeyGenParams {
   hash: HashAlgorithmIdentifier;
 }
@@ -107,6 +111,18 @@ interface RsaHashedKeyAlgorithm extends RsaKeyAlgorithm {
 interface RsaKeyAlgorithm extends KeyAlgorithm {
   modulusLength: number;
   publicExponent: Uint8Array;
+}
+
+interface HkdfParams extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+  info: BufferSource;
+  salt: BufferSource;
+}
+
+interface Pbkdf2Params extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+  iterations: number;
+  salt: BufferSource;
 }
 
 /** The CryptoKey dictionary of the Web Crypto API represents a cryptographic key. */
@@ -158,9 +174,9 @@ interface SubtleCrypto {
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
   importKey(
-    format: "raw",
+    format: Exclude<KeyFormat, "jwk">,
     keyData: BufferSource,
-    algorithm: AlgorithmIdentifier | HmacImportParams,
+    algorithm: AlgorithmIdentifier | HmacImportParams | RsaHashedImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -175,7 +191,7 @@ interface SubtleCrypto {
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   verify(
-    algorithm: AlgorithmIdentifier | RsaPssParams,
+    algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
     key: CryptoKey,
     signature: BufferSource,
     data: BufferSource,
@@ -193,6 +209,11 @@ interface SubtleCrypto {
     algorithm: AlgorithmIdentifier | RsaOaepParams,
     key: CryptoKey,
     data: BufferSource,
+  ): Promise<ArrayBuffer>;
+  deriveBits(
+    algorithm: AlgorithmIdentifier | HkdfParams | Pbkdf2Params,
+    baseKey: CryptoKey,
+    length: number,
   ): Promise<ArrayBuffer>;
 }
 

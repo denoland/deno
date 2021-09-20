@@ -6,6 +6,76 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.14.0 / 2021.09.14
+
+- BREAKING(unstable): Fix casing in FfiPermissionDescriptor (#11659)
+- BREAKING(unstable): Remove Deno.Signals enum, Deno.signals.* (#11909)
+- feat(cli): Support Basic authentication in DENO_AUTH_TOKENS (#11910)
+- feat(cli): Update to TypeScript 4.4 (#11678)
+- feat(cli): add --ignore flag to test command (#11712)
+- feat(cli): close test worker once all tests complete (#11727)
+- feat(core): facilitate op-disabling middleware (#11858)
+- feat(ext/crypto): AES key generation (#11869)
+- feat(ext/crypto): export RSA keys as pkcs#8 (#11880)
+- feat(ext/crypto): generate ECDH keys (#11870)
+- feat(ext/crypto): implement HKDF operations (#11865)
+- feat(ext/crypto): implement encrypt, decrypt & generateKey for RSA-OAEP
+  (#11654)
+- feat(ext/crypto): implement importKey and deriveBits for PBKDF2 (#11642)
+- feat(ext/crypto): import RSA pkcs#8 keys (#11891)
+- feat(ext/crypto): support JWK export for HMAC (#11864)
+- feat(ext/crypto): support JWK import for HMAC (#11716)
+- feat(ext/crypto): verify ECDSA signatures (#11739)
+- feat(extensions/console): right align numeric columns in table (#11748)
+- feat(fetch): mTLS client certificates for fetch() (#11721)
+- feat(fmt): add basic JS doc formatting (#11902)
+- feat(fmt): add support for configuration file (#11944)
+- feat(lint): add support for config file and CLI flags for rules (#11776)
+- feat(lsp): ignore specific lint for entire file (#12023)
+- feat(unstable): Add file locking APIs (#11746)
+- feat(unstable): Support file URLs in Deno.dlopen() (#11658)
+- feat(unstable): allow specifing gid and uid for subprocess (#11586)
+- feat(workers): Make the `Deno` namespace configurable and unfrozen (#11888)
+- feat: ArrayBuffer in structured clone transfer (#11840)
+- feat: add URLPattern API (#11941)
+- feat: add option flags to 'deno fmt' (#12060)
+- feat: stabilise Deno.upgradeWebSocket (#12024)
+- fix(cli): better handling of source maps (#11954)
+- fix(cli): dispatch unload event on watch drop (#11696)
+- fix(cli): retain path based test mode inference (#11878)
+- fix(cli): use updated names in deno info help text (#11989)
+- fix(doc): fix rustdoc bare_urls warning (#11921)
+- fix(ext/crypto): KeyAlgorithm typings for supported algorithms (#11738)
+- fix(ext/crypto): add HkdfParams and Pkdf2Params types (#11991)
+- fix(ext/fetch): Properly cancel upload stream when aborting (#11966)
+- fix(ext/http): resource leak if request body is not consumed (#11955)
+- fix(ext/http): websocket upgrade header check (#11830)
+- fix(ext/web): Format terminal DOMExceptions properly (#11834)
+- fix(ext/web): Preserve stack traces for DOMExceptions (#11959)
+- fix(lsp): correctly parse registry patterns (#12063)
+- fix(lsp): support data urls in `deno.importMap` option (#11397)
+- fix(runtime): return error instead of panicking for windows signals (#11940)
+- fix(test): propagate join errors in deno test (#11953)
+- fix(typings): fix property name in DiagnosticMessageChain interface (#11821)
+- fix(workers): don't drop messages from workers that have already been closed
+  (#11913)
+- fix: FileReader onevent attributes don't conform to spec (#11908)
+- fix: FileReader.readAsText compat (#11814)
+- fix: Query string percent-encoded in import map (#11976)
+- fix: a `Request` whose URL is a revoked blob URL should still fetch (#11947)
+- fix: bring back Deno.Signal to unstable props (#11945)
+- fix: change assertion in httpServerIncompleteMessage test (#12052)
+- fix: exit process on panic in a tokio task (#11942)
+- fix: move unstable declarations to deno.unstable (#11876)
+- fix: permission prompt stuffing (#11931)
+- fix: permission prompt stuffing on Windows (#11969)
+- fix: remove windows-only panic when calling `Deno.kill` (#11948)
+- fix: worker_message_before_close was flaky (#12019)
+- perf(ext/http): optimize auto cleanup of request resource (#11978)
+
+Release notes for std version 0.107.0:
+https://github.com/denoland/deno_std/releases/tag/0.107.0
+
 ### 1.13.2 / 2021.08.23
 
 - fix(cli/flags): require a non zero usize for concurrent jobs (#11802)
@@ -21,6 +91,9 @@ https://github.com/denoland/deno_install
 - perf(ext/url): use DOMString instead of USVString as webidl converter for URL
   parsing (#11775)
 - perf(url): build with opt-level 3 (#11779)
+
+Release notes for std version 0.106.0:
+https://github.com/denoland/deno_std/releases/tag/0.106.0
 
 ### 1.13.1 / 2021.08.16
 
@@ -51,6 +124,9 @@ https://github.com/denoland/deno_install
 - perf: improve localStorage throughput (#11709)
 - perf(ext/http): faster req_url string assembly (#11711)
 - perf(wpt/crypto): optimize num-bigint-dig for debug builds (#11681)
+
+Release notes for std version 0.105.0:
+https://github.com/denoland/deno_std/releases/tag/0.105.0
 
 ### 1.13.0 / 2021.08.10
 
