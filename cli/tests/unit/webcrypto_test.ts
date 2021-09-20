@@ -394,6 +394,12 @@ const pkcs8TestVectors = [
     pem: "cli/tests/testdata/webcrypto/id_rsassaPss_default.pem",
     hash: "SHA-1",
   },
+  // id-RSASSA-PSS (default hash)
+  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_saltlen:30 -out rsaPss_saltLen_30.pem`
+  {
+    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_saltLen_30.pem",
+    hash: "SHA-1",
+  },
 ];
 
 unitTest({ perms: { read: true } }, async function importRsaPkcs8() {
