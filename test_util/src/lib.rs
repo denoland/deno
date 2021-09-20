@@ -1656,10 +1656,13 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
 }
 
 pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Box<dyn pty::Pty>)) {
+  if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
+    eprintln!("Ignoring non-tty environment.");
+    return;
+  }
+
   let deno_dir = new_deno_dir();
   let mut env_vars = std::collections::HashMap::new();
-  // todo(dsherret): remove, this is temporary for testing console alloc
-  env_vars.insert("DENO_ALLOC_CONSOLE".to_string(), "1".to_string());
   env_vars.insert("NO_COLOR".to_string(), "1".to_string());
   env_vars.insert(
     "DENO_DIR".to_string(),

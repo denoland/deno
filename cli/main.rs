@@ -1254,15 +1254,6 @@ pub fn main() {
   setup_exit_process_panic_hook();
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
-
-  // todo(dsherret): remove, temporary for testing
-  #[cfg(windows)]
-  unsafe {
-    if std::env::var("DENO_ALLOC_CONSOLE").ok().is_some() {
-      winapi::um::consoleapi::AllocConsole();
-    }
-  }
-
   unix_util::raise_fd_limit();
 
   let args: Vec<String> = env::args().collect();
