@@ -492,7 +492,7 @@ async fn install_command(
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions, None);
   // First, fetch and compile the module; this step ensures that the module exists.
-  worker.preload_module(&main_module).await?;
+  worker.preload_module(&main_module, true).await?;
   tools::installer::install(
     flags,
     &install_flags.module_url,
@@ -604,7 +604,7 @@ async fn eval_command(
   // to allow module access by TS compiler.
   program_state.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
-  worker.execute_module(&main_module).await?;
+  worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
@@ -862,7 +862,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   program_state.file_fetcher.insert_cached(source_file);
 
   debug!("main_module {}", main_module);
-  worker.execute_module(&main_module).await?;
+  worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
@@ -949,7 +949,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       &mut self,
       main_module: &ModuleSpecifier,
     ) -> Result<(), AnyError> {
-      self.worker.execute_module(main_module).await?;
+      self.worker.execute_main_module(main_module).await?;
       self.worker.execute_script(
         &located_script_name!(),
         "window.dispatchEvent(new Event('load'))",
@@ -1044,7 +1044,7 @@ async fn run_command(
     };
 
   debug!("main_module {}", main_module);
-  worker.execute_module(&main_module).await?;
+  worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",

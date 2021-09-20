@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::diagnostics::Diagnostics;
+use crate::fmt_errors::format_file_name;
 use crate::program_state::ProgramState;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
@@ -16,6 +17,7 @@ use std::sync::Arc;
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_sync(rt, "op_apply_source_map", op_apply_source_map);
   super::reg_sync(rt, "op_format_diagnostic", op_format_diagnostic);
+  super::reg_sync(rt, "op_format_file_name", op_format_file_name);
 }
 
 #[derive(Deserialize)]
@@ -59,4 +61,12 @@ fn op_format_diagnostic(
 ) -> Result<Value, AnyError> {
   let diagnostic: Diagnostics = serde_json::from_value(args)?;
   Ok(json!(diagnostic.to_string()))
+}
+
+fn op_format_file_name(
+  _state: &mut OpState,
+  file_name: String,
+  _: (),
+) -> Result<String, AnyError> {
+  Ok(format_file_name(&file_name))
 }

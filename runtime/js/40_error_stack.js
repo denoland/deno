@@ -8,6 +8,10 @@
     return core.opSync("op_format_diagnostic", diagnostics);
   }
 
+  function opFormatFileName(location) {
+    return core.opSync("op_format_file_name", location);
+  }
+
   function opApplySourceMap(location) {
     const res = core.opSync("op_apply_source_map", location);
     return {
@@ -18,7 +22,8 @@
   }
 
   window.__bootstrap.errorStack = {
-    opApplySourceMap,
     opFormatDiagnostics,
+    opFormatFileName,
+    opApplySourceMap,
   };
 })(this);

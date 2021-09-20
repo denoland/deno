@@ -47,7 +47,6 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
-use uuid::Uuid;
 
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, PartialEq)]
@@ -256,25 +255,6 @@ async fn test_specifier(
   shuffle: Option<u64>,
   channel: Sender<TestEvent>,
 ) -> Result<(), AnyError> {
-  let test_specifier =
-    deno_core::resolve_path(&format!("{}$deno$test.js", Uuid::new_v4()))?;
-
-  let mut test_source = String::new();
-  if mode != TestMode::Documentation {
-    test_source.push_str(&format!("import \"{}\";\n", specifier));
-  }
-
-  let test_file = File {
-    local: test_specifier.to_file_path().unwrap(),
-    maybe_types: None,
-    media_type: MediaType::JavaScript,
-    source: Arc::new(test_source),
-    specifier: test_specifier.clone(),
-    maybe_headers: None,
-  };
-
-  program_state.file_fetcher.insert_cached(test_file);
-
   let init_ops = |js_runtime: &mut JsRuntime| {
     ops::testing::init(js_runtime);
 
@@ -306,7 +286,12 @@ async fn test_specifier(
     None
   };
 
-  worker.execute_module(&test_specifier).await?;
+  // We only execute the specifier as a module if it is tagged with TestMode::Module or
+  // TestMode::Both.
+  if mode != TestMode::Documentation {
+    // We execute the module module as a side module so that import.meta.main is not set.
+    worker.execute_side_module(&specifier).await?;
+  }
 
   worker.js_runtime.execute_script(
     &located_script_name!(),
