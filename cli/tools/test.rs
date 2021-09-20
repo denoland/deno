@@ -76,10 +76,37 @@ pub enum TestOutput {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum TestResult {
+pub struct TestResult {
+  pub status: TestResultStatus,
+  pub duration: u64,
+  pub steps: Vec<TestStepResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TestResultStatus {
   Ok,
   Ignored,
   Failed(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestStepResult {
+  pub name: String,
+  pub status: TestStepResultStatus,
+  pub steps: Vec<TestStepResult>,
+  pub duration: u64,
+  pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TestStepResultStatus {
+  Ok,
+  Ignored,
+  Failed,
+  Pending,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -97,7 +124,7 @@ pub enum TestEvent {
   Plan(TestPlan),
   Wait(TestDescription),
   Output(TestOutput),
-  Result(TestDescription, TestResult, u64),
+  Result(TestDescription, TestResult),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -141,7 +168,6 @@ trait TestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
   );
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration);
 }
@@ -184,23 +210,69 @@ impl TestReporter for PrettyTestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
   ) {
+    let mut sb = IndentableStringBuilder::new();
     if self.concurrent {
-      print!("test {} ...", description.name);
+      push_description(&mut sb, &description.name);
     }
 
-    let status = match result {
-      TestResult::Ok => colors::green("ok").to_string(),
-      TestResult::Ignored => colors::yellow("ignored").to_string(),
-      TestResult::Failed(_) => colors::red("FAILED").to_string(),
-    };
+    push_test_step_results(&mut sb, &result.steps);
 
-    println!(
-      " {} {}",
-      status,
-      colors::gray(format!("({}ms)", elapsed)).to_string()
-    );
+    let status = match result.status {
+      TestResultStatus::Ok => colors::green("ok").to_string(),
+      TestResultStatus::Ignored => colors::yellow("ignored").to_string(),
+      TestResultStatus::Failed(_) => colors::red("FAILED").to_string(),
+    };
+    sb.push_str(&status);
+    sb.push_str(" ");
+    push_duration(&mut sb, result.duration);
+    sb.newline();
+
+    print!("{}", sb.into_string());
+
+    fn push_test_step_results(sb: &mut IndentableStringBuilder, steps: &[TestStepResult]) {
+      if steps.is_empty() {
+        sb.push_str(" ");
+      } else {
+        for step in steps.iter() {
+          sb.newline();
+          sb.with_indent(|sb| {
+            push_test_step_result(sb, step);
+          });
+        }
+        sb.newline();
+      }
+    }
+
+    fn push_test_step_result(sb: &mut IndentableStringBuilder, step: &TestStepResult) {
+      push_description(sb, &step.name);
+      push_test_step_results(sb, &step.steps);
+      let status = match step.status {
+        TestStepResultStatus::Ok => colors::green("ok").to_string(),
+        TestStepResultStatus::Ignored => colors::yellow("ignored").to_string(),
+        TestStepResultStatus::Pending => colors::gray("pending").to_string(),
+        TestStepResultStatus::Failed => colors::red("FAILED").to_string(),
+      };
+      sb.push_str(&status);
+      sb.push_str(" ");
+      push_duration(sb, step.duration);
+      if let Some(error) = &step.error {
+        sb.newline();
+        sb.with_indent(|sb| {
+          sb.push_str(error);
+        })
+      }
+    }
+
+    fn push_description(sb: &mut IndentableStringBuilder, description: &str) {
+      sb.push_str("test ");
+      sb.push_str(description);
+      sb.push_str(" ...");
+    }
+
+    fn push_duration(sb: &mut IndentableStringBuilder, duration_ms: u64) {
+      sb.push_str(&colors::gray(format!("({}ms)", duration_ms)).to_string())
+    }
   }
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
@@ -234,6 +306,48 @@ impl TestReporter for PrettyTestReporter {
       summary.filtered_out,
       colors::gray(format!("({}ms)", elapsed.as_millis())),
     );
+  }
+}
+
+struct IndentableStringBuilder {
+  output: String,
+  indent_level: usize,
+  is_start_of_line: bool,
+}
+
+impl IndentableStringBuilder {
+  pub fn new() -> Self {
+    Self { output: String::new(), indent_level: 0, is_start_of_line: true, }
+  }
+
+  pub fn into_string(self) -> String {
+    self.output
+  }
+
+  pub fn push_str(&mut self, text: &str) {
+    for (i, line) in text.lines().enumerate() {
+      if i > 0 {
+        self.newline();
+      }
+
+      if self.is_start_of_line && self.indent_level > 0 {
+        self.output.push_str(&"  ".repeat(self.indent_level));
+      }
+
+      self.output.push_str(line);
+      self.is_start_of_line = false;
+    }
+  }
+
+  pub fn newline(&mut self) {
+    self.output.push_str("\n");
+    self.is_start_of_line = true;
+  }
+
+  pub fn with_indent(&mut self, action: impl FnOnce(&mut IndentableStringBuilder)) {
+    self.indent_level += 1;
+    action(self);
+    self.indent_level -= 1;
   }
 }
 
@@ -651,23 +765,21 @@ async fn test_specifiers(
             reporter.report_output(&output);
           }
 
-          TestEvent::Result(description, result, elapsed) => {
-            match &result {
-              TestResult::Ok => {
+          TestEvent::Result(description, result) => {
+            match &result.status {
+              TestResultStatus::Ok => {
                 summary.passed += 1;
               }
-
-              TestResult::Ignored => {
+              TestResultStatus::Ignored => {
                 summary.ignored += 1;
               }
-
-              TestResult::Failed(error) => {
+              TestResultStatus::Failed(error) => {
                 summary.failed += 1;
                 summary.failures.push((description.clone(), error.clone()));
               }
             }
 
-            reporter.report_result(&description, &result, elapsed);
+            reporter.report_result(&description, &result);
           }
         }
 

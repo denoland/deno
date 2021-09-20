@@ -180,3 +180,9 @@ itest!(shuffle_with_seed {
   exit_code: 0,
   output: "test/shuffle.out",
 });
+
+itest!(steps_passing_steps {
+  args: "test test/steps/passing_steps.ts",
+  exit_code: 0,
+  output: "test/steps/passing_steps.out",
+});

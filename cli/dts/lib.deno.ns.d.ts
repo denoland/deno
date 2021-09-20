@@ -113,13 +113,30 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
-  export interface TestDefinition {
-    fn: () => void | Promise<void>;
+  export class Tester {
+    private constructor();
+    /** Run a sub step of the parent test with a given name. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects. If the test was ignored, the promise
+     * returns `false`.
+     */
+    step(t: TestStepDefinition): Promise<boolean>;
+
+    /** Run a sub step of the parent test with a given name. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects. If the test was ignored, the promise
+     * returns `false`.
+     */
+    step(
+      name: string,
+      fn: (t: Tester) => void | Promise<void>,
+    ): Promise<boolean>;
+  }
+
+  export interface TestStepDefinition {
+    fn: (t: Tester) => void | Promise<void>;
     name: string;
     ignore?: boolean;
-    /** If at least one test has `only` set to true, only run tests that have
-     * `only` set to true and fail the test suite. */
-    only?: boolean;
     /** Check that the number of async completed ops after the test is the same
      * as number of dispatched ops. Defaults to true. */
     sanitizeOps?: boolean;
@@ -127,10 +144,15 @@ declare namespace Deno {
      * after the test has exactly the same contents as before the test. Defaults
      * to true. */
     sanitizeResources?: boolean;
-
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
+  }
+
+  export interface TestDefinition extends TestStepDefinition {
+    /** If at least one test has `only` set to true, only run tests that have
+     * `only` set to true and fail the test suite. */
+    only?: boolean;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -184,7 +206,10 @@ declare namespace Deno {
    * });
    * ```
    */
-  export function test(name: string, fn: () => void | Promise<void>): void;
+  export function test(
+    name: string,
+    fn: (t: Tester) => void | Promise<void>,
+  ): void;
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
