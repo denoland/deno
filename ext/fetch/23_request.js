@@ -220,10 +220,6 @@
     constructor(input, init = {}) {
       const prefix = "Failed to construct 'Request'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      input = webidl.converters["RequestInfo"](input, {
-        prefix,
-        context: "Argument 1",
-      });
       init = webidl.converters["RequestInit"](init, {
         prefix,
         context: "Argument 2",
@@ -243,7 +239,10 @@
         const parsedURL = new URL(input, baseURL);
         request = newInnerRequest("GET", parsedURL.href, [], null);
       } else { // 6.
-        if (!(input instanceof Request)) throw new TypeError("Unreachable");
+        input = webidl.converters["Request"](input, {
+          prefix,
+          context: "Argument 1",
+        });
         request = input[_request];
         signal = input[_signal];
       }
@@ -424,15 +423,6 @@
     "Request",
     Request,
   );
-  webidl.converters["RequestInfo"] = (V, opts) => {
-    // Union for (Request or USVString)
-    if (typeof V == "object") {
-      if (V instanceof Request) {
-        return webidl.converters["Request"](V, opts);
-      }
-    }
-    return webidl.converters["USVString"](V, opts);
-  };
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
     "RequestRedirect",
     [
