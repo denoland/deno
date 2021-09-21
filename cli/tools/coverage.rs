@@ -6,8 +6,6 @@ use crate::fs_util::collect_files;
 use crate::module_graph::TypeLib;
 use crate::program_state::ProgramState;
 use crate::source_maps::SourceMapGetter;
-use deno_ast::swc::common::Span;
-use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
