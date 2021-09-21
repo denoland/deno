@@ -1261,6 +1261,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API should be tested first.
    *
+   * @deprecated Use `Deno.File.prototype.lock` instead.
    * Acquire an advisory file-system lock for the provided file. `exclusive`
    * defaults to `false`.
    */
@@ -1268,6 +1269,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API should be tested first.
    *
+   * @deprecated Use `Deno.File.prototype.lockSync` instead.
    * Acquire an advisory file-system lock for the provided file. `exclusive`
    * defaults to `false`.
    */
@@ -1275,12 +1277,14 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API should be tested first.
    *
+   * @deprecated Use `Deno.File.prototype.unlock` instead.
    * Release an advisory file-system lock for the provided file.
    */
   export function funlock(rid: number): Promise<void>;
 
   /** **UNSTABLE**: New API should be tested first.
    *
+   * @deprecated Use `Deno.File.prototype.unlockSync` instead.
    * Release an advisory file-system lock for the provided file.
    */
   export function funlockSync(rid: number): void;
