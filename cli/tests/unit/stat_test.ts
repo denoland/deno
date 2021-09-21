@@ -4,6 +4,7 @@ import {
   assertEquals,
   assertThrows,
   assertThrowsAsync,
+  assertRejects,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
@@ -233,6 +234,30 @@ unitTest({ perms: { read: true } }, async function statNotFound() {
   );
 });
 
+Deno.test({
+  name: "statSyncSymlinkToDotDotPermissionDenied",
+  fn() {
+    assertThrows(() => {
+      Deno.statSync("cli/tests/testdata/symlink_to_dot_dot")
+    }, Deno.errors.PermissionDenied);
+  },
+  permissions: {
+    read: ["cli/tests/unit/testdata/symlink_to_dot_dot"]
+  },
+});
+
+Deno.test({
+  name: "statSymlinkToDotDotPermissionDenied",
+  async fn() {
+    await assertRejects(async () => {
+        await Deno.stat("cli/tests/testdata/symlink_to_dot_dot");
+    }, Deno.errors.PermissionDenied);
+  },
+  permissions: {
+    read: ["cli/tests/unit/testdata/symlink_to_dot_dot"]
+  },
+});
+
 unitTest({ perms: { read: true } }, async function lstatSuccess() {
   const readmeInfo = await Deno.lstat("README.md");
   assert(readmeInfo.isFile);
@@ -259,6 +284,28 @@ unitTest({ perms: { read: true } }, async function lstatSuccess() {
   const coreInfoByUrl = await Deno.lstat(pathToAbsoluteFileUrl("core"));
   assert(coreInfoByUrl.isDirectory);
   assert(!coreInfoByUrl.isSymlink);
+});
+
+Deno.test({
+  name: "lstatSyncSymlinkToDotDot",
+  fn() {
+    const info = Deno.lstatSync("cli/tests/unit/testdata/symlink_to_dot_dot");
+    assert(info.isSymlink);
+  },
+  permissions: {
+    read: ["cli/tests/unit/testdata/symlink_to_dot_dot"]
+  },
+});
+
+Deno.test({
+  name: "lstatSyncSymlinkToDotDot",
+  async fn() {
+    const info = await Deno.lstat("cli/tests/unit/testdata/symlink_to_dot_dot");
+    assert(info.isSymlink);
+  },
+  permissions: {
+    read: ["cli/tests/unit/testdata/symlink_to_dot_dot"]
+  },
 });
 
 unitTest({ perms: { read: false } }, async function lstatPerm() {

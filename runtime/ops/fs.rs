@@ -959,7 +959,15 @@ fn op_stat_sync(
 ) -> Result<FsStat, AnyError> {
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
-  state.borrow_mut::<Permissions>().read.check(&path)?;
+  if lstat {
+    state.borrow_mut::<Permissions>().read.check(&path)?;
+  } else {
+    state
+      .borrow_mut::<Permissions>()
+      .read
+      .check_canonical(&path)?;
+  }
+
   debug!("op_stat_sync {} {}", path.display(), lstat);
   let metadata = if lstat {
     std::fs::symlink_metadata(&path)?
@@ -979,7 +987,14 @@ async fn op_stat_async(
 
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<Permissions>().read.check(&path)?;
+    if lstat {
+      state.borrow_mut::<Permissions>().read.check(&path)?;
+    } else {
+      state
+        .borrow_mut::<Permissions>()
+        .read
+        .check_canonical(&path)?;
+    }
   }
 
   tokio::task::spawn_blocking(move || {
