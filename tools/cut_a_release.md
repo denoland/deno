@@ -41,33 +41,39 @@ cut.**
 
 6. Once all crates are published merge the PR.
 
-7. Run `./tools/release/03_bump_cli_version.ts` to bump the CLI version.
+7. Update your main branch and checkout another branch (e.g. `release_#.#.#`).
 
-8. Use the output of the above command to update `Releases.md`
+8. Run `./tools/release/03_bump_cli_version.ts` to bump the CLI version.
 
-9. Create a PR for these changes.
+9. If you are doing a patch release, answer `y` to the _Increment patch?_
+   prompt.
 
-10. Make sure CI pipeline passes.
+10. Use the output of the above command to update `Releases.md` (removing
+    `refactor`, `test` and `doc` commits)
 
-11. Publish `cli` crate to `crates.io`
+11. Create a PR for these changes.
 
-12. Merge the PR.
+12. Make sure CI pipeline passes.
 
-13. Create a tag with the version number (with `v` prefix).
+13. Publish `cli` crate to `crates.io`
 
-14. Wait for CI pipeline on the created tag branch to pass.
+14. Merge the PR.
+
+15. Create a tag with the version number (with `v` prefix).
+
+16. Wait for CI pipeline on the created tag branch to pass.
 
     The CI pipeline will create a release draft on GitHub
     (https://github.com/denoland/deno/releases).
 
-15. Upload Apple M1 build to the release draft & to dl.deno.land.
+17. Upload Apple M1 build to the release draft & to dl.deno.land.
 
-16. Publish the release on Github
+18. Publish the release on Github
 
-17. Update the Deno version on the website by updating
+19. Update the Deno version on the website by updating
     https://github.com/denoland/deno_website2/blob/main/versions.json.
 
-18. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
+20. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
     must match the CLI tag; you don't need to create dedicated commit for that
     purpose, it's enough to tag the latest commit in that repo.
 
