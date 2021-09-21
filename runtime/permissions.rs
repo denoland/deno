@@ -240,23 +240,14 @@ impl UnaryPermission<ReadDescriptor> {
           "read access to \"{}\"",
           display_path.display()
         )) {
-          self
-            .granted_list
-            .retain(|path| !path.0.starts_with(&resolved_path));
           self.granted_list.insert(ReadDescriptor(resolved_path));
           PermissionState::Granted
         } else {
-          self
-            .denied_list
-            .retain(|path| !resolved_path.starts_with(&path.0));
           self.denied_list.insert(ReadDescriptor(resolved_path));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else if state == PermissionState::Granted {
-        self
-          .granted_list
-          .retain(|path| !path.0.starts_with(&resolved_path));
         self.granted_list.insert(ReadDescriptor(resolved_path));
         PermissionState::Granted
       } else {
@@ -374,23 +365,14 @@ impl UnaryPermission<WriteDescriptor> {
           "write access to \"{}\"",
           display_path.display()
         )) {
-          self
-            .granted_list
-            .retain(|path| !path.0.starts_with(&resolved_path));
           self.granted_list.insert(WriteDescriptor(resolved_path));
           PermissionState::Granted
         } else {
-          self
-            .denied_list
-            .retain(|path| !resolved_path.starts_with(&path.0));
           self.denied_list.insert(WriteDescriptor(resolved_path));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else if state == PermissionState::Granted {
-        self
-          .granted_list
-          .retain(|path| !path.0.starts_with(&resolved_path));
         self.granted_list.insert(WriteDescriptor(resolved_path));
         PermissionState::Granted
       } else {
@@ -492,23 +474,14 @@ impl UnaryPermission<NetDescriptor> {
       let host = NetDescriptor::new(&host);
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("network access to \"{}\"", host)) {
-          if host.1.is_none() {
-            self.granted_list.retain(|h| h.0 != host.0);
-          }
           self.granted_list.insert(host);
           PermissionState::Granted
         } else {
-          if host.1.is_some() {
-            self.denied_list.remove(&host);
-          }
           self.denied_list.insert(host);
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else if state == PermissionState::Granted {
-        if host.1.is_none() {
-          self.granted_list.retain(|h| h.0 != host.0);
-        }
         self.granted_list.insert(host);
         PermissionState::Granted
       } else {
@@ -536,14 +509,14 @@ impl UnaryPermission<NetDescriptor> {
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
     if let Some(host) = host {
-      self
-        .granted_list
-        .remove(&NetDescriptor(host.0.as_ref().to_string(), None));
       if host.1.is_some() {
         self
           .granted_list
           .remove(&NetDescriptor(host.0.as_ref().to_string(), host.1));
       }
+      self
+        .granted_list
+        .remove(&NetDescriptor(host.0.as_ref().to_string(), None));
     } else {
       self.granted_list.clear();
     }
