@@ -505,9 +505,13 @@ fn op_chdir(
   directory: String,
   _: (),
 ) -> Result<(), AnyError> {
-  let d = PathBuf::from(&directory);
-  state.borrow_mut::<Permissions>().read.check(&d)?;
-  set_current_dir(&d)?;
+  let path = PathBuf::from(&directory);
+
+  // Since set_current_dir resolves symbol links we check permissions against the canonical path to
+  // prevent escapes.
+  let canonical_path = canonicalize_path(&path)?;
+  state.borrow_mut::<Permissions>().read.check(&canonical_path)?;
+  set_current_dir(&path)?;
   Ok(())
 }
 
