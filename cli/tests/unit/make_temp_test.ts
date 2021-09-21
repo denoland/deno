@@ -81,6 +81,34 @@ unitTest(
   },
 );
 
+Deno.test({
+  name: "makeTempDirSyncSymlinkToDotDot",
+  fn() {
+    assertThrows(() => {
+      Deno.makeTempDirSync({
+        dir: "cli/tests/unit/testdata/symlink_to_dot_dot",
+      });
+    }, Deno.errors.PermissionDenied);
+  },
+  permissions: {
+    write: ["cli/tests/unit/testdata"],
+  },
+});
+
+Deno.test({
+  name: "makeTempDirSymlinkToDotDot",
+  async fn() {
+    await assertThrowsAsync(async () => {
+      await Deno.makeTempDir({
+        dir: "cli/tests/unit/testdata/symlink_to_dot_dot",
+      });
+    }, Deno.errors.PermissionDenied);
+  },
+  permissions: {
+    write: ["cli/tests/unit/testdata"],
+  },
+});
+
 unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess() {
   const file1 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
   const file2 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
@@ -156,3 +184,31 @@ unitTest(
     }
   },
 );
+
+Deno.test({
+  name: "makeTempFileSyncSymlinkToDotDot",
+  fn() {
+    assertThrows(() => {
+      Deno.makeTempFileSync({
+        dir: "cli/tests/unit/testdata/symlink_to_dot_dot",
+      });
+    }, Deno.errors.PermissionDenied);
+  },
+  permissions: {
+    write: ["cli/tests/unit/testdata"],
+  },
+});
+
+Deno.test({
+  name: "makeTempDirSymlinkToDotDot",
+  async fn() {
+    await assertThrowsAsync(async () => {
+      await Deno.makeTempFile({
+        dir: "cli/tests/unit/testdata/symlink_to_dot_dot",
+      });
+    }, Deno.errors.PermissionDenied);
+  },
+  permissions: {
+    write: ["cli/tests/unit/testdata"],
+  },
+});

@@ -1561,7 +1561,7 @@ fn op_make_temp_dir_sync(
   state
     .borrow_mut::<Permissions>()
     .write
-    .check(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+    .check_canonical(&dir.clone().unwrap_or_else(temp_dir))?;
 
   // TODO(piscisaureus): use byte vector for paths, not a string.
   // See https://github.com/denoland/deno/issues/627.
@@ -1591,7 +1591,7 @@ async fn op_make_temp_dir_async(
     state
       .borrow_mut::<Permissions>()
       .write
-      .check(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+      .check_canonical(&dir.clone().unwrap_or_else(temp_dir))?;
   }
   tokio::task::spawn_blocking(move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
@@ -1624,7 +1624,7 @@ fn op_make_temp_file_sync(
   state
     .borrow_mut::<Permissions>()
     .write
-    .check(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+    .check_canonical(&dir.clone().unwrap_or_else(temp_dir))?;
 
   // TODO(piscisaureus): use byte vector for paths, not a string.
   // See https://github.com/denoland/deno/issues/627.
@@ -1654,7 +1654,7 @@ async fn op_make_temp_file_async(
     state
       .borrow_mut::<Permissions>()
       .write
-      .check(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+      .check_canonical(&dir.clone().unwrap_or_else(temp_dir))?;
   }
   tokio::task::spawn_blocking(move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
