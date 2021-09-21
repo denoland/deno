@@ -264,12 +264,6 @@ itest!(_079_location_authentication {
   output: "079_location_authentication.ts.out",
 });
 
-itest!(_080_deno_emit_permissions {
-  args: "run --unstable 080_deno_emit_permissions.ts",
-  output: "080_deno_emit_permissions.ts.out",
-  exit_code: 1,
-});
-
 itest!(_081_location_relative_fetch_redirect {
     args: "run --location http://127.0.0.1:4546/ --allow-net 081_location_relative_fetch_redirect.ts",
     output: "081_location_relative_fetch_redirect.ts.out",
@@ -724,21 +718,6 @@ itest!(no_check_decorators {
 itest!(runtime_decorators {
   args: "run --quiet --reload --no-check runtime_decorators.ts",
   output: "runtime_decorators.ts.out",
-});
-
-itest!(lib_dom_asynciterable {
-  args: "run --quiet --unstable --reload lib_dom_asynciterable.ts",
-  output: "lib_dom_asynciterable.ts.out",
-});
-
-itest!(lib_ref {
-  args: "run --quiet --unstable --reload lib_ref.ts",
-  output: "lib_ref.ts.out",
-});
-
-itest!(lib_runtime_api {
-  args: "run --quiet --unstable --reload lib_runtime_api.ts",
-  output: "lib_runtime_api.ts.out",
 });
 
 itest!(seed_random {

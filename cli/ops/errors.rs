@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::diagnostics::Diagnostics;
 use crate::fmt_errors::format_file_name;
 use crate::program_state::ProgramState;
 use crate::source_maps::get_orig_position;
@@ -16,7 +15,6 @@ use std::sync::Arc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_sync(rt, "op_apply_source_map", op_apply_source_map);
-  super::reg_sync(rt, "op_format_diagnostic", op_format_diagnostic);
   super::reg_sync(rt, "op_format_file_name", op_format_file_name);
 }
 
@@ -52,15 +50,6 @@ fn op_apply_source_map(
     "lineNumber": orig_line_number as u32,
     "columnNumber": orig_column_number as u32,
   }))
-}
-
-fn op_format_diagnostic(
-  _state: &mut OpState,
-  args: Value,
-  _: (),
-) -> Result<Value, AnyError> {
-  let diagnostic: Diagnostics = serde_json::from_value(args)?;
-  Ok(json!(diagnostic.to_string()))
 }
 
 fn op_format_file_name(

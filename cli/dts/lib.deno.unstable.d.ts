@@ -142,67 +142,6 @@ declare namespace Deno {
     symbols: S,
   ): DynamicLibrary<S>;
 
-  /** The log category for a diagnostic message. */
-  export enum DiagnosticCategory {
-    Warning = 0,
-    Error = 1,
-    Suggestion = 2,
-    Message = 3,
-  }
-
-  export interface DiagnosticMessageChain {
-    messageText: string;
-    category: DiagnosticCategory;
-    code: number;
-    next?: DiagnosticMessageChain[];
-  }
-
-  export interface Diagnostic {
-    /** A string message summarizing the diagnostic. */
-    messageText?: string;
-    /** An ordered array of further diagnostics. */
-    messageChain?: DiagnosticMessageChain;
-    /** Information related to the diagnostic. This is present when there is a
-     * suggestion or other additional diagnostic information */
-    relatedInformation?: Diagnostic[];
-    /** The text of the source line related to the diagnostic. */
-    sourceLine?: string;
-    source?: string;
-    /** The start position of the error. Zero based index. */
-    start?: {
-      line: number;
-      character: number;
-    };
-    /** The end position of the error.  Zero based index. */
-    end?: {
-      line: number;
-      character: number;
-    };
-    /** The filename of the resource related to the diagnostic message. */
-    fileName?: string;
-    /** The category of the diagnostic. */
-    category: DiagnosticCategory;
-    /** A number identifier. */
-    code: number;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Format an array of diagnostic items and return them as a single string in a
-   * user friendly format. If there are no diagnostics then it will return an
-   * empty string.
-   *
-   * ```ts
-   * const { diagnostics } = await Deno.emit("file_with_compile_issues.ts");
-   * console.table(diagnostics);  // Prints raw diagnostic data
-   * console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
-   * console.log(Deno.formatDiagnostics([]));  // An empty string
-   * ```
-   *
-   * @param diagnostics An array of diagnostic items to format
-   */
-  export function formatDiagnostics(diagnostics: Diagnostic[]): string;
-
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
   interface Location {
     /** The full url for the module, e.g. `file://some/file.ts` or
