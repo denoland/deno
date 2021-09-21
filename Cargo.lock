@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "deno_core",
  "deno_tls",
