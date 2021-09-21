@@ -1,4 +1,4 @@
-SF:[WILDCARD]/testdata/coverage/complex.ts
+SF:[WILDCARD]complex.ts
 FN:18,dependency
 FN:33,complex
 FN:47,unused
