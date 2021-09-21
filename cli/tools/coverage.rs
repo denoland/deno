@@ -186,6 +186,7 @@ impl CoverageCollector {
 
 enum CoverageReporterKind {
   Pretty,
+  Lcov,
 }
 
 fn create_reporter(
@@ -193,6 +194,7 @@ fn create_reporter(
 ) -> Box<dyn CoverageReporter + Send> {
   match kind {
     CoverageReporterKind::Pretty => Box::new(PrettyCoverageReporter::new()),
+    CoverageReporterKind::Lcov => Box::new(LcovCoverageReporter::new()),
   }
 }
 
@@ -211,15 +213,15 @@ impl LcovCoverageReporter {
 
 impl CoverageReporter for LcovCoverageReporter {
   fn report_result(&mut self, specifier: &ModuleSpecifier, result: &CoverageResult, source: &str) {
-    println!("SF:{}", specifier.as_str().unwrap());
+    println!("SF:{}", specifier.to_file_path().unwrap().to_str().unwrap());
 
-    let found_functions = result
+    let named_functions = result
         .functions
         .iter()
-        .filter(|block| block.function_name.is_empty())
-        .collect();
+        .filter(|block| !block.function_name.is_empty())
+        .collect::<Vec<&FunctionCoverage>>();
 
-    for block in found_functions {
+    for block in &named_functions {
       let index = source[0..block.ranges[0].start_offset]
         .split('\n')
         .count();
@@ -227,16 +229,17 @@ impl CoverageReporter for LcovCoverageReporter {
       println!("FN:{},{}", index + 1, block.function_name);
     }
 
-    let hit_functions = found_functions
-        .iter
+    let hit_functions = named_functions
+        .iter()
         .filter(|block| block.ranges[0].count > 0)
-        .collect();
+        .cloned()
+        .collect::<Vec<&FunctionCoverage>>();
 
-    for block in hit_functions {
+    for block in &hit_functions {
       println!("FNDA:{},{}", block.ranges[0].count, block.function_name);
     }
 
-    println!("FNF:{}", found_functions.len());
+    println!("FNF:{}", named_functions.len());
     println!("FNH:{}", hit_functions.len());
 
     let mut branches_found = 0;
@@ -283,28 +286,41 @@ impl CoverageReporter for LcovCoverageReporter {
       .lines
       .iter()
       .enumerate()
-      .filter(|line| line.ranges.len() > 0)
       .collect::<Vec<(usize, &LineCoverage)>>();
 
-    for (index, line) in found_lines {
-      println!("DA: {}", index + 1, count);
+    for (index, line) in &enumerated_lines {
+      if line.ranges.len() == 0 {
+        continue;
+      }
+
+      let mut count = 0;
+      for range in &line.ranges {
+          count += range.count;
+
+          if range.count == 0 {
+              count = 0;
+              break;
+          }
+      }
+
+      println!("DA:{},{}", index + 1, count);
     }
+
+    let lines_found = enumerated_lines
+      .iter()
+      .filter(|(_, line)| line.ranges.len() > 0)
+      .count();
+
+    println!("LF:{}", lines_found);
 
     let lines_hit = enumerated_lines
       .iter()
-      .filter(|(_, coverage)| coverage.ranges.len() > 0)
+      .filter(|(_, line)| {
+        line.ranges.len() > 0 && !line.ranges.iter().any(|range| range.count == 0)
+      })
       .count();
 
     println!("LH:{}", lines_hit);
-
-    let lines_found = found_lines
-      .iter()
-      .filter(|(_, coverage)| {
-        coverage.ranges.iter().any(|range| range.count == 0)
-      })
-    .count();
-
-    println!("LF:{}", lines_found);
 
     println!("end_of_record");
   }
@@ -777,8 +793,12 @@ pub async fn cover_scripts(
   let script_coverages =
     filter_script_coverages(script_coverages, include, exclude);
 
-  // TODO(caspervonb): reimplement lcov
-  let reporter_kind = CoverageReporterKind::Pretty;
+  let reporter_kind = if lcov {
+      CoverageReporterKind::Lcov
+  } else {
+      CoverageReporterKind::Pretty
+  };
+
   let mut reporter = create_reporter(reporter_kind);
 
   for script_coverage in script_coverages {
