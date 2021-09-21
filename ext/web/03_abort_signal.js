@@ -11,7 +11,6 @@
     Boolean,
     Set,
     SetPrototypeAdd,
-    SetPrototypeClear,
     SetPrototypeDelete,
     Symbol,
     SymbolToStringTag,
@@ -45,7 +44,7 @@
         return;
       }
       this[aborted] = true;
-      if (this[abortAlgos] !== null) {  
+      if (this[abortAlgos] !== null) {
         for (const algorithm of this[abortAlgos]) {
           algorithm();
         }
