@@ -340,7 +340,8 @@ jobs:
         if: (matrix.job == 'test' && matrix.profile == 'fastci')
         run: cargo build --release --locked --all-targets
         env:
-          RUSTFLAGS: "-C codegen-units=256 -C lto=thin -C debuginfo=0 -C opt-level=0"
+          RUSTFLAGS: "-C codegen-units=256 -C debuginfo=0 -C opt-level=0"
+          CARGO_PROFILE_RELEASE_LTO: false
 
       - name: Build release
         if: |
@@ -419,7 +420,8 @@ jobs:
         if: (matrix.job == 'test' && matrix.profile == 'fastci')
         run: cargo test --release --locked
         env:
-          RUSTFLAGS: "-C codegen-units=256 -C lto=thin -C debuginfo=0 -C opt-level=0"
+          RUSTFLAGS: "-C codegen-units=256 -C debuginfo=0 -C opt-level=0"
+          CARGO_PROFILE_RELEASE_LTO: false
 
       - name: Test release
         if: |
