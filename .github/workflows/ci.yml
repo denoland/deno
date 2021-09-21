@@ -149,7 +149,7 @@ jobs:
       - name: Error on warning
         # TODO(piscisaureus): enable this on Windows again.
         if: "!matrix.use_sysroot && !startsWith(matrix.os, 'windows')"
-        run: echo "RUSTFLAGS=${{ env.RUSTFLAGS }} -D warnings" >> $GITHUB_ENV
+        run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
       - name: Configure canary build
         if: |
