@@ -294,7 +294,7 @@ impl CoverageReporter for LcovCoverageReporter {
       .collect::<Vec<(usize, &LineCoverage)>>();
 
     for (index, line) in &enumerated_lines {
-      if line.ranges.len() == 0 {
+      if line.ranges.is_empty() {
         continue;
       }
 
@@ -313,7 +313,7 @@ impl CoverageReporter for LcovCoverageReporter {
 
     let lines_found = enumerated_lines
       .iter()
-      .filter(|(_, line)| line.ranges.len() > 0)
+      .filter(|(_, line)| !line.ranges.is_empty())
       .count();
 
     println!("LF:{}", lines_found);
@@ -321,8 +321,7 @@ impl CoverageReporter for LcovCoverageReporter {
     let lines_hit = enumerated_lines
       .iter()
       .filter(|(_, line)| {
-        line.ranges.len() > 0
-          && !line.ranges.iter().any(|range| range.count == 0)
+        !line.ranges.is_empty() && !line.ranges.iter().any(|range| range.count == 0)
       })
       .count();
 
@@ -359,7 +358,7 @@ impl CoverageReporter for PrettyCoverageReporter {
 
     let found_lines = enumerated_lines
       .iter()
-      .filter(|(_, coverage)| coverage.ranges.len() > 0)
+      .filter(|(_, coverage)| !coverage.ranges.is_empty())
       .cloned()
       .collect::<Vec<(usize, &LineCoverage)>>();
 
@@ -645,14 +644,14 @@ async fn cover_script(
         let end_token = source_map.lookup_token(end_line, end_col).unwrap();
 
         let mapped_start_offset = line_col_to_offset(
-          &source,
+          source,
           start_token.get_src_line(),
           start_token.get_src_col(),
         )
         .unwrap();
 
         let mapped_end_offset = line_col_to_offset(
-          &source,
+          source,
           end_token.get_src_line(),
           end_token.get_src_col(),
         )
@@ -714,7 +713,7 @@ async fn cover_script(
               source_map.lookup_token(start_line, start_col).unwrap();
 
             let mapped_start_offset = line_col_to_offset(
-              &source,
+              source,
               start_token.get_src_line(),
               start_token.get_src_col(),
             )
@@ -727,7 +726,7 @@ async fn cover_script(
             let end_token = source_map.lookup_token(end_line, end_col).unwrap();
 
             let mapped_end_offset = line_col_to_offset(
-              &source,
+              source,
               end_token.get_src_line(),
               end_token.get_src_col(),
             )
