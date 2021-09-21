@@ -46,4 +46,3 @@ pub fn get_env_var_error_class(error: &std::env::VarError) -> &'static str {
     NotUnicode(..) => "InvalidData",
   }
 }
-
