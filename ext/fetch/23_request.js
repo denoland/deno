@@ -220,7 +220,7 @@
     constructor(input, init = {}) {
       const prefix = "Failed to construct 'Request'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      input = webidl.converters["RequestInfo"](input, {
+      input = webidl.converters["RequestInfo_DOMString"](input, {
         prefix,
         context: "Argument 1",
       });
@@ -424,7 +424,7 @@
     "Request",
     Request,
   );
-  webidl.converters["RequestInfo"] = (V, opts) => {
+  webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
     // Union for (Request or USVString)
     if (typeof V == "object") {
       if (V instanceof Request) {
