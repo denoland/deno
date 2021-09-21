@@ -215,14 +215,14 @@
    * @property {number} rid
    * @property {GPUSupportedFeatures} features
    * @property {GPUSupportedLimits} limits
-   * @property {boolean} isSoftware
+   * @property {boolean} isFallbackAdapter
    */
 
   /**
-    * @param {string} name
-    * @param {InnerGPUAdapter} inner
-    * @returns {GPUAdapter}
-    */
+   * @param {string} name
+   * @param {InnerGPUAdapter} inner
+   * @returns {GPUAdapter}
+   */
   function createGPUAdapter(name, inner) {
     /** @type {GPUAdapter} */
     const adapter = webidl.createBranded(GPUAdapter);
@@ -257,8 +257,8 @@
       return this[_adapter].limits;
     }
     /** @returns {boolean} */
-    get isSoftware() {
-      return this[_adapter].isSoftware;
+    get isFallbackAdapter() {
+      return this[_adapter].isFallbackAdapter;
     }
 
     constructor() {
@@ -353,8 +353,11 @@
    * @property {number} maxVertexBufferArrayStride
    * @property {number} maxInterStageShaderComponents
    * @property {number} maxComputeWorkgroupStorageSize
-   * @property {number} maxComputeWorkgroupInvocations
-   * @property {number} maxComputePerDimensionDispatchSize
+   * @property {number} maxComputeInvocationsPerWorkgroup
+   * @property {number} maxComputeWorkgroupSizeX
+   * @property {number} maxComputeWorkgroupSizeY
+   * @property {number} maxComputeWorkgroupSizeZ
+   * @property {number} maxComputeWorkgroupsPerDimension
    */
 
   class GPUSupportedLimits {
@@ -448,13 +451,25 @@
       webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxComputeWorkgroupStorageSize;
     }
-    get maxComputeWorkgroupInvocations() {
+    get maxComputeInvocationsPerWorkgroup() {
       webidl.assertBranded(this, GPUSupportedLimits);
-      return this[_limits].maxComputeWorkgroupInvocations;
+      return this[_limits].maxComputeInvocationsPerWorkgroup;
     }
-    get maxComputePerDimensionDispatchSize() {
+    get maxComputeWorkgroupSizeX() {
       webidl.assertBranded(this, GPUSupportedLimits);
-      return this[_limits].maxComputePerDimensionDispatchSize;
+      return this[_limits].maxComputeWorkgroupSizeX;
+    }
+    get maxComputeWorkgroupSizeY() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxComputeWorkgroupSizeY;
+    }
+    get maxComputeWorkgroupSizeZ() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxComputeWorkgroupSizeZ;
+    }
+    get maxComputeWorkgroupsPerDimension() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxComputeWorkgroupsPerDimension;
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -529,7 +544,6 @@
   const _message = Symbol("[[message]]");
 
   /**
-   *
    * @param {string | undefined} reason
    * @param {string} message
    * @returns {GPUDeviceLostInfo}
@@ -1090,14 +1104,9 @@
         {
           deviceRid: device.rid,
           label: descriptor.label,
-          code: (typeof descriptor.code === "string")
-            ? descriptor.code
-            : undefined,
+          code: descriptor.code,
           sourceMap: descriptor.sourceMap,
         },
-        ...(descriptor.code instanceof Uint32Array
-          ? [new Uint8Array(descriptor.code.buffer)]
-          : []),
       );
       device.pushError(err);
 
@@ -1575,6 +1584,7 @@
             origin: destination.origin
               ? normalizeGPUOrigin3D(destination.origin)
               : undefined,
+            aspect: destination.aspect,
           },
           dataLayout,
           size: normalizeGPUExtent3D(size),
@@ -2071,10 +2081,10 @@
     static get COPY_DST() {
       return 0x02;
     }
-    static get SAMPLED() {
+    static get TEXTURE_BINDING() {
       return 0x04;
     }
-    static get STORAGE() {
+    static get STORAGE_BINDING() {
       return 0x08;
     }
     static get RENDER_ATTACHMENT() {
@@ -2258,8 +2268,8 @@
 
   /**
    * @param {string | null} label
-    * @param {InnerGPUDevice} device
-  * @param {number} rid
+   * @param {InnerGPUDevice} device
+   * @param {number} rid
    * @returns {GPUBindGroup}
    */
   function createGPUBindGroup(label, device, rid) {
@@ -2301,8 +2311,8 @@
 
   /**
    * @param {string | null} label
-    * @param {InnerGPUDevice} device
-  * @param {number} rid
+   * @param {InnerGPUDevice} device
+   * @param {number} rid
    * @returns {GPUShaderModule}
    */
   function createGPUShaderModule(label, device, rid) {
@@ -2635,9 +2645,9 @@
           depthStencilAttachment.depthLoadOp =
             descriptor.depthStencilAttachment.depthLoadValue;
         } else {
-          depthStencilAttachment.depthLoadOp = "clear";
-          depthStencilAttachment.depthLoadValue =
-            descriptor.depthStencilAttachment.depthLoadValue;
+          depthStencilAttachment.depthLoadOp = {
+            clear: descriptor.depthStencilAttachment.depthLoadValue,
+          };
         }
 
         if (
@@ -2645,11 +2655,10 @@
         ) {
           depthStencilAttachment.stencilLoadOp =
             descriptor.depthStencilAttachment.stencilLoadValue;
-          depthStencilAttachment.stencilLoadValue = undefined;
         } else {
-          depthStencilAttachment.stencilLoadOp = "clear";
-          depthStencilAttachment.stencilLoadValue =
-            descriptor.depthStencilAttachment.stencilLoadValue;
+          depthStencilAttachment.stencilLoadOp = {
+            clear: descriptor.depthStencilAttachment.stencilLoadValue,
+          };
         }
       }
       const colorAttachments = ArrayPrototypeMap(
@@ -2706,10 +2715,9 @@
           if (typeof colorAttachment.loadValue === "string") {
             attachment.loadOp = colorAttachment.loadValue;
           } else {
-            attachment.loadOp = "clear";
-            attachment.loadValue = normalizeGPUColor(
-              colorAttachment.loadValue,
-            );
+            attachment.loadOp = {
+              clear: normalizeGPUColor(colorAttachment.loadValue),
+            };
           }
 
           return attachment;
@@ -2906,6 +2914,7 @@
             origin: destination.origin
               ? normalizeGPUOrigin3D(destination.origin)
               : undefined,
+            aspect: destination.aspect,
           },
           copySize: normalizeGPUExtent3D(copySize),
         },
@@ -2968,6 +2977,7 @@
             origin: source.origin
               ? normalizeGPUOrigin3D(source.origin)
               : undefined,
+            aspect: source.aspect,
           },
           destination: {
             ...destination,
@@ -3034,6 +3044,7 @@
             origin: source.origin
               ? normalizeGPUOrigin3D(source.origin)
               : undefined,
+            aspect: source.aspect,
           },
           destination: {
             texture: destinationTextureRid,
@@ -3041,6 +3052,7 @@
             origin: destination.origin
               ? normalizeGPUOrigin3D(destination.origin)
               : undefined,
+            aspect: source.aspect,
           },
           copySize: normalizeGPUExtent3D(copySize),
         },
@@ -3364,7 +3376,6 @@
     }
 
     /**
-     *
      * @param {number} x
      * @param {number} y
      * @param {number} width
@@ -3659,29 +3670,19 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      if (dynamicOffsetsData instanceof Uint32Array) {
-        core.opSync(
-          "op_webgpu_render_pass_set_bind_group",
-          {
-            renderPassRid,
-            index,
-            bindGroup: bindGroupRid,
-            dynamicOffsetsDataStart,
-            dynamicOffsetsDataLength,
-          },
-          dynamicOffsetsData,
-        );
-      } else {
-        dynamicOffsetsData ??= [];
-        core.opSync("op_webgpu_render_pass_set_bind_group", {
-          renderPassRid,
-          index,
-          bindGroup: bindGroupRid,
-          dynamicOffsetsData,
-          dynamicOffsetsDataStart: 0,
-          dynamicOffsetsDataLength: dynamicOffsetsData.length,
-        });
+      if (!(dynamicOffsetsData instanceof Uint32Array)) {
+        dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
+        dynamicOffsetsDataStart = 0;
+        dynamicOffsetsDataLength = dynamicOffsetsData.length;
       }
+      core.opSync("op_webgpu_render_pass_set_bind_group", {
+        renderPassRid,
+        index,
+        bindGroup: bindGroupRid,
+        dynamicOffsetsData,
+        dynamicOffsetsDataStart,
+        dynamicOffsetsDataLength,
+      });
     }
 
     /**
@@ -4395,29 +4396,19 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      if (dynamicOffsetsData instanceof Uint32Array) {
-        core.opSync(
-          "op_webgpu_compute_pass_set_bind_group",
-          {
-            computePassRid,
-            index,
-            bindGroup: bindGroupRid,
-            dynamicOffsetsDataStart,
-            dynamicOffsetsDataLength,
-          },
-          dynamicOffsetsData,
-        );
-      } else {
-        dynamicOffsetsData ??= [];
-        core.opSync("op_webgpu_compute_pass_set_bind_group", {
-          computePassRid,
-          index,
-          bindGroup: bindGroupRid,
-          dynamicOffsetsData,
-          dynamicOffsetsDataStart: 0,
-          dynamicOffsetsDataLength: dynamicOffsetsData.length,
-        });
+      if (!(dynamicOffsetsData instanceof Uint32Array)) {
+        dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
+        dynamicOffsetsDataStart = 0;
+        dynamicOffsetsDataLength = dynamicOffsetsData.length;
       }
+      core.opSync("op_webgpu_compute_pass_set_bind_group", {
+        computePassRid,
+        index,
+        bindGroup: bindGroupRid,
+        dynamicOffsetsData,
+        dynamicOffsetsDataStart,
+        dynamicOffsetsDataLength,
+      });
     }
 
     /**
@@ -4644,29 +4635,19 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      if (dynamicOffsetsData instanceof Uint32Array) {
-        core.opSync(
-          "op_webgpu_render_bundle_encoder_set_bind_group",
-          {
-            renderBundleEncoderRid,
-            index,
-            bindGroup: bindGroupRid,
-            dynamicOffsetsDataStart,
-            dynamicOffsetsDataLength,
-          },
-          dynamicOffsetsData,
-        );
-      } else {
-        dynamicOffsetsData ??= [];
-        core.opSync("op_webgpu_render_bundle_encoder_set_bind_group", {
-          renderBundleEncoderRid,
-          index,
-          bindGroup: bindGroupRid,
-          dynamicOffsetsData,
-          dynamicOffsetsDataStart: 0,
-          dynamicOffsetsDataLength: dynamicOffsetsData.length,
-        });
+      if (!(dynamicOffsetsData instanceof Uint32Array)) {
+        dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
+        dynamicOffsetsDataStart = 0;
+        dynamicOffsetsDataLength = dynamicOffsetsData.length;
       }
+      core.opSync("op_webgpu_render_bundle_encoder_set_bind_group", {
+        renderBundleEncoderRid,
+        index,
+        bindGroup: bindGroupRid,
+        dynamicOffsetsData,
+        dynamicOffsetsDataStart,
+        dynamicOffsetsDataLength,
+      });
     }
 
     /**

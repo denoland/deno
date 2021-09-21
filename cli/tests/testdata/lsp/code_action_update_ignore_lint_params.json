@@ -1,0 +1,39 @@
+{
+  "textDocument": {
+    "uri": "file:///a/file.ts"
+  },
+  "range": {
+    "start": {
+      "line": 3,
+      "character": 5
+    },
+    "end": {
+      "line": 3,
+      "character": 15
+    }
+  },
+  "context": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 5
+          },
+          "end": {
+            "line": 3,
+            "character": 15
+          }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'snake_case' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }
+    ],
+    "only": [
+      "quickfix"
+    ]
+  }
+}

@@ -313,27 +313,27 @@ unitTest(function consoleTestStringifyCircular() {
     "JSON {}",
   );
   assertEquals(
-    stringify(console),
+    stringify(new Console(() => {})),
     `console {
-  log: [Function: bound ],
-  debug: [Function: bound ],
-  info: [Function: bound ],
-  dir: [Function: bound ],
-  dirxml: [Function: bound ],
-  warn: [Function: bound ],
-  error: [Function: bound ],
-  assert: [Function: bound ],
-  count: [Function: bound ],
-  countReset: [Function: bound ],
-  table: [Function: bound ],
-  time: [Function: bound ],
-  timeLog: [Function: bound ],
-  timeEnd: [Function: bound ],
-  group: [Function: bound ],
-  groupCollapsed: [Function: bound ],
-  groupEnd: [Function: bound ],
-  clear: [Function: bound ],
-  trace: [Function: bound ],
+  log: [Function: log],
+  debug: [Function: debug],
+  info: [Function: info],
+  dir: [Function: dir],
+  dirxml: [Function: dir],
+  warn: [Function: warn],
+  error: [Function: error],
+  assert: [Function: assert],
+  count: [Function: count],
+  countReset: [Function: countReset],
+  table: [Function: table],
+  time: [Function: time],
+  timeLog: [Function: timeLog],
+  timeEnd: [Function: timeEnd],
+  group: [Function: group],
+  groupCollapsed: [Function: group],
+  groupEnd: [Function: groupEnd],
+  clear: [Function: clear],
+  trace: [Function: trace],
   indentLevel: 0,
   [Symbol(isConsoleInstance)]: true
 }`,
@@ -1318,11 +1318,11 @@ unitTest(function consoleTable() {
       `┌───────┬───────┬───────┬────────┐
 │ (idx) │ 0     │ 1     │ Values │
 ├───────┼───────┼───────┼────────┤
-│ 0     │       │       │ 1      │
-│ 1     │       │       │ 2      │
-│ 2     │ 3     │ [ 4 ] │        │
-│ 3     │ 5     │ 6     │        │
-│ 4     │ [ 7 ] │ [ 8 ] │        │
+│     0 │       │       │      1 │
+│     1 │       │       │      2 │
+│     2 │ 3     │ [ 4 ] │        │
+│     3 │ 5     │ 6     │        │
+│     4 │ [ 7 ] │ [ 8 ] │        │
 └───────┴───────┴───────┴────────┘
 `,
     );
@@ -1334,10 +1334,10 @@ unitTest(function consoleTable() {
       `┌────────────┬────────┐
 │ (iter idx) │ Values │
 ├────────────┼────────┤
-│ 0          │ 1      │
-│ 1          │ 2      │
-│ 2          │ 3      │
-│ 3          │ "test" │
+│          0 │ 1      │
+│          1 │ 2      │
+│          2 │ 3      │
+│          3 │ "test" │
 └────────────┴────────┘
 `,
     );
@@ -1354,8 +1354,8 @@ unitTest(function consoleTable() {
       `┌────────────┬─────┬────────┐
 │ (iter idx) │ Key │ Values │
 ├────────────┼─────┼────────┤
-│ 0          │ 1   │ "one"  │
-│ 1          │ 2   │ "two"  │
+│          0 │   1 │ "one"  │
+│          1 │   2 │ "two"  │
 └────────────┴─────┴────────┘
 `,
     );
@@ -1395,11 +1395,11 @@ unitTest(function consoleTable() {
       `┌───────┬────────┬──────────────────────┬────┬────────┐
 │ (idx) │ 0      │ 1                    │ a  │ Values │
 ├───────┼────────┼──────────────────────┼────┼────────┤
-│ 0     │        │                      │    │ 1      │
-│ 1     │        │                      │    │ "test" │
-│ 2     │        │                      │    │ false  │
-│ 3     │        │                      │ 10 │        │
-│ 4     │ "test" │ { b: 20, c: "test" } │    │        │
+│     0 │        │                      │    │ 1      │
+│     1 │        │                      │    │ "test" │
+│     2 │        │                      │    │ false  │
+│     3 │        │                      │ 10 │        │
+│     4 │ "test" │ { b: 20, c: "test" } │    │        │
 └───────┴────────┴──────────────────────┴────┴────────┘
 `,
     );
@@ -1459,9 +1459,9 @@ unitTest(function consoleTable() {
       `┌───────┬─────────┐
 │ (idx) │ Values  │
 ├───────┼─────────┤
-│ 0     │ "Hello" │
-│ 1     │ "你好"  │
-│ 2     │ "Amapá" │
+│     0 │ "Hello" │
+│     1 │ "你好"  │
+│     2 │ "Amapá" │
 └───────┴─────────┘
 `,
     );
@@ -1476,8 +1476,8 @@ unitTest(function consoleTable() {
       `┌───────┬───┬───┐
 │ (idx) │ 0 │ 1 │
 ├───────┼───┼───┤
-│ 0     │ 1 │ 2 │
-│ 1     │ 3 │ 4 │
+│     0 │ 1 │ 2 │
+│     1 │ 3 │ 4 │
 └───────┴───┴───┘
 `,
     );
@@ -1489,9 +1489,9 @@ unitTest(function consoleTable() {
       `┌───────┬───┐
 │ (idx) │ b │
 ├───────┼───┤
-│ 1     │ 5 │
-│ 2     │   │
-│ 3     │ 6 │
+│     1 │ 5 │
+│     2 │   │
+│     3 │ 6 │
 └───────┴───┘
 `,
     );
@@ -1503,10 +1503,10 @@ unitTest(function consoleTable() {
       `┌───────┬───┬───┐
 │ (idx) │ a │ b │
 ├───────┼───┼───┤
-│ 0     │ 0 │   │
-│ 1     │ 1 │ 1 │
-│ 2     │ 2 │   │
-│ 3     │ 3 │ 3 │
+│     0 │ 0 │   │
+│     1 │ 1 │ 1 │
+│     2 │ 2 │   │
+│     3 │ 3 │ 3 │
 └───────┴───┴───┘
 `,
     );
@@ -1521,10 +1521,10 @@ unitTest(function consoleTable() {
       `┌───────┬───┬───┬───┐
 │ (idx) │ a │ b │ c │
 ├───────┼───┼───┼───┤
-│ 0     │ 0 │   │   │
-│ 1     │ 1 │   │ 1 │
-│ 2     │ 2 │   │   │
-│ 3     │ 3 │   │ 3 │
+│     0 │ 0 │   │   │
+│     1 │ 1 │   │ 1 │
+│     2 │ 2 │   │   │
+│     3 │ 3 │   │ 3 │
 └───────┴───┴───┴───┘
 `,
     );

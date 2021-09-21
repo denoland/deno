@@ -24,6 +24,10 @@
     ArrayPrototypePush,
     ArrayPrototypeSome,
     Promise,
+    Set,
+    SetPrototypeAdd,
+    SetPrototypeDelete,
+    SetPrototypeValues,
     StringPrototypeIncludes,
     StringPrototypeToLowerCase,
     StringPrototypeSplit,
@@ -38,6 +42,11 @@
 
   class HttpConn {
     #rid = 0;
+    // This set holds resource ids of resources
+    // that were created during lifecycle of this request.
+    // When the connection is closed these resources should be closed
+    // as well.
+    managedResources = new Set();
 
     constructor(rid) {
       this.#rid = rid;
@@ -85,7 +94,8 @@
       /** @type {ReadableStream<Uint8Array> | undefined} */
       let body = null;
       if (typeof requestRid === "number") {
-        body = createRequestBodyStream(requestRid);
+        SetPrototypeAdd(this.managedResources, requestRid);
+        body = createRequestBodyStream(this, requestRid);
       }
 
       const innerRequest = newInnerRequest(
@@ -97,6 +107,7 @@
       const signal = abortSignal.newSignal();
       const request = fromInnerRequest(innerRequest, signal, "immutable");
 
+      SetPrototypeAdd(this.managedResources, responseSenderRid);
       const respondWith = createRespondWith(
         this,
         responseSenderRid,
@@ -108,6 +119,9 @@
 
     /** @returns {void} */
     close() {
+      for (const rid of SetPrototypeValues(this.managedResources)) {
+        core.tryClose(rid);
+      }
       core.close(this.#rid);
     }
 
@@ -178,6 +192,7 @@
         respBody = new Uint8Array(0);
       }
 
+      SetPrototypeDelete(httpConn.managedResources, responseSenderRid);
       let responseBodyRid;
       try {
         responseBodyRid = await core.opAsync("op_http_response", [
@@ -200,6 +215,7 @@
       // If `respond` returns a responseBodyRid, we should stream the body
       // to that resource.
       if (responseBodyRid !== null) {
+        SetPrototypeAdd(httpConn.managedResources, responseBodyRid);
         try {
           if (respBody === null || !(respBody instanceof ReadableStream)) {
             throw new TypeError("Unreachable");
@@ -231,6 +247,7 @@
         } finally {
           // Once all chunks are sent, and the request body is closed, we can
           // close the response body.
+          SetPrototypeDelete(httpConn.managedResources, responseBodyRid);
           try {
             await core.opAsync("op_http_response_close", responseBodyRid);
           } catch { /* pass */ }
@@ -263,12 +280,7 @@
           const event = new CloseEvent("close");
           ws.dispatchEvent(event);
 
-          try {
-            core.close(wsRid);
-          } catch (err) {
-            // Ignore error if the socket has already been closed.
-            if (!(err instanceof Deno.errors.BadResource)) throw err;
-          }
+          core.tryClose(wsRid);
         } else {
           ws[_readyState] = WebSocket.OPEN;
           const event = new Event("open");
@@ -276,11 +288,17 @@
 
           ws[_eventLoop]();
         }
+      } else if (typeof requestRid === "number") {
+        // Try to close "request" resource. It might have been already consumed,
+        // but if it hasn't been we need to close it here to avoid resource
+        // leak.
+        SetPrototypeDelete(httpConn.managedResources, requestRid);
+        core.tryClose(requestRid);
       }
     };
   }
 
-  function createRequestBodyStream(requestRid) {
+  function createRequestBodyStream(httpConn, requestRid) {
     return new ReadableStream({
       type: "bytes",
       async pull(controller) {
@@ -298,6 +316,7 @@
           } else {
             // We have reached the end of the body, so we close the stream.
             controller.close();
+            SetPrototypeDelete(httpConn.managedResources, requestRid);
             core.close(requestRid);
           }
         } catch (err) {
@@ -305,10 +324,12 @@
           // error.
           controller.error(err);
           controller.close();
+          SetPrototypeDelete(httpConn.managedResources, requestRid);
           core.close(requestRid);
         }
       },
       cancel() {
+        SetPrototypeDelete(httpConn.managedResources, requestRid);
         core.close(requestRid);
       },
     });
@@ -317,7 +338,8 @@
   const _ws = Symbol("[[associated_ws]]");
 
   function upgradeWebSocket(request, options = {}) {
-    if (request.headers.get("upgrade") !== "websocket") {
+    const upgrade = request.headers.get("upgrade");
+    if (!upgrade || StringPrototypeToLowerCase(upgrade) !== "websocket") {
       throw new TypeError(
         "Invalid Header: 'upgrade' header must be 'websocket'",
       );

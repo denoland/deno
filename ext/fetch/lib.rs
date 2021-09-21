@@ -26,7 +26,6 @@ use deno_core::ZeroCopyBuf;
 use deno_tls::create_http_client;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
-use deno_web::BlobStore;
 use http::header::CONTENT_LENGTH;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -62,6 +61,7 @@ pub fn init<P: FetchPermissions + 'static>(
   proxy: Option<Proxy>,
   request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  client_cert_chain_and_key: Option<(String, String)>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -90,6 +90,7 @@ pub fn init<P: FetchPermissions + 'static>(
           None,
           proxy.clone(),
           unsafely_ignore_certificate_errors.clone(),
+          client_cert_chain_and_key.clone(),
         )
         .unwrap()
       });
@@ -100,6 +101,7 @@ pub fn init<P: FetchPermissions + 'static>(
         request_builder_hook,
         unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
           .clone(),
+        client_cert_chain_and_key: client_cert_chain_and_key.clone(),
       });
       Ok(())
     })
@@ -112,6 +114,7 @@ pub struct HttpClientDefaults {
   pub proxy: Option<Proxy>,
   pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub client_cert_chain_and_key: Option<(String, String)>,
 }
 
 pub trait FetchPermissions {
@@ -271,49 +274,9 @@ where
       (request_rid, None, None)
     }
     "blob" => {
-      let blob_store = state.try_borrow::<BlobStore>().ok_or_else(|| {
-        type_error("Blob URLs are not supported in this context.")
-      })?;
-
-      let blob = blob_store
-        .get_object_url(url)?
-        .ok_or_else(|| type_error("Blob for the given URL not found."))?;
-
-      if method != "GET" {
-        return Err(type_error("Blob URL fetch only supports GET method."));
-      }
-
-      let cancel_handle = CancelHandle::new_rc();
-      let cancel_handle_ = cancel_handle.clone();
-
-      let fut = async move {
-        // TODO(lucacsonato): this should be a stream!
-        let chunk = match blob.read_all().or_cancel(cancel_handle_).await? {
-          Ok(chunk) => chunk,
-          Err(err) => return Ok(Err(err)),
-        };
-
-        let res = http::Response::builder()
-          .status(http::StatusCode::OK)
-          .header(http::header::CONTENT_LENGTH, chunk.len())
-          .header(http::header::CONTENT_TYPE, blob.media_type.clone())
-          .body(reqwest::Body::from(chunk))
-          .map_err(|err| type_error(err.to_string()));
-
-        match res {
-          Ok(response) => Ok(Ok(Response::from(response))),
-          Err(err) => Ok(Err(err)),
-        }
-      };
-
-      let request_rid = state
-        .resource_table
-        .add(FetchRequestResource(Box::pin(fut)));
-
-      let cancel_handle_rid =
-        state.resource_table.add(FetchCancelHandle(cancel_handle));
-
-      (request_rid, None, Some(cancel_handle_rid))
+      // Blob URL resolution happens in the JS side of fetch. If we got here is
+      // because the URL isn't an object URL.
+      return Err(type_error("Blob for the given URL not found."));
     }
     _ => return Err(type_error(format!("scheme '{}' not supported", scheme))),
   };
@@ -508,6 +471,8 @@ pub struct CreateHttpClientOptions {
   ca_file: Option<String>,
   ca_data: Option<ByteString>,
   proxy: Option<Proxy>,
+  cert_chain: Option<String>,
+  private_key: Option<String>,
 }
 
 pub fn op_create_http_client<FP>(
@@ -529,6 +494,21 @@ where
     permissions.check_net_url(&url)?;
   }
 
+  let client_cert_chain_and_key = {
+    if args.cert_chain.is_some() || args.private_key.is_some() {
+      let cert_chain = args
+        .cert_chain
+        .ok_or_else(|| type_error("No certificate chain provided"))?;
+      let private_key = args
+        .private_key
+        .ok_or_else(|| type_error("No private key provided"))?;
+
+      Some((cert_chain, private_key))
+    } else {
+      None
+    }
+  };
+
   let defaults = state.borrow::<HttpClientDefaults>();
   let cert_data =
     get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
@@ -539,8 +519,8 @@ where
     cert_data,
     args.proxy,
     defaults.unsafely_ignore_certificate_errors.clone(),
-  )
-  .unwrap();
+    client_cert_chain_and_key,
+  )?;
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(rid)

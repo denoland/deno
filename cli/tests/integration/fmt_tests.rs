@@ -129,25 +129,25 @@ fn fmt_ignore_unexplicit_files() {
 }
 
 itest!(fmt_check_tests_dir {
-  args: "fmt --check ./ --ignore=.test_coverage",
+  args: "fmt --check ./ --ignore=.test_coverage,fmt/fmt_with_config/",
   output: "fmt/expected_fmt_check_tests_dir.out",
   exit_code: 1,
 });
 
 itest!(fmt_quiet_check_fmt_dir {
-  args: "fmt --check --quiet fmt/",
+  args: "fmt --check --quiet fmt/regular/",
   output_str: Some(""),
   exit_code: 0,
 });
 
 itest!(fmt_check_formatted_files {
-    args: "fmt --check fmt/formatted1.js fmt/formatted2.ts fmt/formatted3.md fmt/formatted4.jsonc",
+    args: "fmt --check fmt/regular/formatted1.js fmt/regular/formatted2.ts fmt/regular/formatted3.md fmt/regular/formatted4.jsonc",
     output: "fmt/expected_fmt_check_formatted_files.out",
     exit_code: 0,
   });
 
 itest!(fmt_check_ignore {
-  args: "fmt --check --ignore=fmt/formatted1.js fmt/",
+  args: "fmt --check --ignore=fmt/regular/formatted1.js fmt/regular/",
   output: "fmt/expected_fmt_check_ignore.out",
   exit_code: 0,
 });
@@ -180,4 +180,27 @@ itest!(fmt_stdin_check_not_formatted {
   args: "fmt --check -",
   input: Some("const a = 1\n"),
   output_str: Some("Not formatted stdin\n"),
+});
+
+itest!(fmt_with_config {
+  args: "fmt --config fmt/deno.jsonc fmt/fmt_with_config/",
+  output: "fmt/fmt_with_config.out",
+});
+
+// Check if CLI flags take precedence
+itest!(fmt_with_config_and_flags {
+  args: "fmt --config fmt/deno.jsonc --ignore=fmt/fmt_with_config/a.ts,fmt/fmt_with_config/b.ts",
+  output: "fmt/fmt_with_config_and_flags.out",
+});
+
+itest!(fmt_with_malformed_config {
+  args: "fmt --config fmt/deno.malformed.jsonc",
+  output: "fmt/fmt_with_malformed_config.out",
+  exit_code: 1,
+});
+
+itest!(fmt_with_malformed_config2 {
+  args: "fmt --config fmt/deno.malformed2.jsonc",
+  output: "fmt/fmt_with_malformed_config2.out",
+  exit_code: 1,
 });

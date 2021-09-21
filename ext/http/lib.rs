@@ -34,7 +34,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
@@ -44,10 +43,6 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::sync::oneshot;
 use tokio_util::io::StreamReader;
-
-pub fn get_unstable_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_http.unstable.d.ts")
-}
 
 pub fn init() -> Extension {
   Extension::builder()

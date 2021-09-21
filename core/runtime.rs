@@ -647,6 +647,48 @@ impl JsRuntime {
     scope.perform_microtask_checkpoint();
   }
 
+  /// Waits for the given value to resolve while polling the event loop.
+  ///
+  /// This future resolves when either the value is resolved or the event loop runs to
+  /// completion.
+  pub async fn resolve_value(
+    &mut self,
+    global: v8::Global<v8::Value>,
+  ) -> Result<v8::Global<v8::Value>, AnyError> {
+    poll_fn(|cx| {
+      let state = self.poll_event_loop(cx, false);
+
+      let mut scope = self.handle_scope();
+      let local = v8::Local::<v8::Value>::new(&mut scope, &global);
+
+      if let Ok(promise) = v8::Local::<v8::Promise>::try_from(local) {
+        match promise.state() {
+          v8::PromiseState::Pending => match state {
+            Poll::Ready(Ok(_)) => {
+              let msg = "Promise resolution is still pending but the event loop has already resolved.";
+              Poll::Ready(Err(generic_error(msg)))
+            },
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+            Poll::Pending => Poll::Pending,
+          },
+          v8::PromiseState::Fulfilled => {
+            let value = promise.result(&mut scope);
+            let value_handle = v8::Global::new(&mut scope, value);
+            Poll::Ready(Ok(value_handle))
+          }
+          v8::PromiseState::Rejected => {
+            let exception = promise.result(&mut scope);
+            Poll::Ready(exception_to_err_result(&mut scope, exception, false))
+          }
+        }
+      } else {
+        let value_handle = v8::Global::new(&mut scope, local);
+        Poll::Ready(Ok(value_handle))
+      }
+    })
+    .await
+  }
+
   /// Runs event loop to completion
   ///
   /// This future resolves when:
@@ -1308,11 +1350,14 @@ impl JsRuntime {
     state_rc.borrow_mut().pending_dyn_mod_evaluate = still_pending;
   }
 
-  /// Asynchronously load specified module and all of its dependencies
+  /// Asynchronously load specified module and all of its dependencies.
+  ///
+  /// The module will be marked as "main", and because of that
+  /// "import.meta.main" will return true when checked inside that module.
   ///
   /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
   /// manually after load is finished.
-  pub async fn load_module(
+  pub async fn load_main_module(
     &mut self,
     specifier: &ModuleSpecifier,
     code: Option<String>,
@@ -1321,6 +1366,7 @@ impl JsRuntime {
     if let Some(code) = code {
       module_map_rc.borrow_mut().new_module(
         &mut self.handle_scope(),
+        // main module
         true,
         specifier.as_str(),
         &code,
@@ -1339,6 +1385,59 @@ impl JsRuntime {
     let root_id = load.root_module_id.expect("Root module should be loaded");
     self.instantiate_module(root_id)?;
     Ok(root_id)
+  }
+
+  /// Asynchronously load specified ES module and all of its dependencies.
+  ///
+  /// This method is meant to be used when loading some utility code that
+  /// might be later imported by the main module (ie. an entry point module).
+  ///
+  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
+  /// manually after load is finished.
+  pub async fn load_side_module(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    code: Option<String>,
+  ) -> Result<ModuleId, AnyError> {
+    let module_map_rc = Self::module_map(self.v8_isolate());
+    if let Some(code) = code {
+      module_map_rc.borrow_mut().new_module(
+        &mut self.handle_scope(),
+        // not main module
+        false,
+        specifier.as_str(),
+        &code,
+      )?;
+    }
+
+    let mut load =
+      ModuleMap::load_side(module_map_rc.clone(), specifier.as_str()).await?;
+
+    while let Some(info_result) = load.next().await {
+      let info = info_result?;
+      let scope = &mut self.handle_scope();
+      load.register_and_recurse(scope, &info)?;
+    }
+
+    let root_id = load.root_module_id.expect("Root module should be loaded");
+    self.instantiate_module(root_id)?;
+    Ok(root_id)
+  }
+
+  /// Asynchronously load specified module and all of its dependencies
+  ///
+  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
+  /// manually after load is finished.
+  #[deprecated(
+    since = "0.100.0",
+    note = "This method had a bug, marking multiple modules loaded as \"main\". Use `load_main_module` or `load_side_module` instead."
+  )]
+  pub async fn load_module(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    code: Option<String>,
+  ) -> Result<ModuleId, AnyError> {
+    self.load_main_module(specifier, code).await
   }
 
   fn poll_pending_ops(
@@ -1626,6 +1725,55 @@ pub mod tests {
         "foobar"
       );
     }
+  }
+
+  #[tokio::test]
+  async fn test_resolve_value() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let value_global = runtime
+      .execute_script("a.js", "Promise.resolve(1 + 2)")
+      .unwrap();
+    let result_global = runtime.resolve_value(value_global).await.unwrap();
+    {
+      let scope = &mut runtime.handle_scope();
+      let value = result_global.get(scope);
+      assert_eq!(value.integer_value(scope).unwrap(), 3);
+    }
+
+    let value_global = runtime
+      .execute_script(
+        "a.js",
+        "Promise.resolve(new Promise(resolve => resolve(2 + 2)))",
+      )
+      .unwrap();
+    let result_global = runtime.resolve_value(value_global).await.unwrap();
+    {
+      let scope = &mut runtime.handle_scope();
+      let value = result_global.get(scope);
+      assert_eq!(value.integer_value(scope).unwrap(), 4);
+    }
+
+    let value_global = runtime
+      .execute_script("a.js", "Promise.reject(new Error('fail'))")
+      .unwrap();
+    let err = runtime.resolve_value(value_global).await.unwrap_err();
+    assert_eq!(
+      "Uncaught Error: fail",
+      err.downcast::<JsError>().unwrap().message
+    );
+
+    let value_global = runtime
+      .execute_script("a.js", "new Promise(resolve => {})")
+      .unwrap();
+    let error_string = runtime
+      .resolve_value(value_global)
+      .await
+      .unwrap_err()
+      .to_string();
+    assert_eq!(
+      "Promise resolution is still pending but the event loop has already resolved.",
+      error_string,
+    );
   }
 
   #[test]
@@ -1949,7 +2097,7 @@ pub mod tests {
     let source_code = "Deno.core.print('hello\\n')".to_string();
 
     let module_id = futures::executor::block_on(
-      runtime.load_module(&specifier, Some(source_code)),
+      runtime.load_main_module(&specifier, Some(source_code)),
     )
     .unwrap();
 

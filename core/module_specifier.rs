@@ -54,7 +54,7 @@ impl fmt::Display for ModuleResolutionError {
 pub type ModuleSpecifier = Url;
 
 /// Resolves module using this algorithm:
-/// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
+/// <https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier>
 pub fn resolve_import(
   specifier: &str,
   base: &str,

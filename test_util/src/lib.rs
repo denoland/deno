@@ -44,13 +44,13 @@ use tokio_rustls::rustls::{self, Session};
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
-#[cfg(unix)]
-pub use pty;
-
 pub mod lsp;
+pub mod pty;
 
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
+const TEST_BASIC_AUTH_USERNAME: &str = "testuser123";
+const TEST_BASIC_AUTH_PASSWORD: &str = "testpassabc";
 const REDIRECT_PORT: u16 = 4546;
 const ANOTHER_REDIRECT_PORT: u16 = 4547;
 const DOUBLE_REDIRECTS_PORT: u16 = 4548;
@@ -58,7 +58,9 @@ const INF_REDIRECTS_PORT: u16 = 4549;
 const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const AUTH_REDIRECT_PORT: u16 = 4551;
 const TLS_CLIENT_AUTH_PORT: u16 = 4552;
+const BASIC_AUTH_REDIRECT_PORT: u16 = 4554;
 const HTTPS_PORT: u16 = 5545;
+const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WS_CLOSE_PORT: u16 = 4244;
@@ -216,6 +218,29 @@ async fn auth_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
     .map(|v| v.to_str().unwrap())
   {
     if auth.to_lowercase() == format!("bearer {}", TEST_AUTH_TOKEN) {
+      let p = req.uri().path();
+      assert_eq!(&p[0..1], "/");
+      let url = format!("http://localhost:{}{}", PORT, p);
+      return Ok(redirect_resp(url));
+    }
+  }
+
+  let mut resp = Response::new(Body::empty());
+  *resp.status_mut() = StatusCode::NOT_FOUND;
+  Ok(resp)
+}
+
+async fn basic_auth_redirect(
+  req: Request<Body>,
+) -> hyper::Result<Response<Body>> {
+  if let Some(auth) = req
+    .headers()
+    .get("authorization")
+    .map(|v| v.to_str().unwrap())
+  {
+    let credentials =
+      format!("{}:{}", TEST_BASIC_AUTH_USERNAME, TEST_BASIC_AUTH_PASSWORD);
+    if auth == format!("Basic {}", base64::encode(credentials)) {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
       let url = format!("http://localhost:{}{}", PORT, p);
@@ -836,6 +861,19 @@ async fn wrap_auth_redirect_server() {
   }
 }
 
+async fn wrap_basic_auth_redirect_server() {
+  let basic_auth_redirect_svc = make_service_fn(|_| async {
+    Ok::<_, Infallible>(service_fn(basic_auth_redirect))
+  });
+  let basic_auth_redirect_addr =
+    SocketAddr::from(([127, 0, 0, 1], BASIC_AUTH_REDIRECT_PORT));
+  let basic_auth_redirect_server =
+    Server::bind(&basic_auth_redirect_addr).serve(basic_auth_redirect_svc);
+  if let Err(e) = basic_auth_redirect_server.await {
+    eprintln!("Basic auth redirect error: {:?}", e);
+  }
+}
+
 async fn wrap_abs_redirect_server() {
   let abs_redirect_svc = make_service_fn(|_| async {
     Ok::<_, Infallible>(service_fn(absolute_redirect))
@@ -898,6 +936,62 @@ async fn wrap_main_https_server() {
   }
 }
 
+async fn wrap_client_auth_https_server() {
+  let main_server_https_addr =
+    SocketAddr::from(([127, 0, 0, 1], HTTPS_CLIENT_AUTH_PORT));
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
+    .await
+    .unwrap();
+  loop {
+    let tcp = TcpListener::bind(&main_server_https_addr)
+      .await
+      .expect("Cannot bind TCP");
+    println!("ready: https_client_auth on :{:?}", HTTPS_CLIENT_AUTH_PORT); // Eye catcher for HttpServerCount
+    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
+    // Prepare a long-running future stream to accept and serve cients.
+    let incoming_tls_stream = async_stream::stream! {
+      loop {
+          let (socket, _) = tcp.accept().await?;
+
+          match tls_acceptor.accept(socket).await {
+            Ok(mut tls_stream) => {
+              let (_, tls_session) = tls_stream.get_mut();
+              // We only need to check for the presence of client certificates
+              // here. Rusttls ensures that they are valid and signed by the CA.
+              match tls_session.get_peer_certificates() {
+                Some(_certs) => { yield Ok(tls_stream); },
+                None => { eprintln!("https_client_auth: no valid client certificate"); },
+              };
+            }
+
+            Err(e) => {
+              eprintln!("https-client-auth accept error: {:?}", e);
+              yield Err(e);
+            }
+          }
+
+      }
+    }
+    .boxed();
+
+    let main_server_https_svc = make_service_fn(|_| async {
+      Ok::<_, Infallible>(service_fn(main_server))
+    });
+    let main_server_https = Server::builder(HyperAcceptor {
+      acceptor: incoming_tls_stream,
+    })
+    .serve(main_server_https_svc);
+
+    //continue to prevent TLS error stopping the server
+    if main_server_https.await.is_err() {
+      continue;
+    }
+  }
+}
+
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
 // comparing apples to apples if we use the default multi-threaded scheduler.
@@ -912,6 +1006,7 @@ pub async fn run_all_servers() {
   let inf_redirects_server_fut = wrap_inf_redirect_server();
   let another_redirect_server_fut = wrap_another_redirect_server();
   let auth_redirect_server_fut = wrap_auth_redirect_server();
+  let basic_auth_redirect_server_fut = wrap_basic_auth_redirect_server();
   let abs_redirect_server_fut = wrap_abs_redirect_server();
 
   let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
@@ -922,7 +1017,7 @@ pub async fn run_all_servers() {
   let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
 
   let tls_client_auth_server_fut = run_tls_client_auth_server();
-
+  let client_auth_server_https_fut = wrap_client_auth_https_server();
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
 
@@ -935,11 +1030,13 @@ pub async fn run_all_servers() {
       ws_close_server_fut,
       another_redirect_server_fut,
       auth_redirect_server_fut,
+      basic_auth_redirect_server_fut,
       inf_redirects_server_fut,
       double_redirects_server_fut,
       abs_redirect_server_fut,
       main_server_fut,
       main_server_https_fut,
+      client_auth_server_https_fut,
     )
   }
   .boxed();
@@ -1485,37 +1582,100 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   t.1.is_empty()
 }
 
-/// Kind of reflects `itest!()`. Note that the pty's output (which also contains
-/// stdin content) is compared against the content of the `output` path.
-#[cfg(unix)]
-pub fn test_pty(args: &str, output_path: &str, input: &[u8]) {
-  use pty::fork::Fork;
+pub enum PtyData {
+  Input(&'static str),
+  Output(&'static str),
+}
 
-  let tests_path = testdata_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
-    let mut output_actual = String::new();
-    master.write_all(input).unwrap();
-    master.read_to_string(&mut output_actual).unwrap();
-    fork.wait().unwrap();
+pub fn test_pty2(args: &str, data: Vec<PtyData>) {
+  use std::io::BufRead;
 
-    let output_expected =
-      std::fs::read_to_string(tests_path.join(output_path)).unwrap();
-    if !wildcard_match(&output_expected, &output_actual) {
-      println!("OUTPUT\n{}\nOUTPUT", output_actual);
-      println!("EXPECTED\n{}\nEXPECTED", output_expected);
-      panic!("pattern match failed");
+  with_pty(&args.split_whitespace().collect::<Vec<_>>(), |console| {
+    let mut buf_reader = std::io::BufReader::new(console);
+    for d in data.iter() {
+      match d {
+        PtyData::Input(s) => {
+          println!("INPUT {}", s.escape_debug());
+          buf_reader.get_mut().write_text(s);
+
+          // Because of tty echo, we should be able to read the same string back.
+          assert!(s.ends_with('\n'));
+          let mut echo = String::new();
+          buf_reader.read_line(&mut echo).unwrap();
+          println!("ECHO: {}", echo.escape_debug());
+
+          // Windows may also echo the previous line, so only check the end
+          assert!(normalize_text(&echo).ends_with(&normalize_text(s)));
+        }
+        PtyData::Output(s) => {
+          let mut line = String::new();
+          if s.ends_with('\n') {
+            buf_reader.read_line(&mut line).unwrap();
+          } else {
+            // assumes the buffer won't have overlapping virtual terminal sequences
+            while normalize_text(&line).len() < normalize_text(s).len() {
+              let mut buf = [0; 64 * 1024];
+              let bytes_read = buf_reader.read(&mut buf).unwrap();
+              assert!(bytes_read > 0);
+              let buf_str = std::str::from_utf8(&buf)
+                .unwrap()
+                .trim_end_matches(char::from(0));
+              line += buf_str;
+            }
+          }
+          println!("OUTPUT {}", line.escape_debug());
+          assert_eq!(normalize_text(&line), normalize_text(s));
+        }
+      }
     }
-  } else {
-    deno_cmd()
-      .current_dir(tests_path)
-      .env("NO_COLOR", "1")
-      .args(args.split_whitespace())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
+  });
+
+  // This normalization function is not comprehensive
+  // and may need to updated as new scenarios emerge.
+  fn normalize_text(text: &str) -> String {
+    lazy_static! {
+      static ref MOVE_CURSOR_RIGHT_ONE_RE: Regex =
+        Regex::new(r"\x1b\[1C").unwrap();
+      static ref FOUND_SEQUENCES_RE: Regex =
+        Regex::new(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*").unwrap();
+      static ref CARRIAGE_RETURN_RE: Regex =
+        Regex::new(r"[^\n]*\r([^\n])").unwrap();
+    }
+
+    // any "move cursor right" sequences should just be a space
+    let text = MOVE_CURSOR_RIGHT_ONE_RE.replace_all(text, " ");
+    // replace additional virtual terminal sequences that strip ansi codes doesn't catch
+    let text = FOUND_SEQUENCES_RE.replace_all(&text, "");
+    // strip any ansi codes, which also strips more terminal sequences
+    let text = strip_ansi_codes(&text);
+    // get rid of any text that is overwritten with only a carriage return
+    let text = CARRIAGE_RETURN_RE.replace_all(&text, "$1");
+    // finally, trim surrounding whitespace
+    text.trim().to_string()
   }
+}
+
+pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Box<dyn pty::Pty>)) {
+  if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
+    eprintln!("Ignoring non-tty environment.");
+    return;
+  }
+
+  let deno_dir = new_deno_dir();
+  let mut env_vars = std::collections::HashMap::new();
+  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
+  env_vars.insert(
+    "DENO_DIR".to_string(),
+    deno_dir.path().to_string_lossy().to_string(),
+  );
+  let pty = pty::create_pty(
+    &deno_exe_path().to_string_lossy().to_string(),
+    deno_args,
+    testdata_path(),
+    Some(env_vars),
+  );
+
+  action(pty);
 }
 
 pub struct WrkOutput {

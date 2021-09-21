@@ -6,13 +6,24 @@ function benchSync(name, n, innerLoop) {
     innerLoop(i);
   }
   const t2 = Date.now();
+  console.log(benchStats(name, n, t1, t2));
+}
+
+async function benchAsync(name, n, innerLoop) {
+  const t1 = Date.now();
+  for (let i = 0; i < n; i++) {
+    await innerLoop(i);
+  }
+  const t2 = Date.now();
+  console.log(benchStats(name, n, t1, t2));
+}
+
+function benchStats(name, n, t1, t2) {
   const dt = (t2 - t1) / 1e3;
   const r = n / dt;
   const ns = Math.floor(dt / n * 1e9);
-  console.log(
-    `${name}:${" ".repeat(20 - name.length)}\t` +
-      `n = ${n}, dt = ${dt.toFixed(3)}s, r = ${r.toFixed(0)}/s, t = ${ns}ns/op`,
-  );
+  return `${name}:${" ".repeat(20 - name.length)}\t` +
+    `n = ${n}, dt = ${dt.toFixed(3)}s, r = ${r.toFixed(0)}/s, t = ${ns}ns/op`;
 }
 
 function benchUrlParse() {
@@ -52,7 +63,19 @@ function benchReadZero() {
   Deno.close(file.rid);
 }
 
-function main() {
+function benchRead128k() {
+  return benchAsync(
+    "read_128k",
+    5e4,
+    () => Deno.readFile("./cli/bench/fixtures/128k.bin"),
+  );
+}
+
+function benchRequestNew() {
+  return benchSync("request_new", 5e5, () => new Request("https://deno.land"));
+}
+
+async function main() {
   // v8 builtin that's close to the upper bound non-NOPs
   benchDateNow();
   // A very lightweight op, that should be highly optimizable
@@ -63,5 +86,7 @@ function main() {
   // IO ops
   benchReadZero();
   benchWriteNull();
+  await benchRead128k();
+  benchRequestNew();
 }
-main();
+await main();

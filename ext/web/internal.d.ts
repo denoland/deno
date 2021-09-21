@@ -73,6 +73,7 @@ declare namespace globalThis {
     };
 
     declare var file: {
+      blobFromObjectUrl(url: string): Blob | null;
       getParts(blob: Blob): string[];
       Blob: typeof Blob;
       File: typeof File;
@@ -87,6 +88,9 @@ declare namespace globalThis {
     declare namespace messagePort {
       declare type Transferable = {
         kind: "messagePort";
+        data: number;
+      } | {
+        kind: "arrayBuffer";
         data: number;
       };
       declare interface MessageData {
