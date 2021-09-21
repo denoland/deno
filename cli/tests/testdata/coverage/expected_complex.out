@@ -1,4 +1,4 @@
-cover [WILDCARD]/complex.ts ... 60.000% (24/40)
+cover [WILDCARD]complex.ts ... 60.000% (24/40)
   46 | export function unused(
   47 |   foo: string,
   48 |   bar: string,
