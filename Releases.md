@@ -6,6 +6,27 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.14.1 / 2021.09.21
+
+- fix(cli): don't ignore diagnostics about for await (#12116)
+- fix(cli): move Deno.flock and Deno.funlock to unstable types (#12138)
+- fix(cli/fmt_errors): Abbreviate long data URLs in stack traces (#12127)
+- fix(config-schema): correct default value of "lib" (#12145)
+- fix(core): prevent multiple main module loading (#12128)
+- fix(ext/crypto): don't use core.decode for encoding jwk keys (#12088)
+- fix(ext/crypto): use DataError in importKey() (#12071)
+- fix(lsp): align filter text to vscode logic (#12081)
+- fix(runtime/ops/signal.rs): Add FreeBSD signal definitions (#12084)
+- refactor(ext/web): optimize EventTarget (#12166)
+- refactor(runtime/fs): optimize readFile by using a single large buffer
+  (#12057)
+- refactor(web): optimize AbortController (#12165)
+- refactor(ext/fetch): drop redundant webidl converters in fetch() (#12167)
+- refactor(cli): don't generate a module for side loading tests (#12129)
+- refactor(ext/net): make op_connect & op_connect_tls public (#12150)
+- test(bench): track new Request() (#12164)
+- test(ext/ffi): add tests for different parameter and return types (#12158)
+
 ### 1.14.0 / 2021.09.14
 
 - BREAKING(unstable): Fix casing in FfiPermissionDescriptor (#11659)
