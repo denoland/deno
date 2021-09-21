@@ -308,8 +308,8 @@ impl UnaryPermission<ReadDescriptor> {
   }
 
   /// As `check`, but tries to canonicalize the path.
-  pub fn check_canonical(&mut self, path: &PathBuf) -> Result<(), AnyError> {
-    self.check(&canonicalize_path(path).unwrap_or(path.to_path_buf()))
+  pub fn check_canonical(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.check(&canonicalize_path(path).unwrap_or_else(|_| path.to_path_buf()))
   }
 
   /// As `check()`, but permission error messages will anonymize the path
@@ -441,8 +441,8 @@ impl UnaryPermission<WriteDescriptor> {
   }
 
   /// As `check`, but tries to canonicalize the path.
-  pub fn check_canonical(&mut self, path: &PathBuf) -> Result<(), AnyError> {
-    self.check(&canonicalize_path(path).unwrap_or(path.to_path_buf()))
+  pub fn check_canonical(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.check(&canonicalize_path(path).unwrap_or_else(|_| path.to_path_buf()))
   }
 }
 
