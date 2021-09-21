@@ -150,10 +150,6 @@ jobs:
         # TODO(piscisaureus): enable this on Windows again.
         if: "!matrix.use_sysroot && !startsWith(matrix.os, 'windows')"
         run: echo "RUSTFLAGS=${{ env.RUSTFLAGS }} -D warnings" >> $GITHUB_ENV
-      
-      - name: Fast CI Rust flags
-        if: "matrix.fast_ci"
-        run: echo "RUSTFLAGS=${{ env.RUSTFLAGS }} ${{ env.RUSTFLAGS_FASTCI }}" >> $GITHUB_ENV
 
       - name: Configure canary build
         if: |
@@ -342,6 +338,7 @@ jobs:
     
       - name: Build fastci
         if: (matrix.job == 'test' && matrix.profile == 'fastci')
+        run: cargo build --release --locked --all-targets
         env:
           RUSTFLAGS: "-C codegen-units=256 -C lto=false -C debuginfo=0 -C opt-level=0"
 
@@ -420,6 +417,7 @@ jobs:
 
       - name: Test fastci
         if: (matrix.job == 'test' && matrix.profile == 'fastci')
+        run: cargo test --release --locked
         env:
           RUSTFLAGS: "-C codegen-units=256 -C lto=false -C debuginfo=0 -C opt-level=0"
 
