@@ -527,7 +527,10 @@ fn op_mkdir_sync(
 ) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
-  state.borrow_mut::<Permissions>().write.check(&path)?;
+  state
+    .borrow_mut::<Permissions>()
+    .write
+    .check_canonical(&path)?;
   debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
   let mut builder = std::fs::DirBuilder::new();
   builder.recursive(args.recursive);
@@ -550,7 +553,10 @@ async fn op_mkdir_async(
 
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<Permissions>().write.check(&path)?;
+    state
+      .borrow_mut::<Permissions>()
+      .write
+      .check_canonical(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {

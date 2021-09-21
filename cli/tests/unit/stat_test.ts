@@ -2,9 +2,9 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
   assertThrowsAsync,
-  assertRejects,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
@@ -238,11 +238,11 @@ Deno.test({
   name: "statSyncSymlinkToDotDotPermissionDenied",
   fn() {
     assertThrows(() => {
-      Deno.statSync("cli/tests/testdata/symlink_to_dot_dot")
+      Deno.statSync("cli/tests/testdata/symlink_to_dot_dot");
     }, Deno.errors.PermissionDenied);
   },
   permissions: {
-    read: ["cli/tests/unit/testdata/symlink_to_dot_dot"]
+    read: ["cli/tests/unit/testdata/symlink_to_dot_dot"],
   },
 });
 
@@ -250,11 +250,11 @@ Deno.test({
   name: "statSymlinkToDotDotPermissionDenied",
   async fn() {
     await assertRejects(async () => {
-        await Deno.stat("cli/tests/testdata/symlink_to_dot_dot");
+      await Deno.stat("cli/tests/testdata/symlink_to_dot_dot");
     }, Deno.errors.PermissionDenied);
   },
   permissions: {
-    read: ["cli/tests/unit/testdata/symlink_to_dot_dot"]
+    read: ["cli/tests/unit/testdata/symlink_to_dot_dot"],
   },
 });
 
@@ -293,7 +293,7 @@ Deno.test({
     assert(info.isSymlink);
   },
   permissions: {
-    read: ["cli/tests/unit/testdata/symlink_to_dot_dot"]
+    read: ["cli/tests/unit/testdata/symlink_to_dot_dot"],
   },
 });
 
@@ -304,7 +304,7 @@ Deno.test({
     assert(info.isSymlink);
   },
   permissions: {
-    read: ["cli/tests/unit/testdata/symlink_to_dot_dot"]
+    read: ["cli/tests/unit/testdata/symlink_to_dot_dot"],
   },
 });
 

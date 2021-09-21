@@ -206,3 +206,17 @@ unitTest(
     }, Deno.errors.PermissionDenied);
   },
 );
+
+Deno.test({
+  name: "copyFileWithSymlinkToDotDot",
+  async fn() {
+    await assertThrowsAsync(async () => {
+      await Deno.copyFile("cli/tests/unit/testdata/symlink_to_dot_dot.md",
+                        "cli/tests/unit/testdata/README.md");
+    }, Deno.errors.PermissionDenied);
+  },
+  permissions: {
+    read: ["cli/tests/unit/testdata"],
+    write: ["cli/tests/unit/testdata"],
+  },
+});

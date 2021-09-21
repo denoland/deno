@@ -226,3 +226,31 @@ unitTest(
     assertDirectory(testDir + "/dir");
   },
 );
+
+Deno.test({
+  name: "mkdirSyhncSymlinkToDotDot",
+  fn() {
+    assertThrows(() => {
+      Deno.mkdirSync(
+        "cli/tests/unit/testdata/symlink_to_dot_dot/should_be_denied",
+      );
+    }, Deno.errors.PermissionDenied);
+  },
+  permissions: {
+    write: ["cli/tests/unit/testdata"],
+  },
+});
+
+Deno.test({
+  name: "mkdirSymlinkToDotDot",
+  async fn() {
+    await assertThrowsAsync(async () => {
+      await Deno.mkdir(
+        "cli/tests/unit/testdata/symlink_to_dot_dot/should_be_denied",
+      );
+    }, Deno.errors.PermissionDenied);
+  },
+  permissions: {
+    write: ["cli/tests/unit/testdata"],
+  },
+});
