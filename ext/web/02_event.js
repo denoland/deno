@@ -34,9 +34,6 @@
     SymbolFor,
     SymbolToStringTag,
     TypeError,
-    WeakMap,
-    WeakMapPrototypeGet,
-    WeakMapPrototypeSet,
   } = window.__bootstrap.primordials;
 
   // accessors for non runtime visible data
@@ -842,32 +839,30 @@
 
   // Accessors for non-public data
 
-  const eventTargetData = new WeakMap();
+  const eventTargetData = Symbol();
 
-  function setEventTargetData(value) {
-    WeakMapPrototypeSet(eventTargetData, value, getDefaultTargetData());
+  function setEventTargetData(target) {
+    target[eventTargetData] = getDefaultTargetData();
   }
 
   function getAssignedSlot(target) {
-    return Boolean(WeakMapPrototypeGet(eventTargetData, target)?.assignedSlot);
+    return Boolean(target?.[eventTargetData]?.assignedSlot);
   }
 
   function getHasActivationBehavior(target) {
-    return Boolean(
-      WeakMapPrototypeGet(eventTargetData, target)?.hasActivationBehavior,
-    );
+    return Boolean(target?.[eventTargetData]?.hasActivationBehavior);
   }
 
   function getHost(target) {
-    return WeakMapPrototypeGet(eventTargetData, target)?.host ?? null;
+    return target?.[eventTargetData]?.host ?? null;
   }
 
   function getListeners(target) {
-    return WeakMapPrototypeGet(eventTargetData, target)?.listeners ?? {};
+    return target?.[eventTargetData]?.listeners ?? {};
   }
 
   function getMode(target) {
-    return WeakMapPrototypeGet(eventTargetData, target)?.mode ?? null;
+    return target?.[eventTargetData]?.mode ?? null;
   }
 
   function getDefaultTargetData() {
@@ -882,7 +877,7 @@
 
   class EventTarget {
     constructor() {
-      WeakMapPrototypeSet(eventTargetData, this, getDefaultTargetData());
+      this[eventTargetData] = getDefaultTargetData();
     }
 
     addEventListener(
@@ -898,10 +893,7 @@
       }
 
       options = normalizeAddEventHandlerOptions(options);
-      const { listeners } = WeakMapPrototypeGet(
-        eventTargetData,
-        this ?? globalThis,
-      );
+      const { listeners } = (this ?? globalThis)[eventTargetData];
 
       if (!(type in listeners)) {
         listeners[type] = [];
@@ -946,8 +938,7 @@
         prefix: "Failed to execute 'removeEventListener' on 'EventTarget'",
       });
 
-      const listeners =
-        WeakMapPrototypeGet(eventTargetData, this ?? globalThis).listeners;
+      const { listeners } = (this ?? globalThis)[eventTargetData];
       if (callback !== null && type in listeners) {
         listeners[type] = ArrayPrototypeFilter(
           listeners[type],
@@ -980,7 +971,7 @@
       });
       const self = this ?? globalThis;
 
-      const listeners = WeakMapPrototypeGet(eventTargetData, self).listeners;
+      const { listeners } = self[eventTargetData];
       if (!(event.type in listeners)) {
         setTarget(event, this);
         return true;
