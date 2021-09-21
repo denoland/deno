@@ -121,10 +121,6 @@ fn open_helper(
 ) -> Result<(PathBuf, std::fs::OpenOptions), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
 
-  // Since open resolves symbolic links we check permissions against the canonical path to ensure
-  // we can't escape.
-  let canonical_path = canonicalize_path(&path)?;
-
   let mut open_options = std::fs::OpenOptions::new();
 
   if let Some(mode) = args.mode {
@@ -143,11 +139,11 @@ fn open_helper(
   let options = args.options;
 
   if options.read {
-    permissions.read.check(&canonical_path)?;
+    permissions.read.check_canonical(&path)?;
   }
 
   if options.write || options.append {
-    permissions.write.check(&canonical_path)?;
+    permissions.write.check_canonical(&path)?;
   }
 
   open_options
@@ -507,13 +503,11 @@ fn op_chdir(
 ) -> Result<(), AnyError> {
   let path = PathBuf::from(&directory);
 
-  // Since set_current_dir resolves symbol links we check permissions against the canonical path to
-  // prevent escapes.
-  let canonical_path = canonicalize_path(&path)?;
   state
     .borrow_mut::<Permissions>()
     .read
-    .check(&canonical_path)?;
+    .check_canonical(&path)?;
+
   set_current_dir(&path)?;
   Ok(())
 }

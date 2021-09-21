@@ -2,6 +2,7 @@
 
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
+use crate::fs_util::canonicalize_path;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
@@ -306,6 +307,11 @@ impl UnaryPermission<ReadDescriptor> {
     result
   }
 
+  /// As `check`, but tries to canonicalize the path.
+  pub fn check_canonical(&mut self, path: &PathBuf) -> Result<(), AnyError> {
+      self.check(&canonicalize_path(path).unwrap_or(path.to_path_buf()))
+  }
+
   /// As `check()`, but permission error messages will anonymize the path
   /// by replacing it with the given `display`.
   pub fn check_blind(
@@ -432,6 +438,11 @@ impl UnaryPermission<WriteDescriptor> {
       }
     }
     result
+  }
+
+  /// As `check`, but tries to canonicalize the path.
+  pub fn check_canonical(&mut self, path: &PathBuf) -> Result<(), AnyError> {
+    self.check(&canonicalize_path(path).unwrap_or(path.to_path_buf()))
   }
 }
 
