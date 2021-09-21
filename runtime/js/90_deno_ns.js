@@ -109,7 +109,6 @@
     signal: __bootstrap.signals.signal,
     Signal: __bootstrap.signals.Signal,
     SignalStream: __bootstrap.signals.SignalStream,
-    emit: __bootstrap.compilerApi.emit,
     kill: __bootstrap.process.kill,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,

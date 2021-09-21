@@ -213,14 +213,6 @@ impl TsConfig {
     }
   }
 
-  pub fn get_declaration(&self) -> bool {
-    if let Some(declaration) = self.0.get("declaration") {
-      declaration.as_bool().unwrap_or(false)
-    } else {
-      false
-    }
-  }
-
   /// Merge a serde_json value into the configuration.
   pub fn merge(&mut self, value: &Value) {
     json_merge(&mut self.0, value);
@@ -241,19 +233,6 @@ impl TsConfig {
     } else {
       Ok(None)
     }
-  }
-
-  /// Take a map of compiler options, filtering out any that are ignored, then
-  /// merge it with the current configuration, returning any options that might
-  /// have been ignored.
-  pub fn merge_user_config(
-    &mut self,
-    user_options: &HashMap<String, Value>,
-  ) -> Result<Option<IgnoredCompilerOptions>, AnyError> {
-    let (value, maybe_ignored_options) =
-      parse_compiler_options(user_options, None, true)?;
-    self.merge(&value);
-    Ok(maybe_ignored_options)
   }
 }
 
@@ -570,38 +549,6 @@ mod tests {
     let config_path = PathBuf::from("/deno/tsconfig.json");
     // Emit error: config file JSON "<config_path>" should be an object
     assert!(ConfigFile::new(config_text, &config_path).is_err());
-  }
-
-  #[test]
-  fn test_tsconfig_merge_user_options() {
-    let mut tsconfig = TsConfig::new(json!({
-      "target": "esnext",
-      "module": "esnext",
-    }));
-    let user_options = serde_json::from_value(json!({
-      "target": "es6",
-      "build": true,
-      "strict": false,
-    }))
-    .expect("could not convert to hashmap");
-    let maybe_ignored_options = tsconfig
-      .merge_user_config(&user_options)
-      .expect("could not merge options");
-    assert_eq!(
-      tsconfig.0,
-      json!({
-        "module": "esnext",
-        "target": "es6",
-        "strict": false,
-      })
-    );
-    assert_eq!(
-      maybe_ignored_options,
-      Some(IgnoredCompilerOptions {
-        items: vec!["build".to_string()],
-        maybe_path: None
-      })
-    );
   }
 
   #[test]

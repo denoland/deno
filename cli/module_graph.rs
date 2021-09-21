@@ -36,7 +36,6 @@ use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_import;
-use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
@@ -638,10 +637,6 @@ pub enum BundleType {
   /// Return the emitted contents of the program as a single "flattened" ES
   /// module.
   Module,
-  /// Return the emitted contents of the program as a single script that
-  /// executes the program using an immediately invoked function execution
-  /// (IIFE).
-  Classic,
   /// Do not bundle the emit, instead returning each of the modules that are
   /// part of the program as individual files.
   None,
@@ -979,207 +974,6 @@ impl Graph {
     matches!(self.get_module(specifier), ModuleSlot::Module(_))
   }
 
-  /// Emit the module graph in a specific format.  This is specifically designed
-  /// to be an "all-in-one" API for access by the runtime, allowing both
-  /// emitting single modules as well as bundles, using Deno module resolution
-  /// or supplied sources.
-  pub fn emit(
-    mut self,
-    options: EmitOptions,
-  ) -> Result<(HashMap<String, String>, ResultInfo), AnyError> {
-    let mut config = TsConfig::new(json!({
-      "allowJs": true,
-      "checkJs": false,
-      // TODO(@kitsonk) consider enabling this by default
-      //   see: https://github.com/denoland/deno/issues/7732
-      "emitDecoratorMetadata": false,
-      "esModuleInterop": true,
-      "experimentalDecorators": true,
-      "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": false,
-      "inlineSources": false,
-      "sourceMap": false,
-      "isolatedModules": true,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-      "lib": TypeLib::DenoWindow,
-      "module": "esnext",
-      "strict": true,
-      "target": "esnext",
-      "useDefineForClassFields": true,
-      // TODO(@kitsonk) remove for Deno 1.15
-      "useUnknownInCatchVariables": false,
-    }));
-    let opts = match options.bundle_type {
-      BundleType::Module | BundleType::Classic => json!({
-        "noEmit": true,
-        "removeComments": true,
-        "sourceMap": true,
-      }),
-      BundleType::None => json!({
-        "outDir": "deno://",
-        "removeComments": true,
-        "sourceMap": true,
-      }),
-    };
-    config.merge(&opts);
-    let maybe_ignored_options =
-      if let Some(user_options) = &options.maybe_user_config {
-        config.merge_user_config(user_options)?
-      } else {
-        None
-      };
-
-    if !options.check && config.get_declaration() {
-      return Err(anyhow!("The option of `check` is false, but the compiler option of `declaration` is true which is not currently supported."));
-    }
-    if options.bundle_type != BundleType::None && config.get_declaration() {
-      return Err(anyhow!("The bundle option is set, but the compiler option of `declaration` is true which is not currently supported."));
-    }
-
-    let mut emitted_files = HashMap::new();
-    if options.check {
-      let root_names = self.get_root_names(!config.get_check_js())?;
-      let hash_data =
-        vec![config.as_bytes(), version::deno().as_bytes().to_owned()];
-      let graph = Arc::new(Mutex::new(self));
-      let response = tsc::exec(tsc::Request {
-        config: config.clone(),
-        debug: options.debug,
-        graph: graph.clone(),
-        hash_data,
-        maybe_config_specifier: None,
-        maybe_tsbuildinfo: None,
-        root_names,
-      })?;
-
-      let graph = graph.lock();
-      match options.bundle_type {
-        BundleType::Module | BundleType::Classic => {
-          assert!(
-            response.emitted_files.is_empty(),
-            "No files should have been emitted from tsc."
-          );
-          assert_eq!(
-            graph.roots.len(),
-            1,
-            "Only a single root module supported."
-          );
-          let specifier = &graph.roots[0];
-          let (src, maybe_src_map) = graph.emit_bundle(
-            specifier,
-            &config.into(),
-            &options.bundle_type,
-          )?;
-          emitted_files.insert("deno:///bundle.js".to_string(), src);
-          if let Some(src_map) = maybe_src_map {
-            emitted_files.insert("deno:///bundle.js.map".to_string(), src_map);
-          }
-        }
-        BundleType::None => {
-          for emitted_file in &response.emitted_files {
-            assert!(
-              emitted_file.maybe_specifiers.is_some(),
-              "Orphaned file emitted."
-            );
-            let specifiers = emitted_file.maybe_specifiers.clone().unwrap();
-            assert_eq!(
-              specifiers.len(),
-              1,
-              "An unexpected number of specifiers associated with emitted file."
-            );
-            let specifier = specifiers[0].clone();
-            let extension = match emitted_file.media_type {
-              MediaType::JavaScript => ".js",
-              MediaType::SourceMap => ".js.map",
-              MediaType::Dts => ".d.ts",
-              _ => unreachable!(),
-            };
-            let key = format!("{}{}", specifier, extension);
-            emitted_files.insert(key, emitted_file.data.clone());
-          }
-        }
-      };
-
-      Ok((
-        emitted_files,
-        ResultInfo {
-          diagnostics: response.diagnostics,
-          loadable_modules: graph.get_loadable_modules(),
-          maybe_ignored_options,
-          stats: response.stats,
-        },
-      ))
-    } else {
-      let start = Instant::now();
-      let mut emit_count = 0_u32;
-      match options.bundle_type {
-        BundleType::Module | BundleType::Classic => {
-          assert_eq!(
-            self.roots.len(),
-            1,
-            "Only a single root module supported."
-          );
-          let specifier = &self.roots[0];
-          let (src, maybe_src_map) = self.emit_bundle(
-            specifier,
-            &config.into(),
-            &options.bundle_type,
-          )?;
-          emit_count += 1;
-          emitted_files.insert("deno:///bundle.js".to_string(), src);
-          if let Some(src_map) = maybe_src_map {
-            emitted_files.insert("deno:///bundle.js.map".to_string(), src_map);
-          }
-        }
-        BundleType::None => {
-          let check_js = config.get_check_js();
-          let emit_options: ast::EmitOptions = config.into();
-          for (_, module_slot) in self.modules.iter_mut() {
-            if let ModuleSlot::Module(module) = module_slot {
-              if !(check_js
-                || module.media_type == MediaType::Jsx
-                || module.media_type == MediaType::Tsx
-                || module.media_type == MediaType::TypeScript)
-              {
-                emitted_files.insert(
-                  module.specifier.to_string(),
-                  module.text_info.text_str().to_string(),
-                );
-              }
-              let parsed_module = module.parse()?;
-              let (code, maybe_map) = transpile(&parsed_module, &emit_options)?;
-              emit_count += 1;
-              emitted_files.insert(format!("{}.js", module.specifier), code);
-              if let Some(map) = maybe_map {
-                emitted_files
-                  .insert(format!("{}.js.map", module.specifier), map);
-              }
-            }
-          }
-          self.flush()?;
-        }
-      }
-
-      let stats = Stats(vec![
-        ("Files".to_string(), self.modules.len() as u32),
-        ("Emitted".to_string(), emit_count),
-        ("Total time".to_string(), start.elapsed().as_millis() as u32),
-      ]);
-
-      Ok((
-        emitted_files,
-        ResultInfo {
-          diagnostics: Default::default(),
-          loadable_modules: self.get_loadable_modules(),
-          maybe_ignored_options,
-          stats,
-        },
-      ))
-    }
-  }
-
   /// Shared between `bundle()` and `emit()`.
   fn emit_bundle(
     &self,
@@ -1195,7 +989,6 @@ impl Graph {
     let hook = Box::new(BundleHook);
     let module = match bundle_type {
       BundleType::Module => deno_ast::swc::bundler::ModuleType::Es,
-      BundleType::Classic => deno_ast::swc::bundler::ModuleType::Iife,
       _ => unreachable!("invalid bundle type"),
     };
     let bundler = deno_ast::swc::bundler::Bundler::new(
@@ -1280,18 +1073,6 @@ impl Graph {
     }
 
     Ok(())
-  }
-
-  /// Retrieve the first module loading error from the graph and return it.
-  pub fn get_errors(&self) -> HashMap<ModuleSpecifier, String> {
-    self
-      .modules
-      .iter()
-      .filter_map(|(s, sl)| match sl {
-        ModuleSlot::Err(err) => Some((s.clone(), err.to_string())),
-        _ => None,
-      })
-      .collect()
   }
 
   /// Retrieve a map that contains a representation of each module in the graph
@@ -1898,25 +1679,6 @@ impl GraphBuilder {
     Ok(())
   }
 
-  /// Analyze compiler options, identifying any specifiers that need to be
-  /// resolved and added to the graph.
-  pub async fn analyze_compiler_options(
-    &mut self,
-    maybe_compiler_options: &Option<HashMap<String, Value>>,
-  ) -> Result<(), AnyError> {
-    if let Some(user_config) = maybe_compiler_options {
-      if let Some(value) = user_config.get("types") {
-        let types: Vec<String> = serde_json::from_value(value.clone())?;
-        for specifier in types {
-          if let Ok(specifier) = resolve_url_or_path(&specifier) {
-            self.insert(&specifier, false).await?;
-          }
-        }
-      }
-    }
-    Ok(())
-  }
-
   /// Analyze a config file, identifying any specifiers that need to be resolved
   /// and added to the graph.
   pub async fn analyze_config_file(
@@ -2093,23 +1855,11 @@ impl GraphBuilder {
 pub mod tests {
   use super::*;
 
-  use crate::specifier_handler::MemoryHandler;
   use deno_core::futures::future;
   use deno_core::parking_lot::Mutex;
+  use deno_core::resolve_url_or_path;
   use std::fs;
   use std::path::PathBuf;
-
-  macro_rules! map (
-    { $($key:expr => $value:expr),+ } => {
-      {
-        let mut m = ::std::collections::HashMap::new();
-        $(
-          m.insert($key, $value);
-        )+
-        m
-      }
-    };
-  );
 
   /// This is a testing mock for `SpecifierHandler` that uses a special file
   /// system renaming to mock local and remote modules as well as provides
@@ -2230,24 +1980,6 @@ pub mod tests {
       .expect("module not inserted");
 
     (builder.get_graph(), handler)
-  }
-
-  async fn setup_memory(
-    specifier: ModuleSpecifier,
-    sources: HashMap<&str, &str>,
-  ) -> Graph {
-    let sources: HashMap<String, Arc<String>> = sources
-      .iter()
-      .map(|(k, v)| (k.to_string(), Arc::new(v.to_string())))
-      .collect();
-    let handler = Arc::new(Mutex::new(MemoryHandler::new(sources)));
-    let mut builder = GraphBuilder::new(handler.clone(), None, None);
-    builder
-      .add(&specifier, false)
-      .await
-      .expect("module not inserted");
-
-    builder.get_graph()
   }
 
   #[test]
@@ -2544,126 +2276,6 @@ pub mod tests {
     assert_eq!(h.version_calls.len(), 2);
     assert!(h.version_calls[0].1 == ver0 || h.version_calls[0].1 == ver1);
     assert!(h.version_calls[1].1 == ver0 || h.version_calls[1].1 == ver1);
-  }
-
-  #[tokio::test]
-  async fn test_graph_emit() {
-    let specifier = resolve_url_or_path("file:///a.ts").unwrap();
-    let graph = setup_memory(
-      specifier,
-      map!(
-        "/a.ts" => r#"
-        import * as b from "./b.ts";
-
-        console.log(b);
-      "#,
-        "/b.ts" => r#"
-        export const b = "b";
-      "#
-      ),
-    )
-    .await;
-    let (emitted_files, result_info) = graph
-      .emit(EmitOptions {
-        check: true,
-        bundle_type: BundleType::None,
-        debug: false,
-        maybe_user_config: None,
-      })
-      .expect("should have emitted");
-    assert!(result_info.diagnostics.is_empty());
-    assert!(result_info.maybe_ignored_options.is_none());
-    assert_eq!(emitted_files.len(), 4);
-    let out_a = emitted_files.get("file:///a.ts.js");
-    assert!(out_a.is_some());
-    let out_a = out_a.unwrap();
-    assert!(out_a.starts_with("import * as b from"));
-    assert!(emitted_files.contains_key("file:///a.ts.js.map"));
-    let out_b = emitted_files.get("file:///b.ts.js");
-    assert!(out_b.is_some());
-    let out_b = out_b.unwrap();
-    assert!(out_b.starts_with("export const b = \"b\";"));
-    assert!(emitted_files.contains_key("file:///b.ts.js.map"));
-  }
-
-  #[tokio::test]
-  async fn test_graph_emit_bundle() {
-    let specifier = resolve_url_or_path("file:///a.ts").unwrap();
-    let graph = setup_memory(
-      specifier,
-      map!(
-        "/a.ts" => r#"
-        import * as b from "./b.ts";
-
-        console.log(b);
-      "#,
-        "/b.ts" => r#"
-        export const b = "b";
-      "#
-      ),
-    )
-    .await;
-    let (emitted_files, result_info) = graph
-      .emit(EmitOptions {
-        check: true,
-        bundle_type: BundleType::Module,
-        debug: false,
-        maybe_user_config: None,
-      })
-      .expect("should have emitted");
-    assert!(result_info.diagnostics.is_empty());
-    assert!(result_info.maybe_ignored_options.is_none());
-    assert_eq!(emitted_files.len(), 2);
-    let actual = emitted_files.get("deno:///bundle.js");
-    assert!(actual.is_some());
-    assert!(emitted_files.contains_key("deno:///bundle.js.map"));
-    let actual = actual.unwrap();
-    assert!(actual.contains("const b = \"b\";"));
-    assert!(actual.contains("console.log(mod);"));
-  }
-
-  #[tokio::test]
-  async fn fix_graph_emit_declaration() {
-    let specifier = resolve_url_or_path("file:///a.ts").unwrap();
-    let graph = setup_memory(
-      specifier,
-      map!(
-        "/a.ts" => r#"
-        import * as b from "./b.ts";
-
-        console.log(b);
-      "#,
-        "/b.ts" => r#"
-        export const b = "b";
-      "#
-      ),
-    )
-    .await;
-    let mut user_config = HashMap::<String, Value>::new();
-    user_config.insert("declaration".to_string(), json!(true));
-    let (emitted_files, result_info) = graph
-      .emit(EmitOptions {
-        check: true,
-        bundle_type: BundleType::None,
-        debug: false,
-        maybe_user_config: Some(user_config),
-      })
-      .expect("should have emitted");
-    assert!(result_info.diagnostics.is_empty());
-    assert!(result_info.maybe_ignored_options.is_none());
-    assert_eq!(emitted_files.len(), 6);
-    let out_a = emitted_files.get("file:///a.ts.js");
-    assert!(out_a.is_some());
-    let out_a = out_a.unwrap();
-    assert!(out_a.starts_with("import * as b from"));
-    assert!(emitted_files.contains_key("file:///a.ts.js.map"));
-    assert!(emitted_files.contains_key("file:///a.ts.d.ts"));
-    let out_b = emitted_files.get("file:///b.ts.js");
-    assert!(out_b.is_some());
-    let out_b = out_b.unwrap();
-    assert!(out_b.starts_with("export const b = \"b\";"));
-    assert!(emitted_files.contains_key("file:///b.ts.js.map"));
-    assert!(emitted_files.contains_key("file:///b.ts.d.ts"));
   }
 
   #[tokio::test]

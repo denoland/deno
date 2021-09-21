@@ -164,9 +164,6 @@ fn create_web_worker_callback(
       // Applies source maps - works in conjuction with `js_error_create_fn`
       // above
       ops::errors::init(js_runtime);
-      if args.use_deno_namespace {
-        ops::runtime_compiler::init(js_runtime);
-      }
       js_runtime.sync_ops_cache();
     }
     worker.bootstrap(&options);
@@ -253,7 +250,6 @@ pub fn create_main_worker(
     // Applies source maps - works in conjuction with `js_error_create_fn`
     // above
     ops::errors::init(js_runtime);
-    ops::runtime_compiler::init(js_runtime);
 
     if let Some(op_init) = maybe_op_init {
       op_init(js_runtime);
