@@ -343,7 +343,7 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO: false
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 256
           CARGO_PROFILE_RELEASE_OPT_LEVEL: 0
-          CARGO_PROFILE_BENCH_INCREMENTAL: true
+          CARGO_PROFILE_RELEASE_INCREMENTAL: true
 
       - name: Build release
         if: |
@@ -425,7 +425,7 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO: false
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 256
           CARGO_PROFILE_RELEASE_OPT_LEVEL: 0
-          CARGO_PROFILE_BENCH_INCREMENTAL: true
+          CARGO_PROFILE_RELEASE_INCREMENTAL: true
 
       - name: Test release
         if: |
