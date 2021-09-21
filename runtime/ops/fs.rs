@@ -510,7 +510,10 @@ fn op_chdir(
   // Since set_current_dir resolves symbol links we check permissions against the canonical path to
   // prevent escapes.
   let canonical_path = canonicalize_path(&path)?;
-  state.borrow_mut::<Permissions>().read.check(&canonical_path)?;
+  state
+    .borrow_mut::<Permissions>()
+    .read
+    .check(&canonical_path)?;
   set_current_dir(&path)?;
   Ok(())
 }
