@@ -15,12 +15,16 @@ jobs:
         include:
           - os: macos-10.15
             job: test
+            profile: fastci
+          - os: macos-10.15
+            job: test
             profile: release
-            fast_ci: true
+          - os: windows-2019
+            job: test
+            profile: fastci
           - os: windows-2019
             job: test
             profile: release
-            fast_ci: true
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
             job: test
             profile: release
@@ -49,7 +53,6 @@ jobs:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
       RUSTC_FORCE_INCREMENTAL: 1
-      RUSTFLAGS_FASTCI: "-C codegen-units=256 -C debuginfo=0 -C opt-level=0"
 
     steps:
       - name: Configure git
@@ -336,6 +339,11 @@ jobs:
           (matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'debug' && !matrix.use_sysroot
         run: cargo build --locked --all-targets
+    
+      - name: Build fastci
+        if: (matrix.job == 'test' && matrix.profile == 'fastci')
+        env:
+          RUSTFLAGS: "-C codegen-units=256 -C lto=false -C debuginfo=0 -C opt-level=0"
 
       - name: Build release
         if: |
@@ -409,6 +417,11 @@ jobs:
         run: |
           cargo test --locked --doc
           cargo test --locked
+
+      - name: Test fastci
+        if: (matrix.job == 'test' && matrix.profile == 'fastci')
+        env:
+          RUSTFLAGS: "-C codegen-units=256 -C lto=false -C debuginfo=0 -C opt-level=0"
 
       - name: Test release
         if: |
