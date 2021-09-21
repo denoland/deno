@@ -10,7 +10,6 @@
   const { assert } = window.__bootstrap.util;
   const {
     ArrayPrototypeFilter,
-    ArrayPrototypeEvery,
     ArrayPrototypeMap,
     ArrayPrototypePush,
     DateNow,
@@ -26,7 +25,7 @@
   } = window.__bootstrap.primordials;
 
   const testerGetTestStepResultsSymbol = Symbol();
-  const testerAllTestStepsPassSymbol = Symbol();
+  const testerFailedStepsCountSymbol = Symbol();
 
   // Wrap test function in additional assertion that makes sure
   // the test case does not leak async "ops" - ie. number of async
@@ -220,8 +219,13 @@ finishing test case.`;
     let status;
     try {
       await test.fn(tester);
-      status = tester[testerAllTestStepsPassSymbol]() ? "ok" : {
-        "failed": "Test step failed.",
+      const failCount = tester[testerFailedStepsCountSymbol]();
+      status = failCount === 0 ? "ok" : {
+        "failed": inspectArgs([
+          new Error(
+            `${failCount} test step${failCount === 1 ? "" : "s"} failed.`,
+          ),
+        ]),
       };
     } catch (error) {
       status = {
@@ -451,7 +455,7 @@ finishing test case.`;
           // always point this test out as one that was still running
           // after the parent tester finalized
           testStatus.status = "pending";
-        } else if (!tester[testerAllTestStepsPassSymbol]()) {
+        } else if (tester[testerFailedStepsCountSymbol]() > 0) {
           testStatus.status = "failed";
         } else {
           testStatus.status = "ok";
@@ -500,12 +504,12 @@ finishing test case.`;
       );
     }
 
-    [testerAllTestStepsPassSymbol]() {
-      return ArrayPrototypeEvery(
+    [testerFailedStepsCountSymbol]() {
+      return ArrayPrototypeFilter(
         this.#testStatuses,
         /** @param status {TestStatus} */
-        (status) => status.status !== "failed",
-      );
+        (status) => status.status === "failed",
+      ).length;
     }
 
     /** Checks all the nodes in the tree except this tester's

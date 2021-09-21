@@ -186,3 +186,9 @@ itest!(steps_passing_steps {
   exit_code: 0,
   output: "test/steps/passing_steps.out",
 });
+
+itest!(steps_failing_steps {
+  args: "test test/steps/failing_steps.ts",
+  exit_code: 1,
+  output: "test/steps/failing_steps.out",
+});
