@@ -1,8 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::utils::into_string;
-use crate::permissions::Permissions;
-use deno_core::error::{type_error, AnyError};
+use super::into_string;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
+use deno_core::include_js_files;
 use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::Extension;
@@ -11,34 +12,77 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
+use std::path::Path;
 
-pub fn init() -> Extension {
+pub fn init<OP: OsPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:ext/sys",
+      "01_os.js",
+    ))
     .ops(vec![
       ("op_exit", op_sync(op_exit)),
-      ("op_env", op_sync(op_env)),
-      ("op_exec_path", op_sync(op_exec_path)),
-      ("op_set_env", op_sync(op_set_env)),
-      ("op_get_env", op_sync(op_get_env)),
-      ("op_delete_env", op_sync(op_delete_env)),
-      ("op_hostname", op_sync(op_hostname)),
-      ("op_loadavg", op_sync(op_loadavg)),
-      ("op_os_release", op_sync(op_os_release)),
-      ("op_system_memory_info", op_sync(op_system_memory_info)),
+      ("op_env", op_sync(op_env::<OP>)),
+      ("op_exec_path", op_sync(op_exec_path::<OP>)),
+      ("op_set_env", op_sync(op_set_env::<OP>)),
+      ("op_get_env", op_sync(op_get_env::<OP>)),
+      ("op_delete_env", op_sync(op_delete_env::<OP>)),
+      ("op_hostname", op_sync(op_hostname::<OP>)),
+      ("op_loadavg", op_sync(op_loadavg::<OP>)),
+      ("op_os_release", op_sync(op_os_release::<OP>)),
+      (
+        "op_system_memory_info",
+        op_sync(op_system_memory_info::<OP>),
+      ),
     ])
+    .state(move |state| {
+      state.put(super::Unstable(unstable));
+      Ok(())
+    })
     .build()
 }
 
-fn op_exec_path(
+pub trait OsPermissions {
+  fn check_read_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+  ) -> Result<(), AnyError>;
+  fn check_env(&mut self, env: &str) -> Result<(), AnyError>;
+  fn check_env_all(&mut self) -> Result<(), AnyError>;
+}
+
+pub struct NoOsPermissions;
+
+impl OsPermissions for NoOsPermissions {
+  fn check_read_blind(
+    &mut self,
+    _path: &Path,
+    _display: &str,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+
+  fn check_env(&mut self, _env: &str) -> Result<(), AnyError> {
+    Ok(())
+  }
+  fn check_env_all(&mut self) -> Result<(), AnyError> {
+    Ok(())
+  }
+}
+
+fn op_exec_path<OP>(
   state: &mut OpState,
   _args: (),
   _: (),
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  OP: OsPermissions + 'static,
+{
   let current_exe = env::current_exe().unwrap();
   state
-    .borrow_mut::<Permissions>()
-    .read
-    .check_blind(&current_exe, "exec_path")?;
+    .borrow_mut::<OP>()
+    .check_read_blind(&current_exe, "exec_path")?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
@@ -53,12 +97,15 @@ pub struct SetEnv {
   value: String,
 }
 
-fn op_set_env(
+fn op_set_env<OP>(
   state: &mut OpState,
   args: SetEnv,
   _: (),
-) -> Result<(), AnyError> {
-  state.borrow_mut::<Permissions>().env.check(&args.key)?;
+) -> Result<(), AnyError>
+where
+  OP: OsPermissions + 'static,
+{
+  state.borrow_mut::<OP>().check_env(&args.key)?;
   let invalid_key =
     args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]);
   let invalid_value = args.value.contains('\0');
@@ -69,21 +116,27 @@ fn op_set_env(
   Ok(())
 }
 
-fn op_env(
+fn op_env<OP>(
   state: &mut OpState,
   _args: (),
   _: (),
-) -> Result<HashMap<String, String>, AnyError> {
-  state.borrow_mut::<Permissions>().env.check_all()?;
+) -> Result<HashMap<String, String>, AnyError>
+where
+  OP: OsPermissions + 'static,
+{
+  state.borrow_mut::<OP>().check_env_all()?;
   Ok(env::vars().collect())
 }
 
-fn op_get_env(
+fn op_get_env<OP>(
   state: &mut OpState,
   key: String,
   _: (),
-) -> Result<Option<String>, AnyError> {
-  state.borrow_mut::<Permissions>().env.check(&key)?;
+) -> Result<Option<String>, AnyError>
+where
+  OP: OsPermissions + 'static,
+{
+  state.borrow_mut::<OP>().check_env(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }
@@ -94,12 +147,15 @@ fn op_get_env(
   Ok(r)
 }
 
-fn op_delete_env(
+fn op_delete_env<OP>(
   state: &mut OpState,
   key: String,
   _: (),
-) -> Result<(), AnyError> {
-  state.borrow_mut::<Permissions>().env.check(&key)?;
+) -> Result<(), AnyError>
+where
+  OP: OsPermissions + 'static,
+{
+  state.borrow_mut::<OP>().check_env(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }
@@ -111,37 +167,46 @@ fn op_exit(_state: &mut OpState, code: i32, _: ()) -> Result<(), AnyError> {
   std::process::exit(code)
 }
 
-fn op_loadavg(
+fn op_loadavg<OP>(
   state: &mut OpState,
   _args: (),
   _: (),
-) -> Result<(f64, f64, f64), AnyError> {
+) -> Result<(f64, f64, f64), AnyError>
+where
+  OP: OsPermissions + 'static,
+{
   super::check_unstable(state, "Deno.loadavg");
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state.borrow_mut::<OP>().check_env_all()?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok((loadavg.one, loadavg.five, loadavg.fifteen)),
     Err(_) => Ok((0.0, 0.0, 0.0)),
   }
 }
 
-fn op_hostname(
+fn op_hostname<OP>(
   state: &mut OpState,
   _args: (),
   _: (),
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  OP: OsPermissions + 'static,
+{
   super::check_unstable(state, "Deno.hostname");
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state.borrow_mut::<OP>().check_env_all()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(hostname)
 }
 
-fn op_os_release(
+fn op_os_release<OP>(
   state: &mut OpState,
   _args: (),
   _: (),
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  OP: OsPermissions + 'static,
+{
   super::check_unstable(state, "Deno.osRelease");
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state.borrow_mut::<OP>().check_env_all()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(release)
 }
@@ -159,13 +224,16 @@ struct MemInfo {
   pub swap_free: u64,
 }
 
-fn op_system_memory_info(
+fn op_system_memory_info<OP>(
   state: &mut OpState,
   _args: (),
   _: (),
-) -> Result<Option<MemInfo>, AnyError> {
+) -> Result<Option<MemInfo>, AnyError>
+where
+  OP: OsPermissions + 'static,
+{
   super::check_unstable(state, "Deno.systemMemoryInfo");
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state.borrow_mut::<OP>().check_env_all()?;
   match sys_info::mem_info() {
     Ok(info) => Ok(Some(MemInfo {
       total: info.total,

@@ -16,6 +16,7 @@ members = [
   "ext/ffi",
   "ext/http",
   "ext/net",
+  "ext/sys",
   "ext/timers",
   "ext/url",
   "ext/web",

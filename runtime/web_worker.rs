@@ -347,28 +347,29 @@ impl WebWorker {
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(options.create_web_worker_cb.clone()),
-      ops::io::init(),
+      deno_sys::io::init(),
     ];
 
     // Extensions providing Deno.* features
     let deno_ns_exts = if options.use_deno_namespace {
       vec![
-        ops::fs_events::init(),
-        ops::fs::init(),
+        deno_sys::base_init(),
+        deno_sys::io::init_stdio(),
+        deno_sys::fs::init::<Permissions>(options.unstable),
+        deno_sys::fs_events::init::<Permissions>(),
         deno_tls::init(),
         deno_net::init::<Permissions>(
           options.root_cert_store.clone(),
           options.unstable,
           options.unsafely_ignore_certificate_errors.clone(),
         ),
-        ops::os::init(),
+        deno_sys::os::init::<Permissions>(options.unstable),
         ops::permissions::init(),
-        ops::process::init(),
-        ops::signal::init(),
-        ops::tty::init(),
+        deno_sys::process::init::<Permissions>(options.unstable),
+        deno_sys::signal::init(options.unstable),
+        deno_sys::tty::init(options.unstable),
         deno_http::init(),
         ops::http::init(),
-        ops::io::init_stdio(),
       ]
     } else {
       vec![]

@@ -1,9 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
 #[cfg(not(unix))]
 use deno_core::error::generic_error;
 #[cfg(not(target_os = "windows"))]
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::include_js_files;
 use deno_core::op_async_unref;
 use deno_core::op_sync;
 use deno_core::Extension;
@@ -28,13 +30,21 @@ use std::borrow::Cow;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
-pub fn init() -> Extension {
+pub fn init(unstable: bool) -> Extension {
   Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:ext/sys",
+      "01_signals.js",
+    ))
     .ops(vec![
       ("op_signal_bind", op_sync(op_signal_bind)),
       ("op_signal_unbind", op_sync(op_signal_unbind)),
       ("op_signal_poll", op_async_unref(op_signal_poll)),
     ])
+    .state(move |state| {
+      state.put(super::Unstable(unstable));
+      Ok(())
+    })
     .build()
 }
 

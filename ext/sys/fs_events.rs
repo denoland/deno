@@ -1,19 +1,18 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::Permissions;
 use deno_core::error::AnyError;
+use deno_core::include_js_files;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-
-use deno_core::op_async;
-use deno_core::op_sync;
-use deno_core::Extension;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -25,17 +24,33 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init() -> Extension {
+pub fn init<FEP: FsEventsPermissions + 'static>() -> Extension {
   Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:ext/sys",
+      "02_fs_events.js",
+    ))
     .ops(vec![
-      ("op_fs_events_open", op_sync(op_fs_events_open)),
+      ("op_fs_events_open", op_sync(op_fs_events_open::<FEP>)),
       ("op_fs_events_poll", op_async(op_fs_events_poll)),
     ])
     .build()
+}
+
+pub trait FsEventsPermissions {
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
+}
+
+pub struct NoFsEventsPermissions;
+
+impl FsEventsPermissions for NoFsEventsPermissions {
+  fn check_read(&mut self, _path: &Path) -> Result<(), AnyError> {
+    Ok(())
+  }
 }
 
 struct FsEventsResource {
@@ -93,11 +108,14 @@ pub struct OpenArgs {
   paths: Vec<String>,
 }
 
-fn op_fs_events_open(
+fn op_fs_events_open<FEP>(
   state: &mut OpState,
   args: OpenArgs,
   _: (),
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, AnyError>
+where
+  FEP: FsEventsPermissions + 'static,
+{
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = Mutex::new(sender);
   let mut watcher: RecommendedWatcher =
@@ -115,7 +133,7 @@ fn op_fs_events_open(
   };
   for path in &args.paths {
     let path = PathBuf::from(path);
-    state.borrow_mut::<Permissions>().read.check(&path)?;
+    state.borrow_mut::<FEP>().check_read(&path)?;
     watcher.watch(&path, recursive_mode)?;
   }
   let resource = FsEventsResource {

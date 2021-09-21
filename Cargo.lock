@@ -859,6 +859,7 @@ dependencies = [
  "deno_ffi",
  "deno_http",
  "deno_net",
+ "deno_sys",
  "deno_timers",
  "deno_tls",
  "deno_url",
@@ -869,8 +870,6 @@ dependencies = [
  "deno_webstorage",
  "dlopen",
  "encoding_rs",
- "filetime",
- "fs3",
  "fwdansi",
  "http",
  "hyper",
@@ -878,17 +877,34 @@ dependencies = [
  "libc",
  "log",
  "nix",
- "notify",
  "regex",
  "ring",
  "serde",
- "sys-info",
  "termcolor",
  "test_util",
  "tokio",
  "uuid",
  "winapi 0.3.9",
  "winres",
+]
+
+[[package]]
+name = "deno_sys"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "deno_crypto",
+ "deno_net",
+ "filetime",
+ "fs3",
+ "lazy_static",
+ "libc",
+ "log",
+ "nix",
+ "notify",
+ "serde",
+ "sys-info",
+ "tokio",
 ]
 
 [[package]]

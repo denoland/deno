@@ -4,6 +4,7 @@ use deno_core::error::not_supported;
 use deno_core::error::null_opbuf;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
+use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::AsyncMutFuture;
@@ -94,6 +95,10 @@ lazy_static::lazy_static! {
 
 pub fn init() -> Extension {
   Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:ext/sys",
+      "01_io.js",
+    ))
     .ops(vec![
       ("op_read_async", op_async(op_read_async)),
       ("op_write_async", op_async(op_write_async)),

@@ -1101,6 +1101,58 @@ impl deno_fetch::FetchPermissions for Permissions {
   }
 }
 
+impl deno_sys::fs::FsPermissions for Permissions {
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.read.check(path)
+  }
+
+  fn check_read_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+  ) -> Result<(), AnyError> {
+    self.read.check_blind(path, display)
+  }
+
+  fn check_write(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.write.check(path)
+  }
+}
+
+impl deno_sys::fs_events::FsEventsPermissions for Permissions {
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.read.check(path)
+  }
+}
+
+impl deno_sys::os::OsPermissions for Permissions {
+  fn check_read_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+  ) -> Result<(), AnyError> {
+    self.read.check_blind(path, display)
+  }
+
+  fn check_env(&mut self, env: &str) -> Result<(), AnyError> {
+    self.env.check(env)
+  }
+
+  fn check_env_all(&mut self) -> Result<(), AnyError> {
+    self.env.check_all()
+  }
+}
+
+impl deno_sys::process::ProcessPermissions for Permissions {
+  fn check_run(&mut self, cmd: &str) -> Result<(), AnyError> {
+    self.run.check(cmd)
+  }
+
+  fn check_run_all(&mut self) -> Result<(), AnyError> {
+    self.run.check_all()
+  }
+}
+
 impl deno_timers::TimersPermission for Permissions {
   fn allow_hrtime(&mut self) -> bool {
     self.hrtime.check().is_ok()

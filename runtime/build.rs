@@ -69,7 +69,15 @@ mod not_docs {
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
+      deno_sys::base_init(),
+      deno_sys::io::init(),
+      deno_sys::fs::init::<deno_sys::fs::NoFsPermissions>(false),
+      deno_sys::fs_events::init::<deno_sys::fs_events::NoFsEventsPermissions>(),
       deno_ffi::init::<deno_ffi::NoFfiPermissions>(false),
+      deno_sys::os::init::<deno_sys::os::NoOsPermissions>(false),
+      deno_sys::process::init::<deno_sys::process::NoProcessPermissions>(false),
+      deno_sys::signal::init(false),
+      deno_sys::tty::init(false),
       deno_net::init::<deno_net::NoNetPermissions>(
         None, false, // No --unstable.
         None,

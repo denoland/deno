@@ -4,10 +4,10 @@ use super::io::ChildStderrResource;
 use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use super::io::StdFileResource;
-use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::AsyncMutFuture;
@@ -27,14 +27,38 @@ use tokio::process::Command;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-pub fn init() -> Extension {
+pub fn init<PP: ProcessPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:ext/sys",
+      "01_process.js",
+    ))
     .ops(vec![
-      ("op_run", op_sync(op_run)),
+      ("op_run", op_sync(op_run::<PP>)),
       ("op_run_status", op_async(op_run_status)),
-      ("op_kill", op_sync(op_kill)),
+      ("op_kill", op_sync(op_kill::<PP>)),
     ])
+    .state(move |state| {
+      state.put(super::Unstable(unstable));
+      Ok(())
+    })
     .build()
+}
+
+pub trait ProcessPermissions {
+  fn check_run(&mut self, cmd: &str) -> Result<(), AnyError>;
+  fn check_run_all(&mut self) -> Result<(), AnyError>;
+}
+
+pub struct NoProcessPermissions;
+
+impl ProcessPermissions for NoProcessPermissions {
+  fn check_run(&mut self, _cmd: &str) -> Result<(), AnyError> {
+    Ok(())
+  }
+  fn check_run_all(&mut self) -> Result<(), AnyError> {
+    Ok(())
+  }
 }
 
 fn clone_file(
@@ -102,13 +126,16 @@ struct RunInfo {
   stderr_rid: Option<ResourceId>,
 }
 
-fn op_run(
+fn op_run<PP>(
   state: &mut OpState,
   run_args: RunArgs,
   _: (),
-) -> Result<RunInfo, AnyError> {
+) -> Result<RunInfo, AnyError>
+where
+  PP: ProcessPermissions + 'static,
+{
   let args = run_args.cmd;
-  state.borrow_mut::<Permissions>().run.check(&args[0])?;
+  state.borrow_mut::<PP>().check_run(&args[0])?;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -313,9 +340,16 @@ struct KillArgs {
   signo: String,
 }
 
-fn op_kill(state: &mut OpState, args: KillArgs, _: ()) -> Result<(), AnyError> {
+fn op_kill<PP>(
+  state: &mut OpState,
+  args: KillArgs,
+  _: (),
+) -> Result<(), AnyError>
+where
+  PP: ProcessPermissions + 'static,
+{
   super::check_unstable(state, "Deno.kill");
-  state.borrow_mut::<Permissions>().run.check_all()?;
+  state.borrow_mut::<PP>().check_run_all()?;
 
   let signo = super::signal::signal_str_to_int(&args.signo)?;
   kill(args.pid, signo)?;

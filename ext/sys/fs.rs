@@ -1,13 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
+use super::canonicalize_path;
+use super::into_string;
 use super::io::StdFileResource;
-use super::utils::into_string;
-use crate::fs_util::canonicalize_path;
-use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::Extension;
@@ -35,11 +35,18 @@ use deno_core::error::generic_error;
 #[cfg(not(unix))]
 use deno_core::error::not_supported;
 
-pub fn init() -> Extension {
+pub fn init<FP: FsPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:ext/sys",
+      "01_fs.js",
+      "02_files.js",
+      "03_read_file.js",
+      "03_write_file.js",
+    ))
     .ops(vec![
-      ("op_open_sync", op_sync(op_open_sync)),
-      ("op_open_async", op_async(op_open_async)),
+      ("op_open_sync", op_sync(op_open_sync::<FP>)),
+      ("op_open_async", op_async(op_open_async::<FP>)),
       ("op_seek_sync", op_sync(op_seek_sync)),
       ("op_seek_async", op_async(op_seek_async)),
       ("op_fdatasync_sync", op_sync(op_fdatasync_sync)),
@@ -53,46 +60,90 @@ pub fn init() -> Extension {
       ("op_funlock_sync", op_sync(op_funlock_sync)),
       ("op_funlock_async", op_async(op_funlock_async)),
       ("op_umask", op_sync(op_umask)),
-      ("op_chdir", op_sync(op_chdir)),
-      ("op_mkdir_sync", op_sync(op_mkdir_sync)),
-      ("op_mkdir_async", op_async(op_mkdir_async)),
-      ("op_chmod_sync", op_sync(op_chmod_sync)),
-      ("op_chmod_async", op_async(op_chmod_async)),
-      ("op_chown_sync", op_sync(op_chown_sync)),
-      ("op_chown_async", op_async(op_chown_async)),
-      ("op_remove_sync", op_sync(op_remove_sync)),
-      ("op_remove_async", op_async(op_remove_async)),
-      ("op_copy_file_sync", op_sync(op_copy_file_sync)),
-      ("op_copy_file_async", op_async(op_copy_file_async)),
-      ("op_stat_sync", op_sync(op_stat_sync)),
-      ("op_stat_async", op_async(op_stat_async)),
-      ("op_realpath_sync", op_sync(op_realpath_sync)),
-      ("op_realpath_async", op_async(op_realpath_async)),
-      ("op_read_dir_sync", op_sync(op_read_dir_sync)),
-      ("op_read_dir_async", op_async(op_read_dir_async)),
-      ("op_rename_sync", op_sync(op_rename_sync)),
-      ("op_rename_async", op_async(op_rename_async)),
-      ("op_link_sync", op_sync(op_link_sync)),
-      ("op_link_async", op_async(op_link_async)),
-      ("op_symlink_sync", op_sync(op_symlink_sync)),
-      ("op_symlink_async", op_async(op_symlink_async)),
-      ("op_read_link_sync", op_sync(op_read_link_sync)),
-      ("op_read_link_async", op_async(op_read_link_async)),
+      ("op_chdir", op_sync(op_chdir::<FP>)),
+      ("op_mkdir_sync", op_sync(op_mkdir_sync::<FP>)),
+      ("op_mkdir_async", op_async(op_mkdir_async::<FP>)),
+      ("op_chmod_sync", op_sync(op_chmod_sync::<FP>)),
+      ("op_chmod_async", op_async(op_chmod_async::<FP>)),
+      ("op_chown_sync", op_sync(op_chown_sync::<FP>)),
+      ("op_chown_async", op_async(op_chown_async::<FP>)),
+      ("op_remove_sync", op_sync(op_remove_sync::<FP>)),
+      ("op_remove_async", op_async(op_remove_async::<FP>)),
+      ("op_copy_file_sync", op_sync(op_copy_file_sync::<FP>)),
+      ("op_copy_file_async", op_async(op_copy_file_async::<FP>)),
+      ("op_stat_sync", op_sync(op_stat_sync::<FP>)),
+      ("op_stat_async", op_async(op_stat_async::<FP>)),
+      ("op_realpath_sync", op_sync(op_realpath_sync::<FP>)),
+      ("op_realpath_async", op_async(op_realpath_async::<FP>)),
+      ("op_read_dir_sync", op_sync(op_read_dir_sync::<FP>)),
+      ("op_read_dir_async", op_async(op_read_dir_async::<FP>)),
+      ("op_rename_sync", op_sync(op_rename_sync::<FP>)),
+      ("op_rename_async", op_async(op_rename_async::<FP>)),
+      ("op_link_sync", op_sync(op_link_sync::<FP>)),
+      ("op_link_async", op_async(op_link_async::<FP>)),
+      ("op_symlink_sync", op_sync(op_symlink_sync::<FP>)),
+      ("op_symlink_async", op_async(op_symlink_async::<FP>)),
+      ("op_read_link_sync", op_sync(op_read_link_sync::<FP>)),
+      ("op_read_link_async", op_async(op_read_link_async::<FP>)),
       ("op_ftruncate_sync", op_sync(op_ftruncate_sync)),
       ("op_ftruncate_async", op_async(op_ftruncate_async)),
-      ("op_truncate_sync", op_sync(op_truncate_sync)),
-      ("op_truncate_async", op_async(op_truncate_async)),
-      ("op_make_temp_dir_sync", op_sync(op_make_temp_dir_sync)),
-      ("op_make_temp_dir_async", op_async(op_make_temp_dir_async)),
-      ("op_make_temp_file_sync", op_sync(op_make_temp_file_sync)),
-      ("op_make_temp_file_async", op_async(op_make_temp_file_async)),
-      ("op_cwd", op_sync(op_cwd)),
+      ("op_truncate_sync", op_sync(op_truncate_sync::<FP>)),
+      ("op_truncate_async", op_async(op_truncate_async::<FP>)),
+      (
+        "op_make_temp_dir_sync",
+        op_sync(op_make_temp_dir_sync::<FP>),
+      ),
+      (
+        "op_make_temp_dir_async",
+        op_async(op_make_temp_dir_async::<FP>),
+      ),
+      (
+        "op_make_temp_file_sync",
+        op_sync(op_make_temp_file_sync::<FP>),
+      ),
+      (
+        "op_make_temp_file_async",
+        op_async(op_make_temp_file_async::<FP>),
+      ),
+      ("op_cwd", op_sync(op_cwd::<FP>)),
       ("op_futime_sync", op_sync(op_futime_sync)),
       ("op_futime_async", op_async(op_futime_async)),
-      ("op_utime_sync", op_sync(op_utime_sync)),
-      ("op_utime_async", op_async(op_utime_async)),
+      ("op_utime_sync", op_sync(op_utime_sync::<FP>)),
+      ("op_utime_async", op_async(op_utime_async::<FP>)),
     ])
+    .state(move |state| {
+      state.put(super::Unstable(unstable));
+      Ok(())
+    })
     .build()
+}
+
+pub trait FsPermissions {
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
+  fn check_read_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+  ) -> Result<(), AnyError>;
+  fn check_write(&mut self, path: &Path) -> Result<(), AnyError>;
+}
+
+pub struct NoFsPermissions;
+
+impl FsPermissions for NoFsPermissions {
+  fn check_read(&mut self, _path: &Path) -> Result<(), AnyError> {
+    Ok(())
+  }
+  fn check_read_blind(
+    &mut self,
+    _path: &Path,
+    _display: &str,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+  fn check_write(&mut self, _path: &Path) -> Result<(), AnyError> {
+    Ok(())
+  }
 }
 
 #[derive(Deserialize)]
@@ -115,10 +166,13 @@ pub struct OpenOptions {
   create_new: bool,
 }
 
-fn open_helper(
+fn open_helper<FP>(
   state: &mut OpState,
   args: OpenArgs,
-) -> Result<(PathBuf, std::fs::OpenOptions), AnyError> {
+) -> Result<(PathBuf, std::fs::OpenOptions), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = Path::new(&args.path).to_path_buf();
 
   let mut open_options = std::fs::OpenOptions::new();
@@ -135,15 +189,15 @@ fn open_helper(
     let _ = mode; // avoid unused warning
   }
 
-  let permissions = state.borrow_mut::<Permissions>();
+  let permissions = state.borrow_mut::<FP>();
   let options = args.options;
 
   if options.read {
-    permissions.read.check(&path)?;
+    permissions.check_read(&path)?;
   }
 
   if options.write || options.append {
-    permissions.write.check(&path)?;
+    permissions.check_write(&path)?;
   }
 
   open_options
@@ -157,12 +211,15 @@ fn open_helper(
   Ok((path, open_options))
 }
 
-fn op_open_sync(
+fn op_open_sync<FP>(
   state: &mut OpState,
   args: OpenArgs,
   _: (),
-) -> Result<ResourceId, AnyError> {
-  let (path, open_options) = open_helper(state, args)?;
+) -> Result<ResourceId, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
+  let (path, open_options) = open_helper::<FP>(state, args)?;
   let std_file = open_options.open(path)?;
   let tokio_file = tokio::fs::File::from_std(std_file);
   let resource = StdFileResource::fs_file(tokio_file);
@@ -170,12 +227,15 @@ fn op_open_sync(
   Ok(rid)
 }
 
-async fn op_open_async(
+async fn op_open_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: OpenArgs,
   _: (),
-) -> Result<ResourceId, AnyError> {
-  let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
+) -> Result<ResourceId, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
+  let (path, open_options) = open_helper::<FP>(&mut state.borrow_mut(), args)?;
   let tokio_file = tokio::fs::OpenOptions::from(open_options)
     .open(path)
     .await?;
@@ -496,13 +556,16 @@ fn op_umask(
   }
 }
 
-fn op_chdir(
+fn op_chdir<FP>(
   state: &mut OpState,
   directory: String,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let d = PathBuf::from(&directory);
-  state.borrow_mut::<Permissions>().read.check(&d)?;
+  state.borrow_mut::<FP>().check_read(&d)?;
   set_current_dir(&d)?;
   Ok(())
 }
@@ -515,14 +578,17 @@ pub struct MkdirArgs {
   mode: Option<u32>,
 }
 
-fn op_mkdir_sync(
+fn op_mkdir_sync<FP>(
   state: &mut OpState,
   args: MkdirArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
-  state.borrow_mut::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<FP>().check_write(&path)?;
   debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
   let mut builder = std::fs::DirBuilder::new();
   builder.recursive(args.recursive);
@@ -535,17 +601,20 @@ fn op_mkdir_sync(
   Ok(())
 }
 
-async fn op_mkdir_async(
+async fn op_mkdir_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: MkdirArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
 
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<Permissions>().write.check(&path)?;
+    state.borrow_mut::<FP>().check_write(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -571,15 +640,18 @@ pub struct ChmodArgs {
   mode: u32,
 }
 
-fn op_chmod_sync(
+fn op_chmod_sync<FP>(
   state: &mut OpState,
   args: ChmodArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
-  state.borrow_mut::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<FP>().check_write(&path)?;
   debug!("op_chmod_sync {} {:o}", path.display(), mode);
   #[cfg(unix)]
   {
@@ -597,17 +669,20 @@ fn op_chmod_sync(
   }
 }
 
-async fn op_chmod_async(
+async fn op_chmod_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: ChmodArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<Permissions>().write.check(&path)?;
+    state.borrow_mut::<FP>().check_write(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -639,13 +714,16 @@ pub struct ChownArgs {
   gid: Option<u32>,
 }
 
-fn op_chown_sync(
+fn op_chown_sync<FP>(
   state: &mut OpState,
   args: ChownArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = Path::new(&args.path).to_path_buf();
-  state.borrow_mut::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<FP>().check_write(&path)?;
   debug!(
     "op_chown_sync {} {:?} {:?}",
     path.display(),
@@ -667,16 +745,19 @@ fn op_chown_sync(
   }
 }
 
-async fn op_chown_async(
+async fn op_chown_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: ChownArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = Path::new(&args.path).to_path_buf();
 
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<Permissions>().write.check(&path)?;
+    state.borrow_mut::<FP>().check_write(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -709,15 +790,18 @@ pub struct RemoveArgs {
   recursive: bool,
 }
 
-fn op_remove_sync(
+fn op_remove_sync<FP>(
   state: &mut OpState,
   args: RemoveArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
-  state.borrow_mut::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<FP>().check_write(&path)?;
 
   #[cfg(not(unix))]
   use std::os::windows::prelude::MetadataExt;
@@ -751,17 +835,20 @@ fn op_remove_sync(
   Ok(())
 }
 
-async fn op_remove_async(
+async fn op_remove_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: RemoveArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<Permissions>().write.check(&path)?;
+    state.borrow_mut::<FP>().check_write(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -807,17 +894,20 @@ pub struct CopyFileArgs {
   to: String,
 }
 
-fn op_copy_file_sync(
+fn op_copy_file_sync<FP>(
   state: &mut OpState,
   args: CopyFileArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
-  let permissions = state.borrow_mut::<Permissions>();
-  permissions.read.check(&from)?;
-  permissions.write.check(&to)?;
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check_read(&from)?;
+  permissions.check_write(&to)?;
 
   debug!("op_copy_file_sync {} {}", from.display(), to.display());
   // On *nix, Rust reports non-existent `from` as ErrorKind::InvalidInput
@@ -832,19 +922,22 @@ fn op_copy_file_sync(
   Ok(())
 }
 
-async fn op_copy_file_async(
+async fn op_copy_file_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: CopyFileArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<Permissions>();
-    permissions.read.check(&from)?;
-    permissions.write.check(&to)?;
+    let permissions = state.borrow_mut::<FP>();
+    permissions.check_read(&from)?;
+    permissions.check_write(&to)?;
   }
 
   debug!("op_copy_file_async {} {}", from.display(), to.display());
@@ -947,14 +1040,17 @@ pub struct StatArgs {
   lstat: bool,
 }
 
-fn op_stat_sync(
+fn op_stat_sync<FP>(
   state: &mut OpState,
   args: StatArgs,
   _: (),
-) -> Result<FsStat, AnyError> {
+) -> Result<FsStat, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
-  state.borrow_mut::<Permissions>().read.check(&path)?;
+  state.borrow_mut::<FP>().check_read(&path)?;
   debug!("op_stat_sync {} {}", path.display(), lstat);
   let metadata = if lstat {
     std::fs::symlink_metadata(&path)?
@@ -964,17 +1060,20 @@ fn op_stat_sync(
   Ok(get_stat(metadata))
 }
 
-async fn op_stat_async(
+async fn op_stat_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: StatArgs,
   _: (),
-) -> Result<FsStat, AnyError> {
+) -> Result<FsStat, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
 
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<Permissions>().read.check(&path)?;
+    state.borrow_mut::<FP>().check_read(&path)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -990,17 +1089,20 @@ async fn op_stat_async(
   .unwrap()
 }
 
-fn op_realpath_sync(
+fn op_realpath_sync<FP>(
   state: &mut OpState,
   path: String,
   _: (),
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
 
-  let permissions = state.borrow_mut::<Permissions>();
-  permissions.read.check(&path)?;
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check_read(&path)?;
   if path.is_relative() {
-    permissions.read.check_blind(&current_dir()?, "CWD")?;
+    permissions.check_read_blind(&current_dir()?, "CWD")?;
   }
 
   debug!("op_realpath_sync {}", path.display());
@@ -1011,19 +1113,22 @@ fn op_realpath_sync(
   Ok(realpath_str)
 }
 
-async fn op_realpath_async(
+async fn op_realpath_async<FP>(
   state: Rc<RefCell<OpState>>,
   path: String,
   _: (),
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
 
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<Permissions>();
-    permissions.read.check(&path)?;
+    let permissions = state.borrow_mut::<FP>();
+    permissions.check_read(&path)?;
     if path.is_relative() {
-      permissions.read.check_blind(&current_dir()?, "CWD")?;
+      permissions.check_read_blind(&current_dir()?, "CWD")?;
     }
   }
 
@@ -1048,14 +1153,17 @@ pub struct DirEntry {
   is_symlink: bool,
 }
 
-fn op_read_dir_sync(
+fn op_read_dir_sync<FP>(
   state: &mut OpState,
   path: String,
   _: (),
-) -> Result<Vec<DirEntry>, AnyError> {
+) -> Result<Vec<DirEntry>, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
 
-  state.borrow_mut::<Permissions>().read.check(&path)?;
+  state.borrow_mut::<FP>().check_read(&path)?;
 
   debug!("op_read_dir_sync {}", path.display());
   let entries: Vec<_> = std::fs::read_dir(path)?
@@ -1084,15 +1192,18 @@ fn op_read_dir_sync(
   Ok(entries)
 }
 
-async fn op_read_dir_async(
+async fn op_read_dir_async<FP>(
   state: Rc<RefCell<OpState>>,
   path: String,
   _: (),
-) -> Result<Vec<DirEntry>, AnyError> {
+) -> Result<Vec<DirEntry>, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<Permissions>().read.check(&path)?;
+    state.borrow_mut::<FP>().check_read(&path)?;
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_read_dir_async {}", path.display());
@@ -1132,36 +1243,42 @@ pub struct RenameArgs {
   newpath: String,
 }
 
-fn op_rename_sync(
+fn op_rename_sync<FP>(
   state: &mut OpState,
   args: RenameArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  let permissions = state.borrow_mut::<Permissions>();
-  permissions.read.check(&oldpath)?;
-  permissions.write.check(&oldpath)?;
-  permissions.write.check(&newpath)?;
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check_read(&oldpath)?;
+  permissions.check_write(&oldpath)?;
+  permissions.check_write(&newpath)?;
   debug!("op_rename_sync {} {}", oldpath.display(), newpath.display());
   std::fs::rename(&oldpath, &newpath)?;
   Ok(())
 }
 
-async fn op_rename_async(
+async fn op_rename_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: RenameArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<Permissions>();
-    permissions.read.check(&oldpath)?;
-    permissions.write.check(&oldpath)?;
-    permissions.write.check(&newpath)?;
+    let permissions = state.borrow_mut::<FP>();
+    permissions.check_read(&oldpath)?;
+    permissions.check_write(&oldpath)?;
+    permissions.check_write(&newpath)?;
   }
   tokio::task::spawn_blocking(move || {
     debug!(
@@ -1183,40 +1300,46 @@ pub struct LinkArgs {
   newpath: String,
 }
 
-fn op_link_sync(
+fn op_link_sync<FP>(
   state: &mut OpState,
   args: LinkArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  let permissions = state.borrow_mut::<Permissions>();
-  permissions.read.check(&oldpath)?;
-  permissions.write.check(&oldpath)?;
-  permissions.read.check(&newpath)?;
-  permissions.write.check(&newpath)?;
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check_read(&oldpath)?;
+  permissions.check_write(&oldpath)?;
+  permissions.check_read(&newpath)?;
+  permissions.check_write(&newpath)?;
 
   debug!("op_link_sync {} {}", oldpath.display(), newpath.display());
   std::fs::hard_link(&oldpath, &newpath)?;
   Ok(())
 }
 
-async fn op_link_async(
+async fn op_link_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: LinkArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
   {
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<Permissions>();
-    permissions.read.check(&oldpath)?;
-    permissions.write.check(&oldpath)?;
-    permissions.read.check(&newpath)?;
-    permissions.write.check(&newpath)?;
+    let permissions = state.borrow_mut::<FP>();
+    permissions.check_read(&oldpath)?;
+    permissions.check_write(&oldpath)?;
+    permissions.check_read(&newpath)?;
+    permissions.check_write(&newpath)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -1244,15 +1367,18 @@ pub struct SymlinkOptions {
   _type: String,
 }
 
-fn op_symlink_sync(
+fn op_symlink_sync<FP>(
   state: &mut OpState,
   args: SymlinkArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  state.borrow_mut::<Permissions>().write.check(&newpath)?;
+  state.borrow_mut::<FP>().check_write(&newpath)?;
 
   debug!(
     "op_symlink_sync {} {}",
@@ -1293,17 +1419,20 @@ fn op_symlink_sync(
   }
 }
 
-async fn op_symlink_async(
+async fn op_symlink_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: SymlinkArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<Permissions>().write.check(&newpath)?;
+    state.borrow_mut::<FP>().check_write(&newpath)?;
   }
 
   tokio::task::spawn_blocking(move || {
@@ -1345,14 +1474,17 @@ async fn op_symlink_async(
   .unwrap()
 }
 
-fn op_read_link_sync(
+fn op_read_link_sync<FP>(
   state: &mut OpState,
   path: String,
   _: (),
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
 
-  state.borrow_mut::<Permissions>().read.check(&path)?;
+  state.borrow_mut::<FP>().check_read(&path)?;
 
   debug!("op_read_link_value {}", path.display());
   let target = std::fs::read_link(&path)?.into_os_string();
@@ -1360,15 +1492,18 @@ fn op_read_link_sync(
   Ok(targetstr)
 }
 
-async fn op_read_link_async(
+async fn op_read_link_async<FP>(
   state: Rc<RefCell<OpState>>,
   path: String,
   _: (),
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = PathBuf::from(&path);
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<Permissions>().read.check(&path)?;
+    state.borrow_mut::<FP>().check_read(&path)?;
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_read_link_async {}", path.display());
@@ -1433,15 +1568,18 @@ pub struct TruncateArgs {
   len: u64,
 }
 
-fn op_truncate_sync(
+fn op_truncate_sync<FP>(
   state: &mut OpState,
   args: TruncateArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = PathBuf::from(&args.path);
   let len = args.len;
 
-  state.borrow_mut::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<FP>().check_write(&path)?;
 
   debug!("op_truncate_sync {} {}", path.display(), len);
   let f = std::fs::OpenOptions::new().write(true).open(&path)?;
@@ -1449,16 +1587,19 @@ fn op_truncate_sync(
   Ok(())
 }
 
-async fn op_truncate_async(
+async fn op_truncate_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: TruncateArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = PathBuf::from(&args.path);
   let len = args.len;
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<Permissions>().write.check(&path)?;
+    state.borrow_mut::<FP>().check_write(&path)?;
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_truncate_async {} {}", path.display(), len);
@@ -1523,19 +1664,21 @@ pub struct MakeTempArgs {
   suffix: Option<String>,
 }
 
-fn op_make_temp_dir_sync(
+fn op_make_temp_dir_sync<FP>(
   state: &mut OpState,
   args: MakeTempArgs,
   _: (),
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
   state
-    .borrow_mut::<Permissions>()
-    .write
-    .check(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+    .borrow_mut::<FP>()
+    .check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   // TODO(piscisaureus): use byte vector for paths, not a string.
   // See https://github.com/denoland/deno/issues/627.
@@ -1552,20 +1695,22 @@ fn op_make_temp_dir_sync(
   Ok(path_str)
 }
 
-async fn op_make_temp_dir_async(
+async fn op_make_temp_dir_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
   _: (),
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Permissions>()
-      .write
-      .check(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+      .borrow_mut::<FP>()
+      .check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
   }
   tokio::task::spawn_blocking(move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
@@ -1586,19 +1731,21 @@ async fn op_make_temp_dir_async(
   .unwrap()
 }
 
-fn op_make_temp_file_sync(
+fn op_make_temp_file_sync<FP>(
   state: &mut OpState,
   args: MakeTempArgs,
   _: (),
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
   state
-    .borrow_mut::<Permissions>()
-    .write
-    .check(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+    .borrow_mut::<FP>()
+    .check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
   // TODO(piscisaureus): use byte vector for paths, not a string.
   // See https://github.com/denoland/deno/issues/627.
@@ -1615,20 +1762,22 @@ fn op_make_temp_file_sync(
   Ok(path_str)
 }
 
-async fn op_make_temp_file_async(
+async fn op_make_temp_file_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: MakeTempArgs,
   _: (),
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
   {
     let mut state = state.borrow_mut();
     state
-      .borrow_mut::<Permissions>()
-      .write
-      .check(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+      .borrow_mut::<FP>()
+      .check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
   }
   tokio::task::spawn_blocking(move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
@@ -1728,38 +1877,40 @@ pub struct UtimeArgs {
   mtime: (i64, u32),
 }
 
-fn op_utime_sync(
+fn op_utime_sync<FP>(
   state: &mut OpState,
   args: UtimeArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   super::check_unstable(state, "Deno.utime");
 
   let path = PathBuf::from(&args.path);
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  state.borrow_mut::<Permissions>().write.check(&path)?;
+  state.borrow_mut::<FP>().check_write(&path)?;
   filetime::set_file_times(path, atime, mtime)?;
   Ok(())
 }
 
-async fn op_utime_async(
+async fn op_utime_async<FP>(
   state: Rc<RefCell<OpState>>,
   args: UtimeArgs,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   super::check_unstable(&state.borrow(), "Deno.utime");
 
   let path = PathBuf::from(&args.path);
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  state
-    .borrow_mut()
-    .borrow_mut::<Permissions>()
-    .write
-    .check(&path)?;
+  state.borrow_mut().borrow_mut::<FP>().check_write(&path)?;
 
   tokio::task::spawn_blocking(move || {
     filetime::set_file_times(path, atime, mtime)?;
@@ -1769,12 +1920,12 @@ async fn op_utime_async(
   .unwrap()
 }
 
-fn op_cwd(state: &mut OpState, _args: (), _: ()) -> Result<String, AnyError> {
+fn op_cwd<FP>(state: &mut OpState, _args: (), _: ()) -> Result<String, AnyError>
+where
+  FP: FsPermissions + 'static,
+{
   let path = current_dir()?;
-  state
-    .borrow_mut::<Permissions>()
-    .read
-    .check_blind(&path, "CWD")?;
+  state.borrow_mut::<FP>().check_read_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(path_str)
 }

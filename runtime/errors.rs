@@ -14,7 +14,7 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_fetch::reqwest;
-use std::env;
+use deno_sys::error::get_io_error_class;
 use std::error::Error;
 use std::io;
 
@@ -29,57 +29,10 @@ fn get_dlopen_error_class(error: &dlopen::Error) -> &'static str {
   }
 }
 
-fn get_env_var_error_class(error: &env::VarError) -> &'static str {
-  use env::VarError::*;
-  match error {
-    NotPresent => "NotFound",
-    NotUnicode(..) => "InvalidData",
-  }
-}
-
-fn get_io_error_class(error: &io::Error) -> &'static str {
-  use io::ErrorKind::*;
-  match error.kind() {
-    NotFound => "NotFound",
-    PermissionDenied => "PermissionDenied",
-    ConnectionRefused => "ConnectionRefused",
-    ConnectionReset => "ConnectionReset",
-    ConnectionAborted => "ConnectionAborted",
-    NotConnected => "NotConnected",
-    AddrInUse => "AddrInUse",
-    AddrNotAvailable => "AddrNotAvailable",
-    BrokenPipe => "BrokenPipe",
-    AlreadyExists => "AlreadyExists",
-    InvalidInput => "TypeError",
-    InvalidData => "InvalidData",
-    TimedOut => "TimedOut",
-    Interrupted => "Interrupted",
-    WriteZero => "WriteZero",
-    UnexpectedEof => "UnexpectedEof",
-    Other => "Error",
-    WouldBlock => unreachable!(),
-    // Non-exhaustive enum - might add new variants
-    // in the future
-    _ => "Error",
-  }
-}
-
 fn get_module_resolution_error_class(
   _: &ModuleResolutionError,
 ) -> &'static str {
   "URIError"
-}
-
-fn get_notify_error_class(error: &notify::Error) -> &'static str {
-  use notify::ErrorKind::*;
-  match error.kind {
-    Generic(_) => "Error",
-    Io(ref e) => get_io_error_class(e),
-    PathNotFound => "NotFound",
-    WatchNotFound => "NotFound",
-    InvalidConfig(_) => "InvalidData",
-    MaxFilesWatch => "Error",
-  }
 }
 
 fn get_regex_error_class(error: &regex::Error) -> &'static str {
@@ -170,18 +123,15 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       })
     })
     .or_else(|| {
-      e.downcast_ref::<env::VarError>()
-        .map(get_env_var_error_class)
+      e.downcast_ref::<std::env::VarError>()
+        .map(deno_sys::error::get_env_var_error_class)
     })
     .or_else(|| e.downcast_ref::<io::Error>().map(get_io_error_class))
     .or_else(|| {
       e.downcast_ref::<ModuleResolutionError>()
         .map(get_module_resolution_error_class)
     })
-    .or_else(|| {
-      e.downcast_ref::<notify::Error>()
-        .map(get_notify_error_class)
-    })
+    .or_else(|| deno_sys::error::get_notify_error_class(e))
     .or_else(|| {
       e.downcast_ref::<reqwest::Error>()
         .map(get_request_error_class)
