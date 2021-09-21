@@ -173,37 +173,3 @@ unitTest({ perms: { read: true } }, async function fileStatSuccess() {
 
   file.close();
 });
-
-Deno.test({
-  name: "fileOpenReadSymlinkToDotDotPermissionDenied",
-  async fn() {
-    await assertRejects(async () => {
-      const file = await Deno.open(
-        "cli/tests/unit/testdata/symlink_to_dot_dot",
-        {
-          read: true,
-        },
-      );
-    }, Deno.errors.PermissionDenied);
-  },
-  permissions: {
-    read: ["cli/tests/unit/testdata"],
-  },
-});
-
-Deno.test({
-  name: "fileOpenWriteSymlinkToDotDotPermissionDenied",
-  async fn() {
-    await assertRejects(async () => {
-      const file = await Deno.open(
-        "cli/tests/unit/testdata/symlink_to_dot_dot",
-        {
-          write: true,
-        },
-      );
-    }, Deno.errors.PermissionDenied);
-  },
-  permissions: {
-    write: ["cli/tests/unit/testdata"],
-  },
-});
