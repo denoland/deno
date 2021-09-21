@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "./test_util.ts";
+import { assertThrows } from "./test_util.ts";
 
 Deno.test({
   name: "chdirSymlinkDotDotPermissionDenied",

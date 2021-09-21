@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertRejects, unitTest } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 // deno-lint-ignore no-explicit-any
 function testFirstArgument(arg1: any[], expectedSize: number) {
