@@ -11,8 +11,8 @@ use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
-use deno_core::ModuleSpecifier;
 use deno_core::LocalInspectorSession;
+use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use regex::Regex;
 use serde::Deserialize;
@@ -199,9 +199,13 @@ fn create_reporter(
 }
 
 trait CoverageReporter {
-  fn report_result(&mut self, specifier: &ModuleSpecifier, result: &CoverageResult, source: &str);
+  fn report_result(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    result: &CoverageResult,
+    source: &str,
+  );
 }
-
 
 pub struct LcovCoverageReporter {}
 
@@ -212,28 +216,31 @@ impl LcovCoverageReporter {
 }
 
 impl CoverageReporter for LcovCoverageReporter {
-  fn report_result(&mut self, specifier: &ModuleSpecifier, result: &CoverageResult, source: &str) {
+  fn report_result(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    result: &CoverageResult,
+    source: &str,
+  ) {
     println!("SF:{}", specifier.to_file_path().unwrap().to_str().unwrap());
 
     let named_functions = result
-        .functions
-        .iter()
-        .filter(|block| !block.function_name.is_empty())
-        .collect::<Vec<&FunctionCoverage>>();
+      .functions
+      .iter()
+      .filter(|block| !block.function_name.is_empty())
+      .collect::<Vec<&FunctionCoverage>>();
 
     for block in &named_functions {
-      let index = source[0..block.ranges[0].start_offset]
-        .split('\n')
-        .count();
+      let index = source[0..block.ranges[0].start_offset].split('\n').count();
 
       println!("FN:{},{}", index + 1, block.function_name);
     }
 
     let hit_functions = named_functions
-        .iter()
-        .filter(|block| block.ranges[0].count > 0)
-        .cloned()
-        .collect::<Vec<&FunctionCoverage>>();
+      .iter()
+      .filter(|block| block.ranges[0].count > 0)
+      .cloned()
+      .collect::<Vec<&FunctionCoverage>>();
 
     for block in &hit_functions {
       println!("FNDA:{},{}", block.ranges[0].count, block.function_name);
@@ -295,12 +302,12 @@ impl CoverageReporter for LcovCoverageReporter {
 
       let mut count = 0;
       for range in &line.ranges {
-          count += range.count;
+        count += range.count;
 
-          if range.count == 0 {
-              count = 0;
-              break;
-          }
+        if range.count == 0 {
+          count = 0;
+          break;
+        }
       }
 
       println!("DA:{},{}", index + 1, count);
@@ -316,7 +323,8 @@ impl CoverageReporter for LcovCoverageReporter {
     let lines_hit = enumerated_lines
       .iter()
       .filter(|(_, line)| {
-        line.ranges.len() > 0 && !line.ranges.iter().any(|range| range.count == 0)
+        line.ranges.len() > 0
+          && !line.ranges.iter().any(|range| range.count == 0)
       })
       .count();
 
@@ -337,7 +345,12 @@ impl PrettyCoverageReporter {
 const PRETTY_LINE_WIDTH: usize = 4;
 const PRETTY_LINE_SEPERATOR: &str = "|";
 impl CoverageReporter for PrettyCoverageReporter {
-  fn report_result(&mut self, specifier: &ModuleSpecifier, result: &CoverageResult, source: &str) {
+  fn report_result(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    result: &CoverageResult,
+    source: &str,
+  ) {
     print!("cover {} ... ", specifier);
 
     let enumerated_lines = result
@@ -551,9 +564,10 @@ async fn cover_script(
       false,
       program_state.maybe_import_map.clone(),
     )
-  .await?;
+    .await?;
 
-  let compiled_source = program_state.load(module_specifier.clone(), None)?.code;
+  let compiled_source =
+    program_state.load(module_specifier.clone(), None)?.code;
 
   // TODO(caspervonb): source mapping is still a bit of a mess and we should try look into avoiding
   // doing any loads at this stage of execution but it'll do for now.
@@ -561,7 +575,7 @@ async fn cover_script(
   if let Some(raw_source_map) = maybe_raw_source_map {
     let source_map = SourceMap::from_slice(&raw_source_map)?;
 
-    // To avoid false positives we base our line ranges on the ranges of the compiled lines 
+    // To avoid false positives we base our line ranges on the ranges of the compiled lines
     let compiled_line_offsets = {
       let mut line_offsets: Vec<(usize, usize)> = Vec::new();
       let mut offset = 0;
@@ -582,7 +596,7 @@ async fn cover_script(
         // meaningful.
         let line = &compiled_source[*start_offset..*end_offset];
         if line == "\n" {
-            return None
+          return None;
         }
 
         let ranges = script
@@ -611,7 +625,7 @@ async fn cover_script(
           .flatten()
           .collect::<Vec<CoverageRange>>();
 
-          Some(ranges)
+        Some(ranges)
       })
       .flatten()
       .collect::<Vec<CoverageRange>>();
@@ -678,7 +692,11 @@ async fn cover_script(
           })
           .collect();
 
-        LineCoverage { start_offset: *start_offset, end_offset: *end_offset, ranges }
+        LineCoverage {
+          start_offset: *start_offset,
+          end_offset: *end_offset,
+          ranges,
+        }
       })
       .collect();
 
@@ -743,7 +761,11 @@ async fn cover_script(
     .map(|(start_offset, end_offset)| {
       let line = &source[*start_offset..*end_offset];
       if line == "\n" {
-        return LineCoverage { start_offset: *start_offset, end_offset: *end_offset, ranges: Vec::new() };
+        return LineCoverage {
+          start_offset: *start_offset,
+          end_offset: *end_offset,
+          ranges: Vec::new(),
+        };
       }
 
       let ranges = script
@@ -772,7 +794,11 @@ async fn cover_script(
         .flatten()
         .collect();
 
-      LineCoverage { start_offset: *start_offset, end_offset: *end_offset, ranges }
+      LineCoverage {
+        start_offset: *start_offset,
+        end_offset: *end_offset,
+        ranges,
+      }
     })
     .collect();
 
@@ -794,9 +820,9 @@ pub async fn cover_scripts(
     filter_script_coverages(script_coverages, include, exclude);
 
   let reporter_kind = if lcov {
-      CoverageReporterKind::Lcov
+    CoverageReporterKind::Lcov
   } else {
-      CoverageReporterKind::Pretty
+    CoverageReporterKind::Pretty
   };
 
   let mut reporter = create_reporter(reporter_kind);
@@ -808,10 +834,7 @@ pub async fn cover_scripts(
     let module_specifier = resolve_url_or_path(&script_coverage.url)?;
     let file = program_state
       .file_fetcher
-      .fetch(
-        &module_specifier,
-        &mut Permissions::allow_all(),
-      )
+      .fetch(&module_specifier, &mut Permissions::allow_all())
       .await?;
 
     reporter.report_result(&module_specifier, &result, &file.source);

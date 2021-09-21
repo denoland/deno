@@ -1,4 +1,4 @@
-export function branch(outer: boolean, inner:boolean) {
+export function branch(outer: boolean, inner: boolean) {
   if (outer) {
     console.log("outer: true");
 
