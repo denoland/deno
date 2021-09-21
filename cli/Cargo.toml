@@ -100,7 +100,6 @@ trust-dns-client = "0.20.3"
 trust-dns-server = "0.20.3"
 
 [target.'cfg(unix)'.dev-dependencies]
-exec = "0.3.1" # Used in test_raw_tty
 nix = "0.22.1"
 
 [package.metadata.winres]
