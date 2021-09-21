@@ -120,6 +120,7 @@ fn open_helper(
   args: OpenArgs,
 ) -> Result<(PathBuf, std::fs::OpenOptions), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
+  let canonical_path = canonicalize_path(&path)?;
 
   let mut open_options = std::fs::OpenOptions::new();
 
@@ -139,11 +140,11 @@ fn open_helper(
   let options = args.options;
 
   if options.read {
-    permissions.read.check(&path)?;
+    permissions.read.check(&canonical_path)?;
   }
 
   if options.write || options.append {
-    permissions.write.check(&path)?;
+    permissions.write.check(&canonical_path)?;
   }
 
   open_options

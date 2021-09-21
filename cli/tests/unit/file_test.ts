@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals, assertRejects, unitTest } from "./test_util.ts";
 
 // deno-lint-ignore no-explicit-any
 function testFirstArgument(arg1: any[], expectedSize: number) {
@@ -172,4 +172,38 @@ unitTest({ perms: { read: true } }, async function fileStatSuccess() {
   assert(fileInfo.birthtime || Deno.build.os === "linux");
 
   file.close();
+});
+
+Deno.test({
+  name: "fileOpenReadSymlinkToDotDotPermissionDenied",
+  async fn() {
+    await assertRejects(async () => {
+      const file = await Deno.open(
+        "cli/tests/unit/testdata/symlink_to_dot_dot",
+        {
+          read: true,
+        },
+      );
+    }, Deno.errors.PermissionDenied);
+  },
+  permissions: {
+    read: ["cli/tests/unit/testdata"],
+  },
+});
+
+Deno.test({
+  name: "fileOpenWriteSymlinkToDotDotPermissionDenied",
+  async fn() {
+    await assertRejects(async () => {
+      const file = await Deno.open(
+        "cli/tests/unit/testdata/symlink_to_dot_dot",
+        {
+          write: true,
+        },
+      );
+    }, Deno.errors.PermissionDenied);
+  },
+  permissions: {
+    write: ["cli/tests/unit/testdata"],
+  },
 });
