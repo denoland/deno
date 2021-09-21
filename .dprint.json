@@ -19,6 +19,7 @@
     "cli/dts/lib.scripthost.d.ts",
     "cli/dts/lib.webworker*.d.ts",
     "cli/dts/typescript.d.ts",
+    "cli/tests/testdata/coverage/complex.ts",
     "cli/tests/testdata/encoding",
     "cli/tests/testdata/inline_js_source_map*",
     "cli/tests/testdata/badly_formatted.md",

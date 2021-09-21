@@ -71,5 +71,4 @@ export function ƒ(): number {
 console.log("%s", () => 1);
 
 // End with a newline:
-// deno-fmt-ignore
 
