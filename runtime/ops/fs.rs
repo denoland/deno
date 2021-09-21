@@ -120,6 +120,9 @@ fn open_helper(
   args: OpenArgs,
 ) -> Result<(PathBuf, std::fs::OpenOptions), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
+
+  // Since open resolves symbolic links we check permissions against the canonical path to ensure
+  // we can't escape.
   let canonical_path = canonicalize_path(&path)?;
 
   let mut open_options = std::fs::OpenOptions::new();
