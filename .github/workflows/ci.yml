@@ -539,7 +539,7 @@ jobs:
           git push origin gh-pages
 
       - name: Build product size info
-        if: matrix.job != 'lint'
+        if: matrix.job != 'lint' && matrix.profile != 'fastci'
         run: |
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
