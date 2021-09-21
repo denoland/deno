@@ -17,15 +17,9 @@ https://github.com/denoland/deno_install
 - fix(ext/crypto): use DataError in importKey() (#12071)
 - fix(lsp): align filter text to vscode logic (#12081)
 - fix(runtime/ops/signal.rs): Add FreeBSD signal definitions (#12084)
-- refactor(ext/web): optimize EventTarget (#12166)
-- refactor(runtime/fs): optimize readFile by using a single large buffer
-  (#12057)
-- refactor(web): optimize AbortController (#12165)
-- refactor(ext/fetch): drop redundant webidl converters in fetch() (#12167)
-- refactor(cli): don't generate a module for side loading tests (#12129)
-- refactor(ext/net): make op_connect & op_connect_tls public (#12150)
-- test(bench): track new Request() (#12164)
-- test(ext/ffi): add tests for different parameter and return types (#12158)
+- perf(ext/web): optimize EventTarget (#12166)
+- perf(runtime/fs): optimize readFile by using a single large buffer (#12057)
+- perf(web): optimize AbortController (#12165)
 
 ### 1.14.0 / 2021.09.14
 
