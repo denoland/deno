@@ -39,6 +39,9 @@ pub enum PermissionState {
 impl PermissionState {
   #[inline(always)]
   fn log_perm_access(name: &str, info: Option<&str>) {
+    // Eliminates log overhead (when logging is disabled),
+    // log_enabled!(Debug) check in a hot path still has overhead
+    // TODO(AaronO): generalize or upstream this optimization
     if *DEBUG_LOG_ENABLED {
       log::debug!(
         "{}",
