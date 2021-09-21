@@ -321,7 +321,8 @@ impl CoverageReporter for LcovCoverageReporter {
     let lines_hit = enumerated_lines
       .iter()
       .filter(|(_, line)| {
-        !line.ranges.is_empty() && !line.ranges.iter().any(|range| range.count == 0)
+        !line.ranges.is_empty()
+          && !line.ranges.iter().any(|range| range.count == 0)
       })
       .count();
 
