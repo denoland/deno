@@ -1,0 +1,40 @@
+Check [WILDCARD]/testdata/test/ops_sanitizer_unstable.ts
+running 2 tests from [WILDCARD]/testdata/test/ops_sanitizer_unstable.ts
+test no-op ... ok ([WILDCARD])
+test leak interval ... FAILED ([WILDCARD])
+
+failures:
+
+leak interval
+AssertionError: Test case is leaking async ops.
+Before:
+  - dispatched: 1
+  - completed: 1
+After:
+  - dispatched: 3
+  - completed: 2
+Ops:
+  op_global_timer:
+    Before:
+      - dispatched: 1
+      - completed: 1
+    After:
+      - dispatched: 3
+      - completed: 2
+
+Make sure to await all promises returned from Deno APIs before
+finishing test case.
+    at assert (deno:runtime/js/06_util.js:41:13)
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:85:7)
+    at async resourceSanitizer (deno:runtime/js/40_testing.js:100:7)
+    at async exitSanitizer (deno:runtime/js/40_testing.js:127:9)
+    at async runTest (deno:runtime/js/40_testing.js:243:7)
+    at async Object.runTests (deno:runtime/js/40_testing.js:327:22)
+
+failures:
+
+	leak interval
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Test failed
