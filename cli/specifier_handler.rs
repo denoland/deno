@@ -24,13 +24,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 pub type DependencyMap = HashMap<String, Dependency>;
-pub type FetchFuture = Pin<
-  Box<
-    (dyn Future<Output = Result<CachedModule, (ModuleSpecifier, AnyError)>>
-       + 'static
-       + Send),
-  >,
->;
+type FetchFutureOutput = Result<CachedModule, (ModuleSpecifier, AnyError)>;
+pub type FetchFuture = Pin<Box<dyn Future<Output = FetchFutureOutput> + Send>>;
 
 /// A group of errors that represent errors that can occur with an
 /// an implementation of `SpecifierHandler`.
