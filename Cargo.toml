@@ -113,6 +113,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.url]
 opt-level = 3
-
-[patch.crates-io]
-rusty_v8 = { git = 'https://github.com/AaronO/rusty_v8', branch = 'default-to-release-builds' }
