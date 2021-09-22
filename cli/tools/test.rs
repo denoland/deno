@@ -230,7 +230,10 @@ impl TestReporter for PrettyTestReporter {
 
     print!("{}", sb.into_string());
 
-    fn push_test_step_results(sb: &mut IndentableStringBuilder, steps: &[TestStepResult]) {
+    fn push_test_step_results(
+      sb: &mut IndentableStringBuilder,
+      steps: &[TestStepResult],
+    ) {
       if steps.is_empty() {
         sb.push_str(" ");
       } else {
@@ -244,7 +247,10 @@ impl TestReporter for PrettyTestReporter {
       }
     }
 
-    fn push_test_step_result(sb: &mut IndentableStringBuilder, step: &TestStepResult) {
+    fn push_test_step_result(
+      sb: &mut IndentableStringBuilder,
+      step: &TestStepResult,
+    ) {
       push_description(sb, &step.name);
       push_test_step_results(sb, &step.steps);
       let status = match step.status {
@@ -317,7 +323,11 @@ struct IndentableStringBuilder {
 
 impl IndentableStringBuilder {
   pub fn new() -> Self {
-    Self { output: String::new(), indent_level: 0, is_start_of_line: true, }
+    Self {
+      output: String::new(),
+      indent_level: 0,
+      is_start_of_line: true,
+    }
   }
 
   pub fn into_string(self) -> String {
@@ -340,11 +350,14 @@ impl IndentableStringBuilder {
   }
 
   pub fn newline(&mut self) {
-    self.output.push_str("\n");
+    self.output.push('\n');
     self.is_start_of_line = true;
   }
 
-  pub fn with_indent(&mut self, action: impl FnOnce(&mut IndentableStringBuilder)) {
+  pub fn with_indent(
+    &mut self,
+    action: impl FnOnce(&mut IndentableStringBuilder),
+  ) {
     self.indent_level += 1;
     action(self);
     self.indent_level -= 1;

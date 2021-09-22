@@ -14,6 +14,8 @@
     ArrayPrototypePush,
     ArrayPrototypeSome,
     DateNow,
+    Error,
+    Function,
     JSONStringify,
     Promise,
     TypeError,
@@ -23,11 +25,12 @@
     StringPrototypeSlice,
     RegExp,
     RegExpPrototypeTest,
+    Symbol,
   } = window.__bootstrap.primordials;
 
   const testerCtorSymbol = Symbol();
   const testerGetTestStepResultsSymbol = Symbol();
-  const testerGetStepScopeErrorMessageSymbol = Symbol();
+  const testerGetStepScopeErrMsgSymbol = Symbol();
   const testerFailedStepsCountSymbol = Symbol();
 
   // Wrap test function in additional assertion that makes sure
@@ -117,7 +120,7 @@ finishing test case.`;
     return async function testStepScopeSanitizer(tester) {
       await fn(tester);
 
-      const errorMessage = tester[testerGetStepScopeErrorMessageSymbol]();
+      const errorMessage = tester[testerGetStepScopeErrMsgSymbol]();
       if (errorMessage) {
         throw new Error(errorMessage);
       }
@@ -529,7 +532,7 @@ finishing test case.`;
       ).length;
     }
 
-    [testerGetStepScopeErrorMessageSymbol]() {
+    [testerGetStepScopeErrMsgSymbol]() {
       // check for any running steps
       const hasRunningSteps = ArrayPrototypeSome(
         this.#testStatuses,
@@ -579,9 +582,10 @@ finishing test case.`;
      * ancestors that are still running.
      */
     #getNonAncestorRunningTesters() {
+      // deno-lint-ignore no-this-alias
       let tester = this;
       /** @type {Tester[]} */
-      let results = [];
+      const results = [];
       while (tester.#parent != null) {
         const parentTester = tester.#parent;
         for (const testStatus of parentTester.#testStatuses) {
@@ -590,7 +594,7 @@ finishing test case.`;
             continue;
           }
           if (!siblingTester.#finalized) {
-            results.push(siblingTester);
+            ArrayPrototypePush(results, siblingTester);
           }
         }
         tester = parentTester;
