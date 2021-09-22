@@ -1,10 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  assertThrows,
-  assertThrowsAsync,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertRejects, assertThrows, unitTest } from "./test_util.ts";
 
 const REMOVE_METHODS = ["remove", "removeSync"] as const;
 
@@ -85,13 +80,13 @@ unitTest(
       const subPathInfo = Deno.statSync(subPath);
       assert(subPathInfo.isDirectory); // check exist first
 
-      await assertThrowsAsync(async () => {
+      await assertRejects(async () => {
         await Deno[method](path);
       }, Error);
       // TODO(ry) Is Other really the error we should get here? What would Go do?
 
       // NON-EXISTENT DIRECTORY/FILE
-      await assertThrowsAsync(async () => {
+      await assertRejects(async () => {
         await Deno[method]("/baddir");
       }, Deno.errors.NotFound);
     }
@@ -148,7 +143,7 @@ unitTest(
 
 unitTest({ perms: { write: false } }, async function removePerm() {
   for (const method of REMOVE_METHODS) {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno[method]("/baddir");
     }, Deno.errors.PermissionDenied);
   }
@@ -215,7 +210,7 @@ unitTest(
 unitTest({ perms: { write: true } }, async function removeAllFail() {
   for (const method of REMOVE_METHODS) {
     // NON-EXISTENT DIRECTORY/FILE
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       // Non-existent
       await Deno[method]("/baddir", { recursive: true });
     }, Deno.errors.NotFound);
@@ -224,7 +219,7 @@ unitTest({ perms: { write: true } }, async function removeAllFail() {
 
 unitTest({ perms: { write: false } }, async function removeAllPerm() {
   for (const method of REMOVE_METHODS) {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno[method]("/baddir", { recursive: true });
     }, Deno.errors.PermissionDenied);
   }
@@ -263,7 +258,7 @@ if (Deno.build.os === "windows") {
       assert(await symlink.status());
       symlink.close();
       await Deno.remove("file_link");
-      await assertThrowsAsync(async () => {
+      await assertRejects(async () => {
         await Deno.lstat("file_link");
       }, Deno.errors.NotFound);
     },
@@ -281,7 +276,7 @@ if (Deno.build.os === "windows") {
       symlink.close();
 
       await Deno.remove("dir_link");
-      await assertThrowsAsync(async () => {
+      await assertRejects(async () => {
         await Deno.lstat("dir_link");
       }, Deno.errors.NotFound);
     },

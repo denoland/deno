@@ -2,8 +2,8 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
@@ -220,13 +220,13 @@ unitTest(
 );
 
 unitTest({ perms: { read: false } }, async function statPerm() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.stat("README.md");
   }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, async function statNotFound() {
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await Deno.stat("bad_file_name"), Deno.errors.NotFound;
     },
@@ -262,13 +262,13 @@ unitTest({ perms: { read: true } }, async function lstatSuccess() {
 });
 
 unitTest({ perms: { read: false } }, async function lstatPerm() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.lstat("README.md");
   }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, async function lstatNotFound() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.lstat("bad_file_name");
   }, Deno.errors.NotFound);
 });

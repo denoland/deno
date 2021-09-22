@@ -8,8 +8,8 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
@@ -200,7 +200,7 @@ unitTest(
     const reader = new Deno.Buffer(new ArrayBuffer(MAX_SIZE + 1));
     const buf = new Deno.Buffer();
 
-    await assertThrowsAsync(
+    await assertRejects(
       async () => {
         await buf.readFrom(reader);
       },
@@ -302,7 +302,7 @@ unitTest(async function bufferReadFrom() {
     const fub = new Uint8Array(testString.length);
     await empty(b, s, fub);
   }
-  assertThrowsAsync(async function () {
+  assertRejects(async function () {
     await new Deno.Buffer().readFrom(null!);
   });
 });
