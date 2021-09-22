@@ -1188,6 +1188,12 @@ itest!(worker_close_race {
   output: "worker_close_race.js.out",
 });
 
+itest!(worker_drop_handle_race {
+  args: "run --quiet --reload --allow-read worker_drop_handle_race.js",
+  output: "worker_drop_handle_race.js.out",
+  exit_code: 1,
+});
+
 itest!(worker_message_before_close {
   args: "run --quiet --reload --allow-read worker_message_before_close.js",
   output: "worker_message_before_close.js.out",

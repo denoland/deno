@@ -1,8 +1,8 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
@@ -130,7 +130,7 @@ unitTest(
   async function writeTextFileNotFound() {
     const filename = "/baddir/test.txt";
     // The following should fail because /baddir doesn't exist (hopefully).
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.writeTextFile(filename, "Hello");
     }, Deno.errors.NotFound);
   },
@@ -141,7 +141,7 @@ unitTest(
   async function writeTextFilePerm() {
     const filename = "/baddir/test.txt";
     // The following should fail due to no write permission
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.writeTextFile(filename, "Hello");
     }, Deno.errors.PermissionDenied);
   },

@@ -2,8 +2,8 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
@@ -65,7 +65,7 @@ unitTest({ perms: { write: true } }, function mkdirErrSyncIfExists() {
 });
 
 unitTest({ perms: { write: true } }, async function mkdirErrIfExists() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.mkdir(".");
   }, Deno.errors.AlreadyExists);
 });

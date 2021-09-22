@@ -2,8 +2,8 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
@@ -64,7 +64,7 @@ unitTest(
     assert(dir3.startsWith(dir1));
     assert(/^[\\\/]/.test(dir3.slice(dir1.length)));
     // Check that creating a temp dir inside a nonexisting directory fails.
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.makeTempDir({ dir: "/baddir" });
     }, Deno.errors.NotFound);
   },
@@ -140,7 +140,7 @@ unitTest(
     assert(file3.startsWith(dir));
     assert(/^[\\\/]/.test(file3.slice(dir.length)));
     // Check that creating a temp file inside a nonexisting directory fails.
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.makeTempFile({ dir: "/baddir" });
     }, Deno.errors.NotFound);
   },

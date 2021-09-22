@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
@@ -87,7 +87,7 @@ unitTest({ perms: { write: false } }, function truncateSyncPerm() {
 });
 
 unitTest({ perms: { write: false } }, async function truncatePerm() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.truncate("/test_truncatePermission.txt");
   }, Deno.errors.PermissionDenied);
 });

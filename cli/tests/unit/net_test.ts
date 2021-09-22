@@ -3,8 +3,8 @@ import {
   assert,
   assertEquals,
   assertNotEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   deferred,
   delay,
   unitTest,
@@ -111,7 +111,7 @@ unitTest(
     const listener = Deno.listen({ port: 4501 });
     const p = listener.accept();
     listener.close();
-    await assertThrowsAsync(
+    await assertRejects(
       async () => {
         await p;
       },
@@ -131,7 +131,7 @@ unitTest(
     });
     const p = listener.accept();
     listener.close();
-    await assertThrowsAsync(
+    await assertRejects(
       async () => {
         await p;
       },
@@ -537,7 +537,7 @@ unitTest(
     assertEquals(3, buf[2]);
     // Verify that the write end of the socket is closed.
     // TODO(piscisaureus): assert that thrown error is of a specific type.
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await conn.write(new Uint8Array([1, 2, 3]));
     });
     closeDeferred.resolve();

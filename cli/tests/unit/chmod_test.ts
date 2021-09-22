@@ -2,8 +2,8 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
@@ -158,14 +158,14 @@ unitTest(
 );
 
 unitTest({ perms: { write: true } }, async function chmodFailure() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     const filename = "/badfile.txt";
     await Deno.chmod(filename, 0o777);
   }, Deno.errors.NotFound);
 });
 
 unitTest({ perms: { write: false } }, async function chmodPerm() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.chmod("/somefile.txt", 0o777);
   }, Deno.errors.PermissionDenied);
 });
