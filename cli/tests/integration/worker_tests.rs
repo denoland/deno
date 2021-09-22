@@ -2,7 +2,8 @@
 
 use crate::itest;
 
-itest!(workers {
+// TODO(ry) https://github.com/denoland/deno/issues/12075
+itest_flaky!(workers {
   args: "test --reload --location http://127.0.0.1:4545/ --allow-net --allow-read --unstable workers/test.ts",
   output: "workers/test.ts.out",
   http_server: true,
