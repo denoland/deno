@@ -212,7 +212,7 @@ itest!(steps_missing_await {
 });
 
 itest!(steps_invalid_usage {
-  args: "test test/steps/steps_invalid_usage.ts",
+  args: "test test/steps/invalid_usage.ts",
   exit_code: 1,
-  output: "test/steps/steps_invalid_usage.out",
+  output: "test/steps/invalid_usage.out",
 });

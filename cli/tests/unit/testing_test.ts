@@ -30,9 +30,10 @@ unitTest(function testerIsInstanceTester(t) {
   assert(t instanceof Deno.Tester);
 });
 
-unitTest(function cannotConstructTester(t) {
+unitTest(function cannotConstructTester() {
   assertThrows(
     () => {
+      // deno-lint-ignore no-explicit-any
       new (Deno as any).Tester();
     },
     Error,
@@ -43,6 +44,7 @@ unitTest(function cannotConstructTester(t) {
 unitTest(function invalidStepArguments(t) {
   assertRejects(
     async () => {
+      // deno-lint-ignore no-explicit-any
       await (t as any).step("test");
     },
     TypeError,
@@ -51,6 +53,7 @@ unitTest(function invalidStepArguments(t) {
 
   assertRejects(
     async () => {
+      // deno-lint-ignore no-explicit-any
       await (t as any).step("test", "not a function");
     },
     TypeError,
@@ -59,6 +62,7 @@ unitTest(function invalidStepArguments(t) {
 
   assertRejects(
     async () => {
+      // deno-lint-ignore no-explicit-any
       await (t as any).step();
     },
     TypeError,
@@ -67,6 +71,7 @@ unitTest(function invalidStepArguments(t) {
 
   assertRejects(
     async () => {
+      // deno-lint-ignore no-explicit-any
       await (t as any).step(() => {});
     },
     TypeError,
