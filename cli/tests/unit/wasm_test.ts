@@ -1,9 +1,4 @@
-import {
-  assert,
-  assertEquals,
-  assertThrowsAsync,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, assertRejects, unitTest } from "./test_util.ts";
 
 // The following blob can be created by taking the following s-expr and pass
 // it through wat2wasm.
@@ -39,7 +34,7 @@ unitTest(async function wasmInstantiateWorksWithBuffer() {
 // check that our implementation of the callback disallows it.
 unitTest(
   async function wasmInstantiateStreamingFailsWithBuffer() {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await WebAssembly.instantiateStreaming(
         // Bypassing the type system
         simpleWasm as unknown as Promise<Response>,
@@ -50,7 +45,7 @@ unitTest(
 
 unitTest(
   async function wasmInstantiateStreamingNoContentType() {
-    await assertThrowsAsync(
+    await assertRejects(
       async () => {
         const response = Promise.resolve(new Response(simpleWasm));
         await WebAssembly.instantiateStreaming(response);

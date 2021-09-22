@@ -2,8 +2,8 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
@@ -61,7 +61,7 @@ unitTest({ perms: { read: true } }, async function readFileSuccess() {
 });
 
 unitTest({ perms: { read: false } }, async function readFilePerm() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.readFile("cli/tests/testdata/fixture.json");
   }, Deno.errors.PermissionDenied);
 });
@@ -76,7 +76,7 @@ unitTest(
   { perms: { read: true } },
   async function readFileDoesNotLeakResources() {
     const resourcesBefore = Deno.resources();
-    await assertThrowsAsync(async () => await Deno.readFile("cli"));
+    await assertRejects(async () => await Deno.readFile("cli"));
     assertEquals(resourcesBefore, Deno.resources());
   },
 );
@@ -95,7 +95,7 @@ unitTest(
   async function readFileWithAbortSignal() {
     const ac = new AbortController();
     queueMicrotask(() => ac.abort());
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.readFile("cli/tests/testdata/fixture.json", {
         signal: ac.signal,
       });
@@ -108,7 +108,7 @@ unitTest(
   async function readTextileWithAbortSignal() {
     const ac = new AbortController();
     queueMicrotask(() => ac.abort());
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.readTextFile("cli/tests/testdata/fixture.json", {
         signal: ac.signal,
       });
