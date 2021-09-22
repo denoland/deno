@@ -204,3 +204,9 @@ itest!(steps_parallel_steps {
   exit_code: 1,
   output: "test/steps/parallel_steps.out",
 });
+
+itest!(steps_missing_await {
+  args: "test test/steps/missing_await.ts",
+  exit_code: 1,
+  output: "test/steps/missing_await.out",
+});

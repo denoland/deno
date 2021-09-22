@@ -12,6 +12,7 @@
     ArrayPrototypeFilter,
     ArrayPrototypeMap,
     ArrayPrototypePush,
+    ArrayPrototypeSome,
     DateNow,
     JSONStringify,
     Promise,
@@ -25,6 +26,7 @@
   } = window.__bootstrap.primordials;
 
   const testerGetTestStepResultsSymbol = Symbol();
+  const testerGetStepScopeErrorMessageSymbol = Symbol();
   const testerFailedStepsCountSymbol = Symbol();
 
   // Wrap test function in additional assertion that makes sure
@@ -33,10 +35,10 @@
   // ops. Note that "unref" ops are ignored since in nature that are
   // optional.
   function assertOps(fn) {
-    return async function asyncOpSanitizer(...args) {
+    return async function asyncOpSanitizer(tester) {
       const pre = metrics();
       try {
-        await fn(...args);
+        await fn(tester);
       } finally {
         // Defer until next event loop turn - that way timeouts and intervals
         // cleared can actually be removed from resource table, otherwise
@@ -71,9 +73,9 @@ finishing test case.`,
   function assertResources(
     fn,
   ) {
-    return async function resourceSanitizer(...args) {
+    return async function resourceSanitizer(tester) {
       const pre = core.resources();
-      await fn(...args);
+      await fn(tester);
       const post = core.resources();
 
       const preStr = JSONStringify(pre, null, 2);
@@ -91,7 +93,7 @@ finishing test case.`;
   // Wrap test function in additional assertion that makes sure
   // that the test case does not accidentally exit prematurely.
   function assertExit(fn) {
-    return async function exitSanitizer(...args) {
+    return async function exitSanitizer(tester) {
       setExitHandler((exitCode) => {
         assert(
           false,
@@ -100,11 +102,23 @@ finishing test case.`;
       });
 
       try {
-        await fn(...args);
+        await fn(tester);
       } catch (err) {
         throw err;
       } finally {
         setExitHandler(null);
+      }
+    };
+  }
+
+  function assertTestStepScopes(fn) {
+    /** @param tester {Tester} */
+    return async function testStepScopeSanitizer(tester) {
+      await fn(tester);
+
+      const errorMessage = tester[testerGetStepScopeErrorMessageSymbol]();
+      if (errorMessage) {
+        throw new Error(errorMessage);
       }
     };
   }
@@ -444,23 +458,7 @@ finishing test case.`;
       try {
         await testFn(tester);
 
-        /** @type {TestStatus[]} */
-        const runningTests = ArrayPrototypeFilter(
-          tester.#testStatuses,
-          (r) => r.status === "pending",
-        );
-        if (runningTests.length > 0) {
-          throw new Error(
-            "There were still test steps running after the current scope finished execution. " +
-              "Ensure all steps are awaited (ex. `await t.step(...)`).",
-          );
-        }
-
-        if (tester.#parent != null && tester.#parent.#finalized) {
-          // always point this test out as one that was still running
-          // after the parent tester finalized
-          testStatus.status = "pending";
-        } else if (tester[testerFailedStepsCountSymbol]() > 0) {
+        if (tester[testerFailedStepsCountSymbol]() > 0) {
           testStatus.status = "failed";
         } else {
           testStatus.status = "ok";
@@ -468,6 +466,12 @@ finishing test case.`;
       } catch (error) {
         testStatus.error = inspectArgs([error]);
         testStatus.status = "failed";
+      }
+
+      if (tester.#parent != null && tester.#parent.#finalized) {
+        // always point this test out as one that was still running
+        // if the parent tester finalized
+        testStatus.status = "pending";
       }
 
       tester.#finalized = true;
@@ -507,6 +511,30 @@ finishing test case.`;
           error: status.error,
         }),
       );
+    }
+
+    [testerGetStepScopeErrorMessageSymbol]() {
+      // check for any running steps
+      const hasRunningSteps = ArrayPrototypeSome(
+        this.#testStatuses,
+        (r) => r.status === "pending",
+      );
+      if (hasRunningSteps) {
+        return "There were still test steps running after the current scope finished execution. " +
+          "Ensure all steps are awaited (ex. `await t.step(...)`).";
+      }
+
+      // check if a parent already completed
+      let parent = this.#parent;
+      while (parent != null) {
+        if (parent.#finalized) {
+          return "Parent scope completed before test step finished execution. " +
+            "Ensure all steps are awaited (ex. `await t.step(...)`).";
+        }
+        parent = parent.#parent;
+      }
+
+      return undefined;
     }
 
     [testerFailedStepsCountSymbol]() {
@@ -588,6 +616,8 @@ finishing test case.`;
    * @returns {T}
    */
   function wrapTestFnWithSanitizers(testFn, opts) {
+    testFn = assertTestStepScopes(testFn);
+
     if (opts.sanitizeOps) {
       testFn = assertOps(testFn);
     }
