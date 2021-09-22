@@ -2,12 +2,7 @@
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
-import {
-  assert,
-  assertEquals,
-  assertThrowsAsync,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, assertRejects, unitTest } from "./test_util.ts";
 import { copy } from "../../../test_util/std/io/util.ts";
 
 unitTest(function filesStdioFileDescriptors() {
@@ -256,7 +251,7 @@ unitTest(
     const filename = "tests/hello.txt";
     const openOptions: Deno.OpenOptions[] = [{ write: true }, { append: true }];
     for (const options of openOptions) {
-      await assertThrowsAsync(async () => {
+      await assertRejects(async () => {
         await Deno.open(filename, options);
       }, Deno.errors.PermissionDenied);
     }
@@ -265,7 +260,7 @@ unitTest(
 
 unitTest(async function openOptions() {
   const filename = "cli/tests/testdata/fixture.json";
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await Deno.open(filename, { write: false });
     },
@@ -273,7 +268,7 @@ unitTest(async function openOptions() {
     "OpenOptions requires at least one option to be true",
   );
 
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await Deno.open(filename, { truncate: true, write: false });
     },
@@ -281,7 +276,7 @@ unitTest(async function openOptions() {
     "'truncate' option requires 'write' option",
   );
 
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await Deno.open(filename, { create: true, write: false });
     },
@@ -289,7 +284,7 @@ unitTest(async function openOptions() {
     "'create' or 'createNew' options require 'write' or 'append' option",
   );
 
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await Deno.open(filename, { createNew: true, append: false });
     },
@@ -299,7 +294,7 @@ unitTest(async function openOptions() {
 });
 
 unitTest({ perms: { read: false } }, async function readPermFailure() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.open("package.json", { read: true });
   }, Deno.errors.PermissionDenied);
 });
@@ -317,7 +312,7 @@ unitTest(
     const file = await Deno.open(filename, w);
 
     // writing null should throw an error
-    await assertThrowsAsync(
+    await assertRejects(
       async () => {
         // deno-lint-ignore no-explicit-any
         await file.write(null as any);
@@ -345,7 +340,7 @@ unitTest(
     assert(bytesRead === 0);
 
     // reading file into null buffer should throw an error
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       // deno-lint-ignore no-explicit-any
       await file.read(null as any);
     }, TypeError);
@@ -360,7 +355,7 @@ unitTest(
   { perms: { write: false, read: false } },
   async function readWritePermFailure() {
     const filename = "tests/hello.txt";
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.open(filename, { read: true });
     }, Deno.errors.PermissionDenied);
   },
@@ -630,7 +625,7 @@ unitTest({ perms: { read: true } }, function seekSyncEnd() {
 unitTest({ perms: { read: true } }, async function seekMode() {
   const filename = "cli/tests/testdata/hello.txt";
   const file = await Deno.open(filename);
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await file.seek(1, -1);
     },
