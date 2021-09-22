@@ -567,8 +567,8 @@ finishing test case.`;
       return undefined;
     }
 
-    /** Checks all the nodes in the tree except this tester's
-     * ancestors for any running tests. If found, returns those testers.
+    /** Returns any testers in the tree except this tester's
+     * ancestors that are still running.
      */
     #getNonAncestorRunningTesters() {
       let tester = this;

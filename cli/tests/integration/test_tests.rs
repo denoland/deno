@@ -210,3 +210,9 @@ itest!(steps_missing_await {
   exit_code: 1,
   output: "test/steps/missing_await.out",
 });
+
+itest!(steps_capturing_tester {
+  args: "test test/steps/capturing_tester.ts",
+  exit_code: 1,
+  output: "test/steps/capturing_tester.out",
+});
