@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertThrows, unitTest } from "./test_util.ts";
+import { assert, assertRejects, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function testFnOverloading() {
   // just verifying that you can use this test definition syntax
@@ -23,5 +23,53 @@ unitTest(function nameOfTestCaseCantBeEmpty() {
     },
     TypeError,
     "The test name can't be empty",
+  );
+});
+
+unitTest(function testerIsInstanceTester(t) {
+  assert(t instanceof Deno.Tester);
+});
+
+unitTest(function cannotConstructTester(t) {
+  assertThrows(
+    () => {
+      new (Deno as any).Tester();
+    },
+    Error,
+    "Tester cannot be constructed.",
+  );
+});
+
+unitTest(function invalidStepArguments(t) {
+  assertRejects(
+    async () => {
+      await (t as any).step("test");
+    },
+    TypeError,
+    "Expected function for second argument.",
+  );
+
+  assertRejects(
+    async () => {
+      await (t as any).step("test", "not a function");
+    },
+    TypeError,
+    "Expected function for second argument.",
+  );
+
+  assertRejects(
+    async () => {
+      await (t as any).step();
+    },
+    TypeError,
+    "Expected a test definition or name and function.",
+  );
+
+  assertRejects(
+    async () => {
+      await (t as any).step(() => {});
+    },
+    TypeError,
+    "Expected a test definition or name and function.",
   );
 });

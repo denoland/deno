@@ -43,7 +43,7 @@ interface UnitTestOptions {
   perms?: UnitTestPermissions;
 }
 
-type TestFunction = () => void | Promise<void>;
+type TestFunction = (tester: Deno.Tester) => void | Promise<void>;
 
 export function unitTest(fn: TestFunction): void;
 export function unitTest(options: UnitTestOptions, fn: TestFunction): void;

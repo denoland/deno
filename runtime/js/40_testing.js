@@ -25,6 +25,7 @@
     RegExpPrototypeTest,
   } = window.__bootstrap.primordials;
 
+  const testerCtorSymbol = Symbol();
   const testerGetTestStepResultsSymbol = Symbol();
   const testerGetStepScopeErrorMessageSymbol = Symbol();
   const testerFailedStepsCountSymbol = Symbol();
@@ -223,6 +224,7 @@ finishing test case.`;
     }
 
     const tester = new Tester({
+      ctorSymbol: testerCtorSymbol,
       name: test.name,
       sanitizeOps: test.sanitizeOps,
       sanitizeResources: test.sanitizeResources,
@@ -352,6 +354,7 @@ finishing test case.`;
 
   /**
    * @typedef {{
+   *   ctorSymbol: Symbol;
    *   name: string;
    *   sanitizeOps: boolean,
    *   sanitizeResources: boolean,
@@ -371,7 +374,6 @@ finishing test case.`;
    * }} TestStatus
    */
 
-  // todo: export this class as `Deno.Tester` I guess...
   class Tester {
     /** @type {string} */
     #name;
@@ -389,6 +391,11 @@ finishing test case.`;
 
     /** @param params {TesterParams} */
     constructor(params) {
+      // prevent someone from creating one of these instances
+      if (params?.ctorSymbol !== testerCtorSymbol) {
+        throw new Error("Tester cannot be constructed.");
+      }
+
       this.#name = params.name;
       this.#parent = params.parent;
       this.#sanitizeResources = params.sanitizeResources;
@@ -426,6 +433,7 @@ finishing test case.`;
 
       /** @type {TesterParams} */
       const subTesterParams = {
+        ctorSymbol: testerCtorSymbol,
         name: definition.name,
         sanitizeOps: getOrDefault(
           definition.sanitizeOps,
@@ -445,7 +453,7 @@ finishing test case.`;
       const tester = new Tester(subTesterParams);
       testStatus.tester = tester;
 
-      const errorMessage = tester.#checkCanRun();
+      const errorMessage = tester.#getCannotRunErrorMessage();
       if (errorMessage) {
         testStatus.status = "failed";
         testStatus.error = inspectArgs([new Error(errorMessage)]);
@@ -513,6 +521,14 @@ finishing test case.`;
       );
     }
 
+    [testerFailedStepsCountSymbol]() {
+      return ArrayPrototypeFilter(
+        this.#testStatuses,
+        /** @param status {TestStatus} */
+        (status) => status.status === "failed",
+      ).length;
+    }
+
     [testerGetStepScopeErrorMessageSymbol]() {
       // check for any running steps
       const hasRunningSteps = ArrayPrototypeSome(
@@ -537,15 +553,7 @@ finishing test case.`;
       return undefined;
     }
 
-    [testerFailedStepsCountSymbol]() {
-      return ArrayPrototypeFilter(
-        this.#testStatuses,
-        /** @param status {TestStatus} */
-        (status) => status.status === "failed",
-      ).length;
-    }
-
-    #checkCanRun() {
+    #getCannotRunErrorMessage() {
       const runningTesters = this.#getNonAncestorRunningTesters();
       const runningTestersWithSanitizers = ArrayPrototypeFilter(
         runningTesters,
@@ -567,7 +575,7 @@ finishing test case.`;
       return undefined;
     }
 
-    /** Returns any testers in the tree except this tester's
+    /** Returns any testers in the execution tree except this tester's
      * ancestors that are still running.
      */
     #getNonAncestorRunningTesters() {
@@ -647,5 +655,6 @@ finishing test case.`;
 
   window.__bootstrap.testing = {
     test,
+    Tester,
   };
 })(this);

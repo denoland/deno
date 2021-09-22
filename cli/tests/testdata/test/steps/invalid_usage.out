@@ -1,5 +1,5 @@
 [WILDCARD]
-running 1 test from [WILDCARD]/capturing_tester.ts
+running 1 test from [WILDCARD]/invalid_usage.ts
 test capturing ...
   test some step ... ok ([WILDCARD])
 FAILED ([WILDCARD])
@@ -9,7 +9,7 @@ failures:
 capturing
 Error: Cannot run test step after tester's scope has finished execution. Ensure any `.step(...)` calls are executed before their parent scope completes execution.
     at Tester.step ([WILDCARD])
-    at [WILDCARD]/capturing_tester.ts:[WILDCARD]
+    at [WILDCARD]/invalid_usage.ts:[WILDCARD]
     at [WILDCARD]
 
 failures:
