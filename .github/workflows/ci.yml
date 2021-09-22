@@ -345,7 +345,9 @@ jobs:
       - name: Build release
         if: |
           (matrix.job == 'test' || matrix.job == 'bench') &&
-          matrix.profile == 'release' && !matrix.use_sysroot
+          matrix.profile == 'release' && !matrix.use_sysroot &&
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         run: cargo build --release --locked --all-targets
 
       - name: Build release (in sysroot)
@@ -371,7 +373,9 @@ jobs:
         if: |
           startsWith(matrix.os, 'macOS') &&
           matrix.job == 'test' &&
-          matrix.profile == 'release'
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         run: |
           cd target/release
           zip -r deno-x86_64-apple-darwin.zip deno
@@ -380,7 +384,9 @@ jobs:
         if: |
           startsWith(matrix.os, 'windows') &&
           matrix.job == 'test' &&
-          matrix.profile == 'release'
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         run: |
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
 
@@ -424,7 +430,9 @@ jobs:
       - name: Test release
         if: |
           matrix.job == 'test' && matrix.profile == 'release' &&
-          !matrix.use_sysroot
+          !matrix.use_sysroot &&
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         run: cargo test --release --locked
 
       - name: Test release (in sysroot)
