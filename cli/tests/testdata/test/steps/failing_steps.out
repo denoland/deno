@@ -4,18 +4,18 @@ test nested failure ...
   test step 1 ...
     test inner 1 ... FAILED ([WILDCARD])
       Error: Failed.
-          at [WILDCARD]/failing_steps.ts:4:13
+          at [WILDCARD]/failing_steps.ts:[WILDCARD]
           [WILDCARD]
     test inner 2 ... ok ([WILDCARD])
   FAILED ([WILDCARD])
 FAILED ([WILDCARD])
-test multiple test failures ...
+test multiple test step failures ...
   test step 1 ... FAILED ([WILDCARD])
     Error: Fail.
         [WILDCARD]
   test step 2 ... FAILED ([WILDCARD])
     Error: Fail.
-        at [WILDCARD]/failing_steps.ts:20:11
+        at [WILDCARD]/failing_steps.ts:[WILDCARD]
         [WILDCARD]
 FAILED ([WILDCARD])
 
@@ -33,8 +33,8 @@ Error: 2 test steps failed.
 
 failures:
 
-        nested failure
-        multiple test step failures
+	nested failure
+	multiple test step failures
 
 test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 

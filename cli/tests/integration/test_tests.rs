@@ -192,3 +192,15 @@ itest!(steps_failing_steps {
   exit_code: 1,
   output: "test/steps/failing_steps.out",
 });
+
+itest!(steps_ignored_steps {
+  args: "test test/steps/ignored_steps.ts",
+  exit_code: 0,
+  output: "test/steps/ignored_steps.out",
+});
+
+itest!(steps_parallel_steps {
+  args: "test test/steps/parallel_steps.ts",
+  exit_code: 1,
+  output: "test/steps/parallel_steps.out",
+});

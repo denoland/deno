@@ -359,15 +359,27 @@ finishing test case.`;
 
   // todo: export this class as `Deno.Tester` I guess...
   class Tester {
-    /** @type {TesterParams} */
-    #params;
+    /** @type {string} */
+    #name;
+    /** @type {Tester | undefined} */
+    #parent;
+    /** @type {bool} */
+    #sanitizeResources;
+    /** @type {bool} */
+    #sanitizeOps;
+    /** @type {bool} */
+    #sanitizeExit;
     #finalized = false;
     /** @type {TestStatus[]} */
     #testStatuses = [];
 
     /** @param params {TesterParams} */
     constructor(params) {
-      this.#params = params;
+      this.#name = params.name;
+      this.#parent = params.parent;
+      this.#sanitizeResources = params.sanitizeResources;
+      this.#sanitizeOps = params.sanitizeOps;
+      this.#sanitizeExit = params.sanitizeExit;
     }
 
     /**
@@ -403,15 +415,15 @@ finishing test case.`;
         name: definition.name,
         sanitizeOps: getOrDefault(
           definition.sanitizeOps,
-          this.#params.sanitizeOps,
+          this.#sanitizeOps,
         ),
         sanitizeResources: getOrDefault(
           definition.sanitizeResources,
-          this.#params.sanitizeResources,
+          this.#sanitizeResources,
         ),
         sanitizeExit: getOrDefault(
           definition.sanitizeExit,
-          this.#params.sanitizeExit,
+          this.#sanitizeExit,
         ),
         parent: this,
       };
@@ -419,18 +431,11 @@ finishing test case.`;
       const tester = new Tester(subTesterParams);
       testStatus.tester = tester;
 
-      if (tester.#usesSanitizer()) {
-        const runningTesters = tester.#getNonAncestorRunningTesters();
-        if (runningTesters.length > 0) {
-          testStatus.status = "failed";
-          testStatus.error = inspectArgs([
-            new Error(
-              "Cannot start test step with sanitizers while another test step is running.\n" +
-                runningTesters.map((t) => ` * ${t.#getFullName()}`).join("\n"),
-            ),
-          ]);
-          return false;
-        }
+      const errorMessage = tester.#checkCanRun();
+      if (errorMessage) {
+        testStatus.status = "failed";
+        testStatus.error = inspectArgs([new Error(errorMessage)]);
+        return false;
       }
 
       const testFn = wrapTestFnWithSanitizers(definition.fn, subTesterParams);
@@ -451,7 +456,7 @@ finishing test case.`;
           );
         }
 
-        if (tester.#params.parent != null && tester.#params.parent.#finalized) {
+        if (tester.#parent != null && tester.#parent.#finalized) {
           // always point this test out as one that was still running
           // after the parent tester finalized
           testStatus.status = "pending";
@@ -512,6 +517,28 @@ finishing test case.`;
       ).length;
     }
 
+    #checkCanRun() {
+      const runningTesters = this.#getNonAncestorRunningTesters();
+      const runningTestersWithSanitizers = ArrayPrototypeFilter(
+        runningTesters,
+        (t) => t.#usesSanitizer(),
+      );
+
+      if (runningTestersWithSanitizers.length > 0) {
+        return "Cannot start test step while another test step with sanitizers is running.\n" +
+          runningTestersWithSanitizers
+            .map((t) => ` * ${t.#getFullName()}`)
+            .join("\n");
+      }
+
+      if (this.#usesSanitizer() && runningTesters.length > 0) {
+        return "Cannot start test step with sanitizers while another test step is running.\n" +
+          runningTesters.map((t) => ` * ${t.#getFullName()}`).join("\n");
+      }
+
+      return undefined;
+    }
+
     /** Checks all the nodes in the tree except this tester's
      * ancestors for any running tests. If found, returns those testers.
      */
@@ -519,8 +546,8 @@ finishing test case.`;
       let tester = this;
       /** @type {Tester[]} */
       let results = [];
-      while (tester.#params.parent != null) {
-        const parentTester = tester.#params.parent;
+      while (tester.#parent != null) {
+        const parentTester = tester.#parent;
         for (const testStatus of parentTester.#testStatuses) {
           const siblingTester = testStatus.tester;
           if (siblingTester == null || siblingTester === tester) {
@@ -536,16 +563,16 @@ finishing test case.`;
     }
 
     #usesSanitizer() {
-      return this.#params.sanitizeResources ||
-        this.#params.sanitizeOps ||
-        this.#params.sanitizeExit;
+      return this.#sanitizeResources ||
+        this.#sanitizeOps ||
+        this.#sanitizeExit;
     }
 
     #getFullName() {
-      if (this.#params.parent != null) {
-        return `${this.#params.parent.#getFullName()} > ${this.#params.name}`;
+      if (this.#parent != null) {
+        return `${this.#parent.#getFullName()} > ${this.#name}`;
       } else {
-        return this.#params.name;
+        return this.#name;
       }
     }
   }

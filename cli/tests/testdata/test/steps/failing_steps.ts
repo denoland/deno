@@ -13,10 +13,8 @@ Deno.test("nested failure", async (t) => {
 });
 
 Deno.test("multiple test step failures", async (t) => {
-  await t.step("step 1", async () => {
+  await t.step("step 1", () => {
     throw new Error("Fail.");
   });
-  await t.step("step 2", async () => {
-    throw new Error("Fail.");
-  });
+  await t.step("step 2", () => Promise.reject(new Error("Fail.")));
 });
