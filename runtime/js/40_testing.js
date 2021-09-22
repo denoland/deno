@@ -269,10 +269,12 @@ finishing test case.`;
       return "ignored";
     }
 
-    const failures = [];
+    const steps = [];
+
     const context = {
       async step(t, fn) {
         const test = createTestStep(t, fn);
+        steps.push(test);
         const step = {
           path: path.concat(name),
           name: test.name,
@@ -290,8 +292,9 @@ finishing test case.`;
           ],
         });
 
+        test.result = result;
+
         if (result.failed) {
-          failures.push(result.failed);
           return true;
         }
 
@@ -301,8 +304,16 @@ finishing test case.`;
 
     try {
       await fn(context);
+      const pending = steps.filter(step => !step.result);
+      if (pending.length > 0) {
+        throw new Error("One or more steps are pending");
+      }
+
+      const failures = steps.filter(step => step.result.failed);
       if (failures.length > 0) {
-        return { failed: new AggregateError(failures) };
+        return {
+          failed: new AggregateError(failures.map(step => step.result.failed))
+        };
       }
     } catch (failed) {
       return { failed };
