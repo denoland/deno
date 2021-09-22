@@ -699,9 +699,8 @@ where
 
   let unsafely_ignore_certificate_errors = state
     .borrow()
-    .borrow::<UnsafelyIgnoreCertificateErrors>()
-    .0
-    .clone();
+    .try_borrow::<UnsafelyIgnoreCertificateErrors>()
+    .and_then(|it| it.0.clone());
 
   // TODO(@justinmchase): Ideally the certificate store is created once
   // and not cloned. The store should be wrapped in Arc<T> to reduce
@@ -768,9 +767,8 @@ where
   let cert_file = args.cert_file.as_deref();
   let unsafely_ignore_certificate_errors = state
     .borrow()
-    .borrow::<UnsafelyIgnoreCertificateErrors>()
-    .0
-    .clone();
+    .try_borrow::<UnsafelyIgnoreCertificateErrors>()
+    .and_then(|it| it.0.clone());
 
   if args.cert_chain.is_some() {
     super::check_unstable2(&state, "ConnectTlsOptions.certChain");
