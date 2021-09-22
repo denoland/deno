@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
+use crate::itest_flaky;
 
 // TODO(ry) https://github.com/denoland/deno/issues/12075
 itest_flaky!(workers {
