@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
@@ -80,7 +80,7 @@ unitTest(
 );
 
 unitTest({ perms: { read: false } }, async function readLinkPerm() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.readLink("/symlink");
   }, Deno.errors.PermissionDenied);
 });

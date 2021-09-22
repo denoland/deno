@@ -2,7 +2,7 @@
 import {
   assert,
   assertEquals,
-  assertThrowsAsync,
+  assertRejects,
   deferred,
   fail,
   unimplemented,
@@ -13,7 +13,7 @@ import { Buffer } from "../../../test_util/std/io/buffer.ts";
 unitTest(
   { perms: { net: true } },
   async function fetchRequiresOneArgument() {
-    await assertThrowsAsync(
+    await assertRejects(
       fetch as unknown as () => Promise<void>,
       TypeError,
     );
@@ -21,7 +21,7 @@ unitTest(
 );
 
 unitTest({ perms: { net: true } }, async function fetchProtocolError() {
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await fetch("file:///");
     },
@@ -58,7 +58,7 @@ unitTest(
   { perms: { net: true } },
   async function fetchConnectionError() {
     const port = findClosedPortInRange(4000, 9999);
-    await assertThrowsAsync(
+    await assertRejects(
       async () => {
         await fetch(`http://localhost:${port}`);
       },
@@ -71,7 +71,7 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function fetchDnsError() {
-    await assertThrowsAsync(
+    await assertRejects(
       async () => {
         await fetch("http://nil/");
       },
@@ -84,7 +84,7 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function fetchInvalidUriError() {
-    await assertThrowsAsync(
+    await assertRejects(
       async () => {
         await fetch("http://<invalid>/");
       },
@@ -100,7 +100,7 @@ unitTest({ perms: { net: true } }, async function fetchJsonSuccess() {
 });
 
 unitTest(async function fetchPerm() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await fetch("http://localhost:4545/fixture.json");
   }, Deno.errors.PermissionDenied);
 });
@@ -258,7 +258,7 @@ unitTest(
     );
     assert(response.body !== null);
 
-    await assertThrowsAsync(
+    await assertRejects(
       async () => {
         await response.formData();
       },
@@ -410,7 +410,7 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithInfRedirection() {
-    await assertThrowsAsync(
+    await assertRejects(
       () => fetch("http://localhost:4549"),
       TypeError,
       "redirect",
@@ -760,7 +760,7 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithErrorRedirection() {
-    await assertThrowsAsync(
+    await assertRejects(
       () =>
         fetch("http://localhost:4546/", {
           redirect: "error",
@@ -790,7 +790,7 @@ unitTest(async function responseWithoutBody() {
   assertEquals(blob.size, 0);
   assertEquals(await blob.arrayBuffer(), new ArrayBuffer(0));
   assertEquals(await response.text(), "");
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await response.json();
   });
 });
@@ -1176,7 +1176,7 @@ unitTest(
       },
     });
     const nonExistantHostname = "http://localhost:47582";
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await fetch(nonExistantHostname, { body, method: "POST" });
     }, TypeError);
     await done;
@@ -1196,7 +1196,7 @@ unitTest(
 unitTest(
   { perms: { read: true, net: true } },
   async function fetchClientCertWrongPrivateKey(): Promise<void> {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       const client = Deno.createHttpClient({
         certChain: "bad data",
         privateKey: await Deno.readTextFile(
@@ -1213,7 +1213,7 @@ unitTest(
 unitTest(
   { perms: { read: true, net: true } },
   async function fetchClientCertBadPrivateKey(): Promise<void> {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       const client = Deno.createHttpClient({
         certChain: await Deno.readTextFile(
           "cli/tests/testdata/tls/localhost.crt",
@@ -1230,7 +1230,7 @@ unitTest(
 unitTest(
   { perms: { read: true, net: true } },
   async function fetchClientCertNotPrivateKey(): Promise<void> {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       const client = Deno.createHttpClient({
         certChain: await Deno.readTextFile(
           "cli/tests/testdata/tls/localhost.crt",

@@ -224,9 +224,8 @@ where
 
   let unsafely_ignore_certificate_errors = state
     .borrow()
-    .borrow::<UnsafelyIgnoreCertificateErrors>()
-    .0
-    .clone();
+    .try_borrow::<UnsafelyIgnoreCertificateErrors>()
+    .and_then(|it| it.0.clone());
   let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = args.url.parse()?;

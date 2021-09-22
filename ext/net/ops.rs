@@ -278,13 +278,13 @@ where
 }
 
 #[derive(Deserialize)]
-struct ConnectArgs {
+pub struct ConnectArgs {
   transport: String,
   #[serde(flatten)]
   transport_args: ArgsEnum,
 }
 
-async fn op_connect<NP>(
+pub async fn op_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
   _: (),

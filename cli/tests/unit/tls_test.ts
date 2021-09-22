@@ -3,9 +3,9 @@ import {
   assert,
   assertEquals,
   assertNotEquals,
+  assertRejects,
   assertStrictEquals,
   assertThrows,
-  assertThrowsAsync,
   Deferred,
   deferred,
   unitTest,
@@ -26,7 +26,7 @@ function unreachable(): never {
 }
 
 unitTest(async function connectTLSNoPerm() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.connectTls({ hostname: "deno.land", port: 443 });
   }, Deno.errors.PermissionDenied);
 });
@@ -41,7 +41,7 @@ unitTest(
       keyFile: "cli/tests/testdata/tls/localhost.key",
     });
 
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.connectTls({ hostname: "127.0.0.1", port: 3567 });
     }, TypeError);
 
@@ -50,7 +50,7 @@ unitTest(
 );
 
 unitTest(async function connectTLSCertFileNoReadPerm() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.connectTls({
       hostname: "deno.land",
       port: 443,
@@ -405,7 +405,7 @@ async function sendAlotReceiveNothing(conn: Deno.Conn) {
   conn.close();
 
   // Read op should be canceled.
-  await assertThrowsAsync(
+  await assertRejects(
     async () => await readPromise,
     Deno.errors.Interrupted,
   );
@@ -471,7 +471,7 @@ async function sendReceiveEmptyBuf(conn: Deno.Conn) {
   n = await conn.write(emptyBuf);
   assertStrictEquals(n, 0);
 
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await conn.write(byteBuf);
   }, Deno.errors.BrokenPipe);
 
@@ -627,22 +627,22 @@ async function tlsWithTcpFailureTestImpl(
       }
 
       const tlsTrafficPromise1 = Promise.all([
-        assertThrowsAsync(
+        assertRejects(
           () => sendBytes(tlsConn1, 0x01, 1),
           expectedError,
         ),
-        assertThrowsAsync(
+        assertRejects(
           () => receiveBytes(tlsConn1, 0x02, 1),
           expectedError,
         ),
       ]);
 
       const tlsTrafficPromise2 = Promise.all([
-        assertThrowsAsync(
+        assertRejects(
           () => sendBytes(tlsConn2, 0x02, 1),
           Deno.errors.UnexpectedEof,
         ),
-        assertThrowsAsync(
+        assertRejects(
           () => receiveBytes(tlsConn2, 0x01, 1),
           Deno.errors.UnexpectedEof,
         ),
@@ -684,7 +684,7 @@ async function tlsWithTcpFailureTestImpl(
       switch (failureMode) {
         case "corruption":
           await sendBytes(tcpConn1, 0xff, 1 << 14 /* 16 kB */);
-          await assertThrowsAsync(
+          await assertRejects(
             () => receiveEof(tlsConn1),
             Deno.errors.InvalidData,
           );
@@ -990,7 +990,7 @@ unitTest(
 unitTest(
   { perms: { read: true, net: true } },
   async function connectTLSBadClientCertPrivateKey(): Promise<void> {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.connectTls({
         hostname: "deno.land",
         port: 443,
@@ -1006,7 +1006,7 @@ unitTest(
 unitTest(
   { perms: { read: true, net: true } },
   async function connectTLSBadPrivateKey(): Promise<void> {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.connectTls({
         hostname: "deno.land",
         port: 443,
@@ -1022,7 +1022,7 @@ unitTest(
 unitTest(
   { perms: { read: true, net: true } },
   async function connectTLSNotPrivateKey(): Promise<void> {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.connectTls({
         hostname: "deno.land",
         port: 443,
