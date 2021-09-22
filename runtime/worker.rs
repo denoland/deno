@@ -56,8 +56,7 @@ pub struct WorkerOptions {
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  // Callback that will be invoked when creating new instance
-  // of WebWorker
+  // Callback invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
