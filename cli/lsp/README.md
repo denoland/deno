@@ -77,9 +77,21 @@ language server will assume the workspace setting applies to all resources.
 There are several commands that might be issued by the language server to the
 client, which the client is expected to implement:
 
+- `deno.addToImportMap` - This is sent as a command to complete code actions
+  where the language server has identified a bare import specifier it cannot
+  map. It will be sent with an argument of the bare specifier that should be
+  added to an import map in order to "resolve" the bare specifier diagnostic.
+  Clients should do the following when the command is activated:
+  - Determine if an import map is configured and exists for the workspace.
+  - Determine if the bare specifier looks like a Node.js built-in or is a npm
+    package.
+  - Provide an interface to select a CDN for an npm package.
+  - Potentially provide an interface to determine how the Node.js built-in will
+    be "polyfilled".
+  - Add the supplied bare specifier to the import map.
 - `deno.cache` - This is sent as a resolution code action when there is an
   un-cached module specifier that is being imported into a module. It will be
-  sent with and argument that contains the resolved specifier as a string to be
+  sent with an argument that contains the resolved specifier as a string to be
   cached.
 - `deno.showReferences` - This is sent as the command on some code lenses to
   show locations of references. The arguments contain the specifier that is the
