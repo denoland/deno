@@ -592,33 +592,14 @@ unitTest({ perms: { net: true } }, async function fetchUserAgent() {
   await response.text();
 });
 
-// TODO(ry) The following tests work but are flaky. There's a race condition
-// somewhere. Here is what one of these flaky failures looks like:
-//
-// unitTest fetchPostBodyString_permW0N1E0R0
-// assertEquals failed. actual =   expected = POST /blah HTTP/1.1
-// hello: World
-// foo: Bar
-// host: 127.0.0.1:4502
-// content-length: 11
-// hello world
-// Error: actual:  expected: POST /blah HTTP/1.1
-// hello: World
-// foo: Bar
-// host: 127.0.0.1:4502
-// content-length: 11
-// hello world
-//     at Object.assertEquals (file:///C:/deno/js/testing/util.ts:29:11)
-//     at fetchPostBodyString (file
-
-function bufferServer(addr: string): Buffer {
+function bufferServer(addr: string): Promise<Buffer> {
   const [hostname, port] = addr.split(":");
   const listener = Deno.listen({
     hostname,
     port: Number(port),
   }) as Deno.Listener;
-  const buf = new Buffer();
-  listener.accept().then(async (conn: Deno.Conn) => {
+  return listener.accept().then(async (conn: Deno.Conn) => {
+    const buf = new Buffer();
     const p1 = buf.readFrom(conn);
     const p2 = conn.write(
       new TextEncoder().encode(
@@ -634,8 +615,8 @@ function bufferServer(addr: string): Buffer {
     await Promise.all([p1, p2]);
     conn.close();
     listener.close();
+    return buf;
   });
-  return buf;
 }
 
 unitTest(
@@ -644,7 +625,7 @@ unitTest(
   },
   async function fetchRequest() {
     const addr = "127.0.0.1:4501";
-    const buf = bufferServer(addr);
+    const bufPromise = bufferServer(addr);
     const response = await fetch(`http://${addr}/blah`, {
       method: "POST",
       headers: [
@@ -656,7 +637,7 @@ unitTest(
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
-    const actual = new TextDecoder().decode(buf.bytes());
+    const actual = new TextDecoder().decode((await bufPromise).bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
@@ -676,7 +657,7 @@ unitTest(
   },
   async function fetchPostBodyString() {
     const addr = "127.0.0.1:4502";
-    const buf = bufferServer(addr);
+    const bufPromise = bufferServer(addr);
     const body = "hello world";
     const response = await fetch(`http://${addr}/blah`, {
       method: "POST",
@@ -690,7 +671,7 @@ unitTest(
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
-    const actual = new TextDecoder().decode(buf.bytes());
+    const actual = new TextDecoder().decode((await bufPromise).bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
@@ -713,7 +694,7 @@ unitTest(
   },
   async function fetchPostBodyTypedArray() {
     const addr = "127.0.0.1:4503";
-    const buf = bufferServer(addr);
+    const bufPromise = bufferServer(addr);
     const bodyStr = "hello world";
     const body = new TextEncoder().encode(bodyStr);
     const response = await fetch(`http://${addr}/blah`, {
@@ -728,7 +709,7 @@ unitTest(
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
-    const actual = new TextDecoder().decode(buf.bytes());
+    const actual = new TextDecoder().decode((await bufPromise).bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
@@ -1083,7 +1064,7 @@ unitTest(
   },
   async function fetchPostBodyReadableStream() {
     const addr = "127.0.0.1:4502";
-    const buf = bufferServer(addr);
+    const bufPromise = bufferServer(addr);
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
     // transformer writes don't resolve until they are read, so awaiting these
@@ -1105,7 +1086,7 @@ unitTest(
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
-    const actual = new TextDecoder().decode(buf.bytes());
+    const actual = new TextDecoder().decode((await bufPromise).bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
