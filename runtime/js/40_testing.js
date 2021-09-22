@@ -20,6 +20,7 @@
     StringPrototypeIncludes,
     StringPrototypeSlice,
     RegExp,
+    Number,
     RegExpPrototypeTest,
   } = window.__bootstrap.primordials;
 
