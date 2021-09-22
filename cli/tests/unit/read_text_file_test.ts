@@ -1,8 +1,8 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
@@ -55,7 +55,7 @@ unitTest({ perms: { read: true } }, async function readTextFileByUrl() {
 });
 
 unitTest({ perms: { read: false } }, async function readTextFilePerm() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.readTextFile("cli/tests/testdata/fixture.json");
   }, Deno.errors.PermissionDenied);
 });
@@ -70,7 +70,7 @@ unitTest(
   { perms: { read: true } },
   async function readTextFileDoesNotLeakResources() {
     const resourcesBefore = Deno.resources();
-    await assertThrowsAsync(async () => await Deno.readTextFile("cli"));
+    await assertRejects(async () => await Deno.readTextFile("cli"));
     assertEquals(resourcesBefore, Deno.resources());
   },
 );

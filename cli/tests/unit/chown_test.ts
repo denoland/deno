@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
@@ -33,7 +33,7 @@ unitTest(
   { ignore: Deno.build.os == "windows" },
   async function chownNoWritePermission() {
     const filePath = "chown_test_file.txt";
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.chown(filePath, 1000, 1000);
     }, Deno.errors.PermissionDenied);
   },
@@ -57,7 +57,7 @@ unitTest(
     const { uid, gid } = await getUidAndGid();
     const filePath = (await Deno.makeTempDir()) + "/chown_test_file.txt";
 
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.chown(filePath, uid, gid);
     }, Deno.errors.NotFound);
   },
@@ -85,7 +85,7 @@ unitTest(
     const filePath = dirPath + "/chown_test_file.txt";
     await Deno.writeTextFile(filePath, "Hello");
 
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       // try changing the file's owner to root
       await Deno.chown(filePath, 0, 0);
     }, Deno.errors.PermissionDenied);

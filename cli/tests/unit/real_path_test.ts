@@ -3,8 +3,8 @@ import {
   assert,
   assertEquals,
   assertMatch,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
@@ -103,13 +103,13 @@ unitTest(
 );
 
 unitTest({ perms: { read: false } }, async function realPathPerm() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.realPath("some_file");
   }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, async function realPathNotFound() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.realPath("bad_filename");
   }, Deno.errors.NotFound);
 });

@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
@@ -160,7 +160,7 @@ unitTest(
     const data = enc.encode("Hello");
     const filename = "/baddir/test.txt";
     // The following should fail because /baddir doesn't exist (hopefully).
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.writeFile(filename, data);
     }, Deno.errors.NotFound);
   },
@@ -173,7 +173,7 @@ unitTest(
     const data = enc.encode("Hello");
     const filename = "/baddir/test.txt";
     // The following should fail due to no write permission
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.writeFile(filename, data);
     }, Deno.errors.PermissionDenied);
   },
@@ -201,7 +201,7 @@ unitTest(
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
     // if create turned off, the file won't be created
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.writeFile(filename, data, { create: false });
     }, Deno.errors.NotFound);
 
