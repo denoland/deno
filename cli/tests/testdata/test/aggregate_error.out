@@ -12,3 +12,10 @@ Error: Error 2
     at [WILDCARD]/testdata/test/aggregate_error.ts:3:18
     [WILDCARD]
 
+failures:
+
+	aggregate
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Test failed
