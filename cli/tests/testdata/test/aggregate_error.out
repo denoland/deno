@@ -13,12 +13,7 @@ AggregateError
         at [WILDCARD]/testdata/test/aggregate_error.ts:3:18
         [WILDCARD]
     at [WILDCARD]/testdata/test/aggregate_error.ts:5:9
-    at asyncOpSanitizer (deno:runtime/js/40_testing.js:35:15)
-    at resourceSanitizer (deno:runtime/js/40_testing.js:72:13)
-    at exitSanitizer (deno:runtime/js/40_testing.js:99:15)
-    at runTest (deno:runtime/js/40_testing.js:230:13)
-    at Object.runTests (deno:runtime/js/40_testing.js:315:28)
-    at [deno:cli/tools/test.rs:302:6]:1:21
+    at [WILDCARD]
 
 failures:
 
