@@ -188,8 +188,13 @@ finishing test case.`;
 
   function formatFailure(error) {
     if (error.errors) {
+      const message = error
+        .errors
+        .map((error) => inspectArgs([error]).replace(/^(?!\s*$)/gm, " ".repeat(4)))
+        .join("\n");
+
       return {
-        failed: error.errors.map((error) => inspectArgs([error])).join("\n"),
+        failed: error.name + "\n" + message + error.stack,
       };
     }
 
