@@ -543,7 +543,9 @@ jobs:
           git push origin gh-pages
 
       - name: Build product size info
-        if: matrix.job != 'lint' && matrix.profile != 'fastci'
+        if: matrix.job != 'lint' && matrix.profile != 'fastci' &&
+          github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         run: |
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
