@@ -7,7 +7,7 @@ import {
 } from "./test_util.ts";
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function symlinkSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const oldname = testDir + "/oldname";
@@ -22,7 +22,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function symlinkSyncURL() {
     const testDir = Deno.makeTempDirSync();
     const oldname = testDir + "/oldname";
@@ -46,7 +46,7 @@ unitTest(function symlinkSyncPerm() {
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function symlinkSuccess() {
     const testDir = Deno.makeTempDirSync();
     const oldname = testDir + "/oldname";
@@ -61,7 +61,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function symlinkURL() {
     const testDir = Deno.makeTempDirSync();
     const oldname = testDir + "/oldname";
