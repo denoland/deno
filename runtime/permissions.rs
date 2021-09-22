@@ -12,7 +12,7 @@ use deno_core::serde::Serialize;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use log::debug;
+use log;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
@@ -23,6 +23,10 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 const PERMISSION_EMOJI: &str = "⚠️";
+
+lazy_static::lazy_static! {
+  static ref DEBUG_LOG_ENABLED: bool = log::log_enabled!(log::Level::Debug);
+}
 
 /// Tri-state value for storing permission state
 #[derive(PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
@@ -35,14 +39,19 @@ pub enum PermissionState {
 impl PermissionState {
   #[inline(always)]
   fn log_perm_access(name: &str, info: Option<&str>) {
-    debug!(
-      "{}",
-      colors::bold(&format!(
-        "{}️  Granted {}",
-        PERMISSION_EMOJI,
-        Self::fmt_access(name, info)
-      ))
-    );
+    // Eliminates log overhead (when logging is disabled),
+    // log_enabled!(Debug) check in a hot path still has overhead
+    // TODO(AaronO): generalize or upstream this optimization
+    if *DEBUG_LOG_ENABLED {
+      log::debug!(
+        "{}",
+        colors::bold(&format!(
+          "{}️  Granted {}",
+          PERMISSION_EMOJI,
+          Self::fmt_access(name, info)
+        ))
+      );
+    }
   }
 
   fn fmt_access(name: &str, info: Option<&str>) -> String {
