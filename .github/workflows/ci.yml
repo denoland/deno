@@ -338,12 +338,9 @@ jobs:
     
       - name: Build fastci
         if: (matrix.job == 'test' && matrix.profile == 'fastci')
-        run: cargo build --release --locked --all-targets
+        run: cargo build --locked --all-targets
         env:
-          CARGO_PROFILE_RELEASE_LTO: false
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 256
-          CARGO_PROFILE_RELEASE_OPT_LEVEL: 0
-          CARGO_PROFILE_RELEASE_INCREMENTAL: true
+          CARGO_PROFILE_DEV_DEBUG: 0
 
       - name: Build release
         if: |
@@ -420,12 +417,9 @@ jobs:
 
       - name: Test fastci
         if: (matrix.job == 'test' && matrix.profile == 'fastci')
-        run: cargo test --release --locked
+        run: cargo test --locked
         env:
-          CARGO_PROFILE_RELEASE_LTO: false
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 256
-          CARGO_PROFILE_RELEASE_OPT_LEVEL: 0
-          CARGO_PROFILE_RELEASE_INCREMENTAL: true
+          CARGO_PROFILE_DEV_DEBUG: 0
 
       - name: Test release
         if: |
