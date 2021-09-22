@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
@@ -271,7 +271,7 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
 
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.utime("/baddir", atime, mtime);
     }, Deno.errors.NotFound);
   },
@@ -283,7 +283,7 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
 
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.utime("/some_dir", atime, mtime);
     }, Deno.errors.PermissionDenied);
   },

@@ -2,8 +2,8 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
@@ -70,7 +70,7 @@ unitTest({ perms: { read: true } }, async function readDirWithUrl() {
 });
 
 unitTest({ perms: { read: false } }, async function readDirPerm() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.readDir("tests/")[Symbol.asyncIterator]().next();
   }, Deno.errors.PermissionDenied);
 });
