@@ -109,12 +109,7 @@ impl TestSummary {
 trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
-  fn report_step(
-    &mut self,
-    step: &TestStep,
-    result: &TestResult,
-    elapsed: u64,
-  );
+  fn report_step(&mut self, step: &TestStep, result: &TestResult, elapsed: u64);
   fn report_result(
     &mut self,
     description: &TestDescription,
@@ -167,14 +162,14 @@ impl TestReporter for PrettyTestReporter {
     };
 
     if self.path.len() == 0 {
-        println!();
+      println!();
     }
 
     if self.path != step.path {
-        let segments = step.path.iter().enumerate();
-        for (i, name) in segments {
-          println!("{}{} ...", "\t".repeat(i), name);
-        }
+      let segments = step.path.iter().enumerate();
+      for (i, name) in segments {
+        println!("{}{} ...", "\t".repeat(i), name);
+      }
     }
 
     println!(
