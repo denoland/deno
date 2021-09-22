@@ -117,15 +117,15 @@ declare namespace Deno {
     private constructor();
     /** Run a sub step of the parent test with a given name. Returns a promise
      * that resolves to a boolean signifying if the step completed successfully.
-     * The returned promise never rejects. If the test was ignored, the promise
-     * returns `false`.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored, the promise returns `false`.
      */
     step(t: TestStepDefinition): Promise<boolean>;
 
     /** Run a sub step of the parent test with a given name. Returns a promise
      * that resolves to a boolean signifying if the step completed successfully.
-     * The returned promise never rejects. If the test was ignored, the promise
-     * returns `false`.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored, the promise returns `false`.
      */
     step(
       name: string,

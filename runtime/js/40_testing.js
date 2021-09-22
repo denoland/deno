@@ -139,11 +139,11 @@ finishing test case.`;
       core.opSync("op_restore_test_permissions", token);
     }
 
-    return async function applyPermissions(...args) {
+    return async function applyPermissions(tester) {
       const token = pledgePermissions(permissions);
 
       try {
-        await fn(...args);
+        await fn(tester);
       } finally {
         restorePermissions(token);
       }
@@ -431,7 +431,7 @@ finishing test case.`;
 
       if (definition.ignore) {
         testStatus.status = "ignored";
-        return true;
+        return false;
       }
 
       /** @type {TesterParams} */
@@ -454,14 +454,14 @@ finishing test case.`;
       };
 
       const tester = new Tester(subTesterParams);
-      testStatus.tester = tester;
-
       const errorMessage = tester.#getCannotRunErrorMessage();
       if (errorMessage) {
         testStatus.status = "failed";
         testStatus.error = inspectArgs([new Error(errorMessage)]);
         return false;
       }
+
+      testStatus.tester = tester;
 
       const testFn = wrapTestFnWithSanitizers(definition.fn, subTesterParams);
       const start = DateNow();
@@ -557,7 +557,7 @@ finishing test case.`;
     }
 
     #getCannotRunErrorMessage() {
-      const runningTesters = this.#getNonAncestorRunningTesters();
+      const runningTesters = this.#getPotentialConflictingRunningTesters();
       const runningTestersWithSanitizers = ArrayPrototypeFilter(
         runningTesters,
         (t) => t.#usesSanitizer(),
@@ -578,10 +578,10 @@ finishing test case.`;
       return undefined;
     }
 
-    /** Returns any testers in the execution tree except this tester's
-     * ancestors that are still running.
+    /** Returns any running testers in the execution tree except this tester's
+     * ancestors and siblings.
      */
-    #getNonAncestorRunningTesters() {
+    #getPotentialConflictingRunningTesters() {
       // deno-lint-ignore no-this-alias
       let tester = this;
       /** @type {Tester[]} */
