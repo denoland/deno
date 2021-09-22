@@ -186,6 +186,16 @@ finishing test case.`;
     ArrayPrototypePush(tests, testDef);
   }
 
+  function formatFailure(error) {
+    if (error.errors) {
+      return {
+        failed: error.errors.map((error) => inspectArgs([error])).join("\n"),
+      };
+    }
+
+    return { failed: inspectArgs([error]) };
+  }
+
   function createTestFilter(filter) {
     return (def) => {
       if (filter) {
@@ -213,10 +223,11 @@ finishing test case.`;
 
     try {
       await fn();
-      return "ok";
     } catch (error) {
-      return { "failed": inspectArgs([error]) };
+      return formatFailure(error);
     }
+
+    return "ok";
   }
 
   function getTestOrigin() {
