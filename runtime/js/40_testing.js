@@ -190,7 +190,9 @@ finishing test case.`;
     if (error.errors) {
       const message = error
         .errors
-        .map((error) => inspectArgs([error]).replace(/^(?!\s*$)/gm, " ".repeat(4)))
+        .map((error) =>
+          inspectArgs([error]).replace(/^(?!\s*$)/gm, " ".repeat(4))
+        )
         .join("\n");
 
       return {
