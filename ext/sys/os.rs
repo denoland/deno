@@ -18,7 +18,7 @@ pub fn init<OP: OsPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/sys",
-      "01_os.js",
+      "11_os.js",
     ))
     .ops(vec![
       ("op_exit", op_sync(op_exit)),

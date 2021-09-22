@@ -49,7 +49,7 @@ pub fn init(unstable: bool) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/sys",
-      "01_tty.js",
+      "11_tty.js",
     ))
     .ops(vec![
       ("op_set_raw", op_sync(op_set_raw)),

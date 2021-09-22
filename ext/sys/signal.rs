@@ -34,7 +34,7 @@ pub fn init(unstable: bool) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/sys",
-      "01_signals.js",
+      "11_signals.js",
     ))
     .ops(vec![
       ("op_signal_bind", op_sync(op_signal_bind)),

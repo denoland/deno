@@ -97,7 +97,7 @@ pub fn init() -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/sys",
-      "01_io.js",
+      "11_io.js",
     ))
     .ops(vec![
       ("op_read_async", op_async(op_read_async)),

@@ -31,7 +31,7 @@ pub fn init<PP: ProcessPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/sys",
-      "01_process.js",
+      "11_process.js",
     ))
     .ops(vec![
       ("op_run", op_sync(op_run::<PP>)),

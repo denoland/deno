@@ -39,10 +39,10 @@ pub fn init<FP: FsPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/sys",
-      "01_fs.js",
-      "02_files.js",
-      "03_read_file.js",
-      "03_write_file.js",
+      "11_fs.js",
+      "12_files.js",
+      "13_read_file.js",
+      "13_write_file.js",
     ))
     .ops(vec![
       ("op_open_sync", op_sync(op_open_sync::<FP>)),

@@ -32,7 +32,7 @@ pub fn init<FEP: FsEventsPermissions + 'static>() -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/sys",
-      "02_fs_events.js",
+      "12_fs_events.js",
     ))
     .ops(vec![
       ("op_fs_events_open", op_sync(op_fs_events_open::<FEP>)),

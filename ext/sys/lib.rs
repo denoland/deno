@@ -23,11 +23,11 @@ pub fn base_init() -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/sys",
-      "base/01_build.js",
-      "base/01_errors.js",
-      "base/01_version.js",
-      "base/01_web_util.js",
-      "base/02_util.js",
+      "01_build.js",
+      "01_errors.js",
+      "01_version.js",
+      "01_web_util.js",
+      "02_util.js",
     ))
     .build()
 }
