@@ -335,7 +335,6 @@ itest!(_089_run_allow_list {
   output: "089_run_allow_list.ts.out",
 });
 
-#[cfg(unix)]
 #[test]
 fn _090_run_permissions_request() {
   let args = "run --quiet 090_run_permissions_request.ts";
@@ -1726,7 +1725,6 @@ mod permissions {
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
-  #[cfg(unix)]
   #[test]
   fn _061_permissions_request() {
     let args = "run --quiet 061_permissions_request.ts";
@@ -1742,7 +1740,6 @@ mod permissions {
     ]);
   }
 
-  #[cfg(unix)]
   #[test]
   fn _062_permissions_request_global() {
     let args = "run --quiet 062_permissions_request_global.ts";
@@ -1766,7 +1763,6 @@ mod permissions {
     output: "064_permissions_revoke_global.ts.out",
   });
 
-  #[cfg(unix)]
   #[test]
   fn _066_prompt() {
     let args = "run --quiet --unstable 066_prompt.ts";
@@ -1861,7 +1857,6 @@ itest!(byte_order_mark {
   output: "byte_order_mark.out",
 });
 
-#[cfg(unix)]
 #[test]
 fn issue9750() {
   use util::PtyData::*;
