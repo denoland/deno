@@ -905,6 +905,7 @@ dependencies = [
  "serde",
  "sys-info",
  "tokio",
+ "winapi 0.3.9",
 ]
 
 [[package]]

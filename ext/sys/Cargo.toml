@@ -29,3 +29,6 @@ tokio = { version = "1.10.1", features = ["full"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.22.1"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.9", features = ["commapi", "knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
