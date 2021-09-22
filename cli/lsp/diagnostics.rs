@@ -10,13 +10,16 @@ use crate::diagnostics;
 use crate::tokio_util::create_basic_runtime;
 
 use analysis::ResolvedDependency;
+use analysis::ResolvedDependencyErr;
+use deno_ast::ModuleSpecifier;
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde_json::json;
-use deno_core::ModuleSpecifier;
+use deno_core::ModuleResolutionError;
 use log::error;
 use lspower::lsp;
+use regex::Regex;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::mem;
@@ -27,6 +30,15 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio::time::Duration;
 use tokio::time::Instant;
+
+lazy_static::lazy_static! {
+  static ref NPM_SPECIFIER_RE: Regex = Regex::new(r#"^(?:@[^/\s]+/)?[^/\s~)('!*._@][^/\s~)('!*]*"#).unwrap();
+}
+
+// The ordering of this is intentional, when importing, we want to make sure
+// there is no "runnable" code first so the type only `.d.ts` extension is
+// checked last.
+const SEARCH_EXTENSIONS: &[&str] = &["ts", "tsx", "js", "jsx", "mjs", "d.ts"];
 
 pub type DiagnosticRecord =
   (ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>);
@@ -403,6 +415,29 @@ async fn generate_ts_diagnostics(
   Ok(diagnostics_vec)
 }
 
+/// For a given specifier, if the specifier resolves to a directory, check to
+/// see if an index file exists, or if not, check if the file with different
+/// extensions is found.
+fn check_extensionless(specifier: &ModuleSpecifier) -> Option<ModuleSpecifier> {
+  let path = specifier.to_file_path().ok()?;
+  if path.is_dir() {
+    for ext in SEARCH_EXTENSIONS {
+      let index_path = path.join(format!("index.{}", ext));
+      if index_path.is_file() {
+        return ModuleSpecifier::from_file_path(index_path).ok();
+      }
+    }
+  } else if path.extension().is_none() {
+    for ext in SEARCH_EXTENSIONS {
+      let ext_path = path.with_extension(ext);
+      if ext_path.is_file() {
+        return ModuleSpecifier::from_file_path(ext_path).ok();
+      }
+    }
+  }
+  None
+}
+
 fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   documents: &DocumentCache,
@@ -412,8 +447,32 @@ fn diagnose_dependency(
 ) {
   if let (Some(dep), Some(range)) = (maybe_dependency, *maybe_range) {
     match dep {
-      analysis::ResolvedDependency::Err(err) => {
-        diagnostics.push(lsp::Diagnostic {
+      analysis::ResolvedDependency::Err(err) => match err {
+        ResolvedDependencyErr::InvalidSpecifier(
+          ModuleResolutionError::ImportPrefixMissing(specifier, _),
+        ) => {
+          let mut npm_specifier: Option<String> = None;
+          let message = if let Some(caps) = NPM_SPECIFIER_RE.captures(specifier)
+          {
+            npm_specifier = Some(caps[0].to_string());
+            format!("{}\n\nCould \"{}\" be an npm package or Node.js built-in? You can use an import map to map it.", err, &caps[0])
+          } else {
+            err.to_string()
+          };
+          let data = npm_specifier.map(|s| json!({ "specifier": s }));
+          diagnostics.push(lsp::Diagnostic {
+            range,
+            severity: Some(lsp::DiagnosticSeverity::Error),
+            code: Some(err.as_code()),
+            code_description: None,
+            source: Some("deno".to_string()),
+            message,
+            related_information: None,
+            tags: None,
+            data,
+          });
+        }
+        _ => diagnostics.push(lsp::Diagnostic {
           range,
           severity: Some(lsp::DiagnosticSeverity::Error),
           code: Some(err.as_code()),
@@ -423,17 +482,35 @@ fn diagnose_dependency(
           related_information: None,
           tags: None,
           data: None,
-        })
-      }
+        }),
+      },
       analysis::ResolvedDependency::Resolved(specifier) => {
         if !(documents.contains_key(specifier)
           || sources.contains_key(specifier))
         {
+          let mut other: Option<ModuleSpecifier> = None;
           let (code, message) = match specifier.scheme() {
-            "file" => (Some(lsp::NumberOrString::String("no-local".to_string())), format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier)),
-            "data" => (Some(lsp::NumberOrString::String("no-cache-data".to_string())), "Uncached data URL.".to_string()),
-            "blob" => (Some(lsp::NumberOrString::String("no-cache-blob".to_string())), "Uncached blob URL.".to_string()),
-            _ => (Some(lsp::NumberOrString::String("no-cache".to_string())), format!("Uncached or missing remote URL: \"{}\".", specifier)),
+            "file" => {
+              if let Some(local_specifier) = check_extensionless(specifier) {
+                let code_and_message = (Some(lsp::NumberOrString::String("no-extension".to_string())), format!("Unable to load a local module: \"{}\".\n\nDid you mean \"{}\"?", specifier, local_specifier));
+                other = Some(local_specifier);
+                code_and_message
+              } else {
+                (Some(lsp::NumberOrString::String("no-local".to_string())), format!("Unable to load a local module: \"{}\".\n\nPlease check the file path.", specifier))
+              }
+            }
+            "data" => (
+              Some(lsp::NumberOrString::String("no-cache-data".to_string())),
+              "Uncached data URL.".to_string(),
+            ),
+            "blob" => (
+              Some(lsp::NumberOrString::String("no-cache-blob".to_string())),
+              "Uncached blob URL.".to_string(),
+            ),
+            _ => (
+              Some(lsp::NumberOrString::String("no-cache".to_string())),
+              format!("Uncached or missing remote URL: \"{}\".", specifier),
+            ),
           };
           diagnostics.push(lsp::Diagnostic {
             range,
@@ -441,7 +518,7 @@ fn diagnose_dependency(
             code,
             source: Some("deno".to_string()),
             message,
-            data: Some(json!({ "specifier": specifier })),
+            data: Some(json!({ "specifier": specifier, "other": other })),
             ..Default::default()
           });
         } else if sources.contains_key(specifier) {

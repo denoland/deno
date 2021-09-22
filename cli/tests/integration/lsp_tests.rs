@@ -2230,6 +2230,258 @@ fn lsp_code_actions_refactor_no_disabled_support() {
 }
 
 #[test]
+fn lsp_code_actions_bare_specifiers() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as c from \"@deno/land/file\";\nimport fs from \"fs\";\nimport _ from \"lodash\";\nimport stuff from \"~/stuff\";\nconsole.log(c, fs, _, stuff);\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/codeAction",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 19
+          },
+          "end": {
+            "line": 0,
+            "character": 36
+          }
+        },
+        "context": {
+          "diagnostics": [
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 19
+                },
+                "end": {
+                  "line": 0,
+                  "character": 36
+                }
+              },
+              "severity": 1,
+              "code": "import-prefix-missing",
+              "source": "deno",
+              "message": "Relative import path \"@deno/land/file\" not prefixed with / or ./ or ../ from \"file:///a/file.ts\"\n\nCould \"@deno/land\" be an npm package or Node.js built-in? You can use an import map to map it.",
+              "data": {
+                "specifier": "@deno/land"
+              }
+            }
+          ],
+          "only": [
+            "quickfix"
+          ]
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  assert_eq!(
+    maybe_res,
+    Some(json!([
+      {
+        "title": "Add \"@deno/land\" to an import map",
+        "kind": "quickfix",
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 19
+              },
+              "end": {
+                "line": 0,
+                "character": 36
+              }
+            },
+            "severity": 1,
+            "code": "import-prefix-missing",
+            "source": "deno",
+            "message": "Relative import path \"@deno/land/file\" not prefixed with / or ./ or ../ from \"file:///a/file.ts\"\n\nCould \"@deno/land\" be an npm package or Node.js built-in? You can use an import map to map it.",
+            "data": {
+              "specifier": "@deno/land"
+            }
+          }
+        ],
+        "command": {
+          "title": "",
+          "command": "deno.addToImportMap",
+          "arguments": [
+            [
+              "@deno/land"
+            ]
+          ]
+        }
+      }
+    ]))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/codeAction",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 18
+          },
+          "end": {
+            "line": 3,
+            "character": 27
+          }
+        },
+        "context": {
+          "diagnostics": [
+            {
+              "range": {
+                "start": {
+                  "line": 3,
+                  "character": 18
+                },
+                "end": {
+                  "line": 3,
+                  "character": 27
+                }
+              },
+              "severity": 1,
+              "code": "import-prefix-missing",
+              "source": "deno",
+              "message": "Relative import path \"~/stuff\" not prefixed with / or ./ or ../ from \"file:///a/file.ts\""
+            }
+          ],
+          "only": [
+            "quickfix"
+          ]
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  assert_eq!(maybe_res, Some(json!(null)));
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_actions_extensionless_specifiers() {
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir_url = Url::from_file_path(temp_dir.path()).unwrap();
+  let file_path = temp_dir.path().join("file.ts");
+  let file_url = Url::from_file_path(file_path).unwrap();
+  fs::write(temp_dir.path().join("a.ts"), r#"export const a = "a";"#).unwrap();
+  let mut client = init("initialize_params.json");
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": file_url,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"./a\";\nconsole.log(a);\n"
+      }
+    }),
+  );
+  assert_eq!(diagnostics.len(), 3);
+  assert_eq!(diagnostics[2].diagnostics.len(), 1);
+  let expected_diagnostic = json!({
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 19
+      },
+      "end": {
+        "line": 0,
+        "character": 24
+      }
+    },
+    "severity": 1,
+    "code": "no-extension",
+    "source": "deno",
+    "message": format!("Unable to load a local module: \"{}/a\".\n\nDid you mean \"{}/a.ts\"?", temp_dir_url, temp_dir_url),
+    "data": {
+      "specifier": format!("{}/a", temp_dir_url),
+      "other": format!("{}/a.ts", temp_dir_url)
+    }
+  });
+  assert_eq!(json!(diagnostics[2].diagnostics[0]), expected_diagnostic);
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/codeAction",
+      json!({
+        "textDocument": {
+          "uri": file_url,
+        },
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 19
+          },
+          "end": {
+            "line": 0,
+            "character": 24
+          }
+        },
+        "context": {
+          "diagnostics": [ expected_diagnostic ],
+          "only": [
+            "quickfix"
+          ]
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  assert_eq!(
+    maybe_res,
+    Some(json!([
+      {
+        "title": "Add \".ts\" to the specifier",
+        "kind": "quickfix",
+        "diagnostics": [ expected_diagnostic ],
+        "edit": {
+          "changes": {
+            file_url: [
+              {
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 23,
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 23,
+                  },
+                },
+                "newText": ".ts",
+              }
+            ]
+          }
+        }
+      }
+    ]))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_code_actions_deadlock() {
   let mut client = init("initialize_params.json");
   client

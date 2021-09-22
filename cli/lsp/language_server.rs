@@ -1211,13 +1211,8 @@ impl Inner {
             }
             _ => false,
           },
-          "deno-lint" => matches!(&d.code, Some(_)),
-          "deno" => match &d.code {
-            Some(NumberOrString::String(code)) => {
-              code == "no-cache" || code == "no-cache-data"
-            }
-            _ => false,
-          },
+          "deno-lint" => d.code.is_some(),
+          "deno" => d.data.is_some(),
           _ => false,
         },
         None => false,
@@ -1274,7 +1269,7 @@ impl Inner {
             }
           }
           Some("deno") => code_actions
-            .add_deno_fix_action(diagnostic)
+            .add_deno_fix_action(&specifier, diagnostic)
             .map_err(|err| {
               error!("{}", err);
               LspError::internal_error()

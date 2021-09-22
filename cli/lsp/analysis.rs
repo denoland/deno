@@ -639,7 +639,8 @@ pub struct CodeActionData {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DenoFixData {
-  pub specifier: ModuleSpecifier,
+  pub specifier: String,
+  pub other: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -663,31 +664,87 @@ pub struct CodeActionCollection {
 impl CodeActionCollection {
   pub(crate) fn add_deno_fix_action(
     &mut self,
+    specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) -> Result<(), AnyError> {
     if let Some(data) = diagnostic.data.clone() {
       let fix_data: DenoFixData = serde_json::from_value(data)?;
-      let title = if matches!(&diagnostic.code, Some(lsp::NumberOrString::String(code)) if code == "no-cache-data")
-      {
-        "Cache the data URL and its dependencies.".to_string()
-      } else {
-        format!("Cache \"{}\" and its dependencies.", fix_data.specifier)
-      };
-      let code_action = lsp::CodeAction {
-        title,
-        kind: Some(lsp::CodeActionKind::QUICKFIX),
-        diagnostics: Some(vec![diagnostic.clone()]),
-        edit: None,
-        command: Some(lsp::Command {
-          title: "".to_string(),
-          command: "deno.cache".to_string(),
-          arguments: Some(vec![json!([fix_data.specifier])]),
-        }),
-        is_preferred: None,
-        disabled: None,
-        data: None,
-      };
-      self.actions.push(CodeActionKind::Deno(code_action));
+      match &diagnostic.code {
+        Some(lsp::NumberOrString::String(code))
+          if code == "no-cache" || code == "no-cache-data" =>
+        {
+          let title = if code == "no-cache-data" {
+            "Cache the data URL and its dependencies".to_string()
+          } else {
+            format!("Cache \"{}\" and its dependencies", fix_data.specifier)
+          };
+          let code_action = lsp::CodeAction {
+            title,
+            kind: Some(lsp::CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![diagnostic.clone()]),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![json!([fix_data.specifier])]),
+            }),
+            ..Default::default()
+          };
+          self.actions.push(CodeActionKind::Deno(code_action));
+        }
+        Some(lsp::NumberOrString::String(code)) if code == "no-extension" => {
+          let base = fix_data.specifier;
+          let other = fix_data.other.unwrap();
+          let new_text = other.replace(&base, "");
+          let title = format!("Add \"{}\" to the specifier", new_text);
+          let mut changes = HashMap::new();
+          changes.insert(
+            specifier.clone(),
+            vec![lsp::TextEdit {
+              new_text,
+              range: lsp::Range {
+                start: lsp::Position {
+                  line: diagnostic.range.end.line,
+                  character: diagnostic.range.end.character - 1,
+                },
+                end: lsp::Position {
+                  line: diagnostic.range.end.line,
+                  character: diagnostic.range.end.character - 1,
+                },
+              },
+            }],
+          );
+          let code_action = lsp::CodeAction {
+            title,
+            kind: Some(lsp::CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![diagnostic.clone()]),
+            edit: Some(lsp::WorkspaceEdit {
+              changes: Some(changes),
+              ..Default::default()
+            }),
+            ..Default::default()
+          };
+          self.actions.push(CodeActionKind::Deno(code_action));
+        }
+        Some(lsp::NumberOrString::String(code))
+          if code == "import-prefix-missing" =>
+        {
+          let title =
+            format!("Add \"{}\" to an import map", fix_data.specifier);
+          let code_action = lsp::CodeAction {
+            title,
+            kind: Some(lsp::CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![diagnostic.clone()]),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.addToImportMap".to_string(),
+              arguments: Some(vec![json!([fix_data.specifier])]),
+            }),
+            ..Default::default()
+          };
+          self.actions.push(CodeActionKind::Deno(code_action));
+        }
+        _ => (),
+      }
     }
     Ok(())
   }

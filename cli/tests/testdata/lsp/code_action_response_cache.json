@@ -1,6 +1,6 @@
 [
   {
-    "title": "Cache \"https://deno.land/x/a/mod.ts\" and its dependencies.",
+    "title": "Cache \"https://deno.land/x/a/mod.ts\" and its dependencies",
     "kind": "quickfix",
     "diagnostics": [
       {
