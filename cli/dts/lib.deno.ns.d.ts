@@ -2262,15 +2262,6 @@ declare namespace Deno {
    */
   export const args: string[];
 
-  /**
-   * @deprecated A symbol which can be used as a key for a custom method which will be
-   * called when `Deno.inspect()` is called, or when the object is logged to
-   * the console.
-   *
-   * This symbol is deprecated since 1.9. Use `Symbol.for("Deno.customInspect")` instead.
-   */
-  export const customInspect: unique symbol;
-
   /** The URL of the entrypoint module entered from the command-line. */
   export const mainModule: string;
 

@@ -2088,7 +2088,6 @@
     CSI,
     inspectArgs,
     Console,
-    customInspect,
     inspect,
     wrapConsole,
     createFilteredInspectProxy,
