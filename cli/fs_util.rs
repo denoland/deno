@@ -106,7 +106,15 @@ pub fn is_supported_ext_fmt(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
-      "ts" | "tsx" | "js" | "jsx" | "mjs" | "md" | "json" | "jsonc"
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "md"
+        | "markdown"
+        | "json"
+        | "jsonc"
     )
   } else {
     false
@@ -143,7 +151,10 @@ pub fn is_supported_test_path(path: &Path) -> bool {
 /// Checks if the path has an extension Deno supports for tests.
 pub fn is_supported_test_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
-    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "md")
+    matches!(
+      ext.as_str(),
+      "ts" | "tsx" | "js" | "jsx" | "mjs" | "md" | "markdown"
+    )
   } else {
     false
   }
