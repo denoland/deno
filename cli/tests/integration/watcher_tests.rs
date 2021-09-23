@@ -49,6 +49,11 @@ fn wait_for_process_failed(
   }
 }
 
+fn check_alive_then_kill(mut child: std::process::Child) {
+  assert!(child.try_wait().unwrap().is_none());
+  child.kill().unwrap();
+}
+
 fn child_lines(
   child: &mut std::process::Child,
 ) -> (impl Iterator<Item = String>, impl Iterator<Item = String>) {
@@ -99,12 +104,7 @@ fn fmt_watch_test() {
   let expected = std::fs::read_to_string(fixed).unwrap();
   let actual = std::fs::read_to_string(badly_formatted).unwrap();
   assert_eq!(expected, actual);
-
-  // the watcher process is still alive
-  assert!(child.try_wait().unwrap().is_none());
-
-  child.kill().unwrap();
-  drop(t);
+  check_alive_then_kill(child);
 }
 
 #[test]
@@ -160,12 +160,7 @@ fn bundle_js_watch() {
     .contains("File change detected!"));
   assert!(stderr_lines.next().unwrap().contains("error: "));
   wait_for_process_failed("Bundle", &mut stderr_lines);
-
-  // the watcher process is still alive
-  assert!(deno.try_wait().unwrap().is_none());
-
-  deno.kill().unwrap();
-  drop(t);
+  check_alive_then_kill(deno);
 }
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
@@ -208,12 +203,7 @@ fn bundle_watch_not_exit() {
   wait_for_process_finished("Bundle", &mut stderr_lines);
   // bundled file is created
   assert!(target_file.is_file());
-
-  // the watcher process is still alive
-  assert!(deno.try_wait().unwrap().is_none());
-
-  deno.kill().unwrap();
-  drop(t);
+  check_alive_then_kill(deno);
 }
 
 #[flaky_test::flaky_test]
@@ -301,12 +291,7 @@ fn run_watch() {
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("modified!"));
   wait_for_process_finished("Process", &mut stderr_lines);
-
-  // the watcher process is still alive
-  assert!(child.try_wait().unwrap().is_none());
-
-  child.kill().unwrap();
-  drop(t);
+  check_alive_then_kill(child);
 }
 
 #[test]
@@ -373,9 +358,7 @@ fn run_watch_load_unload_events() {
 
   // Which is then unloaded as there is nothing keeping it alive.
   assert!(stdout_lines.next().unwrap().contains("unload"));
-
-  child.kill().unwrap();
-  drop(t);
+  check_alive_then_kill(child);
 }
 
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
@@ -408,12 +391,7 @@ fn run_watch_not_exit() {
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
   wait_for_process_finished("Process", &mut stderr_lines);
-
-  // the watcher process is still alive
-  assert!(child.try_wait().unwrap().is_none());
-
-  child.kill().unwrap();
-  drop(t);
+  check_alive_then_kill(child);
 }
 
 #[test]
@@ -462,11 +440,7 @@ fn run_watch_with_import_map_and_relative_paths() {
   assert!(stderr_lines.next().unwrap().contains("Process finished"));
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
 
-  child.kill().unwrap();
-
-  drop(file_to_watch);
-  drop(import_map_path);
-  temp_directory.close().unwrap();
+  check_alive_then_kill(child);
 }
 
 #[flaky_test]
@@ -619,12 +593,7 @@ fn test_watch() {
     "import './foo.js'; export default function bar() { 2 + 2 }",
   )
   .unwrap();
-
-  // the watcher process is still alive
-  assert!(child.try_wait().unwrap().is_none());
-
-  child.kill().unwrap();
-  drop(t);
+  check_alive_then_kill(child);
 }
 
 #[flaky_test]
@@ -686,9 +655,5 @@ fn test_watch_doc() {
   // We only need to scan for a Check file://.../foo.ts$3-6 line that
   // corresponds to the documentation block being type-checked.
   assert_contains!(skip_restarting_line(stderr_lines), "foo.ts$3-6");
-
-  assert!(child.try_wait().unwrap().is_none());
-  child.kill().unwrap();
-
-  drop(t);
+  check_alive_then_kill(child);
 }
