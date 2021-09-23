@@ -220,7 +220,7 @@
     constructor(input, init = {}) {
       const prefix = "Failed to construct 'Request'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      input = webidl.converters["RequestInfo"](input, {
+      input = webidl.converters["RequestInfo_DOMString"](input, {
         prefix,
         context: "Argument 1",
       });
@@ -424,14 +424,15 @@
     "Request",
     Request,
   );
-  webidl.converters["RequestInfo"] = (V, opts) => {
+  webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
     // Union for (Request or USVString)
     if (typeof V == "object") {
       if (V instanceof Request) {
         return webidl.converters["Request"](V, opts);
       }
     }
-    return webidl.converters["USVString"](V, opts);
+    // Passed to new URL(...) which implictly converts DOMString -> USVString
+    return webidl.converters["DOMString"](V, opts);
   };
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
     "RequestRedirect",
