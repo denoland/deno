@@ -1,0 +1,12 @@
+Check [WILDCARD]/test/filter/a_test.ts
+Check [WILDCARD]/test/filter/b_test.ts
+Check [WILDCARD]/test/filter/c_test.ts
+running 1 test from [WILDCARD]/test/filter/a_test.ts
+test foo ... ok ([WILDCARD])
+running 1 test from [WILDCARD]/test/filter/b_test.ts
+test foo ... ok ([WILDCARD])
+running 1 test from [WILDCARD]/test/filter/c_test.ts
+test foo ... ok ([WILDCARD])
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out ([WILDCARD])
+

@@ -70,10 +70,6 @@ fn create_compiler_snapshot(
     deno_broadcast_channel::get_declaration(),
   );
   op_crate_libs.insert("deno.net", deno_net::get_declaration());
-  op_crate_libs
-    .insert("deno.net_unstable", deno_net::get_unstable_declaration());
-  op_crate_libs
-    .insert("deno.http_unstable", deno_http::get_unstable_declaration());
 
   // ensure we invalidate the build properly.
   for (_, path) in op_crate_libs.iter() {
@@ -131,10 +127,10 @@ fn create_compiler_snapshot(
     "es2021.string",
     "es2021.weakref",
     "esnext",
+    "esnext.error",
     "esnext.intl",
-    "esnext.promise",
+    "esnext.object",
     "esnext.string",
-    "esnext.weakref",
   ];
 
   let path_dts = cwd.join("dts");
@@ -270,8 +266,17 @@ fn main() {
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
-  println!("cargo:rustc-env=TS_VERSION={}", ts_version());
+  if let Ok(c) = env::var("DENO_CANARY") {
+    println!("cargo:rustc-env=DENO_CANARY={}", c);
+  }
+  println!("cargo:rerun-if-env-changed=DENO_CANARY");
+
   println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_commit_hash());
+  println!("cargo:rerun-if-env-changed=GIT_COMMIT_HASH");
+
+  println!("cargo:rustc-env=TS_VERSION={}", ts_version());
+  println!("cargo:rerun-if-env-changed=TS_VERSION");
+
   println!(
     "cargo:rustc-env=DENO_CONSOLE_LIB_PATH={}",
     deno_console::get_declaration().display()
@@ -316,20 +321,9 @@ fn main() {
     "cargo:rustc-env=DENO_NET_LIB_PATH={}",
     deno_net::get_declaration().display()
   );
-  println!(
-    "cargo:rustc-env=DENO_NET_UNSTABLE_LIB_PATH={}",
-    deno_net::get_unstable_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_HTTP_UNSTABLE_LIB_PATH={}",
-    deno_http::get_unstable_declaration().display()
-  );
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
-  if let Ok(c) = env::var("DENO_CANARY") {
-    println!("cargo:rustc-env=DENO_CANARY={}", c);
-  }
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());

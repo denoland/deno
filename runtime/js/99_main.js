@@ -8,6 +8,7 @@ delete Object.prototype.__proto__;
 ((window) => {
   const core = Deno.core;
   const {
+    ArrayPrototypeMap,
     Error,
     FunctionPrototypeCall,
     FunctionPrototypeBind,
@@ -21,6 +22,7 @@ delete Object.prototype.__proto__;
     SymbolFor,
     SymbolIterator,
     PromisePrototypeThen,
+    TypeError,
   } = window.__bootstrap.primordials;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
@@ -35,12 +37,11 @@ delete Object.prototype.__proto__;
   const encoding = window.__bootstrap.encoding;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
-  const signals = window.__bootstrap.signals;
   const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
-  const webusb = window.__bootstrap.usb;
+  const urlPattern = window.__bootstrap.urlPattern;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
@@ -69,13 +70,16 @@ delete Object.prototype.__proto__;
       windowIsClosing = true;
       // Push a macrotask to exit after a promise resolve.
       // This is not perfect, but should be fine for first pass.
-      PromisePrototypeThen(
-        PromiseResolve(),
-        () =>
-          FunctionPrototypeCall(timers.setTimeout, null, () => {
+      PromisePrototypeThen(PromiseResolve(), () =>
+        FunctionPrototypeCall(
+          timers.setTimeout,
+          null,
+          () => {
             // This should be fine, since only Window/MainWorker has .close()
             os.exit(0);
-          }, 0),
+          },
+          0
+        )
       );
     }
   }
@@ -102,14 +106,17 @@ delete Object.prototype.__proto__;
     ) {
       const transfer = webidl.converters["sequence<object>"](
         transferOrOptions,
-        { prefix, context: "Argument 2" },
+        { prefix, context: "Argument 2" }
       );
       options = { transfer };
     } else {
-      options = webidl.converters.PostMessageOptions(transferOrOptions, {
-        prefix,
-        context: "Argument 2",
-      });
+      options = webidl.converters.StructuredSerializeOptions(
+        transferOrOptions,
+        {
+          prefix,
+          context: "Argument 2",
+        }
+      );
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
@@ -123,7 +130,7 @@ delete Object.prototype.__proto__;
     if (!globalDispatchEvent) {
       globalDispatchEvent = FunctionPrototypeBind(
         globalThis.dispatchEvent,
-        globalThis,
+        globalThis
       );
     }
     while (!isClosing) {
@@ -131,12 +138,12 @@ delete Object.prototype.__proto__;
       if (data === null) break;
       const v = deserializeJsMessageData(data);
       const message = v[0];
-      const transfer = v[1];
+      const transferables = v[1];
 
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transfer,
+        ports: transferables.filter((t) => t instanceof MessagePort),
       });
 
       try {
@@ -153,11 +160,46 @@ delete Object.prototype.__proto__;
 
         globalDispatchEvent(errorEvent);
         if (!errorEvent.defaultPrevented) {
-          core.opSync(
-            "op_worker_unhandled_error",
-            e.message,
-          );
+          core.opSync("op_worker_unhandled_error", e.message);
         }
+      }
+    }
+  }
+
+  let loadedMainWorkerScript = false;
+
+  function importScripts(...urls) {
+    if (core.opSync("op_worker_get_type") === "module") {
+      throw new TypeError("Can't import scripts in a module worker.");
+    }
+
+    const baseUrl = location.getLocationHref();
+    const parsedUrls = ArrayPrototypeMap(urls, (scriptUrl) => {
+      try {
+        return new url.URL(scriptUrl, baseUrl ?? undefined).href;
+      } catch {
+        throw new domException.DOMException(
+          "Failed to parse URL.",
+          "SyntaxError"
+        );
+      }
+    });
+
+    // A classic worker's main script has looser MIME type checks than any
+    // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
+    // TODO(andreubotella) Refactor worker creation so the main script isn't
+    // loaded with `importScripts()`.
+    const scripts = core.opSync(
+      "op_worker_sync_fetch",
+      parsedUrls,
+      !loadedMainWorkerScript
+    );
+    loadedMainWorkerScript = true;
+
+    for (const { url, script } of scripts) {
+      const err = core.evalContext(script, url)[1];
+      if (err !== null) {
+        throw err.thrown;
       }
     }
   }
@@ -172,7 +214,7 @@ delete Object.prototype.__proto__;
     version.setVersions(
       runtimeOptions.denoVersion,
       runtimeOptions.v8Version,
-      runtimeOptions.tsVersion,
+      runtimeOptions.tsVersion
     );
     build.setBuildInfo(runtimeOptions.target);
     util.setLogDebug(runtimeOptions.debugFlag, source);
@@ -182,11 +224,12 @@ delete Object.prototype.__proto__;
     let prepareStackTrace;
     if (runtimeOptions.applySourceMaps) {
       prepareStackTrace = core.createPrepareStackTrace(
-        errorStack.opApplySourceMap,
+        errorStack.opApplySourceMap
       );
     } else {
       prepareStackTrace = core.createPrepareStackTrace();
     }
+    // deno-lint-ignore prefer-primordials
     Error.prepareStackTrace = prepareStackTrace;
   }
 
@@ -214,25 +257,43 @@ delete Object.prototype.__proto__;
       "DOMExceptionOperationError",
       function DOMExceptionOperationError(msg) {
         return new domException.DOMException(msg, "OperationError");
-      },
+      }
     );
     core.registerErrorBuilder(
       "DOMExceptionQuotaExceededError",
       function DOMExceptionQuotaExceededError(msg) {
         return new domException.DOMException(msg, "QuotaExceededError");
-      },
+      }
     );
     core.registerErrorBuilder(
       "DOMExceptionNotSupportedError",
       function DOMExceptionNotSupportedError(msg) {
         return new domException.DOMException(msg, "NotSupported");
-      },
+      }
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionNetworkError",
+      function DOMExceptionNetworkError(msg) {
+        return new domException.DOMException(msg, "NetworkError");
+      }
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionAbortError",
+      function DOMExceptionAbortError(msg) {
+        return new domException.DOMException(msg, "AbortError");
+      }
     );
     core.registerErrorBuilder(
       "DOMExceptionInvalidCharacterError",
       function DOMExceptionInvalidCharacterError(msg) {
         return new domException.DOMException(msg, "InvalidCharacterError");
-      },
+      }
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionDataError",
+      function DOMExceptionDataError(msg) {
+        return new domException.DOMException(msg, "DataError");
+      }
     );
   }
 
@@ -248,6 +309,8 @@ delete Object.prototype.__proto__;
 
   const navigator = webidl.createBranded(Navigator);
 
+  let numCpus;
+
   ObjectDefineProperties(Navigator.prototype, {
     gpu: {
       configurable: true,
@@ -257,12 +320,12 @@ delete Object.prototype.__proto__;
         return webgpu.gpu;
       },
     },
-    usb: {
+    hardwareConcurrency: {
       configurable: true,
       enumerable: true,
       get() {
         webidl.assertBranded(this, Navigator);
-        return webusb.usb;
+        return numCpus;
       },
     },
   });
@@ -288,12 +351,12 @@ delete Object.prototype.__proto__;
         return webgpu.gpu;
       },
     },
-    usb: {
+    hardwareConcurrency: {
       configurable: true,
       enumerable: true,
       get() {
         webidl.assertBranded(this, Navigator);
-        return webusb.usb;
+        return numCpus;
       },
     },
   });
@@ -302,12 +365,10 @@ delete Object.prototype.__proto__;
   const windowOrWorkerGlobalScope = {
     Blob: util.nonEnumerable(file.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
-      streams.ByteLengthQueuingStrategy,
+      streams.ByteLengthQueuingStrategy
     ),
     CloseEvent: util.nonEnumerable(CloseEvent),
-    CountQueuingStrategy: util.nonEnumerable(
-      streams.CountQueuingStrategy,
-    ),
+    CountQueuingStrategy: util.nonEnumerable(streams.CountQueuingStrategy),
     CryptoKey: util.nonEnumerable(crypto.CryptoKey),
     CustomEvent: util.nonEnumerable(CustomEvent),
     DOMException: util.nonEnumerable(domException.DOMException),
@@ -326,7 +387,7 @@ delete Object.prototype.__proto__;
     ProgressEvent: util.nonEnumerable(ProgressEvent),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
     ReadableStreamDefaultReader: util.nonEnumerable(
-      streams.ReadableStreamDefaultReader,
+      streams.ReadableStreamDefaultReader
     ),
     Request: util.nonEnumerable(fetch.Request),
     Response: util.nonEnumerable(fetch.Response),
@@ -338,32 +399,31 @@ delete Object.prototype.__proto__;
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
-    BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
     MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
     MessagePort: util.nonEnumerable(messagePort.MessagePort),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
     WritableStreamDefaultWriter: util.nonEnumerable(
-      streams.WritableStreamDefaultWriter,
+      streams.WritableStreamDefaultWriter
     ),
     WritableStreamDefaultController: util.nonEnumerable(
-      streams.WritableStreamDefaultController,
+      streams.WritableStreamDefaultController
     ),
     ReadableByteStreamController: util.nonEnumerable(
-      streams.ReadableByteStreamController,
+      streams.ReadableByteStreamController
     ),
     ReadableStreamDefaultController: util.nonEnumerable(
-      streams.ReadableStreamDefaultController,
+      streams.ReadableStreamDefaultController
     ),
     TransformStreamDefaultController: util.nonEnumerable(
-      streams.TransformStreamDefaultController,
+      streams.TransformStreamDefaultController
     ),
     atob: util.writable(base64.atob),
     btoa: util.writable(base64.btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
-    console: util.writable(
-      new Console((msg, level) => core.print(msg, level > 1)),
+    console: util.nonEnumerable(
+      new Console((msg, level) => core.print(msg, level > 1))
     ),
     crypto: util.readOnly(crypto.crypto),
     Crypto: util.nonEnumerable(crypto.Crypto),
@@ -372,6 +432,13 @@ delete Object.prototype.__proto__;
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
+    structuredClone: util.writable(messagePort.structuredClone),
+  };
+
+  const unstableWindowOrWorkerGlobalScope = {
+    BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
+    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
+    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
@@ -407,11 +474,6 @@ delete Object.prototype.__proto__;
     USBDevice: util.nonEnumerable(webusb.UsbDevice),
     USBConfiguration: util.nonEnumerable(webusb.USBConfiguration),
   };
-
-  // The console seems to be the only one that should be writable and non-enumerable
-  // thus we don't have a unique helper for it. If other properties follow the same
-  // structure, it might be worth it to define a helper in `util`
-  windowOrWorkerGlobalScope.console.enumerable = false;
 
   const mainRuntimeGlobalProperties = {
     Location: location.locationConstructorDescriptor,
@@ -483,6 +545,9 @@ delete Object.prototype.__proto__;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+    if (runtimeOptions.unstableFlag) {
+      ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
+    }
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
@@ -511,12 +576,13 @@ delete Object.prototype.__proto__;
       pid,
       ppid,
       unstableFlag,
+      cpuCount,
     } = runtimeOptions;
 
     if (locationHref != null) {
       location.setLocationHref(locationHref);
     }
-
+    numCpus = cpuCount;
     registerErrors();
 
     const internalSymbol = Symbol("Deno.internal");
@@ -546,8 +612,6 @@ delete Object.prototype.__proto__;
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
     ObjectFreeze(globalThis.Deno.core);
-    ObjectFreeze(globalThis.Deno.core.sharedQueue);
-    signals.setSignals();
 
     util.log("args", args);
   }
@@ -556,7 +620,7 @@ delete Object.prototype.__proto__;
     runtimeOptions,
     name,
     useDenoNamespace,
-    internalName,
+    internalName
   ) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
@@ -571,9 +635,19 @@ delete Object.prototype.__proto__;
     util.log("bootstrapWorkerRuntime");
     hasBootstrapped = true;
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+    if (runtimeOptions.unstableFlag) {
+      ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
+    }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, { name: util.readOnly(name) });
-    Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
+    if (runtimeOptions.enableTestingFeaturesFlag) {
+      ObjectDefineProperty(
+        globalThis,
+        "importScripts",
+        util.writable(importScripts)
+      );
+    }
+    ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     const consoleFromDeno = globalThis.console;
     wrapConsole(consoleFromDeno, consoleFromV8);
@@ -583,14 +657,18 @@ delete Object.prototype.__proto__;
     defineEventHandler(self, "message", null);
     defineEventHandler(self, "error", null, true);
 
-    runtimeStart(
-      runtimeOptions,
-      internalName ?? name,
-    );
-    const { unstableFlag, pid, noColor, args, location: locationHref } =
-      runtimeOptions;
+    runtimeStart(runtimeOptions, internalName ?? name);
+    const {
+      unstableFlag,
+      pid,
+      noColor,
+      args,
+      location: locationHref,
+      cpuCount,
+    } = runtimeOptions;
 
     location.setLocationHref(locationHref);
+    numCpus = cpuCount;
     registerErrors();
 
     pollForMessages();
@@ -616,11 +694,8 @@ delete Object.prototype.__proto__;
       });
       // Setup `Deno` global - we're actually overriding already
       // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      util.immutableDefine(globalThis, "Deno", finalDenoNs);
-      ObjectFreeze(globalThis.Deno);
+      ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
       ObjectFreeze(globalThis.Deno.core);
-      ObjectFreeze(globalThis.Deno.core.sharedQueue);
-      signals.setSignals();
     } else {
       delete globalThis.Deno;
       util.assert(globalThis.Deno === undefined);

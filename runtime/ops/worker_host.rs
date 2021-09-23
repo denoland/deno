@@ -1,8 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::ops::TestingFeaturesEnabled;
 use crate::permissions::resolve_read_allowlist;
 use crate::permissions::resolve_write_allowlist;
 use crate::permissions::EnvDescriptor;
+use crate::permissions::FfiDescriptor;
 use crate::permissions::NetDescriptor;
 use crate::permissions::PermissionState;
 use crate::permissions::Permissions;
@@ -16,6 +18,7 @@ use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use deno_core::error::custom_error;
@@ -48,6 +51,7 @@ pub struct CreateWebWorkerArgs {
   pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
   pub use_deno_namespace: bool,
+  pub worker_type: WebWorkerType,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -64,6 +68,12 @@ pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 pub struct WorkerThread {
   join_handle: JoinHandle<Result<(), AnyError>>,
   worker_handle: WebWorkerHandle,
+
+  // A WorkerThread that hasn't been explicitly terminated can only be removed
+  // from the WorkersTable once close messages have been received for both the
+  // control and message channels. See `close_channel`.
+  ctrl_closed: bool,
+  message_closed: bool,
 }
 
 pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
@@ -239,6 +249,26 @@ fn merge_run_permission(
   Ok(main)
 }
 
+fn merge_ffi_permission(
+  mut main: UnaryPermission<FfiDescriptor>,
+  worker: Option<UnaryPermission<FfiDescriptor>>,
+) -> Result<UnaryPermission<FfiDescriptor>, AnyError> {
+  if let Some(worker) = worker {
+    if (worker.global_state < main.global_state)
+      || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
+    {
+      return Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      ));
+    } else {
+      main.global_state = worker.global_state;
+      main.granted_list = worker.granted_list;
+    }
+  }
+  Ok(main)
+}
+
 pub fn create_worker_permissions(
   main_perms: Permissions,
   worker_perms: PermissionsArg,
@@ -247,7 +277,7 @@ pub fn create_worker_permissions(
     env: merge_env_permission(main_perms.env, worker_perms.env)?,
     hrtime: merge_boolean_permission(main_perms.hrtime, worker_perms.hrtime)?,
     net: merge_net_permission(main_perms.net, worker_perms.net)?,
-    plugin: merge_boolean_permission(main_perms.plugin, worker_perms.plugin)?,
+    ffi: merge_ffi_permission(main_perms.ffi, worker_perms.ffi)?,
     read: merge_read_permission(main_perms.read, worker_perms.read)?,
     run: merge_run_permission(main_perms.run, worker_perms.run)?,
     write: merge_write_permission(main_perms.write, worker_perms.write)?,
@@ -263,8 +293,8 @@ pub struct PermissionsArg {
   hrtime: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_net_permission")]
   net: Option<UnaryPermission<NetDescriptor>>,
-  #[serde(default, deserialize_with = "as_permission_state")]
-  plugin: Option<PermissionState>,
+  #[serde(default, deserialize_with = "as_unary_ffi_permission")]
+  ffi: Option<UnaryPermission<FfiDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_read_permission")]
   read: Option<UnaryPermission<ReadDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_run_permission")]
@@ -487,6 +517,22 @@ where
   }))
 }
 
+fn as_unary_ffi_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<FfiDescriptor>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  Ok(Some(UnaryPermission::<FfiDescriptor> {
+    global_state: value.global_state,
+    granted_list: value.paths.into_iter().map(FfiDescriptor).collect(),
+    ..Default::default()
+  }))
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWorkerArgs {
@@ -496,6 +542,7 @@ pub struct CreateWorkerArgs {
   source_code: String,
   specifier: String,
   use_deno_namespace: bool,
+  worker_type: WebWorkerType,
 }
 
 /// Create worker as the host
@@ -514,6 +561,17 @@ fn op_create_worker(
   let use_deno_namespace = args.use_deno_namespace;
   if use_deno_namespace {
     super::check_unstable(state, "Worker.deno.namespace");
+  }
+  let worker_type = args.worker_type;
+  if let WebWorkerType::Classic = worker_type {
+    if let TestingFeaturesEnabled(false) = state.borrow() {
+      return Err(
+        deno_webstorage::DomExceptionNotSupportedError::new(
+          "Classic workers are not supported.",
+        )
+        .into(),
+      );
+    }
   }
   let parent_permissions = state.borrow::<Permissions>().clone();
   let worker_permissions = if let Some(permissions) = args.permissions {
@@ -554,6 +612,7 @@ fn op_create_worker(
         permissions: worker_permissions,
         main_module: module_specifier.clone(),
         use_deno_namespace,
+        worker_type,
       });
 
     // Send thread safe handle from newly created worker to host thread
@@ -573,6 +632,8 @@ fn op_create_worker(
   let worker_thread = WorkerThread {
     join_handle,
     worker_handle: worker_handle.into(),
+    ctrl_closed: false,
+    message_closed: false,
   };
 
   // At this point all interactions with worker happen using thread
@@ -589,32 +650,62 @@ fn op_host_terminate_worker(
   id: WorkerId,
   _: (),
 ) -> Result<(), AnyError> {
-  let worker_thread = state
-    .borrow_mut::<WorkersTable>()
-    .remove(&id)
-    .expect("No worker handle found");
-  worker_thread.worker_handle.terminate();
-  worker_thread
-    .join_handle
-    .join()
-    .expect("Panic in worker thread")
-    .expect("Panic in worker event loop");
-  Ok(())
-}
-
-/// Try to remove worker from workers table - NOTE: `Worker.terminate()`
-/// might have been called already meaning that we won't find worker in
-/// table - in that case ignore.
-fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: WorkerId) {
-  let mut s = state.borrow_mut();
-  let workers = s.borrow_mut::<WorkersTable>();
-  if let Some(worker_thread) = workers.remove(&id) {
+  if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
     worker_thread.worker_handle.terminate();
     worker_thread
       .join_handle
       .join()
-      .expect("Worker thread panicked")
+      .expect("Panic in worker thread")
       .expect("Panic in worker event loop");
+  } else {
+    debug!("tried to terminate non-existent worker {}", id);
+  }
+  Ok(())
+}
+
+enum WorkerChannel {
+  Ctrl,
+  Messages,
+}
+
+/// Close a worker's channel. If this results in both of a worker's channels
+/// being closed, the worker will be removed from the workers table.
+fn close_channel(
+  state: Rc<RefCell<OpState>>,
+  id: WorkerId,
+  channel: WorkerChannel,
+) {
+  use std::collections::hash_map::Entry;
+
+  let mut s = state.borrow_mut();
+  let workers = s.borrow_mut::<WorkersTable>();
+
+  // `Worker.terminate()` might have been called already, meaning that we won't
+  // find the worker in the table - in that case ignore.
+  if let Entry::Occupied(mut entry) = workers.entry(id) {
+    let terminate = {
+      let worker_thread = entry.get_mut();
+      match channel {
+        WorkerChannel::Ctrl => {
+          worker_thread.ctrl_closed = true;
+          worker_thread.message_closed
+        }
+        WorkerChannel::Messages => {
+          worker_thread.message_closed = true;
+          worker_thread.ctrl_closed
+        }
+      }
+    };
+
+    if terminate {
+      let worker_thread = entry.remove();
+      worker_thread.worker_handle.terminate();
+      worker_thread
+        .join_handle
+        .join()
+        .expect("Worker thread panicked")
+        .expect("Panic in worker event loop");
+    }
   }
 }
 
@@ -640,13 +731,13 @@ async fn op_host_recv_ctrl(
   if let Some(event) = maybe_event {
     // Terminal error means that worker should be removed from worker table.
     if let WorkerControlEvent::TerminalError(_) = &event {
-      try_remove_and_close(state, id);
+      close_channel(state, id, WorkerChannel::Ctrl);
     }
     return Ok(event);
   }
 
   // If there was no event from worker it means it has already been closed.
-  try_remove_and_close(state, id);
+  close_channel(state, id, WorkerChannel::Ctrl);
   Ok(WorkerControlEvent::Close)
 }
 
@@ -666,7 +757,12 @@ async fn op_host_recv_message(
       return Ok(None);
     }
   };
-  worker_handle.port.recv(state).await
+
+  let ret = worker_handle.port.recv(state.clone()).await?;
+  if ret.is_none() {
+    close_channel(state, id, WorkerChannel::Messages);
+  }
+  Ok(ret)
 }
 
 /// Post message to guest worker as host
@@ -675,14 +771,12 @@ fn op_host_post_message(
   id: WorkerId,
   data: JsMessageData,
 ) -> Result<(), AnyError> {
-  debug!("post message to worker {}", id);
-  let worker_handle = {
-    let worker_thread = state
-      .borrow::<WorkersTable>()
-      .get(&id)
-      .expect("No worker handle found");
-    worker_thread.worker_handle.clone()
-  };
-  worker_handle.port.send(state, data)?;
+  if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
+    debug!("post message to worker {}", id);
+    let worker_handle = worker_thread.worker_handle.clone();
+    worker_handle.port.send(state, data)?;
+  } else {
+    debug!("tried to post message to non-existent worker {}", id);
+  }
   Ok(())
 }

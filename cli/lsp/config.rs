@@ -6,6 +6,7 @@ use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
@@ -23,17 +24,18 @@ pub const SETTINGS_SECTION: &str = "deno";
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
+  pub code_action_disabled_support: bool,
+  pub line_folding_only: bool,
   pub status_notification: bool,
   pub workspace_configuration: bool,
   pub workspace_did_change_watched_files: bool,
-  pub line_folding_only: bool,
 }
 
 fn is_true() -> bool {
   true
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
   /// Flag for providing implementation code lenses.
@@ -78,7 +80,7 @@ impl Default for CodeLensSpecifierSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionSettings {
   #[serde(default)]
@@ -105,7 +107,7 @@ impl Default for CompletionSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCompletionSettings {
   /// A flag that indicates if non-explicitly set origins should be checked for
@@ -140,12 +142,16 @@ pub struct SpecifierSettings {
 }
 
 /// Deno language server specific settings that are applied to a workspace.
-#[derive(Debug, Default, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
   #[serde(default)]
   pub enable: bool,
+
+  /// An option that points to a path string of the path to utilise as the
+  /// cache/DENO_DIR for the language server.
+  pub cache: Option<String>,
 
   /// An option that points to a path string of the config file to apply to
   /// code within the workspace.
@@ -390,6 +396,11 @@ impl Config {
         .as_ref()
         .and_then(|it| it.line_folding_only)
         .unwrap_or(false);
+      self.client_capabilities.code_action_disabled_support = text_document
+        .code_action
+        .as_ref()
+        .and_then(|it| it.disabled_support)
+        .unwrap_or(false);
     }
   }
 
@@ -474,6 +485,7 @@ mod tests {
       config.get_workspace_settings(),
       WorkspaceSettings {
         enable: false,
+        cache: None,
         config: None,
         import_map: None,
         code_lens: CodeLensSettings {

@@ -1,7 +1,7 @@
-use swc_common::DUMMY_SP;
-use swc_ecmascript::ast as swc_ast;
-use swc_ecmascript::visit::noop_fold_type;
-use swc_ecmascript::visit::Fold;
+use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::DUMMY_SP;
+use deno_ast::swc::visit::noop_fold_type;
+use deno_ast::swc::visit::Fold;
 
 /// Transforms import declarations to variable declarations
 /// with a dynamic import. This is used to provide import
@@ -15,39 +15,18 @@ impl Fold for DownlevelImportsFolder {
     &mut self,
     module_item: swc_ast::ModuleItem,
   ) -> swc_ast::ModuleItem {
-    use swc_ecmascript::ast::*;
+    use deno_ast::swc::ast::*;
 
     match &module_item {
       ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) => {
         // Handle type only imports
         if import_decl.type_only {
-          return ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP }));
+          // should have no side effects
+          return create_empty_stmt();
         }
 
         // The initializer (ex. `await import('./mod.ts')`)
-        let initializer = Box::new(Expr::Await(AwaitExpr {
-          span: DUMMY_SP,
-          arg: Box::new(Expr::Call(CallExpr {
-            span: DUMMY_SP,
-            callee: ExprOrSuper::Expr(Box::new(Expr::Ident(Ident {
-              span: DUMMY_SP,
-              sym: "import".into(),
-              optional: false,
-            }))),
-            args: vec![ExprOrSpread {
-              spread: None,
-              expr: Box::new(Expr::Lit(Lit::Str(Str {
-                span: DUMMY_SP,
-                has_escape: false,
-                kind: StrKind::Normal {
-                  contains_quote: false,
-                },
-                value: import_decl.src.value.clone(),
-              }))),
-            }],
-            type_args: None,
-          })),
-        }));
+        let initializer = create_await_import_expr(&import_decl.src.value);
 
         // Handle imports for the side effects
         // ex. `import "module.ts"` -> `await import("module.ts");`
@@ -128,6 +107,78 @@ impl Fold for DownlevelImportsFolder {
   }
 }
 
+/// Strips export declarations and exports on named exports for the REPL.
+pub struct StripExportsFolder;
+
+impl Fold for StripExportsFolder {
+  noop_fold_type!(); // skip typescript specific nodes
+
+  fn fold_module_item(
+    &mut self,
+    module_item: swc_ast::ModuleItem,
+  ) -> swc_ast::ModuleItem {
+    use deno_ast::swc::ast::*;
+
+    match module_item {
+      ModuleItem::ModuleDecl(ModuleDecl::ExportAll(export_all)) => {
+        ModuleItem::Stmt(Stmt::Expr(ExprStmt {
+          span: DUMMY_SP,
+          expr: create_await_import_expr(&export_all.src.value),
+        }))
+      }
+      ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export_named)) => {
+        if let Some(src) = export_named.src {
+          ModuleItem::Stmt(Stmt::Expr(ExprStmt {
+            span: DUMMY_SP,
+            expr: create_await_import_expr(&src.value),
+          }))
+        } else {
+          create_empty_stmt()
+        }
+      }
+      ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultExpr(default_expr)) => {
+        // transform a default export expression to its expression
+        ModuleItem::Stmt(Stmt::Expr(ExprStmt {
+          span: DUMMY_SP,
+          expr: default_expr.expr,
+        }))
+      }
+      ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(export_decl)) => {
+        // strip the export keyword on an exported declaration
+        ModuleItem::Stmt(Stmt::Decl(export_decl.decl))
+      }
+      ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultDecl(default_decl)) => {
+        // only keep named default exports
+        match default_decl.decl {
+          DefaultDecl::Fn(FnExpr {
+            ident: Some(ident),
+            function,
+          }) => ModuleItem::Stmt(Stmt::Decl(Decl::Fn(FnDecl {
+            declare: false,
+            ident,
+            function,
+          }))),
+          DefaultDecl::Class(ClassExpr {
+            ident: Some(ident),
+            class,
+          }) => ModuleItem::Stmt(Stmt::Decl(Decl::Class(ClassDecl {
+            declare: false,
+            ident,
+            class,
+          }))),
+          _ => create_empty_stmt(),
+        }
+      }
+      _ => module_item,
+    }
+  }
+}
+
+fn create_empty_stmt() -> swc_ast::ModuleItem {
+  use swc_ast::*;
+  ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP }))
+}
+
 fn create_binding_ident(name: String) -> swc_ast::BindingIdent {
   swc_ast::BindingIdent {
     id: create_ident(name),
@@ -161,6 +212,33 @@ fn create_key_value(key: String, value: String) -> swc_ast::ObjectPatProp {
   })
 }
 
+fn create_await_import_expr(module_specifier: &str) -> Box<swc_ast::Expr> {
+  use swc_ast::*;
+  Box::new(Expr::Await(AwaitExpr {
+    span: DUMMY_SP,
+    arg: Box::new(Expr::Call(CallExpr {
+      span: DUMMY_SP,
+      callee: ExprOrSuper::Expr(Box::new(Expr::Ident(Ident {
+        span: DUMMY_SP,
+        sym: "import".into(),
+        optional: false,
+      }))),
+      args: vec![ExprOrSpread {
+        spread: None,
+        expr: Box::new(Expr::Lit(Lit::Str(Str {
+          span: DUMMY_SP,
+          has_escape: false,
+          kind: StrKind::Normal {
+            contains_quote: false,
+          },
+          value: module_specifier.into(),
+        }))),
+      }],
+      type_args: None,
+    })),
+  }))
+}
+
 fn create_assignment(key: String) -> swc_ast::ObjectPatProp {
   swc_ast::ObjectPatProp::Assign(swc_ast::AssignPatProp {
     span: DUMMY_SP,
@@ -171,18 +249,19 @@ fn create_assignment(key: String) -> swc_ast::ObjectPatProp {
 
 #[cfg(test)]
 mod test {
+  use deno_ast::swc::ast::Module;
+  use deno_ast::swc::codegen::text_writer::JsWriter;
+  use deno_ast::swc::codegen::Node;
+  use deno_ast::swc::common::FileName;
+  use deno_ast::swc::common::SourceMap;
+  use deno_ast::swc::parser::Parser;
+  use deno_ast::swc::parser::StringInput;
+  use deno_ast::swc::parser::Syntax;
+  use deno_ast::swc::parser::TsConfig;
+  use deno_ast::swc::visit::Fold;
+  use deno_ast::swc::visit::FoldWith;
+  use deno_ast::ModuleSpecifier;
   use std::rc::Rc;
-  use swc_common::FileName;
-  use swc_common::SourceMap;
-  use swc_ecmascript::ast::Module;
-  use swc_ecmascript::codegen::text_writer::JsWriter;
-  use swc_ecmascript::codegen::Node;
-  use swc_ecmascript::parser::Parser;
-  use swc_ecmascript::parser::StringInput;
-  use swc_ecmascript::parser::Syntax;
-  use swc_ecmascript::parser::TsConfig;
-  use swc_ecmascript::visit::Fold;
-  use swc_ecmascript::visit::FoldWith;
 
   use super::*;
 
@@ -264,6 +343,85 @@ mod test {
     );
   }
 
+  #[test]
+  fn test_strip_exports_export_all() {
+    test_transform(
+      StripExportsFolder,
+      r#"export * from "./test.ts";"#,
+      r#"await import("./test.ts");"#,
+    );
+  }
+
+  #[test]
+  fn test_strip_exports_export_named() {
+    test_transform(
+      StripExportsFolder,
+      r#"export { test } from "./test.ts";"#,
+      r#"await import("./test.ts");"#,
+    );
+
+    test_transform(StripExportsFolder, r#"export { test };"#, ";");
+  }
+
+  #[test]
+  fn test_strip_exports_export_default_expr() {
+    test_transform(StripExportsFolder, "export default 5;", "5;");
+  }
+
+  #[test]
+  fn test_strip_exports_export_default_decl_name() {
+    test_transform(
+      StripExportsFolder,
+      "export default class Test {}",
+      "class Test {\n}",
+    );
+
+    test_transform(
+      StripExportsFolder,
+      "export default function test() {}",
+      "function test() {\n}",
+    );
+  }
+
+  #[test]
+  fn test_strip_exports_export_default_decl_no_name() {
+    test_transform(StripExportsFolder, "export default class {}", ";");
+
+    test_transform(StripExportsFolder, "export default function() {}", ";");
+  }
+
+  #[test]
+  fn test_strip_exports_export_named_decls() {
+    test_transform(
+      StripExportsFolder,
+      "export class Test {}",
+      "class Test {\n}",
+    );
+
+    test_transform(
+      StripExportsFolder,
+      "export function test() {}",
+      "function test() {\n}",
+    );
+
+    test_transform(StripExportsFolder, "export enum Test {}", "enum Test {\n}");
+
+    test_transform(
+      StripExportsFolder,
+      "export namespace Test {}",
+      "module Test {\n}",
+    );
+  }
+
+  #[test]
+  fn test_strip_exports_not_in_namespace() {
+    test_transform(
+      StripExportsFolder,
+      "namespace Test { export class Test {} }",
+      "module Test {\n    export class Test {\n    }\n}",
+    );
+  }
+
   fn test_transform(
     mut transform: impl Fold,
     src: &str,
@@ -277,7 +435,7 @@ mod test {
   fn parse(src: &str) -> (Rc<SourceMap>, Module) {
     let source_map = Rc::new(SourceMap::default());
     let source_file = source_map.new_source_file(
-      FileName::Custom("file.ts".to_string()),
+      FileName::Url(ModuleSpecifier::parse("file:///test.ts").unwrap()),
       src.to_string(),
     );
     let input = StringInput::from(&*source_file);
@@ -293,8 +451,8 @@ mod test {
     {
       let writer =
         Box::new(JsWriter::new(source_map.clone(), "\n", &mut buf, None));
-      let config = swc_ecmascript::codegen::Config { minify: false };
-      let mut emitter = swc_ecmascript::codegen::Emitter {
+      let config = deno_ast::swc::codegen::Config { minify: false };
+      let mut emitter = deno_ast::swc::codegen::Emitter {
         cfg: config,
         comments: None,
         cm: source_map,

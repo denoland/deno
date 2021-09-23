@@ -4,14 +4,21 @@ use super::language_server;
 use super::tsc;
 
 use crate::ast;
-use crate::import_map::ImportMap;
+use crate::ast::Location;
 use crate::lsp::documents::DocumentData;
-use crate::media_type::MediaType;
 use crate::module_graph::parse_deno_types;
 use crate::module_graph::parse_ts_reference;
 use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
 
+use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::DUMMY_SP;
+use deno_ast::swc::visit::Node;
+use deno_ast::swc::visit::Visit;
+use deno_ast::swc::visit::VisitWith;
+use deno_ast::Diagnostic;
+use deno_ast::MediaType;
+use deno_ast::SourceTextInfo;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -22,6 +29,7 @@ use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
+use import_map::ImportMap;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;
@@ -29,14 +37,6 @@ use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use std::rc::Rc;
-use swc_common::Loc;
-use swc_common::SourceMap;
-use swc_common::DUMMY_SP;
-use swc_ecmascript::ast as swc_ast;
-use swc_ecmascript::visit::Node;
-use swc_ecmascript::visit::Visit;
-use swc_ecmascript::visit::VisitWith;
 
 lazy_static::lazy_static! {
   /// Diagnostic error codes which actually are the same, and so when grouping
@@ -123,28 +123,27 @@ impl Reference {
 fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
   Range {
     start: Position {
-      line: (range.start.line - 1) as u32,
-      character: range.start.col as u32,
+      line: range.start.line_index as u32,
+      character: range.start.column_index as u32,
     },
     end: Position {
-      line: (range.end.line - 1) as u32,
-      character: range.end.col as u32,
+      line: range.end.line_index as u32,
+      character: range.end.column_index as u32,
     },
   }
 }
 
 pub fn get_lint_references(
-  specifier: &ModuleSpecifier,
-  media_type: &MediaType,
-  source_code: &str,
+  parsed_source: &deno_ast::ParsedSource,
 ) -> Result<Vec<Reference>, AnyError> {
-  let syntax = ast::get_syntax(media_type);
+  let syntax = deno_ast::get_syntax(parsed_source.media_type());
   let lint_rules = rules::get_recommended_rules();
   let linter = create_linter(syntax, lint_rules);
-  // TODO(@kitsonk) we should consider caching the swc source file versions for
-  // reuse by other processes
-  let (_, lint_diagnostics) =
-    linter.lint(specifier.to_string(), source_code.to_string())?;
+  // TODO(dsherret): do not re-parse here again
+  let (_, lint_diagnostics) = linter.lint(
+    parsed_source.specifier().to_string(),
+    parsed_source.source().text_str().to_string(),
+  )?;
 
   Ok(
     lint_diagnostics
@@ -284,33 +283,34 @@ pub fn resolve_import(
 
 pub fn parse_module(
   specifier: &ModuleSpecifier,
-  source: &str,
-  media_type: &MediaType,
-) -> Result<ast::ParsedModule, AnyError> {
-  let source_map = Rc::new(swc_common::SourceMap::default());
-  ast::parse_with_source_map(
-    &specifier.to_string(),
+  source: SourceTextInfo,
+  media_type: MediaType,
+) -> Result<deno_ast::ParsedSource, Diagnostic> {
+  deno_ast::parse_module(deno_ast::ParseParams {
+    specifier: specifier.as_str().to_string(),
     source,
-    &media_type,
-    source_map,
-  )
+    media_type,
+    // capture the tokens for linting and formatting
+    capture_tokens: true,
+    maybe_syntax: None,
+  })
 }
 
 // TODO(@kitsonk) a lot of this logic is duplicated in module_graph.rs in
 // Module::parse() and should be refactored out to a common function.
 pub fn analyze_dependencies(
   specifier: &ModuleSpecifier,
-  media_type: &MediaType,
-  parsed_module: &ast::ParsedModule,
+  media_type: MediaType,
+  parsed_source: &deno_ast::ParsedSource,
   maybe_import_map: &Option<ImportMap>,
 ) -> (HashMap<String, Dependency>, Option<ResolvedDependency>) {
   let mut maybe_type = None;
   let mut dependencies = HashMap::<String, Dependency>::new();
 
   // Parse leading comments for supported triple slash references.
-  for comment in parsed_module.get_leading_comments().iter() {
-    if let Some((ts_reference, span)) = parse_ts_reference(&comment) {
-      let loc = parsed_module.source_map.lookup_char_pos(span.lo);
+  for comment in parsed_source.get_leading_comments().iter() {
+    if let Some((ts_reference, span)) = parse_ts_reference(comment) {
+      let loc = parsed_source.source().line_and_column_index(span.lo);
       match ts_reference {
         TypeScriptReference::Path(import) => {
           let dep = dependencies.entry(import.clone()).or_default();
@@ -319,20 +319,19 @@ pub fn analyze_dependencies(
           dep.maybe_code = Some(resolved_import);
           dep.maybe_code_specifier_range = Some(Range {
             start: Position {
-              line: (loc.line - 1) as u32,
-              character: loc.col_display as u32,
+              line: loc.line_index as u32,
+              character: loc.column_index as u32,
             },
             end: Position {
-              line: (loc.line - 1) as u32,
-              character: (loc.col_display + import.chars().count() + 2) as u32,
+              line: loc.line_index as u32,
+              character: (loc.column_index + import.chars().count() + 2) as u32,
             },
           });
         }
         TypeScriptReference::Types(import) => {
           let resolved_import =
             resolve_import(&import, specifier, maybe_import_map);
-          if media_type == &MediaType::JavaScript
-            || media_type == &MediaType::Jsx
+          if media_type == MediaType::JavaScript || media_type == MediaType::Jsx
           {
             maybe_type = Some(resolved_import.clone());
           }
@@ -340,12 +339,12 @@ pub fn analyze_dependencies(
           dep.maybe_type = Some(resolved_import);
           dep.maybe_type_specifier_range = Some(Range {
             start: Position {
-              line: (loc.line - 1) as u32,
-              character: loc.col_display as u32,
+              line: loc.line_index as u32,
+              character: loc.column_index as u32,
             },
             end: Position {
-              line: (loc.line - 1) as u32,
-              character: (loc.col_display + import.chars().count() + 2) as u32,
+              line: loc.line_index as u32,
+              character: (loc.column_index + import.chars().count() + 2) as u32,
             },
           });
         }
@@ -354,9 +353,9 @@ pub fn analyze_dependencies(
   }
 
   // Parse ES and type only imports
-  let descriptors = parsed_module.analyze_dependencies();
+  let descriptors = deno_graph::analyze_dependencies(parsed_source);
   for desc in descriptors.into_iter().filter(|desc| {
-    desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
+    desc.kind != deno_ast::swc::dep_graph::DependencyKind::Require
   }) {
     let resolved_import =
       resolve_import(&desc.specifier, specifier, maybe_import_map);
@@ -364,11 +363,11 @@ pub fn analyze_dependencies(
     let maybe_resolved_type_dependency =
       // Check for `@deno-types` pragmas that affect the import
       if let Some(comment) = desc.leading_comments.last() {
-        parse_deno_types(&comment).as_ref().map(|(deno_types, span)| {
+        parse_deno_types(comment).as_ref().map(|(deno_types, span)| {
           (
             resolve_import(deno_types, specifier, maybe_import_map),
             deno_types.clone(),
-            parsed_module.source_map.lookup_char_pos(span.lo)
+            parsed_source.source().line_and_column_index(span.lo)
           )
         })
       } else {
@@ -377,45 +376,39 @@ pub fn analyze_dependencies(
 
     let dep = dependencies.entry(desc.specifier.to_string()).or_default();
     dep.is_dynamic = desc.is_dynamic;
-    let start = parsed_module
-      .source_map
-      .lookup_char_pos(desc.specifier_span.lo);
-    let end = parsed_module
-      .source_map
-      .lookup_char_pos(desc.specifier_span.hi);
+    let start = parsed_source
+      .source()
+      .line_and_column_index(desc.specifier_span.lo);
+    let end = parsed_source
+      .source()
+      .line_and_column_index(desc.specifier_span.hi);
     let range = Range {
       start: Position {
-        line: (start.line - 1) as u32,
-        character: start.col_display as u32,
+        line: start.line_index as u32,
+        character: start.column_index as u32,
       },
       end: Position {
-        line: (end.line - 1) as u32,
-        character: end.col_display as u32,
+        line: end.line_index as u32,
+        character: end.column_index as u32,
       },
     };
-    match desc.kind {
-      swc_ecmascript::dep_graph::DependencyKind::ExportType
-      | swc_ecmascript::dep_graph::DependencyKind::ImportType => {
-        dep.maybe_type_specifier_range = Some(range);
-        dep.maybe_type = Some(resolved_import)
-      }
-      _ => {
-        dep.maybe_code_specifier_range = Some(range);
-        dep.maybe_code = Some(resolved_import);
-      }
-    }
+    dep.maybe_code_specifier_range = Some(range);
+    dep.maybe_code = Some(resolved_import);
     if dep.maybe_type.is_none() {
       if let Some((resolved_dependency, specifier, loc)) =
         maybe_resolved_type_dependency
       {
         dep.maybe_type_specifier_range = Some(Range {
           start: Position {
-            line: (loc.line - 1) as u32,
-            character: (loc.col_display + 1) as u32,
+            line: loc.line_index as u32,
+            // +1 to skip quote
+            character: (loc.column_index + 1) as u32,
           },
           end: Position {
-            line: (loc.line - 1) as u32,
-            character: (loc.col_display + 1 + specifier.chars().count()) as u32,
+            line: loc.line_index as u32,
+            // +1 to skip quote
+            character: (loc.column_index + 1 + specifier.chars().count())
+              as u32,
           },
         });
         dep.maybe_type = Some(resolved_dependency);
@@ -714,14 +707,13 @@ impl CodeActionCollection {
       })
       .unwrap();
 
-    let line_content = if let Some(doc) = document {
-      doc
-        .content_line(diagnostic.range.start.line as usize)
-        .ok()
-        .flatten()
-    } else {
-      None
-    };
+    let document_source = document.map(|d| d.source());
+
+    let line_content = document_source.map(|d| {
+      d.text_info()
+        .line_text(diagnostic.range.start.line as usize)
+        .to_string()
+    });
 
     let mut changes = HashMap::new();
     changes.insert(
@@ -760,6 +752,73 @@ impl CodeActionCollection {
     self
       .actions
       .push(CodeActionKind::DenoLint(ignore_error_action));
+
+    // Disable a lint error for the entire file.
+    let parsed_source =
+      document_source.and_then(|d| d.module().and_then(|r| r.as_ref().ok()));
+    let maybe_ignore_comment = parsed_source.and_then(|ps| {
+      // Note: we can use ps.get_leading_comments() but it doesn't
+      // work when shebang is present at the top of the file.
+      ps.comments().get_vec().iter().find_map(|c| {
+        let comment_text = c.text.trim();
+        comment_text.split_whitespace().next().and_then(|prefix| {
+          if prefix == "deno-lint-ignore-file" {
+            Some(c.clone())
+          } else {
+            None
+          }
+        })
+      })
+    });
+
+    let mut new_text = format!("// deno-lint-ignore-file {}\n", code);
+    let mut range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 0,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 0,
+      },
+    };
+    // If ignore file comment already exists, append the lint code
+    // to the existing comment.
+    if let Some(ignore_comment) = maybe_ignore_comment {
+      new_text = format!(" {}", code);
+      // Get the end position of the comment.
+      let line = parsed_source
+        .unwrap()
+        .source()
+        .line_and_column_index(ignore_comment.span.hi());
+      let position = lsp::Position {
+        line: line.line_index as u32,
+        character: line.column_index as u32,
+      };
+      // Set the edit range to the end of the comment.
+      range.start = position;
+      range.end = position;
+    }
+
+    let mut changes = HashMap::new();
+    changes.insert(specifier.clone(), vec![lsp::TextEdit { new_text, range }]);
+    let ignore_file_action = lsp::CodeAction {
+      title: format!("Disable {} for the entire file", code),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data: None,
+      edit: Some(lsp::WorkspaceEdit {
+        changes: Some(changes),
+        change_annotations: None,
+        document_changes: None,
+      }),
+    };
+    self
+      .actions
+      .push(CodeActionKind::DenoLint(ignore_file_action));
 
     let mut changes = HashMap::new();
     changes.insert(
@@ -980,16 +1039,19 @@ fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
   }
 }
 
-/// Get LSP range from the provided SWC start and end locations.
-fn get_range_from_loc(start: &Loc, end: &Loc) -> lsp::Range {
+/// Get LSP range from the provided start and end locations.
+fn get_range_from_location(
+  start: &ast::Location,
+  end: &ast::Location,
+) -> lsp::Range {
   lsp::Range {
     start: lsp::Position {
       line: (start.line - 1) as u32,
-      character: start.col_display as u32,
+      character: start.col as u32,
     },
     end: lsp::Position {
       line: (end.line - 1) as u32,
-      character: end.col_display as u32,
+      character: end.col as u32,
     },
   }
 }
@@ -1038,16 +1100,16 @@ impl DependencyRanges {
   }
 }
 
-struct DependencyRangeCollector {
+struct DependencyRangeCollector<'a> {
   import_ranges: DependencyRanges,
-  source_map: Rc<SourceMap>,
+  parsed_source: &'a deno_ast::ParsedSource,
 }
 
-impl DependencyRangeCollector {
-  pub fn new(source_map: Rc<SourceMap>) -> Self {
+impl<'a> DependencyRangeCollector<'a> {
+  pub fn new(parsed_source: &'a deno_ast::ParsedSource) -> Self {
     Self {
       import_ranges: DependencyRanges::default(),
-      source_map,
+      parsed_source,
     }
   }
 
@@ -1056,16 +1118,16 @@ impl DependencyRangeCollector {
   }
 }
 
-impl Visit for DependencyRangeCollector {
+impl<'a> Visit for DependencyRangeCollector<'a> {
   fn visit_import_decl(
     &mut self,
     node: &swc_ast::ImportDecl,
     _parent: &dyn Node,
   ) {
-    let start = self.source_map.lookup_char_pos(node.src.span.lo);
-    let end = self.source_map.lookup_char_pos(node.src.span.hi);
+    let start = Location::from_pos(self.parsed_source, node.src.span.lo);
+    let end = Location::from_pos(self.parsed_source, node.src.span.hi);
     self.import_ranges.0.push(DependencyRange {
-      range: narrow_range(get_range_from_loc(&start, &end)),
+      range: narrow_range(get_range_from_location(&start, &end)),
       specifier: node.src.value.to_string(),
     });
   }
@@ -1076,10 +1138,10 @@ impl Visit for DependencyRangeCollector {
     _parent: &dyn Node,
   ) {
     if let Some(src) = &node.src {
-      let start = self.source_map.lookup_char_pos(src.span.lo);
-      let end = self.source_map.lookup_char_pos(src.span.hi);
+      let start = Location::from_pos(self.parsed_source, src.span.lo);
+      let end = Location::from_pos(self.parsed_source, src.span.hi);
       self.import_ranges.0.push(DependencyRange {
-        range: narrow_range(get_range_from_loc(&start, &end)),
+        range: narrow_range(get_range_from_location(&start, &end)),
         specifier: src.value.to_string(),
       });
     }
@@ -1090,10 +1152,10 @@ impl Visit for DependencyRangeCollector {
     node: &swc_ast::ExportAll,
     _parent: &dyn Node,
   ) {
-    let start = self.source_map.lookup_char_pos(node.src.span.lo);
-    let end = self.source_map.lookup_char_pos(node.src.span.hi);
+    let start = Location::from_pos(self.parsed_source, node.src.span.lo);
+    let end = Location::from_pos(self.parsed_source, node.src.span.hi);
     self.import_ranges.0.push(DependencyRange {
-      range: narrow_range(get_range_from_loc(&start, &end)),
+      range: narrow_range(get_range_from_location(&start, &end)),
       specifier: node.src.value.to_string(),
     });
   }
@@ -1103,10 +1165,10 @@ impl Visit for DependencyRangeCollector {
     node: &swc_ast::TsImportType,
     _parent: &dyn Node,
   ) {
-    let start = self.source_map.lookup_char_pos(node.arg.span.lo);
-    let end = self.source_map.lookup_char_pos(node.arg.span.hi);
+    let start = Location::from_pos(self.parsed_source, node.arg.span.lo);
+    let end = Location::from_pos(self.parsed_source, node.arg.span.hi);
     self.import_ranges.0.push(DependencyRange {
-      range: narrow_range(get_range_from_loc(&start, &end)),
+      range: narrow_range(get_range_from_location(&start, &end)),
       specifier: node.arg.value.to_string(),
     });
   }
@@ -1115,12 +1177,11 @@ impl Visit for DependencyRangeCollector {
 /// Analyze a document for import ranges, which then can be used to identify if
 /// a particular position within the document as inside an import range.
 pub fn analyze_dependency_ranges(
-  parsed_module: &ast::ParsedModule,
+  parsed_source: &deno_ast::ParsedSource,
 ) -> Result<DependencyRanges, AnyError> {
-  let mut collector =
-    DependencyRangeCollector::new(parsed_module.source_map.clone());
-  parsed_module
-    .module
+  let mut collector = DependencyRangeCollector::new(parsed_source);
+  parsed_source
+    .module()
     .visit_with(&swc_ast::Invalid { span: DUMMY_SP }, &mut collector);
   Ok(collector.take())
 }
@@ -1192,13 +1253,13 @@ mod tests {
   fn test_as_lsp_range() {
     let fixture = deno_lint::diagnostic::Range {
       start: deno_lint::diagnostic::Position {
-        line: 1,
-        col: 2,
+        line_index: 0,
+        column_index: 2,
         byte_pos: 23,
       },
       end: deno_lint::diagnostic::Position {
-        line: 2,
-        col: 0,
+        line_index: 1,
+        column_index: 0,
         byte_pos: 33,
       },
     };
@@ -1222,8 +1283,13 @@ mod tests {
   fn test_get_lint_references() {
     let specifier = resolve_url("file:///a.ts").expect("bad specifier");
     let source = "const foo = 42;";
-    let actual =
-      get_lint_references(&specifier, &MediaType::TypeScript, source).unwrap();
+    let parsed_module = parse_module(
+      &specifier,
+      SourceTextInfo::from_string(source.to_string()),
+      MediaType::TypeScript,
+    )
+    .unwrap();
+    let actual = get_lint_references(&parsed_module).unwrap();
 
     assert_eq!(
       actual,
@@ -1260,19 +1326,26 @@ mod tests {
       Status,
     } from "https://deno.land/x/oak@v6.3.2/mod.ts";
 
+    import type { Component } from "https://esm.sh/preact";
+    import { h, Fragment } from "https://esm.sh/preact";
+
     // @deno-types="https://deno.land/x/types/react/index.d.ts";
-    import * as React from "https://cdn.skypack.dev/react";
+    import React from "https://cdn.skypack.dev/react";
     "#;
-    let parsed_module =
-      parse_module(&specifier, source, &MediaType::TypeScript).unwrap();
+    let parsed_module = parse_module(
+      &specifier,
+      SourceTextInfo::from_string(source.to_string()),
+      MediaType::TypeScript,
+    )
+    .unwrap();
     let (actual, maybe_type) = analyze_dependencies(
       &specifier,
-      &MediaType::TypeScript,
+      MediaType::TypeScript,
       &parsed_module,
       &None,
     );
     assert!(maybe_type.is_none());
-    assert_eq!(actual.len(), 2);
+    assert_eq!(actual.len(), 3);
     assert_eq!(
       actual.get("https://cdn.skypack.dev/react").cloned(),
       Some(Dependency {
@@ -1285,21 +1358,21 @@ mod tests {
         )),
         maybe_code_specifier_range: Some(Range {
           start: Position {
-            line: 8,
-            character: 27,
+            line: 11,
+            character: 22,
           },
           end: Position {
-            line: 8,
-            character: 58,
+            line: 11,
+            character: 53,
           }
         }),
         maybe_type_specifier_range: Some(Range {
           start: Position {
-            line: 7,
+            line: 10,
             character: 20,
           },
           end: Position {
-            line: 7,
+            line: 10,
             character: 62,
           }
         })
@@ -1326,6 +1399,27 @@ mod tests {
         maybe_type_specifier_range: None,
       })
     );
+    assert_eq!(
+      actual.get("https://esm.sh/preact").cloned(),
+      Some(Dependency {
+        is_dynamic: false,
+        maybe_code: Some(ResolvedDependency::Resolved(
+          resolve_url("https://esm.sh/preact").unwrap()
+        )),
+        maybe_type: None,
+        maybe_code_specifier_range: Some(Range {
+          start: Position {
+            line: 8,
+            character: 32
+          },
+          end: Position {
+            line: 8,
+            character: 55
+          }
+        }),
+        maybe_type_specifier_range: None,
+      }),
+    );
   }
 
   #[test]
@@ -1334,7 +1428,12 @@ mod tests {
     let source =
       "import * as a from \"./b.ts\";\nexport * as a from \"./c.ts\";\n";
     let media_type = MediaType::TypeScript;
-    let parsed_module = parse_module(&specifier, source, &media_type).unwrap();
+    let parsed_module = parse_module(
+      &specifier,
+      SourceTextInfo::from_string(source.to_string()),
+      media_type,
+    )
+    .unwrap();
     let result = analyze_dependency_ranges(&parsed_module);
     assert!(result.is_ok());
     let actual = result.unwrap();

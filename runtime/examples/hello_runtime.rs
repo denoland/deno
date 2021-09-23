@@ -27,7 +27,9 @@ async fn main() -> Result<(), AnyError> {
     args: vec![],
     debug_flag: false,
     unstable: false,
-    ca_data: None,
+    enable_testing_features: false,
+    unsafely_ignore_certificate_errors: None,
+    root_cert_store: None,
     user_agent: "hello_runtime".to_string(),
     seed: None,
     js_error_create_fn: None,
@@ -44,6 +46,7 @@ async fn main() -> Result<(), AnyError> {
     blob_store: BlobStore::default(),
     broadcast_channel: InMemoryBroadcastChannel::default(),
     shared_array_buffer_store: None,
+    cpu_count: 1,
   };
 
   let js_path =

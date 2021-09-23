@@ -1,22 +1,25 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
+use super::document_source::DocumentSource;
 use super::text::LineIndex;
 use super::tsc;
+use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
+use crate::flags::Flags;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
-use crate::import_map::ImportMap;
-use crate::media_type::MediaType;
 use crate::module_graph::GraphBuilder;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
+use import_map::ImportMap;
 
+use deno_ast::MediaType;
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -35,8 +38,15 @@ pub async fn cache(
   specifier: &ModuleSpecifier,
   maybe_import_map: &Option<ImportMap>,
   maybe_config_file: &Option<ConfigFile>,
+  maybe_cache_path: &Option<PathBuf>,
 ) -> Result<(), AnyError> {
-  let program_state = Arc::new(ProgramState::build(Default::default()).await?);
+  let program_state = Arc::new(
+    ProgramState::build(Flags {
+      cache_path: maybe_cache_path.clone(),
+      ..Default::default()
+    })
+    .await?,
+  );
   let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
     Permissions::allow_all(),
@@ -105,54 +115,97 @@ fn resolve_specifier(
   }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct Metadata {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   length_utf16: usize,
-  line_index: LineIndex,
   maybe_navigation_tree: Option<tsc::NavigationTree>,
   maybe_types: Option<analysis::ResolvedDependency>,
   maybe_warning: Option<String>,
   media_type: MediaType,
-  source: String,
+  source: DocumentSource,
+  specifier: ModuleSpecifier,
   version: String,
+}
+
+impl Default for Metadata {
+  fn default() -> Self {
+    Self {
+      dependencies: None,
+      length_utf16: 0,
+      maybe_navigation_tree: None,
+      maybe_types: None,
+      maybe_warning: None,
+      media_type: MediaType::default(),
+      source: DocumentSource::new(
+        &INVALID_SPECIFIER,
+        MediaType::default(),
+        Arc::new(String::default()),
+        LineIndex::default(),
+      ),
+      specifier: INVALID_SPECIFIER.clone(),
+      version: String::default(),
+    }
+  }
 }
 
 impl Metadata {
   fn new(
     specifier: &ModuleSpecifier,
-    source: &str,
+    source: Arc<String>,
     version: &str,
-    media_type: &MediaType,
+    media_type: MediaType,
     maybe_warning: Option<String>,
     maybe_import_map: &Option<ImportMap>,
   ) -> Self {
-    let (dependencies, maybe_types) = if let Ok(parsed_module) =
-      analysis::parse_module(specifier, source, media_type)
-    {
-      let (deps, maybe_types) = analysis::analyze_dependencies(
-        specifier,
-        media_type,
-        &parsed_module,
-        maybe_import_map,
-      );
-      (Some(deps), maybe_types)
-    } else {
-      (None, None)
-    };
-    let line_index = LineIndex::new(source);
+    let line_index = LineIndex::new(&source);
+    let document_source =
+      DocumentSource::new(specifier, media_type, source, line_index);
+    let (dependencies, maybe_types) =
+      if let Some(Ok(parsed_module)) = document_source.module() {
+        let (deps, maybe_types) = analysis::analyze_dependencies(
+          specifier,
+          media_type,
+          parsed_module,
+          maybe_import_map,
+        );
+        (Some(deps), maybe_types)
+      } else {
+        (None, None)
+      };
 
     Self {
       dependencies,
-      length_utf16: source.encode_utf16().count(),
-      line_index,
+      length_utf16: document_source
+        .text_info()
+        .text_str()
+        .encode_utf16()
+        .count(),
       maybe_navigation_tree: None,
       maybe_types,
       maybe_warning,
       media_type: media_type.to_owned(),
-      source: source.to_string(),
+      source: document_source,
+      specifier: specifier.clone(),
       version: version.to_string(),
     }
+  }
+
+  fn refresh(&mut self, maybe_import_map: &Option<ImportMap>) {
+    let (dependencies, maybe_types) =
+      if let Some(Ok(parsed_module)) = self.source.module() {
+        let (deps, maybe_types) = analysis::analyze_dependencies(
+          &self.specifier,
+          self.media_type,
+          parsed_module,
+          maybe_import_map,
+        );
+        (Some(deps), maybe_types)
+      } else {
+        (None, None)
+      };
+    self.dependencies = dependencies;
+    self.maybe_types = maybe_types;
   }
 }
 
@@ -219,7 +272,7 @@ impl Sources {
     self.0.lock().get_script_version(specifier)
   }
 
-  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<Arc<String>> {
     self.0.lock().get_source(specifier)
   }
 
@@ -237,6 +290,10 @@ impl Sources {
 
   pub fn specifiers(&self) -> Vec<ModuleSpecifier> {
     self.0.lock().metadata.keys().cloned().collect()
+  }
+
+  pub fn set_import_map(&self, maybe_import_map: Option<ImportMap>) {
+    self.0.lock().set_import_map(maybe_import_map)
   }
 
   pub fn set_navigation_tree(
@@ -294,7 +351,7 @@ impl Inner {
     let specifier =
       resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.line_index)
+    Some(metadata.source.line_index().clone())
   }
 
   fn get_maybe_types(
@@ -311,7 +368,7 @@ impl Inner {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    let metadata = self.get_metadata(&specifier)?;
+    let metadata = self.get_metadata(specifier)?;
     metadata.maybe_warning
   }
 
@@ -349,16 +406,16 @@ impl Inner {
         map_content_type(specifier, maybe_content_type);
       let source = get_source_from_bytes(bytes, maybe_charset).ok()?;
       let maybe_types = headers.get("x-typescript-types").map(|s| {
-        analysis::resolve_import(s, &specifier, &self.maybe_import_map)
+        analysis::resolve_import(s, specifier, &self.maybe_import_map)
       });
       let maybe_warning = headers.get("x-deno-warning").cloned();
       (source, media_type, maybe_types, maybe_warning)
     };
     let mut metadata = Metadata::new(
       specifier,
-      &source,
+      Arc::new(source),
       &version,
-      &media_type,
+      media_type,
       maybe_warning,
       &self.maybe_import_map,
     );
@@ -382,10 +439,10 @@ impl Inner {
   fn get_path(&mut self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
-    } else if let Some(path) = self.remotes.get(&specifier) {
+    } else if let Some(path) = self.remotes.get(specifier) {
       Some(path.clone())
     } else {
-      let path = self.http_cache.get_cache_filename(&specifier)?;
+      let path = self.http_cache.get_cache_filename(specifier)?;
       if path.is_file() {
         self.remotes.insert(specifier.clone(), path.clone());
         Some(path)
@@ -405,11 +462,11 @@ impl Inner {
     Some(metadata.version)
   }
 
-  fn get_source(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
+  fn get_source(&mut self, specifier: &ModuleSpecifier) -> Option<Arc<String>> {
     let specifier =
       resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.source)
+    Some(metadata.source.text_info().text())
   }
 
   fn resolution_result(
@@ -483,6 +540,13 @@ impl Inner {
     }
   }
 
+  fn set_import_map(&mut self, maybe_import_map: Option<ImportMap>) {
+    for (_, metadata) in self.metadata.iter_mut() {
+      metadata.refresh(&maybe_import_map);
+    }
+    self.maybe_import_map = maybe_import_map;
+  }
+
   fn set_maybe_type(
     &mut self,
     specifier: &str,
@@ -517,7 +581,7 @@ mod tests {
   use super::*;
   use deno_core::resolve_path;
   use deno_core::resolve_url;
-  use std::env;
+  use deno_core::serde_json::json;
   use tempfile::TempDir;
 
   fn setup() -> (Sources, PathBuf) {
@@ -530,8 +594,7 @@ mod tests {
   #[test]
   fn test_sources_get_script_version() {
     let (sources, _) = setup();
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let tests = c.join("tests");
+    let tests = test_util::testdata_path();
     let specifier =
       resolve_path(&tests.join("001_hello.js").to_string_lossy()).unwrap();
     let actual = sources.get_script_version(&specifier);
@@ -541,13 +604,12 @@ mod tests {
   #[test]
   fn test_sources_get_text() {
     let (sources, _) = setup();
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let tests = c.join("tests");
+    let tests = test_util::testdata_path();
     let specifier =
       resolve_path(&tests.join("001_hello.js").to_string_lossy()).unwrap();
     let actual = sources.get_source(&specifier);
     assert!(actual.is_some());
-    let actual = actual.unwrap();
+    let actual = actual.unwrap().to_string();
     assert_eq!(actual, "console.log(\"Hello World\");\n");
   }
 
@@ -652,6 +714,102 @@ mod tests {
       .unwrap();
     let actual = sources.resolve_import("./evil.ts", &remote_specifier);
     assert_eq!(actual, None);
+  }
+
+  #[test]
+  fn test_resolve_with_import_map() {
+    let (sources, location) = setup();
+    let import_map_json = json!({
+      "imports": {
+        "mylib": "https://deno.land/x/myLib/index.js"
+      }
+    });
+    let import_map = ImportMap::from_json(
+      "https://deno.land/x/",
+      &import_map_json.to_string(),
+    )
+    .unwrap();
+    sources.set_import_map(Some(import_map));
+    let cache = HttpCache::new(&location);
+    let mylib_specifier =
+      resolve_url("https://deno.land/x/myLib/index.js").unwrap();
+    let mut mylib_headers_map = HashMap::new();
+    mylib_headers_map.insert(
+      "content-type".to_string(),
+      "application/javascript".to_string(),
+    );
+    cache
+      .set(
+        &mylib_specifier,
+        mylib_headers_map,
+        b"export const a = \"a\";\n",
+      )
+      .unwrap();
+    let referrer = resolve_url("https://deno.land/x/mod.ts").unwrap();
+    cache
+      .set(
+        &referrer,
+        Default::default(),
+        b"export { a } from \"mylib\";",
+      )
+      .unwrap();
+    let actual = sources.resolve_import("mylib", &referrer);
+    assert_eq!(actual, Some((mylib_specifier, MediaType::JavaScript)));
+  }
+
+  #[test]
+  fn test_update_import_map() {
+    let (sources, location) = setup();
+    let import_map_json = json!({
+      "imports": {
+        "otherlib": "https://deno.land/x/otherlib/index.js"
+      }
+    });
+    let import_map = ImportMap::from_json(
+      "https://deno.land/x/",
+      &import_map_json.to_string(),
+    )
+    .unwrap();
+    sources.set_import_map(Some(import_map));
+    let cache = HttpCache::new(&location);
+    let mylib_specifier =
+      resolve_url("https://deno.land/x/myLib/index.js").unwrap();
+    let mut mylib_headers_map = HashMap::new();
+    mylib_headers_map.insert(
+      "content-type".to_string(),
+      "application/javascript".to_string(),
+    );
+    cache
+      .set(
+        &mylib_specifier,
+        mylib_headers_map,
+        b"export const a = \"a\";\n",
+      )
+      .unwrap();
+    let referrer = resolve_url("https://deno.land/x/mod.ts").unwrap();
+    cache
+      .set(
+        &referrer,
+        Default::default(),
+        b"export { a } from \"mylib\";",
+      )
+      .unwrap();
+    let actual = sources.resolve_import("mylib", &referrer);
+    assert_eq!(actual, None);
+    let import_map_json = json!({
+      "imports": {
+        "otherlib": "https://deno.land/x/otherlib/index.js",
+        "mylib": "https://deno.land/x/myLib/index.js"
+      }
+    });
+    let import_map = ImportMap::from_json(
+      "https://deno.land/x/",
+      &import_map_json.to_string(),
+    )
+    .unwrap();
+    sources.set_import_map(Some(import_map));
+    let actual = sources.resolve_import("mylib", &referrer);
+    assert_eq!(actual, Some((mylib_specifier, MediaType::JavaScript)));
   }
 
   #[test]

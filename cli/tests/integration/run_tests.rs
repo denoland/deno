@@ -144,7 +144,7 @@ itest!(_033_import_map {
 
 itest!(_033_import_map_remote {
   args:
-    "run --quiet --reload --import-map=http://127.0.0.1:4545/cli/tests/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
   output: "033_import_map_remote.out",
   http_server: true,
 });
@@ -155,8 +155,7 @@ itest!(_034_onload {
 });
 
 itest!(_035_cached_only_flag {
-  args:
-    "run --reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  args: "run --reload --cached-only http://127.0.0.1:4545/019_media_types.ts",
   output: "035_cached_only_flag.out",
   exit_code: 1,
   http_server: true,
@@ -203,8 +202,7 @@ itest!(_048_media_types_jsx {
 });
 
 itest!(_052_no_remote_flag {
-  args:
-    "run --reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  args: "run --reload --no-remote http://127.0.0.1:4545/019_media_types.ts",
   output: "052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
@@ -239,7 +237,7 @@ itest!(_071_location_unset {
 });
 
 itest!(_072_location_relative_fetch {
-    args: "run --location http://127.0.0.1:4545/cli/tests/ --allow-net 072_location_relative_fetch.ts",
+    args: "run --location http://127.0.0.1:4545/ --allow-net 072_location_relative_fetch.ts",
     output: "072_location_relative_fetch.ts.out",
     http_server: true,
   });
@@ -288,18 +286,17 @@ itest!(_082_prepare_stack_trace_throw {
 fn _083_legacy_external_source_map() {
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
-  let module_url = url::Url::parse(
-    "http://localhost:4545/cli/tests/083_legacy_external_source_map.ts",
-  )
-  .unwrap();
+  let module_url =
+    url::Url::parse("http://localhost:4545/083_legacy_external_source_map.ts")
+      .unwrap();
   // Write a faulty old external source map.
   let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
   std::fs::create_dir_all(faulty_map_path.parent().unwrap())
     .expect("Failed to create faulty source map dir.");
-  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/cli/tests/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").expect("Failed to write faulty source map.");
+  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").expect("Failed to write faulty source map.");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(module_url.to_string())
     .output()
@@ -341,11 +338,17 @@ itest!(_089_run_allow_list {
 #[cfg(unix)]
 #[test]
 fn _090_run_permissions_request() {
-  let args = "run 090_run_permissions_request.ts";
-  let output = "090_run_permissions_request.ts.out";
-  let input = b"y\nn\n";
-
-  util::test_pty(args, output, input);
+  let args = "run --quiet 090_run_permissions_request.ts";
+  use util::PtyData::*;
+  util::test_pty2(args, vec![
+    Output("⚠️  ️Deno requests run access to \"ls\". Allow? [y/n (y = yes allow, n = no deny)] "),
+    Input("y\n"),
+    Output("⚠️  ️Deno requests run access to \"cat\". Allow? [y/n (y = yes allow, n = no deny)] "),
+    Input("n\n"),
+    Output("granted\r\n"),
+    Output("prompt\r\n"),
+    Output("denied\r\n"),
+  ]);
 }
 
 itest!(_091_use_define_for_class_fields {
@@ -372,6 +375,13 @@ itest!(blob_gc_finalization {
   exit_code: 0,
 });
 
+itest!(fetch_response_finalization {
+  args: "run --v8-flags=--expose-gc --allow-net fetch_response_finalization.js",
+  output: "fetch_response_finalization.js.out",
+  http_server: true,
+  exit_code: 0,
+});
+
 itest!(lock_write_requires_lock {
   args: "run --lock-write some_file.ts",
   output: "lock_write_requires_lock.out",
@@ -387,10 +397,11 @@ itest!(lock_write_fetch {
 });
 
 itest!(lock_check_ok {
-    args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
-    output: "003_relative_import.ts.out",
-    http_server: true,
-  });
+  args:
+    "run --lock=lock_check_ok.json http://127.0.0.1:4545/003_relative_import.ts",
+  output: "003_relative_import.ts.out",
+  http_server: true,
+});
 
 itest!(lock_check_ok2 {
   args: "run --lock=lock_check_ok2.json 019_media_types.ts",
@@ -399,14 +410,14 @@ itest!(lock_check_ok2 {
 });
 
 itest!(lock_dynamic_imports {
-  args: "run --lock=lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/cli/tests/013_dynamic_import.ts",
+  args: "run --lock=lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/013_dynamic_import.ts",
   output: "lock_dynamic_imports.out",
   exit_code: 10,
   http_server: true,
 });
 
 itest!(lock_check_err {
-  args: "run --lock=lock_check_err.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
+  args: "run --lock=lock_check_err.json http://127.0.0.1:4545/003_relative_import.ts",
   output: "lock_check_err.out",
   exit_code: 10,
   http_server: true,
@@ -445,7 +456,7 @@ itest!(config_types_remote {
 
 itest!(empty_typescript {
   args: "run --reload subdir/empty.ts",
-  output_str: Some("Check file:[WILDCARD]tests/subdir/empty.ts\n"),
+  output_str: Some("Check file:[WILDCARD]/subdir/empty.ts\n"),
 });
 
 itest!(error_001 {
@@ -611,6 +622,12 @@ itest!(error_026_remote_import_error {
   http_server: true,
 });
 
+itest!(error_for_await {
+  args: "run --reload error_for_await.ts",
+  output: "error_for_await.ts.out",
+  exit_code: 1,
+});
+
 itest!(error_missing_module_named_import {
   args: "run --reload error_missing_module_named_import.ts",
   output: "error_missing_module_named_import.ts.out",
@@ -642,14 +659,14 @@ itest!(error_type_definitions {
 });
 
 itest!(error_local_static_import_from_remote_ts {
-    args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.ts",
+    args: "run --reload http://localhost:4545/error_local_static_import_from_remote.ts",
     exit_code: 1,
     http_server: true,
     output: "error_local_static_import_from_remote.ts.out",
   });
 
 itest!(error_local_static_import_from_remote_js {
-    args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.js",
+    args: "run --reload http://localhost:4545/error_local_static_import_from_remote.js",
     exit_code: 1,
     http_server: true,
     output: "error_local_static_import_from_remote.js.out",
@@ -931,14 +948,14 @@ itest!(_053_import_compression {
 });
 
 itest!(disallow_http_from_https_js {
-  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.js",
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/disallow_http_from_https.js",
   output: "disallow_http_from_https_js.out",
   http_server: true,
   exit_code: 1,
 });
 
 itest!(disallow_http_from_https_ts {
-  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.ts",
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/disallow_http_from_https.ts",
   output: "disallow_http_from_https_ts.out",
   http_server: true,
   exit_code: 1,
@@ -1104,6 +1121,13 @@ itest!(import_file_with_colon {
   output: "import_file_with_colon.ts.out",
   http_server: true,
 });
+
+itest!(classic_workers_event_loop {
+  args:
+    "run --enable-testing-features-do-not-use classic_workers_event_loop.js",
+  output: "classic_workers_event_loop.js.out",
+});
+
 // FIXME(bartlomieju): disabled, because this test is very flaky on CI
 // itest!(local_sources_not_cached_in_memory {
 //   args: "run --allow-read --allow-write no_mem_cache.js",
@@ -1160,12 +1184,22 @@ itest!(worker_event_handler_test {
   output: "worker_event_handler_test.js.out",
 });
 
+itest!(worker_close_race {
+  args: "run --quiet --reload --allow-read worker_close_race.js",
+  output: "worker_close_race.js.out",
+});
+
+itest!(worker_message_before_close {
+  args: "run --quiet --reload --allow-read worker_message_before_close.js",
+  output: "worker_message_before_close.js.out",
+});
+
 #[test]
 fn no_validate_asm() {
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
-    .arg("cli/tests/no_validate_asm.js")
+    .arg("no_validate_asm.js")
     .stderr(std::process::Stdio::piped())
     .stdout(std::process::Stdio::piped())
     .spawn()
@@ -1180,10 +1214,10 @@ fn no_validate_asm() {
 #[test]
 fn exec_path() {
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("--allow-read")
-    .arg("cli/tests/exec_path.ts")
+    .arg("exec_path.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -1211,7 +1245,7 @@ fn run_deno_script_constrained(
   script_path: std::path::PathBuf,
   constraints: WinProcConstraints,
 ) -> Result<(), i64> {
-  let file_path = "cli/tests/DenoWinRunner.ps1";
+  let file_path = "DenoWinRunner.ps1";
   let constraints = match constraints {
     WinProcConstraints::NoStdIn => "1",
     WinProcConstraints::NoStdOut => "2",
@@ -1232,7 +1266,7 @@ fn run_deno_script_constrained(
 #[test]
 fn should_not_panic_on_no_stdin() {
   let output = run_deno_script_constrained(
-    util::tests_path().join("echo.ts"),
+    util::testdata_path().join("echo.ts"),
     WinProcConstraints::NoStdIn,
   );
   output.unwrap();
@@ -1242,7 +1276,7 @@ fn should_not_panic_on_no_stdin() {
 #[test]
 fn should_not_panic_on_no_stdout() {
   let output = run_deno_script_constrained(
-    util::tests_path().join("echo.ts"),
+    util::testdata_path().join("echo.ts"),
     WinProcConstraints::NoStdOut,
   );
   output.unwrap();
@@ -1252,7 +1286,7 @@ fn should_not_panic_on_no_stdout() {
 #[test]
 fn should_not_panic_on_no_stderr() {
   let output = run_deno_script_constrained(
-    util::tests_path().join("echo.ts"),
+    util::testdata_path().join("echo.ts"),
     WinProcConstraints::NoStdErr,
   );
   output.unwrap();
@@ -1262,9 +1296,9 @@ fn should_not_panic_on_no_stderr() {
 #[test]
 fn should_not_panic_on_undefined_home_environment_variable() {
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
-    .arg("cli/tests/echo.ts")
+    .arg("echo.ts")
     .env_remove("HOME")
     .spawn()
     .unwrap()
@@ -1276,9 +1310,9 @@ fn should_not_panic_on_undefined_home_environment_variable() {
 #[test]
 fn should_not_panic_on_undefined_deno_dir_environment_variable() {
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
-    .arg("cli/tests/echo.ts")
+    .arg("echo.ts")
     .env_remove("DENO_DIR")
     .spawn()
     .unwrap()
@@ -1291,9 +1325,9 @@ fn should_not_panic_on_undefined_deno_dir_environment_variable() {
 #[test]
 fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
-    .arg("cli/tests/echo.ts")
+    .arg("echo.ts")
     .env_remove("DENO_DIR")
     .env_remove("HOME")
     .spawn()
@@ -1307,9 +1341,9 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
 fn rust_log() {
   // Without RUST_LOG the stderr is empty.
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
-    .arg("cli/tests/001_hello.js")
+    .arg("001_hello.js")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -1320,9 +1354,9 @@ fn rust_log() {
 
   // With RUST_LOG the stderr is not empty.
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
-    .arg("cli/tests/001_hello.js")
+    .arg("001_hello.js")
     .env("RUST_LOG", "debug")
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -1340,7 +1374,7 @@ mod permissions {
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
+        .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{0}", permission))
         .arg("permission_test.ts")
@@ -1372,12 +1406,15 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
+        .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!(
           "--allow-{0}={1}",
           permission,
-          util::root_path().into_os_string().into_string().unwrap()
+          util::testdata_path()
+            .into_os_string()
+            .into_string()
+            .unwrap()
         ))
         .arg("complex_permissions_test.ts")
         .arg(permission)
@@ -1399,9 +1436,7 @@ mod permissions {
         &format!(
           "run --allow-{0}={1} complex_permissions_test.ts {0} {2}",
           permission,
-          util::root_path()
-            .join("cli")
-            .join("tests")
+          util::testdata_path()
             .into_os_string()
             .into_string()
             .unwrap(),
@@ -1424,14 +1459,12 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
+        .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!(
           "--allow-{0}={1}",
           permission,
-          util::root_path()
-            .join("cli")
-            .join("tests")
+          util::testdata_path()
             .into_os_string()
             .into_string()
             .unwrap()
@@ -1450,9 +1483,7 @@ mod permissions {
   #[test]
   fn rw_outside_test_and_js_dir() {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    let test_dir = util::root_path()
-      .join("cli")
-      .join("tests")
+    let test_dir = util::testdata_path()
       .into_os_string()
       .into_string()
       .unwrap();
@@ -1486,9 +1517,7 @@ mod permissions {
   #[test]
   fn rw_inside_test_and_js_dir() {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    let test_dir = util::root_path()
-      .join("cli")
-      .join("tests")
+    let test_dir = util::testdata_path()
       .into_os_string()
       .into_string()
       .unwrap();
@@ -1499,7 +1528,7 @@ mod permissions {
       .unwrap();
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
+        .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{0}={1},{2}", permission, test_dir, js_dir))
         .arg("complex_permissions_test.ts")
@@ -1518,7 +1547,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
+        .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{0}=.", permission))
         .arg("complex_permissions_test.ts")
@@ -1537,7 +1566,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
+        .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{0}=tls/../", permission))
         .arg("complex_permissions_test.ts")
@@ -1700,21 +1729,31 @@ mod permissions {
   #[cfg(unix)]
   #[test]
   fn _061_permissions_request() {
-    let args = "run 061_permissions_request.ts";
-    let output = "061_permissions_request.ts.out";
-    let input = b"y\nn\n";
-
-    util::test_pty(args, output, input);
+    let args = "run --quiet 061_permissions_request.ts";
+    use util::PtyData::*;
+    util::test_pty2(args, vec![
+      Output("⚠️  ️Deno requests read access to \"foo\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Input("y\n"),
+      Output("⚠️  ️Deno requests read access to \"bar\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Input("n\n"),
+      Output("granted\r\n"),
+      Output("prompt\r\n"),
+      Output("denied\r\n"),
+    ]);
   }
 
   #[cfg(unix)]
   #[test]
   fn _062_permissions_request_global() {
-    let args = "run 062_permissions_request_global.ts";
-    let output = "062_permissions_request_global.ts.out";
-    let input = b"y\n";
-
-    util::test_pty(args, output, input);
+    let args = "run --quiet 062_permissions_request_global.ts";
+    use util::PtyData::*;
+    util::test_pty2(args, vec![
+      Output("⚠️  ️Deno requests read access. Allow? [y/n (y = yes allow, n = no deny)] "),
+      Input("y\n"),
+      Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
+      Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
+      Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
+    ]);
   }
 
   itest!(_063_permissions_revoke {
@@ -1730,12 +1769,45 @@ mod permissions {
   #[cfg(unix)]
   #[test]
   fn _066_prompt() {
-    let args = "run --unstable 066_prompt.ts";
-    let output = "066_prompt.ts.out";
-    // These are answers to prompt, confirm, and alert calls.
-    let input = b"John Doe\n\nfoo\nY\nN\nyes\n\nwindows\r\n\n\n";
-
-    util::test_pty(args, output, input);
+    let args = "run --quiet --unstable 066_prompt.ts";
+    use util::PtyData::*;
+    util::test_pty2(
+      args,
+      vec![
+        Output("What is your name? [Jane Doe] "),
+        Input("John Doe\n"),
+        Output("Your name is John Doe.\r\n"),
+        Output("What is your name? [Jane Doe] "),
+        Input("\n"),
+        Output("Your name is Jane Doe.\r\n"),
+        Output("Prompt "),
+        Input("foo\n"),
+        Output("Your input is foo.\r\n"),
+        Output("Question 0 [y/N] "),
+        Input("Y\n"),
+        Output("Your answer is true\r\n"),
+        Output("Question 1 [y/N] "),
+        Input("N\n"),
+        Output("Your answer is false\r\n"),
+        Output("Question 2 [y/N] "),
+        Input("yes\n"),
+        Output("Your answer is false\r\n"),
+        Output("Confirm [y/N] "),
+        Input("\n"),
+        Output("Your answer is false\r\n"),
+        Output("What is Windows EOL? "),
+        Input("windows\n"),
+        Output("Your answer is \"windows\"\r\n"),
+        Output("Hi [Enter] "),
+        Input("\n"),
+        Output("Alert [Enter] "),
+        Input("\n"),
+        Output("The end of test\r\n"),
+        Output("What is EOF? "),
+        Input("\n"),
+        Output("Your answer is null\r\n"),
+      ],
+    );
   }
 
   itest!(dynamic_import_permissions_remote_remote {
@@ -1773,3 +1845,43 @@ mod permissions {
     exit_code: 1,
   });
 }
+
+itest!(tls_starttls {
+  args: "run --quiet --reload --allow-net --allow-read --unstable --cert tls/RootCA.pem tls_starttls.js",
+  output: "tls.out",
+});
+
+itest!(tls_connecttls {
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem tls_connecttls.js",
+  output: "tls.out",
+});
+
+itest!(byte_order_mark {
+  args: "run --no-check byte_order_mark.ts",
+  output: "byte_order_mark.out",
+});
+
+#[cfg(unix)]
+#[test]
+fn issue9750() {
+  use util::PtyData::*;
+  util::test_pty2(
+    "run --prompt issue9750.js",
+    vec![
+      Output("Enter 'yy':\r\n"),
+      Input("yy\n"),
+      Output("⚠️  ️Deno requests env access. Allow? [y/n (y = yes allow, n = no deny)] "),
+      Input("n\n"),
+      Output("⚠️  ️Deno requests env access to \"SECRET\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Input("n\n"),
+      Output("error: Uncaught (in promise) PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag\r\n"),
+    ],
+  );
+}
+
+// Regression test for https://github.com/denoland/deno/issues/11451.
+itest!(dom_exception_formatting {
+  args: "run dom_exception_formatting.ts",
+  output: "dom_exception_formatting.ts.out",
+  exit_code: 1,
+});

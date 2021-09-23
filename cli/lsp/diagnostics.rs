@@ -7,7 +7,6 @@ use super::sources::Sources;
 use super::tsc;
 
 use crate::diagnostics;
-use crate::media_type::MediaType;
 use crate::tokio_util::create_basic_runtime;
 
 use analysis::ResolvedDependency;
@@ -122,9 +121,14 @@ impl DiagnosticsServer {
 
   pub(crate) async fn invalidate(&self, specifiers: Vec<ModuleSpecifier>) {
     let mut collection = self.collection.lock().await;
-    for specifier in specifiers {
-      collection.versions.remove(&specifier);
+    for specifier in &specifiers {
+      collection.versions.remove(specifier);
     }
+  }
+
+  pub(crate) async fn invalidate_all(&self) {
+    let mut collection = self.collection.lock().await;
+    collection.versions.clear();
   }
 
   pub(crate) fn start(
@@ -255,13 +259,13 @@ fn to_lsp_related_information(
         if let (Some(source), Some(start), Some(end)) =
           (&ri.source, &ri.start, &ri.end)
         {
-          let uri = lsp::Url::parse(&source).unwrap();
+          let uri = lsp::Url::parse(source).unwrap();
           Some(lsp::DiagnosticRelatedInformation {
             location: lsp::Location {
               uri,
               range: to_lsp_range(start, end),
             },
-            message: get_diagnostic_message(&ri),
+            message: get_diagnostic_message(ri),
           })
         } else {
           None
@@ -322,23 +326,29 @@ async fn generate_lint_diagnostics(
           .lock()
           .await
           .get_version(specifier, &DiagnosticSource::DenoLint);
-        let media_type = MediaType::from(specifier);
         if version != current_version {
-          if let Ok(Some(source_code)) = documents.content(specifier) {
-            if let Ok(references) = analysis::get_lint_references(
-              specifier,
-              &media_type,
-              &source_code,
-            ) {
-              let diagnostics =
-                references.into_iter().map(|r| r.to_diagnostic()).collect();
-              diagnostics_vec.push((specifier.clone(), version, diagnostics));
-            } else {
-              diagnostics_vec.push((specifier.clone(), version, Vec::new()));
+          let module = documents
+            .get(specifier)
+            .map(|d| d.source().module())
+            .flatten();
+          let diagnostics = match module {
+            Some(Ok(module)) => {
+              if let Ok(references) = analysis::get_lint_references(module) {
+                references
+                  .into_iter()
+                  .map(|r| r.to_diagnostic())
+                  .collect::<Vec<_>>()
+              } else {
+                Vec::new()
+              }
             }
-          } else {
-            error!("Missing file contents for: {}", specifier);
-          }
+            Some(Err(_)) => Vec::new(),
+            None => {
+              error!("Missing file contents for: {}", specifier);
+              Vec::new()
+            }
+          };
+          diagnostics_vec.push((specifier.clone(), version, diagnostics));
         }
       }
     }
@@ -416,8 +426,8 @@ fn diagnose_dependency(
         })
       }
       analysis::ResolvedDependency::Resolved(specifier) => {
-        if !(documents.contains_key(&specifier)
-          || sources.contains_key(&specifier))
+        if !(documents.contains_key(specifier)
+          || sources.contains_key(specifier))
         {
           let (code, message) = match specifier.scheme() {
             "file" => (Some(lsp::NumberOrString::String("no-local".to_string())), format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier)),
@@ -434,8 +444,8 @@ fn diagnose_dependency(
             data: Some(json!({ "specifier": specifier })),
             ..Default::default()
           });
-        } else if sources.contains_key(&specifier) {
-          if let Some(message) = sources.get_maybe_warning(&specifier) {
+        } else if sources.contains_key(specifier) {
+          if let Some(message) = sources.get_maybe_warning(specifier) {
             diagnostics.push(lsp::Diagnostic {
               range,
               severity: Some(lsp::DiagnosticSeverity::Warning),

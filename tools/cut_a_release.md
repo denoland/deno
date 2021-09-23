@@ -8,77 +8,63 @@ cut.**
 
 1. Open a PR on the `deno_std` repo that bumps the version in `version.ts` and
    updates `Releases.md`
-2. Create a tag with the version number (_without_ `v` prefix).
+
+2. Before merging the PR, make sure that all tests pass when run using binary
+   produced from bumping crates (point 3. from below).
+
+3. Create a tag with the version number (_without_ `v` prefix).
 
 ## Updating the main repo
 
-1. Create a PR that bumps versions of all crates in `extensions` and `runtime`
-   directories.
+1. Run `./tools/release/01_bump_dependency_crate_versions.ts` to increase the
+   minor versions of all crates in the `bench_util`, `core`, `ext`, and
+   `runtime` directories.
 
-To determine if you should bump a crate a minor version instead of a patch
-version, check if you can answer any of the following questions with yes:
+2. Create a PR for this change.
 
-- Did any of the crates direct dependencies have a semver breaking change? For
-  example did we update swc_ecmascript from 0.56.0 to 0.57.0, or did we update
-  rusty_v8?
-- Did the external interface of the crate change (ops or changes to
-  `window.__bootstrap` in JS code)?
+3. Make sure CI pipeline passes (DO NOT merge yet).
 
-When in doubt always do a minor bump instead of a patch. In essentially every
-release all crates will need a minor bump. Patch bumps are the exception, not
-the norm.
+4. Run `./tools/release/02_publish_dependency_crates.ts` to publish these bumped
+   crates to `crates.io`
 
-2. Make sure CI pipeline passes.
+   **Make sure that `cargo` is logged on with a user that has permissions to
+   publish those crates.**
 
-3. Publish all bumped crates to `crates.io`
+   If there are any problems when you publish, that require you to change the
+   code, then after applying the fixes they should be committed and pushed to
+   the PR.
 
-**Make sure that `cargo` is logged on with a user that has permissions to
-publish those crates.**
+5. Once all crates are published merge the PR.
 
-This is done by running `cargo publish` in each crate, because of dependencies
-between the crates, it must be done in specific order:
+6. Run `./tools/release/03_bump_cli_version.ts` to bump the CLI version.
 
-- `deno_core` - all crates depend on `deno_core` so it must always be published
-  first
-- `bench_util`
-- crates in `extensions/` directory
-  - `deno_fetch`, `deno_crypto`, `deno_timers` and `deno_webstorage` depend on
-    `deno_web`, so the latter must be bumped and released first
-  - `deno_url` depends on `deno_webidl`, so the latter must be bumped and
-    released first
-  - `deno_timers` depends on `deno_url`, so the latter must be bumped and
-    released first
-  - `deno_http` depends on `deno_websocket`, so the latter must be bumped and
-    released first
-- `runtime` - this crate depends on `deno_core` and all crates in `extensions/`
-  directory
+7. Use the output of the above command to update `Releases.md`
 
-If there are any problems when you publish, that require you to change the code,
-then after applying the fixes they should be commited and pushed to the PR.
+8. Create a PR for these changes.
 
-4. Once all crates are published merge the PR.
+9. Make sure CI pipeline passes.
 
-5. Create a PR that bumps `cli` crate version and updates `Releases.md`.
+10. Publish `cli` crate to `crates.io`
 
-6. Make sure CI pipeline passes.
+11. Merge the PR.
 
-7. Publish `cli` crate to `crates.io`
+12. Create a tag with the version number (with `v` prefix).
 
-8. Merge the PR.
+13. Wait for CI pipeline on the created tag branch to pass.
 
-9. Create a tag with the version number (with `v` prefix).
+    The CI pipeline will create a release draft on GitHub
+    (https://github.com/denoland/deno/releases).
 
-10. Wait for CI pipeline on the created tag branch to pass.
+14. Upload Apple M1 build to the release draft & to dl.deno.land.
 
-The CI pipeline will create a release draft on GitHub
-(https://github.com/denoland/deno/releases).
+15. Publish the release on Github
 
-11. Upload Apple M1 build to the release draft & to dl.deno.land.
-
-12. Publish the release on Github
-
-13. Update the Deno version on the website by updating
+16. Update the Deno version on the website by updating
     https://github.com/denoland/deno_website2/blob/main/versions.json.
+
+17. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
+    must match the CLI tag; you don't need to create dedicated commit for that
+    purpose, it's enough to tag the latest commit in that repo.
 
 ## Updating `deno_docker`
 

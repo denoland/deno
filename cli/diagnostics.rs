@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
+use deno_runtime::colors;
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
@@ -25,22 +25,16 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "EmitOptions",
   "EmitResult",
   "HttpClient",
-  "HttpConn",
-  "LinuxSignal",
   "Location",
   "MXRecord",
-  "MacOSSignal",
   "Metrics",
   "OpMetrics",
   "RecordType",
-  "RequestEvent",
   "ResolveDnsOptions",
   "SRVRecord",
   "SetRawOptions",
-  "Signal",
   "SignalStream",
   "StartTlsOptions",
-  "SystemCpuInfo",
   "SystemMemoryInfo",
   "UnixConnectOptions",
   "UnixListenOptions",
@@ -57,18 +51,17 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "listen",
   "listenDatagram",
   "loadavg",
-  "openPlugin",
+  "dlopen",
   "osRelease",
   "ppid",
   "resolveDns",
-  "serveHttp",
   "setRaw",
   "shutdown",
+  "Signal",
   "signal",
   "signals",
   "sleepSync",
   "startTls",
-  "systemCpuInfo",
   "systemMemoryInfo",
   "umask",
   "utime",
@@ -191,7 +184,7 @@ impl DiagnosticMessageChain {
   pub fn format_message(&self, level: usize) -> String {
     let mut s = String::new();
 
-    s.push_str(&std::iter::repeat(" ").take(level * 2).collect::<String>());
+    s.push_str(&" ".repeat(level * 2));
     s.push_str(&self.message_text);
     if let Some(next) = &self.next {
       s.push('\n');
@@ -428,9 +421,9 @@ impl Error for Diagnostics {}
 #[cfg(test)]
 mod tests {
   use super::*;
-  use colors::strip_ansi_codes;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
+  use test_util::strip_ansi_codes;
 
   #[test]
   fn test_de_diagnostics() {

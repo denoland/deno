@@ -89,10 +89,7 @@ fn op_set_raw(
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let resource = state
-      .resource_table
-      .get::<StdFileResource>(rid)
-      .ok_or_else(bad_resource_id)?;
+    let resource = state.resource_table.get::<StdFileResource>(rid)?;
 
     if cbreak {
       return Err(not_supported());
@@ -156,10 +153,7 @@ fn op_set_raw(
   {
     use std::os::unix::io::AsRawFd;
 
-    let resource = state
-      .resource_table
-      .get::<StdFileResource>(rid)
-      .ok_or_else(bad_resource_id)?;
+    let resource = state.resource_table.get::<StdFileResource>(rid)?;
 
     if resource.fs_file.is_none() {
       return Err(not_supported());
@@ -228,7 +222,7 @@ fn op_isatty(
       {
         use winapi::um::consoleapi;
 
-        let handle = get_windows_handle(&std_file)?;
+        let handle = get_windows_handle(std_file)?;
         let mut test_mode: DWORD = 0;
         // If I cannot get mode out of console, it is not a console.
         Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })

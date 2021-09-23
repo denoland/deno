@@ -22,7 +22,7 @@ use crate::OpPayload;
 use crate::OpResult;
 use crate::OpState;
 use crate::PromiseId;
-use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
@@ -96,7 +96,7 @@ struct DynImportModEvaluate {
 
 struct ModEvaluate {
   promise: v8::Global<v8::Promise>,
-  sender: mpsc::Sender<Result<(), AnyError>>,
+  sender: oneshot::Sender<Result<(), AnyError>>,
 }
 
 #[derive(Default, Clone)]
@@ -461,13 +461,12 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Grabs a reference to core.js' handleAsyncMsgFromRust
+  /// Grabs a reference to core.js' opresolve
   fn init_recv_cb(&mut self) {
     let scope = &mut self.handle_scope();
 
-    // Get Deno.core.handleAsyncMsgFromRust
-    let code =
-      v8::String::new(scope, "Deno.core.handleAsyncMsgFromRust").unwrap();
+    // Get Deno.core.opresolve
+    let code = v8::String::new(scope, "Deno.core.opresolve").unwrap();
     let script = v8::Script::compile(scope, code, None).unwrap();
     let v8_value = script.run(scope).unwrap();
 
@@ -646,6 +645,48 @@ impl JsRuntime {
     }
 
     scope.perform_microtask_checkpoint();
+  }
+
+  /// Waits for the given value to resolve while polling the event loop.
+  ///
+  /// This future resolves when either the value is resolved or the event loop runs to
+  /// completion.
+  pub async fn resolve_value(
+    &mut self,
+    global: v8::Global<v8::Value>,
+  ) -> Result<v8::Global<v8::Value>, AnyError> {
+    poll_fn(|cx| {
+      let state = self.poll_event_loop(cx, false);
+
+      let mut scope = self.handle_scope();
+      let local = v8::Local::<v8::Value>::new(&mut scope, &global);
+
+      if let Ok(promise) = v8::Local::<v8::Promise>::try_from(local) {
+        match promise.state() {
+          v8::PromiseState::Pending => match state {
+            Poll::Ready(Ok(_)) => {
+              let msg = "Promise resolution is still pending but the event loop has already resolved.";
+              Poll::Ready(Err(generic_error(msg)))
+            },
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+            Poll::Pending => Poll::Pending,
+          },
+          v8::PromiseState::Fulfilled => {
+            let value = promise.result(&mut scope);
+            let value_handle = v8::Global::new(&mut scope, value);
+            Poll::Ready(Ok(value_handle))
+          }
+          v8::PromiseState::Rejected => {
+            let exception = promise.result(&mut scope);
+            Poll::Ready(exception_to_err_result(&mut scope, exception, false))
+          }
+        }
+      } else {
+        let value_handle = v8::Global::new(&mut scope, local);
+        Poll::Ready(Ok(value_handle))
+      }
+    })
+    .await
   }
 
   /// Runs event loop to completion
@@ -978,7 +1019,7 @@ impl JsRuntime {
   pub fn mod_evaluate(
     &mut self,
     id: ModuleId,
-  ) -> mpsc::Receiver<Result<(), AnyError>> {
+  ) -> oneshot::Receiver<Result<(), AnyError>> {
     let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
@@ -991,7 +1032,7 @@ impl JsRuntime {
     let mut status = module.get_status();
     assert_eq!(status, v8::ModuleStatus::Instantiated);
 
-    let (sender, receiver) = mpsc::channel(1);
+    let (sender, receiver) = oneshot::channel();
 
     // IMPORTANT: Top-level-await is enabled, which means that return value
     // of module evaluation is a promise.
@@ -1238,7 +1279,6 @@ impl JsRuntime {
     let scope = &mut self.handle_scope();
 
     let promise = module_evaluation.promise.get(scope);
-    let mut sender = module_evaluation.sender.clone();
     let promise_state = promise.state();
 
     match promise_state {
@@ -1250,7 +1290,7 @@ impl JsRuntime {
       v8::PromiseState::Fulfilled => {
         scope.perform_microtask_checkpoint();
         // Receiver end might have been already dropped, ignore the result
-        let _ = sender.try_send(Ok(()));
+        let _ = module_evaluation.sender.send(Ok(()));
       }
       v8::PromiseState::Rejected => {
         let exception = promise.result(scope);
@@ -1259,7 +1299,7 @@ impl JsRuntime {
           .map_err(|err| attach_handle_to_error(scope, err, exception))
           .unwrap_err();
         // Receiver end might have been already dropped, ignore the result
-        let _ = sender.try_send(Err(err1));
+        let _ = module_evaluation.sender.send(Err(err1));
       }
     }
   }
@@ -1630,6 +1670,55 @@ pub mod tests {
     }
   }
 
+  #[tokio::test]
+  async fn test_resolve_value() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let value_global = runtime
+      .execute_script("a.js", "Promise.resolve(1 + 2)")
+      .unwrap();
+    let result_global = runtime.resolve_value(value_global).await.unwrap();
+    {
+      let scope = &mut runtime.handle_scope();
+      let value = result_global.get(scope);
+      assert_eq!(value.integer_value(scope).unwrap(), 3);
+    }
+
+    let value_global = runtime
+      .execute_script(
+        "a.js",
+        "Promise.resolve(new Promise(resolve => resolve(2 + 2)))",
+      )
+      .unwrap();
+    let result_global = runtime.resolve_value(value_global).await.unwrap();
+    {
+      let scope = &mut runtime.handle_scope();
+      let value = result_global.get(scope);
+      assert_eq!(value.integer_value(scope).unwrap(), 4);
+    }
+
+    let value_global = runtime
+      .execute_script("a.js", "Promise.reject(new Error('fail'))")
+      .unwrap();
+    let err = runtime.resolve_value(value_global).await.unwrap_err();
+    assert_eq!(
+      "Uncaught Error: fail",
+      err.downcast::<JsError>().unwrap().message
+    );
+
+    let value_global = runtime
+      .execute_script("a.js", "new Promise(resolve => {})")
+      .unwrap();
+    let error_string = runtime
+      .resolve_value(value_global)
+      .await
+      .unwrap_err()
+      .to_string();
+    assert_eq!(
+      "Promise resolution is still pending but the event loop has already resolved.",
+      error_string,
+    );
+  }
+
   #[test]
   fn terminate_execution() {
     let (mut isolate, _dispatch_count) = setup(Mode::Async);
@@ -1955,7 +2044,7 @@ pub mod tests {
     )
     .unwrap();
 
-    runtime.mod_evaluate(module_id);
+    let _ = runtime.mod_evaluate(module_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
     let _snapshot = runtime.snapshot();

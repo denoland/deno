@@ -1,12 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast;
-use crate::ast::Diagnostic;
+use crate::ast::transpile;
 use crate::ast::ImportsNotUsedAsValues;
-use crate::ast::TokenOrComment;
 use crate::colors;
-use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
+use deno_ast::swc::parser::error::SyntaxError;
+use deno_ast::swc::parser::token::{Token, Word};
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -29,7 +28,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
-use swc_ecmascript::parser::token::{Token, Word};
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::Receiver;
@@ -230,8 +228,8 @@ impl Validator for EditorHelper {
     let mut stack: Vec<Token> = Vec::new();
     let mut in_template = false;
 
-    for item in ast::lex("", ctx.input(), &MediaType::TypeScript) {
-      if let TokenOrComment::Token(token) = item.inner {
+    for item in deno_ast::lex(ctx.input(), deno_ast::MediaType::TypeScript) {
+      if let deno_ast::TokenOrComment::Token(token) = item.inner {
         match token {
           Token::BackQuote => in_template = !in_template,
           Token::LParen
@@ -252,6 +250,17 @@ impl Validator for EditorHelper {
               }
               (None, _) => {
                 // While technically invalid when unpaired, it should be V8's task to output error instead.
+                // Thus marked as valid with no info.
+                return Ok(ValidationResult::Valid(None));
+              }
+            }
+          }
+          Token::Error(error) => {
+            match error.kind() {
+              // If there is unterminated template, it continues to read input.
+              SyntaxError::UnterminatedTpl => {}
+              _ => {
+                // If it failed parsing, it should be V8's task to output error instead.
                 // Thus marked as valid with no info.
                 return Ok(ValidationResult::Valid(None));
               }
@@ -278,9 +287,13 @@ impl Highlighter for EditorHelper {
   fn highlight_candidate<'c>(
     &self,
     candidate: &'c str,
-    _completion: rustyline::CompletionType,
+    completion: rustyline::CompletionType,
   ) -> Cow<'c, str> {
-    self.highlight(candidate, 0)
+    if completion == CompletionType::List {
+      candidate.into()
+    } else {
+      self.highlight(candidate, 0)
+    }
   }
 
   fn highlight_char(&self, line: &str, _: usize) -> bool {
@@ -290,16 +303,19 @@ impl Highlighter for EditorHelper {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
     let mut out_line = String::from(line);
 
-    for item in ast::lex("", line, &MediaType::TypeScript) {
+    for item in deno_ast::lex(line, deno_ast::MediaType::TypeScript) {
       // Adding color adds more bytes to the string,
       // so an offset is needed to stop spans falling out of sync.
       let offset = out_line.len() - line.len();
-      let span = item.span_as_range();
+      let span = std::ops::Range {
+        start: item.span.lo.0 as usize,
+        end: item.span.hi.0 as usize,
+      };
 
       out_line.replace_range(
         span.start + offset..span.end + offset,
         &match item.inner {
-          TokenOrComment::Token(token) => match token {
+          deno_ast::TokenOrComment::Token(token) => match token {
             Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
               colors::green(&line[span]).to_string()
             }
@@ -326,7 +342,7 @@ impl Highlighter for EditorHelper {
             },
             _ => line[span].to_string(),
           },
-          TokenOrComment::Comment { .. } => {
+          deno_ast::TokenOrComment::Comment { .. } => {
             colors::gray(&line[span]).to_string()
           }
         },
@@ -405,6 +421,20 @@ Object.defineProperty(globalThis, "_error", {
   },
 });
 "#;
+
+enum EvaluationOutput {
+  Value(String),
+  Error(String),
+}
+
+impl std::fmt::Display for EvaluationOutput {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      EvaluationOutput::Value(value) => f.write_str(value),
+      EvaluationOutput::Error(value) => f.write_str(value),
+    }
+  }
+}
 
 struct ReplSession {
   worker: MainWorker,
@@ -485,7 +515,7 @@ impl ReplSession {
   pub async fn evaluate_line_and_get_output(
     &mut self,
     line: &str,
-  ) -> Result<String, AnyError> {
+  ) -> Result<EvaluationOutput, AnyError> {
     match self.evaluate_line_with_object_wrapping(line).await {
       Ok(evaluate_response) => {
         let evaluate_result = evaluate_response.get("result").unwrap();
@@ -500,20 +530,20 @@ impl ReplSession {
 
         let value = self.get_eval_value(evaluate_result).await?;
         Ok(match evaluate_exception_details {
-          Some(_) => format!("Uncaught {}", value),
-          None => value,
+          Some(_) => EvaluationOutput::Error(format!("Uncaught {}", value)),
+          None => EvaluationOutput::Value(value),
         })
       }
       Err(err) => {
         // handle a parsing diagnostic
-        match err.downcast_ref::<Diagnostic>() {
-          Some(diagnostic) => Ok(format!(
+        match err.downcast_ref::<deno_ast::Diagnostic>() {
+          Some(diagnostic) => Ok(EvaluationOutput::Error(format!(
             "{}: {} at {}:{}",
             colors::red("parse error"),
             diagnostic.message,
-            diagnostic.location.line,
-            diagnostic.location.col
-          )),
+            diagnostic.display_position.line_number,
+            diagnostic.display_position.column_number,
+          ))),
           None => Err(err),
         }
       }
@@ -543,7 +573,7 @@ impl ReplSession {
       if evaluate_response.get("exceptionDetails").is_some()
         && wrapped_line != line
       {
-        self.evaluate_ts_expression(&line).await?
+        self.evaluate_ts_expression(line).await?
       } else {
         evaluate_response
       };
@@ -619,22 +649,30 @@ impl ReplSession {
     &mut self,
     expression: &str,
   ) -> Result<Value, AnyError> {
-    let parsed_module =
-      crate::ast::parse("repl.ts", &expression, &crate::MediaType::TypeScript)?;
+    let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: "repl.ts".to_string(),
+      source: deno_ast::SourceTextInfo::from_string(expression.to_string()),
+      media_type: deno_ast::MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+    })?;
 
-    let transpiled_src = parsed_module
-      .transpile(&crate::ast::EmitOptions {
+    let transpiled_src = transpile(
+      &parsed_module,
+      &crate::ast::EmitOptions {
         emit_metadata: false,
         source_map: false,
         inline_source_map: false,
+        inline_sources: false,
         imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
         // JSX is not supported in the REPL
         transform_jsx: false,
         jsx_factory: "React.createElement".into(),
         jsx_fragment_factory: "React.Fragment".into(),
         repl_imports: true,
-      })?
-      .0;
+      },
+    )?
+    .0;
 
     self
       .evaluate_expression(&format!(
@@ -695,6 +733,7 @@ async fn read_line_and_poll(
 pub async fn run(
   program_state: &ProgramState,
   worker: MainWorker,
+  maybe_eval: Option<String>,
 ) -> Result<(), AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
   let (message_tx, mut message_rx) = channel(1);
@@ -708,6 +747,14 @@ pub async fn run(
 
   let history_file_path = program_state.dir.root.join("deno_history.txt");
   let editor = ReplEditor::new(helper, history_file_path);
+
+  if let Some(eval) = maybe_eval {
+    let output = repl_session.evaluate_line_and_get_output(&eval).await?;
+    // only output errors
+    if let EvaluationOutput::Error(error_text) = output {
+      println!("error in --eval flag. {}", error_text);
+    }
+  }
 
   println!("Deno {}", crate::version::deno());
   println!("exit using ctrl+d or close()");

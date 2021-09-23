@@ -9,7 +9,6 @@ use crate::OpId;
 use crate::OpPayload;
 use crate::OpTable;
 use crate::PromiseId;
-use crate::ResourceId;
 use crate::ZeroCopyBuf;
 use log::debug;
 use rusty_v8 as v8;
@@ -20,12 +19,13 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::option::Option;
-use std::rc::Rc;
 use url::Url;
 use v8::HandleScope;
 use v8::Local;
 use v8::MapFnTo;
 use v8::SharedArrayBuffer;
+use v8::ValueDeserializerHelper;
+use v8::ValueSerializerHelper;
 
 lazy_static::lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -71,9 +71,6 @@ lazy_static::lazy_static! {
       },
       v8::ExternalReference {
         function: set_wasm_streaming_callback.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: wasm_streaming_feed.map_fn_to()
       }
     ]);
 }
@@ -158,8 +155,6 @@ pub fn initialize_context<'s>(
     "setWasmStreamingCallback",
     set_wasm_streaming_callback,
   );
-  set_func(scope, core_val, "wasmStreamingFeed", wasm_streaming_feed);
-
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
@@ -533,14 +528,13 @@ fn call_console(
   deno_console_method.call(scope, receiver.into(), &call_args);
 }
 
-struct WasmStreamingResource(RefCell<v8::WasmStreaming>);
-impl crate::Resource for WasmStreamingResource {}
-
 fn set_wasm_streaming_callback(
   scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
+  use crate::ops_builtin::WasmStreamingResource;
+
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
@@ -580,66 +574,6 @@ fn set_wasm_streaming_callback(
       .get(scope)
       .call(scope, undefined.into(), &[arg, rid]);
   });
-}
-
-fn wasm_streaming_feed(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "snake_case")]
-  enum MessageType {
-    Bytes,
-    Abort,
-    Finish,
-  }
-
-  let rid: ResourceId = match serde_v8::from_v8(scope, args.get(0)) {
-    Ok(rid) => rid,
-    Err(_) => return throw_type_error(scope, "Invalid argument"),
-  };
-  let message_type = match serde_v8::from_v8(scope, args.get(1)) {
-    Ok(message_type) => message_type,
-    Err(_) => return throw_type_error(scope, "Invalid argument"),
-  };
-
-  let wasm_streaming = {
-    let state_rc = JsRuntime::state(scope);
-    let state = state_rc.borrow();
-    // If message_type is not Bytes, we'll be consuming the WasmStreaming
-    // instance, so let's also remove it from the resource table.
-    let wasm_streaming: Option<Rc<WasmStreamingResource>> = match message_type {
-      MessageType::Bytes => state.op_state.borrow().resource_table.get(rid),
-      _ => state.op_state.borrow_mut().resource_table.take(rid),
-    };
-    match wasm_streaming {
-      Some(wasm_streaming) => wasm_streaming,
-      None => return throw_type_error(scope, "Invalid resource ID."),
-    }
-  };
-
-  match message_type {
-    MessageType::Bytes => {
-      let bytes: ZeroCopyBuf = match serde_v8::from_v8(scope, args.get(2)) {
-        Ok(bytes) => bytes,
-        Err(_) => return throw_type_error(scope, "Invalid resource ID."),
-      };
-      wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
-    }
-    _ => {
-      // These types need to consume the WasmStreaming instance.
-      let wasm_streaming = match Rc::try_unwrap(wasm_streaming) {
-        Ok(streaming) => streaming.0.into_inner(),
-        Err(_) => panic!("Couldn't consume WasmStreamingResource."),
-      };
-      match message_type {
-        MessageType::Bytes => unreachable!(),
-        MessageType::Finish => wasm_streaming.finish(),
-        MessageType::Abort => wasm_streaming.abort(Some(args.get(2))),
-      }
-    }
-  }
 }
 
 fn encode(
@@ -690,7 +624,7 @@ fn decode(
   // - https://encoding.spec.whatwg.org/#dom-textdecoder-decode
   // - https://github.com/denoland/deno/issues/6649
   // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
-  match v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal) {
+  match v8::String::new_from_utf8(scope, buf, v8::NewStringType::Normal) {
     Some(text) => rv.set(text.into()),
     None => {
       let msg = v8::String::new(scope, "string too long").unwrap();
@@ -810,8 +744,10 @@ fn serialize(
       }
     };
 
-  let options =
-    options.unwrap_or(SerializeDeserializeOptions { host_objects: None });
+  let options = options.unwrap_or(SerializeDeserializeOptions {
+    host_objects: None,
+    transfered_array_buffers: None,
+  });
 
   let host_objects = match options.host_objects {
     Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
@@ -824,9 +760,61 @@ fn serialize(
     None => None,
   };
 
+  let transfered_array_buffers = match options.transfered_array_buffers {
+    Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
+      Ok(transfered_array_buffers) => Some(transfered_array_buffers),
+      Err(_) => {
+        throw_type_error(scope, "transfered_array_buffers not an array");
+        return;
+      }
+    },
+    None => None,
+  };
+
   let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
   let mut value_serializer =
     v8::ValueSerializer::new(scope, serialize_deserialize);
+
+  value_serializer.write_header();
+
+  if let Some(transfered_array_buffers) = transfered_array_buffers {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    for i in 0..transfered_array_buffers.length() {
+      let i = v8::Number::new(scope, i as f64).into();
+      let buf = transfered_array_buffers.get(scope, i).unwrap();
+      let buf = match v8::Local::<v8::ArrayBuffer>::try_from(buf) {
+        Ok(buf) => buf,
+        Err(_) => {
+          throw_type_error(
+            scope,
+            "item in transfered_array_buffers not an ArrayBuffer",
+          );
+          return;
+        }
+      };
+      if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store
+      {
+        // TODO(lucacasonato): we need to check here that the buffer is not
+        // already detached. We can not do that because V8 does not provide
+        // a way to check if a buffer is already detached.
+        if !buf.is_detachable() {
+          throw_type_error(
+            scope,
+            "item in transfered_array_buffers is not transferable",
+          );
+          return;
+        }
+        let backing_store = buf.get_backing_store();
+        buf.detach();
+        let id = shared_array_buffer_store.insert(backing_store);
+        value_serializer.transfer_array_buffer(id, buf);
+        let id = v8::Number::new(scope, id as f64).into();
+        transfered_array_buffers.set(scope, i, id);
+      }
+    }
+  }
+
   match value_serializer.write_value(scope.get_current_context(), value) {
     Some(true) => {
       let vector = value_serializer.release();
@@ -839,10 +827,11 @@ fn serialize(
   }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SerializeDeserializeOptions<'a> {
   host_objects: Option<serde_v8::Value<'a>>,
+  transfered_array_buffers: Option<serde_v8::Value<'a>>,
 }
 
 fn deserialize(
@@ -867,8 +856,10 @@ fn deserialize(
       }
     };
 
-  let options =
-    options.unwrap_or(SerializeDeserializeOptions { host_objects: None });
+  let options = options.unwrap_or(SerializeDeserializeOptions {
+    host_objects: None,
+    transfered_array_buffers: None,
+  });
 
   let host_objects = match options.host_objects {
     Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
@@ -881,9 +872,64 @@ fn deserialize(
     None => None,
   };
 
+  let transfered_array_buffers = match options.transfered_array_buffers {
+    Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
+      Ok(transfered_array_buffers) => Some(transfered_array_buffers),
+      Err(_) => {
+        throw_type_error(scope, "transfered_array_buffers not an array");
+        return;
+      }
+    },
+    None => None,
+  };
+
   let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
   let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
+
+  let parsed_header = value_deserializer
+    .read_header(scope.get_current_context())
+    .unwrap_or_default();
+  if !parsed_header {
+    let msg = v8::String::new(scope, "could not deserialize value").unwrap();
+    let exception = v8::Exception::range_error(scope, msg);
+    scope.throw_exception(exception);
+    return;
+  }
+
+  if let Some(transfered_array_buffers) = transfered_array_buffers {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
+      for i in 0..transfered_array_buffers.length() {
+        let i = v8::Number::new(scope, i as f64).into();
+        let id_val = transfered_array_buffers.get(scope, i).unwrap();
+        let id = match id_val.number_value(scope) {
+          Some(id) => id as u32,
+          None => {
+            throw_type_error(
+              scope,
+              "item in transfered_array_buffers not number",
+            );
+            return;
+          }
+        };
+        if let Some(backing_store) = shared_array_buffer_store.take(id) {
+          let array_buffer =
+            v8::ArrayBuffer::with_backing_store(scope, &backing_store);
+          value_deserializer.transfer_array_buffer(id, array_buffer);
+          transfered_array_buffers.set(scope, id_val, array_buffer.into());
+        } else {
+          throw_type_error(
+            scope,
+            "transfered array buffer not present in shared_array_buffer_store",
+          );
+          return;
+        }
+      }
+    }
+  }
+
   let value = value_deserializer.read_value(scope.get_current_context());
 
   match value {

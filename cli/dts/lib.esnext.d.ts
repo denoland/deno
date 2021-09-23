@@ -19,4 +19,8 @@ and limitations under the License.
 
 
 /// <reference lib="es2021" />
+/// <reference lib="esnext.array" />
+/// <reference lib="esnext.error" />
 /// <reference lib="esnext.intl" />
+/// <reference lib="esnext.object" />
+/// <reference lib="esnext.string" />

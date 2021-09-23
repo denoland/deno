@@ -12,7 +12,6 @@ pub fn start(parent_process_id: u32) {
       sleep(Duration::from_secs(30)).await;
 
       if !is_process_active(parent_process_id) {
-        eprintln!("Parent process lost. Exiting.");
         std::process::exit(1);
       }
     }

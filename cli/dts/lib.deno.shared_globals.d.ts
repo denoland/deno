@@ -111,7 +111,7 @@ declare namespace WebAssembly {
     /**
      * Given a `Module` and string, returns a copy of the contents of all custom sections in the
      * module with the given string name.
-     * */
+     */
     static customSections(
       moduleObject: Module,
       sectionName: string,
@@ -411,7 +411,7 @@ declare class Worker extends EventTarget {
     options?: WorkerOptions,
   );
   postMessage(message: any, transfer: Transferable[]): void;
-  postMessage(message: any, options?: PostMessageOptions): void;
+  postMessage(message: any, options?: StructuredSerializeOptions): void;
   addEventListener<K extends keyof WorkerEventMap>(
     type: K,
     listener: (this: Worker, ev: WorkerEventMap[K]) => any,
@@ -494,7 +494,7 @@ declare interface PerformanceMeasureOptions {
   detail?: any;
 
   /** Timestamp to be used as the start time or string to be used as start
-   * mark.*/
+   * mark. */
   start?: string | number;
 
   /** Duration between the start and end times. */

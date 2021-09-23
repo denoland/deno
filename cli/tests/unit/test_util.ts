@@ -12,6 +12,7 @@ export {
   assertEquals,
   assertMatch,
   assertNotEquals,
+  assertRejects,
   assertStrictEquals,
   assertStringIncludes,
   assertThrows,
@@ -32,7 +33,7 @@ interface UnitTestPermissions {
   net?: boolean;
   env?: boolean;
   run?: boolean;
-  plugin?: boolean;
+  ffi?: boolean;
   hrtime?: boolean;
 }
 
@@ -84,7 +85,7 @@ export function unitTest(
       net: false,
       env: false,
       run: false,
-      plugin: false,
+      ffi: false,
       hrtime: false,
     }, options.perms),
   };

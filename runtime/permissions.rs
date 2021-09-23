@@ -16,8 +16,6 @@ use log::debug;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
-#[cfg(not(test))]
-use std::io;
 use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::atomic::AtomicBool;
@@ -289,6 +287,9 @@ pub struct EnvDescriptor(pub String);
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
 pub struct RunDescriptor(pub String);
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+pub struct FfiDescriptor(pub String);
 
 impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
@@ -800,7 +801,7 @@ impl UnaryPermission<RunDescriptor> {
 
   pub fn request(&mut self, cmd: Option<&str>) -> PermissionState {
     if let Some(cmd) = cmd {
-      let state = self.query(Some(&cmd));
+      let state = self.query(Some(cmd));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("run access to \"{}\"", cmd)) {
           self.granted_list.retain(|cmd_| cmd_.0 != cmd);
@@ -875,6 +876,104 @@ impl UnaryPermission<RunDescriptor> {
   }
 }
 
+impl UnaryPermission<FfiDescriptor> {
+  pub fn query(&self, lib: Option<&str>) -> PermissionState {
+    if self.global_state == PermissionState::Denied
+      && match lib {
+        None => true,
+        Some(lib) => self.denied_list.iter().any(|lib_| lib_.0 == lib),
+      }
+    {
+      PermissionState::Denied
+    } else if self.global_state == PermissionState::Granted
+      || match lib {
+        None => false,
+        Some(lib) => self.granted_list.iter().any(|lib_| lib_.0 == lib),
+      }
+    {
+      PermissionState::Granted
+    } else {
+      PermissionState::Prompt
+    }
+  }
+
+  pub fn request(&mut self, lib: Option<&str>) -> PermissionState {
+    if let Some(lib) = lib {
+      let state = self.query(Some(lib));
+      if state == PermissionState::Prompt {
+        if permission_prompt(&format!("ffi access to \"{}\"", lib)) {
+          self.granted_list.retain(|lib_| lib_.0 != lib);
+          self.granted_list.insert(FfiDescriptor(lib.to_string()));
+          PermissionState::Granted
+        } else {
+          self.denied_list.retain(|lib_| lib_.0 != lib);
+          self.denied_list.insert(FfiDescriptor(lib.to_string()));
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
+        }
+      } else {
+        state
+      }
+    } else {
+      let state = self.query(None);
+      if state == PermissionState::Prompt {
+        if permission_prompt("ffi access") {
+          self.granted_list.clear();
+          self.global_state = PermissionState::Granted;
+          PermissionState::Granted
+        } else {
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
+        }
+      } else {
+        state
+      }
+    }
+  }
+
+  pub fn revoke(&mut self, lib: Option<&str>) -> PermissionState {
+    if let Some(lib) = lib {
+      self.granted_list.retain(|lib_| lib_.0 != lib);
+    } else {
+      self.granted_list.clear();
+      if self.global_state == PermissionState::Granted {
+        self.global_state = PermissionState::Prompt;
+      }
+    }
+    self.query(lib)
+  }
+
+  pub fn check(&mut self, lib: &str) -> Result<(), AnyError> {
+    let (result, prompted) = self.query(Some(lib)).check(
+      self.name,
+      Some(&format!("\"{}\"", lib)),
+      self.prompt,
+    );
+    if prompted {
+      if result.is_ok() {
+        self.granted_list.insert(FfiDescriptor(lib.to_string()));
+      } else {
+        self.denied_list.insert(FfiDescriptor(lib.to_string()));
+        self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+
+  pub fn check_all(&mut self) -> Result<(), AnyError> {
+    let (result, prompted) =
+      self.query(None).check(self.name, Some("all"), self.prompt);
+    if prompted {
+      if result.is_ok() {
+        self.global_state = PermissionState::Granted;
+      } else {
+        self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Permissions {
   pub read: UnaryPermission<ReadDescriptor>,
@@ -882,7 +981,7 @@ pub struct Permissions {
   pub net: UnaryPermission<NetDescriptor>,
   pub env: UnaryPermission<EnvDescriptor>,
   pub run: UnaryPermission<RunDescriptor>,
-  pub plugin: UnitPermission,
+  pub ffi: UnaryPermission<FfiDescriptor>,
   pub hrtime: UnitPermission,
   pub usb: UnaryPermission<UsbDescriptor>,
 }
@@ -892,7 +991,7 @@ pub struct PermissionsOptions {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
-  pub allow_plugin: bool,
+  pub allow_ffi: Option<Vec<String>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
@@ -909,7 +1008,7 @@ impl Permissions {
       name: "read",
       description: "read the file system",
       global_state: global_state_from_option(state),
-      granted_list: resolve_read_allowlist(&state),
+      granted_list: resolve_read_allowlist(state),
       denied_list: Default::default(),
       prompt,
     }
@@ -923,7 +1022,7 @@ impl Permissions {
       name: "write",
       description: "write to the file system",
       global_state: global_state_from_option(state),
-      granted_list: resolve_write_allowlist(&state),
+      granted_list: resolve_write_allowlist(state),
       denied_list: Default::default(),
       prompt,
     }
@@ -1011,8 +1110,21 @@ impl Permissions {
     }
   }
 
-  pub fn new_plugin(state: bool, prompt: bool) -> UnitPermission {
-    unit_permission_from_flag_bool(state, "plugin", "open a plugin", prompt)
+  pub fn new_ffi(
+    state: &Option<Vec<String>>,
+    prompt: bool,
+  ) -> UnaryPermission<FfiDescriptor> {
+    UnaryPermission::<FfiDescriptor> {
+      name: "ffi",
+      description: "load a dynamic library",
+      global_state: global_state_from_option(state),
+      granted_list: state
+        .as_ref()
+        .map(|v| v.iter().map(|x| FfiDescriptor(x.clone())).collect())
+        .unwrap_or_else(HashSet::new),
+      denied_list: Default::default(),
+      prompt,
+    }
   }
 
   pub fn new_hrtime(state: bool, prompt: bool) -> UnitPermission {
@@ -1031,7 +1143,7 @@ impl Permissions {
       net: Permissions::new_net(&opts.allow_net, opts.prompt),
       env: Permissions::new_env(&opts.allow_env, opts.prompt),
       run: Permissions::new_run(&opts.allow_run, opts.prompt),
-      plugin: Permissions::new_plugin(opts.allow_plugin, opts.prompt),
+      ffi: Permissions::new_ffi(&opts.allow_ffi, opts.prompt),
       hrtime: Permissions::new_hrtime(opts.allow_hrtime, opts.prompt),
       usb: Permissions::new_usb(&opts.allow_usb, opts.prompt),
     }
@@ -1044,7 +1156,7 @@ impl Permissions {
       net: Permissions::new_net(&Some(vec![]), false),
       env: Permissions::new_env(&Some(vec![]), false),
       run: Permissions::new_run(&Some(vec![]), false),
-      plugin: Permissions::new_plugin(true, false),
+      ffi: Permissions::new_ffi(&Some(vec![]), false),
       hrtime: Permissions::new_hrtime(true, false),
       usb: Permissions::new_usb(&Some(vec![]), false),
     }
@@ -1124,6 +1236,12 @@ impl deno_websocket::WebSocketPermissions for Permissions {
   }
 }
 
+impl deno_ffi::FfiPermissions for Permissions {
+  fn check(&mut self, path: &str) -> Result<(), AnyError> {
+    self.ffi.check(path)
+  }
+}
+
 fn unit_permission_from_flag_bool(
   flag: bool,
   name: &'static str,
@@ -1193,6 +1311,111 @@ fn permission_prompt(message: &str) -> bool {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return false;
   };
+
+  #[cfg(unix)]
+  fn clear_stdin() {
+    let r = unsafe { libc::tcflush(0, libc::TCIFLUSH) };
+    assert_eq!(r, 0);
+  }
+
+  #[cfg(not(unix))]
+  fn clear_stdin() {
+    use winapi::shared::minwindef::TRUE;
+    use winapi::shared::minwindef::UINT;
+    use winapi::shared::minwindef::WORD;
+    use winapi::shared::ntdef::WCHAR;
+    use winapi::um::processenv::GetStdHandle;
+    use winapi::um::winbase::STD_INPUT_HANDLE;
+    use winapi::um::wincon::FlushConsoleInputBuffer;
+    use winapi::um::wincon::PeekConsoleInputW;
+    use winapi::um::wincon::WriteConsoleInputW;
+    use winapi::um::wincontypes::INPUT_RECORD;
+    use winapi::um::wincontypes::KEY_EVENT;
+    use winapi::um::winnt::HANDLE;
+    use winapi::um::winuser::MapVirtualKeyW;
+    use winapi::um::winuser::MAPVK_VK_TO_VSC;
+    use winapi::um::winuser::VK_RETURN;
+
+    unsafe {
+      let stdin = GetStdHandle(STD_INPUT_HANDLE);
+      // emulate an enter key press to clear any line buffered console characters
+      emulate_enter_key_press(stdin);
+      // read the buffered line or enter key press
+      read_stdin_line();
+      // check if our emulated key press was executed
+      if is_input_buffer_empty(stdin) {
+        // if so, move the cursor up to prevent a blank line
+        move_cursor_up();
+      } else {
+        // the emulated key press is still pending, so a buffered line was read
+        // and we can flush the emulated key press
+        flush_input_buffer(stdin);
+      }
+    }
+
+    unsafe fn flush_input_buffer(stdin: HANDLE) {
+      let success = FlushConsoleInputBuffer(stdin);
+      if success != TRUE {
+        panic!(
+          "Error flushing console input buffer: {}",
+          std::io::Error::last_os_error().to_string()
+        )
+      }
+    }
+
+    unsafe fn emulate_enter_key_press(stdin: HANDLE) {
+      // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
+      let mut input_record: INPUT_RECORD = std::mem::zeroed();
+      input_record.EventType = KEY_EVENT;
+      input_record.Event.KeyEvent_mut().bKeyDown = TRUE;
+      input_record.Event.KeyEvent_mut().wRepeatCount = 1;
+      input_record.Event.KeyEvent_mut().wVirtualKeyCode = VK_RETURN as WORD;
+      input_record.Event.KeyEvent_mut().wVirtualScanCode =
+        MapVirtualKeyW(VK_RETURN as UINT, MAPVK_VK_TO_VSC) as WORD;
+      *input_record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() =
+        '\r' as WCHAR;
+
+      let mut record_written = 0;
+      let success =
+        WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
+      if success != TRUE {
+        panic!(
+          "Error emulating enter key press: {}",
+          std::io::Error::last_os_error().to_string()
+        )
+      }
+    }
+
+    unsafe fn is_input_buffer_empty(stdin: HANDLE) -> bool {
+      let mut buffer = Vec::with_capacity(1);
+      let mut events_read = 0;
+      let success =
+        PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read);
+      if success != TRUE {
+        panic!(
+          "Error peeking console input buffer: {}",
+          std::io::Error::last_os_error().to_string()
+        )
+      }
+      events_read == 0
+    }
+
+    fn move_cursor_up() {
+      use std::io::Write;
+      write!(std::io::stderr(), "\x1B[1A").expect("expected to move cursor up");
+    }
+
+    fn read_stdin_line() {
+      let mut input = String::new();
+      let stdin = std::io::stdin();
+      stdin.read_line(&mut input).expect("expected to read line");
+    }
+  }
+
+  // For security reasons we must consume everything in stdin so that previously
+  // buffered data cannot effect the prompt.
+  clear_stdin();
+
   let opts = "[y/n (y = yes allow, n = no deny)] ";
   let msg = format!(
     "{}  ️Deno requests {}. Allow? {}",
@@ -1202,7 +1425,7 @@ fn permission_prompt(message: &str) -> bool {
   eprint!("{}", colors::bold(&msg));
   loop {
     let mut input = String::new();
-    let stdin = io::stdin();
+    let stdin = std::io::stdin();
     let result = stdin.read_line(&mut input);
     if result.is_err() {
       return false;
@@ -1576,9 +1799,9 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_run(&Some(svec!["deno"]), false)
       },
-      plugin: UnitPermission {
-        state: PermissionState::Prompt,
-        ..Default::default()
+      ffi: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_ffi(&Some(svec!["deno"]), false)
       },
       hrtime: UnitPermission {
         state: PermissionState::Prompt,
@@ -1592,15 +1815,15 @@ mod tests {
     #[rustfmt::skip]
     {
       assert_eq!(perms1.read.query(None), PermissionState::Granted);
-      assert_eq!(perms1.read.query(Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms1.read.query(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.read.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.read.query(Some(&Path::new("/foo"))), PermissionState::Granted);
-      assert_eq!(perms2.read.query(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms2.read.query(Some(Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.read.query(Some(Path::new("/foo/bar"))), PermissionState::Granted);
       assert_eq!(perms1.write.query(None), PermissionState::Granted);
-      assert_eq!(perms1.write.query(Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms1.write.query(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.write.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.write.query(Some(&Path::new("/foo"))), PermissionState::Granted);
-      assert_eq!(perms2.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms2.write.query(Some(Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.write.query(Some(Path::new("/foo/bar"))), PermissionState::Granted);
       assert_eq!(perms1.net.query::<&str>(None), PermissionState::Granted);
       assert_eq!(perms1.net.query(Some(&("127.0.0.1", None))), PermissionState::Granted);
       assert_eq!(perms2.net.query::<&str>(None), PermissionState::Prompt);
@@ -1613,8 +1836,10 @@ mod tests {
       assert_eq!(perms1.run.query(Some(&"deno".to_string())), PermissionState::Granted);
       assert_eq!(perms2.run.query(None), PermissionState::Prompt);
       assert_eq!(perms2.run.query(Some(&"deno".to_string())), PermissionState::Granted);
-      assert_eq!(perms1.plugin.query(), PermissionState::Granted);
-      assert_eq!(perms2.plugin.query(), PermissionState::Prompt);
+      assert_eq!(perms1.ffi.query(None), PermissionState::Granted);
+      assert_eq!(perms1.ffi.query(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms2.ffi.query(None), PermissionState::Prompt);
+      assert_eq!(perms2.ffi.query(Some(&"deno".to_string())), PermissionState::Granted);
       assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
       assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
       assert_eq!(perms1.usb.query(None), PermissionState::Granted);
@@ -1632,13 +1857,13 @@ mod tests {
     {
       let _guard = PERMISSION_PROMPT_GUARD.lock();
       set_prompt_result(true);
-      assert_eq!(perms.read.request(Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms.read.request(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms.read.query(None), PermissionState::Prompt);
       set_prompt_result(false);
-      assert_eq!(perms.read.request(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.read.request(Some(Path::new("/foo/bar"))), PermissionState::Granted);
       set_prompt_result(false);
-      assert_eq!(perms.write.request(Some(&Path::new("/foo"))), PermissionState::Denied);
-      assert_eq!(perms.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.write.request(Some(Path::new("/foo"))), PermissionState::Denied);
+      assert_eq!(perms.write.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
       set_prompt_result(true);
       assert_eq!(perms.usb.request((Some("Dummy Device".to_string()), Some(0x8010))), PermissionState::Granted);
       assert_eq!(perms.usb.request((None, None)), PermissionState::Prompt);
@@ -1659,9 +1884,10 @@ mod tests {
       set_prompt_result(false);
       assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
       set_prompt_result(true);
-      assert_eq!(perms.plugin.request(), PermissionState::Granted);
+      assert_eq!(perms.ffi.request(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms.ffi.query(None), PermissionState::Prompt);
       set_prompt_result(false);
-      assert_eq!(perms.plugin.request(), PermissionState::Granted);
+      assert_eq!(perms.ffi.request(Some(&"deno".to_string())), PermissionState::Granted);
       set_prompt_result(false);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
       set_prompt_result(true);
@@ -1692,9 +1918,9 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_run(&Some(svec!["deno"]), false)
       },
-      plugin: UnitPermission {
-        state: PermissionState::Prompt,
-        ..Default::default()
+      ffi: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_ffi(&Some(svec!["deno"]), false)
       },
       hrtime: UnitPermission {
         state: PermissionState::Denied,
@@ -1707,17 +1933,17 @@ mod tests {
     };
     #[rustfmt::skip]
     {
-      assert_eq!(perms.read.revoke(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
-      assert_eq!(perms.read.revoke(Some(&Path::new("/foo"))), PermissionState::Prompt);
-      assert_eq!(perms.read.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
-      assert_eq!(perms.write.revoke(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.read.revoke(Some(Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.read.revoke(Some(Path::new("/foo"))), PermissionState::Prompt);
+      assert_eq!(perms.read.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.write.revoke(Some(Path::new("/foo/bar"))), PermissionState::Granted);
       assert_eq!(perms.write.revoke(None), PermissionState::Prompt);
-      assert_eq!(perms.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.write.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
       assert_eq!(perms.net.revoke(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       assert_eq!(perms.net.revoke(Some(&("127.0.0.1", None))), PermissionState::Prompt);
       assert_eq!(perms.env.revoke(Some(&"HOME".to_string())), PermissionState::Prompt);
       assert_eq!(perms.run.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
-      assert_eq!(perms.plugin.revoke(), PermissionState::Prompt);
+      assert_eq!(perms.ffi.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
       assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
       assert_eq!(perms.usb.revoke(Some(0x8036)), PermissionState::Granted);
       assert_eq!(perms.usb.revoke(None), PermissionState::Prompt);
@@ -1732,7 +1958,7 @@ mod tests {
       net: Permissions::new_net(&None, true),
       env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
-      plugin: Permissions::new_plugin(false, true),
+      ffi: Permissions::new_ffi(&None, true),
       hrtime: Permissions::new_hrtime(false, true),
       usb: Permissions::new_usb(&None, true),
     };
@@ -1740,16 +1966,16 @@ mod tests {
     let _guard = PERMISSION_PROMPT_GUARD.lock();
 
     set_prompt_result(true);
-    assert!(perms.read.check(&Path::new("/foo")).is_ok());
+    assert!(perms.read.check(Path::new("/foo")).is_ok());
     set_prompt_result(false);
-    assert!(perms.read.check(&Path::new("/foo")).is_ok());
-    assert!(perms.read.check(&Path::new("/bar")).is_err());
+    assert!(perms.read.check(Path::new("/foo")).is_ok());
+    assert!(perms.read.check(Path::new("/bar")).is_err());
 
     set_prompt_result(true);
-    assert!(perms.write.check(&Path::new("/foo")).is_ok());
+    assert!(perms.write.check(Path::new("/foo")).is_ok());
     set_prompt_result(false);
-    assert!(perms.write.check(&Path::new("/foo")).is_ok());
-    assert!(perms.write.check(&Path::new("/bar")).is_err());
+    assert!(perms.write.check(Path::new("/foo")).is_ok());
+    assert!(perms.write.check(Path::new("/bar")).is_err());
 
     set_prompt_result(true);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_ok());
@@ -1786,7 +2012,7 @@ mod tests {
       net: Permissions::new_net(&None, true),
       env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
-      plugin: Permissions::new_plugin(false, true),
+      ffi: Permissions::new_ffi(&None, true),
       hrtime: Permissions::new_hrtime(false, true),
       usb: Permissions::new_usb(&None, true),
     };
@@ -1794,20 +2020,20 @@ mod tests {
     let _guard = PERMISSION_PROMPT_GUARD.lock();
 
     set_prompt_result(false);
-    assert!(perms.read.check(&Path::new("/foo")).is_err());
+    assert!(perms.read.check(Path::new("/foo")).is_err());
     set_prompt_result(true);
-    assert!(perms.read.check(&Path::new("/foo")).is_err());
-    assert!(perms.read.check(&Path::new("/bar")).is_ok());
+    assert!(perms.read.check(Path::new("/foo")).is_err());
+    assert!(perms.read.check(Path::new("/bar")).is_ok());
     set_prompt_result(false);
-    assert!(perms.read.check(&Path::new("/bar")).is_ok());
+    assert!(perms.read.check(Path::new("/bar")).is_ok());
 
     set_prompt_result(false);
-    assert!(perms.write.check(&Path::new("/foo")).is_err());
+    assert!(perms.write.check(Path::new("/foo")).is_err());
     set_prompt_result(true);
-    assert!(perms.write.check(&Path::new("/foo")).is_err());
-    assert!(perms.write.check(&Path::new("/bar")).is_ok());
+    assert!(perms.write.check(Path::new("/foo")).is_err());
+    assert!(perms.write.check(Path::new("/bar")).is_ok());
     set_prompt_result(false);
-    assert!(perms.write.check(&Path::new("/bar")).is_ok());
+    assert!(perms.write.check(Path::new("/bar")).is_ok());
 
     set_prompt_result(false);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
