@@ -15,35 +15,41 @@
   const illegalConstructorKey = Symbol("illegalConstructorKey");
 
   class Window extends EventTarget {
-    [SymbolToStringTag] = "Window";
-
     constructor(key = null) {
       if (key !== illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
       super();
     }
+
+    get [SymbolToStringTag]() {
+      return "Window";
+    }
   }
 
   class WorkerGlobalScope extends EventTarget {
-    [SymbolToStringTag] = "WorkerGlobalScope";
-
     constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
       super();
     }
+
+    get [SymbolToStringTag]() {
+      return "WorkerGlobalScope";
+    }
   }
 
   class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
-    [SymbolToStringTag] = "DedicatedWorkerGlobalScope";
-
     constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
       super();
+    }
+
+    get [SymbolToStringTag]() {
+      return "DedicatedWorkerGlobalScope";
     }
   }
 
