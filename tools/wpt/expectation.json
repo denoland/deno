@@ -11942,7 +11942,6 @@
         "importKey step: decryption AES-GCM 256-bit key, illegal tag length 129-bits",
         "importKey step: decryption AES-GCM 256-bit key, illegal tag length 256-bits"
       ],
-      "rsa.https.any.html": true,
       "rsa_oaep.https.any.html": [
         "importVectorKeys step: RSA-OAEP with SHA-1 and no label decryption",
         "importVectorKeys step: RSA-OAEP with SHA-256 and no label decryption",
@@ -12122,7 +12121,6 @@
         "Success: generateKey({name: Ecdsa, namedCurve: P-521}, false, [sign, verify, sign, sign, verify])",
         "Success: generateKey({name: Ecdsa, namedCurve: P-521}, true, [sign, verify, sign, sign, verify])"
       ],
-      "successes_RSA-OAEP.https.any.html": true,
       "successes_RSA-OAEP.https.any.html?1-10": true,
       "successes_RSA-OAEP.https.any.html?101-110": true,
       "successes_RSA-OAEP.https.any.html?11-20": true,
@@ -13034,8 +13032,7 @@
     },
     "wrapKey_unwrapKey": {
       "wrapKey_unwrapKey.https.any.html": false
-    },
-    "randomUUID.any.html": true
+    }
   },
   "console": {
     "console-is-a-namespace.any.html": true,
@@ -13506,14 +13503,7 @@
         ],
         "length.any.html": true,
         "toString.any.html": true,
-        "constructor-reftypes.tentative.any.html": [
-          "initialize externref table with default value",
-          "initialize anyfunc table with default value",
-          "initialize anyfunc table with a bad default value"
-        ],
         "constructor-types.tentative.any.html": false,
-        "grow-reftypes.tentative.any.html": false,
-        "set-reftypes.tentative.any.html": false,
         "type.tentative.any.html": false
       },
       "exception": {
@@ -13587,7 +13577,7 @@
     },
     "create_multiple_memory.worker.html": true
   },
-  "WebIDL": {
+  "webidl": {
     "ecmascript-binding": {
       "es-exceptions": {
         "DOMException-constants.any.html": true,
