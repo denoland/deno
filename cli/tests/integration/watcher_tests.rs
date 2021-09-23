@@ -6,6 +6,15 @@ use std::io::BufRead;
 use tempfile::TempDir;
 use test_util as util;
 
+macro_rules! assert_contains {
+  ($string:expr, $($test:expr),+) => {
+    let string = $string; // This might be a function call or something
+    if !($(string.contains($test))||+) {
+      panic!("{:?} does not contain any of {:?}", string, [$($test),+]);
+    }
+  }
+}
+
 // Helper function to skip watcher output that contains "Restarting"
 // phrase.
 fn skip_restarting_line(
@@ -112,20 +121,17 @@ fn bundle_js_watch() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
-  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
+  assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
   let file = PathBuf::from(&bundle);
   assert!(file.is_file());
   wait_for("Bundle finished", &mut stderr_lines);
 
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines
-    .next()
-    .unwrap()
-    .contains("File change detected!"));
-  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
-  assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
+  assert_contains!(stderr_lines.next().unwrap(), "File change detected!");
+  assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
+  assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
   let file = PathBuf::from(&bundle);
   assert!(file.is_file());
   wait_for("Bundle finished", &mut stderr_lines);
@@ -133,11 +139,8 @@ fn bundle_js_watch() {
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&file_to_watch, "syntax error ^^").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines
-    .next()
-    .unwrap()
-    .contains("File change detected!"));
-  assert!(stderr_lines.next().unwrap().contains("error: "));
+  assert_contains!(stderr_lines.next().unwrap(), "File change detected!");
+  assert_contains!(stderr_lines.next().unwrap(), "error: ");
   wait_for("Bundle failed", &mut stderr_lines);
   check_alive_then_kill(deno);
 }
@@ -165,20 +168,17 @@ fn bundle_watch_not_exit() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines.next().unwrap().contains("error:"));
-  assert!(stderr_lines.next().unwrap().contains("Bundle failed"));
+  assert_contains!(stderr_lines.next().unwrap(), "error:");
+  assert_contains!(stderr_lines.next().unwrap(), "Bundle failed");
   // the target file hasn't been created yet
   assert!(!target_file.is_file());
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
   write(&file_to_watch, "console.log(42);").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines
-    .next()
-    .unwrap()
-    .contains("File change detected!"));
-  assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
-  assert!(stderr_lines.next().unwrap().contains("target.js"));
+  assert_contains!(stderr_lines.next().unwrap(), "File change detected!");
+  assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
+  assert_contains!(stderr_lines.next().unwrap(), "target.js");
   wait_for("Bundle finished", &mut stderr_lines);
   // bundled file is created
   assert!(target_file.is_file());
@@ -204,7 +204,7 @@ fn run_watch() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  assert!(stdout_lines.next().unwrap().contains("Hello world"));
+  assert_contains!(stdout_lines.next().unwrap(), "Hello world");
   wait_for("Process finished", &mut stderr_lines);
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
@@ -215,8 +215,8 @@ fn run_watch() {
   // Events from the file watcher is "debounced", so we need to wait for the next execution to start
   std::thread::sleep(std::time::Duration::from_secs(1));
 
-  assert!(stderr_lines.next().unwrap().contains("Restarting"));
-  assert!(stdout_lines.next().unwrap().contains("Hello world2"));
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  assert_contains!(stdout_lines.next().unwrap(), "Hello world2");
   wait_for("Process finished", &mut stderr_lines);
 
   // Add dependency
@@ -228,22 +228,22 @@ fn run_watch() {
   )
   .unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines.next().unwrap().contains("Restarting"));
-  assert!(stdout_lines.next().unwrap().contains('0'));
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  assert_contains!(stdout_lines.next().unwrap(), '0');
   wait_for("Process finished", &mut stderr_lines);
 
   // Confirm that restarting occurs when a new file is updated
   write(&another_file, "export const foo = 42;").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines.next().unwrap().contains("Restarting"));
-  assert!(stdout_lines.next().unwrap().contains("42"));
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  assert_contains!(stdout_lines.next().unwrap(), "42");
   wait_for("Process finished", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&file_to_watch, "syntax error ^^").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines.next().unwrap().contains("Restarting"));
-  assert!(stderr_lines.next().unwrap().contains("error:"));
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  assert_contains!(stderr_lines.next().unwrap(), "error:");
   wait_for("Process failed", &mut stderr_lines);
 
   // Then restore the file
@@ -253,22 +253,22 @@ fn run_watch() {
   )
   .unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines.next().unwrap().contains("Restarting"));
-  assert!(stdout_lines.next().unwrap().contains("42"));
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  assert_contains!(stdout_lines.next().unwrap(), "42");
   wait_for("Process finished", &mut stderr_lines);
 
   // Update the content of the imported file with invalid syntax
   write(&another_file, "syntax error ^^").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines.next().unwrap().contains("Restarting"));
-  assert!(stderr_lines.next().unwrap().contains("error:"));
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  assert_contains!(stderr_lines.next().unwrap(), "error:");
   wait_for("Process failed", &mut stderr_lines);
 
   // Modify the imported file and make sure that restarting occurs
   write(&another_file, "export const foo = 'modified!';").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines.next().unwrap().contains("Restarting"));
-  assert!(stdout_lines.next().unwrap().contains("modified!"));
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  assert_contains!(stdout_lines.next().unwrap(), "modified!");
   wait_for("Process finished", &mut stderr_lines);
   check_alive_then_kill(child);
 }
@@ -306,7 +306,7 @@ fn run_watch_load_unload_events() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   // Wait for the first load event to fire
-  assert!(stdout_lines.next().unwrap().contains("load"));
+  assert_contains!(stdout_lines.next().unwrap(), "load");
 
   // Change content of the file, this time without an interval to keep it alive.
   write(
@@ -327,16 +327,16 @@ fn run_watch_load_unload_events() {
   std::thread::sleep(std::time::Duration::from_secs(1));
 
   // Wait for the restart
-  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
 
   // Confirm that the unload event was dispatched from the first run
-  assert!(stdout_lines.next().unwrap().contains("unload"));
+  assert_contains!(stdout_lines.next().unwrap(), "unload");
 
   // Followed by the load event of the second run
-  assert!(stdout_lines.next().unwrap().contains("load"));
+  assert_contains!(stdout_lines.next().unwrap(), "load");
 
   // Which is then unloaded as there is nothing keeping it alive.
-  assert!(stdout_lines.next().unwrap().contains("unload"));
+  assert_contains!(stdout_lines.next().unwrap(), "unload");
   check_alive_then_kill(child);
 }
 
@@ -361,14 +361,14 @@ fn run_watch_not_exit() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines.next().unwrap().contains("error:"));
-  assert!(stderr_lines.next().unwrap().contains("Process failed"));
+  assert_contains!(stderr_lines.next().unwrap(), "error:");
+  assert_contains!(stderr_lines.next().unwrap(), "Process failed");
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
   write(&file_to_watch, "console.log(42);").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert!(stderr_lines.next().unwrap().contains("Restarting"));
-  assert!(stdout_lines.next().unwrap().contains("42"));
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  assert_contains!(stdout_lines.next().unwrap(), "42");
   wait_for("Process finished", &mut stderr_lines);
   check_alive_then_kill(child);
 }
@@ -416,23 +416,14 @@ fn run_watch_with_import_map_and_relative_paths() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  assert!(stderr_lines.next().unwrap().contains("Process finished"));
-  assert!(stdout_lines.next().unwrap().contains("Hello world"));
+  assert_contains!(stderr_lines.next().unwrap(), "Process finished");
+  assert_contains!(stdout_lines.next().unwrap(), "Hello world");
 
   check_alive_then_kill(child);
 }
 
 #[flaky_test]
 fn test_watch() {
-  macro_rules! assert_contains {
-    ($string:expr, $($test:expr),+) => {
-      let string = $string; // This might be a function call or something
-      if !($(string.contains($test))||+) {
-        panic!("{:?} does not contain any of {:?}", string, [$($test),+]);
-      }
-    }
-  }
-
   let t = TempDir::new().unwrap();
 
   let mut child = util::deno_cmd()
@@ -547,7 +538,7 @@ fn test_watch() {
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
   assert_contains!(stdout_lines.next().unwrap(), "FAILED");
-  while !stdout_lines.next().unwrap().contains("test result") {}
+  wait_for("test result", &mut stdout_lines);
   stdout_lines.next();
   wait_for("Test finished", &mut stderr_lines);
 
@@ -577,15 +568,6 @@ fn test_watch() {
 
 #[flaky_test]
 fn test_watch_doc() {
-  macro_rules! assert_contains {
-        ($string:expr, $($test:expr),+) => {
-          let string = $string; // This might be a function call or something
-          if !($(string.contains($test))||+) {
-            panic!("{:?} does not contain any of {:?}", string, [$($test),+]);
-          }
-        }
-      }
-
   let t = TempDir::new().unwrap();
 
   let mut child = util::deno_cmd()
