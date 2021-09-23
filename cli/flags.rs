@@ -3006,8 +3006,12 @@ mod tests {
 
   #[test]
   fn eval_typescript() {
-    let r =
-      flags_from_vec(svec!["deno", "eval", "-T", "'console.log(\"hello\")'"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "eval",
+      "--ext=ts",
+      "'console.log(\"hello\")'"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
