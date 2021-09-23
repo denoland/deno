@@ -286,12 +286,12 @@ impl Flags {
             .map(|i| i.to_string())
             .collect::<Vec<String>>()
             .join(",")
-          );
-          args.push(s);
-        }
-        _ => {}
+        );
+        args.push(s);
+      }
+      _ => {}
     }
-    
+
     match &self.unsafely_ignore_certificate_errors {
       Some(ic_allowlist) if ic_allowlist.is_empty() => {
         args.push("--unsafely-ignore-certificate-errors".to_string());
