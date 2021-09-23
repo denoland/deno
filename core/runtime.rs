@@ -2064,7 +2064,6 @@ pub mod tests {
     impl ModuleLoader for ModsLoader {
       fn resolve(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
@@ -2077,7 +2076,6 @@ pub mod tests {
 
       fn load(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,

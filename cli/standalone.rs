@@ -20,7 +20,6 @@ use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
-use deno_core::OpState;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
@@ -29,7 +28,6 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_tls::create_default_root_cert_store;
 use log::Level;
-use std::cell::RefCell;
 use std::convert::TryInto;
 use std::env::current_exe;
 use std::fs::File;
@@ -127,7 +125,6 @@ struct EmbeddedModuleLoader(String);
 impl ModuleLoader for EmbeddedModuleLoader {
   fn resolve(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     _referrer: &str,
     _is_main: bool,
@@ -146,7 +143,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
   fn load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,

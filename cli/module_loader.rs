@@ -69,7 +69,6 @@ impl CliModuleLoader {
 impl ModuleLoader for CliModuleLoader {
   fn resolve(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     is_main: bool,
@@ -96,7 +95,6 @@ impl ModuleLoader for CliModuleLoader {
 
   fn load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
