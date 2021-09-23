@@ -13222,7 +13222,11 @@
       "ReadableStreamBYOBRequest interface: self.readableStreamByobRequest must inherit property \"respond(unsigned long long)\" with the proper type",
       "ReadableStreamBYOBRequest interface: calling respond(unsigned long long) on self.readableStreamByobRequest with too few arguments must throw TypeError",
       "ReadableStreamBYOBRequest interface: self.readableStreamByobRequest must inherit property \"respondWithNewView(ArrayBufferView)\" with the proper type",
-      "ReadableStreamBYOBRequest interface: calling respondWithNewView(ArrayBufferView) on self.readableStreamByobRequest with too few arguments must throw TypeError"
+      "ReadableStreamBYOBRequest interface: calling respondWithNewView(ArrayBufferView) on self.readableStreamByobRequest with too few arguments must throw TypeError",
+      "WritableStreamDefaultController interface: attribute abortReason",
+      "WritableStreamDefaultController interface: attribute signal",
+      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"abortReason\" with the proper type",
+      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"signal\" with the proper type"
     ],
     "piping": {
       "abort.any.html": true,
@@ -13486,9 +13490,20 @@
       },
       "prototypes.any.html": false,
       "table": {
-        "constructor.any.html": true,
-        "get-set.any.html": true,
-        "grow.any.html": true,
+        "constructor.any.html": [
+          "initialize externref table with default value",
+          "initialize anyfunc table with default value",
+          "initialize anyfunc table with a bad default value"
+        ],
+        "get-set.any.html": [
+          "Arguments for anyfunc table set",
+          "Arguments for externref table set"
+        ],
+        "grow.any.html": [
+          "Grow with exported-function argument",
+          "Grow with non-function argument",
+          "Grow with JS-function argument"
+        ],
         "length.any.html": true,
         "toString.any.html": true,
         "constructor-reftypes.tentative.any.html": [
@@ -13525,7 +13540,17 @@
       "function": {
         "call.tentative.any.html": false,
         "constructor.tentative.any.html": [
-          "construct with JS function"
+          "name",
+          "length",
+          "Too few arguments",
+          "Calling",
+          "construct with JS function",
+          "fail with missing results",
+          "fail with missing parameters",
+          "fail with non-string parameters & results",
+          "fail with non-existent parameter and result type",
+          "fail with non-function object",
+          "fail to construct with non-callable object"
         ],
         "table.tentative.any.html": false,
         "type.tentative.any.html": false
@@ -14081,7 +14106,14 @@
           "Blob paired surrogates (invalid utf-8)",
           "Blob empty",
           "Blob NUL",
-          "File basic"
+          "File basic",
+          "Serializing a non-serializable platform object fails",
+          "An object whose interface is deleted from the global must still deserialize",
+          "A subclass instance will deserialize as its closest serializable superclass",
+          "A detached ArrayBuffer cannot be transferred",
+          "A detached platform object cannot be transferred",
+          "Transferring a non-transferable platform object fails",
+          "A subclass instance will be received as its closest transferable superclass"
         ]
       }
     }
@@ -14561,16 +14593,36 @@
   },
   "urlpattern": {
     "urlpattern.any.html": [
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
+      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
+      "Pattern: [{\"hostname\":\"bad|hostname\"}] Inputs: undefined",
+      "Pattern: [] Inputs: [\"https://example.com/\"]",
+      "Pattern: [] Inputs: [{}]",
+      "Pattern: [] Inputs: []"
     ],
     "urlpattern.any.worker.html": [
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
+      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
+      "Pattern: [{\"hostname\":\"bad|hostname\"}] Inputs: undefined",
+      "Pattern: [] Inputs: [\"https://example.com/\"]",
+      "Pattern: [] Inputs: [{}]",
+      "Pattern: [] Inputs: []"
     ],
     "urlpattern.https.any.html": [
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
+      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
+      "Pattern: [{\"hostname\":\"bad|hostname\"}] Inputs: undefined",
+      "Pattern: [] Inputs: [\"https://example.com/\"]",
+      "Pattern: [] Inputs: [{}]",
+      "Pattern: [] Inputs: []"
     ],
     "urlpattern.https.any.worker.html": [
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
+      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
+      "Pattern: [{\"hostname\":\"bad|hostname\"}] Inputs: undefined",
+      "Pattern: [] Inputs: [\"https://example.com/\"]",
+      "Pattern: [] Inputs: [{}]",
+      "Pattern: [] Inputs: []"
     ]
   }
 }
