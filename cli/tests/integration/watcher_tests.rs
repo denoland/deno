@@ -19,31 +19,10 @@ fn skip_restarting_line(
   }
 }
 
-/// Helper function to skip watcher output that doesn't contain
-/// "{job_name} finished" phrase.
-fn wait_for_process_finished(
-  job_name: &str,
-  stderr_lines: &mut impl Iterator<Item = String>,
-) {
-  let phrase = format!("{} finished", job_name);
+fn wait_for(s: &str, lines: &mut impl Iterator<Item = String>) {
   loop {
-    let msg = stderr_lines.next().unwrap();
-    if msg.contains(&phrase) {
-      break;
-    }
-  }
-}
-
-/// Helper function to skip watcher output that doesn't contain
-/// "{job_name} failed" phrase.
-fn wait_for_process_failed(
-  job_name: &str,
-  stderr_lines: &mut impl Iterator<Item = String>,
-) {
-  let phrase = format!("{} failed", job_name);
-  loop {
-    let msg = stderr_lines.next().unwrap();
-    if msg.contains(&phrase) {
+    let msg = lines.next().unwrap();
+    if msg.contains(s) {
       break;
     }
   }
@@ -137,7 +116,7 @@ fn bundle_js_watch() {
   assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
   let file = PathBuf::from(&bundle);
   assert!(file.is_file());
-  wait_for_process_finished("Bundle", &mut stderr_lines);
+  wait_for("Bundle finished", &mut stderr_lines);
 
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
@@ -149,7 +128,7 @@ fn bundle_js_watch() {
   assert!(stderr_lines.next().unwrap().contains("mod6.bundle.js"));
   let file = PathBuf::from(&bundle);
   assert!(file.is_file());
-  wait_for_process_finished("Bundle", &mut stderr_lines);
+  wait_for("Bundle finished", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&file_to_watch, "syntax error ^^").unwrap();
@@ -159,7 +138,7 @@ fn bundle_js_watch() {
     .unwrap()
     .contains("File change detected!"));
   assert!(stderr_lines.next().unwrap().contains("error: "));
-  wait_for_process_failed("Bundle", &mut stderr_lines);
+  wait_for("Bundle failed", &mut stderr_lines);
   check_alive_then_kill(deno);
 }
 
@@ -200,7 +179,7 @@ fn bundle_watch_not_exit() {
     .contains("File change detected!"));
   assert!(stderr_lines.next().unwrap().contains("file_to_watch.js"));
   assert!(stderr_lines.next().unwrap().contains("target.js"));
-  wait_for_process_finished("Bundle", &mut stderr_lines);
+  wait_for("Bundle finished", &mut stderr_lines);
   // bundled file is created
   assert!(target_file.is_file());
   check_alive_then_kill(deno);
@@ -226,7 +205,7 @@ fn run_watch() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   assert!(stdout_lines.next().unwrap().contains("Hello world"));
-  wait_for_process_finished("Process", &mut stderr_lines);
+  wait_for("Process finished", &mut stderr_lines);
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
@@ -238,7 +217,7 @@ fn run_watch() {
 
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("Hello world2"));
-  wait_for_process_finished("Process", &mut stderr_lines);
+  wait_for("Process finished", &mut stderr_lines);
 
   // Add dependency
   let another_file = t.path().join("another_file.js");
@@ -251,21 +230,21 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains('0'));
-  wait_for_process_finished("Process", &mut stderr_lines);
+  wait_for("Process finished", &mut stderr_lines);
 
   // Confirm that restarting occurs when a new file is updated
   write(&another_file, "export const foo = 42;").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
-  wait_for_process_finished("Process", &mut stderr_lines);
+  wait_for("Process finished", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&file_to_watch, "syntax error ^^").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stderr_lines.next().unwrap().contains("error:"));
-  wait_for_process_failed("Process", &mut stderr_lines);
+  wait_for("Process failed", &mut stderr_lines);
 
   // Then restore the file
   write(
@@ -276,21 +255,21 @@ fn run_watch() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
-  wait_for_process_finished("Process", &mut stderr_lines);
+  wait_for("Process finished", &mut stderr_lines);
 
   // Update the content of the imported file with invalid syntax
   write(&another_file, "syntax error ^^").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stderr_lines.next().unwrap().contains("error:"));
-  wait_for_process_failed("Process", &mut stderr_lines);
+  wait_for("Process failed", &mut stderr_lines);
 
   // Modify the imported file and make sure that restarting occurs
   write(&another_file, "export const foo = 'modified!';").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("modified!"));
-  wait_for_process_finished("Process", &mut stderr_lines);
+  wait_for("Process finished", &mut stderr_lines);
   check_alive_then_kill(child);
 }
 
@@ -390,7 +369,7 @@ fn run_watch_not_exit() {
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert!(stderr_lines.next().unwrap().contains("Restarting"));
   assert!(stdout_lines.next().unwrap().contains("42"));
-  wait_for_process_finished("Process", &mut stderr_lines);
+  wait_for("Process finished", &mut stderr_lines);
   check_alive_then_kill(child);
 }
 
@@ -475,7 +454,7 @@ fn test_watch() {
     stdout_lines.next().unwrap(),
     "0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
   );
-  wait_for_process_finished("Test", &mut stderr_lines);
+  wait_for("Test finished", &mut stderr_lines);
 
   let foo_file = t.path().join("foo.js");
   let bar_file = t.path().join("bar.js");
@@ -502,7 +481,7 @@ fn test_watch() {
   stdout_lines.next();
   stdout_lines.next();
   stdout_lines.next();
-  wait_for_process_finished("Test", &mut stderr_lines);
+  wait_for("Test finished", &mut stderr_lines);
 
   // Change content of the file
   write(
@@ -517,7 +496,7 @@ fn test_watch() {
   stdout_lines.next();
   stdout_lines.next();
   stdout_lines.next();
-  wait_for_process_finished("Test", &mut stderr_lines);
+  wait_for("Test finished", &mut stderr_lines);
 
   // Add test
   let another_test = t.path().join("new_test.js");
@@ -528,7 +507,7 @@ fn test_watch() {
   stdout_lines.next();
   stdout_lines.next();
   stdout_lines.next();
-  wait_for_process_finished("Test", &mut stderr_lines);
+  wait_for("Test finished", &mut stderr_lines);
 
   // Confirm that restarting occurs when a new file is updated
   write(&another_test, "Deno.test('another one', () => 3 + 3); Deno.test('another another one', () => 4 + 4)")
@@ -540,7 +519,7 @@ fn test_watch() {
   stdout_lines.next();
   stdout_lines.next();
   stdout_lines.next();
-  wait_for_process_finished("Test", &mut stderr_lines);
+  wait_for("Test finished", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&another_test, "syntax error ^^").unwrap();
@@ -556,7 +535,7 @@ fn test_watch() {
   stdout_lines.next();
   stdout_lines.next();
   stdout_lines.next();
-  wait_for_process_finished("Test", &mut stderr_lines);
+  wait_for("Test finished", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and the test fails
   // This also confirms that it restarts when dependencies change
@@ -570,7 +549,7 @@ fn test_watch() {
   assert_contains!(stdout_lines.next().unwrap(), "FAILED");
   while !stdout_lines.next().unwrap().contains("test result") {}
   stdout_lines.next();
-  wait_for_process_finished("Test", &mut stderr_lines);
+  wait_for("Test finished", &mut stderr_lines);
 
   // Then restore the file
   write(&foo_file, "export default function foo() { 1 + 1 }").unwrap();
@@ -580,7 +559,7 @@ fn test_watch() {
   stdout_lines.next();
   stdout_lines.next();
   stdout_lines.next();
-  wait_for_process_finished("Test", &mut stderr_lines);
+  wait_for("Test finished", &mut stderr_lines);
 
   // Test that circular dependencies work fine
   write(
@@ -628,7 +607,7 @@ fn test_watch_doc() {
     stdout_lines.next().unwrap(),
     "0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
   );
-  wait_for_process_finished("Test", &mut stderr_lines);
+  wait_for("Test finished", &mut stderr_lines);
 
   let foo_file = t.path().join("foo.ts");
   write(
