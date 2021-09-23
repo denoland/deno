@@ -141,7 +141,7 @@ itest!(fmt_quiet_check_fmt_dir {
 });
 
 itest!(fmt_check_formatted_files {
-    args: "fmt --check fmt/regular/formatted1.js fmt/regular/formatted2.ts fmt/regular/formatted3.md fmt/regular/formatted4.jsonc",
+    args: "fmt --check fmt/regular/formatted1.js fmt/regular/formatted2.ts fmt/regular/formatted3.markdown fmt/regular/formatted4.jsonc",
     output: "fmt/expected_fmt_check_formatted_files.out",
     exit_code: 0,
   });

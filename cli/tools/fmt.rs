@@ -206,7 +206,10 @@ pub fn format_file(
   fmt_options: FmtOptionsConfig,
 ) -> Result<String, String> {
   let ext = get_extension(file_path).unwrap_or_else(String::new);
-  if ext == "md" {
+  if matches!(
+    ext.as_str(),
+    "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown"
+  ) {
     format_markdown(file_text, &fmt_options)
   } else if matches!(ext.as_str(), "json" | "jsonc") {
     format_json(file_text, &fmt_options)
