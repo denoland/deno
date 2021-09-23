@@ -80,6 +80,9 @@ impl ModuleLoader for CliModuleLoader {
       referrer
     };
 
+    // TODO(ry) I think we can remove this conditional. At the time of writing
+    // we don't have any tests that fail if it was removed.
+    // https://github.com/WICG/import-maps/issues/157
     if !is_main {
       if let Some(import_map) = &self.import_map {
         return import_map
