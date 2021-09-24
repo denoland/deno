@@ -1946,14 +1946,7 @@ fn uninstall_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
-  let name_values = matches.values_of("name").unwrap();
-  let mut cmd = vec![];
-  for value in name_values {
-    cmd.push(value.to_string());
-  }
-
-  let name = cmd[0].to_string();
-
+  let name = matches.value_of("name").unwrap().to_string();
   flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
 }
 
