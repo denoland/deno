@@ -41,6 +41,7 @@ delete Object.prototype.__proto__;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
+  const urlPattern = window.__bootstrap.urlPattern;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
@@ -217,17 +218,13 @@ delete Object.prototype.__proto__;
     );
     build.setBuildInfo(runtimeOptions.target);
     util.setLogDebug(runtimeOptions.debugFlag, source);
-    // TODO(bartlomieju): a very crude way to disable
-    // source mapping of errors. This condition is true
-    // only for compiled standalone binaries.
-    let prepareStackTrace;
-    if (runtimeOptions.applySourceMaps) {
-      prepareStackTrace = core.createPrepareStackTrace(
-        errorStack.opApplySourceMap,
-      );
-    } else {
-      prepareStackTrace = core.createPrepareStackTrace();
-    }
+    const prepareStackTrace = core.createPrepareStackTrace(
+      // TODO(bartlomieju): a very crude way to disable
+      // source mapping of errors. This condition is true
+      // only for compiled standalone binaries.
+      runtimeOptions.applySourceMaps ? errorStack.opApplySourceMap : undefined,
+      errorStack.opFormatFileName,
+    );
     // deno-lint-ignore prefer-primordials
     Error.prepareStackTrace = prepareStackTrace;
   }
@@ -286,6 +283,12 @@ delete Object.prototype.__proto__;
       "DOMExceptionInvalidCharacterError",
       function DOMExceptionInvalidCharacterError(msg) {
         return new domException.DOMException(msg, "InvalidCharacterError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionDataError",
+      function DOMExceptionDataError(msg) {
+        return new domException.DOMException(msg, "DataError");
       },
     );
   }
@@ -417,7 +420,7 @@ delete Object.prototype.__proto__;
     btoa: util.writable(base64.btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
-    console: util.writable(
+    console: util.nonEnumerable(
       new Console((msg, level) => core.print(msg, level > 1)),
     ),
     crypto: util.readOnly(crypto.crypto),
@@ -431,8 +434,9 @@ delete Object.prototype.__proto__;
   };
 
   const unstableWindowOrWorkerGlobalScope = {
-    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
+    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
+    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
@@ -465,11 +469,6 @@ delete Object.prototype.__proto__;
     GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
     GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
   };
-
-  // The console seems to be the only one that should be writable and non-enumerable
-  // thus we don't have a unique helper for it. If other properties follow the same
-  // structure, it might be worth it to define a helper in `util`
-  windowOrWorkerGlobalScope.console.enumerable = false;
 
   const mainRuntimeGlobalProperties = {
     Location: location.locationConstructorDescriptor,

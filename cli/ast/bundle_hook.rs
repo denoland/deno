@@ -14,18 +14,12 @@ impl Hook for BundleHook {
   ) -> Result<Vec<deno_ast::swc::ast::KeyValueProp>, AnyError> {
     use deno_ast::swc::ast;
 
-    // we use custom file names, and swc "wraps" these in `<` and `>` so, we
-    // want to strip those back out.
-    let mut value = module_record.file_name.to_string();
-    value.pop();
-    value.remove(0);
-
     Ok(vec![
       ast::KeyValueProp {
         key: ast::PropName::Ident(ast::Ident::new("url".into(), span)),
         value: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
           span,
-          value: value.into(),
+          value: module_record.file_name.to_string().into(),
           kind: ast::StrKind::Synthesized,
           has_escape: false,
         }))),

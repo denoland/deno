@@ -19,6 +19,7 @@
   const { mixinBody, extractBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
   const mimesniff = window.__bootstrap.mimesniff;
+  const { blobFromObjectUrl } = window.__bootstrap.file;
   const {
     headersFromHeaderList,
     headerListFromHeaders,
@@ -58,6 +59,7 @@
    * @property {number} redirectCount
    * @property {string[]} urlList
    * @property {number | null} clientRid NOTE: non standard extension for `Deno.HttpClient`.
+   * @property {Blob | null} blobUrlEntry
    */
 
   const defaultInnerRequest = {
@@ -80,11 +82,16 @@
    * @returns
    */
   function newInnerRequest(method, url, headerList = [], body = null) {
+    let blobUrlEntry = null;
+    if (url.startsWith("blob:")) {
+      blobUrlEntry = blobFromObjectUrl(url);
+    }
     return {
       method: method,
       headerList,
       body,
       urlList: [url],
+      blobUrlEntry,
       ...defaultInnerRequest,
     };
   }
@@ -117,6 +124,7 @@
       redirectCount: request.redirectCount,
       urlList: request.urlList,
       clientRid: request.clientRid,
+      blobUrlEntry: request.blobUrlEntry,
     };
   }
 
@@ -211,7 +219,7 @@
     constructor(input, init = {}) {
       const prefix = "Failed to construct 'Request'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      input = webidl.converters["RequestInfo"](input, {
+      input = webidl.converters["RequestInfo_DOMString"](input, {
         prefix,
         context: "Argument 1",
       });
@@ -411,14 +419,15 @@
     "Request",
     Request,
   );
-  webidl.converters["RequestInfo"] = (V, opts) => {
+  webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
     // Union for (Request or USVString)
     if (typeof V == "object") {
       if (V instanceof Request) {
         return webidl.converters["Request"](V, opts);
       }
     }
-    return webidl.converters["USVString"](V, opts);
+    // Passed to new URL(...) which implictly converts DOMString -> USVString
+    return webidl.converters["DOMString"](V, opts);
   };
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
     "RequestRedirect",

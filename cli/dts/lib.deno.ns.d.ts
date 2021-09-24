@@ -786,32 +786,6 @@ declare namespace Deno {
    */
   export function fdatasync(rid: number): Promise<void>;
 
-  /** **UNSTABLE**: New API should be tested first.
-   *
-   * Acquire an advisory file-system lock for the provided file. `exclusive`
-   * defaults to `false`.
-   */
-  export function flock(rid: number, exclusive?: boolean): Promise<void>;
-
-  /** **UNSTABLE**: New API should be tested first.
-   *
-   * Acquire an advisory file-system lock for the provided file. `exclusive`
-   * defaults to `false`.
-   */
-  export function flockSync(rid: number, exclusive?: boolean): void;
-
-  /** **UNSTABLE**: New API should be tested first.
-   *
-   * Release an advisory file-system lock for the provided file.
-   */
-  export function funlock(rid: number): Promise<void>;
-
-  /** **UNSTABLE**: New API should be tested first.
-   *
-   * Release an advisory file-system lock for the provided file.
-   */
-  export function funlockSync(rid: number): void;
-
   /** Close the given resource ID (rid) which has been previously opened, such
    * as via opening or creating a file.  Closing a file when you are finished
    * with it is important to avoid leaking resources.
@@ -2034,6 +2008,12 @@ declare namespace Deno {
    * Environmental variables for subprocess can be specified using `opt.env`
    * mapping.
    *
+   * `opt.uid` sets the child process’s user ID. This translates to a setuid call
+   * in the child process. Failure in the setuid call will cause the spawn to fail.
+   *
+   * `opt.gid` is similar to `opt.uid`, but sets the group ID of the child process.
+   * This has the same semantics as the uid field.
+   *
    * By default subprocess inherits stdio of parent process. To change that
    * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
    * they can be set to either an rid of open file or set to "inherit" "piped"
@@ -2428,8 +2408,8 @@ declare namespace Deno {
    * Services HTTP requests given a TCP or TLS socket.
    *
    * ```ts
-   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const httpConn = Deno.serveHttp(conn);
+   * const conn = await Deno.listen({ port: 80 });
+   * const httpConn = Deno.serveHttp(await conn.accept());
    * const e = await httpConn.nextRequest();
    * if (e) {
    *   e.respondWith(new Response("Hello World"));
@@ -2454,4 +2434,50 @@ declare namespace Deno {
    * ```
    */
   export function serveHttp(conn: Conn): HttpConn;
+
+  export interface WebSocketUpgrade {
+    response: Response;
+    socket: WebSocket;
+  }
+
+  export interface UpgradeWebSocketOptions {
+    protocol?: string;
+  }
+
+  /**
+   * Used to upgrade an incoming HTTP request to a WebSocket.
+   *
+   * Given a request, returns a pair of WebSocket and Response. The original
+   * request must be responded to with the returned response for the websocket
+   * upgrade to be successful.
+   *
+   * ```ts
+   * const conn = await Deno.listen({ port: 80 });
+   * const httpConn = Deno.serveHttp(await conn.accept());
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   const { socket, response } = Deno.upgradeWebSocket(e.request);
+   *   socket.onopen = () => {
+   *     socket.send("Hello World!");
+   *   };
+   *   socket.onmessage = (e) => {
+   *     console.log(e.data);
+   *     socket.close();
+   *   };
+   *   socket.onclose = () => console.log("WebSocket has been closed.");
+   *   socket.onerror = (e) => console.error("WebSocket error:", e);
+   *   e.respondWith(response);
+   * }
+   * ```
+   *
+   * If the request body is disturbed (read from) before the upgrade is
+   * completed, upgrading fails.
+   *
+   * This operation does not yet consume the request or open the websocket. This
+   * only happens once the returned response has been passed to `respondWith`.
+   */
+  export function upgradeWebSocket(
+    request: Request,
+    options?: UpgradeWebSocketOptions,
+  ): WebSocketUpgrade;
 }

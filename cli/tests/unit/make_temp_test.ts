@@ -2,12 +2,12 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
-unitTest({ perms: { write: true } }, function makeTempDirSyncSuccess() {
+unitTest({ permissions: { write: true } }, function makeTempDirSyncSuccess() {
   const dir1 = Deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
   const dir2 = Deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
   // Check that both dirs are different.
@@ -29,7 +29,7 @@ unitTest({ perms: { write: true } }, function makeTempDirSyncSuccess() {
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function makeTempDirSyncMode() {
     const path = Deno.makeTempDirSync();
     const pathInfo = Deno.statSync(path);
@@ -47,7 +47,7 @@ unitTest(function makeTempDirSyncPerm() {
 });
 
 unitTest(
-  { perms: { write: true } },
+  { permissions: { write: true } },
   async function makeTempDirSuccess() {
     const dir1 = await Deno.makeTempDir({ prefix: "hello", suffix: "world" });
     const dir2 = await Deno.makeTempDir({ prefix: "hello", suffix: "world" });
@@ -64,14 +64,14 @@ unitTest(
     assert(dir3.startsWith(dir1));
     assert(/^[\\\/]/.test(dir3.slice(dir1.length)));
     // Check that creating a temp dir inside a nonexisting directory fails.
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.makeTempDir({ dir: "/baddir" });
     }, Deno.errors.NotFound);
   },
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function makeTempDirMode() {
     const path = await Deno.makeTempDir();
     const pathInfo = Deno.statSync(path);
@@ -81,7 +81,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess() {
+unitTest({ permissions: { write: true } }, function makeTempFileSyncSuccess() {
   const file1 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
   const file2 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
   // Check that both dirs are different.
@@ -104,7 +104,7 @@ unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess() {
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function makeTempFileSyncMode() {
     const path = Deno.makeTempFileSync();
     const pathInfo = Deno.statSync(path);
@@ -122,7 +122,7 @@ unitTest(function makeTempFileSyncPerm() {
 });
 
 unitTest(
-  { perms: { write: true } },
+  { permissions: { write: true } },
   async function makeTempFileSuccess() {
     const file1 = await Deno.makeTempFile({ prefix: "hello", suffix: "world" });
     const file2 = await Deno.makeTempFile({ prefix: "hello", suffix: "world" });
@@ -140,14 +140,14 @@ unitTest(
     assert(file3.startsWith(dir));
     assert(/^[\\\/]/.test(file3.slice(dir.length)));
     // Check that creating a temp file inside a nonexisting directory fails.
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.makeTempFile({ dir: "/baddir" });
     }, Deno.errors.NotFound);
   },
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function makeTempFileMode() {
     const path = await Deno.makeTempFile();
     const pathInfo = Deno.statSync(path);

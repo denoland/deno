@@ -445,7 +445,7 @@ unitTest(async function timerIgnoresDateOverride() {
   assertEquals(hasThrown, 1);
 });
 
-unitTest({ perms: { hrtime: true } }, function sleepSync() {
+unitTest({ permissions: { hrtime: true } }, function sleepSync() {
   const start = performance.now();
   Deno.sleepSync(10);
   const after = performance.now();
@@ -453,7 +453,7 @@ unitTest({ perms: { hrtime: true } }, function sleepSync() {
 });
 
 unitTest(
-  { perms: { hrtime: true } },
+  { permissions: { hrtime: true } },
   async function sleepSyncShorterPromise() {
     const perf = performance;
     const short = 5;
@@ -472,7 +472,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { hrtime: true } },
+  { permissions: { hrtime: true } },
   async function sleepSyncLongerPromise() {
     const perf = performance;
     const short = 5;

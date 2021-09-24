@@ -9,7 +9,6 @@ use crate::OpId;
 use crate::OpPayload;
 use crate::OpTable;
 use crate::PromiseId;
-use crate::ResourceId;
 use crate::ZeroCopyBuf;
 use log::debug;
 use rusty_v8 as v8;
@@ -20,7 +19,6 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::option::Option;
-use std::rc::Rc;
 use url::Url;
 use v8::HandleScope;
 use v8::Local;
@@ -73,9 +71,6 @@ lazy_static::lazy_static! {
       },
       v8::ExternalReference {
         function: set_wasm_streaming_callback.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: wasm_streaming_feed.map_fn_to()
       }
     ]);
 }
@@ -160,8 +155,6 @@ pub fn initialize_context<'s>(
     "setWasmStreamingCallback",
     set_wasm_streaming_callback,
   );
-  set_func(scope, core_val, "wasmStreamingFeed", wasm_streaming_feed);
-
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
@@ -535,14 +528,13 @@ fn call_console(
   deno_console_method.call(scope, receiver.into(), &call_args);
 }
 
-struct WasmStreamingResource(RefCell<v8::WasmStreaming>);
-impl crate::Resource for WasmStreamingResource {}
-
 fn set_wasm_streaming_callback(
   scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
+  use crate::ops_builtin::WasmStreamingResource;
+
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
@@ -582,67 +574,6 @@ fn set_wasm_streaming_callback(
       .get(scope)
       .call(scope, undefined.into(), &[arg, rid]);
   });
-}
-
-fn wasm_streaming_feed(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "snake_case")]
-  enum MessageType {
-    Bytes,
-    Abort,
-    Finish,
-  }
-
-  let rid: ResourceId = match serde_v8::from_v8(scope, args.get(0)) {
-    Ok(rid) => rid,
-    Err(_) => return throw_type_error(scope, "Invalid argument"),
-  };
-  let message_type = match serde_v8::from_v8(scope, args.get(1)) {
-    Ok(message_type) => message_type,
-    Err(_) => return throw_type_error(scope, "Invalid argument"),
-  };
-
-  let wasm_streaming = {
-    let state_rc = JsRuntime::state(scope);
-    let state = state_rc.borrow();
-    // If message_type is not Bytes, we'll be consuming the WasmStreaming
-    // instance, so let's also remove it from the resource table.
-    let wasm_streaming: Result<Rc<WasmStreamingResource>, AnyError> =
-      match message_type {
-        MessageType::Bytes => state.op_state.borrow().resource_table.get(rid),
-        _ => state.op_state.borrow_mut().resource_table.take(rid),
-      };
-    match wasm_streaming {
-      Ok(wasm_streaming) => wasm_streaming,
-      Err(e) => return throw_type_error(scope, e.to_string()),
-    }
-  };
-
-  match message_type {
-    MessageType::Bytes => {
-      let bytes: ZeroCopyBuf = match serde_v8::from_v8(scope, args.get(2)) {
-        Ok(bytes) => bytes,
-        Err(_) => return throw_type_error(scope, "Invalid resource ID."),
-      };
-      wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
-    }
-    _ => {
-      // These types need to consume the WasmStreaming instance.
-      let wasm_streaming = match Rc::try_unwrap(wasm_streaming) {
-        Ok(streaming) => streaming.0.into_inner(),
-        Err(_) => panic!("Couldn't consume WasmStreamingResource."),
-      };
-      match message_type {
-        MessageType::Bytes => unreachable!(),
-        MessageType::Finish => wasm_streaming.finish(),
-        MessageType::Abort => wasm_streaming.abort(Some(args.get(2))),
-      }
-    }
-  }
 }
 
 fn encode(

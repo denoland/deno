@@ -56,19 +56,6 @@
     ],
   );
 
-  /**
-   * Tries to close the resource (and ignores BadResource errors).
-   * @param {number} rid
-   */
-  function tryClose(rid) {
-    try {
-      core.close(rid);
-    } catch (err) {
-      // Ignore error if the socket has already been closed.
-      if (!(err instanceof Deno.errors.BadResource)) throw err;
-    }
-  }
-
   const _rid = Symbol("[[rid]]");
   const _url = Symbol("[[url]]");
   const _connection = Symbol("[[connection]]");
@@ -279,7 +266,7 @@
                     case "close": {
                       if (this[_closing]) {
                         this[_closed].resolve(value);
-                        tryClose(this[_rid]);
+                        core.tryClose(this[_rid]);
                       } else {
                         PromisePrototypeThen(
                           core.opAsync("op_ws_close", {
@@ -288,12 +275,12 @@
                           }),
                           () => {
                             this[_closed].resolve(value);
-                            tryClose(this[_rid]);
+                            core.tryClose(this[_rid]);
                           },
                           (err) => {
                             this[_closed].reject(err);
                             controller.error(err);
-                            tryClose(this[_rid]);
+                            core.tryClose(this[_rid]);
                           },
                         );
                       }
@@ -303,7 +290,7 @@
                       const err = new Error(value);
                       this[_closed].reject(err);
                       controller.error(err);
-                      tryClose(this[_rid]);
+                      core.tryClose(this[_rid]);
                       break;
                     }
                   }
@@ -327,7 +314,7 @@
             }
           },
           (err) => {
-            tryClose(cancelRid);
+            core.tryClose(cancelRid);
             this[_connection].reject(err);
             this[_closed].reject(err);
           },
@@ -393,7 +380,7 @@
             reason: closeInfo.reason,
           }),
           (err) => {
-            this[_rid] && tryClose(this[_rid]);
+            this[_rid] && core.tryClose(this[_rid]);
             this[_closed].reject(err);
           },
         );

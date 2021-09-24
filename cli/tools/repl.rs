@@ -663,6 +663,7 @@ impl ReplSession {
         emit_metadata: false,
         source_map: false,
         inline_source_map: false,
+        inline_sources: false,
         imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
         // JSX is not supported in the REPL
         transform_jsx: false,

@@ -7,6 +7,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use import_map::ImportMap;
 use log::error;
 use log::info;
 use log::warn;
@@ -55,8 +56,8 @@ use super::urls;
 use crate::config_file::ConfigFile;
 use crate::config_file::TsConfig;
 use crate::deno_dir;
+use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
-use crate::import_map::ImportMap;
 use crate::logger;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_module;
@@ -335,15 +336,15 @@ impl Inner {
     Ok(navigation_tree)
   }
 
-  fn merge_user_tsconfig(
-    &mut self,
-    maybe_config: &Option<String>,
-    maybe_root_uri: &Option<Url>,
-    tsconfig: &mut TsConfig,
-  ) -> Result<(), AnyError> {
-    self.maybe_config_file = None;
-    self.maybe_config_uri = None;
-    if let Some(config_str) = maybe_config {
+  /// Returns a tuple with parsed `ConfigFile` and `Url` pointing to that file.
+  /// If there's no config file specified in settings returns `None`.
+  fn get_config_file_and_url(
+    &self,
+  ) -> Result<Option<(ConfigFile, Url)>, AnyError> {
+    let workspace_settings = self.config.get_workspace_settings();
+    let maybe_root_uri = self.config.root_uri.clone();
+    let maybe_config = workspace_settings.config;
+    if let Some(config_str) = &maybe_config {
       if !config_str.is_empty() {
         info!("Setting TypeScript configuration from: \"{}\"", config_str);
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
@@ -373,18 +374,34 @@ impl Inner {
             .ok_or_else(|| anyhow!("Bad uri: \"{}\"", config_url))?;
           ConfigFile::read(path)?
         };
-        let (value, maybe_ignored_options) =
-          config_file.to_compiler_options()?;
-        tsconfig.merge(&value);
-        self.maybe_config_file = Some(config_file);
-        self.maybe_config_uri = Some(config_url);
-        if let Some(ignored_options) = maybe_ignored_options {
-          // TODO(@kitsonk) turn these into diagnostics that can be sent to the
-          // client
-          warn!("{}", ignored_options);
-        }
+        return Ok(Some((config_file, config_url)));
       }
     }
+
+    Ok(None)
+  }
+
+  fn merge_user_tsconfig(
+    &mut self,
+    tsconfig: &mut TsConfig,
+  ) -> Result<(), AnyError> {
+    self.maybe_config_file = None;
+    self.maybe_config_uri = None;
+
+    let maybe_file_and_url = self.get_config_file_and_url()?;
+
+    if let Some((config_file, config_url)) = maybe_file_and_url {
+      let (value, maybe_ignored_options) = config_file.to_compiler_options()?;
+      tsconfig.merge(&value);
+      self.maybe_config_file = Some(config_file);
+      self.maybe_config_uri = Some(config_url);
+      if let Some(ignored_options) = maybe_ignored_options {
+        // TODO(@kitsonk) turn these into diagnostics that can be sent to the
+        // client
+        warn!("{}", ignored_options);
+      }
+    }
+
     Ok(())
   }
 
@@ -474,6 +491,10 @@ impl Inner {
       let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str)
       {
         Ok(url)
+      } else if import_map_str.starts_with("data:") {
+        Url::parse(import_map_str).map_err(|_| {
+          anyhow!("Bad data url for import map: {:?}", import_map_str)
+        })
       } else if let Some(root_uri) = &maybe_root_uri {
         let root_path = root_uri
           .to_file_path()
@@ -488,21 +509,25 @@ impl Inner {
           import_map_str
         ))
       }?;
-      let import_map_path = import_map_url.to_file_path().map_err(|_| {
-        anyhow!("Cannot convert \"{}\" into a file path.", import_map_url)
-      })?;
-      info!(
-        "  Resolved import map: \"{}\"",
-        import_map_path.to_string_lossy()
-      );
-      let import_map_json =
+
+      let import_map_json = if import_map_url.scheme() == "data" {
+        get_source_from_data_url(&import_map_url)?.0
+      } else {
+        let import_map_path = import_map_url.to_file_path().map_err(|_| {
+          anyhow!("Cannot convert \"{}\" into a file path.", import_map_url)
+        })?;
+        info!(
+          "  Resolved import map: \"{}\"",
+          import_map_path.to_string_lossy()
+        );
         fs::read_to_string(import_map_path).await.map_err(|err| {
           anyhow!(
             "Failed to load the import map at: {}. [{}]",
             import_map_url,
             err
           )
-        })?;
+        })?
+      };
       let import_map =
         ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
       self.maybe_import_map_uri = Some(import_map_url);
@@ -566,20 +591,15 @@ impl Inner {
       // TODO(@kitsonk) remove for Deno 1.15
       "useUnknownInCatchVariables": false,
     }));
-    let (maybe_config, maybe_root_uri) = {
-      let config = &self.config;
-      let workspace_settings = config.get_workspace_settings();
-      if workspace_settings.unstable {
-        let unstable_libs = json!({
-          "lib": ["deno.ns", "deno.window", "deno.unstable"]
-        });
-        tsconfig.merge(&unstable_libs);
-      }
-      (workspace_settings.config, config.root_uri.clone())
-    };
-    if let Err(err) =
-      self.merge_user_tsconfig(&maybe_config, &maybe_root_uri, &mut tsconfig)
-    {
+    let config = &self.config;
+    let workspace_settings = config.get_workspace_settings();
+    if workspace_settings.unstable {
+      let unstable_libs = json!({
+        "lib": ["deno.ns", "deno.window", "deno.unstable"]
+      });
+      tsconfig.merge(&unstable_libs);
+    }
+    if let Err(err) = self.merge_user_tsconfig(&mut tsconfig) {
       self.client.show_message(MessageType::Warning, err).await;
     }
     let _ok: bool = self
@@ -1006,14 +1026,37 @@ impl Inner {
         PathBuf::from(params.text_document.uri.path())
       };
 
+    let maybe_file_and_url = self.get_config_file_and_url().map_err(|err| {
+      error!("Unable to parse configuration file: {}", err);
+      LspError::internal_error()
+    })?;
+
+    let fmt_options = if let Some((config_file, _)) = maybe_file_and_url {
+      config_file
+        .to_fmt_config()
+        .map_err(|err| {
+          error!("Unable to parse fmt configuration: {}", err);
+          LspError::internal_error()
+        })?
+        .unwrap_or_default()
+    } else {
+      Default::default()
+    };
+
     let source = document_data.source().clone();
     let text_edits = tokio::task::spawn_blocking(move || {
       let format_result = match source.module() {
-        Some(Ok(parsed_module)) => Ok(format_parsed_module(parsed_module)),
+        Some(Ok(parsed_module)) => {
+          Ok(format_parsed_module(parsed_module, fmt_options.options))
+        }
         Some(Err(err)) => Err(err.to_string()),
         None => {
           // it's not a js/ts file, so attempt to format its contents
-          format_file(&file_path, source.text_info().text_str())
+          format_file(
+            &file_path,
+            source.text_info().text_str(),
+            fmt_options.options,
+          )
         }
       };
 
@@ -1680,7 +1723,11 @@ impl Inner {
         position,
         tsc::GetCompletionsAtPositionOptions {
           user_preferences: tsc::UserPreferences {
+            allow_text_changes_in_new_files: Some(specifier.scheme() == "file"),
+            include_automatic_optional_chain_completions: Some(true),
+            provide_refactor_not_applicable_reason: Some(true),
             include_completions_with_insert_text: Some(true),
+            allow_incomplete_completions: Some(true),
             ..Default::default()
           },
           trigger_character,
