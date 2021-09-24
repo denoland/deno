@@ -974,13 +974,13 @@ mod tests {
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
 
-    //make file
-    let mut file = File::create("echo_test")?;
-    file.write_all(b"Hello, world!")?;
-
-    uninstall("echo_test");
-
     let mut file_path = bin_dir.join("echo_test");
+
+    let mut file = File::create(file_path);
+    file.write_all(b"Hello, world!");
+
+    uninstall("echo_test", Some(temp_dir.path().to_path_buf()));
+
     assert!(!file_path.exists());
 
     if cfg!(windows) {
