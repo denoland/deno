@@ -237,7 +237,7 @@ finishing test case.`;
   }
 
   function createTestFilter(filter) {
-    return ({ path = [], name}) => {
+    return ({ path = [], name }) => {
       if (filter.length == 0) {
         return true;
       }
@@ -333,15 +333,17 @@ finishing test case.`;
 
     try {
       await fn(context);
-      const pending = steps.filter(step => !step.result);
+      const pending = steps.filter((step) => !step.result);
       if (pending.length > 0) {
         throw new Error("One or more steps are pending");
       }
 
-      const failures = steps.filter(step => step.result.failed);
+      const failures = steps.filter((step) => step.result.failed);
       if (failures.length > 0) {
         return {
-          failed: new AggregateError(failures.map(step => step.result.failed))
+          failed: new AggregateError(
+            failures.map((step) => step.result.failed),
+          ),
         };
       }
     } catch (failed) {

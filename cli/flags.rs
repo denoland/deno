@@ -3682,7 +3682,9 @@ mod tests {
 
   #[test]
   fn test_with_filter() {
-    let r = flags_from_vec(svec!["deno", "test", "--filter", "first", "--filter", "second"]);
+    let r = flags_from_vec(svec![
+      "deno", "test", "--filter", "first", "--filter", "second"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
