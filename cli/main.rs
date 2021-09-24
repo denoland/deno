@@ -1005,7 +1005,7 @@ async fn test_command(
   fail_fast: Option<usize>,
   quiet: bool,
   allow_none: bool,
-  filter: Option<String>,
+  filter: Vec<String>,
   shuffle: Option<u64>,
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {

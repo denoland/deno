@@ -104,7 +104,7 @@ pub enum DenoSubcommand {
     quiet: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
-    filter: Option<String>,
+    filter: Vec<String>,
     shuffle: Option<u64>,
     concurrent_jobs: usize,
   },
@@ -1066,8 +1066,8 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     )
     .arg(
       Arg::with_name("filter")
-        .set(ArgSettings::AllowLeadingHyphen)
         .long("filter")
+        .multiple(true)
         .takes_value(true)
         .help("Run tests with this string or pattern in the test name"),
     )
@@ -1779,7 +1779,10 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let doc = matches.is_present("doc");
   let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
-  let filter = matches.value_of("filter").map(String::from);
+  let filter = match matches.values_of("filter") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
 
   let fail_fast = if matches.is_present("fail-fast") {
     if let Some(value) = matches.value_of("fail-fast") {
@@ -3562,7 +3565,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-run", "--filter", "foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3570,7 +3573,7 @@ mod tests {
           no_run: true,
           doc: false,
           fail_fast: None,
-          filter: Some("- foo".to_string()),
+          filter: svec!["foo"],
           allow_none: true,
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
@@ -3638,7 +3641,7 @@ mod tests {
           no_run: false,
           doc: false,
           fail_fast: Some(3),
-          filter: None,
+          filter: vec![],
           allow_none: false,
           quiet: false,
           shuffle: None,
@@ -3664,7 +3667,7 @@ mod tests {
           no_run: false,
           doc: false,
           fail_fast: None,
-          filter: None,
+          filter: vec![],
           allow_none: false,
           quiet: false,
           shuffle: None,
@@ -3672,6 +3675,29 @@ mod tests {
           concurrent_jobs: 1,
         },
         enable_testing_features: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_with_filter() {
+    let r = flags_from_vec(svec!["deno", "test", "--filter", "first", "--filter", "second"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: svec!["first", "second"],
+          allow_none: false,
+          quiet: false,
+          shuffle: None,
+          include: None,
+          concurrent_jobs: 1,
+        },
+        watch: false,
         ..Flags::default()
       }
     );
@@ -3687,7 +3713,7 @@ mod tests {
           no_run: false,
           doc: false,
           fail_fast: None,
-          filter: None,
+          filter: vec![],
           allow_none: false,
           quiet: false,
           shuffle: Some(1),
@@ -3710,7 +3736,7 @@ mod tests {
           no_run: false,
           doc: false,
           fail_fast: None,
-          filter: None,
+          filter: vec![],
           allow_none: false,
           quiet: false,
           shuffle: None,

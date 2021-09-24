@@ -251,7 +251,7 @@ pub async fn test_specifier(
   main_module: ModuleSpecifier,
   permissions: Permissions,
   quiet: bool,
-  filter: Option<String>,
+  filter: Vec<String>,
   shuffle: Option<u64>,
   channel: Sender<TestEvent>,
 ) -> Result<(), AnyError> {
@@ -517,7 +517,7 @@ pub async fn run_tests(
   fail_fast: Option<usize>,
   quiet: bool,
   allow_none: bool,
-  filter: Option<String>,
+  filter: Vec<String>,
   shuffle: Option<u64>,
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {

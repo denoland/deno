@@ -237,19 +237,31 @@ finishing test case.`;
   }
 
   function createTestFilter(filter) {
-    return (def) => {
-      if (filter) {
-        if (
-          StringPrototypeStartsWith(filter, "/") &&
-          StringPrototypeEndsWith(filter, "/")
-        ) {
-          const regex = new RegExp(
-            StringPrototypeSlice(filter, 1, filter.length - 1),
-          );
-          return RegExpPrototypeTest(regex, def.name);
+    return ({ path = [], name}) => {
+      if (filter.length == 0) {
+        return true;
+      }
+
+      const input = path.concat(name);
+      for (let i = 0; i < input.length; i++) {
+        if (i > filter.length - 1) {
+          break;
         }
 
-        return StringPrototypeIncludes(def.name, filter);
+        if (
+          StringPrototypeStartsWith(filter[i], "/") &&
+          StringPrototypeEndsWith(filter[i], "/")
+        ) {
+          const regex = new RegExp(
+            StringPrototypeSlice(filter[i], 1, filter[i].length - 1),
+          );
+
+          if (!RegExpPrototypeTest(regex, input[i])) {
+            return false;
+          }
+        } else if (!StringPrototypeIncludes(input[i], filter[i])) {
+          return false;
+        }
       }
 
       return true;
@@ -264,7 +276,7 @@ finishing test case.`;
     return result;
   }
 
-  async function runTest({ name, ignore, fn }, path = []) {
+  async function runTest({ name, ignore, fn }, path, predicate) {
     if (ignore) {
       return "ignored";
     }
@@ -274,14 +286,19 @@ finishing test case.`;
     const context = {
       async step(t, fn) {
         const test = createTestStep(t, fn);
-        steps.push(test);
         const step = {
           path: path.concat(name),
           name: test.name,
         };
 
+        if (!predicate(step)) {
+          return false;
+        }
+
+        steps.push(test);
+
         const earlier = DateNow();
-        const result = await runTest(test, path.concat(name));
+        const result = await runTest(test, path.concat(name), predicate);
         const elapsed = DateNow() - earlier;
 
         dispatchTestEvent({
@@ -332,7 +349,7 @@ finishing test case.`;
 
   async function runTests({
     disableLog = false,
-    filter = null,
+    filter = [],
     shuffle = null,
   } = {}) {
     const origin = getTestOrigin();
@@ -341,10 +358,11 @@ finishing test case.`;
       globalThis.console = new Console(() => {});
     }
 
+    const predicate = createTestFilter(filter);
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
     const filtered = ArrayPrototypeFilter(
       (only.length > 0 ? only : tests),
-      createTestFilter(filter),
+      predicate,
     );
 
     dispatchTestEvent({
@@ -382,7 +400,7 @@ finishing test case.`;
 
       dispatchTestEvent({ wait: description });
 
-      const result = await runTest(test);
+      const result = await runTest(test, [], predicate);
       const elapsed = DateNow() - earlier;
 
       dispatchTestEvent({

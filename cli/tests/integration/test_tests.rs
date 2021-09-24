@@ -157,6 +157,12 @@ itest!(filter {
   output: "test/filter.out",
 });
 
+itest!(filter_steps {
+  args: "test --filter=group1 --filter=test1 test/filter_steps",
+  exit_code: 0,
+  output: "test/filter_steps.out",
+});
+
 itest!(shuffle {
   args: "test --shuffle test/shuffle",
   exit_code: 0,
@@ -168,3 +174,4 @@ itest!(shuffle_with_seed {
   exit_code: 0,
   output: "test/shuffle.out",
 });
+
