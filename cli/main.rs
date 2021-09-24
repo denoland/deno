@@ -49,11 +49,11 @@ use crate::flags::Flags;
 use crate::flags::FmtFlags;
 use crate::flags::InfoFlags;
 use crate::flags::InstallFlags;
-use crate::flags::UninstallFlags;
 use crate::flags::LintFlags;
 use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
 use crate::flags::TestFlags;
+use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
 use crate::module_loader::CliModuleLoader;
@@ -492,10 +492,7 @@ async fn uninstall_command(
   _flags: Flags,
   uninstall_flags: UninstallFlags,
 ) -> Result<(), AnyError> {
-  tools::installer::uninstall(
-    uninstall_flags.name,
-    uninstall_flags.root
-  )
+  tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)
 }
 
 async fn lsp_command() -> Result<(), AnyError> {

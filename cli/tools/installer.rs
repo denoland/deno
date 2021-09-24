@@ -139,10 +139,7 @@ pub fn infer_name_from_url(url: &Url) -> Option<String> {
   Some(stem)
 }
 
-pub fn uninstall(
-  name: String,
-  root: Option<PathBuf>,
-) -> Result<(), AnyError> {
+pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
   let root = if let Some(root) = root {
     canonicalize_path(&root)?
   } else {
@@ -160,13 +157,13 @@ pub fn uninstall(
   let mut file_path = installation_dir.join(&name);
 
   let mut removed = false;
-  
+
   if file_path.exists() {
     fs::remove_file(&file_path)?;
     println!("deleted {}", file_path.to_string_lossy());
     removed = true
   };
-  
+
   if cfg!(windows) {
     file_path = file_path.with_extension("cmd");
     if file_path.exists() {
@@ -177,9 +174,7 @@ pub fn uninstall(
   }
 
   if !removed {
-    return Err(generic_error(
-      format!("No installation found for {}", name)
-    ));
+    return Err(generic_error(format!("No installation found for {}", name)));
   }
   println!("✅ Successfully uninstalled {}", name);
   Ok(())

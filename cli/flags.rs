@@ -437,7 +437,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     install_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("uninstall") {
     uninstall_parse(&mut flags, m);
-  }else if let Some(m) = matches.subcommand_matches("completions") {
+  } else if let Some(m) = matches.subcommand_matches("completions") {
     completions_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("test") {
     test_parse(&mut flags, m);
@@ -1954,10 +1954,7 @@ fn uninstall_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let name = cmd[0].to_string();
 
-  flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags {
-    name,
-    root,
-  });
+  flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
 }
 
 fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
