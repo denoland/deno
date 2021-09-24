@@ -27,7 +27,6 @@
     StringFromCharCode,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     WeakMap,
     WeakMapPrototypeGet,
     WeakMapPrototypeSet,
@@ -268,10 +267,6 @@
       webidl.assertBranded(this, CryptoKey);
       // TODO(lucacasonato): return a SameObject copy
       return this[_algorithm];
-    }
-
-    get [SymbolToStringTag]() {
-      return "CryptoKey";
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
@@ -1570,10 +1565,6 @@
 
       return result;
     }
-
-    get [SymbolToStringTag]() {
-      return "SubtleCrypto";
-    }
   }
 
   async function generateKey(normalizedAlgorithm, extractable, usages) {
@@ -2027,6 +2018,7 @@
     }
   }
 
+  webidl.configurePrototype(SubtleCrypto);
   const subtle = webidl.createBranded(SubtleCrypto);
 
   class Crypto {
@@ -2077,10 +2069,6 @@
     get subtle() {
       webidl.assertBranded(this, Crypto);
       return subtle;
-    }
-
-    get [SymbolToStringTag]() {
-      return "Crypto";
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {

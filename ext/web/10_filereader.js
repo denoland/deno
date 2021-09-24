@@ -31,7 +31,6 @@
     queueMicrotask,
     StringFromCodePoint,
     Symbol,
-    SymbolToStringTag,
     TypedArrayPrototypeSet,
     TypeError,
     Uint8Array,
@@ -44,10 +43,6 @@
   const handlerSymbol = Symbol("eventHandlers");
 
   class FileReader extends EventTarget {
-    get [SymbolToStringTag]() {
-      return "FileReader";
-    }
-
     /** @type {"empty" | "loading" | "done"} */
     [state] = "empty";
     /** @type {null | string | ArrayBuffer} */

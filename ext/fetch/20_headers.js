@@ -36,7 +36,6 @@
     Symbol,
     SymbolFor,
     SymbolIterator,
-    SymbolToStringTag,
     StringPrototypeReplaceAll,
     StringPrototypeIncludes,
     TypeError,
@@ -410,10 +409,6 @@
         headers[header[0]] = header[1];
       }
       return `Headers ${inspect(headers)}`;
-    }
-
-    get [SymbolToStringTag]() {
-      return "Headers";
     }
   }
 

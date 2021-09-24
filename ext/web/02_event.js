@@ -395,6 +395,9 @@
     get timeStamp() {
       return this[_attributes].timeStamp;
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "Event";
   }
 
   function defineEnumerableProps(
@@ -988,14 +991,12 @@
       return dispatch(self, event);
     }
 
-    get [SymbolToStringTag]() {
-      return "EventTarget";
-    }
-
     getParent(_event) {
       return null;
     }
   }
+
+  webidl.configurePrototype(EventTarget);
 
   defineEnumerableProps(EventTarget, [
     "addEventListener",
@@ -1052,10 +1053,6 @@
       this.#error = error;
     }
 
-    get [SymbolToStringTag]() {
-      return "ErrorEvent";
-    }
-
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
@@ -1070,6 +1067,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "ErrorEvent";
   }
 
   defineEnumerableProps(ErrorEvent, [
@@ -1158,6 +1158,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "CloseEvent";
   }
 
   class CustomEvent extends Event {
@@ -1176,10 +1179,6 @@
       return this.#detail;
     }
 
-    get [SymbolToStringTag]() {
-      return "CustomEvent";
-    }
-
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
@@ -1190,6 +1189,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "CustomEvent";
   }
 
   ReflectDefineProperty(CustomEvent.prototype, "detail", {
@@ -1219,6 +1221,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "ProgressEvent";
   }
 
   const _eventHandlers = Symbol("eventHandlers");

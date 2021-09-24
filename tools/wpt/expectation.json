@@ -12150,16 +12150,7 @@
     },
     "historical.any.html": false,
     "idlharness.https.any.html": [
-      "SubtleCrypto interface: operation encrypt(AlgorithmIdentifier, CryptoKey, BufferSource)",
-      "SubtleCrypto interface: operation decrypt(AlgorithmIdentifier, CryptoKey, BufferSource)",
-      "SubtleCrypto interface: operation sign(AlgorithmIdentifier, CryptoKey, BufferSource)",
-      "SubtleCrypto interface: operation verify(AlgorithmIdentifier, CryptoKey, BufferSource, BufferSource)",
-      "SubtleCrypto interface: operation digest(AlgorithmIdentifier, BufferSource)",
-      "SubtleCrypto interface: operation generateKey(AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
       "SubtleCrypto interface: operation deriveKey(AlgorithmIdentifier, CryptoKey, AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
-      "SubtleCrypto interface: operation deriveBits(AlgorithmIdentifier, CryptoKey, unsigned long)",
-      "SubtleCrypto interface: operation importKey(KeyFormat, (BufferSource or JsonWebKey), AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
-      "SubtleCrypto interface: operation exportKey(KeyFormat, CryptoKey)",
       "SubtleCrypto interface: operation wrapKey(KeyFormat, CryptoKey, CryptoKey, AlgorithmIdentifier)",
       "SubtleCrypto interface: operation unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
       "SubtleCrypto interface: crypto.subtle must inherit property \"deriveKey(AlgorithmIdentifier, CryptoKey, AlgorithmIdentifier, boolean, sequence<KeyUsage>)\" with the proper type",
@@ -13572,9 +13563,7 @@
           "If the implementation has a stack property on normal errors, it also does on DOMExceptions"
         ]
       },
-      "class-string-interface.any.html": [
-        "@@toStringTag exists on the prototype with the appropriate descriptor"
-      ],
+      "class-string-interface.any.html": true,
       "class-string-iterator-prototype-object.any.html": true,
       "global-immutable-prototype.any.html": [
         "Setting to a different prototype"

@@ -37,7 +37,6 @@
     RegExpPrototypeTest,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -371,10 +370,6 @@
         guardFromHeaders(this[_headers]),
       );
       return second;
-    }
-
-    get [SymbolToStringTag]() {
-      return "Response";
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {

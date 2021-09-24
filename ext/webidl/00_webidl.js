@@ -1053,6 +1053,12 @@
         });
       }
     }
+    ObjectDefineProperty(prototype.prototype, SymbolToStringTag, {
+      value: prototype.name,
+      enumerable: false,
+      configurable: true,
+      writable: false,
+    });
   }
 
   window.__bootstrap ??= {};
