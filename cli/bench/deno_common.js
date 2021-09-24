@@ -71,6 +71,10 @@ function benchRead128k() {
   );
 }
 
+function benchRequestNew() {
+  return benchSync("request_new", 5e5, () => new Request("https://deno.land"));
+}
+
 async function main() {
   // v8 builtin that's close to the upper bound non-NOPs
   benchDateNow();
@@ -83,5 +87,6 @@ async function main() {
   benchReadZero();
   benchWriteNull();
   await benchRead128k();
+  benchRequestNew();
 }
 await main();

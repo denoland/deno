@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
@@ -33,14 +33,17 @@ unitTest(
   { ignore: Deno.build.os == "windows" },
   async function chownNoWritePermission() {
     const filePath = "chown_test_file.txt";
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.chown(filePath, 1000, 1000);
     }, Deno.errors.PermissionDenied);
   },
 );
 
 unitTest(
-  { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
+  {
+    permissions: { run: true, write: true },
+    ignore: Deno.build.os == "windows",
+  },
   async function chownSyncFileNotExist() {
     const { uid, gid } = await getUidAndGid();
     const filePath = Deno.makeTempDirSync() + "/chown_test_file.txt";
@@ -52,19 +55,22 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
+  {
+    permissions: { run: true, write: true },
+    ignore: Deno.build.os == "windows",
+  },
   async function chownFileNotExist() {
     const { uid, gid } = await getUidAndGid();
     const filePath = (await Deno.makeTempDir()) + "/chown_test_file.txt";
 
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.chown(filePath, uid, gid);
     }, Deno.errors.NotFound);
   },
 );
 
 unitTest(
-  { perms: { write: true }, ignore: Deno.build.os == "windows" },
+  { permissions: { write: true }, ignore: Deno.build.os == "windows" },
   function chownSyncPermissionDenied() {
     const dirPath = Deno.makeTempDirSync();
     const filePath = dirPath + "/chown_test_file.txt";
@@ -79,13 +85,13 @@ unitTest(
 );
 
 unitTest(
-  { perms: { write: true }, ignore: Deno.build.os == "windows" },
+  { permissions: { write: true }, ignore: Deno.build.os == "windows" },
   async function chownPermissionDenied() {
     const dirPath = await Deno.makeTempDir();
     const filePath = dirPath + "/chown_test_file.txt";
     await Deno.writeTextFile(filePath, "Hello");
 
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       // try changing the file's owner to root
       await Deno.chown(filePath, 0, 0);
     }, Deno.errors.PermissionDenied);
@@ -94,7 +100,10 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
+  {
+    permissions: { run: true, write: true },
+    ignore: Deno.build.os == "windows",
+  },
   async function chownSyncSucceed() {
     // TODO(bartlomieju): when a file's owner is actually being changed,
     // chown only succeeds if run under priviledged user (root)
@@ -114,7 +123,10 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
+  {
+    permissions: { run: true, write: true },
+    ignore: Deno.build.os == "windows",
+  },
   async function chownSyncWithUrl() {
     const { uid, gid } = await getUidAndGid();
     const dirPath = Deno.makeTempDirSync();
@@ -126,7 +138,10 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
+  {
+    permissions: { run: true, write: true },
+    ignore: Deno.build.os == "windows",
+  },
   async function chownSucceed() {
     const { uid, gid } = await getUidAndGid();
     const dirPath = await Deno.makeTempDir();
@@ -138,7 +153,10 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
+  {
+    permissions: { run: true, write: true },
+    ignore: Deno.build.os == "windows",
+  },
   async function chownUidOnly() {
     const { uid } = await getUidAndGid();
     const dirPath = await Deno.makeTempDir();
@@ -150,7 +168,10 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
+  {
+    permissions: { run: true, write: true },
+    ignore: Deno.build.os == "windows",
+  },
   async function chownWithUrl() {
     // TODO(bartlomieju): same as chownSyncSucceed
     const { uid, gid } = await getUidAndGid();

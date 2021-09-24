@@ -3,14 +3,14 @@ import { assertEquals, unitTest } from "./test_util.ts";
 import { readAll } from "../../../test_util/std/io/util.ts";
 
 unitTest(
-  { perms: { read: true, run: true, hrtime: true } },
+  { permissions: { read: true, run: true, hrtime: true } },
   async function flockFileSync() {
     await runFlockTests({ sync: true });
   },
 );
 
 unitTest(
-  { perms: { read: true, run: true, hrtime: true } },
+  { permissions: { read: true, run: true, hrtime: true } },
   async function flockFileAsync() {
     await runFlockTests({ sync: false });
   },

@@ -106,7 +106,19 @@ pub fn is_supported_ext_fmt(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
-      "ts" | "tsx" | "js" | "jsx" | "mjs" | "md" | "json" | "jsonc"
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "json"
+        | "jsonc"
+        | "md"
+        | "mkd"
+        | "mkdn"
+        | "mdwn"
+        | "mdown"
+        | "markdown"
     )
   } else {
     false
@@ -143,7 +155,20 @@ pub fn is_supported_test_path(path: &Path) -> bool {
 /// Checks if the path has an extension Deno supports for tests.
 pub fn is_supported_test_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
-    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "md")
+    matches!(
+      ext.as_str(),
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "md"
+        | "mkd"
+        | "mkdn"
+        | "mdwn"
+        | "mdown"
+        | "markdown"
+    )
   } else {
     false
   }
@@ -320,6 +345,11 @@ mod tests {
     assert!(!is_supported_ext_fmt(Path::new("tests/subdir/redirects")));
     assert!(is_supported_ext_fmt(Path::new("README.md")));
     assert!(is_supported_ext_fmt(Path::new("readme.MD")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mkd")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mkdn")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mdwn")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
+    assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
     assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
     assert!(is_supported_ext_fmt(Path::new("testdata/001_hello.js")));
     assert!(is_supported_ext_fmt(Path::new("testdata/002_hello.ts")));
@@ -342,6 +372,11 @@ mod tests {
     assert!(!is_supported_test_ext(Path::new("tests/subdir/redirects")));
     assert!(is_supported_test_ext(Path::new("README.md")));
     assert!(is_supported_test_ext(Path::new("readme.MD")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mkd")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mkdn")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mdwn")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
+    assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
     assert!(is_supported_test_ext(Path::new("lib/typescript.d.ts")));
     assert!(is_supported_test_ext(Path::new("testdata/001_hello.js")));
     assert!(is_supported_test_ext(Path::new("testdata/002_hello.ts")));
