@@ -65,7 +65,6 @@ impl CliModuleLoader {
 impl ModuleLoader for CliModuleLoader {
   fn resolve(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     is_main: bool,
@@ -77,6 +76,9 @@ impl ModuleLoader for CliModuleLoader {
       referrer
     };
 
+    // TODO(ry) I think we can remove this conditional. At the time of writing
+    // we don't have any tests that fail if it was removed.
+    // https://github.com/WICG/import-maps/issues/157
     if !is_main {
       if let Some(import_map) = &self.import_map {
         return import_map
@@ -92,7 +94,6 @@ impl ModuleLoader for CliModuleLoader {
 
   fn load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
