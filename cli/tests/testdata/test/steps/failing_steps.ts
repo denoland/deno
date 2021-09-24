@@ -18,3 +18,10 @@ Deno.test("multiple test step failures", async (t) => {
   });
   await t.step("step 2", () => Promise.reject(new Error("Fail.")));
 });
+
+Deno.test("failing step in failing test", async (t) => {
+  await t.step("step 1", () => {
+    throw new Error("Fail.");
+  });
+  throw new Error("Fail test.");
+});
