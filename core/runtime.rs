@@ -603,7 +603,7 @@ impl JsRuntime {
   ///
   /// Calls the closure with the current heap limit and the initial heap limit.
   /// The return value of the closure is set as the new limit.
-  pub fn add_near_heap_limit_callback<C>(&mut self, cb: C)
+  fn add_near_heap_limit_callback<C>(&mut self, cb: C)
   where
     C: FnMut(usize, usize) -> usize + 'static,
   {
@@ -625,7 +625,7 @@ impl JsRuntime {
       .add_near_heap_limit_callback(near_heap_limit_callback::<C>, data);
   }
 
-  pub fn remove_near_heap_limit_callback(&mut self, heap_limit: usize) {
+  fn remove_near_heap_limit_callback(&mut self, heap_limit: usize) {
     if let Some((_, cb)) = self.allocations.near_heap_limit_callback_data.take()
     {
       self
@@ -1422,22 +1422,6 @@ impl JsRuntime {
     let root_id = load.root_module_id.expect("Root module should be loaded");
     self.instantiate_module(root_id)?;
     Ok(root_id)
-  }
-
-  /// Asynchronously load specified module and all of its dependencies
-  ///
-  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
-  /// manually after load is finished.
-  #[deprecated(
-    since = "0.100.0",
-    note = "This method had a bug, marking multiple modules loaded as \"main\". Use `load_main_module` or `load_side_module` instead."
-  )]
-  pub async fn load_module(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    code: Option<String>,
-  ) -> Result<ModuleId, AnyError> {
-    self.load_main_module(specifier, code).await
   }
 
   fn poll_pending_ops(

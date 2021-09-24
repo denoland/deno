@@ -29,8 +29,6 @@ use std::env;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::task::Context;
-use std::task::Poll;
 
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
@@ -278,14 +276,6 @@ impl MainWorker {
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
     let inspector = self.js_runtime.inspector();
     inspector.create_local_session()
-  }
-
-  pub fn poll_event_loop(
-    &mut self,
-    cx: &mut Context,
-    wait_for_inspector: bool,
-  ) -> Poll<Result<(), AnyError>> {
-    self.js_runtime.poll_event_loop(cx, wait_for_inspector)
   }
 
   pub async fn run_event_loop(
