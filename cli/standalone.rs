@@ -265,7 +265,7 @@ pub async fn run(
     js_runtime
       .op_state()
       .borrow_mut()
-      .put::<Arc<ProgramState>>(program_state.clone());
+      .put::<ProgramState>(program_state.clone());
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
     js_runtime.sync_ops_cache();

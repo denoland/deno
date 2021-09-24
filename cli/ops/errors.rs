@@ -12,7 +12,6 @@ use deno_core::serde_json::Value;
 use deno_core::OpState;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_sync(rt, "op_apply_source_map", op_apply_source_map);
@@ -36,7 +35,7 @@ fn op_apply_source_map(
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
   let mut mappings_map: CachedMaps = HashMap::new();
-  let program_state = state.borrow::<Arc<ProgramState>>().clone();
+  let program_state = state.borrow::<ProgramState>().clone();
 
   let (orig_file_name, orig_line_number, orig_column_number, _) =
     get_orig_position(

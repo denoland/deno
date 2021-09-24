@@ -61,7 +61,7 @@ impl Resolver for DocResolver {
 }
 
 struct DocLoader {
-  program_state: Arc<ProgramState>,
+  program_state: ProgramState,
 }
 
 impl Loader for DocLoader {

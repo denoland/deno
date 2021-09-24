@@ -92,7 +92,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 fn create_web_worker_callback(
-  program_state: Arc<ProgramState>,
+  program_state: ProgramState,
 ) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
     let global_state_ = program_state.clone();
@@ -160,7 +160,7 @@ fn create_web_worker_callback(
       js_runtime
         .op_state()
         .borrow_mut()
-        .put::<Arc<ProgramState>>(program_state.clone());
+        .put::<ProgramState>(program_state.clone());
       // Applies source maps - works in conjuction with `js_error_create_fn`
       // above
       ops::errors::init(js_runtime);
@@ -176,7 +176,7 @@ fn create_web_worker_callback(
 }
 
 pub fn create_main_worker(
-  program_state: &Arc<ProgramState>,
+  program_state: &ProgramState,
   main_module: ModuleSpecifier,
   permissions: Permissions,
   maybe_op_init: Option<&dyn Fn(&mut JsRuntime)>,
@@ -249,7 +249,7 @@ pub fn create_main_worker(
     js_runtime
       .op_state()
       .borrow_mut()
-      .put::<Arc<ProgramState>>(program_state.clone());
+      .put::<ProgramState>(program_state.clone());
     // Applies source maps - works in conjuction with `js_error_create_fn`
     // above
     ops::errors::init(js_runtime);
@@ -291,7 +291,7 @@ where
 }
 
 fn print_cache_info(
-  state: &Arc<ProgramState>,
+  state: &ProgramState,
   json: bool,
   location: Option<deno_core::url::Url>,
 ) -> Result<(), AnyError> {
@@ -619,7 +619,7 @@ async fn eval_command(
 
 async fn create_module_graph_and_maybe_check(
   module_specifier: ModuleSpecifier,
-  program_state: Arc<ProgramState>,
+  program_state: ProgramState,
   debug: bool,
 ) -> Result<module_graph::Graph, AnyError> {
   let handler = Arc::new(Mutex::new(FetchHandler::new(
@@ -671,7 +671,7 @@ async fn create_module_graph_and_maybe_check(
 
 fn bundle_module_graph(
   module_graph: module_graph::Graph,
-  program_state: Arc<ProgramState>,
+  program_state: ProgramState,
   flags: Flags,
   debug: bool,
 ) -> Result<String, AnyError> {
@@ -740,37 +740,35 @@ async fn bundle_command(
     })
   };
 
-  let operation = |(program_state, module_graph): (
-    Arc<ProgramState>,
-    module_graph::Graph,
-  )| {
-    let flags = flags.clone();
-    let out_file = bundle_flags.out_file.clone();
-    async move {
-      info!("{} {}", colors::green("Bundle"), module_graph.info()?.root);
+  let operation =
+    |(program_state, module_graph): (ProgramState, module_graph::Graph)| {
+      let flags = flags.clone();
+      let out_file = bundle_flags.out_file.clone();
+      async move {
+        info!("{} {}", colors::green("Bundle"), module_graph.info()?.root);
 
-      let output =
-        bundle_module_graph(module_graph, program_state, flags, debug)?;
+        let output =
+          bundle_module_graph(module_graph, program_state, flags, debug)?;
 
-      debug!(">>>>> bundle END");
+        debug!(">>>>> bundle END");
 
-      if let Some(out_file) = out_file.as_ref() {
-        let output_bytes = output.as_bytes();
-        let output_len = output_bytes.len();
-        fs_util::write_file(out_file, output_bytes, 0o644)?;
-        info!(
-          "{} {:?} ({})",
-          colors::green("Emit"),
-          out_file,
-          colors::gray(&info::human_size(output_len as f64))
-        );
-      } else {
-        println!("{}", output);
+        if let Some(out_file) = out_file.as_ref() {
+          let output_bytes = output.as_bytes();
+          let output_len = output_bytes.len();
+          fs_util::write_file(out_file, output_bytes, 0o644)?;
+          info!(
+            "{} {:?} ({})",
+            colors::green("Emit"),
+            out_file,
+            colors::gray(&info::human_size(output_len as f64))
+          );
+        } else {
+          println!("{}", output);
+        }
+
+        Ok(())
       }
-
-      Ok(())
-    }
-  };
+    };
 
   if flags.watch {
     file_watcher::watch_func(resolver, operation, "Bundle").await?;
@@ -987,7 +985,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   }
 
   let operation =
-    |(program_state, main_module): (Arc<ProgramState>, ModuleSpecifier)| {
+    |(program_state, main_module): (ProgramState, ModuleSpecifier)| {
       let flags = flags.clone();
       let permissions = Permissions::from_options(&flags.into());
       async move {

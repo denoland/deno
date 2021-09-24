@@ -58,7 +58,7 @@ async fn op_emit(
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
   let args: EmitArgs = serde_json::from_value(args)?;
   let root_specifier = args.root_specifier;
-  let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
+  let program_state = state.borrow().borrow::<ProgramState>().clone();
   let mut runtime_permissions = {
     let state = state.borrow();
     state.borrow::<Permissions>().clone()

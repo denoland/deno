@@ -225,7 +225,7 @@ pub struct FetchHandler {
 
 impl FetchHandler {
   pub fn new(
-    program_state: &Arc<ProgramState>,
+    program_state: &ProgramState,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
   ) -> Result<Self, AnyError> {

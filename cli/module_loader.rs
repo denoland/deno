@@ -15,7 +15,6 @@ use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
-use std::sync::Arc;
 
 pub struct CliModuleLoader {
   /// When flags contains a `.import_map_path` option, the content of the
@@ -26,11 +25,11 @@ pub struct CliModuleLoader {
   /// worker. They are decoupled from the worker (dynamic) permissions since
   /// read access errors must be raised based on the parent thread permissions.
   pub root_permissions: Permissions,
-  pub program_state: Arc<ProgramState>,
+  pub program_state: ProgramState,
 }
 
 impl CliModuleLoader {
-  pub fn new(program_state: Arc<ProgramState>) -> Rc<Self> {
+  pub fn new(program_state: ProgramState) -> Rc<Self> {
     let lib = if program_state.flags.unstable {
       TypeLib::UnstableDenoWindow
     } else {
@@ -48,7 +47,7 @@ impl CliModuleLoader {
   }
 
   pub fn new_for_worker(
-    program_state: Arc<ProgramState>,
+    program_state: ProgramState,
     permissions: Permissions,
   ) -> Rc<Self> {
     let lib = if program_state.flags.unstable {

@@ -247,7 +247,7 @@ fn create_reporter(
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
 async fn test_specifier(
-  program_state: Arc<ProgramState>,
+  program_state: ProgramState,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
@@ -468,7 +468,7 @@ fn extract_files_from_fenced_blocks(
 }
 
 async fn fetch_inline_files(
-  program_state: Arc<ProgramState>,
+  program_state: ProgramState,
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
@@ -501,7 +501,7 @@ async fn fetch_inline_files(
 
 /// Type check a collection of module and document specifiers.
 async fn check_specifiers(
-  program_state: Arc<ProgramState>,
+  program_state: ProgramState,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
   lib: TypeLib,
@@ -568,7 +568,7 @@ async fn check_specifiers(
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
-  program_state: Arc<ProgramState>,
+  program_state: ProgramState,
   permissions: Permissions,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
   fail_fast: Option<NonZeroUsize>,
@@ -755,7 +755,7 @@ fn collect_specifiers_with_test_mode(
 /// Specifiers that do not have a known media type that can be executed as a module are marked as
 /// `TestMode::Documentation`.
 async fn fetch_specifiers_with_test_mode(
-  program_state: Arc<ProgramState>,
+  program_state: ProgramState,
   include: Vec<String>,
   ignore: Vec<PathBuf>,
   include_inline: bool,
