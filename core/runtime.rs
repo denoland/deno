@@ -603,7 +603,7 @@ impl JsRuntime {
   ///
   /// Calls the closure with the current heap limit and the initial heap limit.
   /// The return value of the closure is set as the new limit.
-  fn add_near_heap_limit_callback<C>(&mut self, cb: C)
+  pub fn add_near_heap_limit_callback<C>(&mut self, cb: C)
   where
     C: FnMut(usize, usize) -> usize + 'static,
   {
@@ -625,7 +625,7 @@ impl JsRuntime {
       .add_near_heap_limit_callback(near_heap_limit_callback::<C>, data);
   }
 
-  fn remove_near_heap_limit_callback(&mut self, heap_limit: usize) {
+  pub fn remove_near_heap_limit_callback(&mut self, heap_limit: usize) {
     if let Some((_, cb)) = self.allocations.near_heap_limit_callback_data.take()
     {
       self
