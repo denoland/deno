@@ -741,6 +741,8 @@ fn to_module_result(
         match emit {
           Emit::Cli((code, _)) => Ok(ModuleSource {
             code: code.clone(),
+            // TODO(bartlomieju): make sure this value is correct
+            module_type: deno_core::ModuleType::JavaScript,
             module_url_found: module.specifier.to_string(),
             module_url_specified: specifier.to_string(),
           }),
@@ -749,6 +751,7 @@ fn to_module_result(
         match module.media_type {
           MediaType::JavaScript | MediaType::Unknown => Ok(ModuleSource {
             code: module.text_info.text_str().to_string(),
+            module_type: deno_core::ModuleType::JavaScript,
             module_url_found: module.specifier.to_string(),
             module_url_specified: specifier.to_string(),
           }),

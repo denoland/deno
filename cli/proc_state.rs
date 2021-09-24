@@ -397,6 +397,7 @@ impl ProcState {
             warn!("{}: {}", crate::colors::yellow("warning"), message);
             Ok(ModuleSource {
               code: "".to_string(),
+              module_type: deno_core::ModuleType::JavaScript,
               module_url_found: specifier.to_string(),
               module_url_specified: specifier.to_string(),
             })

@@ -34,6 +34,21 @@ lazy_static::lazy_static! {
 pub type ModuleId = i32;
 pub type ModuleLoadId = i32;
 
+/// A type of module to be executed.
+///
+/// Currently only `JavaScript` variant is supported,
+/// but in future types like `JSON` and `WASM` will be
+/// supported.
+///
+/// For non-`JavaScript` modules, this value doesn't tell
+/// how to interpret the module; it is only used to validate
+/// the module against an import assertion (if one is present
+/// in the import statement).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModuleType {
+  JavaScript,
+}
+
 /// EsModule source code that will be loaded into V8.
 ///
 /// Users can implement `Into<ModuleInfo>` for different file types that
@@ -52,6 +67,7 @@ pub type ModuleLoadId = i32;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ModuleSource {
   pub code: String,
+  pub module_type: ModuleType,
   pub module_url_specified: String,
   pub module_url_found: String,
 }
@@ -166,6 +182,7 @@ impl ModuleLoader for FsModuleLoader {
       let code = std::fs::read_to_string(path)?;
       let module = ModuleSource {
         code,
+        module_type: ModuleType::JavaScript,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
       };
@@ -423,6 +440,7 @@ impl Stream for RecursiveModuleLoad {
             // The code will be discarded, since this module is already in the
             // module map.
             code: Default::default(),
+            module_type: ModuleType::JavaScript,
           })
           .boxed()
         } else {
@@ -822,6 +840,7 @@ mod tests {
       match mock_source_code(&inner.url) {
         Some(src) => Poll::Ready(Ok(ModuleSource {
           code: src.0.to_owned(),
+          module_type: ModuleType::JavaScript,
           module_url_specified: inner.url.clone(),
           module_url_found: src.1.to_owned(),
         })),
@@ -1178,6 +1197,7 @@ mod tests {
         module_url_specified: specifier.to_string(),
         module_url_found: specifier.to_string(),
         code: "export function b() { return 'b' }".to_owned(),
+        module_type: ModuleType::JavaScript,
       };
       async move { Ok(info) }.boxed()
     }
@@ -1324,6 +1344,7 @@ mod tests {
           module_url_specified: specifier.to_string(),
           module_url_found: specifier.to_string(),
           code: code.to_owned(),
+          module_type: ModuleType::JavaScript,
         };
         async move { Ok(info) }.boxed()
       }
@@ -1652,11 +1673,13 @@ mod tests {
             module_url_specified: "file:///main_module.js".to_string(),
             module_url_found: "file:///main_module.js".to_string(),
             code: "if (!import.meta.main) throw Error();".to_owned(),
+            module_type: ModuleType::JavaScript,
           }),
           "file:///side_module.js" => Ok(ModuleSource {
             module_url_specified: "file:///side_module.js".to_string(),
             module_url_found: "file:///side_module.js".to_string(),
             code: "if (import.meta.main) throw Error();".to_owned(),
+            module_type: ModuleType::JavaScript,
           }),
           _ => unreachable!(),
         };
