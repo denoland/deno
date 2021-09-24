@@ -14852,10 +14852,6 @@
     "Close-delayed.any.html?wss": false,
     "stream": {
       "tentative": {
-        "abort.any.html?wpt_flags=h2": [
-          "abort before constructing should prevent connection",
-          "abort during handshake should work"
-        ],
         "abort.any.html?wss": true,
         "backpressure-receive.any.html?wpt_flags=h2": false,
         "backpressure-receive.any.html?wss": true,
