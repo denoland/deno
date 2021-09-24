@@ -264,17 +264,6 @@ impl MainWorker {
     self.evaluate_module(id).await
   }
 
-  #[deprecated(
-    since = "0.26.0",
-    note = "This method had a bug, marking multiple modules loaded as \"main\". Use `execute_main_module` or `execute_side_module` instead."
-  )]
-  pub async fn execute_module(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
-    self.execute_main_module(module_specifier).await
-  }
-
   fn wait_for_inspector_session(&mut self) {
     if self.should_break_on_first_statement {
       self
