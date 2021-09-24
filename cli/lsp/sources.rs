@@ -40,13 +40,11 @@ pub async fn cache(
   maybe_config_file: &Option<ConfigFile>,
   maybe_cache_path: &Option<PathBuf>,
 ) -> Result<(), AnyError> {
-  let ps = Arc::new(
-    ProcState::build(Flags {
-      cache_path: maybe_cache_path.clone(),
-      ..Default::default()
-    })
-    .await?,
-  );
+  let ps = ProcState::build(Flags {
+    cache_path: maybe_cache_path.clone(),
+    ..Default::default()
+  })
+  .await?;
   let handler = Arc::new(Mutex::new(FetchHandler::new(
     &ps,
     Permissions::allow_all(),
