@@ -3,7 +3,7 @@
 use crate::ast::transpile;
 use crate::ast::ImportsNotUsedAsValues;
 use crate::colors;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::{Token, Word};
 use deno_core::error::AnyError;
@@ -731,7 +731,7 @@ async fn read_line_and_poll(
 }
 
 pub async fn run(
-  program_state: &ProgramState,
+  ps: &ProcState,
   worker: MainWorker,
   maybe_eval: Option<String>,
 ) -> Result<(), AnyError> {
@@ -745,7 +745,7 @@ pub async fn run(
     response_rx: RefCell::new(response_rx),
   };
 
-  let history_file_path = program_state.dir.root.join("deno_history.txt");
+  let history_file_path = ps.dir.root.join("deno_history.txt");
   let editor = ReplEditor::new(helper, history_file_path);
 
   if let Some(eval) = maybe_eval {

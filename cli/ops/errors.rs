@@ -2,7 +2,7 @@
 
 use crate::diagnostics::Diagnostics;
 use crate::fmt_errors::format_file_name;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use deno_core::error::AnyError;
@@ -35,7 +35,7 @@ fn op_apply_source_map(
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
   let mut mappings_map: CachedMaps = HashMap::new();
-  let program_state = state.borrow::<ProgramState>().clone();
+  let ps = state.borrow::<ProcState>().clone();
 
   let (orig_file_name, orig_line_number, orig_column_number, _) =
     get_orig_position(
@@ -43,7 +43,7 @@ fn op_apply_source_map(
       args.line_number.into(),
       args.column_number.into(),
       &mut mappings_map,
-      program_state,
+      ps,
     );
 
   Ok(json!({

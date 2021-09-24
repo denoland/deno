@@ -48,7 +48,7 @@ use std::sync::Arc;
 ///
 /// It is shared by all created workers (thus V8 isolates).
 #[derive(Clone)]
-pub struct ProgramState(Arc<Inner>);
+pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   /// Flags parsed from `argv` contents.
@@ -68,14 +68,14 @@ pub struct Inner {
   pub shared_array_buffer_store: SharedArrayBufferStore,
 }
 
-impl Deref for ProgramState {
+impl Deref for ProcState {
   type Target = Arc<Inner>;
   fn deref(&self) -> &Self::Target {
     &self.0
   }
 }
 
-impl ProgramState {
+impl ProcState {
   pub async fn build(flags: flags::Flags) -> Result<Self, AnyError> {
     let maybe_custom_root = flags
       .cache_path
@@ -211,7 +211,7 @@ impl ProgramState {
       .clone()
       .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok());
 
-    Ok(ProgramState(Arc::new(Inner {
+    Ok(ProcState(Arc::new(Inner {
       dir,
       coverage_dir,
       flags,
@@ -456,7 +456,7 @@ impl ProgramState {
 
 // TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
 // else, like a refactored file_fetcher.
-impl SourceMapGetter for ProgramState {
+impl SourceMapGetter for ProcState {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     if let Ok(specifier) = resolve_url(file_name) {
       if let Some((code, maybe_map)) = self.get_emit(&specifier) {
