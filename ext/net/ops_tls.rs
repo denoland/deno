@@ -157,6 +157,10 @@ impl TlsStream {
     Self::new(tcp, tls)
   }
 
+  pub async fn handshake(&mut self) -> io::Result<()> {
+    poll_fn(|cx| self.inner_mut().poll_io(cx, Flow::Write)).await
+  }
+
   fn into_split(self) -> (ReadHalf, WriteHalf) {
     let shared = Shared::new(self);
     let rd = ReadHalf {
