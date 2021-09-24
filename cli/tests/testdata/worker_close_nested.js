@@ -1,5 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+// Test that closing a worker which has living child workers will automatically
+// close the children.
+
 console.log("Starting the main thread");
 
 const worker = new Worker(
