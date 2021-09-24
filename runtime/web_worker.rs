@@ -505,17 +505,6 @@ impl WebWorker {
     }
   }
 
-  #[deprecated(
-    since = "0.26.0",
-    note = "This method had a bug, marking multiple modules loaded as \"main\". Use `execute_main_module`."
-  )]
-  pub async fn execute_module(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
-    self.execute_main_module(module_specifier).await
-  }
-
   pub fn poll_event_loop(
     &mut self,
     cx: &mut Context,
