@@ -994,10 +994,9 @@
     getParent(_event) {
       return null;
     }
-
-    // TODO(lucacasonato): remove when this interface is spec aligned
-    [SymbolToStringTag] = "EventTarget";
   }
+
+  webidl.configurePrototype(EventTarget);
 
   defineEnumerableProps(EventTarget, [
     "addEventListener",

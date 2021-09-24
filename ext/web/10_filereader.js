@@ -31,7 +31,6 @@
     queueMicrotask,
     StringFromCodePoint,
     Symbol,
-    SymbolToStringTag,
     TypedArrayPrototypeSet,
     TypeError,
     Uint8Array,
@@ -433,8 +432,6 @@
     set onabort(value) {
       this.#setEventHandlerFor("abort", value);
     }
-
-    [SymbolToStringTag] = "FileReader";
   }
 
   webidl.configurePrototype(FileReader);
