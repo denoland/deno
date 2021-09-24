@@ -976,10 +976,12 @@ mod tests {
 
     let mut file_path = bin_dir.join("echo_test");
 
-    let mut file = File::create(file_path);
-    file.write_all(b"Hello, world!");
+    let mut file = File::create(&file_path).unwrap();
+    let result = file.write_all(b"Hello, world!");
+    assert!(result.is_ok());
 
-    uninstall("echo_test", Some(temp_dir.path().to_path_buf()));
+    uninstall("echo_test".to_string(), Some(temp_dir.path().to_path_buf()))
+      .expect("Uninstall failed");
 
     assert!(!file_path.exists());
 
