@@ -4,7 +4,7 @@ use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::flags::Flags;
 use crate::ops;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use crate::version;
 use deno_core::error::anyhow;
 use deno_core::error::type_error;
@@ -202,7 +202,7 @@ pub async fn run(
 ) -> Result<(), AnyError> {
   let flags = metadata_to_flags(&metadata);
   let main_module = resolve_url(SPECIFIER)?;
-  let program_state = ProgramState::build(flags).await?;
+  let ps = ProcState::build(flags).await?;
   let permissions = Permissions::from_options(&metadata.permissions);
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
@@ -218,7 +218,7 @@ pub async fn run(
       .collect::<Vec<_>>(),
   );
 
-  let mut root_cert_store = program_state
+  let mut root_cert_store = ps
     .root_cert_store
     .clone()
     .unwrap_or_else(create_default_root_cert_store);
@@ -265,7 +265,7 @@ pub async fn run(
     js_runtime
       .op_state()
       .borrow_mut()
-      .put::<Arc<ProgramState>>(program_state.clone());
+      .put::<ProcState>(ps.clone());
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
     js_runtime.sync_ops_cache();
