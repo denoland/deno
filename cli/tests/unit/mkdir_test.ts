@@ -244,7 +244,7 @@ Deno.test({
 Deno.test({
   name: "mkdirSymlinkToDotDot",
   async fn() {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.mkdir(
         "cli/tests/unit/testdata/symlink_to_dot_dot/should_be_denied",
       );

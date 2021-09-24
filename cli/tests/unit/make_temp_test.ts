@@ -98,7 +98,7 @@ Deno.test({
 Deno.test({
   name: "makeTempDirSymlinkToDotDot",
   async fn() {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.makeTempDir({
         dir: "cli/tests/unit/testdata/symlink_to_dot_dot",
       });
@@ -202,7 +202,7 @@ Deno.test({
 Deno.test({
   name: "makeTempDirSymlinkToDotDot",
   async fn() {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.makeTempFile({
         dir: "cli/tests/unit/testdata/symlink_to_dot_dot",
       });
