@@ -295,6 +295,18 @@ finishing test case.`;
           return false;
         }
 
+        if (test.sanitizeOps || test.sanitizeResources || test.sanitizeExit) {
+          const pending = steps.filter((test) => !test.result).any((test) =>
+            test.sanitizeOps || test.sanitizeResources || sanitizeExit
+          );
+
+          if (pending) {
+            throw new Error(
+              "Cant run step with sanitizers as there is already a pending step with sanitizers pending completion",
+            );
+          }
+        }
+
         steps.push(test);
 
         const earlier = DateNow();
