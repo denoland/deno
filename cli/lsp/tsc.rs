@@ -507,6 +507,7 @@ impl TextSpan {
 #[serde(rename_all = "camelCase")]
 pub struct SymbolDisplayPart {
   text: String,
+  kind: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -519,6 +520,8 @@ pub struct JsDocTagInfo {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuickInfo {
+  kind: ScriptElementKind,
+  kind_modifiers: String,
   text_span: TextSpan,
   display_parts: Option<Vec<SymbolDisplayPart>>,
   documentation: Option<Vec<SymbolDisplayPart>>,
@@ -571,6 +574,7 @@ pub struct DocumentSpan {
   text_span: TextSpan,
   pub file_name: String,
   original_text_span: Option<TextSpan>,
+  original_file_name: Option<String>,
   context_span: Option<TextSpan>,
   original_context_span: Option<TextSpan>,
 }
@@ -771,6 +775,9 @@ impl NavigationTree {
 pub struct ImplementationLocation {
   #[serde(flatten)]
   pub document_span: DocumentSpan,
+  // ImplementationLocation props
+  kind: ScriptElementKind,
+  display_parts: Vec<SymbolDisplayPart>,
 }
 
 impl ImplementationLocation {
@@ -808,6 +815,9 @@ impl ImplementationLocation {
 pub struct RenameLocation {
   #[serde(flatten)]
   document_span: DocumentSpan,
+  // RenameLocation props
+  prefix_text: Option<String>,
+  suffix_text: Option<String>,
 }
 
 pub struct RenameLocations {
@@ -877,13 +887,21 @@ pub enum HighlightSpanKind {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HighlightSpan {
+  file_name: Option<String>,
+  is_in_string: Option<bool>,
   text_span: TextSpan,
+  context_span: Option<TextSpan>,
   kind: HighlightSpanKind,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DefinitionInfo {
+  kind: ScriptElementKind,
+  name: String,
+  container_kind: Option<ScriptElementKind>,
+  container_name: Option<String>,
+
   #[serde(flatten)]
   pub document_span: DocumentSpan,
 }
@@ -892,6 +910,7 @@ pub struct DefinitionInfo {
 #[serde(rename_all = "camelCase")]
 pub struct DefinitionInfoAndBoundSpan {
   pub definitions: Option<Vec<DefinitionInfo>>,
+  text_span: TextSpan,
 }
 
 impl DefinitionInfoAndBoundSpan {
@@ -919,6 +938,7 @@ impl DefinitionInfoAndBoundSpan {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentHighlights {
+  file_name: String,
   highlight_spans: Vec<HighlightSpan>,
 }
 
@@ -1147,6 +1167,9 @@ impl RefactorActionInfo {
 #[serde(rename_all = "camelCase")]
 pub struct ApplicableRefactorInfo {
   name: String,
+  description: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  inlineable: Option<bool>,
   actions: Vec<RefactorActionInfo>,
 }
 
@@ -1225,7 +1248,12 @@ impl RefactorEditInfo {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CodeAction {}
+pub struct CodeAction {
+  description: String,
+  changes: Vec<FileTextChanges>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  commands: Option<Vec<Value>>,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -1258,7 +1286,9 @@ pub struct CombinedCodeActions {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceEntry {
+  is_write_access: bool,
   pub is_definition: bool,
+  is_in_string: Option<bool>,
   #[serde(flatten)]
   pub document_span: DocumentSpan,
 }
@@ -1462,9 +1492,14 @@ impl CallHierarchyOutgoingCall {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntryDetails {
+  name: String,
+  kind: ScriptElementKind,
+  kind_modifiers: String,
   display_parts: Vec<SymbolDisplayPart>,
   documentation: Option<Vec<SymbolDisplayPart>>,
   tags: Option<Vec<JsDocTagInfo>>,
+  code_actions: Option<Vec<CodeAction>>,
+  source: Option<Vec<SymbolDisplayPart>>,
 }
 
 impl CompletionEntryDetails {
@@ -1788,6 +1823,9 @@ pub enum OutliningSpanKind {
 #[serde(rename_all = "camelCase")]
 pub struct OutliningSpan {
   text_span: TextSpan,
+  hint_span: TextSpan,
+  banner_text: String,
+  auto_collapse: bool,
   kind: OutliningSpanKind,
 }
 
@@ -1858,8 +1896,10 @@ impl OutliningSpan {
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItems {
   items: Vec<SignatureHelpItem>,
+  applicable_span: TextSpan,
   selected_item_index: u32,
   argument_index: u32,
+  argument_count: u32,
 }
 
 impl SignatureHelpItems {
@@ -1879,10 +1919,13 @@ impl SignatureHelpItems {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItem {
+  is_variadic: bool,
   prefix_display_parts: Vec<SymbolDisplayPart>,
   suffix_display_parts: Vec<SymbolDisplayPart>,
+  separator_display_parts: Vec<SymbolDisplayPart>,
   parameters: Vec<SignatureHelpParameter>,
   documentation: Vec<SymbolDisplayPart>,
+  tags: Vec<JsDocTagInfo>,
 }
 
 impl SignatureHelpItem {
@@ -1915,8 +1958,10 @@ impl SignatureHelpItem {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpParameter {
+  name: String,
   documentation: Vec<SymbolDisplayPart>,
   display_parts: Vec<SymbolDisplayPart>,
+  is_optional: bool,
 }
 
 impl SignatureHelpParameter {
@@ -1956,6 +2001,7 @@ impl SelectionRange {
 
 #[derive(Debug, Clone, Deserialize)]
 struct Response {
+  id: usize,
   data: Value,
 }
 
