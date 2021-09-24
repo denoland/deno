@@ -1580,6 +1580,7 @@
     }
   }
 
+  webidl.configurePrototype(SubtleCrypto);
   const subtle = webidl.createBranded(SubtleCrypto);
 
   class Crypto {

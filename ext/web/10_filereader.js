@@ -31,6 +31,7 @@
     queueMicrotask,
     StringFromCodePoint,
     Symbol,
+    SymbolToStringTag,
     TypedArrayPrototypeSet,
     TypeError,
     Uint8Array,
@@ -363,6 +364,8 @@
       // alias for readAsArrayBuffer
       this.#readOperation(blob, { kind: "Text", encoding });
     }
+
+    [SymbolToStringTag] = "FileReader";
   }
 
   webidl.configurePrototype(FileReader);
