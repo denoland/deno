@@ -44,13 +44,10 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
-#[derive(
-  Derivative, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WebWorkerType {
   Classic,
-  #[derivative(Default)]
   Module,
 }
 
