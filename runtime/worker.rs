@@ -24,6 +24,7 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
+use derivative::Derivative;
 use log::debug;
 use std::env;
 use std::pin::Pin;
@@ -44,6 +45,8 @@ pub struct MainWorker {
   should_break_on_first_statement: bool,
 }
 
+#[derive(Derivative)]
+#[derivative(Default)]
 pub struct WorkerOptions {
   pub apply_source_maps: bool,
   /// Sets `Deno.args` in JS runtime.
@@ -53,20 +56,26 @@ pub struct WorkerOptions {
   pub enable_testing_features: bool,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
+  #[derivative(Default(value = r#""Deno/0.0.0".to_string()"#))]
   pub user_agent: String,
   pub seed: Option<u64>,
+  #[derivative(Default(value = "Rc::new(deno_core::NoopModuleLoader{})"))]
   pub module_loader: Rc<dyn ModuleLoader>,
   // Callback that will be invoked when creating new instance
   // of WebWorker
+  #[derivative(Default(value = "Arc::new(|_| unimplemented!())"))]
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
   /// Sets `Deno.version.deno` in JS runtime.
+  #[derivative(Default(value = r#""0.0.0".to_string()"#))]
   pub runtime_version: String,
   /// Sets `Deno.version.typescript` in JS runtime.
+  #[derivative(Default(value = r#""0.0.0".to_string()"#))]
   pub ts_version: String,
   /// Sets `Deno.noColor` in JS runtime.
+  #[derivative(Default(value = "true"))]
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub location: Option<Url>,
@@ -74,6 +83,7 @@ pub struct WorkerOptions {
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  #[derivative(Default(value = "1"))]
   pub cpu_count: usize,
 }
 
@@ -323,30 +333,8 @@ mod tests {
     let permissions = Permissions::default();
 
     let options = WorkerOptions {
-      apply_source_maps: false,
-      user_agent: "x".to_string(),
-      args: vec![],
-      debug_flag: false,
-      unstable: false,
-      enable_testing_features: false,
-      unsafely_ignore_certificate_errors: None,
-      root_cert_store: None,
-      seed: None,
-      js_error_create_fn: None,
-      create_web_worker_cb: Arc::new(|_| unreachable!()),
-      maybe_inspector_server: None,
-      should_break_on_first_statement: false,
       module_loader: Rc::new(deno_core::FsModuleLoader),
-      runtime_version: "x".to_string(),
-      ts_version: "x".to_string(),
-      no_color: true,
-      get_error_class_fn: None,
-      location: None,
-      origin_storage_dir: None,
-      blob_store: BlobStore::default(),
-      broadcast_channel: InMemoryBroadcastChannel::default(),
-      shared_array_buffer_store: None,
-      cpu_count: 1,
+      ..Default::default()
     };
 
     MainWorker::from_options(main_module, permissions, &options)

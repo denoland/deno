@@ -32,6 +32,7 @@ use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
 use deno_web::MessagePort;
+use derivative::Derivative;
 use log::debug;
 use std::cell::RefCell;
 use std::env;
@@ -43,11 +44,20 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+  Derivative, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum WebWorkerType {
   Classic,
+  #[derivative(Default)]
   Module,
+}
+
+impl Default for WebWorkerType {
+  fn default() -> Self {
+    Self::Module
+  }
 }
 
 #[derive(
@@ -258,6 +268,8 @@ pub struct WebWorker {
   pub main_module: ModuleSpecifier,
 }
 
+#[derive(Derivative)]
+#[derivative(Default)]
 pub struct WebWorkerOptions {
   /// Sets `Deno.args` in JS runtime.
   pub args: Vec<String>,
@@ -268,7 +280,9 @@ pub struct WebWorkerOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
   pub seed: Option<u64>,
+  #[derivative(Default(value = "Rc::new(deno_core::NoopModuleLoader{})"))]
   pub module_loader: Rc<dyn ModuleLoader>,
+  #[derivative(Default(value = "Arc::new(|_| unimplemented!())"))]
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub use_deno_namespace: bool,

@@ -2,8 +2,6 @@
 
 use deno_core::error::AnyError;
 use deno_core::FsModuleLoader;
-use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
@@ -23,30 +21,11 @@ async fn main() -> Result<(), AnyError> {
   });
 
   let options = WorkerOptions {
-    apply_source_maps: false,
-    args: vec![],
-    debug_flag: false,
-    unstable: false,
-    enable_testing_features: false,
-    unsafely_ignore_certificate_errors: None,
-    root_cert_store: None,
-    user_agent: "hello_runtime".to_string(),
-    seed: None,
-    js_error_create_fn: None,
-    create_web_worker_cb,
-    maybe_inspector_server: None,
-    should_break_on_first_statement: false,
     module_loader,
-    runtime_version: "x".to_string(),
-    ts_version: "x".to_string(),
     no_color: false,
     get_error_class_fn: Some(&get_error_class_name),
-    location: None,
-    origin_storage_dir: None,
-    blob_store: BlobStore::default(),
-    broadcast_channel: InMemoryBroadcastChannel::default(),
-    shared_array_buffer_store: None,
-    cpu_count: 1,
+    create_web_worker_cb,
+    ..Default::default()
   };
 
   let js_path =

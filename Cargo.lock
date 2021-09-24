@@ -866,6 +866,7 @@ dependencies = [
  "deno_webidl",
  "deno_websocket",
  "deno_webstorage",
+ "derivative",
  "dlopen",
  "encoding_rs",
  "filetime",
@@ -991,6 +992,17 @@ checksum = "31e21d2d0f22cde6e88694108429775c0219760a07779bf96503b434a03d7412"
 dependencies = [
  "const-oid",
  "crypto-bigint",
+]
+
+[[package]]
+name = "derivative"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
+dependencies = [
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "syn 1.0.65",
 ]
 
 [[package]]
