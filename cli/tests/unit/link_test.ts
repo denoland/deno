@@ -2,7 +2,7 @@
 import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function linkSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const oldData = "Hardlink";
@@ -41,7 +41,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function linkSyncExists() {
     const testDir = Deno.makeTempDirSync();
     const oldName = testDir + "/oldname";
@@ -57,7 +57,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function linkSyncNotFound() {
     const testDir = Deno.makeTempDirSync();
     const oldName = testDir + "/oldname";
@@ -70,7 +70,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: false, write: true } },
+  { permissions: { read: false, write: true } },
   function linkSyncReadPerm() {
     assertThrows(() => {
       Deno.linkSync("oldbaddir", "newbaddir");
@@ -79,7 +79,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: false } },
+  { permissions: { read: true, write: false } },
   function linkSyncWritePerm() {
     assertThrows(() => {
       Deno.linkSync("oldbaddir", "newbaddir");
@@ -88,7 +88,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function linkSuccess() {
     const testDir = Deno.makeTempDirSync();
     const oldData = "Hardlink";

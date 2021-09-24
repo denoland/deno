@@ -2,7 +2,7 @@
 
 import { assertThrows, unitTest } from "./test_util.ts";
 
-unitTest({ perms: { ffi: true } }, function dlopenInvalidArguments() {
+unitTest({ permissions: { ffi: true } }, function dlopenInvalidArguments() {
   const filename = "/usr/lib/libc.so.6";
   assertThrows(() => {
     // @ts-expect-error: ForeignFunction cannot be null

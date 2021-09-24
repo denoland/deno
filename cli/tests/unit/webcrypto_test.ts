@@ -384,7 +384,7 @@ const pkcs8TestVectors = [
   "cli/tests/testdata/webcrypto/id_rsassaPss.pem",
 ];
 
-unitTest({ perms: { read: true } }, async function importRsaPkcs8() {
+unitTest({ permissions: { read: true } }, async function importRsaPkcs8() {
   const pemHeader = "-----BEGIN PRIVATE KEY-----";
   const pemFooter = "-----END PRIVATE KEY-----";
   for (const keyFile of pkcs8TestVectors) {

@@ -8,7 +8,7 @@ import {
   unitTest,
 } from "./test_util.ts";
 
-unitTest({ perms: { hrtime: false } }, async function performanceNow() {
+unitTest({ permissions: { hrtime: false } }, async function performanceNow() {
   const resolvable = deferred();
   const start = performance.now();
   let totalTime = 0;

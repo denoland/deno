@@ -1,5 +1,22 @@
 # Cutting a Deno release
 
+## Pre-flight checklist
+
+- [ ] An up to date stable Rust toolchain
+- [ ] A binary version of `deno` available (hopefully built from `main`) that is
+  going to be available throughout any local building you might do.
+- [ ] Forks and local clones of
+  [`denoland/deno`](https://github.com/denoland/deno/),
+  [`denoland/deno_std`](https://github.com/denoland/deno_std/),
+  [`denoland/dotland`](https://github.com/denoland/dotland/) and
+  [`denoland/deno_docker`](https://github.com/denoland/deno_docker/)
+- [ ] Ensure that external dependencies are up-to date in `denoland/deno` (e.g.
+  `rusty_v8`, `serde_v8`, `deno_doc`, `deno_lint`).
+- [ ] Ownership access on crates.io for the 19 (🙀) crates that you will be
+  publishing. (Don't worry too much though as the main script publishing 18 of
+  the crates allows recovery)
+- [ ] Lot's of ☕
+
 **During this process `main` branch (or any other branch that you're creating
 release from) should be frozen and no commits should land until the release is
 cut.**

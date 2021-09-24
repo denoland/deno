@@ -3,13 +3,13 @@ import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 // TODO(ry) Add more tests to specify format.
 
-unitTest({ perms: { read: false } }, function watchFsPermissions() {
+unitTest({ permissions: { read: false } }, function watchFsPermissions() {
   assertThrows(() => {
     Deno.watchFs(".");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { read: true } }, function watchFsInvalidPath() {
+unitTest({ permissions: { read: true } }, function watchFsInvalidPath() {
   if (Deno.build.os === "windows") {
     assertThrows(
       () => {
@@ -37,7 +37,7 @@ async function getTwoEvents(
 }
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function watchFsBasic() {
     const testDir = await Deno.makeTempDir();
     const iter = Deno.watchFs(testDir);
@@ -64,7 +64,7 @@ unitTest(
 // TODO(kt3k): This test is for the backward compatibility of `.return` method.
 // This should be removed at 2.0
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function watchFsReturn() {
     const testDir = await Deno.makeTempDir();
     const iter = Deno.watchFs(testDir);
@@ -82,7 +82,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function watchFsClose() {
     const testDir = await Deno.makeTempDir();
     const iter = Deno.watchFs(testDir);

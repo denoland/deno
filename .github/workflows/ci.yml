@@ -267,7 +267,8 @@ jobs:
         # TODO(kt3k): Change the version to the released version
         # when https://github.com/actions/cache/pull/489 (or 571) is merged.
         uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
-        if: matrix.profile == 'release' && github.ref == 'refs/heads/main'
+        if: (matrix.profile == 'release' || matrix.profile == 'fastci') &&
+            github.ref == 'refs/heads/main' 
         with:
           path: |
             ./target
