@@ -307,11 +307,15 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
   }
 }
 
-fn op_kill(state: &mut OpState, pid: i32, signo: String) -> Result<(), AnyError> {
+fn op_kill(
+  state: &mut OpState,
+  pid: i32,
+  signo: String,
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
 
-  let signo = super::signal::signal_str_to_int(&args.signo)?;
-  kill(args.pid, signo)?;
+  let signo = super::signal::signal_str_to_int(&signo)?;
+  kill(pid, signo)?;
   Ok(())
 }
