@@ -22,14 +22,8 @@ use std::convert::TryFrom;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
-
-lazy_static::lazy_static! {
-  pub static ref NEXT_LOAD_ID: AtomicI32 = AtomicI32::new(0);
-}
 
 pub type ModuleId = i32;
 pub type ModuleLoadId = i32;
@@ -253,10 +247,16 @@ impl RecursiveModuleLoad {
   }
 
   fn new(init: LoadInit, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
+    let id = {
+      let mut module_map = module_map_rc.borrow_mut();
+      let id = module_map.next_load_id;
+      module_map.next_load_id += 1;
+      id
+    };
     let op_state = module_map_rc.borrow().op_state.clone();
     let loader = module_map_rc.borrow().loader.clone();
     let mut load = Self {
-      id: NEXT_LOAD_ID.fetch_add(1, Ordering::SeqCst),
+      id,
       root_module_id: None,
       init,
       state: LoadState::Init,
@@ -497,6 +497,7 @@ pub struct ModuleMap {
   info: HashMap<ModuleId, ModuleInfo>,
   by_name: HashMap<String, SymbolicModule>,
   next_module_id: ModuleId,
+  next_load_id: ModuleLoadId,
 
   // Handling of futures for loading module sources
   pub loader: Rc<dyn ModuleLoader>,
@@ -520,6 +521,7 @@ impl ModuleMap {
       info: HashMap::new(),
       by_name: HashMap::new(),
       next_module_id: 1,
+      next_load_id: 1,
       loader,
       op_state,
       dynamic_import_map: HashMap::new(),
