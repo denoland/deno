@@ -649,6 +649,7 @@ pub struct ConnectTlsArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
+  ca_certs: Vec<String>,
   cert_chain: Option<String>,
   private_key: Option<String>,
 }
@@ -658,6 +659,7 @@ pub struct ConnectTlsArgs {
 struct StartTlsArgs {
   rid: ResourceId,
   cert_file: Option<String>,
+  ca_certs: Vec<String>,
   hostname: String,
 }
 
@@ -685,13 +687,19 @@ where
     }
   }
 
-  let ca_data = match cert_file {
+  let mut ca_certs = args
+    .ca_certs
+    .into_iter()
+    .map(|s| s.into_bytes())
+    .collect::<Vec<_>>();
+
+  match cert_file {
     Some(path) => {
       let mut buf = Vec::new();
       File::open(path)?.read_to_end(&mut buf)?;
-      Some(buf)
+      ca_certs.push(buf);
     }
-    _ => None,
+    _ => {}
   };
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
@@ -724,7 +732,7 @@ where
 
   let tls_config = Arc::new(create_client_config(
     root_cert_store,
-    ca_data,
+    ca_certs,
     unsafely_ignore_certificate_errors,
   )?);
   let tls_stream =
@@ -786,13 +794,19 @@ where
     }
   }
 
-  let ca_data = match cert_file {
+  let mut ca_certs = args
+    .ca_certs
+    .into_iter()
+    .map(|s| s.into_bytes())
+    .collect::<Vec<_>>();
+
+  match cert_file {
     Some(path) => {
       let mut buf = Vec::new();
       File::open(path)?.read_to_end(&mut buf)?;
-      Some(buf)
+      ca_certs.push(buf);
     }
-    _ => None,
+    _ => {}
   };
 
   let root_cert_store = state
@@ -812,7 +826,7 @@ where
   let remote_addr = tcp_stream.peer_addr()?;
   let mut tls_config = create_client_config(
     root_cert_store,
-    ca_data,
+    ca_certs,
     unsafely_ignore_certificate_errors,
   )?;
 

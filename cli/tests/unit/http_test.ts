@@ -233,8 +233,8 @@ unitTest(
       listener.close();
     })();
 
-    const caData = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
-    const client = Deno.createHttpClient({ caData });
+    const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
     const resp = await fetch(`https://${hostname}:${port}/`, {
       client,
       headers: { "connection": "close" },

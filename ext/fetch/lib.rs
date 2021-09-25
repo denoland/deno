@@ -40,8 +40,6 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
-use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -87,7 +85,7 @@ pub fn init<P: FetchPermissions + 'static>(
         create_http_client(
           user_agent.clone(),
           root_cert_store.clone(),
-          None,
+          vec![],
           proxy.clone(),
           unsafely_ignore_certificate_errors.clone(),
           client_cert_chain_and_key.clone(),
@@ -467,9 +465,7 @@ impl HttpClientResource {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct CreateHttpClientOptions {
-  ca_stores: Option<Vec<String>>,
-  ca_file: Option<String>,
-  ca_data: Option<ByteString>,
+  ca_certs: Vec<String>,
   proxy: Option<Proxy>,
   cert_chain: Option<String>,
   private_key: Option<String>,
@@ -483,11 +479,6 @@ pub fn op_create_http_client<FP>(
 where
   FP: FetchPermissions + 'static,
 {
-  if let Some(ca_file) = args.ca_file.clone() {
-    let permissions = state.borrow_mut::<FP>();
-    permissions.check_read(&PathBuf::from(ca_file))?;
-  }
-
   if let Some(proxy) = args.proxy.clone() {
     let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
@@ -510,13 +501,16 @@ where
   };
 
   let defaults = state.borrow::<HttpClientDefaults>();
-  let cert_data =
-    get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
+  let ca_certs = args
+    .ca_certs
+    .into_iter()
+    .map(|cert| cert.into_bytes())
+    .collect::<Vec<_>>();
 
   let client = create_http_client(
     defaults.user_agent.clone(),
     defaults.root_cert_store.clone(),
-    cert_data,
+    ca_certs,
     args.proxy,
     defaults.unsafely_ignore_certificate_errors.clone(),
     client_cert_chain_and_key,
@@ -524,19 +518,4 @@ where
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(rid)
-}
-
-fn get_cert_data(
-  ca_file: Option<&str>,
-  ca_data: Option<&[u8]>,
-) -> Result<Option<Vec<u8>>, AnyError> {
-  if let Some(ca_data) = ca_data {
-    Ok(Some(ca_data.to_vec()))
-  } else if let Some(ca_file) = ca_file {
-    let mut buf = Vec::new();
-    File::open(ca_file)?.read_to_end(&mut buf)?;
-    Ok(Some(buf))
-  } else {
-    Ok(None)
-  }
 }
