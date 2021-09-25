@@ -106,7 +106,7 @@ impl HyperService<Request<Body>> for Service {
 
     async move {
       resp_rx.await.or_else(|_|
-        // Fallback dummy response in case sender was dropped after conn being closed
+        // Fallback dummy response in case sender was dropped due to closed conn
         Response::builder()
           .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
           .body(vec![].into()))
