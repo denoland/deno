@@ -573,6 +573,14 @@ impl FileFetcher {
     }
   }
 
+  pub fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+    if specifier.scheme() == "file" {
+      specifier.to_file_path().ok()
+    } else {
+      self.http_cache.get_cache_filename(specifier)
+    }
+  }
+
   /// Get the location of the current HTTP cache associated with the fetcher.
   pub fn get_http_cache_location(&self) -> PathBuf {
     self.http_cache.location.clone()

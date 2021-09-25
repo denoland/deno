@@ -25,6 +25,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
+use deno_graph::ModuleGraph;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -105,30 +106,15 @@ fn get_maybe_hash(
   }
 }
 
-fn hash_data_url(
-  specifier: &ModuleSpecifier,
-  media_type: &MediaType,
-) -> String {
-  assert_eq!(
-    specifier.scheme(),
-    "data",
-    "Specifier must be a data: specifier."
-  );
+/// Hash the URL so it can be sent to `tsc` in a supportable way
+fn hash_url(specifier: &ModuleSpecifier, media_type: &MediaType) -> String {
   let hash = crate::checksum::gen(&[specifier.path().as_bytes()]);
-  format!("data:///{}{}", hash, media_type.as_ts_extension())
-}
-
-fn hash_blob_url(
-  specifier: &ModuleSpecifier,
-  media_type: &MediaType,
-) -> String {
-  assert_eq!(
+  format!(
+    "{}:///{}{}",
     specifier.scheme(),
-    "blob",
-    "Specifier must be a blob: specifier."
-  );
-  let hash = crate::checksum::gen(&[specifier.path().as_bytes()]);
-  format!("blob:///{}{}", hash, media_type.as_ts_extension())
+    hash,
+    media_type.as_ts_extension()
+  )
 }
 
 /// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.js`, or `.jsx` as root modules
@@ -180,7 +166,7 @@ pub struct Request {
   pub config: TsConfig,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
-  pub graph: Arc<Mutex<Graph>>,
+  pub graph: GraphOrModuleGraph,
   pub hash_data: Vec<Vec<u8>>,
   pub maybe_config_specifier: Option<ModuleSpecifier>,
   pub maybe_tsbuildinfo: Option<String>,
@@ -201,12 +187,19 @@ pub struct Response {
   pub stats: Stats,
 }
 
+// TODO @kitsonk temp
+#[derive(Debug)]
+pub enum GraphOrModuleGraph {
+  Graph(Arc<Mutex<Graph>>),
+  ModuleGraph(Arc<ModuleGraph>),
+}
+
 #[derive(Debug)]
 struct State {
   data_url_map: HashMap<String, ModuleSpecifier>,
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
-  graph: Arc<Mutex<Graph>>,
+  graph: GraphOrModuleGraph,
   maybe_config_specifier: Option<ModuleSpecifier>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
@@ -215,7 +208,7 @@ struct State {
 
 impl State {
   pub fn new(
-    graph: Arc<Mutex<Graph>>,
+    graph: GraphOrModuleGraph,
     hash_data: Vec<Vec<u8>>,
     maybe_config_specifier: Option<ModuleSpecifier>,
     maybe_tsbuildinfo: Option<String>,
@@ -334,8 +327,14 @@ fn op_exists(state: &mut State, args: ExistsArgs) -> Result<bool, AnyError> {
     if specifier.scheme() == "asset" || specifier.scheme() == "data" {
       Ok(true)
     } else {
-      let graph = state.graph.lock();
-      Ok(graph.contains(&specifier))
+      match &state.graph {
+        GraphOrModuleGraph::Graph(graph) => {
+          Ok(graph.lock().contains(&specifier))
+        }
+        GraphOrModuleGraph::ModuleGraph(graph) => {
+          Ok(graph.contains(&specifier))
+        }
+      }
     }
   } else {
     Ok(false)
@@ -370,7 +369,6 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     media_type = MediaType::from(&v.specifier);
     maybe_source
   } else {
-    let graph = state.graph.lock();
     let specifier = if let Some(data_specifier) =
       state.data_url_map.get(&v.specifier)
     {
@@ -380,11 +378,26 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     } else {
       specifier
     };
-    let maybe_source = graph.get_source(&specifier).map(|t| t.to_string());
-    media_type = if let Some(media_type) = graph.get_media_type(&specifier) {
-      media_type
-    } else {
-      MediaType::Unknown
+    let maybe_source = match &state.graph {
+      GraphOrModuleGraph::Graph(graph) => {
+        let graph = graph.lock();
+        media_type = if let Some(media_type) = graph.get_media_type(&specifier)
+        {
+          media_type
+        } else {
+          MediaType::Unknown
+        };
+        graph.get_source(&specifier).map(|t| t.to_string())
+      }
+      GraphOrModuleGraph::ModuleGraph(graph) => {
+        if let Some(module) = graph.get(&specifier) {
+          media_type = module.media_type.clone();
+          Some(module.source.as_str().to_string())
+        } else {
+          media_type = MediaType::Unknown;
+          None
+        }
+      }
     };
     hash = get_maybe_hash(&maybe_source, &state.hash_data);
     maybe_source
@@ -425,46 +438,75 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         MediaType::from(specifier).as_ts_extension().to_string(),
       ));
     } else {
-      let graph = state.graph.lock();
-      match graph.resolve(specifier, &referrer, true) {
-        Ok(resolved_specifier) => {
-          let media_type = if let Some(media_type) =
-            graph.get_media_type(&resolved_specifier)
-          {
-            media_type
-          } else {
-            bail!(
-              "Unable to resolve media type for specifier: \"{}\"",
-              resolved_specifier
-            )
-          };
-          let resolved_specifier_str = match resolved_specifier.scheme() {
-            "data" | "blob" => {
-              let specifier_str = if resolved_specifier.scheme() == "data" {
-                hash_data_url(&resolved_specifier, &media_type)
+      match &state.graph {
+        GraphOrModuleGraph::Graph(graph) => {
+          let graph = graph.lock();
+          match graph.resolve(specifier, &referrer, true) {
+            Ok(resolved_specifier) => {
+              let media_type = if let Some(media_type) =
+                graph.get_media_type(&resolved_specifier)
+              {
+                media_type
               } else {
-                hash_blob_url(&resolved_specifier, &media_type)
+                bail!(
+                  "Unable to resolve media type for specifier: \"{}\"",
+                  resolved_specifier
+                )
               };
-              state
-                .data_url_map
-                .insert(specifier_str.clone(), resolved_specifier);
-              specifier_str
+              let resolved_specifier_str = match resolved_specifier.scheme() {
+                "data" | "blob" => {
+                  let specifier_str =
+                    hash_url(&resolved_specifier, &media_type);
+                  state
+                    .data_url_map
+                    .insert(specifier_str.clone(), resolved_specifier);
+                  specifier_str
+                }
+                _ => resolved_specifier.to_string(),
+              };
+              resolved.push((
+                resolved_specifier_str,
+                media_type.as_ts_extension().into(),
+              ));
             }
-            _ => resolved_specifier.to_string(),
-          };
-          resolved.push((
-            resolved_specifier_str,
-            media_type.as_ts_extension().into(),
-          ));
+            // in certain situations, like certain dynamic imports, we won't have
+            // the source file in the graph, so we will return a fake module to
+            // make tsc happy.
+            Err(_) => {
+              resolved.push((
+                "deno:///missing_dependency.d.ts".to_string(),
+                ".d.ts".to_string(),
+              ));
+            }
+          }
         }
-        // in certain situations, like certain dynamic imports, we won't have
-        // the source file in the graph, so we will return a fake module to
-        // make tsc happy.
-        Err(_) => {
-          resolved.push((
-            "deno:///missing_dependency.d.ts".to_string(),
-            ".d.ts".to_string(),
-          ));
+        GraphOrModuleGraph::ModuleGraph(graph) => {
+          let resolved_dependency = match graph
+            .resolve_dependency(specifier, &referrer, true)
+          {
+            Some(resolved_specifier) => {
+              let media_type = graph
+                .get(resolved_specifier)
+                .map_or(&MediaType::Unknown, |m| &m.media_type);
+              let resolved_specifier_str = match resolved_specifier.scheme() {
+                "data" | "blob" => {
+                  let specifier_str =
+                    hash_url(&resolved_specifier, &media_type);
+                  state
+                    .data_url_map
+                    .insert(specifier_str.clone(), resolved_specifier.clone());
+                  specifier_str
+                }
+                _ => resolved_specifier.to_string(),
+              };
+              (resolved_specifier_str, media_type.as_ts_extension().into())
+            }
+            None => (
+              "deno:///missing_dependency.d.ts".to_string(),
+              ".d.ts".to_string(),
+            ),
+          };
+          resolved.push(resolved_dependency);
         }
       }
     }
@@ -505,11 +547,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .iter()
     .map(|(s, mt)| match s.scheme() {
       "data" | "blob" => {
-        let specifier_str = if s.scheme() == "data" {
-          hash_data_url(s, mt)
-        } else {
-          hash_blob_url(s, mt)
-        };
+        let specifier_str = hash_url(s, mt);
         data_url_map.insert(specifier_str.clone(), s.clone());
         specifier_str
       }
@@ -530,7 +568,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     op_state.put(State::new(
-      request.graph.clone(),
+      request.graph,
       request.hash_data.clone(),
       request.maybe_config_specifier.clone(),
       request.maybe_tsbuildinfo.clone(),
@@ -611,7 +649,8 @@ mod tests {
       .add(&specifier, false)
       .await
       .expect("module not inserted");
-    let graph = Arc::new(Mutex::new(builder.get_graph()));
+    let graph =
+      GraphOrModuleGraph::Graph(Arc::new(Mutex::new(builder.get_graph())));
     State::new(
       graph,
       hash_data,
@@ -633,7 +672,8 @@ mod tests {
     }));
     let mut builder = GraphBuilder::new(handler.clone(), None, None);
     builder.add(specifier, false).await?;
-    let graph = Arc::new(Mutex::new(builder.get_graph()));
+    let graph =
+      GraphOrModuleGraph::Graph(Arc::new(Mutex::new(builder.get_graph())));
     let config = TsConfig::new(json!({
       "allowJs": true,
       "checkJs": false,
@@ -695,12 +735,12 @@ mod tests {
   }
 
   #[test]
-  fn test_hash_data_url() {
+  fn test_hash_url() {
     let specifier = deno_core::resolve_url(
       "data:application/javascript,console.log(\"Hello%20Deno\");",
     )
     .unwrap();
-    assert_eq!(hash_data_url(&specifier, &MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
+    assert_eq!(hash_url(&specifier, &MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
   }
 
   #[test]

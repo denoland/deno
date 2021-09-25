@@ -2,6 +2,7 @@
 
 mod ast;
 mod auth_tokens;
+mod cache;
 mod checksum;
 mod compat;
 mod config_file;
@@ -9,6 +10,7 @@ mod deno_dir;
 mod diagnostics;
 mod diff;
 mod disk_cache;
+mod emit;
 mod errors;
 mod file_fetcher;
 mod file_watcher;

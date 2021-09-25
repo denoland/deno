@@ -908,7 +908,7 @@ impl Graph {
     let response = tsc::exec(tsc::Request {
       config: config.clone(),
       debug: options.debug,
-      graph: graph.clone(),
+      graph: tsc::GraphOrModuleGraph::Graph(graph.clone()),
       hash_data,
       maybe_config_specifier,
       maybe_tsbuildinfo,
@@ -1047,7 +1047,7 @@ impl Graph {
       let response = tsc::exec(tsc::Request {
         config: config.clone(),
         debug: options.debug,
-        graph: graph.clone(),
+        graph: tsc::GraphOrModuleGraph::Graph(graph.clone()),
         hash_data,
         maybe_config_specifier: None,
         maybe_tsbuildinfo: None,
