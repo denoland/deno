@@ -70,20 +70,20 @@ pub async fn lint(
   if let Some(lint_config) = maybe_lint_config.as_ref() {
     if include_files.is_empty() {
       include_files = lint_config
-          .files
-          .include
-          .iter()
-          .map(PathBuf::from)
-          .collect::<Vec<PathBuf>>();
+        .files
+        .include
+        .iter()
+        .map(PathBuf::from)
+        .collect::<Vec<PathBuf>>();
     }
 
     if exclude_files.is_empty() {
       exclude_files = lint_config
-          .files
-          .exclude
-          .iter()
-          .map(PathBuf::from)
-          .collect::<Vec<PathBuf>>();
+        .files
+        .exclude
+        .iter()
+        .map(PathBuf::from)
+        .collect::<Vec<PathBuf>>();
     }
   }
 
@@ -106,23 +106,25 @@ pub async fn lint(
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
-    let result =
-        collect_files(&*include_files.clone(), &*exclude_files.clone(), is_supported_ext).map(
-          |files| {
-            if let Some(paths) = changed {
-              files
-                  .into_iter()
-                  .filter(|path| paths.contains(path))
-                  .collect::<Vec<_>>()
-            } else {
-              files
-            }
-          },
-        );
+    let result = collect_files(
+      &*include_files.clone(),
+      &*exclude_files.clone(),
+      is_supported_ext,
+    )
+    .map(|files| {
+      if let Some(paths) = changed {
+        files
+          .into_iter()
+          .filter(|path| paths.contains(path))
+          .collect::<Vec<_>>()
+      } else {
+        files
+      }
+    });
     let paths_to_watch = args.clone();
     async move {
       if (files_changed || !watch)
-          && matches!(result, Ok(ref files) if files.is_empty())
+        && matches!(result, Ok(ref files) if files.is_empty())
       {
         ResolutionResult::Ignore
       } else {
@@ -154,7 +156,7 @@ pub async fn lint(
         Ok(())
       }
     })
-        .await?;
+    .await?;
     reporter_lock.lock().unwrap().close(target_files_len);
 
     Ok(())
@@ -164,7 +166,7 @@ pub async fn lint(
   } else {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
       let reporter_lock =
-          Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
+        Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
       let r = lint_stdin(lint_rules);
       handle_lint_result(
         STDIN_FILE_NAME,
@@ -175,14 +177,14 @@ pub async fn lint(
       reporter_lock.lock().unwrap().close(1);
     } else {
       let target_files =
-          collect_files(&include_files, &exclude_files, is_supported_ext)
-              .and_then(|files| {
-                if files.is_empty() {
-                  Err(generic_error("No target files found."))
-                } else {
-                  Ok(files)
-                }
-              })?;
+        collect_files(&include_files, &exclude_files, is_supported_ext)
+          .and_then(|files| {
+            if files.is_empty() {
+              Err(generic_error("No target files found."))
+            } else {
+              Ok(files)
+            }
+          })?;
       debug!("Found {} files", target_files.len());
       operation(target_files).await?;
     };
@@ -200,15 +202,15 @@ pub fn print_rules_list(json: bool) {
 
   if json {
     let json_rules: Vec<serde_json::Value> = lint_rules
-        .iter()
-        .map(|rule| {
-          serde_json::json!({
+      .iter()
+      .map(|rule| {
+        serde_json::json!({
           "code": rule.code(),
           "tags": rule.tags(),
           "docs": rule.docs(),
         })
-        })
-        .collect();
+      })
+      .collect();
     let json_str = serde_json::to_string_pretty(&json_rules).unwrap();
     println!("{}", json_str);
   } else {
@@ -228,11 +230,11 @@ pub fn create_linter(
   rules: Arc<Vec<Box<dyn LintRule>>>,
 ) -> Linter {
   LinterBuilder::default()
-      .ignore_file_directive("deno-lint-ignore-file")
-      .ignore_diagnostic_directive("deno-lint-ignore")
-      .syntax(syntax)
-      .rules(rules)
-      .build()
+    .ignore_file_directive("deno-lint-ignore-file")
+    .ignore_diagnostic_directive("deno-lint-ignore")
+    .syntax(syntax)
+    .rules(rules)
+    .build()
 }
 
 fn lint_file(
@@ -266,7 +268,7 @@ fn lint_stdin(
   let linter = create_linter(syntax, lint_rules);
 
   let (_, file_diagnostics) =
-      linter.lint(STDIN_FILE_NAME.to_string(), source_code.clone())?;
+    linter.lint(STDIN_FILE_NAME.to_string(), source_code.clone())?;
 
   Ok((file_diagnostics, source_code))
 }
@@ -370,10 +372,10 @@ pub fn format_diagnostic(
   let mut lines = vec![];
 
   for (i, line) in source_lines
-      .iter()
-      .enumerate()
-      .take(range.end.line_index + 1)
-      .skip(range.start.line_index)
+    .iter()
+    .enumerate()
+    .take(range.end.line_index + 1)
+    .skip(range.start.line_index)
   {
     lines.push(line.to_string());
     if range.start.line_index == range.end.line_index {
@@ -394,7 +396,7 @@ pub fn format_diagnostic(
         ));
       } else if range.end.line_index == i {
         lines
-            .push(colors::red(&"^".repeat(range.end.column_index)).to_string());
+          .push(colors::red(&"^".repeat(range.end.column_index)).to_string());
       } else if line_len != 0 {
         lines.push(colors::red(&"^".repeat(line_len)).to_string());
       }
@@ -464,7 +466,7 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
     match file_order {
       Ordering::Equal => {
         let line_order =
-            a.range.start.line_index.cmp(&b.range.start.line_index);
+          a.range.start.line_index.cmp(&b.range.start.line_index);
         match line_order {
           Ordering::Equal => {
             a.range.start.column_index.cmp(&b.range.start.column_index)
@@ -484,23 +486,23 @@ fn get_configured_rules(
   rules_exclude: Vec<String>,
 ) -> Result<Arc<Vec<Box<dyn LintRule>>>, AnyError> {
   if maybe_lint_config.is_none()
-      && rules_tags.is_empty()
-      && rules_include.is_empty()
-      && rules_exclude.is_empty()
+    && rules_tags.is_empty()
+    && rules_include.is_empty()
+    && rules_exclude.is_empty()
   {
     return Ok(rules::get_recommended_rules());
   }
 
   let (config_file_tags, config_file_include, config_file_exclude) =
-      if let Some(lint_config) = maybe_lint_config.as_ref() {
-        (
-          lint_config.rules.tags.clone(),
-          lint_config.rules.include.clone(),
-          lint_config.rules.exclude.clone(),
-        )
-      } else {
-        (None, None, None)
-      };
+    if let Some(lint_config) = maybe_lint_config.as_ref() {
+      (
+        lint_config.rules.tags.clone(),
+        lint_config.rules.include.clone(),
+        lint_config.rules.exclude.clone(),
+      )
+    } else {
+      (None, None, None)
+    };
 
   let maybe_configured_include = if !rules_include.is_empty() {
     Some(rules_include)
