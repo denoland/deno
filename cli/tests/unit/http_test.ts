@@ -959,7 +959,9 @@ unitTest(
 
       try {
         http.close();
-      } catch {}
+      } catch {
+        "nop";
+      }
 
       listener.close();
     }
