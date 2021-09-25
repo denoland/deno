@@ -257,8 +257,8 @@ async fn op_run_status(
 }
 
 #[cfg(unix)]
-pub fn kill(pid: i32, signo: &str) -> Result<(), AnyError> {
-  let signo = super::signal::signal_str_to_int(signo)?;
+pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
+  let signo = super::signal::signal_str_to_int(signal)?;
   use nix::sys::signal::{kill as unix_kill, Signal};
   use nix::unistd::Pid;
   use std::convert::TryFrom;
@@ -267,7 +267,7 @@ pub fn kill(pid: i32, signo: &str) -> Result<(), AnyError> {
 }
 
 #[cfg(not(unix))]
-pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
+pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use std::io::Error;
   use std::io::ErrorKind::NotFound;
   use winapi::shared::minwindef::DWORD;
