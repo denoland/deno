@@ -936,3 +936,49 @@ unitTest(
     await promise;
   },
 );
+
+// https://github.com/denoland/deno/pull/12216
+unitTest(
+  { permissions: { net: true } },
+  async function droppedConnSenderNoPanic() {
+    async function server(listener: Deno.Listener) {
+      const conn = await listener.accept();
+      const http = Deno.serveHttp(conn);
+
+      for (;;) {
+        const req = await http.nextRequest();
+        if (req == null) break;
+
+        nextloop()
+          .then(() => {
+            http.close();
+            return req.respondWith(new Response("boom"));
+          })
+          .catch(() => {});
+      }
+
+      try {
+        http.close();
+      } catch {
+        "nop";
+      }
+
+      listener.close();
+    }
+
+    async function client() {
+      const resp = await fetch("http://127.0.0.1:8000/");
+      await resp.body?.cancel();
+    }
+
+    function nextloop() {
+      return new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    async function main() {
+      const listener = Deno.listen({ port: 8000 });
+      await Promise.all([server(listener), client()]);
+    }
+    await main();
+  },
+);

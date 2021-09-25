@@ -108,7 +108,14 @@ impl HyperService<Request<Body>> for Service {
       response_tx: resp_tx,
     });
 
-    async move { Ok(resp_rx.await.unwrap()) }.boxed_local()
+    async move {
+      resp_rx.await.or_else(|_|
+        // Fallback dummy response in case sender was dropped due to closed conn
+        Response::builder()
+          .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+          .body(vec![].into()))
+    }
+    .boxed_local()
   }
 }
 
