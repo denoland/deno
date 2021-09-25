@@ -965,7 +965,8 @@ unitTest(
     }
 
     async function client() {
-      await fetch("http://127.0.0.1:8000/");
+      const resp = await fetch("http://127.0.0.1:8000/");
+      await resp.body?.cancel();
     }
 
     function nextloop() {
