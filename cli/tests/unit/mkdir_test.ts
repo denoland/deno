@@ -228,7 +228,7 @@ unitTest(
 );
 
 Deno.test({
-  name: "mkdirSyhncSymlinkToDotDot",
+  name: "mkdirSyncSymlinkToDotDot",
   fn() {
     assertThrows(() => {
       Deno.mkdirSync(
