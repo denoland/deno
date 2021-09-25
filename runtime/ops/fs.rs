@@ -1146,7 +1146,9 @@ fn op_rename_sync(
   permissions.write.check(&oldpath)?;
   permissions.write.check(&newpath)?;
   debug!("op_rename_sync {} {}", oldpath.display(), newpath.display());
-  fs_err::rename(&oldpath, &newpath)?;
+  std::fs::rename(&oldpath, &newpath).map_err(|err| {
+    io::Error::new(err.kind(), format!("{}, rename '{}' -> '{}'", err, oldpath.display(), newpath.display()))
+  })?;
   Ok(())
 }
 
@@ -1170,7 +1172,9 @@ async fn op_rename_async(
       oldpath.display(),
       newpath.display()
     );
-    fs_err::rename(&oldpath, &newpath)?;
+    std::fs::rename(&oldpath, &newpath).map_err(|err| {
+      io::Error::new(err.kind(), format!("{}, rename '{}' -> '{}'", err, oldpath.display(), newpath.display()))
+    })?;
     Ok(())
   })
   .await
@@ -1199,7 +1203,9 @@ fn op_link_sync(
   permissions.write.check(&newpath)?;
 
   debug!("op_link_sync {} {}", oldpath.display(), newpath.display());
-  fs_err::hard_link(&oldpath, &newpath)?;
+  std::fs::hard_link(&oldpath, &newpath).map_err(|err| {
+    io::Error::new(err.kind(), format!("{}, link '{}' -> '{}'", err, oldpath.display(), newpath.display()))
+  })?;
   Ok(())
 }
 
@@ -1222,7 +1228,9 @@ async fn op_link_async(
 
   tokio::task::spawn_blocking(move || {
     debug!("op_link_async {} {}", oldpath.display(), newpath.display());
-    fs_err::hard_link(&oldpath, &newpath)?;
+    std::fs::hard_link(&oldpath, &newpath).map_err(|err| {
+      io::Error::new(err.kind(), format!("{}, link '{}' -> '{}'", err, oldpath.display(), newpath.display()))
+    })?;
     Ok(())
   })
   .await
