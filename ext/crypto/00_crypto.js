@@ -1599,7 +1599,10 @@
         bytes = exportedKey;
       } else {
         // TODO(@littledivy): Implement JWK.
-        throw new TypeError("not implemented.");
+        throw new DOMException(
+          "Not implemented",
+          "NotSupportedError",
+        );
       }
 
       // 14-15.
@@ -1607,7 +1610,10 @@
         supportedAlgorithms["wrapKey"][normalizedAlgorithm.name] !== undefined
       ) {
         // TODO(@littledivy): Implement this for AES-KW.
-        throw new TypeError("not implemented.");
+        throw new DOMException(
+          "Not implemented",
+          "NotSupportedError",
+        );
       } else if (
         supportedAlgorithms["encrypt"][normalizedAlgorithm.name] !== undefined
       ) {
