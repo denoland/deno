@@ -445,7 +445,7 @@
       {
         key: "body",
         converter: webidl.createNullableConverter(
-          webidl.converters["BodyInit"],
+          webidl.converters["BodyInit_DOMString"],
         ),
       },
       { key: "redirect", converter: webidl.converters["RequestRedirect"] },
