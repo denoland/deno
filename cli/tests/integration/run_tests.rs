@@ -1194,6 +1194,11 @@ itest!(worker_drop_handle_race {
   exit_code: 1,
 });
 
+itest!(worker_close_nested {
+  args: "run --quiet --reload --allow-read worker_close_nested.js",
+  output: "worker_close_nested.js.out",
+});
+
 itest!(worker_message_before_close {
   args: "run --quiet --reload --allow-read worker_message_before_close.js",
   output: "worker_message_before_close.js.out",
