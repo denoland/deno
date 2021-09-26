@@ -176,6 +176,16 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
   if !removed {
     return Err(generic_error(format!("No installation found for {}", name)));
   }
+
+  // There might be some extra files to delete
+  for ext in ["tsconfig.json", "lock.json"] {
+    file_path = file_path.with_extension(ext);
+    if file_path.exists() {
+      fs::remove_file(&file_path)?;
+      println!("deleted {}", file_path.to_string_lossy());
+    }
+  }
+
   println!("✅ Successfully uninstalled {}", name);
   Ok(())
 }
@@ -975,15 +985,20 @@ mod tests {
     std::fs::create_dir(&bin_dir).unwrap();
 
     let mut file_path = bin_dir.join("echo_test");
+    File::create(&file_path).unwrap();
 
-    let mut file = File::create(&file_path).unwrap();
-    let result = file.write_all(b"Hello, world!");
-    assert!(result.is_ok());
+    // create extra files
+    file_path = file_path.with_extension("tsconfig.json");
+    File::create(&file_path).unwrap();
+    file_path = file_path.with_extension("lock.json");
+    File::create(&file_path).unwrap();
 
     uninstall("echo_test".to_string(), Some(temp_dir.path().to_path_buf()))
       .expect("Uninstall failed");
 
     assert!(!file_path.exists());
+    assert!(!file_path.with_extension("tsconfig.json").exists());
+    assert!(!file_path.with_extension("lock.json").exists());
 
     if cfg!(windows) {
       file_path = file_path.with_extension("cmd");
