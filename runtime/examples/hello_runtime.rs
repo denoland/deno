@@ -57,7 +57,7 @@ async fn main() -> Result<(), AnyError> {
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);
   worker.bootstrap(&options);
-  worker.execute_module(&main_module).await?;
+  worker.execute_main_module(&main_module).await?;
   worker.run_event_loop(false).await?;
   Ok(())
 }

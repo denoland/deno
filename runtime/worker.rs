@@ -56,8 +56,7 @@ pub struct WorkerOptions {
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  // Callback that will be invoked when creating new instance
-  // of WebWorker
+  // Callback invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -207,21 +206,27 @@ impl MainWorker {
     Ok(())
   }
 
-  /// Loads and instantiates specified JavaScript module.
+  /// Loads and instantiates specified JavaScript module
+  /// as "main" or "side" module.
   pub async fn preload_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
+    main: bool,
   ) -> Result<ModuleId, AnyError> {
-    self.js_runtime.load_module(module_specifier, None).await
+    if main {
+      self
+        .js_runtime
+        .load_main_module(module_specifier, None)
+        .await
+    } else {
+      self
+        .js_runtime
+        .load_side_module(module_specifier, None)
+        .await
+    }
   }
 
-  /// Loads, instantiates and executes specified JavaScript module.
-  pub async fn execute_module(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier).await?;
-    self.wait_for_inspector_session();
+  async fn evaluate_module(&mut self, id: ModuleId) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       maybe_result = &mut receiver => {
@@ -235,6 +240,27 @@ impl MainWorker {
         maybe_result.expect("Module evaluation result not provided.")
       }
     }
+  }
+
+  /// Loads, instantiates and executes specified JavaScript module.
+  pub async fn execute_side_module(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    let id = self.preload_module(module_specifier, false).await?;
+    self.evaluate_module(id).await
+  }
+
+  /// Loads, instantiates and executes specified JavaScript module.
+  ///
+  /// This module will have "import.meta.main" equal to true.
+  pub async fn execute_main_module(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<(), AnyError> {
+    let id = self.preload_module(module_specifier, true).await?;
+    self.wait_for_inspector_session();
+    self.evaluate_module(id).await
   }
 
   fn wait_for_inspector_session(&mut self) {
@@ -330,7 +356,7 @@ mod tests {
     let p = test_util::testdata_path().join("esm_imports_a.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut worker = create_test_worker();
-    let result = worker.execute_module(&module_specifier).await;
+    let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
@@ -347,7 +373,7 @@ mod tests {
       .join("tests/circular1.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut worker = create_test_worker();
-    let result = worker.execute_module(&module_specifier).await;
+    let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
@@ -361,7 +387,7 @@ mod tests {
     // "foo" is not a valid module specifier so this should return an error.
     let mut worker = create_test_worker();
     let module_specifier = resolve_url_or_path("does-not-exist").unwrap();
-    let result = worker.execute_module(&module_specifier).await;
+    let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_err());
   }
 
@@ -372,7 +398,7 @@ mod tests {
     let mut worker = create_test_worker();
     let p = test_util::testdata_path().join("001_hello.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
-    let result = worker.execute_module(&module_specifier).await;
+    let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_ok());
   }
 }

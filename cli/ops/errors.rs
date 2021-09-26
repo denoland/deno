@@ -1,7 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::diagnostics::Diagnostics;
-use crate::program_state::ProgramState;
+use crate::fmt_errors::format_file_name;
+use crate::proc_state::ProcState;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use deno_core::error::AnyError;
@@ -11,11 +12,11 @@ use deno_core::serde_json::Value;
 use deno_core::OpState;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_sync(rt, "op_apply_source_map", op_apply_source_map);
   super::reg_sync(rt, "op_format_diagnostic", op_format_diagnostic);
+  super::reg_sync(rt, "op_format_file_name", op_format_file_name);
 }
 
 #[derive(Deserialize)]
@@ -34,7 +35,7 @@ fn op_apply_source_map(
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
   let mut mappings_map: CachedMaps = HashMap::new();
-  let program_state = state.borrow::<Arc<ProgramState>>().clone();
+  let ps = state.borrow::<ProcState>().clone();
 
   let (orig_file_name, orig_line_number, orig_column_number, _) =
     get_orig_position(
@@ -42,7 +43,7 @@ fn op_apply_source_map(
       args.line_number.into(),
       args.column_number.into(),
       &mut mappings_map,
-      program_state,
+      ps,
     );
 
   Ok(json!({
@@ -59,4 +60,12 @@ fn op_format_diagnostic(
 ) -> Result<Value, AnyError> {
   let diagnostic: Diagnostics = serde_json::from_value(args)?;
   Ok(json!(diagnostic.to_string()))
+}
+
+fn op_format_file_name(
+  _state: &mut OpState,
+  file_name: String,
+  _: (),
+) -> Result<String, AnyError> {
+  Ok(format_file_name(&file_name))
 }

@@ -412,15 +412,6 @@
     const p = new Promise((resolve, reject) => {
       const prefix = "Failed to call 'fetch'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      input = webidl.converters["RequestInfo"](input, {
-        prefix,
-        context: "Argument 1",
-      });
-      init = webidl.converters["RequestInit"](init, {
-        prefix,
-        context: "Argument 2",
-      });
-
       // 2.
       const requestObject = new Request(input, init);
       // 3.

@@ -31,7 +31,6 @@
     queueMicrotask,
     StringFromCodePoint,
     Symbol,
-    SymbolToStringTag,
     TypedArrayPrototypeSet,
     TypeError,
     Uint8Array,
@@ -44,10 +43,6 @@
   const handlerSymbol = Symbol("eventHandlers");
 
   class FileReader extends EventTarget {
-    get [SymbolToStringTag]() {
-      return "FileReader";
-    }
-
     /** @type {"empty" | "loading" | "done"} */
     [state] = "empty";
     /** @type {null | string | ArrayBuffer} */
@@ -372,7 +367,7 @@
     /** @param {Blob} blob */
     readAsDataURL(blob) {
       webidl.assertBranded(this, FileReader);
-      const prefix = "Failed to execute 'readAsBinaryString' on 'FileReader'";
+      const prefix = "Failed to execute 'readAsDataURL' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // alias for readAsArrayBuffer
       this.#readOperation(blob, { kind: "DataUrl" });
@@ -384,7 +379,7 @@
      */
     readAsText(blob, encoding = undefined) {
       webidl.assertBranded(this, FileReader);
-      const prefix = "Failed to execute 'readAsBinaryString' on 'FileReader'";
+      const prefix = "Failed to execute 'readAsText' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       if (encoding !== undefined) {
         encoding = webidl.converters["DOMString"](encoding, {

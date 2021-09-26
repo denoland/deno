@@ -206,9 +206,9 @@ impl WebWorkerHandle {
   /// Terminate the worker
   /// This function will set terminated to true, terminate the isolate and close the message channel
   pub fn terminate(self) {
-    // This function can be called multiple times by whomever holds
-    // the handle. However only a single "termination" should occur so
-    // we need a guard here.
+    // A WebWorkerHandle can be terminated / dropped after `self.close()` has
+    // been called inside the worker, but only a single "termination" can occur,
+    // so we need a guard here.
     let already_terminated = self.terminated.swap(true, Ordering::SeqCst);
 
     if !already_terminated {
@@ -458,21 +458,32 @@ impl WebWorker {
     Ok(())
   }
 
-  /// Loads and instantiates specified JavaScript module.
+  /// Loads and instantiates specified JavaScript module
+  /// as "main" or "side" module.
   pub async fn preload_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
+    main: bool,
   ) -> Result<ModuleId, AnyError> {
-    self.js_runtime.load_module(module_specifier, None).await
+    if main {
+      self
+        .js_runtime
+        .load_main_module(module_specifier, None)
+        .await
+    } else {
+      self
+        .js_runtime
+        .load_side_module(module_specifier, None)
+        .await
+    }
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
-  pub async fn execute_module(
+  pub async fn execute_main_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier).await?;
-
+    let id = self.preload_module(module_specifier, true).await?;
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       maybe_result = &mut receiver => {
@@ -494,7 +505,7 @@ impl WebWorker {
     }
   }
 
-  pub fn poll_event_loop(
+  fn poll_event_loop(
     &mut self,
     cx: &mut Context,
     wait_for_inspector: bool,
@@ -568,7 +579,7 @@ pub fn run_web_worker(
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
       // script instead of module
-      worker.execute_module(&specifier).await
+      worker.execute_main_module(&specifier).await
     };
 
     let internal_handle = worker.internal_handle.clone();

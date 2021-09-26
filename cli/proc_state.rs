@@ -41,12 +41,16 @@ use std::collections::HashSet;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
+use std::ops::Deref;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
 ///
 /// It is shared by all created workers (thus V8 isolates).
-pub struct ProgramState {
+#[derive(Clone)]
+pub struct ProcState(Arc<Inner>);
+
+pub struct Inner {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   pub dir: deno_dir::DenoDir,
@@ -64,8 +68,15 @@ pub struct ProgramState {
   pub shared_array_buffer_store: SharedArrayBufferStore,
 }
 
-impl ProgramState {
-  pub async fn build(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
+impl Deref for ProcState {
+  type Target = Arc<Inner>;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl ProcState {
+  pub async fn build(flags: flags::Flags) -> Result<Self, AnyError> {
     let maybe_custom_root = flags
       .cache_path
       .clone()
@@ -200,7 +211,7 @@ impl ProgramState {
       .clone()
       .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok());
 
-    let program_state = ProgramState {
+    Ok(ProcState(Arc::new(Inner {
       dir,
       coverage_dir,
       flags,
@@ -214,14 +225,12 @@ impl ProgramState {
       blob_store,
       broadcast_channel,
       shared_array_buffer_store,
-    };
-    Ok(Arc::new(program_state))
+    })))
   }
 
   /// Prepares a set of module specifiers for loading in one shot.
-  ///
   pub async fn prepare_module_graph(
-    self: &Arc<Self>,
+    &self,
     specifiers: Vec<ModuleSpecifier>,
     lib: TypeLib,
     root_permissions: Permissions,
@@ -293,12 +302,11 @@ impl ProgramState {
     Ok(())
   }
 
-  /// This function is called when new module load is
-  /// initialized by the JsRuntime. Its resposibility is to collect
-  /// all dependencies and if it is required then also perform TS typecheck
-  /// and traspilation.
+  /// This function is called when new module load is initialized by the JsRuntime. Its
+  /// resposibility is to collect all dependencies and if it is required then also perform TS
+  /// typecheck and traspilation.
   pub async fn prepare_module_load(
-    self: &Arc<Self>,
+    &self,
     specifier: ModuleSpecifier,
     lib: TypeLib,
     root_permissions: Permissions,
@@ -448,7 +456,7 @@ impl ProgramState {
 
 // TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
 // else, like a refactored file_fetcher.
-impl SourceMapGetter for ProgramState {
+impl SourceMapGetter for ProcState {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     if let Ok(specifier) = resolve_url(file_name) {
       if let Some((code, maybe_map)) = self.get_emit(&specifier) {

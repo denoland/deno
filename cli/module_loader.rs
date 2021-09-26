@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::module_graph::TypeLib;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
@@ -15,7 +15,6 @@ use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
-use std::sync::Arc;
 
 pub struct CliModuleLoader {
   /// When flags contains a `.import_map_path` option, the content of the
@@ -26,32 +25,29 @@ pub struct CliModuleLoader {
   /// worker. They are decoupled from the worker (dynamic) permissions since
   /// read access errors must be raised based on the parent thread permissions.
   pub root_permissions: Permissions,
-  pub program_state: Arc<ProgramState>,
+  pub ps: ProcState,
 }
 
 impl CliModuleLoader {
-  pub fn new(program_state: Arc<ProgramState>) -> Rc<Self> {
-    let lib = if program_state.flags.unstable {
+  pub fn new(ps: ProcState) -> Rc<Self> {
+    let lib = if ps.flags.unstable {
       TypeLib::UnstableDenoWindow
     } else {
       TypeLib::DenoWindow
     };
 
-    let import_map = program_state.maybe_import_map.clone();
+    let import_map = ps.maybe_import_map.clone();
 
     Rc::new(CliModuleLoader {
       import_map,
       lib,
       root_permissions: Permissions::allow_all(),
-      program_state,
+      ps,
     })
   }
 
-  pub fn new_for_worker(
-    program_state: Arc<ProgramState>,
-    permissions: Permissions,
-  ) -> Rc<Self> {
-    let lib = if program_state.flags.unstable {
+  pub fn new_for_worker(ps: ProcState, permissions: Permissions) -> Rc<Self> {
+    let lib = if ps.flags.unstable {
       TypeLib::UnstableDenoWorker
     } else {
       TypeLib::DenoWorker
@@ -61,7 +57,7 @@ impl CliModuleLoader {
       import_map: None,
       lib,
       root_permissions: permissions,
-      program_state,
+      ps,
     })
   }
 }
@@ -69,18 +65,20 @@ impl CliModuleLoader {
 impl ModuleLoader for CliModuleLoader {
   fn resolve(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
     // FIXME(bartlomieju): hacky way to provide compatibility with repl
-    let referrer = if referrer.is_empty() && self.program_state.flags.repl {
+    let referrer = if referrer.is_empty() && self.ps.flags.repl {
       deno_core::DUMMY_SPECIFIER
     } else {
       referrer
     };
 
+    // TODO(ry) I think we can remove this conditional. At the time of writing
+    // we don't have any tests that fail if it was removed.
+    // https://github.com/WICG/import-maps/issues/157
     if !is_main {
       if let Some(import_map) = &self.import_map {
         return import_map
@@ -96,19 +94,17 @@ impl ModuleLoader for CliModuleLoader {
 
   fn load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
-    let program_state = self.program_state.clone();
+    let ps = self.ps.clone();
 
     // NOTE: this block is async only because of `deno_core`
     // interface requirements; module was already loaded
     // when constructing module graph during call to `prepare_load`.
-    async move { program_state.load(module_specifier, maybe_referrer) }
-      .boxed_local()
+    async move { ps.load(module_specifier, maybe_referrer) }.boxed_local()
   }
 
   fn prepare_load(
@@ -120,7 +116,7 @@ impl ModuleLoader for CliModuleLoader {
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
     let specifier = specifier.clone();
-    let program_state = self.program_state.clone();
+    let ps = self.ps.clone();
     let maybe_import_map = self.import_map.clone();
     let state = op_state.borrow();
 
@@ -132,16 +128,15 @@ impl ModuleLoader for CliModuleLoader {
 
     // TODO(bartlomieju): `prepare_module_load` should take `load_id` param
     async move {
-      program_state
-        .prepare_module_load(
-          specifier,
-          lib,
-          root_permissions,
-          dynamic_permissions,
-          is_dynamic,
-          maybe_import_map,
-        )
-        .await
+      ps.prepare_module_load(
+        specifier,
+        lib,
+        root_permissions,
+        dynamic_permissions,
+        is_dynamic,
+        maybe_import_map,
+      )
+      .await
     }
     .boxed_local()
   }

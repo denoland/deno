@@ -50,12 +50,6 @@ pub struct InspectorSessionProxy {
   pub rx: SessionProxyReceiver,
 }
 
-impl InspectorSessionProxy {
-  pub fn split(self) -> (SessionProxySender, SessionProxyReceiver) {
-    (self.tx, self.rx)
-  }
-}
-
 #[derive(Clone, Copy)]
 enum PollState {
   Idle,
