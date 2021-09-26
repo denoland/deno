@@ -592,6 +592,28 @@ pub fn run_web_worker(
 
     if let Err(e) = result {
       print_worker_error(e.to_string(), &name);
+      let error_json = match e.downcast_ref::<JsError>() {
+        Some(js_error) => json!({
+          "message": js_error.message,
+          "fileName": js_error.script_resource_name,
+          "lineNumber": js_error.line_number,
+          "columnNumber": js_error.start_column,
+        }),
+        None => json!({
+          "message": e.to_string(),
+        }),
+      };
+      let error_string = serde_json::ser::to_string(&error_json)
+        .expect("Failed to serialize worker error");
+      // Dispatch sync error to worker's own error handler first. Error in handler is silently consumed.
+      let _ = worker.execute_script(
+        &located_script_name!(),
+        &format!(
+          r#"globalThis.dispatchEvent(new ErrorEvent("error", {}))"#,
+          &error_string
+        ),
+      );
+      // And then to parent.
       internal_handle
         .post_event(WorkerControlEvent::TerminalError(e))
         .expect("Failed to post message to host");
