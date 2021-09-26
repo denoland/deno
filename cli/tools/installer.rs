@@ -986,6 +986,10 @@ mod tests {
 
     let mut file_path = bin_dir.join("echo_test");
     File::create(&file_path).unwrap();
+    if cfg!(windows) {
+      file_path = file_path.with_extension("cmd");
+      File::create(&file_path).unwrap();
+    }
 
     // create extra files
     file_path = file_path.with_extension("tsconfig.json");
