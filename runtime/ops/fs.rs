@@ -2,6 +2,7 @@
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::StdFileResource;
 use super::utils::into_string;
+use crate::fs_error::{Error, SourceDestError};
 use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
@@ -16,7 +17,6 @@ use deno_core::RcRef;
 use deno_core::ResourceId;
 use deno_crypto::rand::thread_rng;
 use deno_crypto::rand::Rng;
-use fs_err;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
@@ -164,7 +164,9 @@ fn op_open_sync(
   _: (),
 ) -> Result<ResourceId, AnyError> {
   let (path, open_options) = open_helper(state, args)?;
-  let std_file = open_options.open(path)?;
+  let std_file = open_options
+    .open(&path)
+    .map_err(|err| Error::new(err, "open", path))?;
   let tokio_file = tokio::fs::File::from_std(std_file);
   let resource = StdFileResource::fs_file(tokio_file);
   let rid = state.resource_table.add(resource);
@@ -586,14 +588,16 @@ fn op_chmod_sync(
   {
     use std::os::unix::fs::PermissionsExt;
     let permissions = PermissionsExt::from_mode(mode);
-    fs_err::set_permissions(&path, permissions)?;
+    std::fs::set_permissions(&path, permissions)
+      .map_err(|err| Error::new(err, "chmod", path))?;
     Ok(())
   }
   // TODO Implement chmod for Windows (#4357)
   #[cfg(not(unix))]
   {
     // Still check file/dir exists on Windows
-    let _metadata = fs_err::metadata(&path)?;
+    let _metadata =
+      std::fs::metadata(&path).map_err(|err| Error::new(err, "chmod", path))?;
     Err(generic_error("Not implemented"))
   }
 }
@@ -617,14 +621,16 @@ async fn op_chmod_async(
     {
       use std::os::unix::fs::PermissionsExt;
       let permissions = PermissionsExt::from_mode(mode);
-      fs_err::set_permissions(&path, permissions)?;
+      std::fs::set_permissions(&path, permissions)
+        .map_err(|err| Error::new(err, "chmod", path))?;
       Ok(())
     }
     // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
     {
       // Still check file/dir exists on Windows
-      let _metadata = fs_err::metadata(&path)?;
+      let _metadata = std::fs::metadata(&path)
+        .map_err(|err| Error::new(err, "chmod", path))?;
       Err(not_supported())
     }
   })
@@ -723,31 +729,39 @@ fn op_remove_sync(
   #[cfg(not(unix))]
   use std::os::windows::prelude::MetadataExt;
 
-  let metadata = fs_err::symlink_metadata(&path)?;
+  let metadata = std::fs::symlink_metadata(&path)
+    .map_err(|err| Error::new(err, "remove", &path))?;
 
   debug!("op_remove_sync {} {}", path.display(), recursive);
   let file_type = metadata.file_type();
   if file_type.is_file() {
-    fs_err::remove_file(&path)?;
+    std::fs::remove_file(&path)
+      .map_err(|err| Error::new(err, "remove", &path))?;
   } else if recursive {
-    fs_err::remove_dir_all(&path)?;
+    std::fs::remove_dir_all(&path)
+      .map_err(|err| Error::new(err, "remove", &path))?;
   } else if file_type.is_symlink() {
     #[cfg(unix)]
-    fs_err::remove_file(&path)?;
+    std::fs::remove_file(&path)
+      .map_err(|err| Error::new(err, "remove", &path))?;
     #[cfg(not(unix))]
     {
       use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
       if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
-        fs_err::remove_dir(&path)?;
+        std::fs::remove_dir(&path)
+          .map_err(|err| Error::new(err, "remove", &path))?;
       } else {
-        fs_err::remove_file(&path)?;
+        std::fs::remove_file(&path)
+          .map_err(|err| Error::new(err, "remove", &path))?;
       }
     }
   } else if file_type.is_dir() {
-    fs_err::remove_dir(&path)?;
+    std::fs::remove_dir(&path)
+      .map_err(|err| Error::new(err, "remove", &path))?;
   } else {
     // pipes, sockets, etc...
-    fs_err::remove_file(&path)?;
+    std::fs::remove_file(&path)
+      .map_err(|err| Error::new(err, "remove", &path))?;
   }
   Ok(())
 }
@@ -769,31 +783,39 @@ async fn op_remove_async(
     #[cfg(not(unix))]
     use std::os::windows::prelude::MetadataExt;
 
-    let metadata = fs_err::symlink_metadata(&path)?;
+    let metadata = std::fs::symlink_metadata(&path)
+      .map_err(|err| Error::new(err, "remove", &path))?;
 
     debug!("op_remove_async {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() {
-      fs_err::remove_file(&path)?;
+      std::fs::remove_file(&path)
+        .map_err(|err| Error::new(err, "remove", &path))?;
     } else if recursive {
-      fs_err::remove_dir_all(&path)?;
+      std::fs::remove_dir_all(&path)
+        .map_err(|err| Error::new(err, "remove", &path))?;
     } else if file_type.is_symlink() {
       #[cfg(unix)]
-      fs_err::remove_file(&path)?;
+      std::fs::remove_file(&path)
+        .map_err(|err| Error::new(err, "remove", &path))?;
       #[cfg(not(unix))]
       {
         use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
         if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
-          fs_err::remove_dir(&path)?;
+          std::fs::remove_dir(&path)
+            .map_err(|err| Error::new(err, "remove", &path))?;
         } else {
-          fs_err::remove_file(&path)?;
+          std::fs::remove_file(&path)
+            .map_err(|err| Error::new(err, "remove", &path))?;
         }
       }
     } else if file_type.is_dir() {
-      fs_err::remove_dir(&path)?;
+      std::fs::remove_dir(&path)
+        .map_err(|err| Error::new(err, "remove", &path))?;
     } else {
       // pipes, sockets, etc...
-      fs_err::remove_file(&path)?;
+      std::fs::remove_file(&path)
+        .map_err(|err| Error::new(err, "remove", &path))?;
     }
     Ok(())
   })
@@ -829,7 +851,8 @@ fn op_copy_file_sync(
   }
 
   // returns size of from as u64 (we ignore)
-  fs_err::copy(&from, &to)?;
+  std::fs::copy(&from, &to)
+    .map_err(|err| SourceDestError::new(err, "copy", &from, &to))?;
   Ok(())
 }
 
@@ -858,7 +881,8 @@ async fn op_copy_file_async(
     }
 
     // returns size of from as u64 (we ignore)
-    fs_err::copy(&from, &to)?;
+    std::fs::copy(&from, &to)
+      .map_err(|err| SourceDestError::new(err, "copy", &from, &to))?;
     Ok(())
   })
   .await
@@ -958,9 +982,10 @@ fn op_stat_sync(
   state.borrow_mut::<Permissions>().read.check(&path)?;
   debug!("op_stat_sync {} {}", path.display(), lstat);
   let metadata = if lstat {
-    fs_err::symlink_metadata(&path)?
+    std::fs::symlink_metadata(&path)
+      .map_err(|err| Error::new(err, "stat", &path))?
   } else {
-    fs_err::metadata(&path)?
+    std::fs::metadata(&path).map_err(|err| Error::new(err, "stat", &path))?
   };
   Ok(get_stat(metadata))
 }
@@ -981,9 +1006,10 @@ async fn op_stat_async(
   tokio::task::spawn_blocking(move || {
     debug!("op_stat_async {} {}", path.display(), lstat);
     let metadata = if lstat {
-      fs_err::symlink_metadata(&path)?
+      std::fs::symlink_metadata(&path)
+        .map_err(|err| Error::new(err, "stat", &path))?
     } else {
-      fs_err::metadata(&path)?
+      std::fs::metadata(&path).map_err(|err| Error::new(err, "stat", &path))?
     };
     Ok(get_stat(metadata))
   })
@@ -1059,7 +1085,8 @@ fn op_read_dir_sync(
   state.borrow_mut::<Permissions>().read.check(&path)?;
 
   debug!("op_read_dir_sync {}", path.display());
-  let entries: Vec<_> = fs_err::read_dir(path)?
+  let entries: Vec<_> = std::fs::read_dir(&path)
+    .map_err(|err| Error::new(err, "read_dir", &path))?
     .filter_map(|entry| {
       let entry = entry.unwrap();
       // Not all filenames can be encoded as UTF-8. Skip those for now.
@@ -1097,7 +1124,8 @@ async fn op_read_dir_async(
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_read_dir_async {}", path.display());
-    let entries: Vec<_> = fs_err::read_dir(path)?
+    let entries: Vec<_> = std::fs::read_dir(&path)
+      .map_err(|err| Error::new(err, "read_dir", &path))?
       .filter_map(|entry| {
         let entry = entry.unwrap();
         // Not all filenames can be encoded as UTF-8. Skip those for now.
@@ -1146,9 +1174,8 @@ fn op_rename_sync(
   permissions.write.check(&oldpath)?;
   permissions.write.check(&newpath)?;
   debug!("op_rename_sync {} {}", oldpath.display(), newpath.display());
-  std::fs::rename(&oldpath, &newpath).map_err(|err| {
-    io::Error::new(err.kind(), format!("{}, rename '{}' -> '{}'", err, oldpath.display(), newpath.display()))
-  })?;
+  std::fs::rename(&oldpath, &newpath)
+    .map_err(|err| SourceDestError::new(err, "rename", &oldpath, &newpath))?;
   Ok(())
 }
 
@@ -1172,9 +1199,8 @@ async fn op_rename_async(
       oldpath.display(),
       newpath.display()
     );
-    std::fs::rename(&oldpath, &newpath).map_err(|err| {
-      io::Error::new(err.kind(), format!("{}, rename '{}' -> '{}'", err, oldpath.display(), newpath.display()))
-    })?;
+    std::fs::rename(&oldpath, &newpath)
+      .map_err(|err| SourceDestError::new(err, "rename", &oldpath, &newpath))?;
     Ok(())
   })
   .await
@@ -1203,9 +1229,8 @@ fn op_link_sync(
   permissions.write.check(&newpath)?;
 
   debug!("op_link_sync {} {}", oldpath.display(), newpath.display());
-  std::fs::hard_link(&oldpath, &newpath).map_err(|err| {
-    io::Error::new(err.kind(), format!("{}, link '{}' -> '{}'", err, oldpath.display(), newpath.display()))
-  })?;
+  std::fs::hard_link(&oldpath, &newpath)
+    .map_err(|err| SourceDestError::new(err, "link", &oldpath, &newpath))?;
   Ok(())
 }
 
@@ -1228,9 +1253,8 @@ async fn op_link_async(
 
   tokio::task::spawn_blocking(move || {
     debug!("op_link_async {} {}", oldpath.display(), newpath.display());
-    std::fs::hard_link(&oldpath, &newpath).map_err(|err| {
-      io::Error::new(err.kind(), format!("{}, link '{}' -> '{}'", err, oldpath.display(), newpath.display()))
-    })?;
+    std::fs::hard_link(&oldpath, &newpath)
+      .map_err(|err| SourceDestError::new(err, "link", &oldpath, &newpath))?;
     Ok(())
   })
   .await
@@ -1285,7 +1309,9 @@ fn op_symlink_sync(
         _ => return Err(type_error("unsupported type")),
       },
       None => {
-        let old_meta = fs_err::metadata(&oldpath);
+        let old_meta = std::fs::metadata(&oldpath).map_err(|err| {
+          SourceDestError::new(err, "symlink", &oldpath, &newpath)
+        });
         match old_meta {
           Ok(metadata) => {
             if metadata.is_file() {
@@ -1334,7 +1360,7 @@ async fn op_symlink_async(
           _ => return Err(type_error("unsupported type")),
         },
         None => {
-          let old_meta = fs_err::metadata(&oldpath);
+          let old_meta = std::fs::metadata(&oldpath).map_err(|err| SourceDestError::new(err, "symlink", &oldpath, &newpath));
           match old_meta {
             Ok(metadata) => {
               if metadata.is_file() {
@@ -1364,7 +1390,9 @@ fn op_read_link_sync(
   state.borrow_mut::<Permissions>().read.check(&path)?;
 
   debug!("op_read_link_value {}", path.display());
-  let target = fs_err::read_link(&path)?.into_os_string();
+  let target = std::fs::read_link(&path)
+    .map_err(|err| Error::new(err, "read_link", &path))?
+    .into_os_string();
   let targetstr = into_string(target)?;
   Ok(targetstr)
 }
@@ -1381,7 +1409,9 @@ async fn op_read_link_async(
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_read_link_async {}", path.display());
-    let target = fs_err::read_link(&path)?.into_os_string();
+    let target = std::fs::read_link(&path)
+      .map_err(|err| Error::new(err, "read_link", &path))?
+      .into_os_string();
     let targetstr = into_string(target)?;
     Ok(targetstr)
   })
