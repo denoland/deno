@@ -378,7 +378,7 @@
   const IS_ASCII = /^[\x00-\xFF]*$/;
   converters.ByteString = (V, opts) => {
     const x = converters.DOMString(V, opts);
-    if (!IS_ASCII.test(x)) {
+    if (!RegExpPrototypeTest(IS_ASCII, x)) {
       throw makeException(TypeError, "is not a valid ByteString", opts);
     }
     return x;
