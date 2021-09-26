@@ -162,6 +162,11 @@ pub async fn lint(
     Ok(())
   };
   if watch {
+    if args.len() == 1 && args[0].to_string_lossy() == "-" {
+      return Err(generic_error(
+        "Lint watch on standard input is not supported.",
+      ));
+    }
     file_watcher::watch_func(resolver, operation, "Lint").await?;
   } else {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
