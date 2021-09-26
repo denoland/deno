@@ -1937,8 +1937,6 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn uninstall_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  runtime_args_parse(flags, matches, true, true);
-
   let root = if matches.is_present("root") {
     let install_root = matches.value_of("root").unwrap();
     Some(PathBuf::from(install_root))
