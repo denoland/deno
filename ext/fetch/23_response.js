@@ -101,37 +101,33 @@
       type: response.type,
       body,
       headerList,
-      url() {
-        if (this.urlList.length == 0) return null;
-        return this.urlList[this.urlList.length - 1];
-      },
       urlList,
       status: response.status,
       statusMessage: response.statusMessage,
       aborted: response.aborted,
+      url() {
+        if (this.urlList.length == 0) return null;
+        return this.urlList[this.urlList.length - 1];
+      },
     };
   }
-
-  const defaultInnerResponse = {
-    type: "default",
-    body: null,
-    aborted: false,
-    url() {
-      if (this.urlList.length == 0) return null;
-      return this.urlList[this.urlList.length - 1];
-    },
-  };
 
   /**
    * @returns {InnerResponse}
    */
   function newInnerResponse(status = 200, statusMessage = "") {
     return {
+      type: "default",
+      body: null,
       headerList: [],
       urlList: [],
       status,
       statusMessage,
-      ...defaultInnerResponse,
+      aborted: false,
+      url() {
+        if (this.urlList.length == 0) return null;
+        return this.urlList[this.urlList.length - 1];
+      },
     };
   }
 
