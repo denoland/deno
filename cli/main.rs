@@ -489,7 +489,6 @@ async fn install_command(
 }
 
 async fn uninstall_command(
-  _flags: Flags,
   uninstall_flags: UninstallFlags,
 ) -> Result<(), AnyError> {
   tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)
@@ -1158,7 +1157,7 @@ fn get_subcommand(
       install_command(flags, install_flags).boxed_local()
     }
     DenoSubcommand::Uninstall(uninstall_flags) => {
-      uninstall_command(flags, uninstall_flags).boxed_local()
+      uninstall_command(uninstall_flags).boxed_local()
     }
     DenoSubcommand::Lsp => lsp_command().boxed_local(),
     DenoSubcommand::Lint(lint_flags) => {
