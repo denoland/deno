@@ -318,7 +318,6 @@ impl StdFileResource {
         .borrow_mut()
         .await;
       let nwritten = fs_file.0.as_mut().unwrap().write(buf).await?;
-      fs_file.0.as_mut().unwrap().flush().await?;
       Ok(nwritten)
     } else {
       Err(resource_unavailable())
