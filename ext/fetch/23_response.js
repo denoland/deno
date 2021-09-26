@@ -156,10 +156,6 @@
   }
 
   class Response {
-    /** @type {InnerResponse} */
-    [_response];
-    /** @type {Headers} */
-    [_headers];
     get [_mimeType]() {
       let charset = null;
       let essence = null;
@@ -274,7 +270,9 @@
 
       this[webidl.brand] = webidl.brand;
       const response = newInnerResponse(init.status, init.statusText);
+      /** @type {InnerResponse} */
       this[_response] = response;
+      /** @type {Headers} */
       this[_headers] = headersFromHeaderList(response.headerList, "response");
       if (init.headers !== undefined) {
         fillHeaders(this[_headers], init.headers);
