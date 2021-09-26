@@ -375,10 +375,10 @@
   };
 
   // deno-lint-ignore no-control-regex
-  const IS_BYTESTRING = /^[\x00-\xFF]*$/;
+  const IS_BYTE_STRING = /^[\x00-\xFF]*$/;
   converters.ByteString = (V, opts) => {
     const x = converters.DOMString(V, opts);
-    if (!RegExpPrototypeTest(IS_BYTESTRING, x)) {
+    if (!RegExpPrototypeTest(IS_BYTE_STRING, x)) {
       throw makeException(TypeError, "is not a valid ByteString", opts);
     }
     return x;
