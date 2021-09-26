@@ -12149,13 +12149,6 @@
     "historical.any.html": false,
     "idlharness.https.any.html": [
       "SubtleCrypto interface: operation deriveKey(AlgorithmIdentifier, CryptoKey, AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
-<<<<<<< HEAD
-      "SubtleCrypto interface: operation deriveBits(AlgorithmIdentifier, CryptoKey, unsigned long)",
-      "SubtleCrypto interface: operation importKey(KeyFormat, (BufferSource or JsonWebKey), AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
-      "SubtleCrypto interface: operation exportKey(KeyFormat, CryptoKey)",
-=======
-      "SubtleCrypto interface: operation wrapKey(KeyFormat, CryptoKey, CryptoKey, AlgorithmIdentifier)",
->>>>>>> b095157c1d9ffd979a82f559aa488e35c2e7f392
       "SubtleCrypto interface: operation unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
       "SubtleCrypto interface: crypto.subtle must inherit property \"deriveKey(AlgorithmIdentifier, CryptoKey, AlgorithmIdentifier, boolean, sequence<KeyUsage>)\" with the proper type",
       "SubtleCrypto interface: calling deriveKey(AlgorithmIdentifier, CryptoKey, AlgorithmIdentifier, boolean, sequence<KeyUsage>) on crypto.subtle with too few arguments must throw TypeError",
