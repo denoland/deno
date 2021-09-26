@@ -14,6 +14,7 @@ path = "src/test_server.rs"
 [dependencies]
 anyhow = "1.0.43"
 async-stream = "0.3.2"
+atty = "0.2.14"
 base64 = "0.13.0"
 futures = "0.3.16"
 hyper = { version = "0.14.12", features = ["server", "http1", "runtime"] }
@@ -29,3 +30,6 @@ tokio-tungstenite = "0.14.0"
 
 [target.'cfg(unix)'.dependencies]
 pty = "0.2.2"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.9", features = ["consoleapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }

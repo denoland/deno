@@ -1,13 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function writeFileSyncSuccess() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -21,7 +21,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function writeFileSyncUrl() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -39,7 +39,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { write: true } }, function writeFileSyncFail() {
+unitTest({ permissions: { write: true } }, function writeFileSyncFail() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -49,7 +49,7 @@ unitTest({ perms: { write: true } }, function writeFileSyncFail() {
   }, Deno.errors.NotFound);
 });
 
-unitTest({ perms: { write: false } }, function writeFileSyncPerm() {
+unitTest({ permissions: { write: false } }, function writeFileSyncPerm() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -60,7 +60,7 @@ unitTest({ perms: { write: false } }, function writeFileSyncPerm() {
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function writeFileSyncUpdateMode() {
     if (Deno.build.os !== "windows") {
       const enc = new TextEncoder();
@@ -75,7 +75,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function writeFileSyncCreate() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -96,7 +96,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function writeFileSyncAppend() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -121,7 +121,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function writeFileSuccess() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -135,7 +135,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function writeFileUrl() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -154,33 +154,33 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function writeFileNotFound() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = "/baddir/test.txt";
     // The following should fail because /baddir doesn't exist (hopefully).
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.writeFile(filename, data);
     }, Deno.errors.NotFound);
   },
 );
 
 unitTest(
-  { perms: { read: true, write: false } },
+  { permissions: { read: true, write: false } },
   async function writeFilePerm() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = "/baddir/test.txt";
     // The following should fail due to no write permission
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.writeFile(filename, data);
     }, Deno.errors.PermissionDenied);
   },
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function writeFileUpdateMode() {
     if (Deno.build.os !== "windows") {
       const enc = new TextEncoder();
@@ -195,13 +195,13 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function writeFileCreate() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
     // if create turned off, the file won't be created
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.writeFile(filename, data, { create: false });
     }, Deno.errors.NotFound);
 
@@ -216,7 +216,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function writeFileAppend() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
@@ -241,7 +241,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function writeFileAbortSignal(): Promise<void> {
     const ac = new AbortController();
     const enc = new TextEncoder();
@@ -259,7 +259,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function writeFileAbortSignalPreAborted(): Promise<void> {
     const ac = new AbortController();
     ac.abort();

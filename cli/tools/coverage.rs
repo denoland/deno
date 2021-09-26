@@ -4,7 +4,7 @@ use crate::colors;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
 use crate::module_graph::TypeLib;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use crate::source_maps::SourceMapGetter;
 use deno_ast::swc::common::Span;
 use deno_ast::MediaType;
@@ -670,7 +670,7 @@ pub async fn cover_files(
   exclude: Vec<String>,
   lcov: bool,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags).await?;
+  let ps = ProcState::build(flags).await?;
 
   let script_coverages = collect_coverages(files, ignore)?;
   let script_coverages = filter_coverages(script_coverages, include, exclude);
@@ -686,22 +686,21 @@ pub async fn cover_files(
   for script_coverage in script_coverages {
     let module_specifier =
       deno_core::resolve_url_or_path(&script_coverage.url)?;
-    program_state
-      .prepare_module_load(
-        module_specifier.clone(),
-        TypeLib::UnstableDenoWindow,
-        Permissions::allow_all(),
-        Permissions::allow_all(),
-        false,
-        program_state.maybe_import_map.clone(),
-      )
-      .await?;
+    ps.prepare_module_load(
+      module_specifier.clone(),
+      TypeLib::UnstableDenoWindow,
+      Permissions::allow_all(),
+      Permissions::allow_all(),
+      false,
+      ps.maybe_import_map.clone(),
+    )
+    .await?;
 
-    let module_source = program_state.load(module_specifier.clone(), None)?;
+    let module_source = ps.load(module_specifier.clone(), None)?;
     let script_source = &module_source.code;
 
-    let maybe_source_map = program_state.get_source_map(&script_coverage.url);
-    let maybe_cached_source = program_state
+    let maybe_source_map = ps.get_source_map(&script_coverage.url);
+    let maybe_cached_source = ps
       .file_fetcher
       .get_source(&module_specifier)
       .map(|f| f.source);

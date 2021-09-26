@@ -22,6 +22,10 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use hyper::body::HttpBody;
+use hyper::header::CONNECTION;
+use hyper::header::SEC_WEBSOCKET_KEY;
+use hyper::header::SEC_WEBSOCKET_VERSION;
+use hyper::header::UPGRADE;
 use hyper::http;
 use hyper::server::conn::Http;
 use hyper::service::Service as HyperService;
@@ -104,7 +108,14 @@ impl HyperService<Request<Body>> for Service {
       response_tx: resp_tx,
     });
 
-    async move { Ok(resp_rx.await.unwrap()) }.boxed_local()
+    async move {
+      resp_rx.await.or_else(|_|
+        // Fallback dummy response in case sender was dropped due to closed conn
+        Response::builder()
+          .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+          .body(vec![].into()))
+    }
+    .boxed_local()
   }
 }
 
@@ -312,20 +323,23 @@ fn req_headers(
 }
 
 fn is_websocket_request(req: &hyper::Request<hyper::Body>) -> bool {
-  req_header_contains(req, hyper::header::CONNECTION, "upgrade")
-    && req_header_contains(req, hyper::header::UPGRADE, "websocket")
+  req.version() == hyper::Version::HTTP_11
+    && req.method() == hyper::Method::GET
+    && req.headers().contains_key(&SEC_WEBSOCKET_KEY)
+    && header(req.headers(), &SEC_WEBSOCKET_VERSION) == b"13"
+    && header(req.headers(), &UPGRADE).eq_ignore_ascii_case(b"websocket")
+    && header(req.headers(), &CONNECTION)
+      .split(|c| *c == b' ' || *c == b',')
+      .any(|token| token.eq_ignore_ascii_case(b"upgrade"))
 }
 
-fn req_header_contains(
-  req: &hyper::Request<hyper::Body>,
-  key: impl hyper::header::AsHeaderName,
-  value: &str,
-) -> bool {
-  req.headers().get_all(key).iter().any(|v| {
-    v.to_str()
-      .map(|s| s.to_lowercase().contains(value))
-      .unwrap_or(false)
-  })
+fn header<'a>(
+  h: &'a hyper::http::HeaderMap,
+  name: &hyper::header::HeaderName,
+) -> &'a [u8] {
+  h.get(name)
+    .map(hyper::header::HeaderValue::as_bytes)
+    .unwrap_or_default()
 }
 
 fn should_ignore_error(e: &AnyError) -> bool {

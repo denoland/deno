@@ -56,8 +56,7 @@ pub struct WorkerOptions {
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  // Callback that will be invoked when creating new instance
-  // of WebWorker
+  // Callback invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -262,17 +261,6 @@ impl MainWorker {
     let id = self.preload_module(module_specifier, true).await?;
     self.wait_for_inspector_session();
     self.evaluate_module(id).await
-  }
-
-  #[deprecated(
-    since = "0.26.0",
-    note = "This method had a bug, marking multiple modules loaded as \"main\". Use `execute_main_module` or `execute_side_module` instead."
-  )]
-  pub async fn execute_module(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
-    self.execute_main_module(module_specifier).await
   }
 
   fn wait_for_inspector_session(&mut self) {

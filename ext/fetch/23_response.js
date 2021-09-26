@@ -37,7 +37,6 @@
     RegExpPrototypeTest,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -254,7 +253,7 @@
      */
     constructor(body = null, init = {}) {
       const prefix = "Failed to construct 'Response'";
-      body = webidl.converters["BodyInit?"](body, {
+      body = webidl.converters["BodyInit_DOMString?"](body, {
         prefix,
         context: "Argument 1",
       });
@@ -371,10 +370,6 @@
         guardFromHeaders(this[_headers]),
       );
       return second;
-    }
-
-    get [SymbolToStringTag]() {
-      return "Response";
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {

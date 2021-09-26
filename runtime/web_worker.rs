@@ -206,9 +206,9 @@ impl WebWorkerHandle {
   /// Terminate the worker
   /// This function will set terminated to true, terminate the isolate and close the message channel
   pub fn terminate(self) {
-    // This function can be called multiple times by whomever holds
-    // the handle. However only a single "termination" should occur so
-    // we need a guard here.
+    // A WebWorkerHandle can be terminated / dropped after `self.close()` has
+    // been called inside the worker, but only a single "termination" can occur,
+    // so we need a guard here.
     let already_terminated = self.terminated.swap(true, Ordering::SeqCst);
 
     if !already_terminated {
@@ -505,18 +505,7 @@ impl WebWorker {
     }
   }
 
-  #[deprecated(
-    since = "0.26.0",
-    note = "This method had a bug, marking multiple modules loaded as \"main\". Use `execute_main_module`."
-  )]
-  pub async fn execute_module(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
-    self.execute_main_module(module_specifier).await
-  }
-
-  pub fn poll_event_loop(
+  fn poll_event_loop(
     &mut self,
     cx: &mut Context,
     wait_for_inspector: bool,

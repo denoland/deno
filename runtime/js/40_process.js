@@ -15,7 +15,7 @@
   } = window.__bootstrap.primordials;
 
   function opKill(pid, signo) {
-    core.opSync("op_kill", { pid, signo });
+    core.opSync("op_kill", pid, signo);
   }
 
   function opRunStatus(rid) {

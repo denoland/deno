@@ -16,7 +16,6 @@ export {
   assertStrictEquals,
   assertStringIncludes,
   assertThrows,
-  assertThrowsAsync,
   fail,
   unimplemented,
   unreachable,
@@ -28,19 +27,19 @@ export { readLines } from "../../../test_util/std/io/bufio.ts";
 export { parse as parseArgs } from "../../../test_util/std/flags/mod.ts";
 
 interface UnitTestPermissions {
-  read?: boolean;
-  write?: boolean;
-  net?: boolean;
-  env?: boolean;
-  run?: boolean;
-  ffi?: boolean;
-  hrtime?: boolean;
+  env?: "inherit" | boolean | string[];
+  hrtime?: "inherit" | boolean;
+  net?: "inherit" | boolean | string[];
+  ffi?: "inherit" | boolean;
+  read?: "inherit" | boolean | Array<string | URL>;
+  run?: "inherit" | boolean | Array<string | URL>;
+  write?: "inherit" | boolean | Array<string | URL>;
 }
 
 interface UnitTestOptions {
   ignore?: boolean;
   only?: boolean;
-  perms?: UnitTestPermissions;
+  permissions?: UnitTestPermissions;
 }
 
 type TestFunction = () => void | Promise<void>;
@@ -87,7 +86,7 @@ export function unitTest(
       run: false,
       ffi: false,
       hrtime: false,
-    }, options.perms),
+    }, options.permissions),
   };
 
   Deno.test(testDefinition);

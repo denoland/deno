@@ -59,7 +59,7 @@ unitTest(async function copyWithCustomBufferSize() {
   assertEquals(readSpy.calls, DEFAULT_BUF_SIZE / bufSize + 1);
 });
 
-unitTest({ perms: { write: true } }, async function copyBufferToFile() {
+unitTest({ permissions: { write: true } }, async function copyBufferToFile() {
   const filePath = "test-file.txt";
   // bigger than max File possible buffer 16kb
   const bufSize = 32 * 1024;
