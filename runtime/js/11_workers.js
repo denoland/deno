@@ -264,14 +264,7 @@
           } /* falls through */
           case 2: { // Error
             if (!this.#handleError(data)) {
-              if (globalThis instanceof Window) {
-                throw new Error("Unhandled error event reached main worker.");
-              } else {
-                core.opSync(
-                  "op_worker_unhandled_error",
-                  data.message,
-                );
-              }
+              throw new Error("Unhandled error event in child worker.");
             }
             break;
           }
