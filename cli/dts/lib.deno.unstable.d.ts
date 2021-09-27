@@ -754,7 +754,8 @@ declare namespace Deno {
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
-   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
    * const req = await fetch("https://myserver.com", { client });
    * ```
    */
@@ -794,7 +795,8 @@ declare namespace Deno {
    * Create a custom HttpClient for to use with `fetch`.
    *
    * ```ts
-   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
