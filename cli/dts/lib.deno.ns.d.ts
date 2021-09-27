@@ -113,8 +113,7 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
-  export class Tester {
-    private constructor();
+  export interface Tester {
     /** Run a sub step of the parent test with a given name. Returns a promise
      * that resolves to a boolean signifying if the step completed successfully.
      * The returned promise never rejects unless the arguments are invalid.

@@ -25,13 +25,8 @@
     StringPrototypeSlice,
     RegExp,
     RegExpPrototypeTest,
-    Symbol,
+    SymbolToStringTag,
   } = window.__bootstrap.primordials;
-
-  const testerCtorSymbol = Symbol();
-  const testerGetTestStepResultsSymbol = Symbol();
-  const testerGetStepScopeErrMsgSymbol = Symbol();
-  const testerFailedStepsCountSymbol = Symbol();
 
   // Wrap test function in additional assertion that makes sure
   // the test case does not leak async "ops" - ie. number of async
@@ -39,10 +34,10 @@
   // ops. Note that "unref" ops are ignored since in nature that are
   // optional.
   function assertOps(fn) {
-    return async function asyncOpSanitizer(tester) {
+    return async function asyncOpSanitizer(...params) {
       const pre = metrics();
       try {
-        await fn(tester);
+        await fn(...params);
       } finally {
         // Defer until next event loop turn - that way timeouts and intervals
         // cleared can actually be removed from resource table, otherwise
@@ -77,9 +72,9 @@ finishing test case.`,
   function assertResources(
     fn,
   ) {
-    return async function resourceSanitizer(tester) {
+    return async function resourceSanitizer(...params) {
       const pre = core.resources();
-      await fn(tester);
+      await fn(...params);
       const post = core.resources();
 
       const preStr = JSONStringify(pre, null, 2);
@@ -97,7 +92,7 @@ finishing test case.`;
   // Wrap test function in additional assertion that makes sure
   // that the test case does not accidentally exit prematurely.
   function assertExit(fn) {
-    return async function exitSanitizer(tester) {
+    return async function exitSanitizer(...params) {
       setExitHandler((exitCode) => {
         assert(
           false,
@@ -106,7 +101,7 @@ finishing test case.`;
       });
 
       try {
-        await fn(tester);
+        await fn(...params);
       } catch (err) {
         throw err;
       } finally {
@@ -116,11 +111,11 @@ finishing test case.`;
   }
 
   function assertTestStepScopes(fn) {
-    /** @param tester {Tester} */
-    return async function testStepScopeSanitizer(tester) {
-      await fn(tester);
+    /** @param step {TestStep} */
+    return async function testStepSanitizer(step) {
+      await fn(step.createTester());
 
-      const errorMessage = tester[testerGetStepScopeErrMsgSymbol]();
+      const errorMessage = step.getStepScopeErrMsg();
       if (errorMessage) {
         throw new Error(errorMessage);
       }
@@ -139,11 +134,11 @@ finishing test case.`;
       core.opSync("op_restore_test_permissions", token);
     }
 
-    return async function applyPermissions(tester) {
+    return async function applyPermissions(...params) {
       const token = pledgePermissions(permissions);
 
       try {
-        await fn(tester);
+        await fn(...params);
       } finally {
         restorePermissions(token);
       }
@@ -152,8 +147,7 @@ finishing test case.`;
 
   const tests = [];
 
-  // Main test function provided by Deno, as you can see it merely
-  // creates a new object with "name" and "fn" fields.
+  // Main test function provided by Deno.
   function test(
     t,
     fn,
@@ -226,19 +220,18 @@ finishing test case.`;
       };
     }
 
-    const tester = new Tester({
-      ctorSymbol: testerCtorSymbol,
+    const step = new TestStep({
       name: test.name,
+      parent: undefined,
       sanitizeOps: test.sanitizeOps,
       sanitizeResources: test.sanitizeResources,
       sanitizeExit: test.sanitizeExit,
-      parent: undefined,
     });
 
     let status;
     try {
-      await test.fn(tester);
-      const failCount = tester[testerFailedStepsCountSymbol]();
+      await test.fn(step);
+      const failCount = step.failedChildStepsCount();
       status = failCount === 0 ? "ok" : {
         "failed": inspectArgs([
           new Error(
@@ -254,7 +247,7 @@ finishing test case.`;
 
     return {
       status,
-      steps: tester[testerGetTestStepResultsSymbol](),
+      steps: step.getTestStepResults(),
     };
   }
 
@@ -353,189 +346,178 @@ finishing test case.`;
    *   sanitizeResources?: boolean,
    *   sanitizeExit?: boolean,
    * }} TestStepDefinition
-   */
-
-  /**
+   *
    * @typedef {{
-   *   ctorSymbol: Symbol;
    *   name: string;
+   *   parent: TestStep | undefined,
    *   sanitizeOps: boolean,
    *   sanitizeResources: boolean,
    *   sanitizeExit: boolean,
-   *   parent: Tester | undefined,
-   * }} TesterParams
+   * }} TestStepParams
    */
 
-  /**
-   * @typedef {{
-   *   definition: TestStepDefinition,
-   *   tester: Tester | undefined,
-   *   status: "pending" | "ignored" | "ok" | "failed",
-   *   usesSanitizer: boolean;
-   *   duration: number,
-   *   error: string | undefined,
-   * }} TestStatus
-   */
+  class TestStep {
+    /** @type {TestStepParams} */
+    #params;
 
-  class Tester {
-    /** @type {string} */
-    #name;
-    /** @type {Tester | undefined} */
-    #parent;
-    /** @type {bool} */
-    #sanitizeResources;
-    /** @type {bool} */
-    #sanitizeOps;
-    /** @type {bool} */
-    #sanitizeExit;
-    #finalized = false;
-    /** @type {TestStatus[]} */
-    #testStatuses = [];
+    finalized = false;
+    duration = 0;
+    status = "pending";
+    error = undefined;
+    /** @type {TestStep[]} */
+    children = [];
 
-    /** @param params {TesterParams} */
+    /** @param params {TestStepParams} */
     constructor(params) {
-      // prevent someone from creating one of these instances
-      if (params?.ctorSymbol !== testerCtorSymbol) {
-        throw new Error("Tester cannot be constructed.");
-      }
-
-      this.#name = params.name;
-      this.#parent = params.parent;
-      this.#sanitizeResources = params.sanitizeResources;
-      this.#sanitizeOps = params.sanitizeOps;
-      this.#sanitizeExit = params.sanitizeExit;
+      this.#params = params;
     }
 
-    /**
-     * @param nameOrTestDefinition {string | TestStepDefinition}
-     * @param fn {(t: Tester) => void | Promise<void>}
-     */
-    async step(nameOrTestDefinition, fn) {
-      if (this.#finalized) {
-        throw new Error(
-          "Cannot run test step after tester's scope has finished execution. " +
-            "Ensure any `.step(...)` calls are executed before their parent scope completes execution.",
-        );
-      }
+    get name() {
+      return this.#params.name;
+    }
 
-      const definition = getDefinition();
-      /** @type {TestStatus} */
-      const testStatus = {
-        definition,
-        tester: undefined,
-        status: "pending",
-        duration: 0,
-        error: undefined,
+    get parent() {
+      return this.#params.parent;
+    }
+
+    get sanitizerOptions() {
+      return {
+        sanitizeResources: this.#params.sanitizeResources,
+        sanitizeOps: this.#params.sanitizeOps,
+        sanitizeExit: this.#params.sanitizeExit,
       };
-      ArrayPrototypePush(this.#testStatuses, testStatus);
+    }
 
-      if (definition.ignore) {
-        testStatus.status = "ignored";
-        return false;
-      }
-
-      /** @type {TesterParams} */
-      const subTesterParams = {
-        ctorSymbol: testerCtorSymbol,
-        name: definition.name,
-        sanitizeOps: getOrDefault(
-          definition.sanitizeOps,
-          this.#sanitizeOps,
-        ),
-        sanitizeResources: getOrDefault(
-          definition.sanitizeResources,
-          this.#sanitizeResources,
-        ),
-        sanitizeExit: getOrDefault(
-          definition.sanitizeExit,
-          this.#sanitizeExit,
-        ),
-        parent: this,
-      };
-
-      const tester = new Tester(subTesterParams);
-      const errorMessage = tester.#getCannotRunErrorMessage();
-      if (errorMessage) {
-        testStatus.status = "failed";
-        testStatus.error = inspectArgs([new Error(errorMessage)]);
-        return false;
-      }
-
-      testStatus.tester = tester;
-
-      const testFn = wrapTestFnWithSanitizers(definition.fn, subTesterParams);
-      const start = DateNow();
-
-      try {
-        await testFn(tester);
-
-        if (tester[testerFailedStepsCountSymbol]() > 0) {
-          testStatus.status = "failed";
-        } else {
-          testStatus.status = "ok";
-        }
-      } catch (error) {
-        testStatus.error = inspectArgs([error]);
-        testStatus.status = "failed";
-      }
-
-      if (tester.#parent != null && tester.#parent.#finalized) {
-        // always point this test out as one that was still running
-        // if the parent tester finalized
-        testStatus.status = "pending";
-      }
-
-      tester.#finalized = true;
-      testStatus.duration = DateNow() - start;
-
-      return testStatus.status === "ok";
-
-      /** @returns {TestStepDefinition} */
-      function getDefinition() {
-        if (typeof nameOrTestDefinition === "string") {
-          if (!(fn instanceof Function)) {
-            throw new TypeError("Expected function for second argument.");
+    createTester() {
+      // deno-lint-ignore no-this-alias
+      const parentStep = this;
+      return {
+        [SymbolToStringTag]: "Tester",
+        /**
+         * @param nameOrTestDefinition {string | TestStepDefinition}
+         * @param fn {(t: Tester) => void | Promise<void>}
+         */
+        async step(nameOrTestDefinition, fn) {
+          if (parentStep.finalized) {
+            throw new Error(
+              "Cannot run test step after tester's scope has finished execution. " +
+                "Ensure any `.step(...)` calls are executed before their parent scope completes execution.",
+            );
           }
-          return {
-            name: nameOrTestDefinition,
-            fn,
-          };
-        } else if (typeof nameOrTestDefinition === "object") {
-          return nameOrTestDefinition;
-        } else {
-          throw new TypeError(
-            "Expected a test definition or name and function.",
+
+          const definition = getDefinition();
+          const subStep = new TestStep({
+            name: definition.name,
+            parent: parentStep,
+            sanitizeOps: getOrDefault(
+              definition.sanitizeOps,
+              parentStep.sanitizerOptions.sanitizeOps,
+            ),
+            sanitizeResources: getOrDefault(
+              definition.sanitizeResources,
+              parentStep.sanitizerOptions.sanitizeResources,
+            ),
+            sanitizeExit: getOrDefault(
+              definition.sanitizeExit,
+              parentStep.sanitizerOptions.sanitizeExit,
+            ),
+          });
+
+          ArrayPrototypePush(parentStep.children, subStep);
+
+          if (definition.ignore) {
+            subStep.status = "ignored";
+            subStep.finalized = true;
+            return false;
+          }
+
+          const errorMessage = subStep.getCannotRunErrorMessage();
+          if (errorMessage) {
+            subStep.status = "failed";
+            subStep.error = inspectArgs([new Error(errorMessage)]);
+            subStep.finalized = true;
+            return false;
+          }
+
+          const testFn = wrapTestFnWithSanitizers(
+            definition.fn,
+            subStep.sanitizerOptions,
           );
-        }
-      }
+          const start = DateNow();
+
+          try {
+            await testFn(subStep);
+
+            if (subStep.failedChildStepsCount() > 0) {
+              subStep.status = "failed";
+            } else {
+              subStep.status = "ok";
+            }
+          } catch (error) {
+            subStep.error = inspectArgs([error]);
+            subStep.status = "failed";
+          }
+
+          subStep.duration = DateNow() - start;
+
+          if (subStep.parent?.finalized) {
+            // always point this test out as one that was still running
+            // if the parent step finalized
+            subStep.status = "pending";
+          }
+
+          subStep.finalized = true;
+
+          return subStep.status === "ok";
+
+          /** @returns {TestStepDefinition} */
+          function getDefinition() {
+            if (typeof nameOrTestDefinition === "string") {
+              if (!(fn instanceof Function)) {
+                throw new TypeError("Expected function for second argument.");
+              }
+              return {
+                name: nameOrTestDefinition,
+                fn,
+              };
+            } else if (typeof nameOrTestDefinition === "object") {
+              return nameOrTestDefinition;
+            } else {
+              throw new TypeError(
+                "Expected a test definition or name and function.",
+              );
+            }
+          }
+        },
+      };
     }
 
-    [testerGetTestStepResultsSymbol]() {
+    getTestStepResults() {
       return ArrayPrototypeMap(
-        this.#testStatuses,
-        /** @param status {TestStatus} */
-        (status) => ({
-          name: status.definition.name,
-          status: status.status,
-          steps: status.tester?.[testerGetTestStepResultsSymbol]() ?? [],
-          duration: status.duration,
-          error: status.error,
+        this.children,
+        /** @param childStep {TestStep} */
+        (childStep) => ({
+          name: childStep.name,
+          status: childStep.status,
+          steps: childStep.getTestStepResults() ?? [],
+          duration: childStep.duration,
+          error: childStep.error,
         }),
       );
     }
 
-    [testerFailedStepsCountSymbol]() {
+    failedChildStepsCount() {
       return ArrayPrototypeFilter(
-        this.#testStatuses,
-        /** @param status {TestStatus} */
-        (status) => status.status === "failed",
+        this.children,
+        /** @param step {TestStep} */
+        (step) => step.status === "failed",
       ).length;
     }
 
-    [testerGetStepScopeErrMsgSymbol]() {
+    getStepScopeErrMsg() {
       // check for any running steps
       const hasRunningSteps = ArrayPrototypeSome(
-        this.#testStatuses,
+        this.children,
         (r) => r.status === "pending",
       );
       if (hasRunningSteps) {
@@ -544,75 +526,74 @@ finishing test case.`;
       }
 
       // check if a parent already completed
-      let parent = this.#parent;
-      while (parent != null) {
-        if (parent.#finalized) {
+      let parent = this.parent;
+      while (parent) {
+        if (parent.finalized) {
           return "Parent scope completed before test step finished execution. " +
             "Ensure all steps are awaited (ex. `await t.step(...)`).";
         }
-        parent = parent.#parent;
+        parent = parent.parent;
       }
 
       return undefined;
     }
 
-    #getCannotRunErrorMessage() {
-      const runningTesters = this.#getPotentialConflictingRunningTesters();
-      const runningTestersWithSanitizers = ArrayPrototypeFilter(
-        runningTesters,
-        (t) => t.#usesSanitizer(),
+    getCannotRunErrorMessage() {
+      const runningSteps = this.getPotentialConflictingRunningSteps();
+      const runningStepsWithSanitizers = ArrayPrototypeFilter(
+        runningSteps,
+        (t) => t.usesSanitizer(),
       );
 
-      if (runningTestersWithSanitizers.length > 0) {
+      if (runningStepsWithSanitizers.length > 0) {
         return "Cannot start test step while another test step with sanitizers is running.\n" +
-          runningTestersWithSanitizers
-            .map((t) => ` * ${t.#getFullName()}`)
+          runningStepsWithSanitizers
+            .map((s) => ` * ${s.getFullName()}`)
             .join("\n");
       }
 
-      if (this.#usesSanitizer() && runningTesters.length > 0) {
+      if (this.usesSanitizer() && runningSteps.length > 0) {
         return "Cannot start test step with sanitizers while another test step is running.\n" +
-          runningTesters.map((t) => ` * ${t.#getFullName()}`).join("\n");
+          runningSteps.map((s) => ` * ${s.getFullName()}`).join("\n");
       }
 
       return undefined;
     }
 
-    /** Returns any running testers in the execution tree except this tester's
-     * ancestors and siblings.
+    /** Returns any running test steps in the execution tree except this step's
+     * ancestors and descendants.
      */
-    #getPotentialConflictingRunningTesters() {
+    getPotentialConflictingRunningSteps() {
       // deno-lint-ignore no-this-alias
-      let tester = this;
-      /** @type {Tester[]} */
+      let step = this;
+      /** @type {TestStep[]} */
       const results = [];
-      while (tester.#parent != null) {
-        const parentTester = tester.#parent;
-        for (const testStatus of parentTester.#testStatuses) {
-          const siblingTester = testStatus.tester;
-          if (siblingTester == null || siblingTester === tester) {
+      while (step.parent) {
+        const parentStep = step.parent;
+        for (const siblingStep of parentStep.children) {
+          if (siblingStep === step) {
             continue;
           }
-          if (!siblingTester.#finalized) {
-            ArrayPrototypePush(results, siblingTester);
+          if (!siblingStep.finalized) {
+            ArrayPrototypePush(results, siblingStep);
           }
         }
-        tester = parentTester;
+        step = parentStep;
       }
       return results;
     }
 
-    #usesSanitizer() {
-      return this.#sanitizeResources ||
-        this.#sanitizeOps ||
-        this.#sanitizeExit;
+    usesSanitizer() {
+      return this.#params.sanitizeResources ||
+        this.#params.sanitizeOps ||
+        this.#params.sanitizeExit;
     }
 
-    #getFullName() {
-      if (this.#parent != null) {
-        return `${this.#parent.#getFullName()} > ${this.#name}`;
+    getFullName() {
+      if (this.parent) {
+        return `${this.parent.getFullName()} > ${this.name}`;
       } else {
-        return this.#name;
+        return this.name;
       }
     }
   }
@@ -659,6 +640,5 @@ finishing test case.`;
 
   window.__bootstrap.testing = {
     test,
-    Tester,
   };
 })(this);
