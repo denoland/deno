@@ -58,6 +58,7 @@
   }
 
   /**
+   * @param {"inherit" | boolean} value
    * @param {string} permission
    * @return {boolean}
    */
