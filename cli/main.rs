@@ -64,6 +64,7 @@ use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
 use crate::tools::installer::infer_name_from_url;
 use deno_ast::MediaType;
+use deno_core::error::anyhow;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -387,19 +388,9 @@ async fn compile_command(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   ))?;
 
-  let module_graph = create_module_graph_and_maybe_check(
-    module_specifier.clone(),
-    ps.clone(),
-    debug,
-  )
-  .await?;
-
-  info!(
-    "{} {}",
-    colors::green("Bundle"),
-    module_specifier.to_string()
-  );
-  let bundle_str = bundle_module_graph(module_graph, ps.clone(), flags, debug)?;
+  let graph =
+    create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?;
+  let (bundle_str, _) = bundle_module_graph(graph.as_ref(), &ps, &flags)?;
 
   info!(
     "{} {}",
@@ -615,75 +606,93 @@ async fn eval_command(
   Ok(())
 }
 
-async fn create_module_graph_and_maybe_check(
-  module_specifier: ModuleSpecifier,
-  ps: ProcState,
+async fn create_graph_and_maybe_check(
+  root: ModuleSpecifier,
+  ps: &ProcState,
   debug: bool,
-) -> Result<module_graph::Graph, AnyError> {
-  let handler = Arc::new(Mutex::new(FetchHandler::new(
-    &ps,
-    // when bundling, dynamic imports are only access for their type safety,
-    // therefore we will allow the graph to access any module.
+) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
+  let mut cache = cache::FetchCacher::new(
+    ps.dir.gen_cache.clone(),
+    ps.file_fetcher.clone(),
     Permissions::allow_all(),
     Permissions::allow_all(),
-  )?));
-  let mut builder = module_graph::GraphBuilder::new(
-    handler,
-    ps.maybe_import_map.clone(),
-    ps.lockfile.clone(),
   );
-  builder.add(&module_specifier, false).await?;
-  builder.analyze_config_file(&ps.maybe_config_file).await?;
-  let module_graph = builder.get_graph();
+  let maybe_locker = ps.lockfile.as_ref().map(|lf| {
+    Rc::new(RefCell::new(Box::new(lockfile::Locker(Some(lf.clone())))
+      as Box<dyn deno_graph::source::Locker>))
+  });
+  let graph = Arc::new(
+    deno_graph::create_graph(
+      vec![root],
+      false,
+      &mut cache,
+      ps.maybe_import_map
+        .as_ref()
+        .map(|r| r as &dyn deno_graph::source::Resolver),
+      maybe_locker,
+      None,
+    )
+    .await,
+  );
 
   if !ps.flags.no_check {
-    // TODO(@kitsonk) support bundling for workers
     let lib = if ps.flags.unstable {
-      module_graph::TypeLib::UnstableDenoWindow
+      emit::TypeLib::UnstableDenoWindow
     } else {
-      module_graph::TypeLib::DenoWindow
+      emit::TypeLib::DenoWindow
     };
-    let result_info =
-      module_graph.clone().check(module_graph::CheckOptions {
-        debug,
-        emit: false,
-        lib,
-        maybe_config_file: ps.maybe_config_file.clone(),
-        reload: ps.flags.reload,
-        ..Default::default()
-      })?;
-
-    debug!("{}", result_info.stats);
-    if let Some(ignored_options) = result_info.maybe_ignored_options {
+    let (ts_config, maybe_ignored_options) = emit::get_ts_config(
+      emit::ConfigType::Check { emit: false, lib },
+      &ps.maybe_config_file,
+    )?;
+    log::info!("{} {}", colors::green("Check"), graph.roots[0]);
+    if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
-    if !result_info.diagnostics.is_empty() {
-      return Err(generic_error(result_info.diagnostics.to_string()));
+    let maybe_config_specifier = ps
+      .maybe_config_file
+      .clone()
+      .map(|ref cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
+    let check_result = emit::check_and_maybe_emit(
+      graph.clone(),
+      &mut cache,
+      emit::CheckOptions {
+        debug,
+        maybe_config_specifier,
+        ts_config,
+      },
+    )?;
+    debug!("{}", check_result.stats);
+    if !check_result.diagnostics.is_empty() {
+      return Err(anyhow!(check_result.diagnostics));
     }
   }
 
-  Ok(module_graph)
+  Ok(graph)
 }
 
 fn bundle_module_graph(
-  module_graph: module_graph::Graph,
-  ps: ProcState,
-  flags: Flags,
-  debug: bool,
-) -> Result<String, AnyError> {
-  let (bundle, stats, maybe_ignored_options) =
-    module_graph.bundle(module_graph::BundleOptions {
-      debug,
-      maybe_config_file: ps.maybe_config_file.clone(),
-    })?;
-  match maybe_ignored_options {
-    Some(ignored_options) if flags.no_check => {
+  graph: &deno_graph::ModuleGraph,
+  ps: &ProcState,
+  flags: &Flags,
+) -> Result<(String, Option<String>), AnyError> {
+  info!("{} {}", colors::green("Bundle"), graph.roots[0]);
+
+  let (ts_config, maybe_ignored_options) =
+    emit::get_ts_config(emit::ConfigType::Bundle, &ps.maybe_config_file)?;
+  if flags.no_check {
+    if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
-    _ => {}
   }
-  debug!("{}", stats);
-  Ok(bundle)
+
+  emit::bundle(
+    graph,
+    emit::BundleOptions {
+      bundle_type: emit::BundleType::Module,
+      ts_config,
+    },
+  )
 }
 
 /// A function that converts a float to a string the represents a human
@@ -724,17 +733,18 @@ async fn bundle_command(
       debug!(">>>>> bundle START");
       let ps = ProcState::build(flags.clone()).await?;
 
-      let module_graph = create_module_graph_and_maybe_check(
-        module_specifier,
-        ps.clone(),
-        debug,
-      )
-      .await?;
+      let graph =
+        create_graph_and_maybe_check(module_specifier, &ps, debug).await?;
 
-      let mut paths_to_watch: Vec<PathBuf> = module_graph
-        .get_modules()
+      let mut paths_to_watch: Vec<PathBuf> = graph
+        .specifiers()
         .iter()
-        .filter_map(|specifier| specifier.to_file_path().ok())
+        .filter_map(|(_, r)| {
+          r.as_ref()
+            .ok()
+            .map(|(s, _)| s.to_file_path().ok())
+            .flatten()
+        })
         .collect();
 
       if let Some(import_map) = ps.flags.import_map_path.as_ref() {
@@ -742,12 +752,12 @@ async fn bundle_command(
           .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
       }
 
-      Ok((paths_to_watch, module_graph, ps))
+      Ok((paths_to_watch, graph, ps))
     }
     .map(move |result| match result {
-      Ok((paths_to_watch, module_graph, ps)) => ResolutionResult::Restart {
+      Ok((paths_to_watch, graph, ps)) => ResolutionResult::Restart {
         paths_to_watch,
-        result: Ok((ps, module_graph)),
+        result: Ok((ps, graph)),
       },
       Err(e) => ResolutionResult::Restart {
         paths_to_watch: vec![PathBuf::from(source_file2)],
@@ -756,18 +766,16 @@ async fn bundle_command(
     })
   };
 
-  let operation = |(ps, module_graph): (ProcState, module_graph::Graph)| {
+  let operation = |(ps, graph): (ProcState, Arc<deno_graph::ModuleGraph>)| {
     let flags = flags.clone();
     let out_file = bundle_flags.out_file.clone();
     async move {
-      info!("{} {}", colors::green("Bundle"), module_graph.roots[0]);
-
-      let output = bundle_module_graph(module_graph, ps, flags, debug)?;
-
+      let (bundle_emit, maybe_bundle_map) =
+        bundle_module_graph(graph.as_ref(), &ps, &flags)?;
       debug!(">>>>> bundle END");
 
       if let Some(out_file) = out_file.as_ref() {
-        let output_bytes = output.as_bytes();
+        let output_bytes = bundle_emit.as_bytes();
         let output_len = output_bytes.len();
         fs_util::write_file(out_file, output_bytes, 0o644)?;
         info!(
@@ -776,8 +784,26 @@ async fn bundle_command(
           out_file,
           colors::gray(human_size(output_len as f64))
         );
+        if let Some(bundle_map) = maybe_bundle_map {
+          let map_bytes = bundle_map.as_bytes();
+          let map_len = map_bytes.len();
+          let mut map_out_file = out_file.clone();
+          let ext = if let Some(curr_ext) = out_file.extension() {
+            format!("{}.map", curr_ext.to_string_lossy())
+          } else {
+            "map".to_string()
+          };
+          map_out_file.set_extension(ext);
+          fs_util::write_file(&map_out_file, map_bytes, 0o644)?;
+          info!(
+            "{} {:?} ({})",
+            colors::green("Emit"),
+            map_out_file,
+            colors::gray(human_size(map_len as f64))
+          );
+        }
       } else {
-        println!("{}", output);
+        println!("{}", bundle_emit);
       }
 
       Ok(())
