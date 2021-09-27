@@ -14,7 +14,6 @@
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
   const { URL } = window.__bootstrap.url;
-  const { Window } = window.__bootstrap.globalInterfaces;
   const { getLocationHref } = window.__bootstrap.location;
   const { log, pathFromURL } = window.__bootstrap.util;
   const { defineEventHandler } = window.__bootstrap.webUtil;
