@@ -67,11 +67,12 @@
    * @param {string} url
    * @param {[string, string][]} headerList
    * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
+   * @param {boolean} maybeBlob
    * @returns
    */
-  function newInnerRequest(method, url, headerList = [], body = null) {
+  function newInnerRequest(method, url, headerList, body, maybeBlob) {
     let blobUrlEntry = null;
-    if (url.startsWith("blob:")) {
+    if (maybeBlob && url.startsWith("blob:")) {
       blobUrlEntry = blobFromObjectUrl(url);
     }
     return {
@@ -236,7 +237,7 @@
       // 5.
       if (typeof input === "string") {
         const parsedURL = new URL(input, baseURL);
-        request = newInnerRequest("GET", parsedURL.href, [], null);
+        request = newInnerRequest("GET", parsedURL.href, [], null, true);
       } else { // 6.
         if (!(input instanceof Request)) throw new TypeError("Unreachable");
         request = input[_request];
