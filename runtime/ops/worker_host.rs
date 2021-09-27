@@ -223,7 +223,10 @@ fn merge_env_permission(
 ) -> Result<UnaryPermission<EnvDescriptor>, AnyError> {
   if let Some(worker) = worker {
     if (worker.global_state < main.global_state)
-      || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
+      || !worker
+        .granted_list
+        .iter()
+        .all(|x| main.check(x.as_ref()).is_ok())
     {
       return Err(custom_error(
         "PermissionDenied",
@@ -451,7 +454,7 @@ where
     granted_list: value
       .paths
       .into_iter()
-      .map(|env| EnvDescriptor(env.to_uppercase()))
+      .map(EnvDescriptor::new)
       .collect(),
     ..Default::default()
   }))
