@@ -162,7 +162,7 @@ impl UnitPermission {
 /// A normalized environment variable name. On Windows this will
 /// be uppercase and on other platforms it will stay as-is.
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
-pub struct EnvVarName {
+struct EnvVarName {
   inner: String,
 }
 
