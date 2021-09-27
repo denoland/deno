@@ -15,7 +15,6 @@ use deno_core::OpState;
 use log;
 use std::collections::HashSet;
 use std::fmt;
-use std::fmt::Display;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
 #[cfg(test)]
@@ -160,6 +159,31 @@ impl UnitPermission {
   }
 }
 
+/// A normalized environment variable name. On Windows this will
+/// be uppercase and on other platforms it will stay as-is.
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
+pub struct EnvVarName {
+  inner: String,
+}
+
+impl EnvVarName {
+  pub fn new(env: impl AsRef<str>) -> Self {
+    Self {
+      inner: if cfg!(windows) {
+        env.as_ref().to_uppercase()
+      } else {
+        env.as_ref().to_string()
+      },
+    }
+  }
+}
+
+impl AsRef<str> for EnvVarName {
+  fn as_ref(&self) -> &str {
+    self.inner.as_str()
+  }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct UnaryPermission<T: Eq + Hash> {
   pub name: &'static str,
@@ -202,31 +226,17 @@ impl fmt::Display for NetDescriptor {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
-pub struct EnvDescriptor {
-  env: String,
-}
+pub struct EnvDescriptor(EnvVarName);
 
 impl EnvDescriptor {
   pub fn new(env: impl AsRef<str>) -> Self {
-    Self {
-      env: if cfg!(windows) {
-        env.as_ref().to_uppercase()
-      } else {
-        env.as_ref().to_string()
-      },
-    }
+    Self(EnvVarName::new(env))
   }
 }
 
 impl AsRef<str> for EnvDescriptor {
   fn as_ref(&self) -> &str {
-    self.env.as_str()
-  }
-}
-
-impl Display for EnvDescriptor {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.write_str(&self.env)
+    self.0.as_ref()
   }
 }
 
@@ -634,7 +644,7 @@ impl UnaryPermission<EnvDescriptor> {
       let env = EnvDescriptor::new(env);
       let state = self.query(Some(env.as_ref()));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!("env access to \"{}\"", env)) {
+        if permission_prompt(&format!("env access to \"{}\"", env.as_ref())) {
           self.granted_list.insert(env);
           PermissionState::Granted
         } else {
@@ -681,7 +691,7 @@ impl UnaryPermission<EnvDescriptor> {
     let env = EnvDescriptor::new(env);
     let (result, prompted) = self.query(Some(env.as_ref())).check(
       self.name,
-      Some(&format!("\"{}\"", env)),
+      Some(&format!("\"{}\"", env.as_ref())),
       self.prompt,
     );
     if prompted {
