@@ -451,11 +451,7 @@ where
 
   Ok(Some(UnaryPermission::<EnvDescriptor> {
     global_state: value.global_state,
-    granted_list: value
-      .paths
-      .into_iter()
-      .map(EnvDescriptor::new)
-      .collect(),
+    granted_list: value.paths.into_iter().map(EnvDescriptor::new).collect(),
     ..Default::default()
   }))
 }
