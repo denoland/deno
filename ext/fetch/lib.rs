@@ -221,7 +221,8 @@ where
 
       for (key, value) in args.headers {
         let name = HeaderName::from_bytes(&key).unwrap();
-        let v = HeaderValue::from_bytes(&value).unwrap();
+        let v = HeaderValue::from_bytes(&value)
+          .map_err(|err| type_error(err.to_string()))?;
         if name != HOST {
           request = request.header(name, v);
         }
