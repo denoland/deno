@@ -127,8 +127,13 @@ unitTest(
     });
     const status = await p.status();
     assertEquals(status.success, false);
-    assertEquals(status.code, 128 + 9);
-    assertEquals(status.signal, 9);
+    if (Deno.build.os === "windows") {
+      assertEquals(status.code, 1);
+      assertEquals(status.signal, undefined);
+    } else {
+      assertEquals(status.code, 128 + 9);
+      assertEquals(status.signal, 9);
+    }
     p.close();
   },
 );
@@ -497,8 +502,13 @@ unitTest(
       const status = await p.status();
 
       assertEquals(status.success, false);
-      assertEquals(status.code, 130);
-      assertEquals(status.signal, 2);
+      if (Deno.build.os === "windows") {
+        assertEquals(status.code, 1);
+        assertEquals(status.signal, undefined);
+      } else {
+        assertEquals(status.code, 130);
+        assertEquals(status.signal, 2);
+      }
     } finally {
       p.close();
     }
