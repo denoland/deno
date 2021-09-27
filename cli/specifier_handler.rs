@@ -3,7 +3,7 @@
 use crate::ast::Location;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::FileFetcher;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 
 use deno_ast::MediaType;
 use deno_core::error::custom_error;
@@ -219,18 +219,18 @@ pub struct FetchHandler {
   root_permissions: Permissions,
   /// The set of permissions which are used for dynamic imports.
   dynamic_permissions: Permissions,
-  /// A clone of the `program_state` file fetcher.
+  /// A clone of the `ps` file fetcher.
   file_fetcher: FileFetcher,
 }
 
 impl FetchHandler {
   pub fn new(
-    program_state: &Arc<ProgramState>,
+    ps: &ProcState,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
   ) -> Result<Self, AnyError> {
-    let disk_cache = program_state.dir.gen_cache.clone();
-    let file_fetcher = program_state.file_fetcher.clone();
+    let disk_cache = ps.dir.gen_cache.clone();
+    let file_fetcher = ps.file_fetcher.clone();
 
     Ok(FetchHandler {
       disk_cache,

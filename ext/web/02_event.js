@@ -135,16 +135,15 @@
   const _path = Symbol("[[path]]");
 
   class Event {
-    [_attributes] = {};
-    [_canceledFlag] = false;
-    [_stopPropagationFlag] = false;
-    [_stopImmediatePropagationFlag] = false;
-    [_inPassiveListener] = false;
-    [_dispatched] = false;
-    [_isTrusted] = false;
-    [_path] = [];
-
     constructor(type, eventInitDict = {}) {
+      this[_canceledFlag] = false;
+      this[_stopPropagationFlag] = false;
+      this[_stopImmediatePropagationFlag] = false;
+      this[_inPassiveListener] = false;
+      this[_dispatched] = false;
+      this[_isTrusted] = false;
+      this[_path] = [];
+
       webidl.requiredArguments(arguments.length, 1, {
         prefix: "Failed to construct 'Event'",
       });
@@ -395,6 +394,9 @@
     get timeStamp() {
       return this[_attributes].timeStamp;
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "Event";
   }
 
   function defineEnumerableProps(
@@ -988,14 +990,12 @@
       return dispatch(self, event);
     }
 
-    get [SymbolToStringTag]() {
-      return "EventTarget";
-    }
-
     getParent(_event) {
       return null;
     }
   }
+
+  webidl.configurePrototype(EventTarget);
 
   defineEnumerableProps(EventTarget, [
     "addEventListener",
@@ -1052,10 +1052,6 @@
       this.#error = error;
     }
 
-    get [SymbolToStringTag]() {
-      return "ErrorEvent";
-    }
-
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
@@ -1070,6 +1066,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "ErrorEvent";
   }
 
   defineEnumerableProps(ErrorEvent, [
@@ -1158,6 +1157,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "CloseEvent";
   }
 
   class CustomEvent extends Event {
@@ -1176,10 +1178,6 @@
       return this.#detail;
     }
 
-    get [SymbolToStringTag]() {
-      return "CustomEvent";
-    }
-
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
@@ -1190,6 +1188,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "CustomEvent";
   }
 
   ReflectDefineProperty(CustomEvent.prototype, "detail", {
@@ -1219,6 +1220,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "ProgressEvent";
   }
 
   const _eventHandlers = Symbol("eventHandlers");

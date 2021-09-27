@@ -1424,22 +1424,6 @@ impl JsRuntime {
     Ok(root_id)
   }
 
-  /// Asynchronously load specified module and all of its dependencies
-  ///
-  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
-  /// manually after load is finished.
-  #[deprecated(
-    since = "0.100.0",
-    note = "This method had a bug, marking multiple modules loaded as \"main\". Use `load_main_module` or `load_side_module` instead."
-  )]
-  pub async fn load_module(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    code: Option<String>,
-  ) -> Result<ModuleId, AnyError> {
-    self.load_main_module(specifier, code).await
-  }
-
   fn poll_pending_ops(
     &mut self,
     cx: &mut Context,
@@ -2064,7 +2048,6 @@ pub mod tests {
     impl ModuleLoader for ModsLoader {
       fn resolve(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
@@ -2077,7 +2060,6 @@ pub mod tests {
 
       fn load(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,

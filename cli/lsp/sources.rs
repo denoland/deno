@@ -14,7 +14,7 @@ use crate::flags::Flags;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::module_graph::GraphBuilder;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
 use import_map::ImportMap;
@@ -40,15 +40,13 @@ pub async fn cache(
   maybe_config_file: &Option<ConfigFile>,
   maybe_cache_path: &Option<PathBuf>,
 ) -> Result<(), AnyError> {
-  let program_state = Arc::new(
-    ProgramState::build(Flags {
-      cache_path: maybe_cache_path.clone(),
-      ..Default::default()
-    })
-    .await?,
-  );
+  let ps = ProcState::build(Flags {
+    cache_path: maybe_cache_path.clone(),
+    ..Default::default()
+  })
+  .await?;
   let handler = Arc::new(Mutex::new(FetchHandler::new(
-    &program_state,
+    &ps,
     Permissions::allow_all(),
     Permissions::allow_all(),
   )?));

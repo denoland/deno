@@ -39,7 +39,6 @@
     RegExpPrototypeTest,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -63,37 +62,34 @@
    * @property {Blob | null} blobUrlEntry
    */
 
-  const defaultInnerRequest = {
-    url() {
-      return this.urlList[0];
-    },
-    currentUrl() {
-      return this.urlList[this.urlList.length - 1];
-    },
-    redirectMode: "follow",
-    redirectCount: 0,
-    clientRid: null,
-  };
-
   /**
    * @param {string} method
    * @param {string} url
    * @param {[string, string][]} headerList
    * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
+   * @param {boolean} maybeBlob
    * @returns
    */
-  function newInnerRequest(method, url, headerList = [], body = null) {
+  function newInnerRequest(method, url, headerList, body, maybeBlob) {
     let blobUrlEntry = null;
-    if (url.startsWith("blob:")) {
+    if (maybeBlob && url.startsWith("blob:")) {
       blobUrlEntry = blobFromObjectUrl(url);
     }
     return {
-      method: method,
+      method,
       headerList,
       body,
+      redirectMode: "follow",
+      redirectCount: 0,
       urlList: [url],
+      clientRid: null,
       blobUrlEntry,
-      ...defaultInnerRequest,
+      url() {
+        return this.urlList[0];
+      },
+      currentUrl() {
+        return this.urlList[this.urlList.length - 1];
+      },
     };
   }
 
@@ -113,12 +109,6 @@
 
     return {
       method: request.method,
-      url() {
-        return this.urlList[0];
-      },
-      currentUrl() {
-        return this.urlList[this.urlList.length - 1];
-      },
       headerList,
       body,
       redirectMode: request.redirectMode,
@@ -126,6 +116,12 @@
       urlList: request.urlList,
       clientRid: request.clientRid,
       blobUrlEntry: request.blobUrlEntry,
+      url() {
+        return this.urlList[0];
+      },
+      currentUrl() {
+        return this.urlList[this.urlList.length - 1];
+      },
     };
   }
 
@@ -241,7 +237,7 @@
       // 5.
       if (typeof input === "string") {
         const parsedURL = new URL(input, baseURL);
-        request = newInnerRequest("GET", parsedURL.href, [], null);
+        request = newInnerRequest("GET", parsedURL.href, [], null, true);
       } else { // 6.
         if (!(input instanceof Request)) throw new TypeError("Unreachable");
         request = input[_request];
@@ -397,10 +393,6 @@
       );
     }
 
-    get [SymbolToStringTag]() {
-      return "Request";
-    }
-
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
@@ -450,7 +442,7 @@
       {
         key: "body",
         converter: webidl.createNullableConverter(
-          webidl.converters["BodyInit"],
+          webidl.converters["BodyInit_DOMString"],
         ),
       },
       { key: "redirect", converter: webidl.converters["RequestRedirect"] },

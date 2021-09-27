@@ -505,7 +505,7 @@ impl WebWorker {
     }
   }
 
-  pub fn poll_event_loop(
+  fn poll_event_loop(
     &mut self,
     cx: &mut Context,
     wait_for_inspector: bool,
