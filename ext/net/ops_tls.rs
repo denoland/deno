@@ -693,13 +693,10 @@ where
     .map(|s| s.into_bytes())
     .collect::<Vec<_>>();
 
-  match cert_file {
-    Some(path) => {
-      let mut buf = Vec::new();
-      File::open(path)?.read_to_end(&mut buf)?;
-      ca_certs.push(buf);
-    }
-    _ => {}
+  if let Some(path) = cert_file {
+    let mut buf = Vec::new();
+    File::open(path)?.read_to_end(&mut buf)?;
+    ca_certs.push(buf);
   };
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
@@ -800,13 +797,10 @@ where
     .map(|s| s.into_bytes())
     .collect::<Vec<_>>();
 
-  match cert_file {
-    Some(path) => {
-      let mut buf = Vec::new();
-      File::open(path)?.read_to_end(&mut buf)?;
-      ca_certs.push(buf);
-    }
-    _ => {}
+  if let Some(path) = cert_file {
+    let mut buf = Vec::new();
+    File::open(path)?.read_to_end(&mut buf)?;
+    ca_certs.push(buf);
   };
 
   let root_cert_store = state
