@@ -311,6 +311,6 @@ fn op_kill(
 ) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
-  kill(args.pid, &signal)?;
+  kill(pid, &signal)?;
   Ok(())
 }
