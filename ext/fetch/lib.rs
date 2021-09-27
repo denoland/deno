@@ -461,9 +461,8 @@ impl HttpClientResource {
   }
 }
 
-#[derive(Deserialize, Default, Debug)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-#[serde(default)]
 pub struct CreateHttpClientOptions {
   #[serde(default)]
   ca_certs: Vec<String>,
