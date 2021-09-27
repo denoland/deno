@@ -465,6 +465,7 @@ impl HttpClientResource {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct CreateHttpClientOptions {
+  #[serde(default)]
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
   cert_chain: Option<String>,
