@@ -2631,32 +2631,28 @@ impl Inner {
 
     let mark = self.performance.mark("cache", Some(&params));
     if !params.uris.is_empty() {
-      for identifier in &params.uris {
-        let specifier = self.url_map.normalize_url(&identifier.uri);
-        sources::cache(
-          &specifier,
-          &self.maybe_import_map,
-          &self.maybe_config_file,
-          &self.maybe_cache_path,
-        )
-        .await
-        .map_err(|err| {
-          error!("{}", err);
-          LspError::internal_error()
-        })?;
+      let roots = params
+        .uris
+        .iter()
+        .map(|t| self.url_map.normalize_url(&t.uri))
+        .collect();
+
+      if let Err(err) =
+        sources::cache(roots, &self.maybe_import_map, &self.maybe_cache_path)
+          .await
+      {
+        error!("{}", err);
       }
     } else {
-      sources::cache(
-        &referrer,
+      if let Err(err) = sources::cache(
+        vec![referrer.clone()],
         &self.maybe_import_map,
-        &self.maybe_config_file,
         &self.maybe_cache_path,
       )
       .await
-      .map_err(|err| {
+      {
         error!("{}", err);
-        LspError::internal_error()
-      })?;
+      }
     }
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics

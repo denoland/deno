@@ -70,7 +70,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -916,25 +915,38 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     async move {
       let main_module = resolve_url_or_path(&script1)?;
       let ps = ProcState::build(flags).await?;
-      let handler = Arc::new(Mutex::new(FetchHandler::new(
-        &ps,
+      let mut cache = cache::FetchCacher::new(
+        ps.dir.gen_cache.clone(),
+        ps.file_fetcher.clone(),
         Permissions::allow_all(),
         Permissions::allow_all(),
-      )?));
-      let mut builder = module_graph::GraphBuilder::new(
-        handler,
-        ps.maybe_import_map.clone(),
-        ps.lockfile.clone(),
       );
-      builder.add(&main_module, false).await?;
-      builder.analyze_config_file(&ps.maybe_config_file).await?;
-      let module_graph = builder.get_graph();
+      let maybe_locker = ps.lockfile.as_ref().map(|lf| {
+        Rc::new(RefCell::new(Box::new(lockfile::Locker(Some(lf.clone())))
+          as Box<dyn deno_graph::source::Locker>))
+      });
+      let graph = deno_graph::create_graph(
+        vec![main_module.clone()],
+        false,
+        &mut cache,
+        ps.maybe_import_map
+          .as_ref()
+          .map(|r| r as &dyn deno_graph::source::Resolver),
+        maybe_locker,
+        None,
+      )
+      .await;
 
       // Find all local files in graph
-      let mut paths_to_watch: Vec<PathBuf> = module_graph
-        .get_modules()
+      let mut paths_to_watch: Vec<PathBuf> = graph
+        .specifiers()
         .iter()
-        .filter_map(|specifier| specifier.to_file_path().ok())
+        .filter_map(|(_, r)| {
+          r.as_ref()
+            .ok()
+            .map(|(s, _)| s.to_file_path().ok())
+            .flatten()
+        })
         .collect();
 
       if let Some(import_map) = ps.flags.import_map_path.as_ref() {

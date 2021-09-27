@@ -377,8 +377,6 @@ pub(crate) fn bundle(
   graph: &ModuleGraph,
   options: BundleOptions,
 ) -> Result<(String, Option<String>), AnyError> {
-  let start = Instant::now();
-
   let emit_options: ast::EmitOptions = options.ts_config.into();
 
   let cm = Rc::new(swc::common::SourceMap::new(

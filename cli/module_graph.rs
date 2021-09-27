@@ -1118,12 +1118,6 @@ impl Graph {
     }
   }
 
-  /// Consume graph and return list of all module specifiers contained in the
-  /// graph.
-  pub fn get_modules(&self) -> Vec<ModuleSpecifier> {
-    self.modules.keys().map(|s| s.to_owned()).collect()
-  }
-
   /// Transform `self.roots` into something that works for `tsc`, because `tsc`
   /// doesn't like root names without extensions that match its expectations,
   /// nor does it have any concept of redirection, so we have to resolve all
