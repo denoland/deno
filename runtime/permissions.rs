@@ -650,9 +650,12 @@ impl UnaryPermission<EnvDescriptor> {
 
   pub fn revoke(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
-      #[cfg(windows)]
-      let env = env.to_uppercase();
-      self.granted_list.remove(&EnvDescriptor(env.to_string()));
+      let env = if cfg!(windows) {
+        env.to_uppercase()
+      } else {
+        env.to_string()
+      };
+      self.granted_list.remove(&EnvDescriptor(env));
     } else {
       self.granted_list.clear();
     }
