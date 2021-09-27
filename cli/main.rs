@@ -20,7 +20,6 @@ mod fmt_errors;
 mod fs_util;
 mod http_cache;
 mod http_util;
-mod info;
 mod lockfile;
 mod logger;
 mod lsp;
@@ -86,6 +85,7 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use log::debug;
 use log::info;
+use std::cell::RefCell;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -284,7 +284,7 @@ where
 fn print_cache_info(
   state: &ProcState,
   json: bool,
-  location: Option<deno_core::url::Url>,
+  location: &Option<deno_core::url::Url>,
 ) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
@@ -434,36 +434,42 @@ async fn info_command(
   flags: Flags,
   info_flags: InfoFlags,
 ) -> Result<(), AnyError> {
-  let location = flags.location.clone();
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
-    let handler = Arc::new(Mutex::new(specifier_handler::FetchHandler::new(
-      &ps,
-      // info accesses dynamically imported modules just for their information
-      // so we allow access to all of them.
+    let mut cache = cache::FetchCacher::new(
+      ps.dir.gen_cache.clone(),
+      ps.file_fetcher.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
-    )?));
-    let mut builder = module_graph::GraphBuilder::new(
-      handler,
-      ps.maybe_import_map.clone(),
-      ps.lockfile.clone(),
     );
-    builder.add(&specifier, false).await?;
-    builder.analyze_config_file(&ps.maybe_config_file).await?;
-    let graph = builder.get_graph();
-    let info = graph.info()?;
+    // we always generate a locker here, even if there isn't a lock file, as we
+    // want to make sure that the checksums are part of the module graph
+    let maybe_locker = Some(Rc::new(RefCell::new(Box::new(lockfile::Locker(
+      ps.lockfile.clone(),
+    ))
+      as Box<dyn deno_graph::source::Locker>)));
+    let graph = deno_graph::create_graph(
+      vec![specifier],
+      false,
+      &mut cache,
+      ps.maybe_import_map
+        .as_ref()
+        .map(|r| r as &dyn deno_graph::source::Resolver),
+      maybe_locker,
+      None,
+    )
+    .await;
 
     if info_flags.json {
-      write_json_to_stdout(&json!(info))
+      write_json_to_stdout(&json!(graph))
     } else {
-      write_to_stdout_ignore_sigpipe(info.to_string().as_bytes())
+      write_to_stdout_ignore_sigpipe(graph.to_string().as_bytes())
         .map_err(|err| err.into())
     }
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&ps, info_flags.json, location)
+    print_cache_info(&ps, info_flags.json, &ps.flags.location)
   }
 }
 
@@ -680,6 +686,28 @@ fn bundle_module_graph(
   Ok(bundle)
 }
 
+/// A function that converts a float to a string the represents a human
+/// readable version of that number.
+fn human_size(size: f64) -> String {
+  let negative = if size.is_sign_positive() { "" } else { "-" };
+  let size = size.abs();
+  let units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  if size < 1_f64 {
+    return format!("{}{}{}", negative, size, "B");
+  }
+  let delimiter = 1024_f64;
+  let exponent = std::cmp::min(
+    (size.ln() / delimiter.ln()).floor() as i32,
+    (units.len() - 1) as i32,
+  );
+  let pretty_bytes = format!("{:.2}", size / delimiter.powi(exponent))
+    .parse::<f64>()
+    .unwrap()
+    * 1_f64;
+  let unit = units[exponent as usize];
+  format!("{}{}{}", negative, pretty_bytes, unit)
+}
+
 async fn bundle_command(
   flags: Flags,
   bundle_flags: BundleFlags,
@@ -732,7 +760,7 @@ async fn bundle_command(
     let flags = flags.clone();
     let out_file = bundle_flags.out_file.clone();
     async move {
-      info!("{} {}", colors::green("Bundle"), module_graph.info()?.root);
+      info!("{} {}", colors::green("Bundle"), module_graph.roots[0]);
 
       let output = bundle_module_graph(module_graph, ps, flags, debug)?;
 
@@ -746,7 +774,7 @@ async fn bundle_command(
           "{} {:?} ({})",
           colors::green("Emit"),
           out_file,
-          colors::gray(&info::human_size(output_len as f64))
+          colors::gray(human_size(output_len as f64))
         );
       } else {
         println!("{}", output);

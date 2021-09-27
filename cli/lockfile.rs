@@ -86,7 +86,7 @@ impl Lockfile {
 }
 
 #[derive(Debug)]
-pub struct Locker(pub Arc<Mutex<Lockfile>>);
+pub struct Locker(pub Option<Arc<Mutex<Lockfile>>>);
 
 impl deno_graph::source::Locker for Locker {
   fn check_or_insert(
@@ -94,8 +94,12 @@ impl deno_graph::source::Locker for Locker {
     specifier: &ModuleSpecifier,
     source: &str,
   ) -> bool {
-    let mut lock_file = self.0.lock();
-    lock_file.check_or_insert(specifier.as_str(), source)
+    if let Some(lock_file) = &self.0 {
+      let mut lock_file = lock_file.lock();
+      lock_file.check_or_insert(specifier.as_str(), source)
+    } else {
+      true
+    }
   }
 
   fn get_checksum(&self, content: &str) -> String {

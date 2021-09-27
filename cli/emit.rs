@@ -170,7 +170,7 @@ fn get_root_names(
     graph
       .specifiers()
       .into_iter()
-      .filter_map(|(s, r)| match r {
+      .filter_map(|(_, r)| match r {
         Ok((s, mt)) => match &mt {
           MediaType::TypeScript | MediaType::Tsx | MediaType::Jsx => {
             Some((s, mt))
@@ -558,7 +558,7 @@ pub(crate) fn valid_emit(
       Ok((_, MediaType::JavaScript)) => emit_js,
       _ => false,
     })
-    .all(|(s, r)| {
+    .all(|(_, r)| {
       if let Ok((s, _)) = r {
         if reload && !reload_exclusions.contains(s) {
           // we are reloading and the specifier isn't excluded from being
@@ -566,8 +566,6 @@ pub(crate) fn valid_emit(
           false
         } else if let Some(version) = cache.get_version(s) {
           if let Some(module) = graph.get(s) {
-            let graph_version =
-              get_version(module.source.as_bytes(), &config_bytes);
             version == get_version(module.source.as_bytes(), &config_bytes)
           } else {
             // We have a source module in the graph we can't find, so the emit is

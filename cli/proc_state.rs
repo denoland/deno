@@ -278,9 +278,8 @@ impl ProcState {
       dynamic_permissions,
     );
     let maybe_locker = self.lockfile.as_ref().map(|lf| {
-      Rc::new(RefCell::new(
-        Box::new(Locker(lf.clone())) as Box<dyn deno_graph::source::Locker>
-      ))
+      Rc::new(RefCell::new(Box::new(Locker(Some(lf.clone())))
+        as Box<dyn deno_graph::source::Locker>))
     });
     let graph = deno_graph::create_graph(
       roots,

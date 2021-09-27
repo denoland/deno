@@ -4,14 +4,12 @@ use crate::ast::transpile;
 use crate::ast::transpile_module;
 use crate::ast::BundleHook;
 use crate::ast::Location;
-use crate::checksum;
 use crate::colors;
 use crate::config_file::CompilerOptions;
 use crate::config_file::ConfigFile;
 use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
-use crate::info;
 use crate::lockfile::Lockfile;
 use crate::specifier_handler::CachedModule;
 use crate::specifier_handler::Dependency;
@@ -510,10 +508,6 @@ impl Module {
       config,
     ))
   }
-
-  pub fn size(&self) -> usize {
-    self.text_info.text_str().len()
-  }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -718,7 +712,7 @@ pub struct Graph {
   redirects: HashMap<ModuleSpecifier, ModuleSpecifier>,
   /// The module specifiers that have been uniquely added to the graph, which
   /// does not include any transient dependencies.
-  roots: Vec<ModuleSpecifier>,
+  pub roots: Vec<ModuleSpecifier>,
   /// If all of the root modules are dynamically imported, then this is true.
   /// This is used to ensure correct `--reload` behavior, where subsequent
   /// calls to a module graph where the emit is already valid do not cause the
@@ -1444,94 +1438,6 @@ impl Graph {
     } else {
       None
     }
-  }
-
-  /// Return a structure which provides information about the module graph and
-  /// the relationship of the modules in the graph.  This structure is used to
-  /// provide information for the `info` subcommand.
-  pub fn info(&self) -> Result<info::ModuleGraphInfo, AnyError> {
-    if self.roots.is_empty() || self.roots.len() > 1 {
-      return Err(GraphError::NotSupported(format!("Info is only supported when there is a single root module in the graph.  Found: {}", self.roots.len())).into());
-    }
-
-    let root = self.resolve_specifier(&self.roots[0]).clone();
-    let mut modules: Vec<info::ModuleGraphInfoMod> = self
-      .modules
-      .iter()
-      .filter_map(|(sp, sl)| match sl {
-        ModuleSlot::Module(module) => {
-          let mut dependencies: Vec<info::ModuleGraphInfoDep> = module
-            .dependencies
-            .iter()
-            .map(|(k, v)| info::ModuleGraphInfoDep {
-              specifier: k.clone(),
-              is_dynamic: v.is_dynamic,
-              maybe_code: v
-                .maybe_code
-                .clone()
-                .map(|s| self.resolve_specifier(&s).clone()),
-              maybe_type: v
-                .maybe_type
-                .clone()
-                .map(|s| self.resolve_specifier(&s).clone()),
-            })
-            .collect();
-          dependencies.sort();
-          let (emit, map) =
-            if let Some((emit, maybe_map)) = &module.maybe_emit_path {
-              (Some(emit.clone()), maybe_map.clone())
-            } else {
-              (None, None)
-            };
-          let maybe_type_dependency =
-            module.maybe_types.clone().map(|(specifier, _type)| {
-              info::ModuleGraphInfoDep {
-                specifier,
-                is_dynamic: false,
-                maybe_code: None,
-                maybe_type: Some(_type),
-              }
-            });
-          Some(info::ModuleGraphInfoMod {
-            specifier: sp.clone(),
-            dependencies,
-            maybe_type_dependency,
-            size: Some(module.size()),
-            media_type: Some(module.media_type),
-            local: Some(module.source_path.clone()),
-            checksum: Some(checksum::gen(&[module
-              .text_info
-              .text_str()
-              .as_bytes()])),
-            emit,
-            map,
-            ..Default::default()
-          })
-        }
-        ModuleSlot::Err(err) => Some(info::ModuleGraphInfoMod {
-          specifier: sp.clone(),
-          error: Some(err.to_string()),
-          ..Default::default()
-        }),
-        _ => None,
-      })
-      .collect();
-
-    modules.sort();
-
-    let size = modules.iter().fold(0_usize, |acc, m| {
-      if let Some(size) = &m.size {
-        acc + size
-      } else {
-        acc
-      }
-    });
-
-    Ok(info::ModuleGraphInfo {
-      root,
-      modules,
-      size,
-    })
   }
 
   /// Determines if all of the modules in the graph that require an emit have
@@ -2578,17 +2484,6 @@ pub mod tests {
     assert!(out_b.starts_with("export const b = \"b\";"));
     assert!(emitted_files.contains_key("file:///b.ts.js.map"));
     assert!(emitted_files.contains_key("file:///b.ts.d.ts"));
-  }
-
-  #[tokio::test]
-  async fn test_graph_info() {
-    let specifier = resolve_url_or_path("file:///tests/main.ts")
-      .expect("could not resolve module");
-    let (graph, _) = setup(specifier.clone()).await;
-    let info = graph.info().expect("could not get info");
-    assert_eq!(info.root, specifier);
-    assert_eq!(info.modules.len(), 7);
-    assert_eq!(info.size, 518);
   }
 
   #[tokio::test]
