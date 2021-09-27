@@ -810,8 +810,8 @@ impl Graph {
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     }));
-    let maybe_ignored_options = ts_config
-      .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
+    let maybe_ignored_options =
+      ts_config.merge_tsconfig_from_config_file(&options.maybe_config_file)?;
 
     let (src, _) = self.emit_bundle(
       &root_specifier,
@@ -863,8 +863,8 @@ impl Graph {
         "noEmit": true,
       }));
     }
-    let maybe_ignored_options = config
-      .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
+    let maybe_ignored_options =
+      config.merge_tsconfig_from_config_file(&options.maybe_config_file)?;
 
     let needs_reload = options.reload
       && !self
@@ -1697,92 +1697,6 @@ impl Graph {
       }
     }
     s
-  }
-
-  /// Transpile (only transform) the graph, updating any emitted modules
-  /// with the specifier handler.  The result contains any performance stats
-  /// from the compiler and optionally any user provided configuration compiler
-  /// options that were ignored.
-  ///
-  /// # Arguments
-  ///
-  /// * `options` - A structure of options which impact how the code is
-  ///   transpiled.
-  ///
-  pub fn transpile(
-    &mut self,
-    options: TranspileOptions,
-  ) -> Result<ResultInfo, AnyError> {
-    let start = Instant::now();
-
-    let mut ts_config = TsConfig::new(json!({
-      "checkJs": false,
-      "emitDecoratorMetadata": false,
-      "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": true,
-      // TODO(@kitsonk) make this actually work when https://github.com/swc-project/swc/issues/2218 addressed.
-      "inlineSources": true,
-      "sourceMap": false,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-    }));
-
-    let maybe_ignored_options = ts_config
-      .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
-
-    let config = ts_config.as_bytes();
-    let check_js = ts_config.get_check_js();
-    let emit_options: ast::EmitOptions = ts_config.into();
-    let mut emit_count = 0_u32;
-    for (specifier, module_slot) in self.modules.iter_mut() {
-      if let ModuleSlot::Module(module) = module_slot {
-        // TODO(kitsonk) a lot of this logic should be refactored into `Module` as
-        // we start to support other methods on the graph.  Especially managing
-        // the dirty state is something the module itself should "own".
-
-        // if the module is a Dts file we should skip it
-        if module.media_type == MediaType::Dts {
-          continue;
-        }
-        // if we don't have check_js enabled, we won't touch non TypeScript or JSX
-        // modules
-        if !(check_js
-          || module.media_type == MediaType::Jsx
-          || module.media_type == MediaType::Tsx
-          || module.media_type == MediaType::TypeScript)
-        {
-          continue;
-        }
-
-        let needs_reload =
-          options.reload && !options.reload_exclusions.contains(specifier);
-        // skip modules that already have a valid emit
-        if module.is_emit_valid(&config) && !needs_reload {
-          continue;
-        }
-        let parsed_module = module.parse()?;
-        let emit = transpile(&parsed_module, &emit_options)?;
-        emit_count += 1;
-        module.maybe_emit = Some(Emit::Cli(emit));
-        module.set_version(&config);
-        module.is_dirty = true;
-      }
-    }
-    self.flush()?;
-
-    let stats = Stats(vec![
-      ("Files".to_string(), self.modules.len() as u32),
-      ("Emitted".to_string(), emit_count),
-      ("Total time".to_string(), start.elapsed().as_millis() as u32),
-    ]);
-
-    Ok(ResultInfo {
-      diagnostics: Default::default(),
-      loadable_modules: self.get_loadable_modules(),
-      maybe_ignored_options,
-      stats,
-    })
   }
 
   /// Validate that the module graph is "valid" in that there are not module
@@ -2691,98 +2605,6 @@ pub mod tests {
       .add(&specifier, false)
       .await
       .expect_err("should have errored");
-  }
-
-  #[tokio::test]
-  async fn test_graph_transpile() {
-    // This is a complex scenario of transpiling, where we have TypeScript
-    // importing a JavaScript file (with type definitions) which imports
-    // TypeScript, JavaScript, and JavaScript with type definitions.
-    // For scenarios where we transpile, we only want the TypeScript files
-    // to be actually emitted.
-    //
-    // This also exercises "@deno-types" and type references.
-    let specifier = resolve_url_or_path("file:///tests/main.ts")
-      .expect("could not resolve module");
-    let (mut graph, handler) = setup(specifier).await;
-    let result_info = graph.transpile(TranspileOptions::default()).unwrap();
-    assert_eq!(result_info.stats.0.len(), 3);
-    assert_eq!(result_info.maybe_ignored_options, None);
-    let h = handler.lock();
-    assert_eq!(h.cache_calls.len(), 2);
-    match &h.cache_calls[0].1 {
-      Emit::Cli((code, maybe_map)) => {
-        assert!(
-          code.contains("# sourceMappingURL=data:application/json;base64,")
-        );
-        assert!(maybe_map.is_none());
-      }
-    };
-    match &h.cache_calls[1].1 {
-      Emit::Cli((code, maybe_map)) => {
-        assert!(
-          code.contains("# sourceMappingURL=data:application/json;base64,")
-        );
-        assert!(maybe_map.is_none());
-      }
-    };
-    assert_eq!(h.deps_calls.len(), 7);
-    assert_eq!(
-      h.deps_calls[0].0,
-      resolve_url_or_path("file:///tests/main.ts").unwrap()
-    );
-    assert_eq!(h.deps_calls[0].1.len(), 1);
-    assert_eq!(
-      h.deps_calls[1].0,
-      resolve_url_or_path("https://deno.land/x/lib/mod.js").unwrap()
-    );
-    assert_eq!(h.deps_calls[1].1.len(), 3);
-    assert_eq!(
-      h.deps_calls[2].0,
-      resolve_url_or_path("https://deno.land/x/lib/mod.d.ts").unwrap()
-    );
-    assert_eq!(h.deps_calls[2].1.len(), 3, "should have 3 dependencies");
-    // sometimes the calls are not deterministic, and so checking the contents
-    // can cause some failures
-    assert_eq!(h.deps_calls[3].1.len(), 0, "should have no dependencies");
-    assert_eq!(h.deps_calls[4].1.len(), 0, "should have no dependencies");
-    assert_eq!(h.deps_calls[5].1.len(), 0, "should have no dependencies");
-    assert_eq!(h.deps_calls[6].1.len(), 0, "should have no dependencies");
-  }
-
-  #[tokio::test]
-  async fn test_graph_transpile_user_config() {
-    let specifier = resolve_url_or_path("https://deno.land/x/transpile.tsx")
-      .expect("could not resolve module");
-    let (mut graph, handler) = setup(specifier).await;
-    let config_file = ConfigFile::read(
-      test_util::testdata_path().join("module_graph/tsconfig.json"),
-    )
-    .unwrap();
-    let result_info = graph
-      .transpile(TranspileOptions {
-        debug: false,
-        maybe_config_file: Some(config_file),
-        reload: false,
-        ..Default::default()
-      })
-      .unwrap();
-    assert_eq!(
-      result_info.maybe_ignored_options.unwrap().items,
-      vec!["target".to_string()],
-      "the 'target' options should have been ignored"
-    );
-    let h = handler.lock();
-    assert_eq!(h.cache_calls.len(), 1, "only one file should be emitted");
-    // FIXME(bartlomieju): had to add space in `<div>`, probably a quirk in swc_ecma_codegen
-    match &h.cache_calls[0].1 {
-      Emit::Cli((code, _)) => {
-        assert!(
-          code.contains("<div >Hello world!</div>"),
-          "jsx should have been preserved"
-        );
-      }
-    }
   }
 
   #[tokio::test]

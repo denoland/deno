@@ -3,6 +3,7 @@
 use crate::ast::Location;
 use crate::colors;
 use crate::create_main_worker;
+use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
@@ -14,12 +15,12 @@ use crate::located_script_name;
 use crate::module_graph;
 use crate::module_graph::GraphBuilder;
 use crate::module_graph::Module;
-use crate::module_graph::TypeLib;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
 use crate::FetchHandler;
+
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
@@ -500,7 +501,7 @@ async fn check_specifiers(
   ps: ProcState,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
-  lib: TypeLib,
+  lib: emit::TypeLib,
 ) -> Result<(), AnyError> {
   let inline_files = fetch_inline_files(
     ps.clone(),
@@ -527,8 +528,9 @@ async fn check_specifiers(
       ps.file_fetcher.insert_cached(file);
     }
 
-    ps.prepare_module_graph(
+    ps.build_and_emit_graph(
       specifiers,
+      false,
       lib.clone(),
       Permissions::allow_all(),
       permissions.clone(),
@@ -548,8 +550,9 @@ async fn check_specifiers(
     })
     .collect();
 
-  ps.prepare_module_graph(
+  ps.build_and_emit_graph(
     module_specifiers,
+    false,
     lib,
     Permissions::allow_all(),
     permissions,
@@ -798,9 +801,9 @@ pub async fn run_tests(
   }
 
   let lib = if flags.unstable {
-    TypeLib::UnstableDenoWindow
+    emit::TypeLib::UnstableDenoWindow
   } else {
-    TypeLib::DenoWindow
+    emit::TypeLib::DenoWindow
   };
 
   check_specifiers(
@@ -845,9 +848,9 @@ pub async fn run_tests_with_watch(
   let permissions = Permissions::from_options(&flags.clone().into());
 
   let lib = if flags.unstable {
-    TypeLib::UnstableDenoWindow
+    emit::TypeLib::UnstableDenoWindow
   } else {
-    TypeLib::DenoWindow
+    emit::TypeLib::DenoWindow
   };
 
   let handler = Arc::new(Mutex::new(FetchHandler::new(

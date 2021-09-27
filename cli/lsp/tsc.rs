@@ -3375,7 +3375,7 @@ mod tests {
   #[test]
   fn test_modify_sources() {
     let (mut runtime, state_snapshot, location) = setup(
-      true,
+      false,
       json!({
         "target": "esnext",
         "module": "esnext",

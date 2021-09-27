@@ -1,19 +1,17 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::cache;
 use crate::colors;
 use crate::config_file::ConfigFile;
 use crate::deno_dir;
+use crate::emit;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
 use crate::http_cache;
+use crate::lockfile::Locker;
 use crate::lockfile::Lockfile;
-use crate::module_graph::CheckOptions;
-use crate::module_graph::GraphBuilder;
-use crate::module_graph::TranspileOptions;
-use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
-use crate::specifier_handler::FetchHandler;
 use crate::version;
 
 use deno_core::error::anyhow;
@@ -38,12 +36,14 @@ use import_map::ImportMap;
 use log::debug;
 use log::info;
 use log::warn;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
 use std::ops::Deref;
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
@@ -259,71 +259,102 @@ impl ProcState {
     })))
   }
 
-  /// Prepares a set of module specifiers for loading in one shot.
-  pub async fn prepare_module_graph(
+  /// A method the builds a module graph, optionally types check it, check the
+  /// integrity of the modules, and loads all modules into the proc state to be
+  /// available for loading.
+  pub(crate) async fn build_and_emit_graph(
     &self,
-    specifiers: Vec<ModuleSpecifier>,
-    lib: TypeLib,
+    roots: Vec<ModuleSpecifier>,
+    is_dynamic: bool,
+    lib: emit::TypeLib,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
-    let handler = Arc::new(Mutex::new(FetchHandler::new(
-      self,
+    let mut cache = cache::FetchCacher::new(
+      self.dir.gen_cache.clone(),
+      self.file_fetcher.clone(),
       root_permissions,
       dynamic_permissions,
-    )?));
+    );
+    let maybe_locker = self.lockfile.as_ref().map(|lf| {
+      Rc::new(RefCell::new(
+        Box::new(Locker(lf.clone())) as Box<dyn deno_graph::source::Locker>
+      ))
+    });
+    let graph = deno_graph::create_graph(
+      roots,
+      is_dynamic,
+      &mut cache,
+      maybe_import_map
+        .as_ref()
+        .map(|r| r as &dyn deno_graph::source::Resolver),
+      maybe_locker,
+      None,
+    )
+    .await;
+    // Ensure that all non-dynamic imports are properly loaded and if not, error
+    // with the first issue encountered.
+    graph.valid()?;
+    // If there was a locker, validate the integrity of all the modules in the
+    // locker.
+    graph.lock()?;
 
-    let mut builder =
-      GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
-
-    for specifier in specifiers {
-      builder.add(&specifier, false).await?;
-    }
-    builder.analyze_config_file(&self.maybe_config_file).await?;
-
-    let mut graph = builder.get_graph();
-    let debug = self.flags.log_level == Some(log::Level::Debug);
-    let maybe_config_file = self.maybe_config_file.clone();
-    let reload_exclusions = {
+    let reload_exclusions: HashSet<ModuleSpecifier> = {
       let modules = self.modules.lock();
-      modules.keys().cloned().collect::<HashSet<_>>()
+      modules.keys().cloned().collect()
     };
 
-    let result_modules = if self.flags.no_check {
-      let result_info = graph.transpile(TranspileOptions {
-        debug,
-        maybe_config_file,
-        reload: self.flags.reload,
-        reload_exclusions,
-      })?;
-      debug!("{}", result_info.stats);
-      if let Some(ignored_options) = result_info.maybe_ignored_options {
-        warn!("{}", ignored_options);
-      }
-      result_info.loadable_modules
+    let config_type = if self.flags.no_check {
+      emit::ConfigType::Emit
     } else {
-      let result_info = graph.check(CheckOptions {
-        debug,
-        emit: true,
-        lib,
-        maybe_config_file,
-        reload: self.flags.reload,
-        reload_exclusions,
-      })?;
-
-      debug!("{}", result_info.stats);
-      if let Some(ignored_options) = result_info.maybe_ignored_options {
+      emit::ConfigType::Check { emit: true, lib }
+    };
+    let (ts_config, maybe_ignored_options) =
+      emit::get_ts_config(config_type, &self.maybe_config_file)?;
+    let graph = Arc::new(graph);
+    if emit::valid_emit(
+      graph.clone(),
+      &cache,
+      &ts_config,
+      self.flags.reload,
+      &reload_exclusions,
+    ) {
+      debug!("specifier \"{}\" and dependencies have valid emit, skipping checking and emitting", graph.roots[0]);
+    } else {
+      if let Some(ignored_options) = maybe_ignored_options {
         eprintln!("{}", ignored_options);
       }
-      if !result_info.diagnostics.is_empty() {
-        return Err(anyhow!(result_info.diagnostics));
+      let emit_result = if self.flags.no_check {
+        let options = emit::EmitOptions {
+          ts_config,
+          reload_exclusions,
+          reload: self.flags.reload,
+        };
+        emit::emit(graph.clone(), &mut cache, options)?
+      } else {
+        let maybe_config_specifier = self
+          .maybe_config_file
+          .clone()
+          .map(|ref cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
+        let options = emit::CheckOptions {
+          debug: self.flags.log_level == Some(log::Level::Debug),
+          maybe_config_specifier,
+          ts_config,
+        };
+        for root in &graph.roots {
+          log::info!("{} {}", colors::green("Check"), root);
+        }
+        emit::check_and_maybe_emit(graph.clone(), &mut cache, options)?
+      };
+      debug!("{}", emit_result.stats);
+      if !emit_result.diagnostics.is_empty() {
+        return Err(anyhow!(emit_result.diagnostics));
       }
-      result_info.loadable_modules
-    };
+    }
 
     let mut loadable_modules = self.modules.lock();
-    loadable_modules.extend(result_modules);
+    loadable_modules.extend(emit::to_module_sources(graph, &cache));
 
     if let Some(ref lockfile) = self.lockfile {
       let g = lockfile.lock();
@@ -333,77 +364,31 @@ impl ProcState {
     Ok(())
   }
 
-  /// This function is called when new module load is initialized by the JsRuntime. Its
-  /// resposibility is to collect all dependencies and if it is required then also perform TS
-  /// typecheck and traspilation.
-  pub async fn prepare_module_load(
+  /// This method is called when a module requested by the `JsRuntime` is not
+  /// available. The method will collect all the dependencies of the provided
+  /// specifier, optionally checks their integrity, optionally type checks them,
+  /// and ensures that any modules that needs to be transpiled is transpiled.
+  ///
+  /// It then populates the `loadable_modules` with what can be loaded into v8.
+  pub(crate) async fn prepare_module_load(
     &self,
-    specifier: ModuleSpecifier,
-    lib: TypeLib,
+    root_specifier: ModuleSpecifier,
+    lib: emit::TypeLib,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
     is_dynamic: bool,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
-    let specifier = specifier.clone();
-    let handler = Arc::new(Mutex::new(FetchHandler::new(
-      self,
-      root_permissions,
-      dynamic_permissions,
-    )?));
-    let mut builder =
-      GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
-    builder.add(&specifier, is_dynamic).await?;
-    builder.analyze_config_file(&self.maybe_config_file).await?;
-    let mut graph = builder.get_graph();
-    let debug = self.flags.log_level == Some(log::Level::Debug);
-    let maybe_config_file = self.maybe_config_file.clone();
-    let reload_exclusions = {
-      let modules = self.modules.lock();
-      modules.keys().cloned().collect::<HashSet<_>>()
-    };
-
-    let result_modules = if self.flags.no_check {
-      let result_info = graph.transpile(TranspileOptions {
-        debug,
-        maybe_config_file,
-        reload: self.flags.reload,
-        reload_exclusions,
-      })?;
-      debug!("{}", result_info.stats);
-      if let Some(ignored_options) = result_info.maybe_ignored_options {
-        warn!("{}", ignored_options);
-      }
-      result_info.loadable_modules
-    } else {
-      let result_info = graph.check(CheckOptions {
-        debug,
-        emit: true,
+    self
+      .build_and_emit_graph(
+        vec![root_specifier],
+        is_dynamic,
         lib,
-        maybe_config_file,
-        reload: self.flags.reload,
-        reload_exclusions,
-      })?;
-
-      debug!("{}", result_info.stats);
-      if let Some(ignored_options) = result_info.maybe_ignored_options {
-        eprintln!("{}", ignored_options);
-      }
-      if !result_info.diagnostics.is_empty() {
-        return Err(anyhow!(result_info.diagnostics));
-      }
-      result_info.loadable_modules
-    };
-
-    let mut loadable_modules = self.modules.lock();
-    loadable_modules.extend(result_modules);
-
-    if let Some(ref lockfile) = self.lockfile {
-      let g = lockfile.lock();
-      g.write()?;
-    }
-
-    Ok(())
+        root_permissions,
+        dynamic_permissions,
+        maybe_import_map,
+      )
+      .await
   }
 
   pub fn load(

@@ -1,11 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::emit;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
-use crate::module_graph::TypeLib;
 use crate::proc_state::ProcState;
 use crate::source_maps::SourceMapGetter;
+
 use deno_ast::swc::common::Span;
 use deno_ast::MediaType;
 use deno_core::error::AnyError;
@@ -688,7 +689,7 @@ pub async fn cover_files(
       deno_core::resolve_url_or_path(&script_coverage.url)?;
     ps.prepare_module_load(
       module_specifier.clone(),
-      TypeLib::UnstableDenoWindow,
+      emit::TypeLib::UnstableDenoWindow,
       Permissions::allow_all(),
       Permissions::allow_all(),
       false,

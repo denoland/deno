@@ -2,7 +2,6 @@
 
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::FileFetcher;
-use crate::program_state::ProgramState;
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
@@ -59,12 +58,12 @@ pub(crate) struct FetchCacher {
 
 impl FetchCacher {
   pub fn new(
-    program_state: &Arc<ProgramState>,
+    disk_cache: DiskCache,
+    file_fetcher: FileFetcher,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
   ) -> Self {
-    let disk_cache = program_state.dir.gen_cache.clone();
-    let file_fetcher = Arc::new(program_state.file_fetcher.clone());
+    let file_fetcher = Arc::new(file_fetcher);
 
     Self {
       disk_cache,

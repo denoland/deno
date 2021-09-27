@@ -123,7 +123,12 @@ impl ModuleLoader for CliModuleLoader {
     let root_permissions = self.root_permissions.clone();
     let dynamic_permissions = state.borrow::<Permissions>().clone();
 
-    let lib = self.lib.clone();
+    let lib = match self.lib {
+      TypeLib::DenoWindow => crate::emit::TypeLib::DenoWindow,
+      TypeLib::DenoWorker => crate::emit::TypeLib::DenoWorker,
+      TypeLib::UnstableDenoWindow => crate::emit::TypeLib::UnstableDenoWindow,
+      TypeLib::UnstableDenoWorker => crate::emit::TypeLib::UnstableDenoWorker,
+    };
     drop(state);
 
     // TODO(bartlomieju): `prepare_module_load` should take `load_id` param

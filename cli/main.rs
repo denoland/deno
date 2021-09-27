@@ -535,9 +535,9 @@ async fn cache_command(
   cache_flags: CacheFlags,
 ) -> Result<(), AnyError> {
   let lib = if flags.unstable {
-    module_graph::TypeLib::UnstableDenoWindow
+    emit::TypeLib::UnstableDenoWindow
   } else {
-    module_graph::TypeLib::DenoWindow
+    emit::TypeLib::DenoWindow
   };
   let ps = ProcState::build(flags).await?;
 

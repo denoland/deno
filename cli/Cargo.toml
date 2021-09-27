@@ -59,7 +59,7 @@ encoding_rs = "0.8.28"
 env_logger = "0.8.4"
 fancy-regex = "0.7.1"
 http = "0.2.4"
-import_map = "0.3.3"
+import_map = { git = "https://github.com/kitsonk/import_map", branch = "cli_changes", features = ["graph"] }
 jsonc-parser = { version = "0.17.0", features = ["serde"] }
 lazy_static = "1.4.0"
 libc = "0.2.101"

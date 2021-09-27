@@ -1,11 +1,15 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::ModuleSpecifier;
+use deno_graph;
 use log::debug;
 use std::collections::BTreeMap;
 use std::io::Result;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct Lockfile {
@@ -78,6 +82,24 @@ impl Lockfile {
     }
     let checksum = crate::checksum::gen(&[code.as_bytes()]);
     self.map.insert(specifier.to_string(), checksum);
+  }
+}
+
+#[derive(Debug)]
+pub struct Locker(pub Arc<Mutex<Lockfile>>);
+
+impl deno_graph::source::Locker for Locker {
+  fn check_or_insert(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    source: &str,
+  ) -> bool {
+    let mut lock_file = self.0.lock();
+    lock_file.check_or_insert(specifier.as_str(), source)
+  }
+
+  fn get_checksum(&self, content: &str) -> String {
+    crate::checksum::gen(&[content.as_bytes()])
   }
 }
 

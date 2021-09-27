@@ -740,7 +740,7 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.14.0"
-source = "git+https://github.com/kitsonk/deno_doc?branch=cli_changes#bda538033cec76b96ed94c02a8741c13b48ff28e"
+source = "git+https://github.com/kitsonk/deno_doc?branch=cli_changes#815d14a656cf5729d855a7dff5410c107854fd0c"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
@@ -782,7 +782,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.5.0"
-source = "git+https://github.com/kitsonk/deno_graph?branch=cli_changes#e568d3240884183125fdb92511de272fa3963a7c"
+source = "git+https://github.com/kitsonk/deno_graph?branch=cli_changes#030696ea0ade54ce52812f99b4dc54db7bb879c1"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -1021,9 +1021,9 @@ dependencies = [
 
 [[package]]
 name = "dissimilar"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc4b29f4b9bb94bf267d57269fd0706d343a160937108e9619fe380645428abb"
+checksum = "31ad93652f40969dead8d4bf897a41e9462095152eb21c56e5830537e41179dd"
 
 [[package]]
 name = "dlopen"
@@ -1718,10 +1718,11 @@ checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 
 [[package]]
 name = "import_map"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d315210af92bcde7a84672d5554fc2b4268c4d40dc9c930ae1d1ed765a8f6381"
+version = "0.3.0"
+source = "git+https://github.com/kitsonk/import_map?branch=cli_changes#d9cfd153ed595f0b902c9d8572d82be0b2aed2ab"
 dependencies = [
+ "anyhow",
+ "deno_graph",
  "indexmap",
  "log",
  "serde",
@@ -2853,9 +2854,9 @@ dependencies = [
 
 [[package]]
 name = "retain_mut"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9c17925a9027d298a4603d286befe3f9dc0e8ed02523141914eb628798d6e5b"
+checksum = "448296241d034b96c11173591deaa1302f2c17b56092106c1f92c1bc0183a8c9"
 
 [[package]]
 name = "ring"

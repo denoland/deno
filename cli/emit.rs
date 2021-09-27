@@ -92,7 +92,7 @@ pub(crate) enum ConfigType {
 /// configuration options that were ignored.
 pub(crate) fn get_ts_config(
   config_type: ConfigType,
-  maybe_config_file: Option<&ConfigFile>,
+  maybe_config_file: &Option<ConfigFile>,
 ) -> Result<(TsConfig, Option<IgnoredCompilerOptions>), AnyError> {
   let mut ts_config = match config_type {
     ConfigType::Bundle => TsConfig::new(json!({
@@ -181,11 +181,15 @@ fn get_root_names(
       })
       .collect()
   } else {
-    if let Some(module) = graph.get(&graph.root) {
-      vec![(module.specifier.clone(), module.media_type.clone())]
-    } else {
-      vec![]
-    }
+    graph
+      .roots
+      .iter()
+      .filter_map(|s| {
+        graph
+          .get(s)
+          .map(|m| (m.specifier.clone(), m.media_type.clone()))
+      })
+      .collect()
   }
 }
 
@@ -198,9 +202,11 @@ pub(crate) fn check_and_maybe_emit(
   options: CheckOptions,
 ) -> Result<CheckEmitResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
-  let root = graph.root.clone();
   let root_names = get_root_names(&graph, check_js);
-  let maybe_tsbuildinfo = cache.get_tsbuildinfo(&graph.root);
+  // while there might be multiple roots, we can't "merge" the build info, so we
+  // try to retrieve the build info for first root, which is the most common use
+  // case.
+  let maybe_tsbuildinfo = cache.get_tsbuildinfo(&graph.roots[0]);
   let hash_data = vec![
     options.ts_config.as_bytes(),
     version::deno().as_bytes().to_owned(),
@@ -217,8 +223,12 @@ pub(crate) fn check_and_maybe_emit(
     root_names,
   })?;
 
-  if let Some(info) = response.maybe_tsbuildinfo {
-    cache.set_tsbuildinfo(&root, info)?;
+  if let Some(info) = &response.maybe_tsbuildinfo {
+    // while we retrieve the build info for just the first module, it can be
+    // used for all the roots in the graph, so we will cache it for all roots
+    for root in &graph.roots {
+      cache.set_tsbuildinfo(root, info.clone())?;
+    }
   }
   if response.diagnostics.is_empty() && !response.emitted_files.is_empty() {
     for emit in &response.emitted_files {
@@ -227,19 +237,22 @@ pub(crate) fn check_and_maybe_emit(
         // The emitted specifier might not be the file specifier we want, so we
         // resolve it via the graph.
         let specifier = graph.resolve(&specifiers[0]);
+        let (media_type, source) = if let Some(module) = graph.get(&specifier) {
+          (&module.media_type, module.source.clone())
+        } else {
+          log::debug!("module missing, skipping emit for {}", specifier);
+          continue;
+        };
         // Sometimes if `tsc` sees a CommonJS file it will _helpfully_ output it
         // to ESM, which we don't really want to do unless someone has enabled
         // check_js.
-        if !check_js
-          && graph.get(&specifier).map(|m| m.media_type)
-            == Some(MediaType::JavaScript)
-        {
+        if !check_js && *media_type == MediaType::JavaScript {
           log::debug!("skipping emit for {}", specifier);
           continue;
         }
         match emit.media_type {
           MediaType::JavaScript => {
-            let version = get_version(emit.data.as_bytes(), &config_bytes);
+            let version = get_version(source.as_bytes(), &config_bytes);
             cache.set_version(&specifier, version)?;
             cache.set_emit(&specifier, emit.data.clone())?;
           }
@@ -395,7 +408,7 @@ pub(crate) fn bundle(
   let mut entries = HashMap::new();
   entries.insert(
     "bundle".to_string(),
-    swc::common::FileName::Url(graph.root.clone()),
+    swc::common::FileName::Url(graph.roots[0].clone()),
   );
   let output = bundler
     .bundle(entries)
@@ -460,8 +473,8 @@ fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
 
 /// Given a module graph, emit any appropriate modules and cache them.
 pub(crate) fn emit(
-  graph: &ModuleGraph,
-  cache: &mut impl Cacher,
+  graph: Arc<ModuleGraph>,
+  cache: &mut dyn Cacher,
   options: EmitOptions,
 ) -> Result<CheckEmitResult, AnyError> {
   let start = Instant::now();
@@ -524,10 +537,15 @@ fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
 /// graph are emittable and for those that are emittable, if there is currently
 /// a valid emit in the cache.
 pub(crate) fn valid_emit(
-  graph: &ModuleGraph,
-  cache: &impl Cacher,
+  graph: Arc<ModuleGraph>,
+  cache: &dyn Cacher,
   ts_config: &TsConfig,
+  reload: bool,
+  reload_exclusions: &HashSet<ModuleSpecifier>,
 ) -> bool {
+  if reload && reload_exclusions.is_empty() {
+    return false;
+  }
   let config_bytes = ts_config.as_bytes();
   let emit_js = ts_config.get_check_js();
   graph
@@ -542,8 +560,14 @@ pub(crate) fn valid_emit(
     })
     .all(|(s, r)| {
       if let Ok((s, _)) = r {
-        if let Some(version) = cache.get_version(s) {
+        if reload && !reload_exclusions.contains(s) {
+          // we are reloading and the specifier isn't excluded from being
+          // reloaded
+          false
+        } else if let Some(version) = cache.get_version(s) {
           if let Some(module) = graph.get(s) {
+            let graph_version =
+              get_version(module.source.as_bytes(), &config_bytes);
             version == get_version(module.source.as_bytes(), &config_bytes)
           } else {
             // We have a source module in the graph we can't find, so the emit is
@@ -566,7 +590,7 @@ pub(crate) fn valid_emit(
 /// Convert a module graph to a map of module sources, which are used by
 /// `deno_core` to load modules into V8.
 pub(crate) fn to_module_sources(
-  graph: &ModuleGraph,
+  graph: Arc<ModuleGraph>,
   cache: &dyn Cacher,
 ) -> Modules {
   graph
