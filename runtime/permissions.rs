@@ -160,26 +160,23 @@ impl UnitPermission {
   }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct UnaryPermission<T: Eq + Hash> {
-  #[serde(skip)]
   pub name: &'static str,
-  #[serde(skip)]
   pub description: &'static str,
   pub global_state: PermissionState,
   pub granted_list: HashSet<T>,
   pub denied_list: HashSet<T>,
-  #[serde(skip)]
   pub prompt: bool,
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct ReadDescriptor(pub PathBuf);
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct WriteDescriptor(pub PathBuf);
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct NetDescriptor(pub String, pub Option<u16>);
 
 impl NetDescriptor {
@@ -204,7 +201,7 @@ impl fmt::Display for NetDescriptor {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct EnvDescriptor {
   env: String,
 }
@@ -233,10 +230,10 @@ impl Display for EnvDescriptor {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct RunDescriptor(pub String);
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct FfiDescriptor(pub String);
 
 impl UnaryPermission<ReadDescriptor> {
