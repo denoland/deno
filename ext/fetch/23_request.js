@@ -62,18 +62,6 @@
    * @property {Blob | null} blobUrlEntry
    */
 
-  const defaultInnerRequest = {
-    url() {
-      return this.urlList[0];
-    },
-    currentUrl() {
-      return this.urlList[this.urlList.length - 1];
-    },
-    redirectMode: "follow",
-    redirectCount: 0,
-    clientRid: null,
-  };
-
   /**
    * @param {string} method
    * @param {string} url
@@ -87,12 +75,20 @@
       blobUrlEntry = blobFromObjectUrl(url);
     }
     return {
-      method: method,
+      method,
       headerList,
       body,
+      redirectMode: "follow",
+      redirectCount: 0,
       urlList: [url],
+      clientRid: null,
       blobUrlEntry,
-      ...defaultInnerRequest,
+      url() {
+        return this.urlList[0];
+      },
+      currentUrl() {
+        return this.urlList[this.urlList.length - 1];
+      },
     };
   }
 
@@ -112,12 +108,6 @@
 
     return {
       method: request.method,
-      url() {
-        return this.urlList[0];
-      },
-      currentUrl() {
-        return this.urlList[this.urlList.length - 1];
-      },
       headerList,
       body,
       redirectMode: request.redirectMode,
@@ -125,6 +115,12 @@
       urlList: request.urlList,
       clientRid: request.clientRid,
       blobUrlEntry: request.blobUrlEntry,
+      url() {
+        return this.urlList[0];
+      },
+      currentUrl() {
+        return this.urlList[this.urlList.length - 1];
+      },
     };
   }
 
@@ -445,7 +441,7 @@
       {
         key: "body",
         converter: webidl.createNullableConverter(
-          webidl.converters["BodyInit"],
+          webidl.converters["BodyInit_DOMString"],
         ),
       },
       { key: "redirect", converter: webidl.converters["RequestRedirect"] },

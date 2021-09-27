@@ -280,7 +280,13 @@ fn req_url(
   scheme: &'static str,
   addr: SocketAddr,
 ) -> Result<String, AnyError> {
-  let host: Cow<str> = if let Some(host) = req.uri().host() {
+  let host: Cow<str> = if let Some(auth) = req.uri().authority() {
+    match addr.port() {
+      443 if scheme == "https" => Cow::Borrowed(auth.host()),
+      80 if scheme == "http" => Cow::Borrowed(auth.host()),
+      _ => Cow::Borrowed(auth.as_str()), // Includes port number.
+    }
+  } else if let Some(host) = req.uri().host() {
     Cow::Borrowed(host)
   } else if let Some(host) = req.headers().get("HOST") {
     Cow::Borrowed(host.to_str()?)

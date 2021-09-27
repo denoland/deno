@@ -135,16 +135,15 @@
   const _path = Symbol("[[path]]");
 
   class Event {
-    [_attributes] = {};
-    [_canceledFlag] = false;
-    [_stopPropagationFlag] = false;
-    [_stopImmediatePropagationFlag] = false;
-    [_inPassiveListener] = false;
-    [_dispatched] = false;
-    [_isTrusted] = false;
-    [_path] = [];
-
     constructor(type, eventInitDict = {}) {
+      this[_canceledFlag] = false;
+      this[_stopPropagationFlag] = false;
+      this[_stopImmediatePropagationFlag] = false;
+      this[_inPassiveListener] = false;
+      this[_dispatched] = false;
+      this[_isTrusted] = false;
+      this[_path] = [];
+
       webidl.requiredArguments(arguments.length, 1, {
         prefix: "Failed to construct 'Event'",
       });

@@ -11942,7 +11942,6 @@
         "importKey step: decryption AES-GCM 256-bit key, illegal tag length 129-bits",
         "importKey step: decryption AES-GCM 256-bit key, illegal tag length 256-bits"
       ],
-      "rsa.https.any.html": true,
       "rsa_oaep.https.any.html": [
         "importVectorKeys step: RSA-OAEP with SHA-1 and no label decryption",
         "importVectorKeys step: RSA-OAEP with SHA-256 and no label decryption",
@@ -12122,7 +12121,6 @@
         "Success: generateKey({name: Ecdsa, namedCurve: P-521}, false, [sign, verify, sign, sign, verify])",
         "Success: generateKey({name: Ecdsa, namedCurve: P-521}, true, [sign, verify, sign, sign, verify])"
       ],
-      "successes_RSA-OAEP.https.any.html": true,
       "successes_RSA-OAEP.https.any.html?1-10": true,
       "successes_RSA-OAEP.https.any.html?101-110": true,
       "successes_RSA-OAEP.https.any.html?11-20": true,
@@ -13025,8 +13023,7 @@
     },
     "wrapKey_unwrapKey": {
       "wrapKey_unwrapKey.https.any.html": false
-    },
-    "randomUUID.any.html": true
+    }
   },
   "console": {
     "console-is-a-namespace.any.html": true,
@@ -13037,11 +13034,43 @@
   },
   "dom": {
     "abort": {
+      "AbortSignal.any.html": true,
+      "AbortSignal.any.worker.html": true,
       "event.any.html": true
     },
     "events": {
+      "AddEventListenerOptions-once.any.html": [
+        "Once listener should be added / removed like normal listeners"
+      ],
+      "AddEventListenerOptions-once.any.worker.html": [
+        "Once listener should be added / removed like normal listeners"
+      ],
+      "AddEventListenerOptions-passive.any.html": [
+        "Supports passive option on addEventListener only",
+        "preventDefault should be ignored if-and-only-if the passive option is true",
+        "returnValue should be ignored if-and-only-if the passive option is true",
+        "passive behavior of one listener should be unaffected by the presence of other listeners",
+        "Equivalence of option values"
+      ],
+      "AddEventListenerOptions-passive.any.worker.html": [
+        "Supports passive option on addEventListener only",
+        "preventDefault should be ignored if-and-only-if the passive option is true",
+        "returnValue should be ignored if-and-only-if the passive option is true",
+        "passive behavior of one listener should be unaffected by the presence of other listeners",
+        "Equivalence of option values"
+      ],
       "AddEventListenerOptions-signal.any.html": true,
       "Event-isTrusted.any.html": true,
+      "EventTarget-add-remove-listener.any.html": true,
+      "EventTarget-add-remove-listener.any.worker.html": true,
+      "EventTarget-addEventListener.any.html": true,
+      "EventTarget-addEventListener.any.worker.html": true,
+      "EventTarget-removeEventListener.any.html": [
+        "removing a null event listener should succeed"
+      ],
+      "EventTarget-removeEventListener.any.worker.html": [
+        "removing a null event listener should succeed"
+      ],
       "EventTarget-constructible.any.html": true,
       "Event-constructors.any.html": [
         "Untitled 2",
@@ -13213,7 +13242,11 @@
       "ReadableStreamBYOBRequest interface: self.readableStreamByobRequest must inherit property \"respond(unsigned long long)\" with the proper type",
       "ReadableStreamBYOBRequest interface: calling respond(unsigned long long) on self.readableStreamByobRequest with too few arguments must throw TypeError",
       "ReadableStreamBYOBRequest interface: self.readableStreamByobRequest must inherit property \"respondWithNewView(ArrayBufferView)\" with the proper type",
-      "ReadableStreamBYOBRequest interface: calling respondWithNewView(ArrayBufferView) on self.readableStreamByobRequest with too few arguments must throw TypeError"
+      "ReadableStreamBYOBRequest interface: calling respondWithNewView(ArrayBufferView) on self.readableStreamByobRequest with too few arguments must throw TypeError",
+      "WritableStreamDefaultController interface: attribute abortReason",
+      "WritableStreamDefaultController interface: attribute signal",
+      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"abortReason\" with the proper type",
+      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"signal\" with the proper type"
     ],
     "piping": {
       "abort.any.html": true,
@@ -13477,19 +13510,23 @@
       },
       "prototypes.any.html": false,
       "table": {
-        "constructor.any.html": true,
-        "get-set.any.html": true,
-        "grow.any.html": true,
-        "length.any.html": true,
-        "toString.any.html": true,
-        "constructor-reftypes.tentative.any.html": [
+        "constructor.any.html": [
           "initialize externref table with default value",
           "initialize anyfunc table with default value",
           "initialize anyfunc table with a bad default value"
         ],
+        "get-set.any.html": [
+          "Arguments for anyfunc table set",
+          "Arguments for externref table set"
+        ],
+        "grow.any.html": [
+          "Grow with exported-function argument",
+          "Grow with non-function argument",
+          "Grow with JS-function argument"
+        ],
+        "length.any.html": true,
+        "toString.any.html": true,
         "constructor-types.tentative.any.html": false,
-        "grow-reftypes.tentative.any.html": false,
-        "set-reftypes.tentative.any.html": false,
         "type.tentative.any.html": false
       },
       "exception": {
@@ -13516,7 +13553,17 @@
       "function": {
         "call.tentative.any.html": false,
         "constructor.tentative.any.html": [
-          "construct with JS function"
+          "name",
+          "length",
+          "Too few arguments",
+          "Calling",
+          "construct with JS function",
+          "fail with missing results",
+          "fail with missing parameters",
+          "fail with non-string parameters & results",
+          "fail with non-existent parameter and result type",
+          "fail with non-function object",
+          "fail to construct with non-callable object"
         ],
         "table.tentative.any.html": false,
         "type.tentative.any.html": false
@@ -13553,7 +13600,7 @@
     },
     "create_multiple_memory.worker.html": true
   },
-  "WebIDL": {
+  "webidl": {
     "ecmascript-binding": {
       "es-exceptions": {
         "DOMException-constants.any.html": true,
@@ -13565,6 +13612,10 @@
       },
       "class-string-interface.any.html": true,
       "class-string-iterator-prototype-object.any.html": true,
+      "class-string-named-properties-object.window.html": [
+        "@@toStringTag exists with the appropriate descriptor",
+        "Object.prototype.toString"
+      ],
       "global-immutable-prototype.any.html": [
         "Setting to a different prototype"
       ],
@@ -13587,6 +13638,190 @@
       "<a> and <area>.searchParams should be undefined"
     ],
     "idlharness.any.html": true,
+    "toascii.window.html": [
+      "aa-- (using <a>.host)",
+      "aa-- (using <a>.hostname)",
+      "aa-- (using <area>.host)",
+      "aa-- (using <area>.hostname)",
+      "a†-- (using <a>.host)",
+      "a†-- (using <a>.hostname)",
+      "a†-- (using <area>.host)",
+      "a†-- (using <area>.hostname)",
+      "ab--c (using <a>.host)",
+      "ab--c (using <a>.hostname)",
+      "ab--c (using <area>.host)",
+      "ab--c (using <area>.hostname)",
+      "-x (using <a>.host)",
+      "-x (using <a>.hostname)",
+      "-x (using <area>.host)",
+      "-x (using <area>.hostname)",
+      "-† (using <a>.host)",
+      "-† (using <a>.hostname)",
+      "-† (using <area>.host)",
+      "-† (using <area>.hostname)",
+      "-x.xn--nxa (using <a>.host)",
+      "-x.xn--nxa (using <a>.hostname)",
+      "-x.xn--nxa (using <area>.host)",
+      "-x.xn--nxa (using <area>.hostname)",
+      "-x.β (using <a>.host)",
+      "-x.β (using <a>.hostname)",
+      "-x.β (using <area>.host)",
+      "-x.β (using <area>.hostname)",
+      "x-.xn--nxa (using <a>.host)",
+      "x-.xn--nxa (using <a>.hostname)",
+      "x-.xn--nxa (using <area>.host)",
+      "x-.xn--nxa (using <area>.hostname)",
+      "x-.β (using <a>.host)",
+      "x-.β (using <a>.hostname)",
+      "x-.β (using <area>.host)",
+      "x-.β (using <area>.hostname)",
+      "x..xn--nxa (using <a>.host)",
+      "x..xn--nxa (using <a>.hostname)",
+      "x..xn--nxa (using <area>.host)",
+      "x..xn--nxa (using <area>.hostname)",
+      "x..β (using <a>.host)",
+      "x..β (using <a>.hostname)",
+      "x..β (using <area>.host)",
+      "x..β (using <area>.hostname)",
+      "xn--a (using <a>)",
+      "xn--a (using <a>.host)",
+      "xn--a (using <a>.hostname)",
+      "xn--a (using <area>)",
+      "xn--a (using <area>.host)",
+      "xn--a (using <area>.hostname)",
+      "xn--a.xn--nxa (using <a>)",
+      "xn--a.xn--nxa (using <a>.host)",
+      "xn--a.xn--nxa (using <a>.hostname)",
+      "xn--a.xn--nxa (using <area>)",
+      "xn--a.xn--nxa (using <area>.host)",
+      "xn--a.xn--nxa (using <area>.hostname)",
+      "xn--a.β (using <a>)",
+      "xn--a.β (using <a>.host)",
+      "xn--a.β (using <a>.hostname)",
+      "xn--a.β (using <area>)",
+      "xn--a.β (using <area>.host)",
+      "xn--a.β (using <area>.hostname)",
+      "xn--nxa.xn--nxa (using <a>.host)",
+      "xn--nxa.xn--nxa (using <a>.hostname)",
+      "xn--nxa.xn--nxa (using <area>.host)",
+      "xn--nxa.xn--nxa (using <area>.hostname)",
+      "xn--nxa.β (using <a>.host)",
+      "xn--nxa.β (using <a>.hostname)",
+      "xn--nxa.β (using <area>.host)",
+      "xn--nxa.β (using <area>.hostname)",
+      "ab--c.xn--nxa (using <a>.host)",
+      "ab--c.xn--nxa (using <a>.hostname)",
+      "ab--c.xn--nxa (using <area>.host)",
+      "ab--c.xn--nxa (using <area>.hostname)",
+      "ab--c.β (using <a>.host)",
+      "ab--c.β (using <a>.hostname)",
+      "ab--c.β (using <area>.host)",
+      "ab--c.β (using <area>.hostname)",
+      "‍.example (using URL)",
+      "‍.example (using URL.host)",
+      "‍.example (using URL.hostname)",
+      "‍.example (using <a>)",
+      "‍.example (using <a>.host)",
+      "‍.example (using <a>.hostname)",
+      "‍.example (using <area>)",
+      "‍.example (using <area>.host)",
+      "‍.example (using <area>.hostname)",
+      "xn--1ug.example (using URL)",
+      "xn--1ug.example (using URL.host)",
+      "xn--1ug.example (using URL.hostname)",
+      "xn--1ug.example (using <a>)",
+      "xn--1ug.example (using <a>.host)",
+      "xn--1ug.example (using <a>.hostname)",
+      "xn--1ug.example (using <area>)",
+      "xn--1ug.example (using <area>.host)",
+      "xn--1ug.example (using <area>.hostname)",
+      "يa (using <a>)",
+      "يa (using <a>.host)",
+      "يa (using <a>.hostname)",
+      "يa (using <area>)",
+      "يa (using <area>.host)",
+      "يa (using <area>.hostname)",
+      "xn--a-yoc (using <a>)",
+      "xn--a-yoc (using <a>.host)",
+      "xn--a-yoc (using <a>.hostname)",
+      "xn--a-yoc (using <area>)",
+      "xn--a-yoc (using <area>.host)",
+      "xn--a-yoc (using <area>.hostname)",
+      "ශ්‍රී (using <a>.host)",
+      "ශ්‍රී (using <a>.hostname)",
+      "ශ්‍රී (using <area>.host)",
+      "ශ්‍රී (using <area>.hostname)",
+      "نامه‌ای (using <a>.host)",
+      "نامه‌ای (using <a>.hostname)",
+      "نامه‌ای (using <area>.host)",
+      "نامه‌ای (using <area>.hostname)",
+      "�.com (using <a>)",
+      "�.com (using <a>.host)",
+      "�.com (using <a>.hostname)",
+      "�.com (using <area>)",
+      "�.com (using <area>.host)",
+      "�.com (using <area>.hostname)",
+      "xn--zn7c.com (using <a>)",
+      "xn--zn7c.com (using <a>.host)",
+      "xn--zn7c.com (using <a>.hostname)",
+      "xn--zn7c.com (using <area>)",
+      "xn--zn7c.com (using <area>.host)",
+      "xn--zn7c.com (using <area>.hostname)",
+      "x01234567890123456789012345678901234567890123456789012345678901x (using <a>.host)",
+      "x01234567890123456789012345678901234567890123456789012345678901x (using <a>.hostname)",
+      "x01234567890123456789012345678901234567890123456789012345678901x (using <area>.host)",
+      "x01234567890123456789012345678901234567890123456789012345678901x (using <area>.hostname)",
+      "x01234567890123456789012345678901234567890123456789012345678901† (using <a>.host)",
+      "x01234567890123456789012345678901234567890123456789012345678901† (using <a>.hostname)",
+      "x01234567890123456789012345678901234567890123456789012345678901† (using <area>.host)",
+      "x01234567890123456789012345678901234567890123456789012345678901† (using <area>.hostname)",
+      "x01234567890123456789012345678901234567890123456789012345678901x.xn--nxa (using <a>.host)",
+      "x01234567890123456789012345678901234567890123456789012345678901x.xn--nxa (using <a>.hostname)",
+      "x01234567890123456789012345678901234567890123456789012345678901x.xn--nxa (using <area>.host)",
+      "x01234567890123456789012345678901234567890123456789012345678901x.xn--nxa (using <area>.hostname)",
+      "x01234567890123456789012345678901234567890123456789012345678901x.β (using <a>.host)",
+      "x01234567890123456789012345678901234567890123456789012345678901x.β (using <a>.hostname)",
+      "x01234567890123456789012345678901234567890123456789012345678901x.β (using <area>.host)",
+      "x01234567890123456789012345678901234567890123456789012345678901x.β (using <area>.hostname)",
+      "01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.0123456789012345678901234567890123456789012345678.x (using <a>.host)",
+      "01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.0123456789012345678901234567890123456789012345678.x (using <a>.hostname)",
+      "01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.0123456789012345678901234567890123456789012345678.x (using <area>.host)",
+      "01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.0123456789012345678901234567890123456789012345678.x (using <area>.hostname)",
+      "01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.0123456789012345678901234567890123456789012345678.xn--nxa (using <a>.host)",
+      "01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.0123456789012345678901234567890123456789012345678.xn--nxa (using <a>.hostname)",
+      "01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.0123456789012345678901234567890123456789012345678.xn--nxa (using <area>.host)",
+      "01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.0123456789012345678901234567890123456789012345678.xn--nxa (using <area>.hostname)",
+      "01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.0123456789012345678901234567890123456789012345678.β (using <a>.host)",
+      "01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.0123456789012345678901234567890123456789012345678.β (using <a>.hostname)",
+      "01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.0123456789012345678901234567890123456789012345678.β (using <area>.host)",
+      "01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.01234567890123456789012345678901234567890123456789.0123456789012345678901234567890123456789012345678.β (using <area>.hostname)",
+      "a­b (using <a>.host)",
+      "a­b (using <a>.hostname)",
+      "a­b (using <area>.host)",
+      "a­b (using <area>.hostname)",
+      "a%C2%ADb (using <a>.host)",
+      "a%C2%ADb (using <a>.hostname)",
+      "a%C2%ADb (using <area>.host)",
+      "a%C2%ADb (using <area>.hostname)",
+      "­ (using <a>)",
+      "­ (using <a>.host)",
+      "­ (using <a>.hostname)",
+      "­ (using <area>)",
+      "­ (using <area>.host)",
+      "­ (using <area>.hostname)",
+      "%C2%AD (using <a>)",
+      "%C2%AD (using <a>.host)",
+      "%C2%AD (using <a>.hostname)",
+      "%C2%AD (using <area>)",
+      "%C2%AD (using <area>.host)",
+      "%C2%AD (using <area>.hostname)",
+      "xn-- (using <a>)",
+      "xn-- (using <a>.host)",
+      "xn-- (using <a>.hostname)",
+      "xn-- (using <area>)",
+      "xn-- (using <area>.host)",
+      "xn-- (using <area>.hostname)"
+    ],
     "url-constructor.any.html": [
       "Parsing: <foo://ho|st/> against <about:blank>",
       "Parsing: <http://ho%7Cst/> against <about:blank>",
@@ -13799,6 +14034,10 @@
         ]
       },
       "headers": {
+        "header-values-normalize.any.html": false,
+        "header-values-normalize.any.worker.html": false,
+        "header-values.any.html": false,
+        "header-values.any.worker.html": false,
         "headers-basic.any.html": true,
         "headers-casing.any.html": true,
         "headers-combine.any.html": true,
@@ -13923,12 +14162,32 @@
         "response-init-contenttype.any.html": true
       },
       "body": {
+        "formdata.any.html": [
+          "Consume empty response.formData() as FormData",
+          "Consume empty request.formData() as FormData"
+        ],
+        "formdata.any.worker.html": [
+          "Consume empty response.formData() as FormData",
+          "Consume empty request.formData() as FormData"
+        ],
         "mime-type.any.html": true
       },
       "redirect": {
         "redirect-count.any.html": true,
         "redirect-empty-location.any.html": [
           "redirect response with empty Location, manual mode"
+        ],
+        "redirect-location-escape.tentative.any.html": [
+          "Redirect to unescaped UTF-8",
+          "Redirect to escaped and unescaped UTF-8",
+          "Escaping produces double-percent",
+          "Redirect to invalid UTF-8"
+        ],
+        "redirect-location-escape.tentative.any.worker.html": [
+          "Redirect to unescaped UTF-8",
+          "Redirect to escaped and unescaped UTF-8",
+          "Escaping produces double-percent",
+          "Redirect to invalid UTF-8"
         ],
         "redirect-location.any.html": [
           "Redirect 301 in \"manual\" mode without location",
@@ -13949,7 +14208,21 @@
         ],
         "redirect-method.any.html": true,
         "redirect-schemes.any.html": true,
-        "redirect-to-dataurl.any.html": true
+        "redirect-to-dataurl.any.html": true,
+        "redirect-upload.h2.any.html": [
+          "Fetch upload streaming should be accepted on 303",
+          "Fetch upload streaming should fail on 301",
+          "Fetch upload streaming should fail on 302",
+          "Fetch upload streaming should fail on 307",
+          "Fetch upload streaming should fail on 308"
+        ],
+        "redirect-upload.h2.any.worker.html": [
+          "Fetch upload streaming should be accepted on 303",
+          "Fetch upload streaming should fail on 301",
+          "Fetch upload streaming should fail on 302",
+          "Fetch upload streaming should fail on 307",
+          "Fetch upload streaming should fail on 308"
+        ]
       },
       "idlharness.any.html": [
         "Request interface: attribute destination",
@@ -13992,10 +14265,141 @@
         ]
       }
     },
+    "content-encoding": {
+      "bad-gzip-body.any.html": [
+        "Consuming the body of a resource with bad gzip content with arrayBuffer() should reject",
+        "Consuming the body of a resource with bad gzip content with blob() should reject",
+        "Consuming the body of a resource with bad gzip content with formData() should reject",
+        "Consuming the body of a resource with bad gzip content with json() should reject",
+        "Consuming the body of a resource with bad gzip content with text() should reject"
+      ],
+      "bad-gzip-body.any.worker.html": [
+        "Consuming the body of a resource with bad gzip content with arrayBuffer() should reject",
+        "Consuming the body of a resource with bad gzip content with blob() should reject",
+        "Consuming the body of a resource with bad gzip content with formData() should reject",
+        "Consuming the body of a resource with bad gzip content with json() should reject",
+        "Consuming the body of a resource with bad gzip content with text() should reject"
+      ]
+    },
+    "content-length": {
+      "api-and-duplicate-headers.any.html": [
+        "XMLHttpRequest and duplicate Content-Length/Content-Type headers",
+        "fetch() and duplicate Content-Length/Content-Type headers"
+      ],
+      "api-and-duplicate-headers.any.worker.html": [
+        "XMLHttpRequest and duplicate Content-Length/Content-Type headers",
+        "fetch() and duplicate Content-Length/Content-Type headers"
+      ],
+      "parsing.window.html": [
+        "Input: \"Content-Length: aaaah\\r\\nContent-Length: aaaah\". Expected: 42.",
+        "Input: \"Content-Length: aaaah, aaaah\". Expected: 42.",
+        "Input: \"Content-Length: aaaah\". Expected: 42.",
+        "Input: \"Content-Length: 42s\". Expected: 42.",
+        "Input: \"Content-Length: 30s\". Expected: 42.",
+        "Input: \"Content-Length: -1\". Expected: 42.",
+        "Input: \"Content-Length: 0x20\". Expected: 42.",
+        "Input: \"Content-Length: 030\\r\\nContent-Length: 30\". Expected: network error.",
+        "Input: \"Content-Length: 030, 30\". Expected: network error.",
+        "Input: \"Content-Length: \\\"30\\\"\". Expected: 42.",
+        "Input: \"Content-Length: \". Expected: 42."
+      ],
+      "too-long.window.html": [
+        "Content-Length header value of network response exceeds response body"
+      ]
+    },
+    "content-type": {
+      "response.window.html": [
+        "<iframe>: separate response Content-Type:  text/plain",
+        "<iframe>: combined response Content-Type:  text/plain",
+        "<iframe>: separate response Content-Type: text/plain ",
+        "<iframe>: combined response Content-Type: text/plain ",
+        "<iframe>: separate response Content-Type: text/html text/plain",
+        "<iframe>: combined response Content-Type: text/html text/plain",
+        "<iframe>: separate response Content-Type: text/plain;charset=gbk text/html",
+        "<iframe>: combined response Content-Type: text/plain;charset=gbk text/html",
+        "<iframe>: separate response Content-Type: text/plain;charset=gbk text/html;charset=windows-1254",
+        "<iframe>: combined response Content-Type: text/plain;charset=gbk text/html;charset=windows-1254",
+        "<iframe>: separate response Content-Type: text/plain;charset=gbk text/plain",
+        "<iframe>: combined response Content-Type: text/plain;charset=gbk text/plain",
+        "<iframe>: separate response Content-Type: text/plain;charset=gbk text/plain;charset=windows-1252",
+        "<iframe>: combined response Content-Type: text/plain;charset=gbk text/plain;charset=windows-1252",
+        "<iframe>: separate response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
+        "<iframe>: combined response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
+        "<iframe>: separate response Content-Type: text/plain;charset=gbk;x=foo text/plain",
+        "<iframe>: combined response Content-Type: text/plain;charset=gbk;x=foo text/plain",
+        "<iframe>: separate response Content-Type: text/html;charset=gbk text/plain text/html",
+        "<iframe>: combined response Content-Type: text/html;charset=gbk text/plain text/html",
+        "<iframe>: separate response Content-Type: text/plain */*",
+        "<iframe>: combined response Content-Type: text/plain */*",
+        "<iframe>: separate response Content-Type: text/html */*",
+        "<iframe>: combined response Content-Type: text/html */*",
+        "<iframe>: separate response Content-Type: */* text/html",
+        "<iframe>: combined response Content-Type: */* text/html",
+        "<iframe>: separate response Content-Type: text/plain */*;charset=gbk",
+        "<iframe>: combined response Content-Type: text/plain */*;charset=gbk",
+        "<iframe>: separate response Content-Type: text/html */*;charset=gbk",
+        "<iframe>: combined response Content-Type: text/html */*;charset=gbk",
+        "<iframe>: separate response Content-Type: text/html;x=\" text/plain",
+        "<iframe>: combined response Content-Type: text/html;x=\" text/plain",
+        "<iframe>: separate response Content-Type: text/html;\" text/plain",
+        "<iframe>: combined response Content-Type: text/html;\" text/plain",
+        "<iframe>: separate response Content-Type: text/html;\" \\\" text/plain",
+        "<iframe>: combined response Content-Type: text/html;\" \\\" text/plain",
+        "<iframe>: separate response Content-Type: text/html;\" \\\" text/plain \";charset=GBK",
+        "<iframe>: combined response Content-Type: text/html;\" \\\" text/plain \";charset=GBK",
+        "<iframe>: separate response Content-Type: text/html;\" \" text/plain",
+        "<iframe>: combined response Content-Type: text/html;\" \" text/plain",
+        "fetch(): separate response Content-Type: text/plain;charset=gbk text/plain",
+        "fetch(): combined response Content-Type: text/plain;charset=gbk text/plain",
+        "Request: combined response Content-Type: text/plain;charset=gbk text/plain",
+        "Response: combined response Content-Type: text/plain;charset=gbk text/plain",
+        "fetch(): separate response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
+        "fetch(): combined response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
+        "Request: combined response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
+        "Response: combined response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
+        "fetch(): separate response Content-Type: text/plain;charset=gbk;x=foo text/plain",
+        "fetch(): combined response Content-Type: text/plain;charset=gbk;x=foo text/plain",
+        "Request: combined response Content-Type: text/plain;charset=gbk;x=foo text/plain",
+        "Response: combined response Content-Type: text/plain;charset=gbk;x=foo text/plain",
+        "fetch(): combined response Content-Type: text/html;x=\" text/plain",
+        "fetch(): separate response Content-Type: text/html;\" \\\" text/plain \";charset=GBK",
+        "fetch(): combined response Content-Type: text/html;\" \\\" text/plain \";charset=GBK",
+        "Request: combined response Content-Type: text/html;\" \\\" text/plain \";charset=GBK",
+        "Response: combined response Content-Type: text/html;\" \\\" text/plain \";charset=GBK"
+      ]
+    },
     "data-urls": {
       "base64.any.html": true,
       "processing.any.html": [
         "\"data:text/plain;a=\\\",\\\",X\""
+      ]
+    },
+    "h1-parsing": {
+      "lone-cr.window.html": [
+        "Parsing response with a lone CR before message-body (HTTP/1.1 200 OK\nHeader: Value\r\n\nBody)"
+      ],
+      "status-code.window.html": [
+        "HTTP/1.1 0 OK ",
+        "HTTP/1.1 1 OK ",
+        "HTTP/1.1 99 NOT OK ",
+        "HTTP/1.1 077 77 ",
+        "HTTP/1.1 099 HELLO ",
+        "HTTP/1.1 200 ",
+        "HTTP/1.1 999 DOES IT MATTER "
+      ]
+    },
+    "range": {
+      "general.any.html": [
+        "Privileged header not allowed for guard type: request-no-cors",
+        "Fetch with range header will be sent with Accept-Encoding: identity"
+      ],
+      "general.any.worker.html": [
+        "Privileged header not allowed for guard type: request-no-cors",
+        "Fetch with range header will be sent with Accept-Encoding: identity"
+      ],
+      "general.window.html": [
+        "Script executed from partial response",
+        "Fetch with range header will be sent with Accept-Encoding: identity"
       ]
     }
   },
@@ -14046,6 +14450,73 @@
     ]
   },
   "html": {
+    "semantics": {
+      "scripting-1": {
+        "the-script-element": {
+          "import-assertions": {
+            "dynamic-import-with-assertion-argument.any.html": [
+              "Dynamic import with an unsupported type assertion should fail"
+            ],
+            "dynamic-import-with-assertion-argument.any.worker.html": [
+              "Dynamic import with an unsupported type assertion should fail"
+            ]
+          },
+          "json-module": {
+            "charset-bom.any.html": [
+              "UTF-8 BOM should be stripped when decoding JSON module script",
+              "UTF-16BE BOM should result in parse error in JSON module script",
+              "UTF-16LE BOM should result in parse error in JSON module script"
+            ],
+            "charset-bom.any.worker.html": [
+              "UTF-8 BOM should be stripped when decoding JSON module script",
+              "UTF-16BE BOM should result in parse error in JSON module script",
+              "UTF-16LE BOM should result in parse error in JSON module script"
+            ],
+            "invalid-content-type.any.html": true,
+            "invalid-content-type.any.worker.html": true,
+            "non-object.any.html": [
+              "Non-object: null",
+              "Non-object: true",
+              "Non-object: false",
+              "Non-object: string",
+              "Non-object: array"
+            ],
+            "non-object.any.worker.html": [
+              "Non-object: null",
+              "Non-object: true",
+              "Non-object: false",
+              "Non-object: string",
+              "Non-object: array"
+            ],
+            "repeated-imports.any.html": [
+              "Importing a specifier that previously failed due to an incorrect type assertion can succeed if the correct assertion is later given",
+              "Importing a specifier that previously succeeded with the correct type assertion should fail if the incorrect assertion is later given",
+              "Two modules of different type with the same specifier can load if the server changes its responses",
+              "If an import previously succeeded for a given specifier/type assertion pair, future uses of that pair should yield the same result"
+            ],
+            "repeated-imports.any.worker.html": [
+              "Importing a specifier that previously failed due to an incorrect type assertion can succeed if the correct assertion is later given",
+              "Importing a specifier that previously succeeded with the correct type assertion should fail if the incorrect assertion is later given",
+              "Two modules of different type with the same specifier can load if the server changes its responses",
+              "If an import previously succeeded for a given specifier/type assertion pair, future uses of that pair should yield the same result"
+            ]
+          },
+          "microtasks": {
+            "checkpoint-importScripts.any.worker.html": true
+          },
+          "module": {
+            "dynamic-import": {
+              "blob-url.any.html": [
+                "Revoking a blob URL immediately after calling import will not fail"
+              ],
+              "blob-url.any.worker.html": [
+                "Revoking a blob URL immediately after calling import will not fail"
+              ]
+            }
+          }
+        }
+      }
+    },
     "webappapis": {
       "atob": {
         "base64.any.html": true
@@ -14062,6 +14533,18 @@
         "queue-microtask-exceptions.any.html": false,
         "queue-microtask.any.html": true
       },
+      "scripting": {
+        "reporterror.any.html": [
+          "self.reportError(1)",
+          "self.reportError(TypeError)",
+          "self.reportError(undefined)"
+        ],
+        "reporterror.any.worker.html": [
+          "self.reportError(1)",
+          "self.reportError(TypeError)",
+          "self.reportError(undefined)"
+        ]
+      },
       "structured-clone": {
         "structured-clone.any.html": [
           "Blob basic",
@@ -14070,7 +14553,14 @@
           "Blob paired surrogates (invalid utf-8)",
           "Blob empty",
           "Blob NUL",
-          "File basic"
+          "File basic",
+          "Serializing a non-serializable platform object fails",
+          "An object whose interface is deleted from the global must still deserialize",
+          "A subclass instance will deserialize as its closest serializable superclass",
+          "A detached ArrayBuffer cannot be transferred",
+          "A detached platform object cannot be transferred",
+          "Transferring a non-transferable platform object fails",
+          "A subclass instance will be received as its closest transferable superclass"
         ]
       }
     }
@@ -14352,9 +14842,13 @@
     "stream": {
       "tentative": {
         "abort.any.html?wss": true,
+        "backpressure-receive.any.html?wpt_flags=h2": false,
         "backpressure-receive.any.html?wss": true,
+        "backpressure-send.any.html?wpt_flags=h2": false,
         "backpressure-send.any.html?wss": true,
+        "close.any.html?wpt_flags=h2": false,
         "close.any.html?wss": true,
+        "constructor.any.html?wpt_flags=h2": false,
         "constructor.any.html?wss": true
       }
     }
@@ -14435,12 +14929,18 @@
         "importScripts": {
           "001.worker.html": true,
           "002.worker.html": true,
+          "blob-url.worker.html": [
+            "A revoked blob URL will fail"
+          ],
           "catch.sub.any.worker.html": [
             "Cross-origin syntax error",
             "Cross-origin throw",
             "Redirect-to-cross-origin syntax error",
             "Redirect-to-Cross-origin throw"
-          ]
+          ],
+          "report-error-cross-origin.sub.any.worker.html": false,
+          "report-error-redirect-to-cross-origin.sub.any.worker.html": false,
+          "report-error-same-origin.sub.any.worker.html": false
         }
       }
     },
@@ -14549,17 +15049,145 @@
     ]
   },
   "urlpattern": {
+    "urlpattern-compare.any.html": [
+      "Component: pathname Left: {\"pathname\":\"/foo/a\"} Right: {\"pathname\":\"/foo/b\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/b\"} Right: {\"pathname\":\"/foo/bar\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/bar\"} Right: {\"pathname\":\"/foo/:bar\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/\"} Right: {\"pathname\":\"/foo/:bar\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/:bar\"} Right: {\"pathname\":\"/foo/*\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}\"} Right: {\"pathname\":\"/foo/(bar)\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}\"} Right: {\"pathname\":\"/foo/{bar}+\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}+\"} Right: {\"pathname\":\"/foo/{bar}?\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}?\"} Right: {\"pathname\":\"/foo/{bar}*\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/(123)\"} Right: {\"pathname\":\"/foo/(12)\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/:b\"} Right: {\"pathname\":\"/foo/:a\"}",
+      "Component: pathname Left: {\"pathname\":\"*/foo\"} Right: {\"pathname\":\"*\"}",
+      "Component: port Left: {\"port\":\"9\"} Right: {\"port\":\"100\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"foo/{:bar}?/baz\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"foo{/:bar}?/baz\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"fo{o/:bar}?/baz\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"foo{/:bar/}?baz\"}",
+      "Component: pathname Left: \"https://a.example.com/b?a\" Right: \"https://b.example.com/a?b\"",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}/baz\"} Right: {\"pathname\":\"/foo/bar/baz\"}",
+      "Component: protocol Left: {\"protocol\":\"a\"} Right: {\"protocol\":\"b\"}",
+      "Component: username Left: {\"username\":\"a\"} Right: {\"username\":\"b\"}",
+      "Component: password Left: {\"password\":\"a\"} Right: {\"password\":\"b\"}",
+      "Component: hostname Left: {\"hostname\":\"a\"} Right: {\"hostname\":\"b\"}",
+      "Component: search Left: {\"search\":\"a\"} Right: {\"search\":\"b\"}",
+      "Component: hash Left: {\"hash\":\"a\"} Right: {\"hash\":\"b\"}"
+    ],
+    "urlpattern-compare.any.worker.html": [
+      "Component: pathname Left: {\"pathname\":\"/foo/a\"} Right: {\"pathname\":\"/foo/b\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/b\"} Right: {\"pathname\":\"/foo/bar\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/bar\"} Right: {\"pathname\":\"/foo/:bar\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/\"} Right: {\"pathname\":\"/foo/:bar\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/:bar\"} Right: {\"pathname\":\"/foo/*\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}\"} Right: {\"pathname\":\"/foo/(bar)\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}\"} Right: {\"pathname\":\"/foo/{bar}+\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}+\"} Right: {\"pathname\":\"/foo/{bar}?\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}?\"} Right: {\"pathname\":\"/foo/{bar}*\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/(123)\"} Right: {\"pathname\":\"/foo/(12)\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/:b\"} Right: {\"pathname\":\"/foo/:a\"}",
+      "Component: pathname Left: {\"pathname\":\"*/foo\"} Right: {\"pathname\":\"*\"}",
+      "Component: port Left: {\"port\":\"9\"} Right: {\"port\":\"100\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"foo/{:bar}?/baz\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"foo{/:bar}?/baz\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"fo{o/:bar}?/baz\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"foo{/:bar/}?baz\"}",
+      "Component: pathname Left: \"https://a.example.com/b?a\" Right: \"https://b.example.com/a?b\"",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}/baz\"} Right: {\"pathname\":\"/foo/bar/baz\"}",
+      "Component: protocol Left: {\"protocol\":\"a\"} Right: {\"protocol\":\"b\"}",
+      "Component: username Left: {\"username\":\"a\"} Right: {\"username\":\"b\"}",
+      "Component: password Left: {\"password\":\"a\"} Right: {\"password\":\"b\"}",
+      "Component: hostname Left: {\"hostname\":\"a\"} Right: {\"hostname\":\"b\"}",
+      "Component: search Left: {\"search\":\"a\"} Right: {\"search\":\"b\"}",
+      "Component: hash Left: {\"hash\":\"a\"} Right: {\"hash\":\"b\"}"
+    ],
+    "urlpattern-compare.https.any.html": [
+      "Component: pathname Left: {\"pathname\":\"/foo/a\"} Right: {\"pathname\":\"/foo/b\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/b\"} Right: {\"pathname\":\"/foo/bar\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/bar\"} Right: {\"pathname\":\"/foo/:bar\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/\"} Right: {\"pathname\":\"/foo/:bar\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/:bar\"} Right: {\"pathname\":\"/foo/*\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}\"} Right: {\"pathname\":\"/foo/(bar)\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}\"} Right: {\"pathname\":\"/foo/{bar}+\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}+\"} Right: {\"pathname\":\"/foo/{bar}?\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}?\"} Right: {\"pathname\":\"/foo/{bar}*\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/(123)\"} Right: {\"pathname\":\"/foo/(12)\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/:b\"} Right: {\"pathname\":\"/foo/:a\"}",
+      "Component: pathname Left: {\"pathname\":\"*/foo\"} Right: {\"pathname\":\"*\"}",
+      "Component: port Left: {\"port\":\"9\"} Right: {\"port\":\"100\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"foo/{:bar}?/baz\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"foo{/:bar}?/baz\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"fo{o/:bar}?/baz\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"foo{/:bar/}?baz\"}",
+      "Component: pathname Left: \"https://a.example.com/b?a\" Right: \"https://b.example.com/a?b\"",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}/baz\"} Right: {\"pathname\":\"/foo/bar/baz\"}",
+      "Component: protocol Left: {\"protocol\":\"a\"} Right: {\"protocol\":\"b\"}",
+      "Component: username Left: {\"username\":\"a\"} Right: {\"username\":\"b\"}",
+      "Component: password Left: {\"password\":\"a\"} Right: {\"password\":\"b\"}",
+      "Component: hostname Left: {\"hostname\":\"a\"} Right: {\"hostname\":\"b\"}",
+      "Component: search Left: {\"search\":\"a\"} Right: {\"search\":\"b\"}",
+      "Component: hash Left: {\"hash\":\"a\"} Right: {\"hash\":\"b\"}"
+    ],
+    "urlpattern-compare.https.any.worker.html": [
+      "Component: pathname Left: {\"pathname\":\"/foo/a\"} Right: {\"pathname\":\"/foo/b\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/b\"} Right: {\"pathname\":\"/foo/bar\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/bar\"} Right: {\"pathname\":\"/foo/:bar\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/\"} Right: {\"pathname\":\"/foo/:bar\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/:bar\"} Right: {\"pathname\":\"/foo/*\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}\"} Right: {\"pathname\":\"/foo/(bar)\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}\"} Right: {\"pathname\":\"/foo/{bar}+\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}+\"} Right: {\"pathname\":\"/foo/{bar}?\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}?\"} Right: {\"pathname\":\"/foo/{bar}*\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/(123)\"} Right: {\"pathname\":\"/foo/(12)\"}",
+      "Component: pathname Left: {\"pathname\":\"/foo/:b\"} Right: {\"pathname\":\"/foo/:a\"}",
+      "Component: pathname Left: {\"pathname\":\"*/foo\"} Right: {\"pathname\":\"*\"}",
+      "Component: port Left: {\"port\":\"9\"} Right: {\"port\":\"100\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"foo/{:bar}?/baz\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"foo{/:bar}?/baz\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"fo{o/:bar}?/baz\"}",
+      "Component: pathname Left: {\"pathname\":\"foo/:bar?/baz\"} Right: {\"pathname\":\"foo{/:bar/}?baz\"}",
+      "Component: pathname Left: \"https://a.example.com/b?a\" Right: \"https://b.example.com/a?b\"",
+      "Component: pathname Left: {\"pathname\":\"/foo/{bar}/baz\"} Right: {\"pathname\":\"/foo/bar/baz\"}",
+      "Component: protocol Left: {\"protocol\":\"a\"} Right: {\"protocol\":\"b\"}",
+      "Component: username Left: {\"username\":\"a\"} Right: {\"username\":\"b\"}",
+      "Component: password Left: {\"password\":\"a\"} Right: {\"password\":\"b\"}",
+      "Component: hostname Left: {\"hostname\":\"a\"} Right: {\"hostname\":\"b\"}",
+      "Component: search Left: {\"search\":\"a\"} Right: {\"search\":\"b\"}",
+      "Component: hash Left: {\"hash\":\"a\"} Right: {\"hash\":\"b\"}"
+    ],
     "urlpattern.any.html": [
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
+      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
+      "Pattern: [{\"hostname\":\"bad|hostname\"}] Inputs: undefined",
+      "Pattern: [] Inputs: [\"https://example.com/\"]",
+      "Pattern: [] Inputs: [{}]",
+      "Pattern: [] Inputs: []"
     ],
     "urlpattern.any.worker.html": [
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
+      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
+      "Pattern: [{\"hostname\":\"bad|hostname\"}] Inputs: undefined",
+      "Pattern: [] Inputs: [\"https://example.com/\"]",
+      "Pattern: [] Inputs: [{}]",
+      "Pattern: [] Inputs: []"
     ],
     "urlpattern.https.any.html": [
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
+      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
+      "Pattern: [{\"hostname\":\"bad|hostname\"}] Inputs: undefined",
+      "Pattern: [] Inputs: [\"https://example.com/\"]",
+      "Pattern: [] Inputs: [{}]",
+      "Pattern: [] Inputs: []"
     ],
     "urlpattern.https.any.worker.html": [
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
+      "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
+      "Pattern: [{\"hostname\":\"bad|hostname\"}] Inputs: undefined",
+      "Pattern: [] Inputs: [\"https://example.com/\"]",
+      "Pattern: [] Inputs: [{}]",
+      "Pattern: [] Inputs: []"
     ]
   }
 }

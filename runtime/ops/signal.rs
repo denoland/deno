@@ -169,13 +169,8 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGINFO" => Ok(29),
     "SIGUSR1" => Ok(30),
     "SIGUSR2" => Ok(31),
-    _ => Err(type_error(format!("Invalid signal : {}", s))),
+    _ => Err(type_error(format!("Invalid signal: {}", s))),
   }
-}
-
-#[cfg(target_os = "windows")]
-pub fn signal_str_to_int(_s: &str) -> Result<libc::c_int, AnyError> {
-  Err(generic_error("not implemented"))
 }
 
 #[cfg(unix)]
