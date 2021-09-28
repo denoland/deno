@@ -199,18 +199,6 @@ itest!(steps_ignored_steps {
   output: "test/steps/ignored_steps.out",
 });
 
-itest!(steps_parallel_steps {
-  args: "test test/steps/parallel_steps.ts",
-  exit_code: 1,
-  output: "test/steps/parallel_steps.out",
-});
-
-itest!(steps_missing_await {
-  args: "test test/steps/missing_await.ts",
-  exit_code: 1,
-  output: "test/steps/missing_await.out",
-});
-
 itest!(steps_invalid_usage {
   args: "test test/steps/invalid_usage.ts",
   exit_code: 1,

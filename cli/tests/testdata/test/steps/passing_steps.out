@@ -1,10 +1,29 @@
 [WILDCARD]
-running 1 test from [WILDCARD]
+running 4 tests from [WILDCARD]
 test description ...
   test step 1 ...
     test inner 1 ... ok ([WILDCARD]ms)
     test inner 2 ... ok ([WILDCARD]ms)
   ok ([WILDCARD]ms)
 ok ([WILDCARD]ms)
+test parallel steps without sanitizers ...
+  test step 1 ... ok ([WILDCARD])
+  test step 2 ... ok ([WILDCARD])
+ok ([WILDCARD])
+test parallel steps without sanitizers due to parent ...
+  test step 1 ... ok ([WILDCARD])
+  test step 2 ... ok ([WILDCARD])
+ok ([WILDCARD])
+test steps with disabled sanitizers, then enabled, then parallel disabled ...
+  test step 1 ...
+    test step 1 ...
+      test step 1 ...
+        test step 1 ... ok ([WILDCARD])
+        test step 1 ... ok ([WILDCARD])
+      ok ([WILDCARD])
+      test step 2 ... ok ([WILDCARD])
+    ok ([WILDCARD])
+  ok ([WILDCARD])
+ok ([WILDCARD])
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]

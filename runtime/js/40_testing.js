@@ -113,30 +113,76 @@ finishing test case.`;
   function assertTestStepScopes(fn) {
     /** @param step {TestStep} */
     return async function testStepSanitizer(step) {
+      preValidation();
       await fn(createTester(step));
+      postValidation();
 
-      // check for any running steps
-      const hasRunningSteps = ArrayPrototypeSome(
-        step.children,
-        (r) => r.status === "pending",
-      );
-      if (hasRunningSteps) {
-        throw new Error(
-          "There were still test steps running after the current scope finished execution. " +
-            "Ensure all steps are awaited (ex. `await t.step(...)`).",
+      function preValidation() {
+        const runningSteps = getPotentialConflictingRunningSteps();
+        const runningStepsWithSanitizers = ArrayPrototypeFilter(
+          runningSteps,
+          (t) => t.usesSanitizer(),
         );
+
+        if (runningStepsWithSanitizers.length > 0) {
+          throw new Error(
+            "Cannot start test step while another test step with sanitizers is running.\n" +
+              runningStepsWithSanitizers
+                .map((s) => ` * ${s.getFullName()}`)
+                .join("\n"),
+          );
+        }
+
+        if (step.usesSanitizer() && runningSteps.length > 0) {
+          throw new Error(
+            "Cannot start test step with sanitizers while another test step is running.\n" +
+              runningSteps.map((s) => ` * ${s.getFullName()}`).join("\n"),
+          );
+        }
+
+        function getPotentialConflictingRunningSteps() {
+          /** @type {TestStep[]} */
+          const results = [];
+          let childStep = step;
+          while (childStep.parent) {
+            for (const siblingStep of childStep.parent.children) {
+              if (siblingStep === childStep) {
+                continue;
+              }
+              if (!siblingStep.finalized) {
+                ArrayPrototypePush(results, siblingStep);
+              }
+            }
+            childStep = childStep.parent;
+          }
+          return results;
+        }
       }
 
-      // check if a parent already completed
-      let parent = step.parent;
-      while (parent) {
-        if (parent.finalized) {
+      function postValidation() {
+        // check for any running steps
+        const hasRunningSteps = ArrayPrototypeSome(
+          step.children,
+          (r) => r.status === "pending",
+        );
+        if (hasRunningSteps) {
           throw new Error(
-            "Parent scope completed before test step finished execution. " +
+            "There were still test steps running after the current scope finished execution. " +
               "Ensure all steps are awaited (ex. `await t.step(...)`).",
           );
         }
-        parent = parent.parent;
+
+        // check if an ancestor already completed
+        let ancestor = step.parent;
+        while (ancestor) {
+          if (ancestor.finalized) {
+            throw new Error(
+              "Parent scope completed before test step finished execution. " +
+                "Ensure all steps are awaited (ex. `await t.step(...)`).",
+            );
+          }
+          ancestor = ancestor.parent;
+        }
       }
     };
   }
@@ -444,6 +490,7 @@ finishing test case.`;
     }
   }
 
+  /** @param parentStep {TestStep} */
   function createTester(parentStep) {
     return {
       [SymbolToStringTag]: "Tester",
@@ -481,14 +528,6 @@ finishing test case.`;
 
         if (definition.ignore) {
           subStep.status = "ignored";
-          subStep.finalized = true;
-          return false;
-        }
-
-        const errorMessage = getCannotRunErrorMessage(subStep);
-        if (errorMessage) {
-          subStep.status = "failed";
-          subStep.error = inspectArgs([new Error(errorMessage)]);
           subStep.finalized = true;
           return false;
         }
@@ -544,51 +583,6 @@ finishing test case.`;
         }
       },
     };
-
-    /** @param step {TestStep} */
-    function getCannotRunErrorMessage(step) {
-      const runningSteps = getPotentialConflictingRunningSteps(step);
-      const runningStepsWithSanitizers = ArrayPrototypeFilter(
-        runningSteps,
-        (t) => t.usesSanitizer(),
-      );
-
-      if (runningStepsWithSanitizers.length > 0) {
-        return "Cannot start test step while another test step with sanitizers is running.\n" +
-          runningStepsWithSanitizers
-            .map((s) => ` * ${s.getFullName()}`)
-            .join("\n");
-      }
-
-      if (step.usesSanitizer() && runningSteps.length > 0) {
-        return "Cannot start test step with sanitizers while another test step is running.\n" +
-          runningSteps.map((s) => ` * ${s.getFullName()}`).join("\n");
-      }
-
-      return undefined;
-    }
-
-    /** Returns any running test steps in the execution tree that
-     * might conflict with this test.
-     * @param step {TestStep}
-     */
-    function getPotentialConflictingRunningSteps(step) {
-      /** @type {TestStep[]} */
-      const results = [];
-      while (step.parent) {
-        const parentStep = step.parent;
-        for (const siblingStep of parentStep.children) {
-          if (siblingStep === step) {
-            continue;
-          }
-          if (!siblingStep.finalized) {
-            ArrayPrototypePush(results, siblingStep);
-          }
-        }
-        step = parentStep;
-      }
-      return results;
-    }
   }
 
   /**
