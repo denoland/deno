@@ -113,11 +113,35 @@ finishing test case.`;
   function assertTestStepScopes(fn) {
     /** @param step {TestStep} */
     return async function testStepSanitizer(step) {
-      await fn(step.createTester());
+      await fn(createTester(step));
 
-      const errorMessage = step.getStepScopeErrMsg();
+      const errorMessage = checkStepScopeError();
       if (errorMessage) {
         throw new Error(errorMessage);
+      }
+
+      function checkStepScopeError() {
+        // check for any running steps
+        const hasRunningSteps = ArrayPrototypeSome(
+          step.children,
+          (r) => r.status === "pending",
+        );
+        if (hasRunningSteps) {
+          return "There were still test steps running after the current scope finished execution. " +
+            "Ensure all steps are awaited (ex. `await t.step(...)`).";
+        }
+
+        // check if a parent already completed
+        let parent = step.parent;
+        while (parent) {
+          if (parent.finalized) {
+            return "Parent scope completed before test step finished execution. " +
+              "Ensure all steps are awaited (ex. `await t.step(...)`).";
+          }
+          parent = parent.parent;
+        }
+
+        return undefined;
       }
     };
   }
@@ -247,8 +271,23 @@ finishing test case.`;
 
     return {
       status,
-      steps: step.getTestStepResults(),
+      steps: getTestStepResults(step),
     };
+
+    /** @param step {TestStep} */
+    function getTestStepResults(step) {
+      return ArrayPrototypeMap(
+        step.children,
+        /** @param childStep {TestStep} */
+        (childStep) => ({
+          name: childStep.name,
+          status: childStep.status,
+          steps: getTestStepResults(childStep),
+          duration: childStep.duration,
+          error: childStep.error,
+        }),
+      );
+    }
   }
 
   function getTestOrigin() {
@@ -359,7 +398,6 @@ finishing test case.`;
   class TestStep {
     /** @type {TestStepParams} */
     #params;
-
     finalized = false;
     duration = 0;
     status = "pending";
@@ -388,124 +426,6 @@ finishing test case.`;
       };
     }
 
-    createTester() {
-      // deno-lint-ignore no-this-alias
-      const parentStep = this;
-      return {
-        [SymbolToStringTag]: "Tester",
-        /**
-         * @param nameOrTestDefinition {string | TestStepDefinition}
-         * @param fn {(t: Tester) => void | Promise<void>}
-         */
-        async step(nameOrTestDefinition, fn) {
-          if (parentStep.finalized) {
-            throw new Error(
-              "Cannot run test step after tester's scope has finished execution. " +
-                "Ensure any `.step(...)` calls are executed before their parent scope completes execution.",
-            );
-          }
-
-          const definition = getDefinition();
-          const subStep = new TestStep({
-            name: definition.name,
-            parent: parentStep,
-            sanitizeOps: getOrDefault(
-              definition.sanitizeOps,
-              parentStep.sanitizerOptions.sanitizeOps,
-            ),
-            sanitizeResources: getOrDefault(
-              definition.sanitizeResources,
-              parentStep.sanitizerOptions.sanitizeResources,
-            ),
-            sanitizeExit: getOrDefault(
-              definition.sanitizeExit,
-              parentStep.sanitizerOptions.sanitizeExit,
-            ),
-          });
-
-          ArrayPrototypePush(parentStep.children, subStep);
-
-          if (definition.ignore) {
-            subStep.status = "ignored";
-            subStep.finalized = true;
-            return false;
-          }
-
-          const errorMessage = subStep.getCannotRunErrorMessage();
-          if (errorMessage) {
-            subStep.status = "failed";
-            subStep.error = inspectArgs([new Error(errorMessage)]);
-            subStep.finalized = true;
-            return false;
-          }
-
-          const testFn = wrapTestFnWithSanitizers(
-            definition.fn,
-            subStep.sanitizerOptions,
-          );
-          const start = DateNow();
-
-          try {
-            await testFn(subStep);
-
-            if (subStep.failedChildStepsCount() > 0) {
-              subStep.status = "failed";
-            } else {
-              subStep.status = "ok";
-            }
-          } catch (error) {
-            subStep.error = inspectArgs([error]);
-            subStep.status = "failed";
-          }
-
-          subStep.duration = DateNow() - start;
-
-          if (subStep.parent?.finalized) {
-            // always point this test out as one that was still running
-            // if the parent step finalized
-            subStep.status = "pending";
-          }
-
-          subStep.finalized = true;
-
-          return subStep.status === "ok";
-
-          /** @returns {TestStepDefinition} */
-          function getDefinition() {
-            if (typeof nameOrTestDefinition === "string") {
-              if (!(fn instanceof Function)) {
-                throw new TypeError("Expected function for second argument.");
-              }
-              return {
-                name: nameOrTestDefinition,
-                fn,
-              };
-            } else if (typeof nameOrTestDefinition === "object") {
-              return nameOrTestDefinition;
-            } else {
-              throw new TypeError(
-                "Expected a test definition or name and function.",
-              );
-            }
-          }
-        },
-      };
-    }
-
-    getTestStepResults() {
-      return ArrayPrototypeMap(
-        this.children,
-        /** @param childStep {TestStep} */
-        (childStep) => ({
-          name: childStep.name,
-          status: childStep.status,
-          steps: childStep.getTestStepResults() ?? [],
-          duration: childStep.duration,
-          error: childStep.error,
-        }),
-      );
-    }
-
     failedChildStepsCount() {
       return ArrayPrototypeFilter(
         this.children,
@@ -514,32 +434,125 @@ finishing test case.`;
       ).length;
     }
 
-    getStepScopeErrMsg() {
-      // check for any running steps
-      const hasRunningSteps = ArrayPrototypeSome(
-        this.children,
-        (r) => r.status === "pending",
-      );
-      if (hasRunningSteps) {
-        return "There were still test steps running after the current scope finished execution. " +
-          "Ensure all steps are awaited (ex. `await t.step(...)`).";
-      }
-
-      // check if a parent already completed
-      let parent = this.parent;
-      while (parent) {
-        if (parent.finalized) {
-          return "Parent scope completed before test step finished execution. " +
-            "Ensure all steps are awaited (ex. `await t.step(...)`).";
-        }
-        parent = parent.parent;
-      }
-
-      return undefined;
+    usesSanitizer() {
+      return this.#params.sanitizeResources ||
+        this.#params.sanitizeOps ||
+        this.#params.sanitizeExit;
     }
 
-    getCannotRunErrorMessage() {
-      const runningSteps = this.getPotentialConflictingRunningSteps();
+    getFullName() {
+      if (this.parent) {
+        return `${this.parent.getFullName()} > ${this.name}`;
+      } else {
+        return this.name;
+      }
+    }
+  }
+
+  function createTester(parentStep) {
+    return {
+      [SymbolToStringTag]: "Tester",
+      /**
+       * @param nameOrTestDefinition {string | TestStepDefinition}
+       * @param fn {(t: Tester) => void | Promise<void>}
+       */
+      async step(nameOrTestDefinition, fn) {
+        if (parentStep.finalized) {
+          throw new Error(
+            "Cannot run test step after tester's scope has finished execution. " +
+              "Ensure any `.step(...)` calls are executed before their parent scope completes execution.",
+          );
+        }
+
+        const definition = getDefinition();
+        const subStep = new TestStep({
+          name: definition.name,
+          parent: parentStep,
+          sanitizeOps: getOrDefault(
+            definition.sanitizeOps,
+            parentStep.sanitizerOptions.sanitizeOps,
+          ),
+          sanitizeResources: getOrDefault(
+            definition.sanitizeResources,
+            parentStep.sanitizerOptions.sanitizeResources,
+          ),
+          sanitizeExit: getOrDefault(
+            definition.sanitizeExit,
+            parentStep.sanitizerOptions.sanitizeExit,
+          ),
+        });
+
+        ArrayPrototypePush(parentStep.children, subStep);
+
+        if (definition.ignore) {
+          subStep.status = "ignored";
+          subStep.finalized = true;
+          return false;
+        }
+
+        const errorMessage = getCannotRunErrorMessage(subStep);
+        if (errorMessage) {
+          subStep.status = "failed";
+          subStep.error = inspectArgs([new Error(errorMessage)]);
+          subStep.finalized = true;
+          return false;
+        }
+
+        const testFn = wrapTestFnWithSanitizers(
+          definition.fn,
+          subStep.sanitizerOptions,
+        );
+        const start = DateNow();
+
+        try {
+          await testFn(subStep);
+
+          if (subStep.failedChildStepsCount() > 0) {
+            subStep.status = "failed";
+          } else {
+            subStep.status = "ok";
+          }
+        } catch (error) {
+          subStep.error = inspectArgs([error]);
+          subStep.status = "failed";
+        }
+
+        subStep.duration = DateNow() - start;
+
+        if (subStep.parent?.finalized) {
+          // always point this test out as one that was still running
+          // if the parent step finalized
+          subStep.status = "pending";
+        }
+
+        subStep.finalized = true;
+
+        return subStep.status === "ok";
+
+        /** @returns {TestStepDefinition} */
+        function getDefinition() {
+          if (typeof nameOrTestDefinition === "string") {
+            if (!(fn instanceof Function)) {
+              throw new TypeError("Expected function for second argument.");
+            }
+            return {
+              name: nameOrTestDefinition,
+              fn,
+            };
+          } else if (typeof nameOrTestDefinition === "object") {
+            return nameOrTestDefinition;
+          } else {
+            throw new TypeError(
+              "Expected a test definition or name and function.",
+            );
+          }
+        }
+      },
+    };
+
+    /** @param step {TestStep} */
+    function getCannotRunErrorMessage(step) {
+      const runningSteps = getPotentialConflictingRunningSteps(step);
       const runningStepsWithSanitizers = ArrayPrototypeFilter(
         runningSteps,
         (t) => t.usesSanitizer(),
@@ -552,7 +565,7 @@ finishing test case.`;
             .join("\n");
       }
 
-      if (this.usesSanitizer() && runningSteps.length > 0) {
+      if (step.usesSanitizer() && runningSteps.length > 0) {
         return "Cannot start test step with sanitizers while another test step is running.\n" +
           runningSteps.map((s) => ` * ${s.getFullName()}`).join("\n");
       }
@@ -560,12 +573,11 @@ finishing test case.`;
       return undefined;
     }
 
-    /** Returns any running test steps in the execution tree except this step's
-     * ancestors and descendants.
+    /** Returns any running test steps in the execution tree that
+     * might conflict with this test.
+     * @param step {TestStep}
      */
-    getPotentialConflictingRunningSteps() {
-      // deno-lint-ignore no-this-alias
-      let step = this;
+    function getPotentialConflictingRunningSteps(step) {
       /** @type {TestStep[]} */
       const results = [];
       while (step.parent) {
@@ -581,20 +593,6 @@ finishing test case.`;
         step = parentStep;
       }
       return results;
-    }
-
-    usesSanitizer() {
-      return this.#params.sanitizeResources ||
-        this.#params.sanitizeOps ||
-        this.#params.sanitizeExit;
-    }
-
-    getFullName() {
-      if (this.parent) {
-        return `${this.parent.getFullName()} > ${this.name}`;
-      } else {
-        return this.name;
-      }
     }
   }
 

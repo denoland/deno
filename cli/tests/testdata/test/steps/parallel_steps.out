@@ -1,5 +1,5 @@
 [WILDCARD]
-running 6 tests from [WILDCARD]/parallel_steps.ts
+running 7 tests from [WILDCARD]/parallel_steps.ts
 test parallel steps with sanitizers ...
   test step 1 ... ok ([WILDCARD])
   test step 2 ... FAILED ([WILDCARD])
@@ -26,6 +26,18 @@ test parallel steps when second has sanitizer ...
         at Tester.step ([WILDCARD])
         at [WILDCARD]/parallel_steps.ts:[WILDCARD]
         at [WILDCARD]
+FAILED ([WILDCARD])
+test parallel steps where only inner tests have sanitizers ...
+  test step 1 ...
+    test step inner ... ok ([WILDCARD])
+  ok ([WILDCARD])
+  test step 2 ...
+    test step inner ... FAILED ([WILDCARD])
+      Error: Cannot start test step with sanitizers while another test step is running.
+       * parallel steps where only inner tests have sanitizers > step 1
+          at Tester.step ([WILDCARD])
+          at [WILDCARD]/parallel_steps.ts:[WILDCARD]
+  FAILED ([WILDCARD])
 FAILED ([WILDCARD])
 test parallel steps without sanitizers ...
   test step 1 ... ok ([WILDCARD])
@@ -69,7 +81,8 @@ failures:
 	parallel steps with sanitizers
 	parallel steps when first has sanitizer
 	parallel steps when second has sanitizer
+	parallel steps where only inner tests have sanitizers
 
-test result: FAILED. 3 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+test result: FAILED. 3 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
 error: Test failed

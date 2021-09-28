@@ -52,6 +52,31 @@ Deno.test("parallel steps when second has sanitizer", async (t) => {
   ]);
 });
 
+Deno.test({
+  name: "parallel steps where only inner tests have sanitizers",
+  fn: async (t) => {
+    await Promise.all([
+      t.step("step 1", async (t) => {
+        await t.step({
+          name: "step inner",
+          fn: () => new Promise((resolve) => setTimeout(resolve, 10)),
+          sanitizeOps: true,
+        });
+      }),
+      t.step("step 2", async (t) => {
+        await t.step({
+          name: "step inner",
+          fn: () => new Promise((resolve) => setTimeout(resolve, 10)),
+          sanitizeOps: true,
+        });
+      }),
+    ]);
+  },
+  sanitizeResources: false,
+  sanitizeOps: false,
+  sanitizeExit: false,
+});
+
 Deno.test("parallel steps without sanitizers", async (t) => {
   // allowed
   await Promise.all([
