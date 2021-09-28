@@ -7,8 +7,8 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::ModuleSpecifier;
+use deno_graph::ModuleGraphError;
 use regex::Regex;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
@@ -357,14 +357,14 @@ impl Diagnostics {
 
   pub fn extend_graph_errors(
     &mut self,
-    errors: HashMap<ModuleSpecifier, String>,
+    errors: Vec<(&ModuleSpecifier, &ModuleGraphError)>,
   ) {
     self.0.extend(errors.into_iter().map(|(s, e)| Diagnostic {
       category: DiagnosticCategory::Error,
       code: 900001,
       start: None,
       end: None,
-      message_text: Some(e),
+      message_text: Some(e.to_string()),
       message_chain: None,
       source: None,
       source_line: None,

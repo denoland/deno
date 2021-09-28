@@ -285,9 +285,7 @@ impl ProcState {
       roots,
       is_dynamic,
       &mut cache,
-      maybe_import_map
-        .as_ref()
-        .map(|r| r as &dyn deno_graph::source::Resolver),
+      maybe_import_map.as_ref().map(|r| r.as_resolver()),
       maybe_locker,
       None,
     )
@@ -310,7 +308,7 @@ impl ProcState {
       emit::ConfigType::Check { emit: true, lib }
     };
     let (ts_config, maybe_ignored_options) =
-      emit::get_ts_config(config_type, &self.maybe_config_file)?;
+      emit::get_ts_config(config_type, &self.maybe_config_file, &None)?;
     let graph = Arc::new(graph);
     if emit::valid_emit(
       graph.clone(),

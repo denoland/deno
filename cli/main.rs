@@ -443,9 +443,7 @@ async fn info_command(
       vec![specifier],
       false,
       &mut cache,
-      ps.maybe_import_map
-        .as_ref()
-        .map(|r| r as &dyn deno_graph::source::Resolver),
+      ps.maybe_import_map.as_ref().map(|r| r.as_resolver()),
       maybe_locker,
       None,
     )
@@ -625,9 +623,7 @@ async fn create_graph_and_maybe_check(
       vec![root],
       false,
       &mut cache,
-      ps.maybe_import_map
-        .as_ref()
-        .map(|r| r as &dyn deno_graph::source::Resolver),
+      ps.maybe_import_map.as_ref().map(|r| r.as_resolver()),
       maybe_locker,
       None,
     )
@@ -643,6 +639,7 @@ async fn create_graph_and_maybe_check(
     let (ts_config, maybe_ignored_options) = emit::get_ts_config(
       emit::ConfigType::Check { emit: false, lib },
       &ps.maybe_config_file,
+      &None,
     )?;
     log::info!("{} {}", colors::green("Check"), graph.roots[0]);
     if let Some(ignored_options) = maybe_ignored_options {
@@ -677,8 +674,11 @@ fn bundle_module_graph(
 ) -> Result<(String, Option<String>), AnyError> {
   info!("{} {}", colors::green("Bundle"), graph.roots[0]);
 
-  let (ts_config, maybe_ignored_options) =
-    emit::get_ts_config(emit::ConfigType::Bundle, &ps.maybe_config_file)?;
+  let (ts_config, maybe_ignored_options) = emit::get_ts_config(
+    emit::ConfigType::Bundle,
+    &ps.maybe_config_file,
+    &None,
+  )?;
   if flags.no_check {
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
@@ -929,9 +929,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         vec![main_module.clone()],
         false,
         &mut cache,
-        ps.maybe_import_map
-          .as_ref()
-          .map(|r| r as &dyn deno_graph::source::Resolver),
+        ps.maybe_import_map.as_ref().map(|r| r.as_resolver()),
         maybe_locker,
         None,
       )

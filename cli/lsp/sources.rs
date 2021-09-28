@@ -53,9 +53,7 @@ pub async fn cache(
     roots,
     false,
     &mut cache,
-    maybe_import_map
-      .as_ref()
-      .map(|r| r as &dyn deno_graph::source::Resolver),
+    maybe_import_map.as_ref().map(|r| r.as_resolver()),
     None,
     None,
   );

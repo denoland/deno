@@ -5,6 +5,7 @@ use crate::file_fetcher::FileFetcher;
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
 use deno_core::futures::FutureExt;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -15,6 +16,7 @@ use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::permissions::Permissions;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -23,10 +25,16 @@ pub struct EmitMetadata {
 }
 
 pub(crate) trait Cacher {
+  fn get_declaration(&self, specifier: &ModuleSpecifier) -> Option<String>;
   fn get_emit(&self, specifier: &ModuleSpecifier) -> Option<String>;
   fn get_map(&self, specifier: &ModuleSpecifier) -> Option<String>;
   fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String>;
   fn get_version(&self, specifier: &ModuleSpecifier) -> Option<String>;
+  fn set_declaration(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    declaration: String,
+  ) -> Result<(), AnyError>;
   fn set_emit(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -47,6 +55,12 @@ pub(crate) trait Cacher {
     specifier: &ModuleSpecifier,
     hash: String,
   ) -> Result<(), AnyError>;
+}
+
+pub(crate) trait CacherLoader: Cacher + Loader {
+  fn as_cacher(&self) -> &dyn Cacher;
+  fn as_mut_loader(&mut self) -> &mut dyn Loader;
+  fn as_mut_cacher(&mut self) -> &mut dyn Cacher;
 }
 
 pub(crate) struct FetchCacher {
@@ -186,6 +200,18 @@ impl Loader for FetchCacher {
 }
 
 impl Cacher for FetchCacher {
+  fn get_declaration(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    let filename = self
+      .disk_cache
+      .get_cache_filename_with_extension(specifier, "d.ts")?;
+    self
+      .disk_cache
+      .get(&filename)
+      .ok()
+      .map(|b| String::from_utf8(b).ok())
+      .flatten()
+  }
+
   fn get_emit(&self, specifier: &ModuleSpecifier) -> Option<String> {
     let filename = self
       .disk_cache
@@ -224,6 +250,21 @@ impl Cacher for FetchCacher {
 
   fn get_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
     self.get_emit_metadata(specifier).map(|d| d.version_hash)
+  }
+
+  fn set_declaration(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    declaration: String,
+  ) -> Result<(), AnyError> {
+    let filename = self
+      .disk_cache
+      .get_cache_filename_with_extension(specifier, "d.ts")
+      .unwrap();
+    self
+      .disk_cache
+      .set(&filename, declaration.as_bytes())
+      .map_err(|e| e.into())
   }
 
   fn set_emit(
@@ -283,5 +324,138 @@ impl Cacher for FetchCacher {
       EmitMetadata { version_hash }
     };
     self.set_emit_metadata(specifier, data)
+  }
+}
+
+impl CacherLoader for FetchCacher {
+  fn as_cacher(&self) -> &dyn Cacher {
+    self
+  }
+
+  fn as_mut_loader(&mut self) -> &mut dyn Loader {
+    self
+  }
+
+  fn as_mut_cacher(&mut self) -> &mut dyn Cacher {
+    self
+  }
+}
+
+#[derive(Debug)]
+pub(crate) struct MemoryCacher {
+  sources: HashMap<String, Arc<String>>,
+  declarations: HashMap<ModuleSpecifier, String>,
+  emits: HashMap<ModuleSpecifier, String>,
+  maps: HashMap<ModuleSpecifier, String>,
+  build_infos: HashMap<ModuleSpecifier, String>,
+  versions: HashMap<ModuleSpecifier, String>,
+}
+
+impl MemoryCacher {
+  pub fn new(sources: HashMap<String, Arc<String>>) -> Self {
+    Self {
+      sources,
+      declarations: HashMap::default(),
+      emits: HashMap::default(),
+      maps: HashMap::default(),
+      build_infos: HashMap::default(),
+      versions: HashMap::default(),
+    }
+  }
+}
+
+impl Loader for MemoryCacher {
+  fn load(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    _is_dynamic: bool,
+  ) -> LoadFuture {
+    let response = self.sources.get(specifier.as_str()).map(|c| LoadResponse {
+      specifier: specifier.clone(),
+      maybe_headers: None,
+      content: c.to_owned(),
+    });
+    Box::pin(future::ready((specifier.clone(), Ok(response))))
+  }
+}
+
+impl Cacher for MemoryCacher {
+  fn get_declaration(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.declarations.get(specifier).cloned()
+  }
+
+  fn get_emit(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.emits.get(specifier).cloned()
+  }
+
+  fn get_map(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.maps.get(specifier).cloned()
+  }
+
+  fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.build_infos.get(specifier).cloned()
+  }
+
+  fn get_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    self.versions.get(specifier).cloned()
+  }
+
+  fn set_declaration(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    declaration: String,
+  ) -> Result<(), AnyError> {
+    self.declarations.insert(specifier.clone(), declaration);
+    Ok(())
+  }
+
+  fn set_emit(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    emit: String,
+  ) -> Result<(), AnyError> {
+    self.emits.insert(specifier.clone(), emit);
+    Ok(())
+  }
+
+  fn set_map(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    map: String,
+  ) -> Result<(), AnyError> {
+    self.maps.insert(specifier.clone(), map);
+    Ok(())
+  }
+
+  fn set_tsbuildinfo(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    info: String,
+  ) -> Result<(), AnyError> {
+    self.maps.insert(specifier.clone(), info);
+    Ok(())
+  }
+
+  fn set_version(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    version: String,
+  ) -> Result<(), AnyError> {
+    self.versions.insert(specifier.clone(), version);
+    Ok(())
+  }
+}
+
+impl CacherLoader for MemoryCacher {
+  fn as_cacher(&self) -> &dyn Cacher {
+    self
+  }
+
+  fn as_mut_loader(&mut self) -> &mut dyn Loader {
+    self
+  }
+
+  fn as_mut_cacher(&mut self) -> &mut dyn Cacher {
+    self
   }
 }

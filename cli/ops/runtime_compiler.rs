@@ -1,28 +1,27 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::module_graph::BundleType;
-use crate::module_graph::EmitOptions;
-use crate::module_graph::GraphBuilder;
+use crate::cache;
+use crate::diagnostics::Diagnostics;
+use crate::emit;
+use crate::module_graph::Stats;
 use crate::proc_state::ProcState;
-use crate::specifier_handler::FetchHandler;
-use crate::specifier_handler::MemoryHandler;
-use crate::specifier_handler::SpecifierHandler;
 
+use deno_core::error::anyhow;
 use deno_core::error::generic_error;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
+use deno_graph;
 use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -36,6 +35,15 @@ enum RuntimeBundleType {
   Module,
   #[serde(rename = "classic")]
   Classic,
+}
+
+impl<'a> From<&'a RuntimeBundleType> for emit::BundleType {
+  fn from(bundle_type: &'a RuntimeBundleType) -> Self {
+    match bundle_type {
+      RuntimeBundleType::Classic => Self::Classic,
+      RuntimeBundleType::Module => Self::Module,
+    }
+  }
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,23 +66,19 @@ async fn op_emit(
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
   let args: EmitArgs = serde_json::from_value(args)?;
   let root_specifier = args.root_specifier;
-  let ps = state.borrow().borrow::<ProcState>().clone();
-  let mut runtime_permissions = {
-    let state = state.borrow();
-    state.borrow::<Permissions>().clone()
-  };
-  // when we are actually resolving modules without provided sources, we should
-  // treat the root module as a dynamic import so that runtime permissions are
-  // applied.
-  let handler: Arc<Mutex<dyn SpecifierHandler>> =
-    if let Some(sources) = args.sources {
-      Arc::new(Mutex::new(MemoryHandler::new(sources)))
+  let state = state.borrow();
+  let ps = state.borrow::<ProcState>();
+  let mut runtime_permissions = { state.borrow::<Permissions>().clone() };
+  let mut cache: Box<dyn cache::CacherLoader> =
+    if let Some(sources) = &args.sources {
+      Box::new(cache::MemoryCacher::new(sources.clone()))
     } else {
-      Arc::new(Mutex::new(FetchHandler::new(
-        &ps,
+      Box::new(cache::FetchCacher::new(
+        ps.dir.gen_cache.clone(),
+        ps.file_fetcher.clone(),
         runtime_permissions.clone(),
         runtime_permissions.clone(),
-      )?))
+      ))
     };
   let maybe_import_map = if let Some(import_map_str) = args.import_map_path {
     let import_map_specifier = resolve_url_or_path(&import_map_str)
@@ -100,37 +104,138 @@ async fn op_emit(
   } else {
     None
   };
-  let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
-  let root_specifier = resolve_url_or_path(&root_specifier)?;
-  builder.add(&root_specifier, false).await.map_err(|_| {
-    type_error(format!(
-      "Unable to handle the given specifier: {}",
-      &root_specifier
-    ))
-  })?;
-  builder
-    .analyze_compiler_options(&args.compiler_options)
-    .await?;
-  let bundle_type = match args.bundle {
-    Some(RuntimeBundleType::Module) => BundleType::Module,
-    Some(RuntimeBundleType::Classic) => BundleType::Classic,
-    None => BundleType::None,
-  };
-  let graph = builder.get_graph();
+  let roots = vec![resolve_url_or_path(&root_specifier)?];
+  let graph = Arc::new(
+    deno_graph::create_graph(
+      roots,
+      true,
+      cache.as_mut_loader(),
+      maybe_import_map.as_ref().map(|r| r.as_resolver()),
+      None,
+      None,
+    )
+    .await,
+  );
+  let check = args.check.unwrap_or_default();
   let debug = ps.flags.log_level == Some(log::Level::Debug);
-  let graph_errors = graph.get_errors();
-  let (files, mut result_info) = graph.emit(EmitOptions {
-    bundle_type,
-    check: args.check.unwrap_or(true),
-    debug,
-    maybe_user_config: args.compiler_options,
-  })?;
-  result_info.diagnostics.extend_graph_errors(graph_errors);
+  let (files, mut diagnostics, stats, maybe_ignored_options) = if check
+    && args.bundle.is_none()
+  {
+    let (ts_config, maybe_ignored_options) = emit::get_ts_config(
+      emit::ConfigType::Check {
+        emit: true,
+        lib: emit::TypeLib::UnstableDenoWindow,
+      },
+      &None,
+      &args.compiler_options,
+    )?;
+    let (diagnostics, stats) = if emit::valid_emit(
+      graph.clone(),
+      cache.as_cacher(),
+      &ts_config,
+      ps.flags.reload,
+      &HashSet::default(),
+    ) {
+      log::debug!(
+        "cache is valid for \"{}\", skipping check/emit",
+        root_specifier
+      );
+      (Diagnostics::default(), Stats::default())
+    } else {
+      let emit_result = emit::check_and_maybe_emit(
+        graph.clone(),
+        cache.as_mut_cacher(),
+        emit::CheckOptions {
+          debug,
+          maybe_config_specifier: None,
+          ts_config,
+        },
+      )?;
+      (emit_result.diagnostics, emit_result.stats)
+    };
+    let files = emit::to_file_map(graph.clone(), cache.as_mut_cacher());
+    (files, diagnostics, stats, maybe_ignored_options)
+  } else if let Some(bundle) = &args.bundle {
+    let diagnostics = if check {
+      let (ts_config, _) = emit::get_ts_config(
+        emit::ConfigType::Check {
+          emit: false,
+          lib: emit::TypeLib::UnstableDenoWindow,
+        },
+        &None,
+        &args.compiler_options,
+      )?;
+      if ts_config.get_declaration() {
+        return Err(anyhow!("The bundle option is set, but the compiler option of `declaration` is true which is not currently supported."));
+      }
+      let emit_result = emit::check_and_maybe_emit(
+        graph.clone(),
+        cache.as_mut_cacher(),
+        emit::CheckOptions {
+          debug,
+          maybe_config_specifier: None,
+          ts_config,
+        },
+      )?;
+      emit_result.diagnostics
+    } else {
+      Diagnostics::default()
+    };
+    let (ts_config, maybe_ignored_options) = emit::get_ts_config(
+      emit::ConfigType::Bundle,
+      &None,
+      &args.compiler_options,
+    )?;
+    let (emit, maybe_map) = emit::bundle(
+      graph.as_ref(),
+      emit::BundleOptions {
+        bundle_type: bundle.into(),
+        ts_config,
+      },
+    )?;
+    let mut files = HashMap::new();
+    files.insert(format!("{}.js", root_specifier), emit);
+    if let Some(map) = maybe_map {
+      files.insert(format!("{}.js.map", root_specifier), map);
+    }
+    (
+      files,
+      diagnostics,
+      Default::default(),
+      maybe_ignored_options,
+    )
+  } else {
+    let (ts_config, maybe_ignored_options) = emit::get_ts_config(
+      emit::ConfigType::Emit,
+      &None,
+      &args.compiler_options,
+    )?;
+    if ts_config.get_declaration() {
+      return Err(anyhow!("The option of `check` is false, but the compiler option of `declaration` is true which is not currently supported."));
+    }
+    let emit_result = emit::emit(
+      graph.clone(),
+      cache.as_mut_cacher(),
+      emit::EmitOptions {
+        reload: ps.flags.reload,
+        ts_config,
+        reload_exclusions: HashSet::default(),
+      },
+    )?;
+    let files = emit::to_file_map(graph.clone(), cache.as_mut_cacher());
+    (
+      files,
+      emit_result.diagnostics,
+      emit_result.stats,
+      maybe_ignored_options,
+    )
+  };
 
+  diagnostics.extend_graph_errors(graph.errors());
   Ok(json!({
-    "diagnostics": result_info.diagnostics,
+    "diagnostics": diagnostics,
     "files": files,
-    "ignoredOptions": result_info.maybe_ignored_options,
-    "stats": result_info.stats,
+    "ignoredOptions": maybe_ignored_options,
+    "stats": stats,
   }))
 }

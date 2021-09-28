@@ -20,6 +20,7 @@ use deno_core::error::Context;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
@@ -93,6 +94,7 @@ pub(crate) enum ConfigType {
 pub(crate) fn get_ts_config(
   config_type: ConfigType,
   maybe_config_file: &Option<ConfigFile>,
+  maybe_user_config: &Option<HashMap<String, Value>>,
 ) -> Result<(TsConfig, Option<IgnoredCompilerOptions>), AnyError> {
   let mut ts_config = match config_type {
     ConfigType::Bundle => TsConfig::new(json!({
@@ -151,8 +153,11 @@ pub(crate) fn get_ts_config(
       "jsxFragmentFactory": "React.Fragment",
     })),
   };
-  let maybe_ignored_options =
-    ts_config.merge_tsconfig_from_config_file(maybe_config_file)?;
+  let maybe_ignored_options = if let Some(user_options) = maybe_user_config {
+    ts_config.merge_user_config(user_options)?
+  } else {
+    ts_config.merge_tsconfig_from_config_file(maybe_config_file)?
+  };
   Ok((ts_config, maybe_ignored_options))
 }
 
@@ -216,7 +221,7 @@ pub(crate) fn check_and_maybe_emit(
   let response = tsc::exec(tsc::Request {
     config: options.ts_config,
     debug: options.debug,
-    graph: tsc::GraphOrModuleGraph::ModuleGraph(graph.clone()),
+    graph: graph.clone(),
     hash_data,
     maybe_config_specifier: options.maybe_config_specifier,
     maybe_tsbuildinfo,
@@ -279,9 +284,6 @@ pub(crate) enum BundleType {
   /// executes the program using an immediately invoked function execution
   /// (IIFE).
   Classic,
-  /// Do not bundle the emit, instead returning each of the modules that are
-  /// part of the program as individual files.
-  None,
 }
 
 impl From<BundleType> for swc::bundler::ModuleType {
@@ -289,7 +291,6 @@ impl From<BundleType> for swc::bundler::ModuleType {
     match bundle_type {
       BundleType::Classic => Self::Iife,
       BundleType::Module => Self::Es,
-      _ => unreachable!("invalid bundle type"),
     }
   }
 }
@@ -581,6 +582,35 @@ pub(crate) fn valid_emit(
         true
       }
     })
+}
+
+/// Convert a module graph to a map of "files", which are used by the runtime
+/// emit to be passed back to the caller.
+pub(crate) fn to_file_map(
+  graph: Arc<ModuleGraph>,
+  cache: &dyn Cacher,
+) -> HashMap<String, String> {
+  let mut files = HashMap::new();
+  for (_, result) in graph.specifiers().into_iter() {
+    if let Ok((fs, mt)) = result {
+      if let Some(emit) = cache.get_emit(&fs) {
+        files.insert(format!("{}.js", fs), emit);
+        if let Some(map) = cache.get_map(&fs) {
+          files.insert(format!("{}.js.map", fs), map);
+        }
+      } else {
+        if mt == MediaType::JavaScript || mt == MediaType::Unknown {
+          if let Some(module) = graph.get(&fs) {
+            files.insert(fs.to_string(), module.source.to_string());
+          }
+        }
+      }
+      if let Some(declaration) = cache.get_declaration(&fs) {
+        files.insert(format!("{}.d.ts", fs), declaration);
+      }
+    }
+  }
+  files
 }
 
 /// Convert a module graph to a map of module sources, which are used by
