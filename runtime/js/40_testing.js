@@ -115,33 +115,28 @@ finishing test case.`;
     return async function testStepSanitizer(step) {
       await fn(createTester(step));
 
-      const errorMessage = checkStepScopeError();
-      if (errorMessage) {
-        throw new Error(errorMessage);
+      // check for any running steps
+      const hasRunningSteps = ArrayPrototypeSome(
+        step.children,
+        (r) => r.status === "pending",
+      );
+      if (hasRunningSteps) {
+        throw new Error(
+          "There were still test steps running after the current scope finished execution. " +
+            "Ensure all steps are awaited (ex. `await t.step(...)`).",
+        );
       }
 
-      function checkStepScopeError() {
-        // check for any running steps
-        const hasRunningSteps = ArrayPrototypeSome(
-          step.children,
-          (r) => r.status === "pending",
-        );
-        if (hasRunningSteps) {
-          return "There were still test steps running after the current scope finished execution. " +
-            "Ensure all steps are awaited (ex. `await t.step(...)`).";
+      // check if a parent already completed
+      let parent = step.parent;
+      while (parent) {
+        if (parent.finalized) {
+          throw new Error(
+            "Parent scope completed before test step finished execution. " +
+              "Ensure all steps are awaited (ex. `await t.step(...)`).",
+          );
         }
-
-        // check if a parent already completed
-        let parent = step.parent;
-        while (parent) {
-          if (parent.finalized) {
-            return "Parent scope completed before test step finished execution. " +
-              "Ensure all steps are awaited (ex. `await t.step(...)`).";
-          }
-          parent = parent.parent;
-        }
-
-        return undefined;
+        parent = parent.parent;
       }
     };
   }
