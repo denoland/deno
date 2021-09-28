@@ -11,7 +11,8 @@ https://github.com/denoland/deno_install
 - ci: enable cache for fastci (#12186)
 - ci: experiment mac & windows debug builds (#11884)
 - feat(cli/fmt): support more markdown extensions (#12195)
-- fix(cli/permissions): ensure revoked permissions are no longer granted (#12159)
+- fix(cli/permissions): ensure revoked permissions are no longer granted
+  (#12159)
 - fix(ext/http): fortify "is websocket?" check (#12179)
 - fix(ext/http): include port number in h2 urls (#12181)
 - fix(ext/web): FileReader error messages (#12218)
@@ -19,7 +20,8 @@ https://github.com/denoland/deno_install
 - fix(http): panic when responding to a closed conn (#12216)
 - fix(workers): Don't panic when a worker's parent thread stops running (#12156)
 - fix: subprocess kill support on windows (#12134)
-- perf(ext/fetch): Use the WebIDL conversion to DOMString rather than USVString for Response constructor (#12201)
+- perf(ext/fetch): Use the WebIDL conversion to DOMString rather than USVString
+  for Response constructor (#12201)
 - perf(ext/fetch): skip USVString webidl conv on string constructor (#12168)
 - perf(fetch): optimize InnerBody constructor (#12232)
 - perf(fetch): optimize newInnerRequest blob url check (#12245)
