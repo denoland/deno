@@ -535,11 +535,11 @@ async fn cache_command(
   for file in cache_flags.files {
     let specifier = resolve_url_or_path(&file)?;
     ps.prepare_module_load(
-      specifier,
+      vec![specifier],
+      false,
       lib.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
-      false,
       ps.maybe_import_map.clone(),
     )
     .await?;
@@ -611,10 +611,7 @@ async fn create_graph_and_maybe_check(
     Permissions::allow_all(),
     Permissions::allow_all(),
   );
-  let maybe_locker = ps.lockfile.as_ref().map(|lf| {
-    Rc::new(RefCell::new(Box::new(lockfile::Locker(Some(lf.clone())))
-      as Box<dyn deno_graph::source::Locker>))
-  });
+  let maybe_locker = lockfile::as_maybe_locker(&ps.lockfile);
   let graph = Arc::new(
     deno_graph::create_graph(
       vec![root],
@@ -918,10 +915,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         Permissions::allow_all(),
         Permissions::allow_all(),
       );
-      let maybe_locker = ps.lockfile.as_ref().map(|lf| {
-        Rc::new(RefCell::new(Box::new(lockfile::Locker(Some(lf.clone())))
-          as Box<dyn deno_graph::source::Locker>))
-      });
+      let maybe_locker = lockfile::as_maybe_locker(&ps.lockfile);
       let graph = deno_graph::create_graph(
         vec![main_module.clone()],
         false,

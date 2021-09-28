@@ -688,11 +688,11 @@ pub async fn cover_files(
     let module_specifier =
       deno_core::resolve_url_or_path(&script_coverage.url)?;
     ps.prepare_module_load(
-      module_specifier.clone(),
+      vec![module_specifier.clone()],
+      false,
       emit::TypeLib::UnstableDenoWindow,
       Permissions::allow_all(),
       Permissions::allow_all(),
-      false,
       ps.maybe_import_map.clone(),
     )
     .await?;

@@ -135,11 +135,11 @@ impl ModuleLoader for CliModuleLoader {
     // TODO(bartlomieju): `prepare_module_load` should take `load_id` param
     async move {
       ps.prepare_module_load(
-        specifier,
+        vec![specifier],
+        is_dynamic,
         lib,
         root_permissions,
         dynamic_permissions,
-        is_dynamic,
         maybe_import_map,
       )
       .await

@@ -9,7 +9,7 @@ use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
 use crate::http_cache;
-use crate::lockfile::Locker;
+use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::source_maps::SourceMapGetter;
 use crate::version;
@@ -36,14 +36,12 @@ use import_map::ImportMap;
 use log::debug;
 use log::info;
 use log::warn;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
 use std::ops::Deref;
-use std::rc::Rc;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
@@ -259,10 +257,14 @@ impl ProcState {
     })))
   }
 
-  /// A method the builds a module graph, optionally types check it, check the
-  /// integrity of the modules, and loads all modules into the proc state to be
-  /// available for loading.
-  pub(crate) async fn build_and_emit_graph(
+  /// This method is called when a module requested by the `JsRuntime` is not
+  /// available, or in other sub-commands that need to "load" a module graph.
+  /// The method will collect all the dependencies of the provided specifier,
+  /// optionally checks their integrity, optionally type checks them, and
+  /// ensures that any modules that needs to be transpiled is transpiled.
+  ///
+  /// It then populates the `loadable_modules` with what can be loaded into v8.
+  pub(crate) async fn prepare_module_load(
     &self,
     roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
@@ -277,10 +279,7 @@ impl ProcState {
       root_permissions,
       dynamic_permissions,
     );
-    let maybe_locker = self.lockfile.as_ref().map(|lf| {
-      Rc::new(RefCell::new(Box::new(Locker(Some(lf.clone())))
-        as Box<dyn deno_graph::source::Locker>))
-    });
+    let maybe_locker = as_maybe_locker(&self.lockfile);
     let graph = deno_graph::create_graph(
       roots,
       is_dynamic,
@@ -297,6 +296,8 @@ impl ProcState {
     // locker.
     graph.lock()?;
 
+    // Determine any modules that have already been emitted this session and
+    // should be skipped.
     let reload_exclusions: HashSet<ModuleSpecifier> = {
       let modules = self.modules.lock();
       modules.keys().cloned().collect()
@@ -359,33 +360,6 @@ impl ProcState {
     }
 
     Ok(())
-  }
-
-  /// This method is called when a module requested by the `JsRuntime` is not
-  /// available. The method will collect all the dependencies of the provided
-  /// specifier, optionally checks their integrity, optionally type checks them,
-  /// and ensures that any modules that needs to be transpiled is transpiled.
-  ///
-  /// It then populates the `loadable_modules` with what can be loaded into v8.
-  pub(crate) async fn prepare_module_load(
-    &self,
-    root_specifier: ModuleSpecifier,
-    lib: emit::TypeLib,
-    root_permissions: Permissions,
-    dynamic_permissions: Permissions,
-    is_dynamic: bool,
-    maybe_import_map: Option<ImportMap>,
-  ) -> Result<(), AnyError> {
-    self
-      .build_and_emit_graph(
-        vec![root_specifier],
-        is_dynamic,
-        lib,
-        root_permissions,
-        dynamic_permissions,
-        maybe_import_map,
-      )
-      .await
   }
 
   pub fn load(

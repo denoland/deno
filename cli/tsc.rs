@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::config_file::TsConfig;
-use crate::emit;
 use crate::diagnostics::Diagnostics;
+use crate::emit;
 
 use deno_ast::MediaType;
 use deno_core::error::anyhow;

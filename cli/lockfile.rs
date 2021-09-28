@@ -6,9 +6,11 @@ use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_graph;
 use log::debug;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::Result;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -86,7 +88,7 @@ impl Lockfile {
 }
 
 #[derive(Debug)]
-pub struct Locker(pub Option<Arc<Mutex<Lockfile>>>);
+pub(crate) struct Locker(pub Option<Arc<Mutex<Lockfile>>>);
 
 impl deno_graph::source::Locker for Locker {
   fn check_or_insert(
@@ -105,6 +107,16 @@ impl deno_graph::source::Locker for Locker {
   fn get_checksum(&self, content: &str) -> String {
     crate::checksum::gen(&[content.as_bytes()])
   }
+}
+
+pub(crate) fn as_maybe_locker(
+  lockfile: &Option<Arc<Mutex<Lockfile>>>,
+) -> Option<Rc<RefCell<Box<dyn deno_graph::source::Locker>>>> {
+  lockfile.as_ref().map(|lf| {
+    Rc::new(RefCell::new(
+      Box::new(Locker(Some(lf.clone()))) as Box<dyn deno_graph::source::Locker>
+    ))
+  })
 }
 
 #[cfg(test)]

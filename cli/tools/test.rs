@@ -38,11 +38,9 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
@@ -528,7 +526,7 @@ async fn check_specifiers(
       ps.file_fetcher.insert_cached(file);
     }
 
-    ps.build_and_emit_graph(
+    ps.prepare_module_load(
       specifiers,
       false,
       lib.clone(),
@@ -550,7 +548,7 @@ async fn check_specifiers(
     })
     .collect();
 
-  ps.build_and_emit_graph(
+  ps.prepare_module_load(
     module_specifiers,
     false,
     lib,
@@ -868,7 +866,7 @@ pub async fn run_tests_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let maybe_resolver = ps.maybe_import_map.as_ref().map(|r| r.as_resolver());
-    let maybe_locker = ps.lockfile.as_ref().map(|lf| Rc::new(RefCell::new(Box::new(lockfile::Locker(Some(lf.clone()))) as Box<dyn deno_graph::source::Locker>)));
+    let maybe_locker = lockfile::as_maybe_locker(&ps.lockfile);
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
@@ -890,7 +888,15 @@ pub async fn run_tests_with_watch(
           .collect()
       };
 
-      let graph = deno_graph::create_graph(test_modules.clone(), false, cache.as_mut_loader(), maybe_resolver, maybe_locker, None).await;
+      let graph = deno_graph::create_graph(
+        test_modules.clone(),
+        false,
+        cache.as_mut_loader(),
+        maybe_resolver,
+        maybe_locker,
+        None,
+      )
+      .await;
 
       for specifier in test_modules {
         fn get_dependencies<'a>(
@@ -906,22 +912,14 @@ pub async fn run_tests_with_watch(
                 if !output.contains(specifier) {
                   output.insert(specifier);
 
-                  get_dependencies(
-                    graph,
-                    graph.get(specifier),
-                    output,
-                  );
+                  get_dependencies(graph, graph.get(specifier), output);
                 }
               }
               if let Some(specifier) = &dep.get_type() {
                 if !output.contains(specifier) {
                   output.insert(specifier);
 
-                  get_dependencies(
-                    graph,
-                    graph.get(specifier),
-                    output,
-                  );
+                  get_dependencies(graph, graph.get(specifier), output);
                 }
               }
             }
@@ -931,11 +929,7 @@ pub async fn run_tests_with_watch(
         // This test module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
-        get_dependencies(
-          &graph,
-          graph.get(&specifier),
-          &mut modules,
-        );
+        get_dependencies(&graph, graph.get(&specifier), &mut modules);
 
         paths_to_watch.extend(
           modules

@@ -73,6 +73,7 @@ impl Serialize for TypeLib {
 
 type Modules = HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>;
 
+/// A structure representing stats from an emit operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct Stats(pub Vec<(String, u32)>);
 
@@ -104,19 +105,6 @@ impl fmt::Display for Stats {
 
     Ok(())
   }
-}
-
-pub(crate) struct CheckOptions {
-  /// Set the debug flag on the TypeScript type checker.
-  pub debug: bool,
-  pub maybe_config_specifier: Option<ModuleSpecifier>,
-  pub ts_config: TsConfig,
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct CheckEmitResult {
-  pub diagnostics: Diagnostics,
-  pub stats: Stats,
 }
 
 pub(crate) enum ConfigType {
@@ -235,9 +223,50 @@ fn get_root_names(
   }
 }
 
+/// A hashing function that takes the source code, version and optionally a
+/// user provided config and generates a string hash which can be stored to
+/// determine if the cached emit is valid or not.
+fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
+  crate::checksum::gen(&[
+    source_bytes,
+    version::deno().as_bytes(),
+    config_bytes,
+  ])
+}
+
+/// Determine if a given media type is emittable or not.
+fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
+  match &media_type {
+    MediaType::TypeScript | MediaType::Tsx | MediaType::Jsx => true,
+    MediaType::JavaScript => include_js,
+    _ => false,
+  }
+}
+
+/// Options for performing a check of a module graph. Note that the decision to
+/// emit or not is determined by the `ts_config` settings.
+pub(crate) struct CheckOptions {
+  /// Set the debug flag on the TypeScript type checker.
+  pub debug: bool,
+  pub maybe_config_specifier: Option<ModuleSpecifier>,
+  pub ts_config: TsConfig,
+}
+
+/// The result of a check or emit of a module graph. Note that the actual
+/// emitted sources are stored in the cache and are not returned in the result.
+#[derive(Debug, Default)]
+pub(crate) struct CheckEmitResult {
+  pub diagnostics: Diagnostics,
+  pub stats: Stats,
+}
+
 /// Given a module graph, type check the module graph and optionally emit
 /// modules, updating the cache as appropriate. Emitting is determined by the
-/// tsconfig supplied in the options.
+/// `ts_config` supplied in the options, and if emitting, the files are stored
+/// in the cache.
+///
+/// It is expected that it is determined if a check and/or emit is validated
+/// before the function is called.
 pub(crate) fn check_and_maybe_emit(
   graph: Arc<ModuleGraph>,
   cache: &mut dyn Cacher,
@@ -299,7 +328,10 @@ pub(crate) fn check_and_maybe_emit(
             cache.set_emit(&specifier, emit.data.clone())?;
           }
           MediaType::SourceMap => {
-            cache.set_map(&specifier, emit.data.clone())?
+            cache.set_map(&specifier, emit.data.clone())?;
+          }
+          MediaType::Dts => {
+            cache.set_declaration(&specifier, emit.data.clone())?;
           }
           _ => unreachable!(),
         }
@@ -410,7 +442,8 @@ impl swc::bundler::Resolve for BundleResolver<'_> {
   }
 }
 
-/// Given a module graph, generate and return a bundle of the graph.
+/// Given a module graph, generate and return a bundle of the graph and
+/// optionally its source map.
 pub(crate) fn bundle(
   graph: &ModuleGraph,
   options: BundleOptions,
@@ -490,21 +523,10 @@ pub(crate) fn bundle(
   Ok((code, maybe_map))
 }
 
-// pub(crate) fn deno_emit(graph: &ModuleGraph, cache: &mut dyn Cacher, options: DenoEmitOptions) -> Result<DenoEmitResult, AnyError> {}
-
 pub(crate) struct EmitOptions {
   pub ts_config: TsConfig,
   pub reload_exclusions: HashSet<ModuleSpecifier>,
   pub reload: bool,
-}
-
-/// Determine if a given media type is emittable or not.
-fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
-  match &media_type {
-    MediaType::TypeScript | MediaType::Tsx | MediaType::Jsx => true,
-    MediaType::JavaScript => include_js,
-    _ => false,
-  }
 }
 
 /// Given a module graph, emit any appropriate modules and cache them.
@@ -516,7 +538,8 @@ pub(crate) fn emit(
   let start = Instant::now();
   let config_bytes = options.ts_config.as_bytes();
   let include_js = options.ts_config.get_check_js();
-  let emit_options: ast::EmitOptions = options.ts_config.into();
+  let emit_options = options.ts_config.into();
+
   let mut emit_count = 0_u32;
   let mut file_count = 0_u32;
   for module in graph.modules() {
@@ -555,17 +578,6 @@ pub(crate) fn emit(
     diagnostics: Diagnostics::default(),
     stats,
   })
-}
-
-/// A hashing function that takes the source code, version and optionally a
-/// user provided config and generates a string hash which can be stored to
-/// determine if the cached emit is valid or not.
-fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
-  crate::checksum::gen(&[
-    source_bytes,
-    version::deno().as_bytes(),
-    config_bytes,
-  ])
 }
 
 /// Check a module graph to determine if the graph contains anything that
