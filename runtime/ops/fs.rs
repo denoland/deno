@@ -2,7 +2,6 @@
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::StdFileResource;
 use super::utils::into_string;
-use crate::fs_error::{Error, SourceDestError};
 use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
@@ -24,7 +23,7 @@ use std::cell::RefCell;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io;
-use std::io::{Seek, SeekFrom};
+use std::io::{Error, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
@@ -164,9 +163,10 @@ fn op_open_sync(
   _: (),
 ) -> Result<ResourceId, AnyError> {
   let (path, open_options) = open_helper(state, args)?;
-  let std_file = open_options
-    .open(&path)
-    .map_err(|err| Error::new(err, "open", path))?;
+  let err_mapper = |err: Error| {
+    Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
+  };
+  let std_file = open_options.open(&path).map_err(err_mapper)?;
   let tokio_file = tokio::fs::File::from_std(std_file);
   let resource = StdFileResource::fs_file(tokio_file);
   let rid = state.resource_table.add(resource);
@@ -581,6 +581,9 @@ fn op_chmod_sync(
 ) -> Result<(), AnyError> {
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
+  let err_mapper = |err: Error| {
+    Error::new(err.kind(), format!("{}, chmod '{}'", err, path.display()))
+  };
 
   state.borrow_mut::<Permissions>().write.check(&path)?;
   debug!("op_chmod_sync {} {:o}", path.display(), mode);
@@ -588,16 +591,14 @@ fn op_chmod_sync(
   {
     use std::os::unix::fs::PermissionsExt;
     let permissions = PermissionsExt::from_mode(mode);
-    std::fs::set_permissions(&path, permissions)
-      .map_err(|err| Error::new(err, "chmod", path))?;
+    std::fs::set_permissions(&path, permissions).map_err(err_mapper)?;
     Ok(())
   }
   // TODO Implement chmod for Windows (#4357)
   #[cfg(not(unix))]
   {
     // Still check file/dir exists on Windows
-    let _metadata =
-      std::fs::metadata(&path).map_err(|err| Error::new(err, "chmod", path))?;
+    let _metadata = std::fs::metadata(&path).map_err(err_mapper)?;
     Err(generic_error("Not implemented"))
   }
 }
@@ -617,20 +618,21 @@ async fn op_chmod_async(
 
   tokio::task::spawn_blocking(move || {
     debug!("op_chmod_async {} {:o}", path.display(), mode);
+    let err_mapper = |err: Error| {
+      Error::new(err.kind(), format!("{}, chmod '{}'", err, path.display()))
+    };
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
       let permissions = PermissionsExt::from_mode(mode);
-      std::fs::set_permissions(&path, permissions)
-        .map_err(|err| Error::new(err, "chmod", path))?;
+      std::fs::set_permissions(&path, permissions).map_err(err_mapper)?;
       Ok(())
     }
     // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
     {
       // Still check file/dir exists on Windows
-      let _metadata = std::fs::metadata(&path)
-        .map_err(|err| Error::new(err, "chmod", path))?;
+      let _metadata = std::fs::metadata(&path).map_err(err_mapper)?;
       Err(not_supported())
     }
   })
@@ -729,39 +731,34 @@ fn op_remove_sync(
   #[cfg(not(unix))]
   use std::os::windows::prelude::MetadataExt;
 
-  let metadata = std::fs::symlink_metadata(&path)
-    .map_err(|err| Error::new(err, "remove", &path))?;
+  let err_mapper = |err: Error| {
+    Error::new(err.kind(), format!("{}, remove '{}'", err, path.display()))
+  };
+  let metadata = std::fs::symlink_metadata(&path).map_err(err_mapper)?;
 
   debug!("op_remove_sync {} {}", path.display(), recursive);
   let file_type = metadata.file_type();
   if file_type.is_file() {
-    std::fs::remove_file(&path)
-      .map_err(|err| Error::new(err, "remove", &path))?;
+    std::fs::remove_file(&path).map_err(err_mapper)?;
   } else if recursive {
-    std::fs::remove_dir_all(&path)
-      .map_err(|err| Error::new(err, "remove", &path))?;
+    std::fs::remove_dir_all(&path).map_err(err_mapper)?;
   } else if file_type.is_symlink() {
     #[cfg(unix)]
-    std::fs::remove_file(&path)
-      .map_err(|err| Error::new(err, "remove", &path))?;
+    std::fs::remove_file(&path).map_err(err_mapper)?;
     #[cfg(not(unix))]
     {
       use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
       if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
-        std::fs::remove_dir(&path)
-          .map_err(|err| Error::new(err, "remove", &path))?;
+        std::fs::remove_dir(&path).map_err(err_mapper)?;
       } else {
-        std::fs::remove_file(&path)
-          .map_err(|err| Error::new(err, "remove", &path))?;
+        std::fs::remove_file(&path).map_err(err_mapper)?;
       }
     }
   } else if file_type.is_dir() {
-    std::fs::remove_dir(&path)
-      .map_err(|err| Error::new(err, "remove", &path))?;
+    std::fs::remove_dir(&path).map_err(err_mapper)?;
   } else {
     // pipes, sockets, etc...
-    std::fs::remove_file(&path)
-      .map_err(|err| Error::new(err, "remove", &path))?;
+    std::fs::remove_file(&path).map_err(err_mapper)?;
   }
   Ok(())
 }
@@ -782,40 +779,34 @@ async fn op_remove_async(
   tokio::task::spawn_blocking(move || {
     #[cfg(not(unix))]
     use std::os::windows::prelude::MetadataExt;
-
-    let metadata = std::fs::symlink_metadata(&path)
-      .map_err(|err| Error::new(err, "remove", &path))?;
+    let err_mapper = |err: Error| {
+      Error::new(err.kind(), format!("{}, remove '{}'", err, path.display()))
+    };
+    let metadata = std::fs::symlink_metadata(&path).map_err(err_mapper)?;
 
     debug!("op_remove_async {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() {
-      std::fs::remove_file(&path)
-        .map_err(|err| Error::new(err, "remove", &path))?;
+      std::fs::remove_file(&path).map_err(err_mapper)?;
     } else if recursive {
-      std::fs::remove_dir_all(&path)
-        .map_err(|err| Error::new(err, "remove", &path))?;
+      std::fs::remove_dir_all(&path).map_err(err_mapper)?;
     } else if file_type.is_symlink() {
       #[cfg(unix)]
-      std::fs::remove_file(&path)
-        .map_err(|err| Error::new(err, "remove", &path))?;
+      std::fs::remove_file(&path).map_err(err_mapper)?;
       #[cfg(not(unix))]
       {
         use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
         if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
-          std::fs::remove_dir(&path)
-            .map_err(|err| Error::new(err, "remove", &path))?;
+          std::fs::remove_dir(&path).map_err(err_mapper)?;
         } else {
-          std::fs::remove_file(&path)
-            .map_err(|err| Error::new(err, "remove", &path))?;
+          std::fs::remove_file(&path).map_err(err_mapper)?;
         }
       }
     } else if file_type.is_dir() {
-      std::fs::remove_dir(&path)
-        .map_err(|err| Error::new(err, "remove", &path))?;
+      std::fs::remove_dir(&path).map_err(err_mapper)?;
     } else {
       // pipes, sockets, etc...
-      std::fs::remove_file(&path)
-        .map_err(|err| Error::new(err, "remove", &path))?;
+      std::fs::remove_file(&path).map_err(err_mapper)?;
     }
     Ok(())
   })
@@ -850,9 +841,14 @@ fn op_copy_file_sync(
     return Err(custom_error("NotFound", "File not found"));
   }
 
+  let err_mapper = |err: Error| {
+    Error::new(
+      err.kind(),
+      format!("{}, copy '{}' -> '{}'", err, from.display(), to.display()),
+    )
+  };
   // returns size of from as u64 (we ignore)
-  std::fs::copy(&from, &to)
-    .map_err(|err| SourceDestError::new(err, "copy", &from, &to))?;
+  std::fs::copy(&from, &to).map_err(err_mapper)?;
   Ok(())
 }
 
@@ -880,9 +876,14 @@ async fn op_copy_file_async(
       return Err(custom_error("NotFound", "File not found"));
     }
 
+    let err_mapper = |err: Error| {
+      Error::new(
+        err.kind(),
+        format!("{}, copy '{}' -> '{}'", err, from.display(), to.display()),
+      )
+    };
     // returns size of from as u64 (we ignore)
-    std::fs::copy(&from, &to)
-      .map_err(|err| SourceDestError::new(err, "copy", &from, &to))?;
+    std::fs::copy(&from, &to).map_err(err_mapper)?;
     Ok(())
   })
   .await
@@ -981,11 +982,13 @@ fn op_stat_sync(
   let lstat = args.lstat;
   state.borrow_mut::<Permissions>().read.check(&path)?;
   debug!("op_stat_sync {} {}", path.display(), lstat);
+  let err_mapper = |err: Error| {
+    Error::new(err.kind(), format!("{}, stat '{}'", err, path.display()))
+  };
   let metadata = if lstat {
-    std::fs::symlink_metadata(&path)
-      .map_err(|err| Error::new(err, "stat", &path))?
+    std::fs::symlink_metadata(&path).map_err(err_mapper)?
   } else {
-    std::fs::metadata(&path).map_err(|err| Error::new(err, "stat", &path))?
+    std::fs::metadata(&path).map_err(err_mapper)?
   };
   Ok(get_stat(metadata))
 }
@@ -1005,11 +1008,13 @@ async fn op_stat_async(
 
   tokio::task::spawn_blocking(move || {
     debug!("op_stat_async {} {}", path.display(), lstat);
+    let err_mapper = |err: Error| {
+      Error::new(err.kind(), format!("{}, stat '{}'", err, path.display()))
+    };
     let metadata = if lstat {
-      std::fs::symlink_metadata(&path)
-        .map_err(|err| Error::new(err, "stat", &path))?
+      std::fs::symlink_metadata(&path).map_err(err_mapper)?
     } else {
-      std::fs::metadata(&path).map_err(|err| Error::new(err, "stat", &path))?
+      std::fs::metadata(&path).map_err(err_mapper)?
     };
     Ok(get_stat(metadata))
   })
@@ -1085,8 +1090,11 @@ fn op_read_dir_sync(
   state.borrow_mut::<Permissions>().read.check(&path)?;
 
   debug!("op_read_dir_sync {}", path.display());
+  let err_mapper = |err: Error| {
+    Error::new(err.kind(), format!("{}, readdir '{}'", err, path.display()))
+  };
   let entries: Vec<_> = std::fs::read_dir(&path)
-    .map_err(|err| Error::new(err, "read_dir", &path))?
+    .map_err(err_mapper)?
     .filter_map(|entry| {
       let entry = entry.unwrap();
       // Not all filenames can be encoded as UTF-8. Skip those for now.
@@ -1124,8 +1132,11 @@ async fn op_read_dir_async(
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_read_dir_async {}", path.display());
+    let err_mapper = |err: Error| {
+      Error::new(err.kind(), format!("{}, readdir '{}'", err, path.display()))
+    };
     let entries: Vec<_> = std::fs::read_dir(&path)
-      .map_err(|err| Error::new(err, "read_dir", &path))?
+      .map_err(err_mapper)?
       .filter_map(|entry| {
         let entry = entry.unwrap();
         // Not all filenames can be encoded as UTF-8. Skip those for now.
@@ -1174,8 +1185,18 @@ fn op_rename_sync(
   permissions.write.check(&oldpath)?;
   permissions.write.check(&newpath)?;
   debug!("op_rename_sync {} {}", oldpath.display(), newpath.display());
-  std::fs::rename(&oldpath, &newpath)
-    .map_err(|err| SourceDestError::new(err, "rename", &oldpath, &newpath))?;
+  let err_mapper = |err: Error| {
+    Error::new(
+      err.kind(),
+      format!(
+        "{}, rename '{}' -> '{}'",
+        err,
+        oldpath.display(),
+        newpath.display()
+      ),
+    )
+  };
+  std::fs::rename(&oldpath, &newpath).map_err(err_mapper)?;
   Ok(())
 }
 
@@ -1199,8 +1220,18 @@ async fn op_rename_async(
       oldpath.display(),
       newpath.display()
     );
-    std::fs::rename(&oldpath, &newpath)
-      .map_err(|err| SourceDestError::new(err, "rename", &oldpath, &newpath))?;
+    let err_mapper = |err: Error| {
+      Error::new(
+        err.kind(),
+        format!(
+          "{}, rename '{}' -> '{}'",
+          err,
+          oldpath.display(),
+          newpath.display()
+        ),
+      )
+    };
+    std::fs::rename(&oldpath, &newpath).map_err(err_mapper)?;
     Ok(())
   })
   .await
@@ -1229,8 +1260,18 @@ fn op_link_sync(
   permissions.write.check(&newpath)?;
 
   debug!("op_link_sync {} {}", oldpath.display(), newpath.display());
-  std::fs::hard_link(&oldpath, &newpath)
-    .map_err(|err| SourceDestError::new(err, "link", &oldpath, &newpath))?;
+  let err_mapper = |err: Error| {
+    Error::new(
+      err.kind(),
+      format!(
+        "{}, link '{}' -> '{}'",
+        err,
+        oldpath.display(),
+        newpath.display()
+      ),
+    )
+  };
+  std::fs::hard_link(&oldpath, &newpath).map_err(err_mapper)?;
   Ok(())
 }
 
@@ -1253,8 +1294,18 @@ async fn op_link_async(
 
   tokio::task::spawn_blocking(move || {
     debug!("op_link_async {} {}", oldpath.display(), newpath.display());
-    std::fs::hard_link(&oldpath, &newpath)
-      .map_err(|err| SourceDestError::new(err, "link", &oldpath, &newpath))?;
+    let err_mapper = |err: Error| {
+      Error::new(
+        err.kind(),
+        format!(
+          "{}, link '{}' -> '{}'",
+          err,
+          oldpath.display(),
+          newpath.display()
+        ),
+      )
+    };
+    std::fs::hard_link(&oldpath, &newpath).map_err(err_mapper)?;
     Ok(())
   })
   .await
@@ -1292,10 +1343,21 @@ fn op_symlink_sync(
     oldpath.display(),
     newpath.display()
   );
+  let err_mapper = |err: Error| {
+    Error::new(
+      err.kind(),
+      format!(
+        "{}, symlink '{}' -> '{}'",
+        err,
+        oldpath.display(),
+        newpath.display()
+      ),
+    )
+  };
   #[cfg(unix)]
   {
     use std::os::unix::fs::symlink;
-    symlink(&oldpath, &newpath)?;
+    symlink(&oldpath, &newpath).map_err(err_mapper)?;
     Ok(())
   }
   #[cfg(not(unix))]
@@ -1304,14 +1366,12 @@ fn op_symlink_sync(
 
     match args.options {
       Some(options) => match options._type.as_ref() {
-        "file" => symlink_file(&oldpath, &newpath)?,
-        "dir" => symlink_dir(&oldpath, &newpath)?,
+        "file" => symlink_file(&oldpath, &newpath).map_err(err_mapper)?,
+        "dir" => symlink_dir(&oldpath, &newpath).map_err(err_mapper)?,
         _ => return Err(type_error("unsupported type")),
       },
       None => {
-        let old_meta = std::fs::metadata(&oldpath).map_err(|err| {
-          SourceDestError::new(err, "symlink", &oldpath, &newpath)
-        });
+        let old_meta = std::fs::metadata(&oldpath);
         match old_meta {
           Ok(metadata) => {
             if metadata.is_file() {
@@ -1343,10 +1403,21 @@ async fn op_symlink_async(
 
   tokio::task::spawn_blocking(move || {
     debug!("op_symlink_async {} {}", oldpath.display(), newpath.display());
+    let err_mapper = |err: Error| {
+      Error::new(
+        err.kind(),
+        format!(
+          "{}, symlink '{}' -> '{}'",
+          err,
+          oldpath.display(),
+          newpath.display()
+        ),
+      )
+    };
     #[cfg(unix)]
     {
       use std::os::unix::fs::symlink;
-      symlink(&oldpath, &newpath)?;
+      symlink(&oldpath, &newpath).map_err(err_mapper)?;
       Ok(())
     }
     #[cfg(not(unix))]
@@ -1355,12 +1426,12 @@ async fn op_symlink_async(
 
       match args.options {
         Some(options) => match options._type.as_ref() {
-          "file" => symlink_file(&oldpath, &newpath)?,
-          "dir" => symlink_dir(&oldpath, &newpath)?,
+          "file" => symlink_file(&oldpath, &newpath).map_err(err_mapper)?,
+          "dir" => symlink_dir(&oldpath, &newpath).map_err(err_mapper)?,
           _ => return Err(type_error("unsupported type")),
         },
         None => {
-          let old_meta = std::fs::metadata(&oldpath).map_err(|err| SourceDestError::new(err, "symlink", &oldpath, &newpath));
+          let old_meta = std::fs::metadata(&oldpath);
           match old_meta {
             Ok(metadata) => {
               if metadata.is_file() {
@@ -1390,8 +1461,14 @@ fn op_read_link_sync(
   state.borrow_mut::<Permissions>().read.check(&path)?;
 
   debug!("op_read_link_value {}", path.display());
+  let err_mapper = |err: Error| {
+    Error::new(
+      err.kind(),
+      format!("{}, readlink '{}'", err, path.display()),
+    )
+  };
   let target = std::fs::read_link(&path)
-    .map_err(|err| Error::new(err, "read_link", &path))?
+    .map_err(err_mapper)?
     .into_os_string();
   let targetstr = into_string(target)?;
   Ok(targetstr)
@@ -1409,8 +1486,14 @@ async fn op_read_link_async(
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_read_link_async {}", path.display());
+    let err_mapper = |err: Error| {
+      Error::new(
+        err.kind(),
+        format!("{}, readlink '{}'", err, path.display()),
+      )
+    };
     let target = std::fs::read_link(&path)
-      .map_err(|err| Error::new(err, "read_link", &path))?
+      .map_err(err_mapper)?
       .into_os_string();
     let targetstr = into_string(target)?;
     Ok(targetstr)
