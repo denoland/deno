@@ -1061,7 +1061,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, net: true } },
+  { permissions: { read: true, net: true } },
   async function connectTLSCaCerts() {
     const conn = await Deno.connectTls({
       hostname: "localhost",
@@ -1075,7 +1075,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, net: true } },
+  { permissions: { read: true, net: true } },
   async function connectTLSCertFile() {
     const conn = await Deno.connectTls({
       hostname: "localhost",
@@ -1089,7 +1089,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, net: true } },
+  { permissions: { read: true, net: true } },
   async function startTLSCaCerts() {
     const plainConn = await Deno.connect({
       hostname: "localhost",
@@ -1106,7 +1106,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, net: true } },
+  { permissions: { read: true, net: true } },
   async function startTLSCertFile() {
     const plainConn = await Deno.connect({
       hostname: "localhost",
