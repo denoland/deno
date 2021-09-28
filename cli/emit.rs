@@ -17,6 +17,8 @@ use deno_ast::swc;
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
@@ -27,7 +29,9 @@ use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt;
 use std::rc::Rc;
+use std::result;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -69,6 +73,39 @@ impl Serialize for TypeLib {
 
 type Modules = HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>;
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct Stats(pub Vec<(String, u32)>);
+
+impl<'de> Deserialize<'de> for Stats {
+  fn deserialize<D>(deserializer: D) -> result::Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let items: Vec<(String, u32)> = Deserialize::deserialize(deserializer)?;
+    Ok(Stats(items))
+  }
+}
+
+impl Serialize for Stats {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    Serialize::serialize(&self.0, serializer)
+  }
+}
+
+impl fmt::Display for Stats {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    writeln!(f, "Compilation statistics:")?;
+    for (key, value) in self.0.clone() {
+      writeln!(f, "  {}: {}", key, value)?;
+    }
+
+    Ok(())
+  }
+}
+
 pub(crate) struct CheckOptions {
   /// Set the debug flag on the TypeScript type checker.
   pub debug: bool,
@@ -79,7 +116,7 @@ pub(crate) struct CheckOptions {
 #[derive(Debug, Default)]
 pub(crate) struct CheckEmitResult {
   pub diagnostics: Diagnostics,
-  pub stats: crate::module_graph::Stats,
+  pub stats: Stats,
 }
 
 pub(crate) enum ConfigType {
@@ -508,7 +545,7 @@ pub(crate) fn emit(
     }
   }
 
-  let stats = crate::module_graph::Stats(vec![
+  let stats = Stats(vec![
     ("Files".to_string(), file_count),
     ("Emitted".to_string(), emit_count),
     ("Total time".to_string(), start.elapsed().as_millis() as u32),

@@ -3,7 +3,6 @@
 use crate::cache;
 use crate::diagnostics::Diagnostics;
 use crate::emit;
-use crate::module_graph::Stats;
 use crate::proc_state::ProcState;
 
 use deno_core::error::anyhow;
@@ -140,7 +139,7 @@ async fn op_emit(
         "cache is valid for \"{}\", skipping check/emit",
         root_specifier
       );
-      (Diagnostics::default(), Stats::default())
+      (Diagnostics::default(), emit::Stats::default())
     } else {
       let emit_result = emit::check_and_maybe_emit(
         graph.clone(),

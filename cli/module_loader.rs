@@ -1,7 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::module_graph::TypeLib;
+use crate::emit::TypeLib;
 use crate::proc_state::ProcState;
+
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
@@ -16,7 +17,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 
-pub struct CliModuleLoader {
+pub(crate) struct CliModuleLoader {
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,

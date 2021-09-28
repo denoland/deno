@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::config_file::TsConfig;
+use crate::emit;
 use crate::diagnostics::Diagnostics;
-use crate::module_graph::Stats;
 
 use deno_ast::MediaType;
 use deno_core::error::anyhow;
@@ -173,7 +173,7 @@ pub struct Request {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Response {
+pub(crate) struct Response {
   /// Any diagnostics that have been returned from the checker.
   pub diagnostics: Diagnostics,
   /// Any files that were emitted during the check.
@@ -181,7 +181,7 @@ pub struct Response {
   /// If there was any build info associated with the exec request.
   pub maybe_tsbuildinfo: Option<String>,
   /// Statistics from the check.
-  pub stats: Stats,
+  pub stats: emit::Stats,
 }
 
 #[derive(Debug)]
@@ -441,7 +441,7 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 struct RespondArgs {
   pub diagnostics: Diagnostics,
-  pub stats: Stats,
+  pub stats: emit::Stats,
 }
 
 fn op_respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
@@ -454,7 +454,7 @@ fn op_respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-pub fn exec(request: Request) -> Result<Response, AnyError> {
+pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
     ..Default::default()

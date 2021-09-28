@@ -1,6 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast::Location;
+use crate::cache;
+use crate::cache::CacherLoader;
 use crate::colors;
 use crate::create_main_worker;
 use crate::emit;
@@ -12,14 +14,11 @@ use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
 use crate::located_script_name;
-use crate::module_graph;
-use crate::module_graph::GraphBuilder;
-use crate::module_graph::Module;
+use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
-use crate::FetchHandler;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
@@ -29,7 +28,6 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
@@ -40,9 +38,11 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
@@ -853,21 +853,22 @@ pub async fn run_tests_with_watch(
     emit::TypeLib::DenoWindow
   };
 
-  let handler = Arc::new(Mutex::new(FetchHandler::new(
-    &ps,
-    Permissions::allow_all(),
-    Permissions::allow_all(),
-  )?));
-
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
+    let mut cache = cache::FetchCacher::new(
+      ps.dir.gen_cache.clone(),
+      ps.file_fetcher.clone(),
+      Permissions::allow_all(),
+      Permissions::allow_all(),
+    );
+
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
-    let handler = handler.clone();
-    let ps = ps.clone();
+    let maybe_resolver = ps.maybe_import_map.as_ref().map(|r| r.as_resolver());
+    let maybe_locker = ps.lockfile.as_ref().map(|lf| Rc::new(RefCell::new(Box::new(lockfile::Locker(Some(lf.clone()))) as Box<dyn deno_graph::source::Locker>)));
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
@@ -889,51 +890,42 @@ pub async fn run_tests_with_watch(
           .collect()
       };
 
-      let mut builder = GraphBuilder::new(
-        handler,
-        ps.maybe_import_map.clone(),
-        ps.lockfile.clone(),
-      );
-      for specifier in test_modules.iter() {
-        builder.add(specifier, false).await?;
-      }
-      builder.analyze_config_file(&ps.maybe_config_file).await?;
-      let graph = builder.get_graph();
+      let graph = deno_graph::create_graph(test_modules.clone(), false, cache.as_mut_loader(), maybe_resolver, maybe_locker, None).await;
 
       for specifier in test_modules {
         fn get_dependencies<'a>(
-          graph: &'a module_graph::Graph,
-          module: &'a Module,
+          graph: &'a deno_graph::ModuleGraph,
+          maybe_module: Option<&'a deno_graph::Module>,
           // This needs to be accessible to skip getting dependencies if they're already there,
           // otherwise this will cause a stack overflow with circular dependencies
           output: &mut HashSet<&'a ModuleSpecifier>,
-        ) -> Result<(), AnyError> {
-          for dep in module.dependencies.values() {
-            if let Some(specifier) = &dep.maybe_code {
-              if !output.contains(specifier) {
-                output.insert(specifier);
+        ) {
+          if let Some(module) = maybe_module {
+            for dep in module.dependencies.values() {
+              if let Some(specifier) = &dep.get_code() {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
 
-                get_dependencies(
-                  graph,
-                  graph.get_specifier(specifier)?,
-                  output,
-                )?;
+                  get_dependencies(
+                    graph,
+                    graph.get(specifier),
+                    output,
+                  );
+                }
               }
-            }
-            if let Some(specifier) = &dep.maybe_type {
-              if !output.contains(specifier) {
-                output.insert(specifier);
+              if let Some(specifier) = &dep.get_type() {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
 
-                get_dependencies(
-                  graph,
-                  graph.get_specifier(specifier)?,
-                  output,
-                )?;
+                  get_dependencies(
+                    graph,
+                    graph.get(specifier),
+                    output,
+                  );
+                }
               }
             }
           }
-
-          Ok(())
         }
 
         // This test module and all it's dependencies
@@ -941,9 +933,9 @@ pub async fn run_tests_with_watch(
         modules.insert(&specifier);
         get_dependencies(
           &graph,
-          graph.get_specifier(&specifier)?,
+          graph.get(&specifier),
           &mut modules,
-        )?;
+        );
 
         paths_to_watch.extend(
           modules
