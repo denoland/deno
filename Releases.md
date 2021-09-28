@@ -8,8 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.14.2 / 2021.09.28
 
-- ci: enable cache for fastci (#12186)
-- ci: experiment mac & windows debug builds (#11884)
 - feat(cli/fmt): support more markdown extensions (#12195)
 - fix(cli/permissions): ensure revoked permissions are no longer granted
   (#12159)
