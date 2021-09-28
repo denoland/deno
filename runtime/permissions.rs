@@ -619,18 +619,18 @@ impl UnaryPermission<NetDescriptor> {
 
 impl UnaryPermission<EnvDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
-    let env = env.map(EnvDescriptor::new);
+    let env = env.map(EnvVarName::new);
     if self.global_state == PermissionState::Denied
       && match env.as_ref() {
         None => true,
-        Some(env) => self.denied_list.iter().any(|env_| env_ == env),
+        Some(env) => self.denied_list.iter().any(|env_| &env_.0 == env),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match env.as_ref() {
         None => false,
-        Some(env) => self.granted_list.iter().any(|env_| env_ == env),
+        Some(env) => self.granted_list.iter().any(|env_| &env_.0 == env),
       }
     {
       PermissionState::Granted
@@ -641,19 +641,18 @@ impl UnaryPermission<EnvDescriptor> {
 
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
-      let env = EnvDescriptor::new(env);
-      let state = self.query(Some(env.as_ref()));
+      let state = self.query(Some(env));
       if state == PermissionState::Prompt {
-        if permission_prompt(&format!("env access to \"{}\"", env.as_ref())) {
-          self.granted_list.insert(env);
+        if permission_prompt(&format!("env access to \"{}\"", env)) {
+          self.granted_list.insert(EnvDescriptor::new(env));
           PermissionState::Granted
         } else {
-          self.denied_list.insert(env);
+          self.denied_list.insert(EnvDescriptor::new(env));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else if state == PermissionState::Granted {
-        self.granted_list.insert(env);
+        self.granted_list.insert(EnvDescriptor::new(env));
         PermissionState::Granted
       } else {
         state
@@ -688,17 +687,16 @@ impl UnaryPermission<EnvDescriptor> {
   }
 
   pub fn check(&mut self, env: &str) -> Result<(), AnyError> {
-    let env = EnvDescriptor::new(env);
-    let (result, prompted) = self.query(Some(env.as_ref())).check(
+    let (result, prompted) = self.query(Some(env)).check(
       self.name,
-      Some(&format!("\"{}\"", env.as_ref())),
+      Some(&format!("\"{}\"", env)),
       self.prompt,
     );
     if prompted {
       if result.is_ok() {
-        self.granted_list.insert(env);
+        self.granted_list.insert(EnvDescriptor::new(env));
       } else {
-        self.denied_list.insert(env);
+        self.denied_list.insert(EnvDescriptor::new(env));
         self.global_state = PermissionState::Denied;
       }
     }
