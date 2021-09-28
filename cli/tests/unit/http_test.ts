@@ -69,6 +69,40 @@ unitTest({ permissions: { net: true } }, async function httpServerBasic() {
 
 unitTest(
   { permissions: { net: true } },
+  async function httpServerGetRequestBody() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      const httpConn = Deno.serveHttp(conn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+      assertEquals(request.body, null);
+      await respondWith(new Response("", { headers: {} }));
+      httpConn.close();
+    })();
+
+    const conn = await Deno.connect({ port: 4501 });
+    // Send GET request with a body + content-length.
+    const encoder = new TextEncoder();
+    const body =
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nContent-Length: 5\r\n\r\n12345`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+
+    const resp = new Uint8Array(200);
+    const readResult = await conn.read(resp);
+    assertEquals(readResult, 115);
+
+    conn.close();
+
+    await promise;
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
   async function httpServerStreamResponse() {
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
