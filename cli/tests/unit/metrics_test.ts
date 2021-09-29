@@ -40,7 +40,7 @@ unitTest(async function metrics() {
 });
 
 unitTest(
-  { perms: { write: true } },
+  { permissions: { write: true } },
   function metricsUpdatedIfNoResponseSync() {
     const filename = Deno.makeTempDirSync() + "/test.txt";
 
@@ -54,7 +54,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { write: true } },
+  { permissions: { write: true } },
   async function metricsUpdatedIfNoResponseAsync() {
     const filename = Deno.makeTempDirSync() + "/test.txt";
 

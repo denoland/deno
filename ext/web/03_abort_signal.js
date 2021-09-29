@@ -13,7 +13,6 @@
     SetPrototypeAdd,
     SetPrototypeDelete,
     Symbol,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -72,10 +71,6 @@
     get aborted() {
       return Boolean(this[aborted]);
     }
-
-    get [SymbolToStringTag]() {
-      return "AbortSignal";
-    }
   }
   defineEventHandler(AbortSignal.prototype, "abort");
 
@@ -90,10 +85,6 @@
 
     abort() {
       this.#signal[signalAbort]();
-    }
-
-    get [SymbolToStringTag]() {
-      return "AbortController";
     }
   }
 

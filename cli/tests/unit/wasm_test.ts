@@ -77,7 +77,7 @@ unitTest(async function wasmInstantiateStreaming() {
 });
 
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function wasmStreamingNonTrivial() {
     // deno-dom's WASM file is a real-world non-trivial case that gave us
     // trouble when implementing this.

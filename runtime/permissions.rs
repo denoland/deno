@@ -12,7 +12,7 @@ use deno_core::serde::Serialize;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use log::debug;
+use log;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
@@ -23,6 +23,10 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 const PERMISSION_EMOJI: &str = "⚠️";
+
+lazy_static::lazy_static! {
+  static ref DEBUG_LOG_ENABLED: bool = log::log_enabled!(log::Level::Debug);
+}
 
 /// Tri-state value for storing permission state
 #[derive(PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
@@ -35,14 +39,19 @@ pub enum PermissionState {
 impl PermissionState {
   #[inline(always)]
   fn log_perm_access(name: &str, info: Option<&str>) {
-    debug!(
-      "{}",
-      colors::bold(&format!(
-        "{}️  Granted {}",
-        PERMISSION_EMOJI,
-        Self::fmt_access(name, info)
-      ))
-    );
+    // Eliminates log overhead (when logging is disabled),
+    // log_enabled!(Debug) check in a hot path still has overhead
+    // TODO(AaronO): generalize or upstream this optimization
+    if *DEBUG_LOG_ENABLED {
+      log::debug!(
+        "{}",
+        colors::bold(&format!(
+          "{}️  Granted {}",
+          PERMISSION_EMOJI,
+          Self::fmt_access(name, info)
+        ))
+      );
+    }
   }
 
   fn fmt_access(name: &str, info: Option<&str>) -> String {
@@ -240,19 +249,16 @@ impl UnaryPermission<ReadDescriptor> {
           "read access to \"{}\"",
           display_path.display()
         )) {
-          self
-            .granted_list
-            .retain(|path| !path.0.starts_with(&resolved_path));
           self.granted_list.insert(ReadDescriptor(resolved_path));
           PermissionState::Granted
         } else {
-          self
-            .denied_list
-            .retain(|path| !resolved_path.starts_with(&path.0));
           self.denied_list.insert(ReadDescriptor(resolved_path));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
+      } else if state == PermissionState::Granted {
+        self.granted_list.insert(ReadDescriptor(resolved_path));
+        PermissionState::Granted
       } else {
         state
       }
@@ -278,12 +284,12 @@ impl UnaryPermission<ReadDescriptor> {
       let path = resolve_from_cwd(path).unwrap();
       self
         .granted_list
-        .retain(|path_| !path_.0.starts_with(&path));
+        .retain(|path_| !path.starts_with(&path_.0));
     } else {
       self.granted_list.clear();
-      if self.global_state == PermissionState::Granted {
-        self.global_state = PermissionState::Prompt;
-      }
+    }
+    if self.global_state == PermissionState::Granted {
+      self.global_state = PermissionState::Prompt;
     }
     self.query(path)
   }
@@ -368,19 +374,16 @@ impl UnaryPermission<WriteDescriptor> {
           "write access to \"{}\"",
           display_path.display()
         )) {
-          self
-            .granted_list
-            .retain(|path| !path.0.starts_with(&resolved_path));
           self.granted_list.insert(WriteDescriptor(resolved_path));
           PermissionState::Granted
         } else {
-          self
-            .denied_list
-            .retain(|path| !resolved_path.starts_with(&path.0));
           self.denied_list.insert(WriteDescriptor(resolved_path));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
+      } else if state == PermissionState::Granted {
+        self.granted_list.insert(WriteDescriptor(resolved_path));
+        PermissionState::Granted
       } else {
         state
       }
@@ -406,12 +409,12 @@ impl UnaryPermission<WriteDescriptor> {
       let path = resolve_from_cwd(path).unwrap();
       self
         .granted_list
-        .retain(|path_| !path_.0.starts_with(&path));
+        .retain(|path_| !path.starts_with(&path_.0));
     } else {
       self.granted_list.clear();
-      if self.global_state == PermissionState::Granted {
-        self.global_state = PermissionState::Prompt;
-      }
+    }
+    if self.global_state == PermissionState::Granted {
+      self.global_state = PermissionState::Prompt;
     }
     self.query(path)
   }
@@ -477,22 +480,19 @@ impl UnaryPermission<NetDescriptor> {
   ) -> PermissionState {
     if let Some(host) = host {
       let state = self.query(Some(host));
+      let host = NetDescriptor::new(&host);
       if state == PermissionState::Prompt {
-        let host = NetDescriptor::new(&host);
         if permission_prompt(&format!("network access to \"{}\"", host)) {
-          if host.1.is_none() {
-            self.granted_list.retain(|h| h.0 != host.0);
-          }
           self.granted_list.insert(host);
           PermissionState::Granted
         } else {
-          if host.1.is_some() {
-            self.denied_list.remove(&host);
-          }
           self.denied_list.insert(host);
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
+      } else if state == PermissionState::Granted {
+        self.granted_list.insert(host);
+        PermissionState::Granted
       } else {
         state
       }
@@ -518,15 +518,19 @@ impl UnaryPermission<NetDescriptor> {
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
     if let Some(host) = host {
-      self.granted_list.remove(&NetDescriptor::new(&host));
-      if host.1.is_none() {
-        self.granted_list.retain(|h| h.0 != host.0.as_ref());
+      if host.1.is_some() {
+        self
+          .granted_list
+          .remove(&NetDescriptor(host.0.as_ref().to_string(), host.1));
       }
+      self
+        .granted_list
+        .remove(&NetDescriptor(host.0.as_ref().to_string(), None));
     } else {
       self.granted_list.clear();
-      if self.global_state == PermissionState::Granted {
-        self.global_state = PermissionState::Prompt;
-      }
+    }
+    if self.global_state == PermissionState::Granted {
+      self.global_state = PermissionState::Prompt;
     }
     self.query(host)
   }
@@ -614,15 +618,16 @@ impl UnaryPermission<EnvDescriptor> {
       let state = self.query(Some(&env));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("env access to \"{}\"", env)) {
-          self.granted_list.retain(|env_| env_.0 != env);
           self.granted_list.insert(EnvDescriptor(env));
           PermissionState::Granted
         } else {
-          self.denied_list.retain(|env_| env_.0 != env);
           self.denied_list.insert(EnvDescriptor(env));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
+      } else if state == PermissionState::Granted {
+        self.granted_list.insert(EnvDescriptor(env));
+        PermissionState::Granted
       } else {
         state
       }
@@ -647,12 +652,12 @@ impl UnaryPermission<EnvDescriptor> {
     if let Some(env) = env {
       #[cfg(windows)]
       let env = env.to_uppercase();
-      self.granted_list.retain(|env_| env_.0 != env);
+      self.granted_list.remove(&EnvDescriptor(env.to_string()));
     } else {
       self.granted_list.clear();
-      if self.global_state == PermissionState::Granted {
-        self.global_state = PermissionState::Prompt;
-      }
+    }
+    if self.global_state == PermissionState::Granted {
+      self.global_state = PermissionState::Prompt;
     }
     self.query(env)
   }
@@ -716,15 +721,16 @@ impl UnaryPermission<RunDescriptor> {
       let state = self.query(Some(cmd));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("run access to \"{}\"", cmd)) {
-          self.granted_list.retain(|cmd_| cmd_.0 != cmd);
           self.granted_list.insert(RunDescriptor(cmd.to_string()));
           PermissionState::Granted
         } else {
-          self.denied_list.retain(|cmd_| cmd_.0 != cmd);
           self.denied_list.insert(RunDescriptor(cmd.to_string()));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
+      } else if state == PermissionState::Granted {
+        self.granted_list.insert(RunDescriptor(cmd.to_string()));
+        PermissionState::Granted
       } else {
         state
       }
@@ -747,12 +753,12 @@ impl UnaryPermission<RunDescriptor> {
 
   pub fn revoke(&mut self, cmd: Option<&str>) -> PermissionState {
     if let Some(cmd) = cmd {
-      self.granted_list.retain(|cmd_| cmd_.0 != cmd);
+      self.granted_list.remove(&RunDescriptor(cmd.to_string()));
     } else {
       self.granted_list.clear();
-      if self.global_state == PermissionState::Granted {
-        self.global_state = PermissionState::Prompt;
-      }
+    }
+    if self.global_state == PermissionState::Granted {
+      self.global_state = PermissionState::Prompt;
     }
     self.query(cmd)
   }
@@ -814,15 +820,16 @@ impl UnaryPermission<FfiDescriptor> {
       let state = self.query(Some(lib));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("ffi access to \"{}\"", lib)) {
-          self.granted_list.retain(|lib_| lib_.0 != lib);
           self.granted_list.insert(FfiDescriptor(lib.to_string()));
           PermissionState::Granted
         } else {
-          self.denied_list.retain(|lib_| lib_.0 != lib);
           self.denied_list.insert(FfiDescriptor(lib.to_string()));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
+      } else if state == PermissionState::Granted {
+        self.granted_list.insert(FfiDescriptor(lib.to_string()));
+        PermissionState::Granted
       } else {
         state
       }
@@ -845,12 +852,12 @@ impl UnaryPermission<FfiDescriptor> {
 
   pub fn revoke(&mut self, lib: Option<&str>) -> PermissionState {
     if let Some(lib) = lib {
-      self.granted_list.retain(|lib_| lib_.0 != lib);
+      self.granted_list.remove(&FfiDescriptor(lib.to_string()));
     } else {
       self.granted_list.clear();
-      if self.global_state == PermissionState::Granted {
-        self.global_state = PermissionState::Prompt;
-      }
+    }
+    if self.global_state == PermissionState::Granted {
+      self.global_state = PermissionState::Prompt;
     }
     self.query(lib)
   }
@@ -1769,15 +1776,24 @@ mod tests {
     let mut perms = Permissions {
       read: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_read(&Some(vec![PathBuf::from("/foo")]), false)
+        ..Permissions::new_read(
+          &Some(vec![PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
+          false,
+        )
       },
       write: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_write(&Some(vec![PathBuf::from("/foo")]), false)
+        ..Permissions::new_write(
+          &Some(vec![PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
+          false,
+        )
       },
       net: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_net(&Some(svec!["127.0.0.1"]), false)
+        ..Permissions::new_net(
+          &Some(svec!["127.0.0.1", "127.0.0.1:8000"]),
+          false,
+        )
       },
       env: UnaryPermission {
         global_state: PermissionState::Prompt,
@@ -1798,14 +1814,15 @@ mod tests {
     };
     #[rustfmt::skip]
     {
-      assert_eq!(perms.read.revoke(Some(Path::new("/foo/bar"))), PermissionState::Granted);
-      assert_eq!(perms.read.revoke(Some(Path::new("/foo"))), PermissionState::Prompt);
-      assert_eq!(perms.read.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
-      assert_eq!(perms.write.revoke(Some(Path::new("/foo/bar"))), PermissionState::Granted);
-      assert_eq!(perms.write.revoke(None), PermissionState::Prompt);
-      assert_eq!(perms.write.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
-      assert_eq!(perms.net.revoke(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
-      assert_eq!(perms.net.revoke(Some(&("127.0.0.1", None))), PermissionState::Prompt);
+      assert_eq!(perms.read.revoke(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.read.query(Some(Path::new("/foo"))), PermissionState::Prompt);
+      assert_eq!(perms.read.query(Some(Path::new("/foo/baz"))), PermissionState::Granted);
+      assert_eq!(perms.write.revoke(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.write.query(Some(Path::new("/foo"))), PermissionState::Prompt);
+      assert_eq!(perms.write.query(Some(Path::new("/foo/baz"))), PermissionState::Granted);
+      assert_eq!(perms.net.revoke(Some(&("127.0.0.1", Some(9000)))), PermissionState::Prompt);
+      assert_eq!(perms.net.query(Some(&("127.0.0.1", None))), PermissionState::Prompt);
+      assert_eq!(perms.net.query(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       assert_eq!(perms.env.revoke(Some(&"HOME".to_string())), PermissionState::Prompt);
       assert_eq!(perms.run.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
       assert_eq!(perms.ffi.revoke(Some(&"deno".to_string())), PermissionState::Prompt);

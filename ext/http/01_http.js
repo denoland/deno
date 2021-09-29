@@ -103,6 +103,7 @@
         url,
         headersList,
         body !== null ? new InnerBody(body) : null,
+        false,
       );
       const signal = abortSignal.newSignal();
       const request = fromInnerRequest(innerRequest, signal, "immutable");

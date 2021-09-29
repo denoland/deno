@@ -11,7 +11,6 @@
     ObjectKeys,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -192,8 +191,6 @@
 
   const _detail = Symbol("[[detail]]");
   class PerformanceMark extends PerformanceEntry {
-    [SymbolToStringTag] = "PerformanceMark";
-
     [_detail] = null;
 
     get detail() {
@@ -261,8 +258,6 @@
   webidl.configurePrototype(PerformanceMark);
 
   class PerformanceMeasure extends PerformanceEntry {
-    [SymbolToStringTag] = "PerformanceMeasure";
-
     [_detail] = null;
 
     get detail() {
@@ -551,10 +546,6 @@
         evaluate: this instanceof Performance,
         keys: [],
       }));
-    }
-
-    get [SymbolToStringTag]() {
-      return "Performance";
     }
   }
   webidl.configurePrototype(Performance);

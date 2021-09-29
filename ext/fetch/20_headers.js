@@ -36,9 +36,7 @@
     Symbol,
     SymbolFor,
     SymbolIterator,
-    SymbolToStringTag,
     StringPrototypeReplaceAll,
-    StringPrototypeIncludes,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -95,6 +93,10 @@
     }
   }
 
+  // Regex matching illegal chars in a header value
+  // deno-lint-ignore no-control-regex
+  const ILLEGAL_VALUE_CHARS = /[\x00\x0A\x0D]/;
+
   /**
    * https://fetch.spec.whatwg.org/#concept-headers-append
    * @param {Headers} headers
@@ -109,11 +111,7 @@
     if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
       throw new TypeError("Header name is not valid.");
     }
-    if (
-      StringPrototypeIncludes(value, "\x00") ||
-      StringPrototypeIncludes(value, "\x0A") ||
-      StringPrototypeIncludes(value, "\x0D")
-    ) {
+    if (RegExpPrototypeTest(ILLEGAL_VALUE_CHARS, value)) {
       throw new TypeError("Header value is not valid.");
     }
 
@@ -373,11 +371,7 @@
       if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
         throw new TypeError("Header name is not valid.");
       }
-      if (
-        StringPrototypeIncludes(value, "\x00") ||
-        StringPrototypeIncludes(value, "\x0A") ||
-        StringPrototypeIncludes(value, "\x0D")
-      ) {
+      if (RegExpPrototypeTest(ILLEGAL_VALUE_CHARS, value)) {
         throw new TypeError("Header value is not valid.");
       }
 
@@ -410,10 +404,6 @@
         headers[header[0]] = header[1];
       }
       return `Headers ${inspect(headers)}`;
-    }
-
-    get [SymbolToStringTag]() {
-      return "Headers";
     }
   }
 

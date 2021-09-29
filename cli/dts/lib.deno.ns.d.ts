@@ -2408,8 +2408,8 @@ declare namespace Deno {
    * Services HTTP requests given a TCP or TLS socket.
    *
    * ```ts
-   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const httpConn = Deno.serveHttp(conn);
+   * const conn = await Deno.listen({ port: 80 });
+   * const httpConn = Deno.serveHttp(await conn.accept());
    * const e = await httpConn.nextRequest();
    * if (e) {
    *   e.respondWith(new Response("Hello World"));
@@ -2452,8 +2452,8 @@ declare namespace Deno {
    * upgrade to be successful.
    *
    * ```ts
-   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const httpConn = Deno.serveHttp(conn);
+   * const conn = await Deno.listen({ port: 80 });
+   * const httpConn = Deno.serveHttp(await conn.accept());
    * const e = await httpConn.nextRequest();
    * if (e) {
    *   const { socket, response } = Deno.upgradeWebSocket(e.request);
