@@ -136,6 +136,8 @@
 
   class Event {
     constructor(type, eventInitDict = {}) {
+      // TODO(lucacasonato): remove when this interface is spec aligned
+      this[SymbolToStringTag] = "Event";
       this[_canceledFlag] = false;
       this[_stopPropagationFlag] = false;
       this[_stopImmediatePropagationFlag] = false;
@@ -394,9 +396,6 @@
     get timeStamp() {
       return this[_attributes].timeStamp;
     }
-
-    // TODO(lucacasonato): remove when this interface is spec aligned
-    [SymbolToStringTag] = "Event";
   }
 
   function defineEnumerableProps(

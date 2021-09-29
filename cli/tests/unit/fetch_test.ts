@@ -1299,3 +1299,51 @@ unitTest(
     }
   },
 );
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchHeaderValueShouldNotPanic() {
+    for (let i = 0; i < 0x21; i++) {
+      if (i === 0x09 || i === 0x0A || i === 0x0D || i === 0x20) {
+        continue; // these header value will be normalized, will not cause an error.
+      }
+      // ensure there will be an error instead of panic.
+      await assertRejects(() =>
+        fetch("http://localhost:4545/echo_server", {
+          method: "HEAD",
+          headers: { "val": String.fromCharCode(i) },
+        }), TypeError);
+    }
+    await assertRejects(() =>
+      fetch("http://localhost:4545/echo_server", {
+        method: "HEAD",
+        headers: { "val": String.fromCharCode(127) },
+      }), TypeError);
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchHeaderNameShouldNotPanic() {
+    const validTokens =
+      "!#$%&'*+-.0123456789ABCDEFGHIJKLMNOPQRSTUWVXYZ^_`abcdefghijklmnopqrstuvwxyz|~"
+        .split("");
+    for (let i = 0; i <= 255; i++) {
+      const token = String.fromCharCode(i);
+      if (validTokens.includes(token)) {
+        continue;
+      }
+      // ensure there will be an error instead of panic.
+      await assertRejects(() =>
+        fetch("http://localhost:4545/echo_server", {
+          method: "HEAD",
+          headers: { [token]: "value" },
+        }), TypeError);
+    }
+    await assertRejects(() =>
+      fetch("http://localhost:4545/echo_server", {
+        method: "HEAD",
+        headers: { "": "value" },
+      }), TypeError);
+  },
+);

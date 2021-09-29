@@ -134,6 +134,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       blob_store: ps.blob_store.clone(),
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
+      compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
       cpu_count: num_cpus::get(),
     };
 
@@ -222,6 +223,7 @@ pub fn create_main_worker(
     blob_store: ps.blob_store.clone(),
     broadcast_channel: ps.broadcast_channel.clone(),
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
+    compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     cpu_count: num_cpus::get(),
   };
 

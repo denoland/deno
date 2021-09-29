@@ -395,6 +395,7 @@ delete Object.prototype.__proto__;
     TextEncoderStream: util.nonEnumerable(encoding.TextEncoderStream),
     TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
+    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
     MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
@@ -435,7 +436,6 @@ delete Object.prototype.__proto__;
 
   const unstableWindowOrWorkerGlobalScope = {
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
-    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
     WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
 
     GPU: util.nonEnumerable(webgpu.GPU),
