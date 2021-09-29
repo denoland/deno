@@ -70,11 +70,9 @@
         // a generic `BadResource` error. Instead store this error and replace
         // those with it.
         this[connErrorSymbol] = error;
-        if (error instanceof BadResource) {
-          return null;
-        } else if (error instanceof Interrupted) {
-          return null;
-        } else if (
+        if (
+          error instanceof BadResource ||
+          error instanceof Interrupted ||
           StringPrototypeIncludes(error.message, "connection closed")
         ) {
           return null;
