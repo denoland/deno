@@ -20,7 +20,7 @@ test inner missing await ...
         at async Object.testStepSanitizer [WILDCARD]
 FAILED ([WILDCARD])
 test parallel steps with sanitizers ...
-  test step 1 ... ok ([WILDCARD])
+  test step 1 ... pending ([WILDCARD])
   test step 2 ... FAILED ([WILDCARD])
     Error: Cannot start test step while another test step with sanitizers is running.
      * parallel steps with sanitizers > step 1
@@ -30,7 +30,7 @@ test parallel steps with sanitizers ...
         at [WILDCARD]
 FAILED ([WILDCARD])
 test parallel steps when first has sanitizer ...
-  test step 1 ... ok ([WILDCARD])
+  test step 1 ... pending ([WILDCARD])
   test step 2 ... FAILED ([WILDCARD])
     Error: Cannot start test step while another test step with sanitizers is running.
      * parallel steps when first has sanitizer > step 1

@@ -114,7 +114,7 @@ finishing test case.`;
     return async function testStepSanitizer(step) {
       preValidation();
       // only report waiting after pre-validation
-      if (step.selfAndAllAncestorsUseSanitizer()) {
+      if (step.canStreamReporting()) {
         step.reportWait();
       }
       await fn(createTester(step));
@@ -482,6 +482,13 @@ finishing test case.`;
       ).length;
     }
 
+    canStreamReporting() {
+      // there should only ever be one sub step running when running with
+      // sanitizers, so we can use this to tell if we can stream reporting
+      return this.selfAndAllAncestorsUseSanitizer() &&
+        this.children.every((c) => c.usesSanitizer || c.finalized);
+    }
+
     selfAndAllAncestorsUseSanitizer() {
       if (!this.usesSanitizer) {
         return false;
@@ -615,49 +622,58 @@ finishing test case.`;
 
         ArrayPrototypePush(parentStep.children, subStep);
 
-        if (definition.ignore) {
-          subStep.status = "ignored";
+        try {
+          if (definition.ignore) {
+            subStep.status = "ignored";
+            subStep.finalized = true;
+            if (subStep.canStreamReporting()) {
+              subStep.reportResult();
+            }
+            return false;
+          }
+
+          const testFn = wrapTestFnWithSanitizers(
+            definition.fn,
+            subStep.sanitizerOptions,
+          );
+          const start = DateNow();
+
+          try {
+            await testFn(subStep);
+
+            if (subStep.failedChildStepsCount() > 0) {
+              subStep.status = "failed";
+            } else {
+              subStep.status = "ok";
+            }
+          } catch (error) {
+            subStep.error = inspectArgs([error]);
+            subStep.status = "failed";
+          }
+
+          subStep.elapsed = DateNow() - start;
+
+          if (subStep.parent?.finalized) {
+            // always point this test out as one that was still running
+            // if the parent step finalized
+            subStep.status = "pending";
+          }
+
           subStep.finalized = true;
-          if (subStep.selfAndAllAncestorsUseSanitizer()) {
+
+          if (subStep.reportedWait && subStep.canStreamReporting()) {
             subStep.reportResult();
           }
-          return false;
-        }
 
-        const testFn = wrapTestFnWithSanitizers(
-          definition.fn,
-          subStep.sanitizerOptions,
-        );
-        const start = DateNow();
-
-        try {
-          await testFn(subStep);
-
-          if (subStep.failedChildStepsCount() > 0) {
-            subStep.status = "failed";
-          } else {
-            subStep.status = "ok";
+          return subStep.status === "ok";
+        } finally {
+          if (parentStep.canStreamReporting()) {
+            // flush any buffered steps
+            for (const parentChild of parentStep.children) {
+              parentChild.reportResult();
+            }
           }
-        } catch (error) {
-          subStep.error = inspectArgs([error]);
-          subStep.status = "failed";
         }
-
-        subStep.elapsed = DateNow() - start;
-
-        if (subStep.parent?.finalized) {
-          // always point this test out as one that was still running
-          // if the parent step finalized
-          subStep.status = "pending";
-        }
-
-        subStep.finalized = true;
-
-        if (subStep.reportedWait && subStep.selfAndAllAncestorsUseSanitizer()) {
-          subStep.reportResult();
-        }
-
-        return subStep.status === "ok";
 
         /** @returns {TestStepDefinition} */
         function getDefinition() {

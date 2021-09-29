@@ -1,3 +1,5 @@
+import { deferred } from "../../../../../test_util/std/async/deferred.ts";
+
 Deno.test("description", async (t) => {
   const success = await t.step("step 1", async (t) => {
     await t.step("inner 1", () => {});
@@ -88,4 +90,31 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   sanitizeExit: false,
+});
+
+Deno.test("steps buffered then streaming reporting", async (t) => {
+  // no sanitizers so this will be buffered
+  await t.step({
+    name: "step 1",
+    fn: async (t) => {
+      // also ensure the buffered tests display in order regardless of the second one finishing first
+      const step2Finished = deferred();
+      const step1 = t.step("step 1 - 1", async () => {
+        await step2Finished;
+      });
+      const step2 = t.step("step 1 - 2", async (t) => {
+        await t.step("step 1 - 2 - 1", () => {});
+      });
+      await step2;
+      step2Finished.resolve();
+      await step1;
+    },
+    sanitizeResources: false,
+    sanitizeOps: false,
+    sanitizeExit: false,
+  });
+
+  // now this will start streaming and we want to
+  // ensure it flushes the buffer of the last test
+  await t.step("step 2", async () => {});
 });
