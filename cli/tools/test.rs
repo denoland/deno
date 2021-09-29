@@ -215,7 +215,7 @@ impl PrettyTestReporter {
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
     if self.last_wait_output_level < description.level {
-      println!("");
+      println!();
     }
     print!(
       "{}test {} ...",
@@ -332,7 +332,7 @@ impl TestReporter for PrettyTestReporter {
       self
         .deferred_step_output
         .entry(description.test.to_owned())
-        .or_insert(Vec::new())
+        .or_insert_with(Vec::new)
         .push(DeferredStepOutput::StepWait(description.clone()));
     } else {
       self.force_report_step_wait(description);
@@ -349,7 +349,7 @@ impl TestReporter for PrettyTestReporter {
       self
         .deferred_step_output
         .entry(description.test.to_owned())
-        .or_insert(Vec::new())
+        .or_insert_with(Vec::new)
         .push(DeferredStepOutput::StepResult(
           description.clone(),
           result.clone(),
