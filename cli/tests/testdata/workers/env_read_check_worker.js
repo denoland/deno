@@ -1,6 +1,6 @@
-onmessage = async ({ names }) => {
+onmessage = async ({ data }) => {
   const permissions = [];
-  for (const name of names) {
+  for (const name of data.names) {
     const { state } = await Deno.permissions.query({
       name: "env",
       variable: name,
