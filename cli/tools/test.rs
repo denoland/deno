@@ -39,7 +39,9 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::collections::HashSet;
+use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
@@ -60,7 +62,7 @@ enum TestMode {
   Both,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
   pub origin: String,
@@ -76,15 +78,7 @@ pub enum TestOutput {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TestResult {
-  pub status: TestResultStatus,
-  pub duration: u64,
-  pub steps: Vec<TestStepResult>,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TestResultStatus {
+pub enum TestResult {
   Ok,
   Ignored,
   Failed(String),
@@ -92,21 +86,29 @@ pub enum TestResultStatus {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TestStepResult {
+pub struct TestStepDescription {
+  pub test: TestDescription,
+  pub level: usize,
   pub name: String,
-  pub status: TestStepResultStatus,
-  pub steps: Vec<TestStepResult>,
-  pub duration: u64,
-  pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum TestStepResultStatus {
+pub enum TestStepResult {
   Ok,
   Ignored,
-  Failed,
-  Pending,
+  Failed(Option<String>),
+  Pending(Option<String>),
+}
+
+impl TestStepResult {
+  fn error(&self) -> Option<&str> {
+    match self {
+      TestStepResult::Failed(Some(text)) => Some(text.as_str()),
+      TestStepResult::Pending(Some(text)) => Some(text.as_str()),
+      _ => None,
+    }
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -124,7 +126,9 @@ pub enum TestEvent {
   Plan(TestPlan),
   Wait(TestDescription),
   Output(TestOutput),
-  Result(TestDescription, TestResult),
+  Result(TestDescription, TestResult, u64),
+  StepWait(TestStepDescription),
+  StepResult(TestStepDescription, TestStepResult, u64),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -168,13 +172,28 @@ trait TestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
+    elapsed: u64,
+  );
+  fn report_step_wait(&mut self, description: &TestStepDescription);
+  fn report_step_result(
+    &mut self,
+    description: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
   );
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration);
+}
+
+enum DeferredStepOutput {
+  StepWait(TestStepDescription),
+  StepResult(TestStepDescription, TestStepResult, u64),
 }
 
 struct PrettyTestReporter {
   concurrent: bool,
   echo_output: bool,
+  deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
+  last_wait_output_level: usize,
 }
 
 impl PrettyTestReporter {
@@ -182,6 +201,61 @@ impl PrettyTestReporter {
     PrettyTestReporter {
       concurrent,
       echo_output,
+      deferred_step_output: HashMap::new(),
+      last_wait_output_level: 0,
+    }
+  }
+
+  fn force_report_wait(&mut self, description: &TestDescription) {
+    print!("test {} ...", description.name);
+    // flush for faster feedback when line buffered
+    std::io::stdout().flush().unwrap();
+    self.last_wait_output_level = 0;
+  }
+
+  fn force_report_step_wait(&mut self, description: &TestStepDescription) {
+    if self.last_wait_output_level < description.level {
+      println!("");
+    }
+    print!(
+      "{}test {} ...",
+      "  ".repeat(description.level),
+      description.name
+    );
+    // flush for faster feedback when line buffered
+    std::io::stdout().flush().unwrap();
+    self.last_wait_output_level = description.level;
+  }
+
+  fn force_report_step_result(
+    &mut self,
+    description: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
+  ) {
+    let status = match result {
+      TestStepResult::Ok => colors::green("ok").to_string(),
+      TestStepResult::Ignored => colors::yellow("ignored").to_string(),
+      TestStepResult::Pending(_) => colors::gray("pending").to_string(),
+      TestStepResult::Failed(_) => colors::red("FAILED").to_string(),
+    };
+
+    if self.last_wait_output_level == description.level {
+      print!(" ");
+    } else {
+      print!("{}", "  ".repeat(description.level));
+    }
+
+    println!(
+      "{} {}",
+      status,
+      colors::gray(format!("({}ms)", elapsed)).to_string()
+    );
+
+    if let Some(error_text) = result.error() {
+      for line in error_text.lines() {
+        println!("{}{}", "  ".repeat(description.level + 1), line);
+      }
     }
   }
 }
@@ -194,7 +268,7 @@ impl TestReporter for PrettyTestReporter {
 
   fn report_wait(&mut self, description: &TestDescription) {
     if !self.concurrent {
-      print!("test {} ...", description.name);
+      self.force_report_wait(description);
     }
   }
 
@@ -210,74 +284,79 @@ impl TestReporter for PrettyTestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
+    elapsed: u64,
   ) {
-    let mut sb = IndentableStringBuilder::new();
     if self.concurrent {
-      push_description(&mut sb, &description.name);
-    }
+      self.force_report_wait(description);
 
-    push_test_step_results(&mut sb, &result.steps);
-
-    let status = match result.status {
-      TestResultStatus::Ok => colors::green("ok").to_string(),
-      TestResultStatus::Ignored => colors::yellow("ignored").to_string(),
-      TestResultStatus::Failed(_) => colors::red("FAILED").to_string(),
-    };
-    sb.push_str(&status);
-    sb.push_str(" ");
-    push_duration(&mut sb, result.duration);
-    sb.newline();
-
-    print!("{}", sb.into_string());
-
-    fn push_test_step_results(
-      sb: &mut IndentableStringBuilder,
-      steps: &[TestStepResult],
-    ) {
-      if steps.is_empty() {
-        sb.push_str(" ");
-      } else {
-        for step in steps.iter() {
-          sb.newline();
-          sb.with_indent(|sb| {
-            push_test_step_result(sb, step);
-          });
+      if let Some(step_outputs) = self.deferred_step_output.remove(description)
+      {
+        for step_output in step_outputs {
+          match step_output {
+            DeferredStepOutput::StepWait(description) => {
+              self.force_report_step_wait(&description)
+            }
+            DeferredStepOutput::StepResult(
+              step_description,
+              step_result,
+              elapsed,
+            ) => self.force_report_step_result(
+              &step_description,
+              &step_result,
+              elapsed,
+            ),
+          }
         }
-        sb.newline();
       }
     }
 
-    fn push_test_step_result(
-      sb: &mut IndentableStringBuilder,
-      step: &TestStepResult,
-    ) {
-      push_description(sb, &step.name);
-      push_test_step_results(sb, &step.steps);
-      let status = match step.status {
-        TestStepResultStatus::Ok => colors::green("ok").to_string(),
-        TestStepResultStatus::Ignored => colors::yellow("ignored").to_string(),
-        TestStepResultStatus::Pending => colors::gray("pending").to_string(),
-        TestStepResultStatus::Failed => colors::red("FAILED").to_string(),
-      };
-      sb.push_str(&status);
-      sb.push_str(" ");
-      push_duration(sb, step.duration);
-      if let Some(error) = &step.error {
-        sb.newline();
-        sb.with_indent(|sb| {
-          sb.push_str(error);
-        })
-      }
+    let status = match result {
+      TestResult::Ok => colors::green("ok").to_string(),
+      TestResult::Ignored => colors::yellow("ignored").to_string(),
+      TestResult::Failed(_) => colors::red("FAILED").to_string(),
+    };
+
+    if self.last_wait_output_level == 0 {
+      print!(" ");
     }
 
-    fn push_description(sb: &mut IndentableStringBuilder, description: &str) {
-      sb.push_str("test ");
-      sb.push_str(description);
-      sb.push_str(" ...");
-    }
+    println!(
+      "{} {}",
+      status,
+      colors::gray(format!("({}ms)", elapsed)).to_string()
+    );
+  }
 
-    fn push_duration(sb: &mut IndentableStringBuilder, duration_ms: u64) {
-      sb.push_str(&colors::gray(format!("({}ms)", duration_ms)).to_string())
+  fn report_step_wait(&mut self, description: &TestStepDescription) {
+    if self.concurrent {
+      self
+        .deferred_step_output
+        .entry(description.test.to_owned())
+        .or_insert(Vec::new())
+        .push(DeferredStepOutput::StepWait(description.clone()));
+    } else {
+      self.force_report_step_wait(description);
+    }
+  }
+
+  fn report_step_result(
+    &mut self,
+    description: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
+  ) {
+    if self.concurrent {
+      self
+        .deferred_step_output
+        .entry(description.test.to_owned())
+        .or_insert(Vec::new())
+        .push(DeferredStepOutput::StepResult(
+          description.clone(),
+          result.clone(),
+          elapsed,
+        ));
+    } else {
+      self.force_report_step_result(description, result, elapsed);
     }
   }
 
@@ -312,55 +391,6 @@ impl TestReporter for PrettyTestReporter {
       summary.filtered_out,
       colors::gray(format!("({}ms)", elapsed.as_millis())),
     );
-  }
-}
-
-struct IndentableStringBuilder {
-  output: String,
-  indent_level: usize,
-  is_start_of_line: bool,
-}
-
-impl IndentableStringBuilder {
-  pub fn new() -> Self {
-    Self {
-      output: String::new(),
-      indent_level: 0,
-      is_start_of_line: true,
-    }
-  }
-
-  pub fn into_string(self) -> String {
-    self.output
-  }
-
-  pub fn push_str(&mut self, text: &str) {
-    for (i, line) in text.lines().enumerate() {
-      if i > 0 {
-        self.newline();
-      }
-
-      if self.is_start_of_line && self.indent_level > 0 {
-        self.output.push_str(&"  ".repeat(self.indent_level));
-      }
-
-      self.output.push_str(line);
-      self.is_start_of_line = false;
-    }
-  }
-
-  pub fn newline(&mut self) {
-    self.output.push('\n');
-    self.is_start_of_line = true;
-  }
-
-  pub fn with_indent(
-    &mut self,
-    action: impl FnOnce(&mut IndentableStringBuilder),
-  ) {
-    self.indent_level += 1;
-    action(self);
-    self.indent_level -= 1;
   }
 }
 
@@ -772,21 +802,29 @@ async fn test_specifiers(
             reporter.report_output(&output);
           }
 
-          TestEvent::Result(description, result) => {
-            match &result.status {
-              TestResultStatus::Ok => {
+          TestEvent::Result(description, result, elapsed) => {
+            match &result {
+              TestResult::Ok => {
                 summary.passed += 1;
               }
-              TestResultStatus::Ignored => {
+              TestResult::Ignored => {
                 summary.ignored += 1;
               }
-              TestResultStatus::Failed(error) => {
+              TestResult::Failed(error) => {
                 summary.failed += 1;
                 summary.failures.push((description.clone(), error.clone()));
               }
             }
 
-            reporter.report_result(&description, &result);
+            reporter.report_result(&description, &result, elapsed);
+          }
+
+          TestEvent::StepWait(description) => {
+            reporter.report_step_wait(&description);
+          }
+
+          TestEvent::StepResult(description, result, duration) => {
+            reporter.report_step_result(&description, &result, duration);
           }
         }
 

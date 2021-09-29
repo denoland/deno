@@ -10,7 +10,6 @@
   const { assert } = window.__bootstrap.util;
   const {
     ArrayPrototypeFilter,
-    ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeSome,
     DateNow,
@@ -114,6 +113,10 @@ finishing test case.`;
     /** @param step {TestStep} */
     return async function testStepSanitizer(step) {
       preValidation();
+      // only report waiting after pre-validation
+      if (step.selfAndAllAncestorsUseSanitizer()) {
+        step.reportWait();
+      }
       await fn(createTester(step));
       postValidation();
 
@@ -121,7 +124,7 @@ finishing test case.`;
         const runningSteps = getPotentialConflictingRunningSteps();
         const runningStepsWithSanitizers = ArrayPrototypeFilter(
           runningSteps,
-          (t) => t.usesSanitizer(),
+          (t) => t.usesSanitizer,
         );
 
         if (runningStepsWithSanitizers.length > 0) {
@@ -133,7 +136,7 @@ finishing test case.`;
           );
         }
 
-        if (step.usesSanitizer() && runningSteps.length > 0) {
+        if (step.usesSanitizer && runningSteps.length > 0) {
           throw new Error(
             "Cannot start test step with sanitizers while another test step is running.\n" +
               runningSteps.map((s) => ` * ${s.getFullName()}`).join("\n"),
@@ -143,9 +146,10 @@ finishing test case.`;
         function getPotentialConflictingRunningSteps() {
           /** @type {TestStep[]} */
           const results = [];
+
           let childStep = step;
-          while (childStep.parent) {
-            for (const siblingStep of childStep.parent.children) {
+          for (const ancestor of step.ancestors()) {
+            for (const siblingStep of ancestor.children) {
               if (siblingStep === childStep) {
                 continue;
               }
@@ -153,7 +157,7 @@ finishing test case.`;
                 ArrayPrototypePush(results, siblingStep);
               }
             }
-            childStep = childStep.parent;
+            childStep = ancestor;
           }
           return results;
         }
@@ -173,15 +177,13 @@ finishing test case.`;
         }
 
         // check if an ancestor already completed
-        let ancestor = step.parent;
-        while (ancestor) {
+        for (const ancestor of step.ancestors()) {
           if (ancestor.finalized) {
             throw new Error(
               "Parent scope completed before test step finished execution. " +
                 "Ensure all steps are awaited (ex. `await t.step(...)`).",
             );
           }
-          ancestor = ancestor.parent;
         }
       }
     };
@@ -277,27 +279,24 @@ finishing test case.`;
     };
   }
 
-  async function runTest(test) {
+  async function runTest(test, description) {
     if (test.ignore) {
-      return {
-        status: "ignored",
-        steps: [],
-      };
+      return "ignored";
     }
 
     const step = new TestStep({
       name: test.name,
       parent: undefined,
+      rootTestDescription: description,
       sanitizeOps: test.sanitizeOps,
       sanitizeResources: test.sanitizeResources,
       sanitizeExit: test.sanitizeExit,
     });
 
-    let status;
     try {
       await test.fn(step);
       const failCount = step.failedChildStepsCount();
-      status = failCount === 0 ? "ok" : {
+      return failCount === 0 ? "ok" : {
         "failed": inspectArgs([
           new Error(
             `${failCount} test step${failCount === 1 ? "" : "s"} failed.`,
@@ -305,29 +304,12 @@ finishing test case.`;
         ]),
       };
     } catch (error) {
-      status = {
-        "failed": inspectArgs([error]),
-      };
-    }
-
-    return {
-      status,
-      steps: getTestStepResults(step),
-    };
-
-    /** @param step {TestStep} */
-    function getTestStepResults(step) {
-      return ArrayPrototypeMap(
-        step.children,
-        /** @param childStep {TestStep} */
-        (childStep) => ({
-          name: childStep.name,
-          status: childStep.status,
-          steps: getTestStepResults(childStep),
-          duration: childStep.duration,
-          error: childStep.error,
-        }),
-      );
+      return { "failed": inspectArgs([error]) };
+    } finally {
+      // ensure the children report their result
+      for (const child of step.children) {
+        child.reportResult();
+      }
     }
   }
 
@@ -356,6 +338,18 @@ finishing test case.`;
   function reportTestResult(test, result, elapsed) {
     core.opSync("op_dispatch_test_event", {
       result: [test, result, elapsed],
+    });
+  }
+
+  function reportTestStepWait(testDescription) {
+    core.opSync("op_dispatch_test_event", {
+      stepWait: testDescription,
+    });
+  }
+
+  function reportTestStepResult(testDescription, result, elapsed) {
+    core.opSync("op_dispatch_test_event", {
+      stepResult: [testDescription, result, elapsed],
     });
   }
 
@@ -408,10 +402,10 @@ finishing test case.`;
 
       reportTestWait(description);
 
-      const result = await runTest(test);
-      result.duration = DateNow() - earlier;
+      const result = await runTest(test, description);
+      const elapsed = DateNow() - earlier;
 
-      reportTestResult(description, result);
+      reportTestResult(description, result, elapsed);
     }
 
     globalThis.console = originalConsole;
@@ -430,6 +424,7 @@ finishing test case.`;
    * @typedef {{
    *   name: string;
    *   parent: TestStep | undefined,
+   *   rootTestDescription: { origin: string; name: string };
    *   sanitizeOps: boolean,
    *   sanitizeResources: boolean,
    *   sanitizeExit: boolean,
@@ -439,8 +434,10 @@ finishing test case.`;
   class TestStep {
     /** @type {TestStepParams} */
     #params;
+    reportedWait = false;
+    #reportedResult = false;
     finalized = false;
-    duration = 0;
+    elapsed = 0;
     status = "pending";
     error = undefined;
     /** @type {TestStep[]} */
@@ -459,12 +456,22 @@ finishing test case.`;
       return this.#params.parent;
     }
 
+    get rootTestDescription() {
+      return this.#params.rootTestDescription;
+    }
+
     get sanitizerOptions() {
       return {
         sanitizeResources: this.#params.sanitizeResources,
         sanitizeOps: this.#params.sanitizeOps,
         sanitizeExit: this.#params.sanitizeExit,
       };
+    }
+
+    get usesSanitizer() {
+      return this.#params.sanitizeResources ||
+        this.#params.sanitizeOps ||
+        this.#params.sanitizeExit;
     }
 
     failedChildStepsCount() {
@@ -475,10 +482,26 @@ finishing test case.`;
       ).length;
     }
 
-    usesSanitizer() {
-      return this.#params.sanitizeResources ||
-        this.#params.sanitizeOps ||
-        this.#params.sanitizeExit;
+    selfAndAllAncestorsUseSanitizer() {
+      if (!this.usesSanitizer) {
+        return false;
+      }
+
+      for (const ancestor of this.ancestors()) {
+        if (!ancestor.usesSanitizer) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    *ancestors() {
+      let ancestor = this.parent;
+      while (ancestor) {
+        yield ancestor;
+        ancestor = ancestor.parent;
+      }
     }
 
     getFullName() {
@@ -487,6 +510,71 @@ finishing test case.`;
       } else {
         return this.name;
       }
+    }
+
+    reportWait() {
+      if (this.reportedWait || !this.parent) {
+        return;
+      }
+
+      reportTestStepWait(this.#getTestStepDescription());
+
+      this.reportedWait = true;
+    }
+
+    reportResult() {
+      if (this.#reportedResult || !this.parent) {
+        return;
+      }
+
+      this.reportWait();
+
+      for (const child of this.children) {
+        child.reportResult();
+      }
+
+      reportTestStepResult(
+        this.#getTestStepDescription(),
+        this.#getStepResult(),
+        this.elapsed,
+      );
+
+      this.#reportedResult = true;
+    }
+
+    #getStepResult() {
+      switch (this.status) {
+        case "ok":
+          return "ok";
+        case "ignored":
+          return "ignored";
+        case "pending":
+          return {
+            "pending": this.error && inspectArgs([this.error]),
+          };
+        case "failed":
+          return {
+            "failed": this.error && inspectArgs([this.error]),
+          };
+        default:
+          throw new Error(`Unhandled status: ${this.status}`);
+      }
+    }
+
+    #getTestStepDescription() {
+      return {
+        test: this.rootTestDescription,
+        name: this.name,
+        level: this.#getLevel(),
+      };
+    }
+
+    #getLevel() {
+      let count = 0;
+      for (const _ of this.ancestors()) {
+        count++;
+      }
+      return count;
     }
   }
 
@@ -510,6 +598,7 @@ finishing test case.`;
         const subStep = new TestStep({
           name: definition.name,
           parent: parentStep,
+          rootTestDescription: parentStep.rootTestDescription,
           sanitizeOps: getOrDefault(
             definition.sanitizeOps,
             parentStep.sanitizerOptions.sanitizeOps,
@@ -529,6 +618,9 @@ finishing test case.`;
         if (definition.ignore) {
           subStep.status = "ignored";
           subStep.finalized = true;
+          if (subStep.selfAndAllAncestorsUseSanitizer()) {
+            subStep.reportResult();
+          }
           return false;
         }
 
@@ -551,7 +643,7 @@ finishing test case.`;
           subStep.status = "failed";
         }
 
-        subStep.duration = DateNow() - start;
+        subStep.elapsed = DateNow() - start;
 
         if (subStep.parent?.finalized) {
           // always point this test out as one that was still running
@@ -560,6 +652,10 @@ finishing test case.`;
         }
 
         subStep.finalized = true;
+
+        if (subStep.reportedWait && subStep.selfAndAllAncestorsUseSanitizer()) {
+          subStep.reportResult();
+        }
 
         return subStep.status === "ok";
 

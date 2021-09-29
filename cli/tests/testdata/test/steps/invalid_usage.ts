@@ -1,3 +1,5 @@
+import { deferred } from "../../../../../test_util/std/async/deferred.ts";
+
 Deno.test("capturing", async (t) => {
   let capturedTester!: Deno.Tester;
   await t.step("some step", (t) => {
@@ -30,75 +32,89 @@ Deno.test({
 
 Deno.test("parallel steps with sanitizers", async (t) => {
   // not allowed because steps with sanitizers cannot be run in parallel
-  await Promise.all([
-    t.step("step 1", async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }),
-    t.step("step 2", async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }),
-  ]);
+  const step1Entered = deferred();
+  const step2Finished = deferred();
+  const step1 = t.step("step 1", async () => {
+    step1Entered.resolve();
+    await step2Finished;
+  });
+  await step1Entered;
+  await t.step("step 2", () => {});
+  step2Finished.resolve();
+  await step1;
 });
 
 Deno.test("parallel steps when first has sanitizer", async (t) => {
-  await Promise.all([
-    t.step({
-      name: "step 1",
-      fn: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      },
-    }),
-    t.step({
-      name: "step 2",
-      fn: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      },
-      sanitizeOps: false,
-      sanitizeResources: false,
-      sanitizeExit: false,
-    }),
-  ]);
+  const step1Entered = deferred();
+  const step2Finished = deferred();
+  const step1 = t.step({
+    name: "step 1",
+    fn: async () => {
+      step1Entered.resolve();
+      await step2Finished;
+    },
+  });
+  await step1Entered;
+  await t.step({
+    name: "step 2",
+    fn: () => {},
+    sanitizeOps: false,
+    sanitizeResources: false,
+    sanitizeExit: false,
+  });
+  step2Finished.resolve();
+  await step1;
 });
 
 Deno.test("parallel steps when second has sanitizer", async (t) => {
-  await Promise.all([
-    t.step({
-      name: "step 1",
-      fn: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      },
-      sanitizeOps: false,
-      sanitizeResources: false,
-      sanitizeExit: false,
-    }),
-    t.step({
-      name: "step 2",
-      fn: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      },
-    }),
-  ]);
+  const step1Entered = deferred();
+  const step2Finished = deferred();
+  const step1 = t.step({
+    name: "step 1",
+    fn: async () => {
+      step1Entered.resolve();
+      await step2Finished;
+    },
+    sanitizeOps: false,
+    sanitizeResources: false,
+    sanitizeExit: false,
+  });
+  await step1Entered;
+  await t.step({
+    name: "step 2",
+    fn: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    },
+  });
+  step2Finished.resolve();
+  await step1;
 });
 
 Deno.test({
   name: "parallel steps where only inner tests have sanitizers",
   fn: async (t) => {
-    await Promise.all([
-      t.step("step 1", async (t) => {
-        await t.step({
-          name: "step inner",
-          fn: () => new Promise((resolve) => setTimeout(resolve, 10)),
-          sanitizeOps: true,
-        });
-      }),
-      t.step("step 2", async (t) => {
-        await t.step({
-          name: "step inner",
-          fn: () => new Promise((resolve) => setTimeout(resolve, 10)),
-          sanitizeOps: true,
-        });
-      }),
-    ]);
+    const step1Entered = deferred();
+    const step2Finished = deferred();
+    const step1 = t.step("step 1", async (t) => {
+      await t.step({
+        name: "step inner",
+        fn: async () => {
+          step1Entered.resolve();
+          await step2Finished;
+        },
+        sanitizeOps: true,
+      });
+    });
+    await step1Entered;
+    await t.step("step 2", async (t) => {
+      await t.step({
+        name: "step inner",
+        fn: () => {},
+        sanitizeOps: true,
+      });
+    });
+    step2Finished.resolve();
+    await step1;
   },
   sanitizeResources: false,
   sanitizeOps: false,
