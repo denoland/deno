@@ -359,11 +359,11 @@
   };
 
   converters.DOMString = function (V, opts = {}) {
-    if (opts.treatNullAsEmptyString && V === null) {
+    if (typeof V === "string") {
+      return V;
+    } else if (V === null && opts.treatNullAsEmptyString) {
       return "";
-    }
-
-    if (typeof V === "symbol") {
+    } else if (typeof V === "symbol") {
       throw makeException(
         TypeError,
         "is a symbol, which cannot be converted to a string",
