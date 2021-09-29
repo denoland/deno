@@ -627,7 +627,6 @@ Deno.test("Worker initialization throws on worker permissions greater than paren
 Deno.test("Worker has correct env permissions", async function () {
   const promise = deferred<boolean[]>();
 
-  /** This worker has read permissions but doesn't grant them to its children */
   const worker = new Worker(
     new URL("./env_read_check_worker.js", import.meta.url).href,
     {
