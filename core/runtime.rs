@@ -1572,6 +1572,10 @@ impl JsRuntime {
         return exception_to_err_result(tc_scope, exception, false);
       }
 
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        break;
+      }
+
       let is_done = is_done.unwrap();
       if is_done.is_true() {
         break;

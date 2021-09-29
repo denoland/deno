@@ -1204,6 +1204,11 @@ itest!(worker_message_before_close {
   output: "worker_message_before_close.js.out",
 });
 
+itest!(worker_close_in_wasm_reactions {
+  args: "run --quiet --reload --allow-read worker_close_in_wasm_reactions.js",
+  output: "worker_close_in_wasm_reactions.js.out",
+});
+
 #[test]
 fn no_validate_asm() {
   let output = util::deno_cmd()
