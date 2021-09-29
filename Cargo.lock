@@ -740,7 +740,7 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.14.0"
-source = "git+https://github.com/kitsonk/deno_doc?branch=cli_changes#815d14a656cf5729d855a7dff5410c107854fd0c"
+source = "git+https://github.com/kitsonk/deno_doc?branch=cli_changes#eca58f164b19bc88e62225f46b35dddb9a3b5edb"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
@@ -782,7 +782,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.5.0"
-source = "git+https://github.com/kitsonk/deno_graph?branch=cli_changes#87349b8b31fe8b58b7074e8c11b405db1027365e"
+source = "git+https://github.com/kitsonk/deno_graph?branch=cli_changes#dcb8cd946060faf86500257024913f5f1876440d"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -1719,7 +1719,7 @@ checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 [[package]]
 name = "import_map"
 version = "0.3.0"
-source = "git+https://github.com/kitsonk/import_map?branch=cli_changes#2e1b04e3eaf8da4d8b8eaaa00212c7a559850193"
+source = "git+https://github.com/kitsonk/import_map?branch=cli_changes#b86da428802787b9210294a0e133438c5e80c7c0"
 dependencies = [
  "anyhow",
  "deno_graph",
@@ -3240,9 +3240,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.6.1"
+version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
+checksum = "1ecab6c735a6bb4139c0caafd0cc3635748bbb3acf4550e8138122099251f309"
 
 [[package]]
 name = "socket2"
@@ -4633,9 +4633,9 @@ dependencies = [
 
 [[package]]
 name = "winres"
-version = "0.1.11"
+version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff4fb510bbfe5b8992ff15f77a2e6fe6cf062878f0eda00c0f44963a807ca5dc"
+checksum = "b68db261ef59e9e52806f688020631e987592bd83619edccda9c47d42cde4f6c"
 dependencies = [
  "toml",
 ]
