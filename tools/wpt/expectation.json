@@ -13572,7 +13572,8 @@
     "serialization": {
       "module": {
         "serialization-via-idb.any.html": false,
-        "serialization-via-notifications-api.any.html": false
+        "serialization-via-notifications-api.any.html": false,
+        "nested-worker-success.any.worker.html": true
       },
       "arraybuffer": {
         "transfer.window.html": false
