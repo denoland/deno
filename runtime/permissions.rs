@@ -115,6 +115,62 @@ impl Default for PermissionState {
   }
 }
 
+/// A normalized environment variable name. On Windows this will
+/// be uppercase and on other platforms it will stay as-is.
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
+struct EnvVarName {
+  inner: String,
+}
+
+impl EnvVarName {
+  pub fn new(env: impl AsRef<str>) -> Self {
+    Self {
+      inner: if cfg!(windows) {
+        env.as_ref().to_uppercase()
+      } else {
+        env.as_ref().to_string()
+      },
+    }
+  }
+}
+
+impl AsRef<str> for EnvVarName {
+  fn as_ref(&self) -> &str {
+    self.inner.as_str()
+  }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
+pub struct PermissionPath {
+  original_path: PathBuf,
+  resolved_path: PathBuf,
+}
+
+impl PermissionPath {
+  pub fn new(path: impl AsRef<Path>) -> Self {
+    Self {
+      original_path: path.as_ref().to_path_buf(),
+      resolved_path: resolve_from_cwd(path.as_ref()).unwrap(),
+    }
+  }
+
+  pub fn starts_with(&self, other_path: &PermissionPath) -> bool {
+    self.resolved_path.starts_with(&other_path.resolved_path)
+  }
+
+  pub fn as_path(&self) -> &Path {
+    // Ensure the original path is returned in order to prevent providing
+    // the resolved path to another method in the permissions and exposing
+    // the CWD
+    self.original_path.as_path()
+  }
+
+  /// Path that can be displayed without leaking the CWD when not allowed.
+  pub fn safe_display(&self) -> std::path::Display<'_> {
+    self.original_path.display()
+  }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct UnitPermission {
   pub name: &'static str,
@@ -159,31 +215,6 @@ impl UnitPermission {
   }
 }
 
-/// A normalized environment variable name. On Windows this will
-/// be uppercase and on other platforms it will stay as-is.
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
-struct EnvVarName {
-  inner: String,
-}
-
-impl EnvVarName {
-  pub fn new(env: impl AsRef<str>) -> Self {
-    Self {
-      inner: if cfg!(windows) {
-        env.as_ref().to_uppercase()
-      } else {
-        env.as_ref().to_string()
-      },
-    }
-  }
-}
-
-impl AsRef<str> for EnvVarName {
-  fn as_ref(&self) -> &str {
-    self.inner.as_str()
-  }
-}
-
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct UnaryPermission<T: Eq + Hash> {
   pub name: &'static str,
@@ -195,10 +226,10 @@ pub struct UnaryPermission<T: Eq + Hash> {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
-pub struct ReadDescriptor(pub PathBuf);
+pub struct ReadDescriptor(pub PermissionPath);
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
-pub struct WriteDescriptor(pub PathBuf);
+pub struct WriteDescriptor(pub PermissionPath);
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct NetDescriptor(pub String, pub Option<u16>);
@@ -248,7 +279,7 @@ pub struct FfiDescriptor(pub String);
 
 impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
-    let path = path.map(|p| resolve_from_cwd(p).unwrap());
+    let path = path.map(PermissionPath::new);
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
@@ -275,23 +306,22 @@ impl UnaryPermission<ReadDescriptor> {
   }
 
   pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
-    if let Some(path) = path {
-      let (resolved_path, display_path) = resolved_and_display_path(path);
-      let state = self.query(Some(&resolved_path));
+    if let Some(path) = path.map(PermissionPath::new) {
+      let state = self.query(Some(path.as_path()));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!(
           "read access to \"{}\"",
-          display_path.display()
+          path.safe_display()
         )) {
-          self.granted_list.insert(ReadDescriptor(resolved_path));
+          self.granted_list.insert(ReadDescriptor(path));
           PermissionState::Granted
         } else {
-          self.denied_list.insert(ReadDescriptor(resolved_path));
+          self.denied_list.insert(ReadDescriptor(path));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else if state == PermissionState::Granted {
-        self.granted_list.insert(ReadDescriptor(resolved_path));
+        self.granted_list.insert(ReadDescriptor(path));
         PermissionState::Granted
       } else {
         state
@@ -314,8 +344,7 @@ impl UnaryPermission<ReadDescriptor> {
   }
 
   pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
-    if let Some(path) = path {
-      let path = resolve_from_cwd(path).unwrap();
+    if let Some(path) = path.map(PermissionPath::new) {
       self
         .granted_list
         .retain(|path_| !path.starts_with(&path_.0));
@@ -329,17 +358,17 @@ impl UnaryPermission<ReadDescriptor> {
   }
 
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
-    let (resolved_path, display_path) = resolved_and_display_path(path);
-    let (result, prompted) = self.query(Some(&resolved_path)).check(
+    let path = PermissionPath::new(path);
+    let (result, prompted) = self.query(Some(path.as_path())).check(
       self.name,
-      Some(&format!("\"{}\"", display_path.display())),
+      Some(&format!("\"{}\"", path.safe_display())),
       self.prompt,
     );
     if prompted {
       if result.is_ok() {
-        self.granted_list.insert(ReadDescriptor(resolved_path));
+        self.granted_list.insert(ReadDescriptor(path));
       } else {
-        self.denied_list.insert(ReadDescriptor(resolved_path));
+        self.denied_list.insert(ReadDescriptor(path));
         self.global_state = PermissionState::Denied;
       }
     }
@@ -353,17 +382,17 @@ impl UnaryPermission<ReadDescriptor> {
     path: &Path,
     display: &str,
   ) -> Result<(), AnyError> {
-    let resolved_path = resolve_from_cwd(path).unwrap();
-    let (result, prompted) = self.query(Some(&resolved_path)).check(
+    let path = PermissionPath::new(path);
+    let (result, prompted) = self.query(Some(path.as_path())).check(
       self.name,
       Some(&format!("<{}>", display)),
       self.prompt,
     );
     if prompted {
       if result.is_ok() {
-        self.granted_list.insert(ReadDescriptor(resolved_path));
+        self.granted_list.insert(ReadDescriptor(path));
       } else {
-        self.denied_list.insert(ReadDescriptor(resolved_path));
+        self.denied_list.insert(ReadDescriptor(path));
         self.global_state = PermissionState::Denied;
       }
     }
@@ -373,7 +402,7 @@ impl UnaryPermission<ReadDescriptor> {
 
 impl UnaryPermission<WriteDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
-    let path = path.map(|p| resolve_from_cwd(p).unwrap());
+    let path = path.map(PermissionPath::new);
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
         None => true,
@@ -400,23 +429,22 @@ impl UnaryPermission<WriteDescriptor> {
   }
 
   pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
-    if let Some(path) = path {
-      let (resolved_path, display_path) = resolved_and_display_path(path);
-      let state = self.query(Some(&resolved_path));
+    if let Some(path) = path.map(PermissionPath::new) {
+      let state = self.query(Some(path.as_path()));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!(
           "write access to \"{}\"",
-          display_path.display()
+          path.safe_display()
         )) {
-          self.granted_list.insert(WriteDescriptor(resolved_path));
+          self.granted_list.insert(WriteDescriptor(path));
           PermissionState::Granted
         } else {
-          self.denied_list.insert(WriteDescriptor(resolved_path));
+          self.denied_list.insert(WriteDescriptor(path));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else if state == PermissionState::Granted {
-        self.granted_list.insert(WriteDescriptor(resolved_path));
+        self.granted_list.insert(WriteDescriptor(path));
         PermissionState::Granted
       } else {
         state
@@ -439,8 +467,7 @@ impl UnaryPermission<WriteDescriptor> {
   }
 
   pub fn revoke(&mut self, path: Option<&Path>) -> PermissionState {
-    if let Some(path) = path {
-      let path = resolve_from_cwd(path).unwrap();
+    if let Some(path) = path.map(PermissionPath::new) {
       self
         .granted_list
         .retain(|path_| !path.starts_with(&path_.0));
@@ -454,17 +481,17 @@ impl UnaryPermission<WriteDescriptor> {
   }
 
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
-    let (resolved_path, display_path) = resolved_and_display_path(path);
-    let (result, prompted) = self.query(Some(&resolved_path)).check(
+    let path = PermissionPath::new(path);
+    let (result, prompted) = self.query(Some(path.as_path())).check(
       self.name,
-      Some(&format!("\"{}\"", display_path.display())),
+      Some(&format!("\"{}\"", path.safe_display())),
       self.prompt,
     );
     if prompted {
       if result.is_ok() {
-        self.granted_list.insert(WriteDescriptor(resolved_path));
+        self.granted_list.insert(WriteDescriptor(path));
       } else {
-        self.denied_list.insert(WriteDescriptor(resolved_path));
+        self.denied_list.insert(WriteDescriptor(path));
         self.global_state = PermissionState::Denied;
       }
     }
@@ -1173,9 +1200,7 @@ pub fn resolve_read_allowlist(
 ) -> HashSet<ReadDescriptor> {
   if let Some(v) = allow {
     v.iter()
-      .map(|raw_path| {
-        ReadDescriptor(resolve_from_cwd(Path::new(&raw_path)).unwrap())
-      })
+      .map(|raw_path| ReadDescriptor(PermissionPath::new(raw_path)))
       .collect()
   } else {
     HashSet::new()
@@ -1187,21 +1212,11 @@ pub fn resolve_write_allowlist(
 ) -> HashSet<WriteDescriptor> {
   if let Some(v) = allow {
     v.iter()
-      .map(|raw_path| {
-        WriteDescriptor(resolve_from_cwd(Path::new(&raw_path)).unwrap())
-      })
+      .map(|raw_path| WriteDescriptor(PermissionPath::new(raw_path)))
       .collect()
   } else {
     HashSet::new()
   }
-}
-
-/// Arbitrary helper. Resolves the path from CWD, and also gets a path that
-/// can be displayed without leaking the CWD when not allowed.
-fn resolved_and_display_path(path: &Path) -> (PathBuf, PathBuf) {
-  let resolved_path = resolve_from_cwd(path).unwrap();
-  let display_path = path.to_path_buf();
-  (resolved_path, display_path)
 }
 
 /// Shows the permission prompt and returns the answer according to the user input.
