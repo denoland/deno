@@ -158,8 +158,8 @@
    */
   function byteLowerCase(s) {
     // NOTE: correct since all callers convert to ByteString first
-    // TODO: maybe prefer a ByteString_Lower webidl converter
-    return s.toLowerCase();
+    // TODO(@AaronO): maybe prefer a ByteString_Lower webidl converter
+    return StringPrototypeToLowerCase(s);
   }
 
   /**
