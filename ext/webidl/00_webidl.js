@@ -41,6 +41,7 @@
     NumberMAX_SAFE_INTEGER,
     // deno-lint-ignore camelcase
     NumberMIN_SAFE_INTEGER,
+    ObjectAssign,
     ObjectCreate,
     ObjectDefineProperties,
     ObjectDefineProperty,
@@ -726,7 +727,7 @@
       }
       const esDict = V;
 
-      const idlDict = { ...defaultValues };
+      const idlDict = ObjectAssign({}, defaultValues);
 
       // NOTE: fast path Null and Undefined.
       if ((V === undefined || V === null) && !hasRequiredKey) {
