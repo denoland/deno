@@ -10,6 +10,7 @@
     StringPrototypeStartsWith,
     String,
     SymbolIterator,
+    SymbolToStringTag,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
   const { URL } = window.__bootstrap.url;
@@ -57,6 +58,7 @@
   }
 
   /**
+   * @param {"inherit" | boolean} value
    * @param {string} permission
    * @return {boolean}
    */
@@ -126,7 +128,7 @@
     write = "inherit",
   }) {
     return {
-      env: parseUnitPermission(env, "env"),
+      env: parseArrayPermission(env, "env"),
       hrtime: parseUnitPermission(hrtime, "hrtime"),
       net: parseArrayPermission(net, "net"),
       ffi: parseUnitPermission(ffi, "ffi"),
@@ -351,6 +353,8 @@
         hostTerminateWorker(this.#id);
       }
     }
+
+    [SymbolToStringTag] = "Worker";
   }
 
   defineEventHandler(Worker.prototype, "error");

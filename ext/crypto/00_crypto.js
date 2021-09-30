@@ -24,9 +24,9 @@
     StringPrototypeToUpperCase,
     StringPrototypeReplace,
     StringPrototypeCharCodeAt,
+    StringFromCharCode,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     WeakMap,
     WeakMapPrototypeGet,
     WeakMapPrototypeSet,
@@ -140,9 +140,11 @@
   }
 
   function unpaddedBase64(bytes) {
-    const binaryString = core.decode(bytes);
+    let binaryString = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binaryString += StringFromCharCode(bytes[i]);
+    }
     const base64String = btoa(binaryString);
-
     return StringPrototypeReplace(base64String, /=/g, "");
   }
 
@@ -265,10 +267,6 @@
       webidl.assertBranded(this, CryptoKey);
       // TODO(lucacasonato): return a SameObject copy
       return this[_algorithm];
-    }
-
-    get [SymbolToStringTag]() {
-      return "CryptoKey";
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
@@ -1567,10 +1565,6 @@
 
       return result;
     }
-
-    get [SymbolToStringTag]() {
-      return "SubtleCrypto";
-    }
   }
 
   async function generateKey(normalizedAlgorithm, extractable, usages) {
@@ -2024,6 +2018,7 @@
     }
   }
 
+  webidl.configurePrototype(SubtleCrypto);
   const subtle = webidl.createBranded(SubtleCrypto);
 
   class Crypto {
@@ -2074,10 +2069,6 @@
     get subtle() {
       webidl.assertBranded(this, Crypto);
       return subtle;
-    }
-
-    get [SymbolToStringTag]() {
-      return "Crypto";
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {

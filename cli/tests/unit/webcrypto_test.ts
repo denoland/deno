@@ -1,9 +1,4 @@
-import {
-  assert,
-  assertEquals,
-  assertThrowsAsync,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, assertRejects, unitTest } from "./test_util.ts";
 
 // https://github.com/denoland/deno/issues/11664
 unitTest(async function testImportArrayBufferKey() {
@@ -141,7 +136,7 @@ unitTest(async function testEncryptDecrypt() {
     const badPlainText = new Uint8Array(plainText.byteLength + 1);
     badPlainText.set(plainText, 0);
     badPlainText.set(new Uint8Array([32]), plainText.byteLength);
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       // Should fail
       await subtle.encrypt(
         encryptAlgorithm,
@@ -232,7 +227,7 @@ unitTest(async function testECDSASignVerifyFail() {
 
   const encoded = new Uint8Array([1]);
   // Signing with a public key (InvalidAccessError)
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await window.crypto.subtle.sign(
       { name: "ECDSA", hash: "SHA-384" },
       key.publicKey,
@@ -249,7 +244,7 @@ unitTest(async function testECDSASignVerifyFail() {
   );
 
   // Verifying with a private key (InvalidAccessError)
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await window.crypto.subtle.verify(
       { hash: { name: "SHA-384" }, name: "ECDSA" },
       key.privateKey,
@@ -357,6 +352,30 @@ unitTest(async function subtleCryptoHmacImportExport() {
   assertEquals(exportedKey2, jwk);
 });
 
+// https://github.com/denoland/deno/issues/12085
+unitTest(async function generateImportHmacJwk() {
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "HMAC",
+      hash: "SHA-512",
+    },
+    true,
+    ["sign"],
+  );
+  assert(key);
+  assertEquals(key.type, "secret");
+  assertEquals(key.extractable, true);
+  assertEquals(key.usages, ["sign"]);
+
+  const exportedKey = await crypto.subtle.exportKey("jwk", key);
+  assertEquals(exportedKey.kty, "oct");
+  assertEquals(exportedKey.alg, "HS512");
+  assertEquals(exportedKey.key_ops, ["sign"]);
+  assertEquals(exportedKey.ext, true);
+  assert(typeof exportedKey.k == "string");
+  assertEquals(exportedKey.k.length, 171);
+});
+
 // 2048-bits publicExponent=65537
 const pkcs8TestVectors = [
   // rsaEncryption
@@ -365,7 +384,7 @@ const pkcs8TestVectors = [
   "cli/tests/testdata/webcrypto/id_rsassaPss.pem",
 ];
 
-unitTest({ perms: { read: true } }, async function importRsaPkcs8() {
+unitTest({ permissions: { read: true } }, async function importRsaPkcs8() {
   const pemHeader = "-----BEGIN PRIVATE KEY-----";
   const pemFooter = "-----END PRIVATE KEY-----";
   for (const keyFile of pkcs8TestVectors) {
