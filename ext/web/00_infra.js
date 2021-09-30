@@ -240,13 +240,13 @@
   function forgivingBase64Decode(data) {
     return core.opSync("op_base64_decode", data);
   }
-  
-    /**
+
+  /**
    * @param {string} char
    * @returns {boolean}
    */
   function isHttpWhitespace(char) {
-    switch(char) {
+    switch (char) {
       case "\u0009":
       case "\u000A":
       case "\u000D":
@@ -262,7 +262,7 @@
    * @returns {string}
    */
   function httpTrim(s) {
-    if (!isHttpWhitespace(s[0]) && !isHttpWhitespace(s[s.length -1])) {
+    if (!isHttpWhitespace(s[0]) && !isHttpWhitespace(s[s.length - 1])) {
       return s;
     }
     return StringPrototypeMatch(s, HTTP_BETWEEN_WHITESPACE)?.[1] ?? "";
