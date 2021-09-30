@@ -84,7 +84,7 @@
 
   // Regex matching illegal chars in a header value
   // deno-lint-ignore no-control-regex
-  const ILLEGAL_VALUE_CHARS = /[\x00\x0A\x0D]/;
+  const ILLEGAL_VALUE_CHARS = /[\x00\x0A\x0D]/g;
 
   /**
    * https://fetch.spec.whatwg.org/#concept-headers-append
