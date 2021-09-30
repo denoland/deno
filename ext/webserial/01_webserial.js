@@ -5,6 +5,15 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const { DOMException } = window.__bootstrap.domException;
+  const {
+    Promise,
+    PromiseResolve,
+    PromiseAll,
+    Symbol,
+    TypeError,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
 
   webidl.converters.SerialPortRequestOptions = webidl.createDictionaryConverter(
     "SerialPortRequestOptions",
@@ -340,14 +349,14 @@
       webidl.assertBranded(this, SerialPort);
       let cancelPromise;
       if (this[_readable] === null) {
-        cancelPromise = Promise.resolve(undefined);
+        cancelPromise = PromiseResolve(undefined);
       } else {
         cancelPromise = this[_readable].cancel();
       }
 
       let abortPromise;
       if (this[_writable] === null) {
-        abortPromise = Promise.resolve(undefined);
+        abortPromise = PromiseResolve(undefined);
       } else {
         abortPromise = this[_writable].abort();
       }
@@ -360,7 +369,7 @@
       // TODO(@crowlKats): check
       this[_pendingClosePromise] = pendingClosePromise;
 
-      const combinedPromise = Promise.all([
+      const combinedPromise = PromiseAll([
         cancelPromise,
         abortPromise,
         pendingClosePromise,
