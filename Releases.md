@@ -6,6 +6,46 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.14.2 / 2021.09.28
+
+- feat(cli/fmt): support more markdown extensions (#12195)
+- fix(cli/permissions): ensure revoked permissions are no longer granted
+  (#12159)
+- fix(ext/http): fortify "is websocket?" check (#12179)
+- fix(ext/http): include port number in h2 urls (#12181)
+- fix(ext/web): FileReader error messages (#12218)
+- fix(ext/webidl): correctly apply [SymbolToStringTag] to interfaces (#11851)
+- fix(http): panic when responding to a closed conn (#12216)
+- fix(workers): Don't panic when a worker's parent thread stops running (#12156)
+- fix: subprocess kill support on windows (#12134)
+- perf(ext/fetch): Use the WebIDL conversion to DOMString rather than USVString
+  for Response constructor (#12201)
+- perf(ext/fetch): skip USVString webidl conv on string constructor (#12168)
+- perf(fetch): optimize InnerBody constructor (#12232)
+- perf(fetch): optimize newInnerRequest blob url check (#12245)
+- perf(fetch/Response): avoid class fields (#12237)
+- perf(fetch/headers): optimize appendHeader (#12234)
+- perf(ops): optimize permission check (#11800)
+- perf(web): optimize Event constructor (#12231)
+- perf(webidl/ByteString): 3x faster ASCII check (#12230)
+- quickfix(ci): only run "Build product size info" on main/tag (#12184)
+- upgrade serde_v8 and rusty_v8 (#12175)
+
+### 1.14.1 / 2021.09.21
+
+- fix(cli): don't ignore diagnostics about for await (#12116)
+- fix(cli): move Deno.flock and Deno.funlock to unstable types (#12138)
+- fix(cli/fmt_errors): Abbreviate long data URLs in stack traces (#12127)
+- fix(config-schema): correct default value of "lib" (#12145)
+- fix(core): prevent multiple main module loading (#12128)
+- fix(ext/crypto): don't use core.decode for encoding jwk keys (#12088)
+- fix(ext/crypto): use DataError in importKey() (#12071)
+- fix(lsp): align filter text to vscode logic (#12081)
+- fix(runtime/ops/signal.rs): Add FreeBSD signal definitions (#12084)
+- perf(ext/web): optimize EventTarget (#12166)
+- perf(runtime/fs): optimize readFile by using a single large buffer (#12057)
+- perf(web): optimize AbortController (#12165)
+
 ### 1.14.0 / 2021.09.14
 
 - BREAKING(unstable): Fix casing in FfiPermissionDescriptor (#11659)

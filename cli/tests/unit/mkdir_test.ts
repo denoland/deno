@@ -2,8 +2,8 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
@@ -17,7 +17,7 @@ function assertDirectory(path: string, mode?: number) {
 }
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function mkdirSyncSuccess() {
     const path = Deno.makeTempDirSync() + "/dir";
     Deno.mkdirSync(path);
@@ -26,7 +26,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function mkdirSyncMode() {
     const path = Deno.makeTempDirSync() + "/dir";
     Deno.mkdirSync(path, { mode: 0o737 });
@@ -34,14 +34,14 @@ unitTest(
   },
 );
 
-unitTest({ perms: { write: false } }, function mkdirSyncPerm() {
+unitTest({ permissions: { write: false } }, function mkdirSyncPerm() {
   assertThrows(() => {
     Deno.mkdirSync("/baddir");
   }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function mkdirSuccess() {
     const path = Deno.makeTempDirSync() + "/dir";
     await Deno.mkdir(path);
@@ -50,7 +50,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function mkdirMode() {
     const path = Deno.makeTempDirSync() + "/dir";
     await Deno.mkdir(path, { mode: 0o737 });
@@ -58,20 +58,20 @@ unitTest(
   },
 );
 
-unitTest({ perms: { write: true } }, function mkdirErrSyncIfExists() {
+unitTest({ permissions: { write: true } }, function mkdirErrSyncIfExists() {
   assertThrows(() => {
     Deno.mkdirSync(".");
   }, Deno.errors.AlreadyExists);
 });
 
-unitTest({ perms: { write: true } }, async function mkdirErrIfExists() {
-  await assertThrowsAsync(async () => {
+unitTest({ permissions: { write: true } }, async function mkdirErrIfExists() {
+  await assertRejects(async () => {
     await Deno.mkdir(".");
   }, Deno.errors.AlreadyExists);
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function mkdirSyncRecursive() {
     const path = Deno.makeTempDirSync() + "/nested/directory";
     Deno.mkdirSync(path, { recursive: true });
@@ -80,7 +80,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function mkdirRecursive() {
     const path = Deno.makeTempDirSync() + "/nested/directory";
     await Deno.mkdir(path, { recursive: true });
@@ -89,7 +89,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function mkdirSyncRecursiveMode() {
     const nested = Deno.makeTempDirSync() + "/nested";
     const path = nested + "/dir";
@@ -100,7 +100,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function mkdirRecursiveMode() {
     const nested = Deno.makeTempDirSync() + "/nested";
     const path = nested + "/dir";
@@ -111,7 +111,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function mkdirSyncRecursiveIfExists() {
     const path = Deno.makeTempDirSync() + "/dir";
     Deno.mkdirSync(path, { mode: 0o737 });
@@ -129,7 +129,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function mkdirRecursiveIfExists() {
     const path = Deno.makeTempDirSync() + "/dir";
     await Deno.mkdir(path, { mode: 0o737 });
@@ -147,7 +147,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function mkdirSyncErrors() {
     const testDir = Deno.makeTempDirSync();
     const emptydir = testDir + "/empty";
@@ -198,7 +198,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function mkdirSyncRelativeUrlPath() {
     const testDir = Deno.makeTempDirSync();
     const nestedDir = testDir + "/nested";
@@ -213,7 +213,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function mkdirRelativeUrlPath() {
     const testDir = Deno.makeTempDirSync();
     const nestedDir = testDir + "/nested";

@@ -2,27 +2,23 @@
 
 use test_util as util;
 
-#[cfg(unix)]
 #[test]
 fn pty_multiline() {
-  use std::io::{Read, Write};
-  run_pty_test(|master| {
-    master.write_all(b"(\n1 + 2\n)\n").unwrap();
-    master.write_all(b"{\nfoo: \"foo\"\n}\n").unwrap();
-    master.write_all(b"`\nfoo\n`\n").unwrap();
-    master.write_all(b"`\n\\`\n`\n").unwrap();
-    master.write_all(b"'{'\n").unwrap();
-    master.write_all(b"'('\n").unwrap();
-    master.write_all(b"'['\n").unwrap();
-    master.write_all(b"/{/\n").unwrap();
-    master.write_all(b"/\\(/\n").unwrap();
-    master.write_all(b"/\\[/\n").unwrap();
-    master.write_all(b"console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));\n").unwrap();
-    master.write_all(b"close();\n").unwrap();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("(\n1 + 2\n)");
+    console.write_line("{\nfoo: \"foo\"\n}");
+    console.write_line("`\nfoo\n`");
+    console.write_line("`\n\\`\n`");
+    console.write_line("'{'");
+    console.write_line("'('");
+    console.write_line("'['");
+    console.write_line("/{/");
+    console.write_line("/\\(/");
+    console.write_line("/\\[/");
+    console.write_line("console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));");
+    console.write_line("close();");
 
-    let mut output = String::new();
-    master.read_to_string(&mut output).unwrap();
-
+    let output = console.read_all_output();
     assert!(output.contains('3'));
     assert!(output.contains("{ foo: \"foo\" }"));
     assert!(output.contains("\"\\nfoo\\n\""));
@@ -37,109 +33,85 @@ fn pty_multiline() {
   });
 }
 
-#[cfg(unix)]
 #[test]
 fn pty_unpaired_braces() {
-  use std::io::{Read, Write};
-  run_pty_test(|master| {
-    master.write_all(b")\n").unwrap();
-    master.write_all(b"]\n").unwrap();
-    master.write_all(b"}\n").unwrap();
-    master.write_all(b"close();\n").unwrap();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(")");
+    console.write_line("]");
+    console.write_line("}");
+    console.write_line("close();");
 
-    let mut output = String::new();
-    master.read_to_string(&mut output).unwrap();
-
+    let output = console.read_all_output();
     assert!(output.contains("Unexpected token `)`"));
     assert!(output.contains("Unexpected token `]`"));
     assert!(output.contains("Unexpected token `}`"));
   });
 }
 
-#[cfg(unix)]
 #[test]
 fn pty_bad_input() {
-  use std::io::{Read, Write};
-  run_pty_test(|master| {
-    master.write_all(b"'\\u{1f3b5}'[0]\n").unwrap();
-    master.write_all(b"close();\n").unwrap();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("'\\u{1f3b5}'[0]");
+    console.write_line("close();");
 
-    let mut output = String::new();
-    master.read_to_string(&mut output).unwrap();
-
+    let output = console.read_all_output();
     assert!(output.contains("Unterminated string literal"));
   });
 }
 
-#[cfg(unix)]
 #[test]
 fn pty_syntax_error_input() {
-  use std::io::{Read, Write};
-  run_pty_test(|master| {
-    master.write_all(b"('\\u')\n").unwrap();
-    master.write_all(b"('\n").unwrap();
-    master.write_all(b"close();\n").unwrap();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("('\\u')");
+    console.write_line("('");
+    console.write_line("close();");
 
-    let mut output = String::new();
-    master.read_to_string(&mut output).unwrap();
-
+    let output = console.read_all_output();
     assert!(output.contains("Unterminated string constant"));
     assert!(output.contains("Unexpected eof"));
   });
 }
 
-#[cfg(unix)]
 #[test]
 fn pty_complete_symbol() {
-  use std::io::{Read, Write};
-  run_pty_test(|master| {
-    master.write_all(b"Symbol.it\t\n").unwrap();
-    master.write_all(b"close();\n").unwrap();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("Symbol.it\t");
+    console.write_line("close();");
 
-    let mut output = String::new();
-    master.read_to_string(&mut output).unwrap();
-
+    let output = console.read_all_output();
     assert!(output.contains("Symbol(Symbol.iterator)"));
   });
 }
 
-#[cfg(unix)]
 #[test]
 fn pty_complete_declarations() {
-  use std::io::{Read, Write};
-  run_pty_test(|master| {
-    master.write_all(b"class MyClass {}\n").unwrap();
-    master.write_all(b"My\t\n").unwrap();
-    master.write_all(b"let myVar;\n").unwrap();
-    master.write_all(b"myV\t\n").unwrap();
-    master.write_all(b"close();\n").unwrap();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("class MyClass {}");
+    console.write_line("My\t");
+    console.write_line("let myVar;");
+    console.write_line("myV\t");
+    console.write_line("close();");
 
-    let mut output = String::new();
-    master.read_to_string(&mut output).unwrap();
-
+    let output = console.read_all_output();
     assert!(output.contains("> MyClass"));
     assert!(output.contains("> myVar"));
   });
 }
 
-#[cfg(unix)]
 #[test]
 fn pty_complete_primitives() {
-  use std::io::{Read, Write};
-  run_pty_test(|master| {
-    master.write_all(b"let func = function test(){}\n").unwrap();
-    master.write_all(b"func.appl\t\n").unwrap();
-    master.write_all(b"let str = ''\n").unwrap();
-    master.write_all(b"str.leng\t\n").unwrap();
-    master.write_all(b"false.valueO\t\n").unwrap();
-    master.write_all(b"5n.valueO\t\n").unwrap();
-    master.write_all(b"let num = 5\n").unwrap();
-    master.write_all(b"num.toStrin\t\n").unwrap();
-    master.write_all(b"close();\n").unwrap();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("let func = function test(){}");
+    console.write_line("func.appl\t");
+    console.write_line("let str = ''");
+    console.write_line("str.leng\t");
+    console.write_line("false.valueO\t");
+    console.write_line("5n.valueO\t");
+    console.write_line("let num = 5");
+    console.write_line("num.toStrin\t");
+    console.write_line("close();");
 
-    let mut output = String::new();
-    master.read_to_string(&mut output).unwrap();
-
+    let output = console.read_all_output();
     assert!(output.contains("> func.apply"));
     assert!(output.contains("> str.length"));
     assert!(output.contains("> 5n.valueOf"));
@@ -148,38 +120,18 @@ fn pty_complete_primitives() {
   });
 }
 
-#[cfg(unix)]
 #[test]
 fn pty_ignore_symbols() {
-  use std::io::{Read, Write};
-  run_pty_test(|master| {
-    master.write_all(b"Array.Symbol\t\n").unwrap();
-    master.write_all(b"close();\n").unwrap();
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("Array.Symbol\t");
+    console.write_line("close();");
 
-    let mut output = String::new();
-    master.read_to_string(&mut output).unwrap();
-
+    let output = console.read_all_output();
     assert!(output.contains("undefined"));
     assert!(
       !output.contains("Uncaught TypeError: Array.Symbol is not a function")
     );
   });
-}
-
-#[cfg(unix)]
-fn run_pty_test(mut run: impl FnMut(&mut util::pty::fork::Master)) {
-  use util::pty::fork::*;
-  let deno_exe = util::deno_exe_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
-    run(&mut master);
-    fork.wait().unwrap();
-  } else {
-    std::env::set_var("NO_COLOR", "1");
-    let err = exec::Command::new(deno_exe).arg("repl").exec();
-    println!("err {}", err);
-    unreachable!()
-  }
 }
 
 #[test]

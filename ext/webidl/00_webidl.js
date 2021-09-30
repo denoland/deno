@@ -62,7 +62,6 @@
     String,
     StringFromCodePoint,
     StringPrototypeCharCodeAt,
-    StringPrototypeCodePointAt,
     Symbol,
     SymbolIterator,
     SymbolToStringTag,
@@ -360,11 +359,11 @@
   };
 
   converters.DOMString = function (V, opts = {}) {
-    if (opts.treatNullAsEmptyString && V === null) {
+    if (typeof V === "string") {
+      return V;
+    } else if (V === null && opts.treatNullAsEmptyString) {
       return "";
-    }
-
-    if (typeof V === "symbol") {
+    } else if (typeof V === "symbol") {
       throw makeException(
         TypeError,
         "is a symbol, which cannot be converted to a string",
@@ -375,15 +374,13 @@
     return String(V);
   };
 
+  // deno-lint-ignore no-control-regex
+  const IS_BYTE_STRING = /^[\x00-\xFF]*$/;
   converters.ByteString = (V, opts) => {
     const x = converters.DOMString(V, opts);
-    let c;
-    for (let i = 0; (c = StringPrototypeCodePointAt(x, i)) !== undefined; ++i) {
-      if (c > 255) {
-        throw makeException(TypeError, "is not a valid ByteString", opts);
-      }
+    if (!RegExpPrototypeTest(IS_BYTE_STRING, x)) {
+      throw makeException(TypeError, "is not a valid ByteString", opts);
     }
-
     return x;
   };
 
@@ -1053,6 +1050,12 @@
         });
       }
     }
+    ObjectDefineProperty(prototype.prototype, SymbolToStringTag, {
+      value: prototype.name,
+      enumerable: false,
+      configurable: true,
+      writable: false,
+    });
   }
 
   window.__bootstrap ??= {};

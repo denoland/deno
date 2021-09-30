@@ -101,7 +101,7 @@ unitTest(function fileUsingEmptyStringFileName() {
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function fileTruncateSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fileTruncateSync.txt";
     const file = Deno.openSync(filename, {
@@ -123,7 +123,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function fileTruncateSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fileTruncate.txt";
     const file = await Deno.open(filename, {
@@ -144,7 +144,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { read: true } }, function fileStatSyncSuccess() {
+unitTest({ permissions: { read: true } }, function fileStatSyncSuccess() {
   const file = Deno.openSync("README.md");
   const fileInfo = file.statSync();
   assert(fileInfo.isFile);
@@ -159,7 +159,7 @@ unitTest({ perms: { read: true } }, function fileStatSyncSuccess() {
   file.close();
 });
 
-unitTest({ perms: { read: true } }, async function fileStatSuccess() {
+unitTest({ permissions: { read: true } }, async function fileStatSuccess() {
   const file = await Deno.open("README.md");
   const fileInfo = await file.stat();
   assert(fileInfo.isFile);

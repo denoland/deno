@@ -10,6 +10,7 @@
     StringPrototypeStartsWith,
     String,
     SymbolIterator,
+    SymbolToStringTag,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
   const { URL } = window.__bootstrap.url;
@@ -351,6 +352,8 @@
         hostTerminateWorker(this.#id);
       }
     }
+
+    [SymbolToStringTag] = "Worker";
   }
 
   defineEventHandler(Worker.prototype, "error");
