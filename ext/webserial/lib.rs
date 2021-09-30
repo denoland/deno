@@ -32,7 +32,6 @@ pub fn init<WP: WebSerialPermissions + 'static>() -> Extension {
       ("op_webserial_open_port", op_sync(op_webserial_open_port)),
       ("op_webserial_read", op_async(op_webserial_read)),
       ("op_webserial_write", op_async(op_webserial_write)),
-      ("op_webserial_get_info", op_sync(op_webserial_get_info)),
       (
         "op_webserial_set_signals",
         op_async(op_webserial_set_signals),
@@ -66,21 +65,6 @@ pub struct SerialPortResource(AsyncRefCell<tokio_serial::SerialStream>);
 impl Resource for SerialPortResource {
   fn name(&self) -> Cow<str> {
     "serialPort".into()
-  }
-}
-
-impl SerialPortResource {
-  pub async fn read(
-    self: &Rc<Self>,
-    buf: &mut [u8],
-  ) -> Result<usize, AnyError> {
-    let mut serial_port = RcRef::map(self, |r| &r.0).borrow_mut().await;
-    Ok(serial_port.read(buf).await?)
-  }
-
-  pub async fn write(self: &Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
-    let mut serial_port = RcRef::map(self, |r| &r.0).borrow_mut().await;
-    Ok(serial_port.write(buf).await?)
   }
 }
 
@@ -186,21 +170,6 @@ pub async fn op_webserial_write(
   let mut serial_port = RcRef::map(resource, |r| &r.0).borrow_mut().await;
   serial_port.write_all(&buf).await?;
   Ok(())
-}
-
-pub fn op_webserial_get_info(
-  _state: &mut OpState,
-  name: String,
-  _: (),
-) -> Result<Option<(u16, u16)>, AnyError> {
-  let info = tokio_serial::available_ports()?
-    .iter()
-    .find(|port| port.port_name == name)
-    .and_then(|port| match &port.port_type {
-      serialport::SerialPortType::UsbPort(info) => Some((info.vid, info.pid)),
-      _ => None,
-    });
-  Ok(info)
 }
 
 #[derive(Deserialize)]
