@@ -36,19 +36,17 @@
   } = window.__bootstrap.primordials;
 
   class InnerBody {
-    /** @type {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} */
-    streamOrStatic;
-    /** @type {null | Uint8Array | Blob | FormData} */
-    source = null;
-    /** @type {null | number} */
-    length = null;
-
     /**
      * @param {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} stream
      */
     constructor(stream) {
+      /** @type {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} */
       this.streamOrStatic = stream ??
         { body: new Uint8Array(), consumed: false };
+      /** @type {null | Uint8Array | Blob | FormData} */
+      this.source = null;
+      /** @type {null | number} */
+      this.length = null;
     }
 
     get stream() {
