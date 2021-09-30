@@ -26,6 +26,7 @@
     RegExpPrototypeTest,
     SymbolToStringTag,
   } = window.__bootstrap.primordials;
+  let testStepsEnabled = false;
 
   // Wrap test function in additional assertion that makes sure
   // the test case does not leak async "ops" - ie. number of async
@@ -594,6 +595,12 @@ finishing test case.`;
        * @param fn {(t: Tester) => void | Promise<void>}
        */
       async step(nameOrTestDefinition, fn) {
+        if (!testStepsEnabled) {
+          throw new Error(
+            "Test steps are unstable. The --unstable flag must be provided.",
+          );
+        }
+
         if (parentStep.finalized) {
           throw new Error(
             "Cannot run test step after tester's scope has finished execution. " +
@@ -732,9 +739,14 @@ finishing test case.`;
     return value == null ? defaultValue : value;
   }
 
+  function enableTestSteps() {
+    testStepsEnabled = true;
+  }
+
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     runTests,
+    enableTestSteps,
   };
 
   window.__bootstrap.testing = {

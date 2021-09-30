@@ -216,6 +216,9 @@ delete Object.prototype.__proto__;
       runtimeOptions.v8Version,
       runtimeOptions.tsVersion,
     );
+    if (runtimeOptions.unstableFlag) {
+      internals.enableTestSteps();
+    }
     build.setBuildInfo(runtimeOptions.target);
     util.setLogDebug(runtimeOptions.debugFlag, source);
     const prepareStackTrace = core.createPrepareStackTrace(

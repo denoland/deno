@@ -1007,6 +1007,43 @@ declare namespace Deno {
     };
   }
 
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface Tester {
+    /** Run a sub step of the parent test with a given name. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored, the promise returns `false`.
+     */
+    step(t: TestStepDefinition): Promise<boolean>;
+
+    /** Run a sub step of the parent test with a given name. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored, the promise returns `false`.
+     */
+    step(
+      name: string,
+      fn: (t: Tester) => void | Promise<void>,
+    ): Promise<boolean>;
+  }
+
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestStepDefinition {
+    fn: (t: Tester) => void | Promise<void>;
+    name: string;
+    ignore?: boolean;
+    /** Check that the number of async completed ops after the test is the same
+     * as number of dispatched ops. Defaults to true. */
+    sanitizeOps?: boolean;
+    /** Ensure the test case does not "leak" resources - ie. the resource table
+     * after the test has exactly the same contents as before the test. Defaults
+     * to true. */
+    sanitizeResources?: boolean;
+    /** Ensure the test case does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to true. */
+    sanitizeExit?: boolean;
+  }
+
   /** The type of the resource record.
    * Only the listed types are supported currently. */
   export type RecordType =
