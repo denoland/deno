@@ -1,5 +1,5 @@
-# deno_webstorage
+# deno_webserial
 
-This op crate implements the WebStorage spec in Deno.
+This ext implements the Web Serial API in Deno.
 
-Spec: https://html.spec.whatwg.org/multipage/webstorage.html
+Spec: https://wicg.github.io/serial/
