@@ -243,7 +243,7 @@
       const stream = new WritableStream({
         write: async (chunk) => {
           const source = webidl.converters.BufferSource(chunk);
-          await core.opAsync("op_webserial_read", this[_rid], source.slice()); // TODO(@crowlKats): errors
+          await core.opAsync("op_webserial_write", this[_rid], source.slice()); // TODO(@crowlKats): errors
         },
         abort: () => {
           // TODO(@crowlKats): Invoke the operating system to discard the contents of all software and hardware transmit buffers for the port.
