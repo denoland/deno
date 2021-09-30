@@ -15,12 +15,11 @@
   const {
     HTTP_TAB_OR_SPACE_PREFIX_RE,
     HTTP_TAB_OR_SPACE_SUFFIX_RE,
-    HTTP_WHITESPACE_PREFIX_RE,
-    HTTP_WHITESPACE_SUFFIX_RE,
     HTTP_TOKEN_CODE_POINT_RE,
     byteLowerCase,
     collectSequenceOfCodepoints,
     collectHttpQuotedString,
+    httpTrim,
   } = window.__bootstrap.infra;
   const {
     ArrayIsArray,
@@ -59,17 +58,7 @@
    * @returns {string}
    */
   function normalizeHeaderValue(potentialValue) {
-    potentialValue = StringPrototypeReplaceAll(
-      potentialValue,
-      HTTP_WHITESPACE_PREFIX_RE,
-      "",
-    );
-    potentialValue = StringPrototypeReplaceAll(
-      potentialValue,
-      HTTP_WHITESPACE_SUFFIX_RE,
-      "",
-    );
-    return potentialValue;
+    return httpTrim(potentialValue);
   }
 
   /**
@@ -95,7 +84,7 @@
 
   // Regex matching illegal chars in a header value
   // deno-lint-ignore no-control-regex
-  const ILLEGAL_VALUE_CHARS = /[\x00\x0A\x0D]/;
+  const ILLEGAL_VALUE_CHARS = /[\x00\x0A\x0D]/g;
 
   /**
    * https://fetch.spec.whatwg.org/#concept-headers-append
