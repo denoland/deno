@@ -1856,6 +1856,27 @@ mod permissions {
     http_server: true,
     exit_code: 1,
   });
+
+  #[test]
+  fn worker_read_write_permissions_prompt_relative_path() {
+    use util::PtyData::*;
+    // this was previously incorrectly showing an absolute path
+    let args =
+      "run --quiet --unstable --prompt run/worker_read_write_permissions.ts";
+    util::test_pty2(
+      args,
+      vec![
+        Output(
+          r#"⚠️  ️Deno requests read access to "./file.txt". Allow? [y/n (y = yes allow, n = no deny)] "#,
+        ),
+        Input("y\n"),
+        Output(
+          r#"⚠️  ️Deno requests write access to "./file.txt". Allow? [y/n (y = yes allow, n = no deny)] "#,
+        ),
+        Exit,
+      ],
+    );
+  }
 }
 
 itest!(tls_starttls {

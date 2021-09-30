@@ -1644,6 +1644,8 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
 pub enum PtyData {
   Input(&'static str),
   Output(&'static str),
+  /// Exit and stop checking input or output.
+  Exit,
 }
 
 pub fn test_pty2(args: &str, data: Vec<PtyData>) {
@@ -1684,6 +1686,9 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           }
           println!("OUTPUT {}", line.escape_debug());
           assert_eq!(normalize_text(&line), normalize_text(s));
+        }
+        PtyData::Exit => {
+          return;
         }
       }
     }
