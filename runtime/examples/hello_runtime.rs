@@ -46,6 +46,7 @@ async fn main() -> Result<(), AnyError> {
     blob_store: BlobStore::default(),
     broadcast_channel: InMemoryBroadcastChannel::default(),
     shared_array_buffer_store: None,
+    compiled_wasm_module_store: None,
     cpu_count: 1,
   };
 
@@ -57,7 +58,7 @@ async fn main() -> Result<(), AnyError> {
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);
   worker.bootstrap(&options);
-  worker.execute_module(&main_module).await?;
+  worker.execute_main_module(&main_module).await?;
   worker.run_event_loop(false).await?;
   Ok(())
 }

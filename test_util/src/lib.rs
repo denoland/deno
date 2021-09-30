@@ -44,10 +44,8 @@ use tokio_rustls::rustls::{self, Session};
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
-#[cfg(unix)]
-pub use pty;
-
 pub mod lsp;
+pub mod pty;
 
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -1589,60 +1587,95 @@ pub enum PtyData {
   Output(&'static str),
 }
 
-#[cfg(unix)]
 pub fn test_pty2(args: &str, data: Vec<PtyData>) {
-  use pty::fork::Fork;
   use std::io::BufRead;
 
-  let tests_path = testdata_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(master) = fork.is_parent() {
-    let mut buf_reader = std::io::BufReader::new(master);
-    for d in data {
+  with_pty(&args.split_whitespace().collect::<Vec<_>>(), |console| {
+    let mut buf_reader = std::io::BufReader::new(console);
+    for d in data.iter() {
       match d {
         PtyData::Input(s) => {
           println!("INPUT {}", s.escape_debug());
-          buf_reader.get_mut().write_all(s.as_bytes()).unwrap();
+          buf_reader.get_mut().write_text(s);
 
           // Because of tty echo, we should be able to read the same string back.
           assert!(s.ends_with('\n'));
           let mut echo = String::new();
           buf_reader.read_line(&mut echo).unwrap();
           println!("ECHO: {}", echo.escape_debug());
-          assert!(echo.starts_with(&s.trim()));
+
+          // Windows may also echo the previous line, so only check the end
+          assert!(normalize_text(&echo).ends_with(&normalize_text(s)));
         }
         PtyData::Output(s) => {
           let mut line = String::new();
           if s.ends_with('\n') {
             buf_reader.read_line(&mut line).unwrap();
           } else {
-            while s != line {
+            // assumes the buffer won't have overlapping virtual terminal sequences
+            while normalize_text(&line).len() < normalize_text(s).len() {
               let mut buf = [0; 64 * 1024];
-              let _n = buf_reader.read(&mut buf).unwrap();
+              let bytes_read = buf_reader.read(&mut buf).unwrap();
+              assert!(bytes_read > 0);
               let buf_str = std::str::from_utf8(&buf)
                 .unwrap()
                 .trim_end_matches(char::from(0));
               line += buf_str;
-              assert!(s.starts_with(&line));
             }
           }
           println!("OUTPUT {}", line.escape_debug());
-          assert_eq!(line, s);
+          assert_eq!(normalize_text(&line), normalize_text(s));
         }
       }
     }
+  });
 
-    fork.wait().unwrap();
-  } else {
-    deno_cmd()
-      .current_dir(tests_path)
-      .env("NO_COLOR", "1")
-      .args(args.split_whitespace())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
+  // This normalization function is not comprehensive
+  // and may need to updated as new scenarios emerge.
+  fn normalize_text(text: &str) -> String {
+    lazy_static! {
+      static ref MOVE_CURSOR_RIGHT_ONE_RE: Regex =
+        Regex::new(r"\x1b\[1C").unwrap();
+      static ref FOUND_SEQUENCES_RE: Regex =
+        Regex::new(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*").unwrap();
+      static ref CARRIAGE_RETURN_RE: Regex =
+        Regex::new(r"[^\n]*\r([^\n])").unwrap();
+    }
+
+    // any "move cursor right" sequences should just be a space
+    let text = MOVE_CURSOR_RIGHT_ONE_RE.replace_all(text, " ");
+    // replace additional virtual terminal sequences that strip ansi codes doesn't catch
+    let text = FOUND_SEQUENCES_RE.replace_all(&text, "");
+    // strip any ansi codes, which also strips more terminal sequences
+    let text = strip_ansi_codes(&text);
+    // get rid of any text that is overwritten with only a carriage return
+    let text = CARRIAGE_RETURN_RE.replace_all(&text, "$1");
+    // finally, trim surrounding whitespace
+    text.trim().to_string()
   }
+}
+
+pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Box<dyn pty::Pty>)) {
+  if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
+    eprintln!("Ignoring non-tty environment.");
+    return;
+  }
+
+  let deno_dir = new_deno_dir();
+  let mut env_vars = std::collections::HashMap::new();
+  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
+  env_vars.insert(
+    "DENO_DIR".to_string(),
+    deno_dir.path().to_string_lossy().to_string(),
+  );
+  let pty = pty::create_pty(
+    &deno_exe_path().to_string_lossy().to_string(),
+    deno_args,
+    testdata_path(),
+    Some(env_vars),
+  );
+
+  action(pty);
 }
 
 pub struct WrkOutput {

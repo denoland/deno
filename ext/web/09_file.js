@@ -30,7 +30,6 @@
     Symbol,
     SymbolFor,
     TypedArrayPrototypeSet,
-    SymbolToStringTag,
     TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
@@ -359,10 +358,6 @@
       return bytes.buffer;
     }
 
-    get [SymbolToStringTag]() {
-      return "Blob";
-    }
-
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
@@ -471,10 +466,6 @@
     get lastModified() {
       webidl.assertBranded(this, File);
       return this[_LastModified];
-    }
-
-    get [SymbolToStringTag]() {
-      return "File";
     }
   }
 

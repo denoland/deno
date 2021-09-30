@@ -3,14 +3,14 @@ import { assertEquals, unitTest } from "./test_util.ts";
 import { readAll } from "../../../test_util/std/io/util.ts";
 
 unitTest(
-  { perms: { read: true, run: true, hrtime: true } },
+  { permissions: { read: true, run: true, hrtime: true } },
   async function flockFileSync() {
     await runFlockTests({ sync: true });
   },
 );
 
 unitTest(
-  { perms: { read: true, run: true, hrtime: true } },
+  { permissions: { read: true, run: true, hrtime: true } },
   async function flockFileAsync() {
     await runFlockTests({ sync: false });
   },
@@ -78,19 +78,17 @@ async function checkFirstBlocksSecond(opts: {
     await firstProcess.signal();
     await firstProcess.waitSignal(); // entering signal
     await firstProcess.waitSignal(); // entered signal
-    await sleep(20);
     // signal the second to enter the lock
     await secondProcess.signal();
     await secondProcess.waitSignal(); // entering signal
-    await sleep(20);
+    await sleep(100);
     // signal to the first to exit the lock
     await firstProcess.signal();
-    await sleep(20);
+    // collect the final output so we know it's exited the lock
+    const firstPsTimes = await firstProcess.getTimes();
     // signal to the second to exit the lock
     await secondProcess.waitSignal(); // entered signal
     await secondProcess.signal();
-    // collect the remaining JSON output of both processes
-    const firstPsTimes = await firstProcess.getTimes();
     const secondPsTimes = await secondProcess.getTimes();
     return firstPsTimes.exitTime < secondPsTimes.enterTime;
   } finally {
@@ -126,10 +124,9 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
 
     // record the exit time and wait a little bit before releasing
     // the lock so that the enter time of the next process doesn't
-    // occur at the same time as this exit time (do double the
-    // windows clock resolution)
+    // occur at the same time as this exit time
     const exitTime = new Date().getTime();
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    Deno.sleepSync(100);
 
     // release the lock
     ${opts.sync ? "Deno.funlockSync(rid);" : "await Deno.funlock(rid);"}

@@ -73,7 +73,7 @@
           "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
           "type": "array",
           "uniqueItems": true,
-          "default": "deno.window",
+          "default": ["deno.window"],
           "items": {
             "type": "string"
           },

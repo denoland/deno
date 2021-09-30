@@ -2,7 +2,7 @@
 import { assert, unitTest } from "./test_util.ts";
 
 unitTest(
-  { perms: { read: true } },
+  { permissions: { read: true } },
   function utimeSyncFileSuccess() {
     const w = new Worker(
       new URL("../workers/worker_types.ts", import.meta.url).href,
