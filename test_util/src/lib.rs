@@ -59,6 +59,7 @@ const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const AUTH_REDIRECT_PORT: u16 = 4551;
 const TLS_CLIENT_AUTH_PORT: u16 = 4552;
 const BASIC_AUTH_REDIRECT_PORT: u16 = 4554;
+const TLS_PORT: u16 = 4557;
 const HTTPS_PORT: u16 = 5545;
 const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
@@ -441,6 +442,62 @@ async fn run_tls_client_auth_server() {
             None => b"FAIL",
           };
           tls_stream.write_all(response).await.unwrap();
+        }
+
+        Err(e) => {
+          eprintln!("TLS accept error: {:?}", e);
+        }
+      }
+    });
+  }
+}
+
+/// This server responds with 'PASS' if client authentication was successful. Try it by running
+/// test_server and
+///   curl --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4553/
+async fn run_tls_server() {
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
+    .await
+    .unwrap();
+  let tls_acceptor = TlsAcceptor::from(tls_config);
+
+  // Listen on ALL addresses that localhost can resolves to.
+  let accept = |listener: tokio::net::TcpListener| {
+    async {
+      let result = listener.accept().await;
+      Some((result, listener))
+    }
+    .boxed()
+  };
+
+  let host_and_port = &format!("localhost:{}", TLS_PORT);
+
+  let listeners = tokio::net::lookup_host(host_and_port)
+    .await
+    .expect(host_and_port)
+    .inspect(|address| println!("{} -> {}", host_and_port, address))
+    .map(tokio::net::TcpListener::bind)
+    .collect::<futures::stream::FuturesUnordered<_>>()
+    .collect::<Vec<_>>()
+    .await
+    .into_iter()
+    .map(|s| s.unwrap())
+    .map(|listener| futures::stream::unfold(listener, accept))
+    .collect::<Vec<_>>();
+
+  println!("ready: tls"); // Eye catcher for HttpServerCount
+
+  let mut listeners = futures::stream::select_all(listeners);
+
+  while let Some(Ok((stream, _addr))) = listeners.next().await {
+    let acceptor = tls_acceptor.clone();
+    tokio::spawn(async move {
+      match acceptor.accept(stream).await {
+        Ok(mut tls_stream) => {
+          tls_stream.write_all(b"PASS").await.unwrap();
         }
 
         Err(e) => {
@@ -1016,6 +1073,7 @@ pub async fn run_all_servers() {
   let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
   let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
 
+  let tls_server_fut = run_tls_server();
   let tls_client_auth_server_fut = run_tls_client_auth_server();
   let client_auth_server_https_fut = wrap_client_auth_https_server();
   let main_server_fut = wrap_main_server();
@@ -1026,6 +1084,7 @@ pub async fn run_all_servers() {
       redirect_server_fut,
       ws_server_fut,
       wss_server_fut,
+      tls_server_fut,
       tls_client_auth_server_fut,
       ws_close_server_fut,
       another_redirect_server_fut,
@@ -1182,7 +1241,7 @@ impl HttpServerCount {
           if line.starts_with("ready:") {
             ready_count += 1;
           }
-          if ready_count == 5 {
+          if ready_count == 6 {
             break;
           }
         } else {

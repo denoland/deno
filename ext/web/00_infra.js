@@ -19,6 +19,7 @@
     TypeError,
     ArrayPrototypeJoin,
     StringPrototypeCharAt,
+    StringPrototypeMatch,
     StringPrototypeSlice,
     String,
     StringPrototypeReplace,
@@ -75,6 +76,9 @@
     "g",
   );
   const HTTP_WHITESPACE_MATCHER = regexMatcher(HTTP_WHITESPACE);
+  const HTTP_BETWEEN_WHITESPACE = new RegExp(
+    `^[${HTTP_WHITESPACE_MATCHER}]*(.*?)[${HTTP_WHITESPACE_MATCHER}]*$`,
+  );
   const HTTP_WHITESPACE_PREFIX_RE = new RegExp(
     `^[${HTTP_WHITESPACE_MATCHER}]+`,
     "g",
@@ -237,6 +241,33 @@
     return core.opSync("op_base64_decode", data);
   }
 
+  /**
+   * @param {string} char
+   * @returns {boolean}
+   */
+  function isHttpWhitespace(char) {
+    switch (char) {
+      case "\u0009":
+      case "\u000A":
+      case "\u000D":
+      case "\u0020":
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * @param {string} s
+   * @returns {string}
+   */
+  function httpTrim(s) {
+    if (!isHttpWhitespace(s[0]) && !isHttpWhitespace(s[s.length - 1])) {
+      return s;
+    }
+    return StringPrototypeMatch(s, HTTP_BETWEEN_WHITESPACE)?.[1] ?? "";
+  }
+
   window.__bootstrap.infra = {
     collectSequenceOfCodepoints,
     ASCII_DIGIT,
@@ -254,6 +285,7 @@
     HTTP_TAB_OR_SPACE_SUFFIX_RE,
     HTTP_WHITESPACE_PREFIX_RE,
     HTTP_WHITESPACE_SUFFIX_RE,
+    httpTrim,
     regexMatcher,
     byteUpperCase,
     byteLowerCase,

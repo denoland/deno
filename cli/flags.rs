@@ -111,6 +111,12 @@ pub struct InstallFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct UninstallFlags {
+  pub name: String,
+  pub root: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct LintFlags {
   pub files: Vec<PathBuf>,
   pub ignore: Vec<PathBuf>,
@@ -166,6 +172,7 @@ pub enum DenoSubcommand {
   Fmt(FmtFlags),
   Info(InfoFlags),
   Install(InstallFlags),
+  Uninstall(UninstallFlags),
   Lsp,
   Lint(LintFlags),
   Repl(ReplFlags),
@@ -428,6 +435,8 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     bundle_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("install") {
     install_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("uninstall") {
+    uninstall_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("completions") {
     completions_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("test") {
@@ -499,6 +508,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
+    .subcommand(uninstall_subcommand())
     .subcommand(lsp_subcommand())
     .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
@@ -993,6 +1003,36 @@ The installation root is determined, in order of precedence:
   - $HOME/.deno
 
 These must be added to the path manually if required.")
+}
+
+fn uninstall_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("uninstall")
+    .setting(AppSettings::TrailingVarArg)
+    .arg(
+      Arg::with_name("name")
+        .required(true)
+        .multiple(false)
+        .allow_hyphen_values(true))
+    .arg(
+      Arg::with_name("root")
+        .long("root")
+        .help("Installation root")
+        .takes_value(true)
+        .multiple(false))
+    .about("Uninstall a script previously installed with deno install")
+    .long_about(
+      "Uninstalls an executable script in the installation root's bin directory.
+
+  deno uninstall serve
+
+To change the installation root, use --root:
+
+  deno uninstall --root /usr/local serve
+
+The installation root is determined, in order of precedence:
+  - --root option
+  - DENO_INSTALL_ROOT environment variable
+  - $HOME/.deno")
 }
 
 fn lsp_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1894,6 +1934,18 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     root,
     force,
   });
+}
+
+fn uninstall_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let root = if matches.is_present("root") {
+    let install_root = matches.value_of("root").unwrap();
+    Some(PathBuf::from(install_root))
+  } else {
+    None
+  };
+
+  let name = matches.value_of("name").unwrap().to_string();
+  flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
 }
 
 fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {

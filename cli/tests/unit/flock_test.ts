@@ -49,6 +49,9 @@ async function runFlockTests(opts: { sync: boolean }) {
       firstExclusive: false,
       secondExclusive: false,
       sync: opts.sync,
+      // need to wait for both to enter the lock to prevent the case where the
+      // first process enters and exits the lock before the second even enters
+      waitBothEnteredLock: true,
     }),
     false,
     "shared does not block shared",
@@ -59,6 +62,7 @@ async function checkFirstBlocksSecond(opts: {
   firstExclusive: boolean;
   secondExclusive: boolean;
   sync: boolean;
+  waitBothEnteredLock?: boolean;
 }) {
   const firstProcess = runFlockTestProcess({
     exclusive: opts.firstExclusive,
@@ -71,24 +75,31 @@ async function checkFirstBlocksSecond(opts: {
   try {
     const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
-    // wait for both processes to signal that they're ready
-    await Promise.all([firstProcess.waitSignal(), secondProcess.waitSignal()]);
+    await Promise.all([
+      firstProcess.waitStartup(),
+      secondProcess.waitStartup(),
+    ]);
 
-    // signal to the first process to enter the lock
-    await firstProcess.signal();
-    await firstProcess.waitSignal(); // entering signal
-    await firstProcess.waitSignal(); // entered signal
-    // signal the second to enter the lock
-    await secondProcess.signal();
-    await secondProcess.waitSignal(); // entering signal
+    await firstProcess.enterLock();
+    await firstProcess.waitEnterLock();
+
+    await secondProcess.enterLock();
     await sleep(100);
-    // signal to the first to exit the lock
-    await firstProcess.signal();
-    // collect the final output so we know it's exited the lock
+
+    if (!opts.waitBothEnteredLock) {
+      await firstProcess.exitLock();
+    }
+
+    await secondProcess.waitEnterLock();
+
+    if (opts.waitBothEnteredLock) {
+      await firstProcess.exitLock();
+    }
+
+    await secondProcess.exitLock();
+
+    // collect the final output
     const firstPsTimes = await firstProcess.getTimes();
-    // signal to the second to exit the lock
-    await secondProcess.waitSignal(); // entered signal
-    await secondProcess.signal();
     const secondPsTimes = await secondProcess.getTimes();
     return firstPsTimes.exitTime < secondPsTimes.enterTime;
   } finally {
@@ -131,6 +142,9 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
     // release the lock
     ${opts.sync ? "Deno.funlockSync(rid);" : "await Deno.funlock(rid);"}
 
+    // exited signal
+    Deno.stdout.writeSync(new Uint8Array(1));
+
     // output the enter and exit time
     console.log(JSON.stringify({ enterTime, exitTime }));
 `;
@@ -141,9 +155,24 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
     stdin: "piped",
   });
 
+  const waitSignal = () => process.stdout.read(new Uint8Array(1));
+  const signal = () => process.stdin.write(new Uint8Array(1));
+
   return {
-    waitSignal: () => process.stdout.read(new Uint8Array(1)),
-    signal: () => process.stdin.write(new Uint8Array(1)),
+    async waitStartup() {
+      await waitSignal();
+    },
+    async enterLock() {
+      await signal();
+      await waitSignal(); // entering signal
+    },
+    async waitEnterLock() {
+      await waitSignal();
+    },
+    async exitLock() {
+      await signal();
+      await waitSignal();
+    },
     getTimes: async () => {
       const outputBytes = await readAll(process.stdout);
       const text = new TextDecoder().decode(outputBytes);
