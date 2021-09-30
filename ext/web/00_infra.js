@@ -157,13 +157,9 @@
    * @returns {string}
    */
   function byteLowerCase(s) {
-    return StringPrototypeReplace(
-      String(s),
-      /[A-Z]/g,
-      function byteUpperCaseReplace(c) {
-        return StringPrototypeToLowerCase(c);
-      },
-    );
+    // NOTE: correct since all callers convert to ByteString first
+    // TODO(@AaronO): maybe prefer a ByteString_Lower webidl converter
+    return StringPrototypeToLowerCase(s);
   }
 
   /**
