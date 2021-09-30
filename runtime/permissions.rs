@@ -159,26 +159,48 @@ impl UnitPermission {
   }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+/// A normalized environment variable name. On Windows this will
+/// be uppercase and on other platforms it will stay as-is.
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
+struct EnvVarName {
+  inner: String,
+}
+
+impl EnvVarName {
+  pub fn new(env: impl AsRef<str>) -> Self {
+    Self {
+      inner: if cfg!(windows) {
+        env.as_ref().to_uppercase()
+      } else {
+        env.as_ref().to_string()
+      },
+    }
+  }
+}
+
+impl AsRef<str> for EnvVarName {
+  fn as_ref(&self) -> &str {
+    self.inner.as_str()
+  }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct UnaryPermission<T: Eq + Hash> {
-  #[serde(skip)]
   pub name: &'static str,
-  #[serde(skip)]
   pub description: &'static str,
   pub global_state: PermissionState,
   pub granted_list: HashSet<T>,
   pub denied_list: HashSet<T>,
-  #[serde(skip)]
   pub prompt: bool,
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct ReadDescriptor(pub PathBuf);
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct WriteDescriptor(pub PathBuf);
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct NetDescriptor(pub String, pub Option<u16>);
 
 impl NetDescriptor {
@@ -203,13 +225,25 @@ impl fmt::Display for NetDescriptor {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
-pub struct EnvDescriptor(pub String);
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
+pub struct EnvDescriptor(EnvVarName);
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+impl EnvDescriptor {
+  pub fn new(env: impl AsRef<str>) -> Self {
+    Self(EnvVarName::new(env))
+  }
+}
+
+impl AsRef<str> for EnvDescriptor {
+  fn as_ref(&self) -> &str {
+    self.0.as_ref()
+  }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct RunDescriptor(pub String);
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct FfiDescriptor(pub String);
 
 impl UnaryPermission<ReadDescriptor> {
@@ -585,21 +619,18 @@ impl UnaryPermission<NetDescriptor> {
 
 impl UnaryPermission<EnvDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
-    #[cfg(windows)]
-    let env = env.map(|env| env.to_uppercase());
-    #[cfg(windows)]
-    let env = env.as_deref();
+    let env = env.map(EnvVarName::new);
     if self.global_state == PermissionState::Denied
-      && match env {
+      && match env.as_ref() {
         None => true,
-        Some(env) => self.denied_list.iter().any(|env_| env_.0 == env),
+        Some(env) => self.denied_list.iter().any(|env_| &env_.0 == env),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
-      || match env {
+      || match env.as_ref() {
         None => false,
-        Some(env) => self.granted_list.iter().any(|env_| env_.0 == env),
+        Some(env) => self.granted_list.iter().any(|env_| &env_.0 == env),
       }
     {
       PermissionState::Granted
@@ -610,23 +641,18 @@ impl UnaryPermission<EnvDescriptor> {
 
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
-      let env = if cfg!(windows) {
-        env.to_uppercase()
-      } else {
-        env.to_string()
-      };
-      let state = self.query(Some(&env));
+      let state = self.query(Some(env));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("env access to \"{}\"", env)) {
-          self.granted_list.insert(EnvDescriptor(env));
+          self.granted_list.insert(EnvDescriptor::new(env));
           PermissionState::Granted
         } else {
-          self.denied_list.insert(EnvDescriptor(env));
+          self.denied_list.insert(EnvDescriptor::new(env));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
       } else if state == PermissionState::Granted {
-        self.granted_list.insert(EnvDescriptor(env));
+        self.granted_list.insert(EnvDescriptor::new(env));
         PermissionState::Granted
       } else {
         state
@@ -650,9 +676,7 @@ impl UnaryPermission<EnvDescriptor> {
 
   pub fn revoke(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
-      #[cfg(windows)]
-      let env = env.to_uppercase();
-      self.granted_list.remove(&EnvDescriptor(env.to_string()));
+      self.granted_list.remove(&EnvDescriptor::new(env));
     } else {
       self.granted_list.clear();
     }
@@ -663,8 +687,6 @@ impl UnaryPermission<EnvDescriptor> {
   }
 
   pub fn check(&mut self, env: &str) -> Result<(), AnyError> {
-    #[cfg(windows)]
-    let env = &env.to_uppercase();
     let (result, prompted) = self.query(Some(env)).check(
       self.name,
       Some(&format!("\"{}\"", env)),
@@ -672,9 +694,9 @@ impl UnaryPermission<EnvDescriptor> {
     );
     if prompted {
       if result.is_ok() {
-        self.granted_list.insert(EnvDescriptor(env.to_string()));
+        self.granted_list.insert(EnvDescriptor::new(env));
       } else {
-        self.denied_list.insert(EnvDescriptor(env.to_string()));
+        self.denied_list.insert(EnvDescriptor::new(env));
         self.global_state = PermissionState::Denied;
       }
     }
@@ -976,17 +998,7 @@ impl Permissions {
       global_state: global_state_from_option(state),
       granted_list: state
         .as_ref()
-        .map(|v| {
-          v.iter()
-            .map(|x| {
-              EnvDescriptor(if cfg!(windows) {
-                x.to_uppercase()
-              } else {
-                x.clone()
-              })
-            })
-            .collect()
-        })
+        .map(|v| v.iter().map(EnvDescriptor::new).collect())
         .unwrap_or_else(HashSet::new),
       denied_list: Default::default(),
       prompt,
