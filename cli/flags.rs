@@ -195,6 +195,7 @@ pub struct Flags {
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
+  pub allow_serial: Option<Vec<String>>,
   pub ca_stores: Option<Vec<String>>,
   pub ca_file: Option<String>,
   pub cache_blocklist: Vec<String>,
@@ -320,6 +321,17 @@ impl Flags {
       _ => {}
     }
 
+    match &self.allow_serial {
+      Some(serial_allowlist) if serial_allowlist.is_empty() => {
+        args.push("--allow-serial".to_string());
+      }
+      Some(serial_allowlist) => {
+        let s = format!("--allow-serial={}", serial_allowlist.join(","));
+        args.push(s);
+      }
+      _ => {}
+    }
+
     if self.allow_hrtime {
       args.push("--allow-hrtime".to_string());
     }
@@ -338,6 +350,7 @@ impl From<Flags> for PermissionsOptions {
       allow_read: flags.allow_read,
       allow_run: flags.allow_run,
       allow_write: flags.allow_write,
+      allow_serial: flags.allow_serial,
       prompt: flags.prompt,
     }
   }
@@ -1411,6 +1424,15 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .help("Allow loading dynamic libraries"),
     )
     .arg(
+      Arg::with_name("allow-serial")
+        .long("allow-serial")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow interacting with serial ports"),
+    )
+    .arg(
       Arg::with_name("allow-hrtime")
         .long("allow-hrtime")
         .help("Allow high resolution time measurement"),
@@ -1633,10 +1655,10 @@ fn config_arg<'a, 'b>() -> Arg<'a, 'b> {
     .long_help(
       "Load configuration file.
 Before 1.14 Deno only supported loading tsconfig.json that allowed
-to customise TypeScript compiler settings. 
+to customise TypeScript compiler settings.
 
-Starting with 1.14 configuration file can be used to configure different 
-subcommands like `deno lint` or `deno fmt`. 
+Starting with 1.14 configuration file can be used to configure different
+subcommands like `deno lint` or `deno fmt`.
 
 It's recommended to use `deno.json` or `deno.jsonc` as a filename.",
     )
@@ -1766,6 +1788,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_read = Some(vec![]);
   flags.allow_write = Some(vec![]);
   flags.allow_ffi = Some(vec![]);
+  flags.allow_serial = Some(vec![]);
   flags.allow_hrtime = true;
   // TODO(@satyarohith): remove this flag in 2.0.
   let as_typescript = matches.is_present("ts");
@@ -1947,6 +1970,7 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_read = Some(vec![]);
   flags.allow_write = Some(vec![]);
   flags.allow_ffi = Some(vec![]);
+  flags.allow_serial = Some(vec![]);
   flags.allow_hrtime = true;
 }
 
@@ -2142,6 +2166,13 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     debug!("ffi allowlist: {:#?}", &flags.allow_ffi);
   }
 
+  if let Some(serial_wl) = matches.values_of("allow-serial") {
+    let serial_allowlist: Vec<String> =
+      serial_wl.map(ToString::to_string).collect();
+    flags.allow_serial = Some(serial_allowlist);
+    debug!("serial allowlist: {:#?}", &flags.allow_serial);
+  }
+
   if matches.is_present("allow-hrtime") {
     flags.allow_hrtime = true;
   }
@@ -2152,6 +2183,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_run = Some(vec![]);
     flags.allow_write = Some(vec![]);
     flags.allow_ffi = Some(vec![]);
+    flags.allow_serial = Some(vec![]);
     flags.allow_hrtime = true;
   }
   if matches.is_present("prompt") {
@@ -2491,6 +2523,7 @@ mod tests {
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
+        allow_serial: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2991,6 +3024,7 @@ mod tests {
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
+        allow_serial: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -3014,6 +3048,7 @@ mod tests {
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
+        allow_serial: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -3038,6 +3073,7 @@ mod tests {
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
+        allow_serial: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -3075,6 +3111,7 @@ mod tests {
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
+        allow_serial: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -3105,6 +3142,7 @@ mod tests {
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
+        allow_serial: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -3126,6 +3164,7 @@ mod tests {
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
+        allow_serial: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -3160,6 +3199,7 @@ mod tests {
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
+        allow_serial: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -3183,6 +3223,7 @@ mod tests {
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
+        allow_serial: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }

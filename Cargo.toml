@@ -21,6 +21,7 @@ members = [
   "ext/web",
   "ext/webgpu",
   "ext/webidl",
+  "ext/webserial",
   "ext/websocket",
   "ext/webstorage",
 ]

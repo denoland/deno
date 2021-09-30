@@ -212,6 +212,9 @@ pub struct RunDescriptor(pub String);
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
 pub struct FfiDescriptor(pub String);
 
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+pub struct SerialDescriptor(pub String);
+
 impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
@@ -893,6 +896,94 @@ impl UnaryPermission<FfiDescriptor> {
   }
 }
 
+impl UnaryPermission<SerialDescriptor> {
+  pub fn query(&self, port: Option<&str>) -> PermissionState {
+    if self.global_state == PermissionState::Denied
+      && match port {
+        None => true,
+        Some(port) => self.denied_list.iter().any(|port_| port_.0 == port),
+      }
+    {
+      PermissionState::Denied
+    } else if self.global_state == PermissionState::Granted
+      || match port {
+        None => false,
+        Some(port) => self.granted_list.iter().any(|port_| port_.0 == port),
+      }
+    {
+      PermissionState::Granted
+    } else {
+      PermissionState::Prompt
+    }
+  }
+
+  pub fn request(&mut self, port: Option<&str>) -> PermissionState {
+    if let Some(port) = port {
+      let state = self.query(Some(port));
+      if state == PermissionState::Prompt {
+        if permission_prompt(&format!("serialport access to \"{}\"", port)) {
+          self.granted_list.insert(SerialDescriptor(port.to_string()));
+          PermissionState::Granted
+        } else {
+          self.denied_list.insert(SerialDescriptor(port.to_string()));
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
+        }
+      } else if state == PermissionState::Granted {
+        self.granted_list.insert(SerialDescriptor(port.to_string()));
+        PermissionState::Granted
+      } else {
+        state
+      }
+    } else {
+      let state = self.query(None);
+      if state == PermissionState::Prompt {
+        if permission_prompt("serialport access") {
+          self.granted_list.clear();
+          self.global_state = PermissionState::Granted;
+          PermissionState::Granted
+        } else {
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
+        }
+      } else {
+        state
+      }
+    }
+  }
+
+  pub fn revoke(&mut self, port: Option<&str>) -> PermissionState {
+    if let Some(port) = port {
+      self
+        .granted_list
+        .remove(&SerialDescriptor(port.to_string()));
+    } else {
+      self.granted_list.clear();
+    }
+    if self.global_state == PermissionState::Granted {
+      self.global_state = PermissionState::Prompt;
+    }
+    self.query(port)
+  }
+
+  pub fn check(&mut self, port: &str) -> Result<(), AnyError> {
+    let (result, prompted) = self.query(Some(port)).check(
+      self.name,
+      Some(&format!("\"{}\"", port)),
+      self.prompt,
+    );
+    if prompted {
+      if result.is_ok() {
+        self.granted_list.insert(SerialDescriptor(port.to_string()));
+      } else {
+        self.denied_list.insert(SerialDescriptor(port.to_string()));
+        self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Permissions {
   pub read: UnaryPermission<ReadDescriptor>,
@@ -901,6 +992,7 @@ pub struct Permissions {
   pub env: UnaryPermission<EnvDescriptor>,
   pub run: UnaryPermission<RunDescriptor>,
   pub ffi: UnaryPermission<FfiDescriptor>,
+  pub serial: UnaryPermission<SerialDescriptor>,
   pub hrtime: UnitPermission,
 }
 
@@ -913,6 +1005,7 @@ pub struct PermissionsOptions {
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
+  pub allow_serial: Option<Vec<String>>,
   pub prompt: bool,
 }
 
@@ -1027,6 +1120,23 @@ impl Permissions {
     }
   }
 
+  pub fn new_serial(
+    state: &Option<Vec<String>>,
+    prompt: bool,
+  ) -> UnaryPermission<SerialDescriptor> {
+    UnaryPermission::<SerialDescriptor> {
+      name: "serial",
+      description: "use a serialport",
+      global_state: global_state_from_option(state),
+      granted_list: state
+        .as_ref()
+        .map(|v| v.iter().map(|x| SerialDescriptor(x.clone())).collect())
+        .unwrap_or_else(HashSet::new),
+      denied_list: Default::default(),
+      prompt,
+    }
+  }
+
   pub fn new_hrtime(state: bool, prompt: bool) -> UnitPermission {
     unit_permission_from_flag_bool(
       state,
@@ -1044,6 +1154,7 @@ impl Permissions {
       env: Permissions::new_env(&opts.allow_env, opts.prompt),
       run: Permissions::new_run(&opts.allow_run, opts.prompt),
       ffi: Permissions::new_ffi(&opts.allow_ffi, opts.prompt),
+      serial: Permissions::new_serial(&opts.allow_serial, opts.prompt),
       hrtime: Permissions::new_hrtime(opts.allow_hrtime, opts.prompt),
     }
   }
@@ -1056,6 +1167,7 @@ impl Permissions {
       env: Permissions::new_env(&Some(vec![]), false),
       run: Permissions::new_run(&Some(vec![]), false),
       ffi: Permissions::new_ffi(&Some(vec![]), false),
+      serial: Permissions::new_serial(&Some(vec![]), false),
       hrtime: Permissions::new_hrtime(true, false),
     }
   }
@@ -1127,6 +1239,12 @@ impl deno_websocket::WebSocketPermissions for Permissions {
 impl deno_ffi::FfiPermissions for Permissions {
   fn check(&mut self, path: &str) -> Result<(), AnyError> {
     self.ffi.check(path)
+  }
+}
+
+impl deno_webserial::WebSerialPermissions for Permissions {
+  fn check_port(&mut self, port: &str) -> Result<(), AnyError> {
+    self.serial.check(port)
   }
 }
 
@@ -1691,6 +1809,10 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_ffi(&Some(svec!["deno"]), false)
       },
+      serial: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_serial(&Some(svec!["/dev/ttyUSB0"]), false)
+      },
       hrtime: UnitPermission {
         state: PermissionState::Prompt,
         ..Default::default()
@@ -1724,6 +1846,10 @@ mod tests {
       assert_eq!(perms1.ffi.query(Some(&"deno".to_string())), PermissionState::Granted);
       assert_eq!(perms2.ffi.query(None), PermissionState::Prompt);
       assert_eq!(perms2.ffi.query(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms1.serial.query(None), PermissionState::Granted);
+      assert_eq!(perms1.serial.query(Some(&"/dev/ttyUSB0".to_string())), PermissionState::Granted);
+      assert_eq!(perms2.serial.query(None), PermissionState::Prompt);
+      assert_eq!(perms2.serial.query(Some(&"/dev/ttyUSB0".to_string())), PermissionState::Granted);
       assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
       assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
     };
@@ -1764,6 +1890,11 @@ mod tests {
       assert_eq!(perms.ffi.query(None), PermissionState::Prompt);
       set_prompt_result(false);
       assert_eq!(perms.ffi.request(Some(&"deno".to_string())), PermissionState::Granted);
+      set_prompt_result(true);
+      assert_eq!(perms.run.request(Some(&"/dev/ttyUSB0".to_string())), PermissionState::Granted);
+      assert_eq!(perms.run.query(None), PermissionState::Prompt);
+      set_prompt_result(false);
+      assert_eq!(perms.run.request(Some(&"/dev/ttyUSB0".to_string())), PermissionState::Granted);
       set_prompt_result(false);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
       set_prompt_result(true);
@@ -1807,6 +1938,10 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_ffi(&Some(svec!["deno"]), false)
       },
+      serial: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_serial(&Some(svec!["/dev/ttyUSB0"]), false)
+      },
       hrtime: UnitPermission {
         state: PermissionState::Denied,
         ..Default::default()
@@ -1826,6 +1961,7 @@ mod tests {
       assert_eq!(perms.env.revoke(Some(&"HOME".to_string())), PermissionState::Prompt);
       assert_eq!(perms.run.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
       assert_eq!(perms.ffi.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
+      assert_eq!(perms.run.revoke(Some(&"/dev/ttyUSB0".to_string())), PermissionState::Prompt);
       assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
     };
   }
@@ -1839,6 +1975,7 @@ mod tests {
       env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
       ffi: Permissions::new_ffi(&None, true),
+      serial: Permissions::new_serial(&None, true),
       hrtime: Permissions::new_hrtime(false, true),
     };
 
@@ -1878,6 +2015,12 @@ mod tests {
     assert!(perms.env.check("PATH").is_err());
 
     set_prompt_result(true);
+    assert!(perms.run.check("/dev/ttyUSB0").is_ok());
+    set_prompt_result(false);
+    assert!(perms.run.check("/dev/ttyUSB0").is_ok());
+    assert!(perms.run.check("/dev/ttyUSB1").is_err());
+
+    set_prompt_result(true);
     assert!(perms.hrtime.check().is_ok());
     set_prompt_result(false);
     assert!(perms.hrtime.check().is_ok());
@@ -1892,6 +2035,7 @@ mod tests {
       env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
       ffi: Permissions::new_ffi(&None, true),
+      serial: Permissions::new_serial(&None, true),
       hrtime: Permissions::new_hrtime(false, true),
     };
 
@@ -1938,6 +2082,14 @@ mod tests {
     assert!(perms.env.check("PATH").is_ok());
     set_prompt_result(false);
     assert!(perms.env.check("PATH").is_ok());
+
+    set_prompt_result(false);
+    assert!(perms.run.check("/dev/ttyUSB0").is_err());
+    set_prompt_result(true);
+    assert!(perms.run.check("/dev/ttyUSB0").is_err());
+    assert!(perms.run.check("/dev/ttyUSB1").is_ok());
+    set_prompt_result(false);
+    assert!(perms.run.check("/dev/ttyUSB1").is_ok());
 
     set_prompt_result(false);
     assert!(perms.hrtime.check().is_err());

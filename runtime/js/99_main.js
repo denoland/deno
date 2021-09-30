@@ -48,6 +48,7 @@ delete Object.prototype.__proto__;
   const webgpu = window.__bootstrap.webgpu;
   const webSocket = window.__bootstrap.webSocket;
   const webStorage = window.__bootstrap.webStorage;
+  const webSerial = window.__bootstrap.webSerial;
   const broadcastChannel = window.__bootstrap.broadcastChannel;
   const file = window.__bootstrap.file;
   const formData = window.__bootstrap.formData;
@@ -316,6 +317,14 @@ delete Object.prototype.__proto__;
         return webgpu.gpu;
       },
     },
+    serial: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return webSerial.serial;
+      },
+    },
     hardwareConcurrency: {
       configurable: true,
       enumerable: true,
@@ -345,6 +354,14 @@ delete Object.prototype.__proto__;
       get() {
         webidl.assertBranded(this, WorkerNavigator);
         return webgpu.gpu;
+      },
+    },
+    serial: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, WorkerNavigator);
+        return webSerial.serial;
       },
     },
     hardwareConcurrency: {
@@ -398,6 +415,8 @@ delete Object.prototype.__proto__;
     URLPattern: util.nonEnumerable(urlPattern.URLPattern),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
+    Serial: util.nonEnumerable(webSerial.Serial),
+    SerialPort: util.nonEnumerable(webSerial.SerialPort),
     MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
     MessagePort: util.nonEnumerable(messagePort.MessagePort),
     Worker: util.nonEnumerable(worker.Worker),

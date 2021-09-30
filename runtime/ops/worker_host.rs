@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops::TestingFeaturesEnabled;
-use crate::permissions::resolve_read_allowlist;
 use crate::permissions::resolve_write_allowlist;
 use crate::permissions::EnvDescriptor;
 use crate::permissions::FfiDescriptor;
@@ -13,6 +12,7 @@ use crate::permissions::RunDescriptor;
 use crate::permissions::UnaryPermission;
 use crate::permissions::UnitPermission;
 use crate::permissions::WriteDescriptor;
+use crate::permissions::{resolve_read_allowlist, SerialDescriptor};
 use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
@@ -277,6 +277,26 @@ fn merge_ffi_permission(
   Ok(main)
 }
 
+fn merge_serial_permission(
+  mut main: UnaryPermission<SerialDescriptor>,
+  worker: Option<UnaryPermission<SerialDescriptor>>,
+) -> Result<UnaryPermission<SerialDescriptor>, AnyError> {
+  if let Some(worker) = worker {
+    if (worker.global_state < main.global_state)
+      || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
+    {
+      return Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      ));
+    } else {
+      main.global_state = worker.global_state;
+      main.granted_list = worker.granted_list;
+    }
+  }
+  Ok(main)
+}
+
 pub fn create_worker_permissions(
   main_perms: Permissions,
   worker_perms: PermissionsArg,
@@ -289,6 +309,7 @@ pub fn create_worker_permissions(
     read: merge_read_permission(main_perms.read, worker_perms.read)?,
     run: merge_run_permission(main_perms.run, worker_perms.run)?,
     write: merge_write_permission(main_perms.write, worker_perms.write)?,
+    serial: merge_serial_permission(main_perms.serial, worker_perms.serial)?,
   })
 }
 
@@ -308,6 +329,8 @@ pub struct PermissionsArg {
   run: Option<UnaryPermission<RunDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_write_permission")]
   write: Option<UnaryPermission<WriteDescriptor>>,
+  #[serde(default, deserialize_with = "as_unary_serial_permission")]
+  serial: Option<UnaryPermission<SerialDescriptor>>,
 }
 
 fn as_permission_state<'de, D>(
@@ -485,6 +508,22 @@ where
   Ok(Some(UnaryPermission::<FfiDescriptor> {
     global_state: value.global_state,
     granted_list: value.paths.into_iter().map(FfiDescriptor).collect(),
+    ..Default::default()
+  }))
+}
+
+fn as_unary_serial_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<SerialDescriptor>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  Ok(Some(UnaryPermission::<SerialDescriptor> {
+    global_state: value.global_state,
+    granted_list: value.paths.into_iter().map(SerialDescriptor).collect(),
     ..Default::default()
   }))
 }

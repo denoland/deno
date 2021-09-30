@@ -56,6 +56,7 @@ mod not_docs {
         None,
         None,
       ),
+      deno_webserial::init::<deno_webserial::NoWebSerialPermissions>(),
       deno_websocket::init::<deno_websocket::NoWebSocketPermissions>(
         "".to_owned(),
         None,

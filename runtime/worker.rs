@@ -111,6 +111,7 @@ impl MainWorker {
         options.unsafely_ignore_certificate_errors.clone(),
         None,
       ),
+      deno_webserial::init::<Permissions>(),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
         options.root_cert_store.clone(),

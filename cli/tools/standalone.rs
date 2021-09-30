@@ -210,6 +210,7 @@ pub fn compile_to_runtime_flags(
     allow_read: flags.allow_read,
     allow_run: flags.allow_run,
     allow_write: flags.allow_write,
+    allow_serial: flags.allow_serial,
     ca_stores: flags.ca_stores,
     ca_file: flags.ca_file,
     cache_blocklist: vec![],

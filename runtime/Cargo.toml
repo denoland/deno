@@ -36,6 +36,7 @@ deno_url = { version = "0.19.0", path = "../ext/url" }
 deno_web = { version = "0.50.0", path = "../ext/web" }
 deno_webgpu = { version = "0.20.0", path = "../ext/webgpu" }
 deno_webidl = { version = "0.19.0", path = "../ext/webidl" }
+deno_webserial = { version = "0.1.0", path = "../ext/webserial" }
 deno_websocket = { version = "0.24.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.14.0", path = "../ext/webstorage" }
 
@@ -58,6 +59,7 @@ deno_url = { version = "0.19.0", path = "../ext/url" }
 deno_web = { version = "0.50.0", path = "../ext/web" }
 deno_webgpu = { version = "0.20.0", path = "../ext/webgpu" }
 deno_webidl = { version = "0.19.0", path = "../ext/webidl" }
+deno_webserial = { version = "0.1.0", path = "../ext/webserial" }
 deno_websocket = { version = "0.24.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.14.0", path = "../ext/webstorage" }
 
