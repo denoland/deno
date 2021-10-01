@@ -440,12 +440,7 @@
   }
 
   function isArrayBufferDetached(V) {
-    try {
-      new Uint8Array(V);
-      return false;
-    } catch {
-      return true;
-    }
+    return V.byteLength === 0;
   }
 
   converters.ArrayBuffer = (V, opts = {}) => {
