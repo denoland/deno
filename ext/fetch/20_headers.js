@@ -29,7 +29,7 @@
     ArrayPrototypeJoin,
     ArrayPrototypeSplice,
     ArrayPrototypeFilter,
-    ObjectKeys,
+    ObjectPrototypeHasOwnProperty,
     ObjectEntries,
     RegExpPrototypeTest,
     Symbol,
@@ -76,7 +76,10 @@
         appendHeader(headers, header[0], header[1]);
       }
     } else {
-      for (const key of ObjectKeys(object)) {
+      for (const key in object) {
+        if (!ObjectPrototypeHasOwnProperty(object, key)) {
+          continue;
+        }
         appendHeader(headers, key, object[key]);
       }
     }
