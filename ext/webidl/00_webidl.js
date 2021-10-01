@@ -48,6 +48,7 @@
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertyDescriptors,
     ObjectGetPrototypeOf,
+    ObjectPrototypeHasOwnProperty,
     ObjectIs,
     PromisePrototypeThen,
     PromiseReject,
@@ -844,16 +845,15 @@
           opts,
         );
       }
-      const keys = ReflectOwnKeys(V);
       const result = {};
-      for (const key of keys) {
-        const desc = ObjectGetOwnPropertyDescriptor(V, key);
-        if (desc !== undefined && desc.enumerable === true) {
-          const typedKey = keyConverter(key, opts);
-          const value = V[key];
-          const typedValue = valueConverter(value, opts);
-          result[typedKey] = typedValue;
+      for (const key in V) {
+        if (!ObjectPrototypeHasOwnProperty(V, key)) {
+          continue;
         }
+        const typedKey = keyConverter(key, opts);
+        const value = V[key];
+        const typedValue = valueConverter(value, opts);
+        result[typedKey] = typedValue;
       }
       return result;
     };
