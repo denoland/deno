@@ -15,7 +15,7 @@
       for (const symbol in symbols) {
         this.symbols[symbol] = symbols[symbol].nonblocking
           ? (...parameters) =>
-            core.opAsync("op_ffi_call_async", {
+            core.opAsync("op_ffi_call_nonblocking", {
               rid: this.#rid,
               symbol,
               parameters,

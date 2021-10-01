@@ -113,7 +113,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     .ops(vec![
       ("op_ffi_load", op_sync(op_ffi_load::<P>)),
       ("op_ffi_call", op_sync(op_ffi_call)),
-      ("op_ffi_call_async", op_async(op_ffi_call_async)),
+      ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
     ])
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
@@ -369,7 +369,7 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
   })
 }
 
-fn op_ffi_call(
+fn op_ffi_call_nonblocking(
   state: &mut deno_core::OpState,
   args: FfiCallArgs,
   _: (),
