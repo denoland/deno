@@ -64,6 +64,9 @@ lazy_static::lazy_static! {
         function: get_proxy_details.map_fn_to()
       },
       v8::ExternalReference {
+        function: is_proxy.map_fn_to()
+      },
+      v8::ExternalReference {
         function: memory_usage.map_fn_to(),
       },
       v8::ExternalReference {
@@ -146,6 +149,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "deserialize", deserialize);
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
+  set_func(scope, core_val, "isProxy", is_proxy);
   set_func(scope, core_val, "memoryUsage", memory_usage);
   set_func(scope, core_val, "callConsole", call_console);
   set_func(scope, core_val, "createHostObject", create_host_object);
@@ -1117,6 +1121,14 @@ fn get_proxy_details(
   let handler = proxy.get_handler(scope);
   let p: (serde_v8::Value, serde_v8::Value) = (target.into(), handler.into());
   rv.set(to_v8(scope, p).unwrap());
+}
+
+fn is_proxy(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  rv.set(v8::Boolean::new(scope, args.get(0).is_proxy()).into())
 }
 
 fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
