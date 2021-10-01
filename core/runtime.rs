@@ -2289,8 +2289,7 @@ assertEquals(1, notify_return_value);
       })()
     "#,
       )
-      .unwrap()
-      .into();
+      .unwrap();
     let mut scope = runtime.handle_scope();
     let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
     assert!(all_true.is_true());
