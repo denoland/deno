@@ -1100,13 +1100,20 @@ pub async fn op_crypto_import_key(
             RSA_ENCRYPTION_OID => None,
             // id-RSASSA-PSS
             RSASSA_PSS_OID => {
-              // TODO(@littledivy): NotSupported error
               let params = PssPrivateKeyParameters::try_from(
                 pk_info.algorithm.parameters.ok_or_else(|| {
-                  type_error("Malformed parameters".to_string())
+                  custom_error(
+                    "DOMExceptionNotSupportedError",
+                    "Malformed parameters".to_string(),
+                  )
                 })?,
               )
-              .map_err(|_| type_error("Malformed parameters".to_string()))?;
+              .map_err(|_| {
+                custom_error(
+                  "DOMExceptionNotSupportedError",
+                  "Malformed parameters".to_string(),
+                )
+              })?;
 
               let hash_alg = params.hash_algorithm;
               let hash = match hash_alg.oid {
@@ -1127,8 +1134,8 @@ pub async fn op_crypto_import_key(
               };
 
               if params.mask_gen_algorithm.oid != ID_MFG1 {
-                // TODO(@littledivy): NotSupportedError
-                return Err(type_error(
+                return Err(custom_error(
+                  "DOMExceptionNotSupportedError",
                   "Unsupported hash algorithm".to_string(),
                 ));
               }
@@ -1207,13 +1214,20 @@ pub async fn op_crypto_import_key(
             RSA_ENCRYPTION_OID => None,
             // id-RSAES-OAEP
             RSAES_OAEP_OID => {
-              // TODO(@littledivy): NotSupported error
               let params = OaepPrivateKeyParameters::try_from(
                 pk_info.algorithm.parameters.ok_or_else(|| {
-                  type_error("Malformed parameters".to_string())
+                  custom_error(
+                    "DOMExceptionNotSupportedError",
+                    "Malformed parameters".to_string(),
+                  )
                 })?,
               )
-              .map_err(|_| type_error("Malformed parameters".to_string()))?;
+              .map_err(|_| {
+                custom_error(
+                  "DOMExceptionNotSupportedError",
+                  "Malformed parameters".to_string(),
+                )
+              })?;
 
               let hash_alg = params.hash_algorithm;
               let hash = match hash_alg.oid {
@@ -1234,8 +1248,8 @@ pub async fn op_crypto_import_key(
               };
 
               if params.mask_gen_algorithm.oid != ID_MFG1 {
-                // TODO(@littledivy): NotSupportedError
-                return Err(type_error(
+                return Err(custom_error(
+                  "DOMExceptionNotSupportedError",
                   "Unsupported hash algorithm".to_string(),
                 ));
               }
