@@ -33,7 +33,7 @@ pub fn get_mapped_node_builtins() -> HashMap<String, String> {
   let mut mappings = HashMap::new();
 
   for module in SUPPORTED_MODULES {
-    let module_url = format!("{}{}", DENO_STD_URL, module);
+    let module_url = format!("{}{}.ts", DENO_STD_URL, module);
     mappings.insert(module.to_string(), module_url);
   }
 
