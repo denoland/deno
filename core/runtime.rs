@@ -2273,4 +2273,25 @@ assertEquals(1, notify_return_value);
     let mut runtime = JsRuntime::new(options);
     runtime.execute_script("<none>", "").unwrap();
   }
+
+  #[test]
+  fn test_is_proxy() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let all_true: v8::Global<v8::Value> = runtime
+      .execute_script(
+        "is_proxy.js",
+        r#"
+      (function () {
+        const { isProxy } = Deno.core;
+        const o = { a: 1, b: 2};
+        const p = new Proxy(o, {});
+        return isProxy(p) && !isProxy(o) && !isProxy(42);
+      })()
+    "#,
+      )
+      .unwrap();
+    let mut scope = runtime.handle_scope();
+    let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
+    assert!(all_true.is_true());
+  }
 }
