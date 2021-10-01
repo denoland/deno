@@ -249,13 +249,13 @@
         prefix,
         context: "Argument 1",
       });
-      const status = init?.status
+      const status = !isNullOrUndefined(init?.status)
         ? webidl.converters["unsigned short"](init.status)
         : 200;
-      const statusText = init?.statusText
+      const statusText = !isNullOrUndefined(init?.statusText)
         ? webidl.converters["ByteString"](init.statusText)
         : "";
-      const headers = init?.headers
+      const headers = !isNullOrUndefined(init?.headers)
         ? webidl.converters["HeadersInit"](init.headers)
         : null;
 
@@ -387,6 +387,10 @@
         ],
       }));
     }
+  }
+
+  function isNullOrUndefined(x) {
+    return x === null || x === undefined;
   }
 
   mixinBody(Response, _body, _mimeType);
