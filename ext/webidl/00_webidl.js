@@ -9,6 +9,7 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const {
     ArrayBuffer,
     ArrayBufferIsView,
@@ -846,14 +847,29 @@
         );
       }
       const result = {};
-      for (const key in V) {
-        if (!ObjectPrototypeHasOwnProperty(V, key)) {
-          continue;
+      const isProxy = core.isProxy(V);
+      if (isProxy) {
+        const keys = ReflectOwnKeys(V);
+        for (const key of keys) {
+          const desc = ObjectGetOwnPropertyDescriptor(V, key);
+          if (desc !== undefined && desc.enumerable === true) {
+            const typedKey = keyConverter(key, opts);
+            const value = V[key];
+            const typedValue = valueConverter(value, opts);
+            result[typedKey] = typedValue;
+          }
         }
-        const typedKey = keyConverter(key, opts);
-        const value = V[key];
-        const typedValue = valueConverter(value, opts);
-        result[typedKey] = typedValue;
+      } else {
+        // Fast path for common case (not a Proxy)
+        for (const key in V) {
+          if (!ObjectPrototypeHasOwnProperty(V, key)) {
+            continue;
+          }
+          const typedKey = keyConverter(key, opts);
+          const value = V[key];
+          const typedValue = valueConverter(value, opts);
+          result[typedKey] = typedValue;
+        }
       }
       return result;
     };
