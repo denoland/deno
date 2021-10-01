@@ -243,35 +243,40 @@
      * @param {BodyInit | null} body
      * @param {ResponseInit} init
      */
-    constructor(body = null, init = {}) {
+    constructor(body, init) {
       const prefix = "Failed to construct 'Response'";
       body = webidl.converters["BodyInit_DOMString?"](body, {
         prefix,
         context: "Argument 1",
       });
-      init = webidl.converters["ResponseInit"](init, {
-        prefix,
-        context: "Argument 2",
-      });
+      const status = init?.status
+        ? webidl.converters["unsigned short"](init.status)
+        : 200;
+      const statusText = init?.statusText
+        ? webidl.converters["ByteString"](init.statusText)
+        : "";
+      const headers = init?.headers
+        ? webidl.converters["HeadersInit"](init.headers)
+        : null;
 
-      if (init.status < 200 || init.status > 599) {
+      if (status < 200 || status > 599) {
         throw new RangeError(
-          `The status provided (${init.status}) is outside the range [200, 599].`,
+          `The status provided (${status}) is outside the range [200, 599].`,
         );
       }
 
-      if (!RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)) {
+      if (statusText && !RegExpPrototypeTest(REASON_PHRASE_RE, statusText)) {
         throw new TypeError("Status text is not valid.");
       }
 
       this[webidl.brand] = webidl.brand;
-      const response = newInnerResponse(init.status, init.statusText);
+      const response = newInnerResponse(status, statusText);
       /** @type {InnerResponse} */
       this[_response] = response;
       /** @type {Headers} */
       this[_headers] = headersFromHeaderList(response.headerList, "response");
-      if (init.headers !== undefined) {
-        fillHeaders(this[_headers], init.headers);
+      if (headers) {
+        fillHeaders(this[_headers], headers);
       }
       if (body !== null) {
         if (nullBodyStatus(response.status)) {
@@ -391,21 +396,6 @@
   webidl.converters["Response"] = webidl.createInterfaceConverter(
     "Response",
     Response,
-  );
-  webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
-    "ResponseInit",
-    [{
-      key: "status",
-      defaultValue: 200,
-      converter: webidl.converters["unsigned short"],
-    }, {
-      key: "statusText",
-      defaultValue: "",
-      converter: webidl.converters["ByteString"],
-    }, {
-      key: "headers",
-      converter: webidl.converters["HeadersInit"],
-    }],
   );
 
   /**
