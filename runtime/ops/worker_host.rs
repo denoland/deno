@@ -173,14 +173,11 @@ fn merge_net_permission(
 
 fn merge_read_permission(
   mut main: UnaryPermission<ReadDescriptor>,
-  worker: Option<UnaryPermission<ReadDescriptor>>,
+  worker: Option<UnaryPermission<PathBuf>>,
 ) -> Result<UnaryPermission<ReadDescriptor>, AnyError> {
   if let Some(worker) = worker {
     if (worker.global_state < main.global_state)
-      || !worker
-        .granted_list
-        .iter()
-        .all(|x| main.check(x.0.as_path()).is_ok())
+      || !worker.granted_list.iter().all(|x| main.check(x).is_ok())
     {
       return Err(custom_error(
         "PermissionDenied",
@@ -188,7 +185,9 @@ fn merge_read_permission(
       ));
     } else {
       main.global_state = worker.global_state;
-      main.granted_list = worker.granted_list;
+      main.granted_list = resolve_read_allowlist(&Some(
+        worker.granted_list.into_iter().collect(),
+      ));
     }
   }
   Ok(main)
@@ -196,14 +195,11 @@ fn merge_read_permission(
 
 fn merge_write_permission(
   mut main: UnaryPermission<WriteDescriptor>,
-  worker: Option<UnaryPermission<WriteDescriptor>>,
+  worker: Option<UnaryPermission<PathBuf>>,
 ) -> Result<UnaryPermission<WriteDescriptor>, AnyError> {
   if let Some(worker) = worker {
     if (worker.global_state < main.global_state)
-      || !worker
-        .granted_list
-        .iter()
-        .all(|x| main.check(x.0.as_path()).is_ok())
+      || !worker.granted_list.iter().all(|x| main.check(x).is_ok())
     {
       return Err(custom_error(
         "PermissionDenied",
@@ -211,7 +207,9 @@ fn merge_write_permission(
       ));
     } else {
       main.global_state = worker.global_state;
-      main.granted_list = worker.granted_list;
+      main.granted_list = resolve_write_allowlist(&Some(
+        worker.granted_list.into_iter().collect(),
+      ));
     }
   }
   Ok(main)
@@ -305,12 +303,12 @@ pub struct PermissionsArg {
   net: Option<UnaryPermission<NetDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_ffi_permission")]
   ffi: Option<UnaryPermission<FfiDescriptor>>,
-  #[serde(default, deserialize_with = "as_unary_read_permission")]
-  read: Option<UnaryPermission<ReadDescriptor>>,
+  #[serde(default, deserialize_with = "as_unary_path_buf_permission")]
+  read: Option<UnaryPermission<PathBuf>>,
   #[serde(default, deserialize_with = "as_unary_run_permission")]
   run: Option<UnaryPermission<RunDescriptor>>,
-  #[serde(default, deserialize_with = "as_unary_write_permission")]
-  write: Option<UnaryPermission<WriteDescriptor>>,
+  #[serde(default, deserialize_with = "as_unary_path_buf_permission")]
+  write: Option<UnaryPermission<PathBuf>>,
 }
 
 fn as_permission_state<'de, D>(
@@ -402,40 +400,21 @@ where
   }))
 }
 
-fn as_unary_read_permission<'de, D>(
+fn as_unary_path_buf_permission<'de, D>(
   deserializer: D,
-) -> Result<Option<UnaryPermission<ReadDescriptor>>, D::Error>
+) -> Result<Option<UnaryPermission<PathBuf>>, D::Error>
 where
   D: Deserializer<'de>,
 {
   let value: UnaryPermissionBase =
     deserializer.deserialize_any(ParseBooleanOrStringVec)?;
 
-  let paths: Vec<PathBuf> =
+  let paths: HashSet<PathBuf> =
     value.paths.into_iter().map(PathBuf::from).collect();
 
-  Ok(Some(UnaryPermission::<ReadDescriptor> {
+  Ok(Some(UnaryPermission::<PathBuf> {
     global_state: value.global_state,
-    granted_list: resolve_read_allowlist(&Some(paths)),
-    ..Default::default()
-  }))
-}
-
-fn as_unary_write_permission<'de, D>(
-  deserializer: D,
-) -> Result<Option<UnaryPermission<WriteDescriptor>>, D::Error>
-where
-  D: Deserializer<'de>,
-{
-  let value: UnaryPermissionBase =
-    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
-
-  let paths: Vec<PathBuf> =
-    value.paths.into_iter().map(PathBuf::from).collect();
-
-  Ok(Some(UnaryPermission::<WriteDescriptor> {
-    global_state: value.global_state,
-    granted_list: resolve_write_allowlist(&Some(paths)),
+    granted_list: paths,
     ..Default::default()
   }))
 }

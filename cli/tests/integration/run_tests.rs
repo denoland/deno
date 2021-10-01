@@ -1862,7 +1862,7 @@ mod permissions {
     use util::PtyData::*;
     // this was previously incorrectly showing an absolute path
     let args =
-      "run --quiet --unstable --prompt run/worker_read_write_permissions.ts";
+      "run --quiet --unstable --prompt --allow-read=run/worker_read_write_permissions_worker.ts run/worker_read_write_permissions.ts";
     util::test_pty2(
       args,
       vec![
@@ -1873,7 +1873,9 @@ mod permissions {
         Output(
           r#"⚠️  ️Deno requests write access to "./file.txt". Allow? [y/n (y = yes allow, n = no deny)] "#,
         ),
-        Exit,
+        Input("y\n"),
+        Output("true\n"),
+        Output("true\n"),
       ],
     );
   }
