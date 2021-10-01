@@ -369,7 +369,7 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
   })
 }
 
-fn op_ffi_call_nonblocking(
+fn op_ffi_call(
   state: &mut deno_core::OpState,
   args: FfiCallArgs,
   _: (),
@@ -387,7 +387,7 @@ fn op_ffi_call_nonblocking(
 }
 
 /// A non-blocking FFI call.
-async fn op_ffi_call_async(
+async fn op_ffi_call_nonblocking(
   state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallArgs,
   _: (),
