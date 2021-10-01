@@ -182,7 +182,7 @@ impl ProcState {
         None
       };
 
-    let maybe_import_map: Option<ImportMap> =
+    let mut maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
         Some(import_map_url) => {
@@ -203,6 +203,26 @@ impl ProcState {
           Some(import_map)
         }
       };
+
+    if flags.node_compat {
+      let mut import_map = match maybe_import_map {
+        Some(import_map) => import_map,
+        None => {
+          // INFO: we're creating an empty import map, with its specifier pointing
+          // to `CWD/node_import_map.json` to make sure the map still works as expected.
+          let import_map_specifier =
+            std::env::current_dir()?.join("node_import_map.json");
+          ImportMap::from_json(import_map_specifier.to_str().unwrap(), "{}")
+            .unwrap()
+        }
+      };
+      let _node_builtins = crate::node_compat::get_mapped_node_builtins();
+      // TODO(bartlomieju): should this actually be a hard error if user provided partial
+      // mapping for Node modules in their own import map, or should we just print out
+      // that some modules were not shimmed because they were already present in import map?
+      // import_map.update_in_place(node_builtins)?;
+      maybe_import_map = Some(import_map);
+    }
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
     let maybe_inspector_server = maybe_inspect_host.map(|host| {

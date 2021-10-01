@@ -23,6 +23,7 @@ mod logger;
 mod lsp;
 mod module_graph;
 mod module_loader;
+mod node_compat;
 mod ops;
 mod proc_state;
 mod source_maps;
