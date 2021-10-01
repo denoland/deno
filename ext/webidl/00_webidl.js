@@ -847,9 +847,8 @@
         );
       }
       const result = {};
-      const isProxy = core.isProxy(V);
       // Fast path for common case (not a Proxy)
-      if (!isProxy) {
+      if (!core.isProxy(V)) {
         for (const key in V) {
           if (!ObjectPrototypeHasOwnProperty(V, key)) {
             continue;
