@@ -12149,12 +12149,9 @@
     "historical.any.html": false,
     "idlharness.https.any.html": [
       "SubtleCrypto interface: operation deriveKey(AlgorithmIdentifier, CryptoKey, AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
-      "SubtleCrypto interface: operation wrapKey(KeyFormat, CryptoKey, CryptoKey, AlgorithmIdentifier)",
       "SubtleCrypto interface: operation unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
       "SubtleCrypto interface: crypto.subtle must inherit property \"deriveKey(AlgorithmIdentifier, CryptoKey, AlgorithmIdentifier, boolean, sequence<KeyUsage>)\" with the proper type",
       "SubtleCrypto interface: calling deriveKey(AlgorithmIdentifier, CryptoKey, AlgorithmIdentifier, boolean, sequence<KeyUsage>) on crypto.subtle with too few arguments must throw TypeError",
-      "SubtleCrypto interface: crypto.subtle must inherit property \"wrapKey(KeyFormat, CryptoKey, CryptoKey, AlgorithmIdentifier)\" with the proper type",
-      "SubtleCrypto interface: calling wrapKey(KeyFormat, CryptoKey, CryptoKey, AlgorithmIdentifier) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: crypto.subtle must inherit property \"unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>)\" with the proper type",
       "SubtleCrypto interface: calling unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>) on crypto.subtle with too few arguments must throw TypeError",
       "Window interface: attribute crypto"

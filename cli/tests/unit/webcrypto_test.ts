@@ -499,3 +499,40 @@ unitTest(async function testHkdfDeriveBits() {
   );
   assertEquals(result.byteLength, 128 / 8);
 });
+
+unitTest(async function testWrapKey() {
+  // Test wrapKey
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "RSA-OAEP",
+      modulusLength: 4096,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["wrapKey", "unwrapKey"],
+  );
+
+  const hmacKey = await crypto.subtle.generateKey(
+    {
+      name: "HMAC",
+      hash: "SHA-256",
+      length: 128,
+    },
+    true,
+    ["sign"],
+  );
+
+  const wrappedKey = await crypto.subtle.wrapKey(
+    "raw",
+    hmacKey,
+    key.publicKey,
+    {
+      name: "RSA-OAEP",
+      label: new Uint8Array(8),
+    },
+  );
+
+  assert(wrappedKey instanceof ArrayBuffer);
+  assertEquals(wrappedKey.byteLength, 512);
+});
