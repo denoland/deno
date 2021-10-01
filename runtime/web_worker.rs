@@ -525,15 +525,8 @@ impl WebWorker {
           return Poll::Ready(Ok(()));
         }
 
-        // In case of an error, pass to parent without terminating worker
         if let Err(e) = r {
-          print_worker_error(e.to_string(), &self.name);
-          let handle = self.internal_handle.clone();
-          handle
-            .post_event(WorkerControlEvent::Error(e))
-            .expect("Failed to post message to host");
-
-          return Poll::Pending;
+          return Poll::Ready(Err(e));
         }
 
         panic!(
@@ -593,6 +586,12 @@ pub fn run_web_worker(
       return Ok(());
     }
 
+    let result = if result.is_ok() {
+      worker.run_event_loop(true).await
+    } else {
+      result
+    };
+
     if let Err(e) = result {
       print_worker_error(e.to_string(), &name);
       internal_handle
@@ -603,7 +602,6 @@ pub fn run_web_worker(
       return Ok(());
     }
 
-    let result = worker.run_event_loop(true).await;
     debug!("Worker thread shuts down {}", &name);
     result
   };
