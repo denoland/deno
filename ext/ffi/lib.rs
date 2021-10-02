@@ -283,7 +283,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(&args.path)?;
 
-  let lib = Library::open(args.path).map_err(|e| error::Error::from(e))?;
+  let lib = Library::open(args.path).map_err(error::Error::from)?;
   let mut resource = DynamicLibraryResource {
     lib,
     symbols: HashMap::new(),

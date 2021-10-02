@@ -778,6 +778,7 @@ dependencies = [
  "deno_core",
  "dlopen",
  "serde",
+ "winapi 0.3.9",
 ]
 
 [[package]]

@@ -29,7 +29,7 @@ impl From<dlopen::Error> for Error {
         unsafe {
           let length = FormatMessageW(
             FORMAT_MESSAGE_FROM_SYSTEM,
-            ptr::null_mut(),
+            std::ptr::null_mut(),
             errnum as DWORD,
             langId as DWORD,
             buf.as_mut_ptr(),
