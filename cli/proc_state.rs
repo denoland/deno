@@ -36,6 +36,7 @@ use deno_tls::rustls_native_certs::load_native_certs;
 use deno_tls::webpki_roots::TLS_SERVER_ROOTS;
 use import_map::ImportMap;
 use log::debug;
+use log::info;
 use log::warn;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -219,8 +220,8 @@ impl ProcState {
       let node_builtins = crate::compat::get_mapped_node_builtins();
       let diagnostics = import_map.update_imports(node_builtins)?;
 
-      if !diagnostics.is_empty() {
-        info!("  - {}", diagnotic);
+      for diagnostic in diagnostics {
+        info!("  - {}", diagnostic);
       }
 
       maybe_import_map = Some(import_map);

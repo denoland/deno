@@ -39,8 +39,7 @@ pub fn get_mapped_node_builtins() -> HashMap<String, String> {
 
   for module in SUPPORTED_MODULES {
     // TODO(bartlomieju): this is unversioned, and should be fixed to use latest stable?
-    let module_url =
-      format!("https://deno.land/std/node/{}.ts", DENO_STD_URL, module);
+    let module_url = format!("https://deno.land/std/node/{}.ts", module);
     mappings.insert(module.to_string(), module_url);
   }
 
