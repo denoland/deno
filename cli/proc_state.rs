@@ -204,7 +204,7 @@ impl ProcState {
         }
       };
 
-    if flags.node_compat {
+    if flags.compat {
       let mut import_map = match maybe_import_map {
         Some(import_map) => import_map,
         None => {
@@ -216,7 +216,7 @@ impl ProcState {
             .unwrap()
         }
       };
-      let node_builtins = crate::node_compat::get_mapped_node_builtins();
+      let node_builtins = crate::compat::get_mapped_node_builtins();
       // TODO(bartlomieju): should this actually be a hard error if user provided partial
       // mapping for Node modules in their own import map, or should we just print out
       // that some modules were not shimmed because they were already present in import map?

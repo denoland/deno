@@ -227,7 +227,7 @@ pub fn compile_to_runtime_flags(
     lock: None,
     log_level: flags.log_level,
     no_check: false,
-    node_compat: flags.node_compat,
+    compat: flags.compat,
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors,
     no_remote: false,
