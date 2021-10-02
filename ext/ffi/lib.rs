@@ -19,6 +19,8 @@ use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::rc::Rc;
 
+mod error;
+
 pub struct Unstable(pub bool);
 
 fn check_unstable(state: &OpState, api_name: &str) {
@@ -281,7 +283,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(&args.path)?;
 
-  let lib = Library::open(args.path)?;
+  let lib = Library::open(args.path).map_err(|e| error::Error::from(e))?;
   let mut resource = DynamicLibraryResource {
     lib,
     symbols: HashMap::new(),
