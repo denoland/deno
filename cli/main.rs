@@ -145,8 +145,12 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     };
+    let bootstrap_options = options.bootstrap.clone();
 
-    let (mut worker, external_handle) = WebWorker::bootstrap_from_options(
+    // TODO(@AaronO): switch to bootstrap_from_options() once ops below are an extension
+    // since it uses sync_ops_cache() which currently depends on the Deno namespace
+    // which can be nuked when bootstrapping workers (use_deno_namespace: false)
+    let (mut worker, external_handle) = WebWorker::from_options(
       args.name,
       args.permissions,
       args.main_module,
@@ -171,6 +175,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       }
       js_runtime.sync_ops_cache();
     }
+    worker.bootstrap(&bootstrap_options);
 
     (worker, external_handle)
   })
