@@ -297,6 +297,7 @@ where
         use winapi::um::winbase::FormatMessageW;
         use winapi::um::winbase::FORMAT_MESSAGE_ARGUMENT_ARRAY;
         use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
+        use winapi::um::winbase::FORMAT_MESSAGE_IGNORE_INSERTS;
 
         let err_num = e.raw_os_error().unwrap();
 
