@@ -40,7 +40,10 @@ impl From<dlopen::Error> for Error {
           if length == 0 {
             // Language ID is wrong?
             let err_num = unsafe { GetLastError() };
-            return format!("FormatMessageW failed with error {}", err_num,);
+            return Self(format!(
+              "FormatMessageW failed with error {}",
+              err_num
+            ));
           }
 
           let msg = String::from_utf16_lossy(&buf[..length as usize]);
