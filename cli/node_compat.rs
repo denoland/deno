@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 
 // TODO(bartlomieju): this is unversioned, and should be fixed to use latest stable?
-static DENO_STD_URL: &'static str = "https://deno.land/std/node/";
+static DENO_STD_URL: &str = "https://deno.land/std/node/";
 
-static SUPPORTED_MODULES: &[&'static str] = &[
+static SUPPORTED_MODULES: &[&str] = &[
   "assert",
   "buffer",
   "child_process",

@@ -59,7 +59,7 @@ encoding_rs = "0.8.28"
 env_logger = "0.8.4"
 fancy-regex = "0.7.1"
 http = "0.2.4"
-import_map = { version = "0.3.0", git = "https://github.com/denoland/import_map", branch = "update_in_place" }
+import_map = "0.3.1"
 jsonc-parser = { version = "0.17.0", features = ["serde"] }
 lazy_static = "1.4.0"
 libc = "0.2.101"
