@@ -1624,8 +1624,8 @@ fn seed_arg<'a, 'b>() -> Arg<'a, 'b> {
 }
 
 fn node_compat_arg<'a, 'b>() -> Arg<'a, 'b> {
-  Arg::with_name("node-compat")
-    .long("node-compat")
+  Arg::with_name("compat")
+    .long("compat")
     .help("Provide shim that allows to use built-in Node modules")
 }
 
@@ -2325,7 +2325,7 @@ fn seed_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 }
 
 fn node_compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
-  if matches.is_present("node-compat") {
+  if matches.is_present("compat") {
     flags.node_compat = true;
   }
 }
@@ -4451,7 +4451,7 @@ mod tests {
 
   #[test]
   fn node_compat() {
-    let r = flags_from_vec(svec!["deno", "run", "--node-compat", "foo.js"]);
+    let r = flags_from_vec(svec!["deno", "run", "--compat", "foo.js"]);
     assert_eq!(
       r.unwrap(),
       Flags {
