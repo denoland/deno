@@ -1,5 +1,6 @@
 // Copyright 2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::anyhow;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
@@ -18,8 +19,6 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::rc::Rc;
-
-mod error;
 
 pub struct Unstable(pub bool);
 
@@ -283,7 +282,56 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(&args.path)?;
 
-  let lib = Library::open(args.path).map_err(error::Error::from)?;
+  let lib = Library::open(args.path).map_err(|e| {
+    match e {
+      #[cfg(target_os = "windows")]
+      // This calls FormatMessageW with library path
+      // as replacement for the insert sequences.
+      // Unlike libstd which passes the FORMAT_MESSAGE_IGNORE_INSERTS
+      // flag without any arguments.
+      //
+      // https://github.com/denoland/deno/issues/11632
+      dlopen::Error::OpeningLibraryError(e) => {
+        use winapi::shared::minwindef::DWORD;
+        use winapi::shared::ntdef::WCHAR;
+        use winapi::um::winbase::FormatMessageW;
+        use winapi::um::winbase::FORMAT_MESSAGE_ARGUMENT_ARRAY;
+        use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
+
+        let err_num = e.raw_os_error().unwrap();
+
+        // Language ID given by
+        // MAKELANGID(LANG_SYSTEM_DEFAULT, SUBLANG_SYS_DEFAULT);
+        let lang_id = 0x0800 as DWORD;
+
+        let mut buf = [0 as WCHAR; 2048];
+        let arguments = [args.path.as_ptr()];
+        unsafe {
+          let length = FormatMessageW(
+            FORMAT_MESSAGE_FROM_SYSTEM
+              | FORMAT_MESSAGE_ARGUMENT_ARRAY
+              | FORMAT_MESSAGE_IGNORE_INSERTS,
+            std::ptr::null_mut(),
+            err_num as DWORD,
+            lang_id as DWORD,
+            buf.as_mut_ptr(),
+            buf.len() as DWORD,
+            arguments.as_ptr() as _,
+          );
+
+          if length == 0 {
+            // Something went wrong, just return the original error.
+            return anyhow!(e.to_string());
+          }
+
+          let msg = String::from_utf16_lossy(&buf[..length as usize]);
+          anyhow!(msg)
+        }
+      }
+      _ => anyhow!(e.to_string()),
+    }
+  })?;
+
   let mut resource = DynamicLibraryResource {
     lib,
     symbols: HashMap::new(),
