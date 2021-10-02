@@ -518,11 +518,7 @@ where
       } else {
         net_unix::listen_unix_packet(state, address_path)?
       };
-      debug!(
-        "New listener {} {}",
-        rid,
-        local_addr.as_pathname().unwrap().display(),
-      );
+      debug!("New listener {} {:?}", rid, local_addr);
       let unix_addr = net_unix::UnixAddr {
         path: local_addr.as_pathname().and_then(net_unix::pathstring),
       };
