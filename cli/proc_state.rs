@@ -217,10 +217,12 @@ impl ProcState {
         }
       };
       let node_builtins = crate::compat::get_mapped_node_builtins();
-      // TODO(bartlomieju): should this actually be a hard error if user provided partial
-      // mapping for Node modules in their own import map, or should we just print out
-      // that some modules were not shimmed because they were already present in import map?
-      import_map.update_imports(node_builtins)?;
+      let diagnostics = import_map.update_imports(node_builtins)?;
+
+      if !diagnostics.is_empty() {
+        info!("  - {}", diagnotic);
+      }
+
       maybe_import_map = Some(import_map);
     }
 
