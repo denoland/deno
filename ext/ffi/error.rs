@@ -22,7 +22,7 @@ impl From<dlopen::Error> for Error {
 
         // Language ID given by
         // MAKELANGID(LANG_SYSTEM_DEFAULT, SUBLANG_SYS_DEFAULT) as DWORD;
-        let langId = 0x0800 as DWORD;
+        let lang_id = 0x0800 as DWORD;
 
         let mut buf = [0 as WCHAR; 2048];
 
@@ -31,19 +31,15 @@ impl From<dlopen::Error> for Error {
             FORMAT_MESSAGE_FROM_SYSTEM,
             std::ptr::null_mut(),
             err_num as DWORD,
-            langId as DWORD,
+            lang_id as DWORD,
             buf.as_mut_ptr(),
             buf.len() as DWORD,
             std::ptr::null_mut(),
           );
 
           if length == 0 {
-            // Language ID is wrong?
-            let err_num = unsafe { GetLastError() };
-            return Self(format!(
-              "FormatMessageW failed with error {}",
-              err_num
-            ));
+            // Something went wrong, just return the original error.
+            return Self(e.to_string());
           }
 
           let msg = String::from_utf16_lossy(&buf[..length as usize]);
