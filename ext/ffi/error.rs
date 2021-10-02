@@ -18,7 +18,7 @@ impl From<dlopen::Error> for Error {
         use winapi::um::winbase::FormatMessageW;
         use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
 
-        let error_num = e.raw_os_error().unwrap();
+        let err_num = e.raw_os_error().unwrap();
 
         // Language ID given by
         // MAKELANGID(LANG_SYSTEM_DEFAULT, SUBLANG_SYS_DEFAULT) as DWORD;
@@ -30,7 +30,7 @@ impl From<dlopen::Error> for Error {
           let length = FormatMessageW(
             FORMAT_MESSAGE_FROM_SYSTEM,
             std::ptr::null_mut(),
-            errnum as DWORD,
+            err_num as DWORD,
             langId as DWORD,
             buf.as_mut_ptr(),
             buf.len() as DWORD,
