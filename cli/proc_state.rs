@@ -220,8 +220,11 @@ impl ProcState {
       let node_builtins = crate::compat::get_mapped_node_builtins();
       let diagnostics = import_map.update_imports(node_builtins)?;
 
-      for diagnostic in diagnostics {
-        info!("  - {}", diagnostic);
+      if !diagnostics.is_empty() {
+        info!("The were problems adding Node built-ins to import map:");
+        for diagnostic in diagnostics {
+          info!("  - {}", diagnostic);
+        }
       }
 
       maybe_import_map = Some(import_map);

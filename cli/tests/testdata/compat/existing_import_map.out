@@ -1,0 +1,4 @@
+[WILDCARD]
+The were problems adding Node built-ins to import map:
+  - "fs/promises" already exists and is mapped to "[WILDCARD]non_existent_file.js"
+error: Cannot resolve module [WILDCARD]
