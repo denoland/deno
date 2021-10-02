@@ -502,10 +502,9 @@ impl JsRuntime {
     let mut scope = self.handle_scope();
     let recv_cb = Self::grab_fn(&mut scope, "Deno.core.opresolve");
     let sync_cb = Self::grab_fn(&mut scope, "Deno.core.syncOpsCache");
-    // Put global handle in state.js_recv_cb
+    // Put global handles in state
     let state_rc = JsRuntime::state(&scope);
     let mut state = state_rc.borrow_mut();
-
     state.js_recv_cb.replace(recv_cb);
     state.js_sync_cb.replace(sync_cb);
   }
