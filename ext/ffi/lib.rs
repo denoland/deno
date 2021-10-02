@@ -282,7 +282,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(&args.path)?;
 
-  let lib = Library::open(args.path).map_err(|e| {
+  let lib = Library::open(&args.path).map_err(|e| {
     match e {
       #[cfg(target_os = "windows")]
       // This calls FormatMessageW with library path
