@@ -94,6 +94,8 @@ const ID_MFG1: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.8");
 const RSAES_OAEP_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.7");
+const ID_P_SPECIFIED: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.9");
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
@@ -874,6 +876,10 @@ const MASK_GEN_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
 const SALT_LENGTH_TAG: rsa::pkcs8::der::TagNumber =
   rsa::pkcs8::der::TagNumber::new(2);
 
+// Context-specific tag number for pSourceAlgorithm
+const P_SOURCE_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
+  rsa::pkcs8::der::TagNumber::new(2);
+
 lazy_static! {
   // Default HashAlgorithm for RSASSA-PSS-params (sha1)
   //
@@ -903,6 +909,22 @@ lazy_static! {
     oid: ID_MFG1,
     // sha1
     parameters: Some(asn1::Any::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap()),
+  };
+
+  // Default PSourceAlgorithm for RSAES-OAEP-params
+  // The default label is an empty string.
+  //
+  // pSpecifiedEmpty    PSourceAlgorithm ::= {
+  //   algorithm   id-pSpecified,
+  //   parameters  EncodingParameters : emptyString
+  // }
+  //
+  // emptyString    EncodingParameters ::= ''H
+  static ref P_SPECIFIED_EMPTY: rsa::pkcs8::AlgorithmIdentifier<'static> = rsa::pkcs8::AlgorithmIdentifier {
+    // id-pSpecified
+    oid: ID_P_SPECIFIED,
+    // EncodingParameters
+    parameters: Some(asn1::Any::from(asn1::OctetString::new(b"").unwrap())),
   };
 }
 
@@ -965,9 +987,24 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
     any: rsa::pkcs8::der::asn1::Any<'a>,
   ) -> rsa::pkcs8::der::Result<OaepPrivateKeyParameters> {
     any.sequence(|decoder| {
-      let hash_algorithm = decoder.decode()?;
-      let mask_gen_algorithm = decoder.decode()?;
-      let p_source_algorithm = decoder.decode()?;
+      let hash_algorithm = decoder
+        .context_specific(HASH_ALGORITHM_TAG)?
+        .map(TryInto::try_into)
+        .transpose()?
+        .unwrap_or(*SHA1_HASH_ALGORITHM);
+
+      let mask_gen_algorithm = decoder
+        .context_specific(MASK_GEN_ALGORITHM_TAG)?
+        .map(TryInto::try_into)
+        .transpose()?
+        .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
+
+      let p_source_algorithm = decoder
+        .context_specific(P_SOURCE_ALGORITHM_TAG)?
+        .map(TryInto::try_into)
+        .transpose()?
+        .unwrap_or(*P_SPECIFIED_EMPTY);
+
       Ok(Self {
         hash_algorithm,
         mask_gen_algorithm,
