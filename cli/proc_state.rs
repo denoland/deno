@@ -221,10 +221,11 @@ impl ProcState {
       let diagnostics = import_map.update_imports(node_builtins)?;
 
       if !diagnostics.is_empty() {
-        info!("The were problems adding Node built-ins to import map:");
+        info!("Some Node built-ins were not added to the import map:");
         for diagnostic in diagnostics {
           info!("  - {}", diagnostic);
         }
+        info!("If you want to use Node built-ins provided by Deno remove listed specifiers from \"imports\" mapping in the import map file.");
       }
 
       maybe_import_map = Some(import_map);
