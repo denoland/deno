@@ -282,12 +282,13 @@ fn format_error(e: dlopen::Error, path: String) -> String {
     //
     // https://github.com/denoland/deno/issues/11632
     dlopen::Error::OpeningLibraryError(e) => {
+      use std::ffi::OsStr;
+      use std::os::windows::ffi::OsStrExt;
       use winapi::shared::minwindef::DWORD;
       use winapi::shared::ntdef::WCHAR;
       use winapi::um::winbase::FormatMessageW;
       use winapi::um::winbase::FORMAT_MESSAGE_ARGUMENT_ARRAY;
       use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
-      use winapi::um::winbase::FORMAT_MESSAGE_IGNORE_INSERTS;
 
       let err_num = e.raw_os_error().unwrap();
 
@@ -296,12 +297,15 @@ fn format_error(e: dlopen::Error, path: String) -> String {
       let lang_id = 0x0800 as DWORD;
 
       let mut buf = [0 as WCHAR; 2048];
+
+      let path = OsStr::new(&path)
+        .encode_wide()
+        .chain(Some(0).into_iter())
+        .collect::<Vec<_>>();
       let arguments = [path.as_ptr()];
       unsafe {
         let length = FormatMessageW(
-          FORMAT_MESSAGE_FROM_SYSTEM
-            | FORMAT_MESSAGE_ARGUMENT_ARRAY
-            | FORMAT_MESSAGE_IGNORE_INSERTS,
+          FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY,
           std::ptr::null_mut(),
           err_num as DWORD,
           lang_id as DWORD,
