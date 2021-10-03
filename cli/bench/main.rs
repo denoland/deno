@@ -112,6 +112,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     None,
   ),
   (
+    "response_string",
+    &["run", "cli/tests/testdata/response_string_perf.js"],
+    None,
+  ),
+  (
     "check",
     &[
       "cache",

@@ -143,11 +143,11 @@ mod tests {
   use deno_tls::create_http_client;
   use std::fs::read;
 
-  fn create_test_client(ca_data: Option<Vec<u8>>) -> Client {
+  fn create_test_client() -> Client {
     create_http_client(
       "test_client".to_string(),
       None,
-      ca_data,
+      vec![],
       None,
       None,
       None,
@@ -160,7 +160,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/fixture.json").unwrap();
-    let client = create_test_client(None);
+    let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
@@ -184,7 +184,7 @@ mod tests {
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/053_import_compression/gziped")
       .unwrap();
-    let client = create_test_client(None);
+    let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
@@ -209,7 +209,7 @@ mod tests {
   async fn test_fetch_with_etag() {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
-    let client = create_test_client(None);
+    let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client: client.clone(),
       url: url.clone(),
@@ -245,7 +245,7 @@ mod tests {
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/053_import_compression/brotli")
       .unwrap();
-    let client = create_test_client(None);
+    let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
@@ -274,7 +274,7 @@ mod tests {
     let url = Url::parse("http://127.0.0.1:4546/fixture.json").unwrap();
     // Dns resolver substitutes `127.0.0.1` with `localhost`
     let target_url = Url::parse("http://localhost:4545/fixture.json").unwrap();
-    let client = create_test_client(None);
+    let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
@@ -336,15 +336,13 @@ mod tests {
     let client = create_http_client(
       version::get_user_agent(),
       None,
-      Some(
-        read(
-          test_util::testdata_path()
-            .join("tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap(),
-      ),
+      vec![read(
+        test_util::testdata_path()
+          .join("tls/RootCA.pem")
+          .to_str()
+          .unwrap(),
+      )
+      .unwrap()],
       None,
       None,
       None,
@@ -375,7 +373,7 @@ mod tests {
     let client = create_http_client(
       version::get_user_agent(),
       None, // This will load mozilla certs by default
-      None,
+      vec![],
       None,
       None,
       None,
@@ -408,7 +406,7 @@ mod tests {
     let client = create_http_client(
       version::get_user_agent(),
       Some(deno_tls::rustls::RootCertStore::empty()), // no certs loaded at all
-      None,
+      vec![],
       None,
       None,
       None,
@@ -439,15 +437,13 @@ mod tests {
     let client = create_http_client(
       version::get_user_agent(),
       None,
-      Some(
-        read(
-          test_util::testdata_path()
-            .join("tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap(),
-      ),
+      vec![read(
+        test_util::testdata_path()
+          .join("tls/RootCA.pem")
+          .to_str()
+          .unwrap(),
+      )
+      .unwrap()],
       None,
       None,
       None,
@@ -480,15 +476,13 @@ mod tests {
     let client = create_http_client(
       version::get_user_agent(),
       None,
-      Some(
-        read(
-          test_util::testdata_path()
-            .join("tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap(),
-      ),
+      vec![read(
+        test_util::testdata_path()
+          .join("tls/RootCA.pem")
+          .to_str()
+          .unwrap(),
+      )
+      .unwrap()],
       None,
       None,
       None,
@@ -534,15 +528,13 @@ mod tests {
     let client = create_http_client(
       version::get_user_agent(),
       None,
-      Some(
-        read(
-          test_util::testdata_path()
-            .join("tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap(),
-      ),
+      vec![read(
+        test_util::testdata_path()
+          .join("tls/RootCA.pem")
+          .to_str()
+          .unwrap(),
+      )
+      .unwrap()],
       None,
       None,
       None,
@@ -574,7 +566,7 @@ mod tests {
     let _g = test_util::http_server();
     let url_str = "http://127.0.0.1:4545/bad_redirect";
     let url = Url::parse(url_str).unwrap();
-    let client = create_test_client(None);
+    let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client,
       url,

@@ -18,7 +18,6 @@
     ObjectEntries,
     ObjectSetPrototypeOf,
     SymbolFor,
-    SymbolToStringTag,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
@@ -118,10 +117,6 @@
 
     get code() {
       return this.#code;
-    }
-
-    get [SymbolToStringTag]() {
-      return "DOMException";
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {

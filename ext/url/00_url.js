@@ -22,7 +22,6 @@
     Symbol,
     SymbolFor,
     SymbolIterator,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -290,10 +289,6 @@
     toString() {
       webidl.assertBranded(this, URLSearchParams);
       return core.opSync("op_url_stringify_search_params", this[_list]);
-    }
-
-    get [SymbolToStringTag]() {
-      return "URLSearchParams";
     }
   }
 
@@ -595,10 +590,6 @@
     toJSON() {
       webidl.assertBranded(this, URL);
       return this[_url].href;
-    }
-
-    get [SymbolToStringTag]() {
-      return "URL";
     }
   }
 
