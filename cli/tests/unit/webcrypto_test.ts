@@ -536,3 +536,24 @@ unitTest(async function testWrapKey() {
   assert(wrappedKey instanceof ArrayBuffer);
   assertEquals(wrappedKey.byteLength, 512);
 });
+
+// Doesn't need to cover all cases.
+// Only for testing types.
+unitTest(async function testAesKeyGen() {
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "AES-GCM",
+      length: 256,
+    },
+    true,
+    ["encrypt", "decrypt"],
+  );
+
+  assert(key);
+  assertEquals(key.type, "secret");
+  assertEquals(key.extractable, true);
+  assertEquals(key.usages, ["encrypt", "decrypt"]);
+  const algorithm = key.algorithm as AesKeyAlgorithm;
+  assertEquals(algorithm.name, "AES-GCM");
+  assertEquals(algorithm.length, 256);
+});
