@@ -27,7 +27,6 @@
     StringFromCharCode,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     SyntaxError,
     WeakMap,
     WeakMapPrototypeGet,
