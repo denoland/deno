@@ -501,13 +501,17 @@ unitTest(async function testHkdfDeriveBits() {
 });
 
 unitTest(async function testAesCbcEncryptDecrypt() {
-  const key = await crypto.subtle.generateKey({ name: "AES-CBC", length: 128 }, true, ["encrypt", "decrypt"]);
+  const key = await crypto.subtle.generateKey(
+    { name: "AES-CBC", length: 128 },
+    true,
+    ["encrypt", "decrypt"],
+  );
 
   const iv = await crypto.getRandomValues(new Uint8Array(16));
   const encrypted = await crypto.subtle.encrypt(
     {
       name: "AES-CBC",
-      iv
+      iv,
     },
     key as CryptoKey,
     new Uint8Array([1, 2, 3, 4, 5, 6]),

@@ -798,26 +798,6 @@ pub struct EncryptArg {
   length: Option<usize>,
 }
 
-macro_rules! cipher_cbc {
-  ($length: ty, $key: expr, $iv: expr, $data: expr) => {{
-    // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
-    type AesCbc = block_modes::Cbc<$length, block_modes::block_padding::Pkcs7>;
-    let cipher = AesCbc::new_from_slices($key, $iv)?;
-    let ciphertext = cipher.encrypt_vec($data);
-    Ok(ciphertext.into())
-  }};
-}
-
-macro_rules! decipher_cbc {
-  ($length: ty, $key: expr, $iv: expr, $ciphertext: expr) => {{
-    // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
-    type AesCbc = block_modes::Cbc<$length, block_modes::block_padding::Pkcs7>;
-    let cipher = AesCbc::new_from_slices($key, $iv)?;
-    let plaintext = cipher.decrypt_vec($ciphertext)?;
-    plaintext
-  }};
-}
-
 pub async fn op_crypto_encrypt_key(
   _state: Rc<RefCell<OpState>>,
   args: EncryptArg,
@@ -877,13 +857,37 @@ pub async fn op_crypto_encrypt_key(
         .iv
         .ok_or_else(|| type_error("Missing argument iv".to_string()))?;
       println!("{}", iv.len());
+
       // 2-3.
-      match length {
-        128 => cipher_cbc!(aes::Aes128, key, &iv, data),
-        192 => cipher_cbc!(aes::Aes192, key, &iv, data),
-        256 => cipher_cbc!(aes::Aes256, key, &iv, data),
+      let ciphertext = match length {
+        128 => {
+          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+          type Aes128Cbc =
+            block_modes::Cbc<aes::Aes128, block_modes::block_padding::Pkcs7>;
+
+          let cipher = Aes128Cbc::new_from_slices(key, &iv)?;
+          cipher.encrypt_vec(data)
+        }
+        192 => {
+          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+          type Aes192Cbc =
+            block_modes::Cbc<aes::Aes192, block_modes::block_padding::Pkcs7>;
+
+          let cipher = Aes192Cbc::new_from_slices(key, &iv)?;
+          cipher.encrypt_vec(data)
+        }
+        256 => {
+          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+          type Aes256Cbc =
+            block_modes::Cbc<aes::Aes256, block_modes::block_padding::Pkcs7>;
+
+          let cipher = Aes256Cbc::new_from_slices(key, &iv)?;
+          cipher.encrypt_vec(data)
+        }
         _ => unreachable!(),
-      }
+      };
+
+      Ok(ciphertext.into())
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }
@@ -1410,28 +1414,55 @@ pub async fn op_crypto_decrypt_key(
         .ok_or_else(|| type_error("Missing argument iv".to_string()))?;
 
       // 2.
-      let padded_plaintext = match length {
-        128 => decipher_cbc!(aes::Aes128, key, &iv, data),
-        192 => decipher_cbc!(aes::Aes192, key, &iv, data),
-        256 => decipher_cbc!(aes::Aes256, key, &iv, data),
+      let mut plaintext = match length {
+        128 => {
+          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+          type Aes128Cbc =
+            block_modes::Cbc<aes::Aes128, block_modes::block_padding::Pkcs7>;
+          let cipher = Aes128Cbc::new_from_slices(key, &iv)?;
+
+          cipher.decrypt_vec(data)?
+        }
+        192 => {
+          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+          type Aes192Cbc =
+            block_modes::Cbc<aes::Aes192, block_modes::block_padding::Pkcs7>;
+          let cipher = Aes192Cbc::new_from_slices(key, &iv)?;
+
+          cipher.decrypt_vec(data)?
+        }
+        256 => {
+          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+          type Aes256Cbc =
+            block_modes::Cbc<aes::Aes256, block_modes::block_padding::Pkcs7>;
+          let cipher = Aes256Cbc::new_from_slices(key, &iv)?;
+
+          cipher.decrypt_vec(data)?
+        }
         _ => unreachable!(),
       };
 
       // 3.
-      // padded_plaintext.len() > 0 so this should never panic.
-      let p = *padded_plaintext.last().unwrap() as usize;
+      // In the Web Crypto API, the only padding mode supported
+      // is PKCS#7 as described by Section 10.3, step 2, of RFC2315.
+      //
+      // plaintext.len() > 0 so this should never panic.
+      let p = *plaintext.last().unwrap() as usize;
 
-      // 4-5.
-      let plaintext = &padded_plaintext[p..];
-      if p == 0 || p > 16 || *plaintext != *vec![p as u8; p] {
+      // 4.
+      if p == 0 || p > 16 || &plaintext[p..] != vec![p as u8; p] {
         return Err(custom_error(
           "DOMExceptionOperationError",
           "Invalid padding".to_string(),
         ));
       }
 
+      // 5.
+      let n = plaintext.len() - p;
+      plaintext.resize(n, 0);
+
       // 6.
-      Ok(plaintext.to_vec().into())
+      Ok(plaintext.into())
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }

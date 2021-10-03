@@ -460,7 +460,7 @@
           // 1.
           if (normalizedAlgorithm.iv.byteLength !== 16) {
             throw new DOMException(
-              "Counter must be 16 bytes",
+              "Initialization vector must be 16 bytes",
               "OperationError",
             );
           }
