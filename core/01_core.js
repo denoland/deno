@@ -97,11 +97,6 @@
     }
   }
 
-  function dispatch(opName, promiseId, control, zeroCopy) {
-    const opId = typeof opName === "string" ? opsCache[opName] : opName;
-    return opcall(opId, promiseId, control, zeroCopy);
-  }
-
   function registerErrorClass(className, errorClass) {
     registerErrorBuilder(className, (msg) => new errorClass(msg));
   }
@@ -130,14 +125,14 @@
 
   function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
-    const maybeError = dispatch(opName, promiseId, arg1, arg2);
+    const maybeError = opcall(opsCache[opName], promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     return PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {
-    return unwrapOpResult(dispatch(opName, null, arg1, arg2));
+    return unwrapOpResult(opcall(opsCache[opName], null, arg1, arg2));
   }
 
   function resources() {
