@@ -18,7 +18,6 @@
     MapPrototypeGet,
     MapPrototypeDelete,
     MapPrototypeSet,
-    PromisePrototypeThen,
     ObjectAssign,
   } = window.__bootstrap.primordials;
 
@@ -93,7 +92,11 @@
       const promiseId = arguments[i];
       const res = arguments[i + 1];
       const promise = getPromise(promiseId);
-      promise.resolve(res);
+      if (isErr(res)) {
+        promise.reject(unwrapErr(res));
+      } else {
+        promise.resolve(res);
+      }
     }
   }
 
@@ -113,19 +116,27 @@
     errorMap[className] = errorBuilder;
   }
 
+  function isErr(res) {
+    return res?.$err_class_name !== undefined;
+  }
+
   function unwrapOpResult(res) {
     // .$err_class_name is a special key that should only exist on errors
-    if (res?.$err_class_name) {
-      const className = res.$err_class_name;
-      const errorBuilder = errorMap[className];
-      if (!errorBuilder) {
-        throw new Error(
-          `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
-        );
-      }
-      throw errorBuilder(res.message);
+    if (isErr(res)) {
+      throw unwrapErr(res);
     }
     return res;
+  }
+
+  function unwrapErr(res) {
+    const className = res.$err_class_name;
+    const errorBuilder = errorMap[className];
+    if (!errorBuilder) {
+      return new Error(
+        `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+      );
+    }
+    return errorBuilder(res.message);
   }
 
   function opAsync(opName, arg1 = null, arg2 = null) {
@@ -133,7 +144,7 @@
     const maybeError = dispatch(opName, promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
-    return PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    return setPromise(promiseId);
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {
