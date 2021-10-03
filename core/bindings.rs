@@ -665,6 +665,23 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     }
   }
 
+  fn get_wasm_module_transfer_id(
+    &mut self,
+    scope: &mut HandleScope<'_>,
+    module: Local<v8::WasmModuleObject>,
+  ) -> Option<u32> {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    if let Some(compiled_wasm_module_store) = &state.compiled_wasm_module_store
+    {
+      let compiled_wasm_module = module.get_compiled_module();
+      let id = compiled_wasm_module_store.insert(compiled_wasm_module);
+      Some(id)
+    } else {
+      None
+    }
+  }
+
   fn write_host_object<'s>(
     &mut self,
     scope: &mut v8::HandleScope<'s>,
@@ -699,6 +716,22 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
       let shared_array_buffer =
         v8::SharedArrayBuffer::with_backing_store(scope, &backing_store);
       Some(shared_array_buffer)
+    } else {
+      None
+    }
+  }
+
+  fn get_wasm_module_from_id<'s>(
+    &mut self,
+    scope: &mut HandleScope<'s>,
+    clone_id: u32,
+  ) -> Option<Local<'s, v8::WasmModuleObject>> {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    if let Some(compiled_wasm_module_store) = &state.compiled_wasm_module_store
+    {
+      let compiled_module = compiled_wasm_module_store.take(clone_id)?;
+      v8::WasmModuleObject::from_compiled_module(scope, &compiled_module)
     } else {
       None
     }

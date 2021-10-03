@@ -1723,7 +1723,11 @@ impl Inner {
         position,
         tsc::GetCompletionsAtPositionOptions {
           user_preferences: tsc::UserPreferences {
+            allow_text_changes_in_new_files: Some(specifier.scheme() == "file"),
+            include_automatic_optional_chain_completions: Some(true),
+            provide_refactor_not_applicable_reason: Some(true),
             include_completions_with_insert_text: Some(true),
+            allow_incomplete_completions: Some(true),
             ..Default::default()
           },
           trigger_character,
