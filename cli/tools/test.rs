@@ -532,7 +532,6 @@ async fn check_specifiers(
       lib.clone(),
       Permissions::allow_all(),
       permissions.clone(),
-      ps.maybe_import_map.clone(),
     )
     .await?;
   }
@@ -554,7 +553,6 @@ async fn check_specifiers(
     lib,
     Permissions::allow_all(),
     permissions,
-    ps.maybe_import_map.clone(),
   )
   .await?;
 

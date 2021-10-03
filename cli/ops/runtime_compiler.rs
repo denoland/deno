@@ -5,7 +5,7 @@ use crate::diagnostics::Diagnostics;
 use crate::emit;
 use crate::proc_state::ProcState;
 
-use deno_core::error::anyhow;
+use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
@@ -115,21 +115,19 @@ async fn op_emit(
     )
     .await,
   );
-  let check = args.check.unwrap_or_default();
+  // Validate if the graph is valid or not.
+  emit::graph_valid(graph.as_ref())?;
+  let check = args.check.unwrap_or(true);
   let debug = ps.flags.log_level == Some(log::Level::Debug);
-  let (files, mut diagnostics, stats, maybe_ignored_options) = if check
-    && args.bundle.is_none()
-  {
-    let (ts_config, maybe_ignored_options) = emit::get_ts_config(
-      emit::ConfigType::Check {
-        emit: true,
-        lib: emit::TypeLib::UnstableDenoWindow,
-      },
-      &None,
-      &args.compiler_options,
-    )?;
+  let tsc_emit = check && args.bundle.is_none();
+  let (ts_config, maybe_ignored_options) = emit::get_ts_config(
+    emit::ConfigType::RuntimeEmit { tsc_emit },
+    &None,
+    &args.compiler_options,
+  )?;
+  let (files, mut diagnostics, stats) = if check && args.bundle.is_none() {
     let (diagnostics, stats) = if emit::valid_emit(
-      graph.clone(),
+      graph.as_ref(),
       cache.as_cacher(),
       &ts_config,
       ps.flags.reload,
@@ -147,25 +145,17 @@ async fn op_emit(
         emit::CheckOptions {
           debug,
           maybe_config_specifier: None,
-          ts_config,
+          ts_config: ts_config.clone(),
         },
       )?;
       (emit_result.diagnostics, emit_result.stats)
     };
-    let files = emit::to_file_map(graph.clone(), cache.as_mut_cacher());
-    (files, diagnostics, stats, maybe_ignored_options)
+    let files = emit::to_file_map(graph.as_ref(), cache.as_mut_cacher());
+    (files, diagnostics, stats)
   } else if let Some(bundle) = &args.bundle {
     let diagnostics = if check {
-      let (ts_config, _) = emit::get_ts_config(
-        emit::ConfigType::Check {
-          emit: false,
-          lib: emit::TypeLib::UnstableDenoWindow,
-        },
-        &None,
-        &args.compiler_options,
-      )?;
       if ts_config.get_declaration() {
-        return Err(anyhow!("The bundle option is set, but the compiler option of `declaration` is true which is not currently supported."));
+        return Err(custom_error("TypeError", "The bundle option is set, but the compiler option of `declaration` is true which is not currently supported."));
       }
       let emit_result = emit::check_and_maybe_emit(
         graph.clone(),
@@ -173,18 +163,13 @@ async fn op_emit(
         emit::CheckOptions {
           debug,
           maybe_config_specifier: None,
-          ts_config,
+          ts_config: ts_config.clone(),
         },
       )?;
       emit_result.diagnostics
     } else {
       Diagnostics::default()
     };
-    let (ts_config, maybe_ignored_options) = emit::get_ts_config(
-      emit::ConfigType::Bundle,
-      &None,
-      &args.compiler_options,
-    )?;
     let (emit, maybe_map) = emit::bundle(
       graph.as_ref(),
       emit::BundleOptions {
@@ -197,23 +182,13 @@ async fn op_emit(
     if let Some(map) = maybe_map {
       files.insert(format!("{}.js.map", root_specifier), map);
     }
-    (
-      files,
-      diagnostics,
-      Default::default(),
-      maybe_ignored_options,
-    )
+    (files, diagnostics, Default::default())
   } else {
-    let (ts_config, maybe_ignored_options) = emit::get_ts_config(
-      emit::ConfigType::Emit,
-      &None,
-      &args.compiler_options,
-    )?;
     if ts_config.get_declaration() {
-      return Err(anyhow!("The option of `check` is false, but the compiler option of `declaration` is true which is not currently supported."));
+      return Err(custom_error("TypeError", "The option of `check` is false, but the compiler option of `declaration` is true which is not currently supported."));
     }
     let emit_result = emit::emit(
-      graph.clone(),
+      graph.as_ref(),
       cache.as_mut_cacher(),
       emit::EmitOptions {
         reload: ps.flags.reload,
@@ -221,13 +196,8 @@ async fn op_emit(
         reload_exclusions: HashSet::default(),
       },
     )?;
-    let files = emit::to_file_map(graph.clone(), cache.as_mut_cacher());
-    (
-      files,
-      emit_result.diagnostics,
-      emit_result.stats,
-      maybe_ignored_options,
-    )
+    let files = emit::to_file_map(graph.as_ref(), cache.as_mut_cacher());
+    (files, emit_result.diagnostics, emit_result.stats)
   };
 
   diagnostics.extend_graph_errors(graph.errors());

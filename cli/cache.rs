@@ -3,7 +3,6 @@
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::FileFetcher;
 
-use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::FutureExt;
@@ -176,13 +175,10 @@ impl Loader for FetchCacher {
           |err| {
             if let Some(err) = err.downcast_ref::<std::io::Error>() {
               if err.kind() == std::io::ErrorKind::NotFound {
-                Ok(None)
-              } else {
-                Err(anyhow!("{}", err))
+                return Ok(None);
               }
-            } else {
-              Err(anyhow!("{}", err))
             }
+            Err(err)
           },
           |file| {
             Ok(Some(LoadResponse {
@@ -370,7 +366,14 @@ impl Loader for MemoryCacher {
     specifier: &ModuleSpecifier,
     _is_dynamic: bool,
   ) -> LoadFuture {
-    let response = self.sources.get(specifier.as_str()).map(|c| LoadResponse {
+    let mut specifier_str = specifier.to_string();
+    if !self.sources.contains_key(&specifier_str) {
+      specifier_str = specifier_str.replace("file:///", "/");
+      if !self.sources.contains_key(&specifier_str) {
+        specifier_str = specifier_str[3..].to_string();
+      }
+    }
+    let response = self.sources.get(&specifier_str).map(|c| LoadResponse {
       specifier: specifier.clone(),
       maybe_headers: None,
       content: c.to_owned(),
@@ -432,7 +435,7 @@ impl Cacher for MemoryCacher {
     specifier: &ModuleSpecifier,
     info: String,
   ) -> Result<(), AnyError> {
-    self.maps.insert(specifier.clone(), info);
+    self.build_infos.insert(specifier.clone(), info);
     Ok(())
   }
 

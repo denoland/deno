@@ -6,6 +6,7 @@
 
 use crate::ast;
 use crate::cache::Cacher;
+use crate::colors;
 use crate::config_file::ConfigFile;
 use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
@@ -15,6 +16,7 @@ use crate::version;
 
 use deno_ast::swc;
 use deno_core::error::anyhow;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::serde::Deserialize;
@@ -27,6 +29,8 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
+use deno_graph::ModuleGraphError;
+use deno_graph::ResolutionError;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -111,6 +115,7 @@ pub(crate) enum ConfigType {
   Bundle,
   Check { emit: bool, lib: TypeLib },
   Emit,
+  RuntimeEmit { tsc_emit: bool },
 }
 
 /// For a given configuration type and optionally a configuration file, return a
@@ -177,6 +182,42 @@ pub(crate) fn get_ts_config(
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     })),
+    ConfigType::RuntimeEmit { tsc_emit } => {
+      let mut ts_config = TsConfig::new(json!({
+        "allowJs": true,
+        "checkJs": false,
+        "emitDecoratorMetadata": false,
+        "experimentalDecorators": true,
+        "incremental": true,
+        "isolatedModules": true,
+        "jsx": "react",
+        "jsxFactory": "React.createElement",
+        "jsxFragmentFactory": "React.Fragment",
+        "lib": TypeLib::DenoWindow,
+        "module": "esnext",
+        "removeComments": true,
+        "inlineSourceMap": false,
+        "inlineSources": false,
+        "sourceMap": true,
+        "strict": true,
+        "target": "esnext",
+        "tsBuildInfoFile": "deno:///.tsbuildinfo",
+        "useDefineForClassFields": true,
+        // TODO(@kitsonk) remove for Deno 2.0
+        "useUnknownInCatchVariables": false,
+      }));
+      if tsc_emit {
+        ts_config.merge(&json!({
+          "importsNotUsedAsValues": "remove",
+          "outDir": "deno://",
+        }));
+      } else {
+        ts_config.merge(&json!({
+          "noEmit": true,
+        }));
+      }
+      ts_config
+    }
   };
   let maybe_ignored_options = if let Some(user_options) = maybe_user_config {
     ts_config.merge_user_config(user_options)?
@@ -531,7 +572,7 @@ pub(crate) struct EmitOptions {
 
 /// Given a module graph, emit any appropriate modules and cache them.
 pub(crate) fn emit(
-  graph: Arc<ModuleGraph>,
+  graph: &ModuleGraph,
   cache: &mut dyn Cacher,
   options: EmitOptions,
 ) -> Result<CheckEmitResult, AnyError> {
@@ -580,20 +621,26 @@ pub(crate) fn emit(
   })
 }
 
+/// Check the sub-resource integrity of a module graph, exiting if the graph is
+/// not valid.
+pub(crate) fn lock(graph: &ModuleGraph) {
+  if let Err(err) = graph.lock() {
+    log::error!("{} {}", colors::red("error:"), err);
+    std::process::exit(10);
+  }
+}
+
 /// Check a module graph to determine if the graph contains anything that
 /// is required to be emitted to be valid. It determines what modules in the
 /// graph are emittable and for those that are emittable, if there is currently
 /// a valid emit in the cache.
 pub(crate) fn valid_emit(
-  graph: Arc<ModuleGraph>,
+  graph: &ModuleGraph,
   cache: &dyn Cacher,
   ts_config: &TsConfig,
   reload: bool,
   reload_exclusions: &HashSet<ModuleSpecifier>,
 ) -> bool {
-  if reload && reload_exclusions.is_empty() {
-    return false;
-  }
   let config_bytes = ts_config.as_bytes();
   let emit_js = ts_config.get_check_js();
   graph
@@ -633,10 +680,43 @@ pub(crate) fn valid_emit(
     })
 }
 
+#[derive(Debug)]
+pub(crate) struct GraphError {
+  pub error: ModuleGraphError,
+  pub specifier: ModuleSpecifier,
+}
+
+impl std::error::Error for GraphError {}
+
+impl fmt::Display for GraphError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match &self.error {
+      ModuleGraphError::ResolutionError(err, span) => {
+        if matches!(
+          err,
+          ResolutionError::InvalidDowngrade(_)
+            | ResolutionError::InvalidLocalImport(_)
+        ) {
+          write!(f, "{}\n    at {}", err, span)
+        } else {
+          self.error.fmt(f)
+        }
+      }
+      _ => self.error.fmt(f),
+    }
+  }
+}
+
+pub(crate) fn graph_valid(graph: &ModuleGraph) -> Result<(), GraphError> {
+  graph
+    .valid()
+    .map_err(|(specifier, error)| GraphError { error, specifier })
+}
+
 /// Convert a module graph to a map of "files", which are used by the runtime
 /// emit to be passed back to the caller.
 pub(crate) fn to_file_map(
-  graph: Arc<ModuleGraph>,
+  graph: &ModuleGraph,
   cache: &dyn Cacher,
 ) -> HashMap<String, String> {
   let mut files = HashMap::new();
@@ -665,38 +745,49 @@ pub(crate) fn to_file_map(
 /// Convert a module graph to a map of module sources, which are used by
 /// `deno_core` to load modules into V8.
 pub(crate) fn to_module_sources(
-  graph: Arc<ModuleGraph>,
+  graph: &ModuleGraph,
   cache: &dyn Cacher,
 ) -> Modules {
   graph
     .specifiers()
     .into_iter()
-    .map(|(rs, r)| {
-      let result = r.map_or_else(
-        |err| Err(err.into()),
-        |(fs, mt)| {
-          if let Some(code) = cache.get_emit(&fs) {
+    .filter_map(|(rs, r)| match r {
+      Err(err) => Some((rs, Err(err.into()))),
+      Ok((_, mt)) if mt == MediaType::Dts => None,
+      Ok((fs, mt)) => {
+        if let Some(code) = cache.get_emit(&fs) {
+          Some((
+            rs.clone(),
             Ok(ModuleSource {
               code,
               module_url_found: fs.to_string(),
               module_url_specified: rs.to_string(),
-            })
-          } else if mt == MediaType::JavaScript || mt == MediaType::Unknown {
-            if let Some(module) = graph.get(&fs) {
+            }),
+          ))
+        } else if mt == MediaType::JavaScript || mt == MediaType::Unknown {
+          if let Some(module) = graph.get(&fs) {
+            Some((
+              rs.clone(),
               Ok(ModuleSource {
                 code: module.source.as_str().to_string(),
                 module_url_found: module.specifier.to_string(),
                 module_url_specified: rs.to_string(),
-              })
-            } else {
-              Err(anyhow!("Emitted module \"{}\" not found.", rs))
-            }
+              }),
+            ))
           } else {
-            Err(anyhow!("Emmitted module \"{}\" not found.", rs))
+            Some((
+              rs.clone(),
+              Err(custom_error(
+                "NotFound",
+                format!("Emitted or source for \"{}\" not found.", rs),
+              )),
+            ))
           }
-        },
-      );
-      (rs, result)
+        } else {
+          log::debug!("un-emitted file {} media type {}", fs, mt);
+          None
+        }
+      }
     })
     .collect()
 }

@@ -107,6 +107,11 @@ impl deno_graph::source::Locker for Locker {
   fn get_checksum(&self, content: &str) -> String {
     crate::checksum::gen(&[content.as_bytes()])
   }
+
+  fn get_filename(&self) -> Option<String> {
+    let lock_file = self.0.as_ref()?.lock();
+    lock_file.filename.to_str().map(|s| s.to_string())
+  }
 }
 
 pub(crate) fn as_maybe_locker(

@@ -15,6 +15,7 @@ use crate::source_maps::SourceMapGetter;
 use crate::version;
 
 use deno_core::error::anyhow;
+use deno_core::error::custom_error;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
@@ -25,6 +26,7 @@ use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
+use deno_graph;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
@@ -56,12 +58,19 @@ pub struct Inner {
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
-  pub modules:
-    Arc<Mutex<HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>>>,
+  modules: Arc<Mutex<HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_config_file: Option<ConfigFile>,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  // deno_graph detects all sorts of issues at build time (prepare_module_load)
+  // but if they are errors at that stage, the don't cause the correct behaviors
+  // so we cache the error and then surface it when appropriate (e.g. load)
+  pub(crate) maybe_graph_error:
+    Arc<Mutex<Option<deno_graph::ModuleGraphError>>>,
+  resolution_map:
+    Arc<Mutex<HashMap<ModuleSpecifier, HashMap<String, deno_graph::Resolved>>>>,
+  resolved_map: Arc<Mutex<HashMap<ModuleSpecifier, deno_graph::Span>>>,
   pub root_cert_store: Option<RootCertStore>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
@@ -249,6 +258,9 @@ impl ProcState {
       maybe_config_file,
       maybe_import_map,
       maybe_inspector_server,
+      maybe_graph_error: Default::default(),
+      resolution_map: Default::default(),
+      resolved_map: Default::default(),
       root_cert_store: Some(root_cert_store.clone()),
       blob_store,
       broadcast_channel,
@@ -271,7 +283,6 @@ impl ProcState {
     lib: emit::TypeLib,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
-    maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
     let mut cache = cache::FetchCacher::new(
       self.dir.gen_cache.clone(),
@@ -284,17 +295,15 @@ impl ProcState {
       roots,
       is_dynamic,
       &mut cache,
-      maybe_import_map.as_ref().map(|r| r.as_resolver()),
+      self.maybe_import_map.as_ref().map(|r| r.as_resolver()),
       maybe_locker,
       None,
     )
     .await;
-    // Ensure that all non-dynamic imports are properly loaded and if not, error
-    // with the first issue encountered.
-    graph.valid()?;
     // If there was a locker, validate the integrity of all the modules in the
     // locker.
-    graph.lock()?;
+    emit::lock(&graph);
+    let maybe_graph_error = graph.valid().err();
 
     // Determine any modules that have already been emitted this session and
     // should be skipped.
@@ -312,13 +321,17 @@ impl ProcState {
       emit::get_ts_config(config_type, &self.maybe_config_file, &None)?;
     let graph = Arc::new(graph);
     if emit::valid_emit(
-      graph.clone(),
+      graph.as_ref(),
       &cache,
       &ts_config,
       self.flags.reload,
       &reload_exclusions,
     ) {
-      debug!("specifier \"{}\" and dependencies have valid emit, skipping checking and emitting", graph.roots[0]);
+      if let Some(root) = graph.roots.get(0) {
+        debug!("specifier \"{}\" and dependencies have valid emit, skipping checking and emitting", root);
+      } else {
+        debug!("rootless graph, skipping checking and emitting");
+      }
     } else {
       if let Some(ignored_options) = maybe_ignored_options {
         eprintln!("{}", ignored_options);
@@ -329,7 +342,7 @@ impl ProcState {
           reload_exclusions,
           reload: self.flags.reload,
         };
-        emit::emit(graph.clone(), &mut cache, options)?
+        emit::emit(graph.as_ref(), &mut cache, options)?
       } else {
         let maybe_config_specifier = self
           .maybe_config_file
@@ -341,18 +354,33 @@ impl ProcState {
           ts_config,
         };
         for root in &graph.roots {
-          log::info!("{} {}", colors::green("Check"), root);
+          let root_str = root.to_string();
+          // `$deno$` specifiers are internal specifiers, printing out that
+          // they are being checked is confusing to a user, since they don't
+          // actually exist.
+          if !root_str.contains("$deno$") {
+            log::info!("{} {}", colors::green("Check"), root);
+          } else {
+            log::info!("{} a dynamic module", colors::green("Check"))
+          }
         }
         emit::check_and_maybe_emit(graph.clone(), &mut cache, options)?
       };
       debug!("{}", emit_result.stats);
-      if !emit_result.diagnostics.is_empty() {
+      // if the graph is not valid then the diagnostics returned are bogus and
+      // should just be ignored so that module loading can proceed to allow the
+      // "real" error to be surfaced
+      if !emit_result.diagnostics.is_empty() && maybe_graph_error.is_none() {
         return Err(anyhow!(emit_result.diagnostics));
       }
     }
 
-    let mut loadable_modules = self.modules.lock();
-    loadable_modules.extend(emit::to_module_sources(graph, &cache));
+    let mut modules = self.modules.lock();
+    modules.extend(emit::to_module_sources(graph.as_ref(), &cache));
+    let mut resolution_map = self.resolution_map.lock();
+    resolution_map.extend(graph.resolution_map());
+    let mut self_maybe_graph_error = self.maybe_graph_error.lock();
+    *self_maybe_graph_error = maybe_graph_error.map(|(_, err)| err);
 
     if let Some(ref lockfile) = self.lockfile {
       let g = lockfile.lock();
@@ -362,10 +390,48 @@ impl ProcState {
     Ok(())
   }
 
+  pub(crate) fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    let resolution_map = self.resolution_map.lock();
+    if let Some((_, Some(map))) = deno_core::resolve_url_or_path(referrer)
+      .ok()
+      .map(|s| (s.clone(), resolution_map.get(&s)))
+    {
+      if let Some(resolved) = map.get(specifier) {
+        match resolved {
+          deno_graph::Resolved::Specifier(specifier, span) => {
+            let mut resolved_map = self.resolved_map.lock();
+            resolved_map.insert(specifier.clone(), span.clone());
+            return Ok(specifier.clone());
+          }
+          deno_graph::Resolved::Err(err, _) => return Err(err.clone().into()),
+          _ => (),
+        }
+      }
+    }
+    // FIXME(bartlomieju): hacky way to provide compatibility with repl
+    let referrer = if referrer.is_empty() && self.flags.repl {
+      deno_core::DUMMY_SPECIFIER
+    } else {
+      referrer
+    };
+    if let Some(import_map) = &self.maybe_import_map {
+      import_map
+        .resolve(specifier, referrer)
+        .map_err(|err| err.into())
+    } else {
+      deno_core::resolve_import(specifier, referrer).map_err(|err| err.into())
+    }
+  }
+
   pub fn load(
     &self,
     specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
+    is_dynamic: bool,
   ) -> Result<ModuleSource, AnyError> {
     let modules = self.modules.lock();
     modules
@@ -396,17 +462,18 @@ impl ProcState {
       })
       .unwrap_or_else(|| {
         if let Some(referrer) = maybe_referrer {
-          Err(anyhow!(
-            "Module \"{}\" is missing from the graph.\n  From: {}",
-            specifier,
-            referrer
-          ))
-        } else {
-          Err(anyhow!(
-            "Module \"{}\" is missing from the graph.",
-            specifier
-          ))
+          if !is_dynamic {
+            let resolved_map = self.resolved_map.lock();
+            if let Some(span) = resolved_map.get(&specifier) {
+              return Err(custom_error("NotFound", format!("Cannot load module \"{}\" from \"{}\".\n    at {}", specifier, referrer, span)))
+            }
+          }
         }
+        let mut maybe_graph_error = self.maybe_graph_error.lock();
+        if let Some(graph_error) = maybe_graph_error.take() {
+          return Err(graph_error.into());
+        }
+        Err(custom_error("NotFound", format!("Cannot load module \"{}\".", specifier)))
       })
   }
 
@@ -449,7 +516,7 @@ impl SourceMapGetter for ProcState {
       if let Some((code, maybe_map)) = self.get_emit(&specifier) {
         let code = String::from_utf8(code).unwrap();
         source_map_from_code(code).or(maybe_map)
-      } else if let Ok(source) = self.load(specifier, None) {
+      } else if let Ok(source) = self.load(specifier, None, false) {
         source_map_from_code(source.code)
       } else {
         None

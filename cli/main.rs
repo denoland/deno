@@ -61,7 +61,6 @@ use crate::proc_state::ProcState;
 use crate::source_maps::apply_source_map;
 use crate::tools::installer::infer_name_from_url;
 use deno_ast::MediaType;
-use deno_core::error::anyhow;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -540,9 +539,11 @@ async fn cache_command(
       lib.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
-      ps.maybe_import_map.clone(),
     )
     .await?;
+    if let Some(graph_error) = ps.maybe_graph_error.lock().take() {
+      return Err(graph_error.into());
+    }
   }
 
   Ok(())
@@ -552,8 +553,10 @@ async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
 ) -> Result<(), AnyError> {
-  // Force TypeScript compile.
-  let main_module = resolve_url_or_path("./$deno$eval.ts").unwrap();
+  // deno_graph works off of extensions for local files to determine the media
+  // type, and so our "fake" specifier needs to have the proper extension.
+  let main_module =
+    resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext)).unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
   let ps = ProcState::build(flags).await?;
   let mut worker =
@@ -569,15 +572,7 @@ async fn eval_command(
   let file = File {
     local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
-    media_type: if eval_flags.ext.as_str() == "ts" {
-      MediaType::TypeScript
-    } else if eval_flags.ext.as_str() == "tsx" {
-      MediaType::Tsx
-    } else if eval_flags.ext.as_str() == "js" {
-      MediaType::JavaScript
-    } else {
-      MediaType::Jsx
-    },
+    media_type: MediaType::Unknown,
     source: Arc::new(String::from_utf8(source_code)?),
     specifier: main_module.clone(),
     maybe_headers: None,
@@ -624,6 +619,13 @@ async fn create_graph_and_maybe_check(
     .await,
   );
 
+  // Ensure that all non-dynamic imports are properly loaded and if not, error
+  // with the first issue encountered.
+  emit::graph_valid(graph.as_ref())?;
+  // If there was a locker, validate the integrity of all the modules in the
+  // locker.
+  emit::lock(graph.as_ref());
+
   if !ps.flags.no_check {
     let lib = if ps.flags.unstable {
       emit::TypeLib::UnstableDenoWindow
@@ -654,7 +656,7 @@ async fn create_graph_and_maybe_check(
     )?;
     debug!("{}", check_result.stats);
     if !check_result.diagnostics.is_empty() {
-      return Err(anyhow!(check_result.diagnostics));
+      return Err(check_result.diagnostics.into());
     }
   }
 
