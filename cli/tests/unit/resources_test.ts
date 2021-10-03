@@ -15,7 +15,7 @@ unitTest(function resourcesStdio() {
   assertEquals(res[2], "stderr");
 });
 
-unitTest({ perms: { net: true } }, async function resourcesNet() {
+unitTest({ permissions: { net: true } }, async function resourcesNet() {
   const listener = Deno.listen({ port: 4501 });
   const dialerConn = await Deno.connect({ port: 4501 });
   const listenerConn = await listener.accept();
@@ -35,7 +35,7 @@ unitTest({ perms: { net: true } }, async function resourcesNet() {
   listener.close();
 });
 
-unitTest({ perms: { read: true } }, async function resourcesFile() {
+unitTest({ permissions: { read: true } }, async function resourcesFile() {
   const resourcesBefore = Deno.resources();
   const f = await Deno.open("cli/tests/testdata/hello.txt");
   const resourcesAfter = Deno.resources();

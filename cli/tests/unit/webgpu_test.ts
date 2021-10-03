@@ -10,7 +10,7 @@ try {
 // Skip this test on linux CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
 unitTest({
-  perms: { read: true, env: true },
+  permissions: { read: true, env: true },
   ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
 }, async function webgpuComputePass() {
   const adapter = await navigator.gpu.requestAdapter();
@@ -101,7 +101,7 @@ unitTest({
 // Skip this test on linux CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
 unitTest({
-  perms: { read: true, env: true },
+  permissions: { read: true, env: true },
   ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
 }, async function webgpuHelloTriangle() {
   const adapter = await navigator.gpu.requestAdapter();

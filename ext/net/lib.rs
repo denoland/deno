@@ -94,7 +94,7 @@ pub struct DefaultTlsOptions {
 /// using type alias for a `Option<Vec<String>>` could work, but there's a high chance
 /// that there might be another type alias pointing to a `Option<Vec<String>>`, which
 /// would override previously used alias.
-pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
+pub struct UnsafelyIgnoreCertificateErrors(pub Option<Vec<String>>);
 
 pub fn init<P: NetPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,

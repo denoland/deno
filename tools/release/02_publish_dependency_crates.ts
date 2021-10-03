@@ -4,8 +4,14 @@ import { DenoWorkspace, getCratesPublishOrder } from "./helpers/mod.ts";
 
 const workspace = await DenoWorkspace.load();
 
-const dependencyCrates = workspace.getDependencyCrates();
+const dependencyCrates = getCratesPublishOrder(workspace.getDependencyCrates());
 
-for (const crate of getCratesPublishOrder(dependencyCrates)) {
-  await crate.publish();
+try {
+  for (const [i, crate] of dependencyCrates.entries()) {
+    await crate.publish();
+    console.log(`Published ${i + 1} of ${dependencyCrates.length} crates.`);
+  }
+} finally {
+  // system beep to notify error or completion
+  console.log("\x07");
 }

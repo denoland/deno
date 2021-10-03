@@ -4,8 +4,6 @@ mod sync_fetch;
 
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
-use crate::web_worker::WorkerControlEvent;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op_async;
 use deno_core::op_sync;
@@ -25,11 +23,6 @@ pub fn init() -> Extension {
       ("op_worker_recv_message", op_async(op_worker_recv_message)),
       // Notify host that guest worker closes.
       ("op_worker_close", op_sync(op_worker_close)),
-      // Notify host that guest worker has unhandled error.
-      (
-        "op_worker_unhandled_error",
-        op_sync(op_worker_unhandled_error),
-      ),
       ("op_worker_get_type", op_sync(op_worker_get_type)),
       ("op_worker_sync_fetch", op_sync(op_worker_sync_fetch)),
     ])
@@ -67,23 +60,6 @@ fn op_worker_close(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
   let mut handle = state.borrow_mut::<WebWorkerInternalHandle>().clone();
 
   handle.terminate();
-  Ok(())
-}
-
-/// A worker that encounters an uncaught error will pass this error
-/// to its parent worker using this op. The parent worker will use
-/// this same op to pass the error to its own parent (in case
-/// `e.preventDefault()` was not called in `worker.onerror`). This
-/// is done until the error reaches the root/ main worker.
-fn op_worker_unhandled_error(
-  state: &mut OpState,
-  message: String,
-  _: (),
-) -> Result<(), AnyError> {
-  let sender = state.borrow::<WebWorkerInternalHandle>().clone();
-  sender
-    .post_event(WorkerControlEvent::Error(generic_error(message)))
-    .expect("Failed to propagate error event to parent worker");
   Ok(())
 }
 
