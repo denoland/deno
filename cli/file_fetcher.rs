@@ -213,7 +213,7 @@ pub fn map_content_type(
 }
 
 /// Remove shebangs from the start of source code strings
-pub fn strip_shebang(mut value: String) -> String {
+fn strip_shebang(mut value: String) -> String {
   if value.starts_with("#!") {
     if let Some(mid) = value.find('\n') {
       let (_, rest) = value.split_at(mid);
@@ -255,7 +255,7 @@ impl FileFetcher {
       http_client: create_http_client(
         get_user_agent(),
         root_cert_store,
-        None,
+        vec![],
         None,
         unsafely_ignore_certificate_errors,
         None,

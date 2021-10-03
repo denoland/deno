@@ -2,20 +2,20 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
 unitTest(async function permissionInvalidName() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     // deno-lint-ignore no-explicit-any
     await Deno.permissions.query({ name: "foo" as any });
   }, TypeError);
 });
 
 unitTest(async function permissionNetInvalidHost() {
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await Deno.permissions.query({ name: "net", host: ":" });
   }, URIError);
 });

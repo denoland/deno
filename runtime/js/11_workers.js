@@ -10,10 +10,10 @@
     StringPrototypeStartsWith,
     String,
     SymbolIterator,
+    SymbolToStringTag,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
   const { URL } = window.__bootstrap.url;
-  const { Window } = window.__bootstrap.globalInterfaces;
   const { getLocationHref } = window.__bootstrap.location;
   const { log, pathFromURL } = window.__bootstrap.util;
   const { defineEventHandler } = window.__bootstrap.webUtil;
@@ -57,6 +57,7 @@
   }
 
   /**
+   * @param {"inherit" | boolean} value
    * @param {string} permission
    * @return {boolean}
    */
@@ -126,7 +127,7 @@
     write = "inherit",
   }) {
     return {
-      env: parseUnitPermission(env, "env"),
+      env: parseArrayPermission(env, "env"),
       hrtime: parseUnitPermission(hrtime, "hrtime"),
       net: parseArrayPermission(net, "net"),
       ffi: parseUnitPermission(ffi, "ffi"),
@@ -263,14 +264,7 @@
           } /* falls through */
           case 2: { // Error
             if (!this.#handleError(data)) {
-              if (globalThis instanceof Window) {
-                throw new Error("Unhandled error event reached main worker.");
-              } else {
-                core.opSync(
-                  "op_worker_unhandled_error",
-                  data.message,
-                );
-              }
+              throw new Error("Unhandled error event in child worker.");
             }
             break;
           }
@@ -351,6 +345,8 @@
         hostTerminateWorker(this.#id);
       }
     }
+
+    [SymbolToStringTag] = "Worker";
   }
 
   defineEventHandler(Worker.prototype, "error");

@@ -11,23 +11,20 @@
     Boolean,
     Set,
     SetPrototypeAdd,
-    SetPrototypeClear,
     SetPrototypeDelete,
     Symbol,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
   const add = Symbol("add");
   const signalAbort = Symbol("signalAbort");
   const remove = Symbol("remove");
+  const aborted = Symbol("aborted");
+  const abortAlgos = Symbol("abortAlgos");
 
   const illegalConstructorKey = Symbol("illegalConstructorKey");
 
   class AbortSignal extends EventTarget {
-    #aborted = false;
-    #abortAlgorithms = new Set();
-
     static abort() {
       const signal = new AbortSignal(illegalConstructorKey);
       signal[signalAbort]();
@@ -35,25 +32,30 @@
     }
 
     [add](algorithm) {
-      SetPrototypeAdd(this.#abortAlgorithms, algorithm);
+      if (this[abortAlgos] === null) {
+        this[abortAlgos] = new Set();
+      }
+      SetPrototypeAdd(this[abortAlgos], algorithm);
     }
 
     [signalAbort]() {
-      if (this.#aborted) {
+      if (this[aborted]) {
         return;
       }
-      this.#aborted = true;
-      for (const algorithm of this.#abortAlgorithms) {
-        algorithm();
+      this[aborted] = true;
+      if (this[abortAlgos] !== null) {
+        for (const algorithm of this[abortAlgos]) {
+          algorithm();
+        }
+        this[abortAlgos] = null;
       }
-      SetPrototypeClear(this.#abortAlgorithms);
       const event = new Event("abort");
       setIsTrusted(event, true);
       this.dispatchEvent(event);
     }
 
     [remove](algorithm) {
-      SetPrototypeDelete(this.#abortAlgorithms, algorithm);
+      this[abortAlgos] && SetPrototypeDelete(this[abortAlgos], algorithm);
     }
 
     constructor(key = null) {
@@ -61,15 +63,13 @@
         throw new TypeError("Illegal constructor.");
       }
       super();
+      this[aborted] = false;
+      this[abortAlgos] = null;
       this[webidl.brand] = webidl.brand;
     }
 
     get aborted() {
-      return Boolean(this.#aborted);
-    }
-
-    get [SymbolToStringTag]() {
-      return "AbortSignal";
+      return Boolean(this[aborted]);
     }
   }
   defineEventHandler(AbortSignal.prototype, "abort");
@@ -85,10 +85,6 @@
 
     abort() {
       this.#signal[signalAbort]();
-    }
-
-    get [SymbolToStringTag]() {
-      return "AbortController";
     }
   }
 
