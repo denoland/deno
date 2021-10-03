@@ -1848,7 +1848,7 @@ pub mod tests {
           r#"
           let thrown;
           try {
-            Deno.core.opSync(100);
+            Deno.core.opcall(100, null, null, null);
           } catch (e) {
             thrown = e;
           }
