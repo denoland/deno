@@ -270,6 +270,59 @@ struct FfiLoadArgs {
   symbols: HashMap<String, ForeignFunction>,
 }
 
+// `path` is only used on Windows.
+#[allow(unused_variables)]
+fn format_error(e: dlopen::Error, path: String) -> String {
+  match e {
+    #[cfg(target_os = "windows")]
+    // This calls FormatMessageW with library path
+    // as replacement for the insert sequences.
+    // Unlike libstd which passes the FORMAT_MESSAGE_IGNORE_INSERTS
+    // flag without any arguments.
+    //
+    // https://github.com/denoland/deno/issues/11632
+    dlopen::Error::OpeningLibraryError(e) => {
+      use winapi::shared::minwindef::DWORD;
+      use winapi::shared::ntdef::WCHAR;
+      use winapi::um::winbase::FormatMessageW;
+      use winapi::um::winbase::FORMAT_MESSAGE_ARGUMENT_ARRAY;
+      use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
+      use winapi::um::winbase::FORMAT_MESSAGE_IGNORE_INSERTS;
+
+      let err_num = e.raw_os_error().unwrap();
+
+      // Language ID given by
+      // MAKELANGID(LANG_SYSTEM_DEFAULT, SUBLANG_SYS_DEFAULT);
+      let lang_id = 0x0800 as DWORD;
+
+      let mut buf = [0 as WCHAR; 2048];
+      let arguments = [path.as_ptr()];
+      unsafe {
+        let length = FormatMessageW(
+          FORMAT_MESSAGE_FROM_SYSTEM
+            | FORMAT_MESSAGE_ARGUMENT_ARRAY
+            | FORMAT_MESSAGE_IGNORE_INSERTS,
+          std::ptr::null_mut(),
+          err_num as DWORD,
+          lang_id as DWORD,
+          buf.as_mut_ptr(),
+          buf.len() as DWORD,
+          arguments.as_ptr() as _,
+        );
+
+        if length == 0 {
+          // Something went wrong, just return the original error.
+          return e.to_string();
+        }
+
+        let msg = String::from_utf16_lossy(&buf[..length as usize]);
+        msg
+      }
+    }
+    _ => e.to_string(),
+  }
+}
+
 fn op_ffi_load<FP>(
   state: &mut deno_core::OpState,
   args: FfiLoadArgs,
@@ -278,60 +331,13 @@ fn op_ffi_load<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  let path = args.path;
+
   check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(&args.path)?;
+  permissions.check(&path)?;
 
-  let lib = Library::open(&args.path).map_err(|e| {
-    match e {
-      #[cfg(target_os = "windows")]
-      // This calls FormatMessageW with library path
-      // as replacement for the insert sequences.
-      // Unlike libstd which passes the FORMAT_MESSAGE_IGNORE_INSERTS
-      // flag without any arguments.
-      //
-      // https://github.com/denoland/deno/issues/11632
-      dlopen::Error::OpeningLibraryError(e) => {
-        use winapi::shared::minwindef::DWORD;
-        use winapi::shared::ntdef::WCHAR;
-        use winapi::um::winbase::FormatMessageW;
-        use winapi::um::winbase::FORMAT_MESSAGE_ARGUMENT_ARRAY;
-        use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
-        use winapi::um::winbase::FORMAT_MESSAGE_IGNORE_INSERTS;
-
-        let err_num = e.raw_os_error().unwrap();
-
-        // Language ID given by
-        // MAKELANGID(LANG_SYSTEM_DEFAULT, SUBLANG_SYS_DEFAULT);
-        let lang_id = 0x0800 as DWORD;
-
-        let mut buf = [0 as WCHAR; 2048];
-        let arguments = [args.path.as_ptr()];
-        unsafe {
-          let length = FormatMessageW(
-            FORMAT_MESSAGE_FROM_SYSTEM
-              | FORMAT_MESSAGE_ARGUMENT_ARRAY
-              | FORMAT_MESSAGE_IGNORE_INSERTS,
-            std::ptr::null_mut(),
-            err_num as DWORD,
-            lang_id as DWORD,
-            buf.as_mut_ptr(),
-            buf.len() as DWORD,
-            arguments.as_ptr() as _,
-          );
-
-          if length == 0 {
-            // Something went wrong, just return the original error.
-            return anyhow!(e.to_string());
-          }
-
-          let msg = String::from_utf16_lossy(&buf[..length as usize]);
-          anyhow!(msg)
-        }
-      }
-      _ => anyhow!(e.to_string()),
-    }
-  })?;
+  let lib = Library::open(&path).map_err(|e| anyhow!(format_error(e, path)))?;
 
   let mut resource = DynamicLibraryResource {
     lib,
