@@ -76,18 +76,18 @@ fn child_lines(
 fn lint_watch_test() {
   let t = TempDir::new().expect("tempdir fail");
   let badly_linted_original =
-    util::testdata_path().join("lint/badly_linted.js");
+    util::testdata_path().join("lint/watch/badly_linted.js");
   let badly_linted_fixed1 =
-    util::testdata_path().join("lint/badly_linted_fixed1.js");
+    util::testdata_path().join("lint/watch/badly_linted_fixed1.js");
   let badly_linted_fixed1_output =
-    util::testdata_path().join("lint/badly_linted_fixed1.js.out");
+    util::testdata_path().join("lint/watch/badly_linted_fixed1.js.out");
   let badly_linted_fixed2 =
-    util::testdata_path().join("lint/badly_linted_fixed2.js");
+    util::testdata_path().join("lint/watch/badly_linted_fixed2.js");
   let badly_linted_fixed2_output =
-    util::testdata_path().join("lint/badly_linted_fixed2.js.out");
+    util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
   let badly_linted = t.path().join("badly_linted.js");
   let badly_linted_output =
-    util::testdata_path().join("lint/badly_linted.js.out");
+    util::testdata_path().join("lint/watch/badly_linted.js.out");
 
   std::fs::copy(&badly_linted_original, &badly_linted)
     .expect("Failed to copy file");
