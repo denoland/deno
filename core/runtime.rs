@@ -16,6 +16,7 @@ use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::NoopModuleLoader;
 use crate::ops::*;
+use crate::promise_ring::PromiseRing;
 use crate::Extension;
 use crate::OpMiddlewareFn;
 use crate::OpPayload;
@@ -146,7 +147,6 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
-  pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
@@ -154,6 +154,7 @@ pub(crate) struct JsRuntimeState {
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
   pending_mod_evaluate: Option<ModEvaluate>,
+  pub(crate) promise_ring: Option<PromiseRing>,
   /// A counter used to delay our dynamic import deadlock detection by one spin
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
@@ -351,13 +352,13 @@ impl JsRuntime {
       pending_dyn_mod_evaluate: vec![],
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
-      js_recv_cb: None,
       js_sync_cb: None,
       js_macrotask_cb: None,
       js_wasm_streaming_cb: None,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
+      promise_ring: Some(PromiseRing::new()),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
@@ -501,12 +502,10 @@ impl JsRuntime {
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
     let mut scope = self.handle_scope();
-    let recv_cb = Self::grab_fn(&mut scope, "Deno.core.opresolve");
     let sync_cb = Self::grab_fn(&mut scope, "Deno.core.syncOpsCache");
     // Put global handles in state
     let state_rc = JsRuntime::state(&scope);
     let mut state = state_rc.borrow_mut();
-    state.js_recv_cb.replace(recv_cb);
     state.js_sync_cb.replace(sync_cb);
   }
 
@@ -602,7 +601,6 @@ impl JsRuntime {
         state.borrow().op_state.clone(),
       ))));
     // Drop other v8::Global handles before snapshotting
-    std::mem::take(&mut state.borrow_mut().js_recv_cb);
     std::mem::take(&mut state.borrow_mut().js_sync_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
@@ -1531,41 +1529,44 @@ impl JsRuntime {
     &mut self,
     async_responses: Vec<(PromiseId, OpResult)>,
   ) -> Result<(), AnyError> {
-    let state_rc = Self::state(self.v8_isolate());
-
     let async_responses_size = async_responses.len();
     if async_responses_size == 0 {
       return Ok(());
     }
 
-    let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
-
+    let state_rc = Self::state(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
-    // We return async responses to JS in unbounded batches (may change),
-    // each batch is a flat vector of tuples:
-    // `[promise_id1, op_result1, promise_id2, op_result2, ...]`
-    // promise_id is a simple integer, op_result is an ops::OpResult
-    // which contains a value OR an error, encoded as a tuple.
-    // This batch is received in JS via the special `arguments` variable
-    // and then each tuple is used to resolve or reject promises
-    let mut args: Vec<v8::Local<v8::Value>> =
-      Vec::with_capacity(2 * async_responses_size);
-    for overflown_response in async_responses {
-      let (promise_id, resp) = overflown_response;
-      args.push(v8::Integer::new(scope, promise_id as i32).into());
-      args.push(resp.to_v8(scope).unwrap());
+    // We return async responses to JS by resolving promises in the promise ring
+    for (promise_id, resp) in async_responses {
+      let resolver = state_rc
+        .borrow_mut()
+        .promise_ring
+        .as_mut()
+        .unwrap()
+        .take(promise_id);
+      match resolver {
+        Some(resolver) => {
+          let resolver = resolver.get(scope);
+          match resp {
+            OpResult::Ok(x) => {
+              let value = x.to_v8(scope).unwrap();
+              resolver.resolve(scope, value);
+            }
+            OpResult::Err(err) => {
+              let value = serde_v8::to_v8(scope, err).unwrap();
+              resolver.reject(scope, value);
+            }
+          }
+        }
+        None => panic!(
+          "tried to resolve a promise_id: {} without a resolver !",
+          promise_id
+        ),
+      }
     }
 
-    let tc_scope = &mut v8::TryCatch::new(scope);
-    let js_recv_cb = js_recv_cb_handle.get(tc_scope);
-    let this = v8::undefined(tc_scope).into();
-    js_recv_cb.call(tc_scope, this, args.as_slice());
-
-    match tc_scope.exception() {
-      None => Ok(()),
-      Some(exception) => exception_to_err_result(tc_scope, exception, false),
-    }
+    Ok(())
   }
 
   fn drain_macrotasks(&mut self) -> Result<(), AnyError> {

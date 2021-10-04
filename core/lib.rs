@@ -14,6 +14,7 @@ mod ops;
 mod ops_builtin;
 mod ops_json;
 mod ops_metrics;
+mod promise_ring;
 mod resources;
 mod runtime;
 
