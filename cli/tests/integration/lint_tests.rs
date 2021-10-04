@@ -24,33 +24,33 @@ fn ignore_unexplicit_files() {
 }
 
 itest!(all {
-  args: "lint lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  args: "lint lint/without_config/file1.js lint/without_config/file2.ts lint/without_config/ignored_file.ts",
   output: "lint/expected.out",
   exit_code: 1,
 });
 
 itest!(quiet {
-  args: "lint --quiet lint/file1.js",
+  args: "lint --quiet lint/without_config/file1.js",
   output: "lint/expected_quiet.out",
   exit_code: 1,
 });
 
 itest!(json {
-      args:
-        "lint --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
-        output: "lint/expected_json.out",
-        exit_code: 1,
-    });
+  args:
+    "lint --json lint/without_config/file1.js lint/without_config/file2.ts lint/without_config/ignored_file.ts lint/without_config/malformed.js",
+    output: "lint/expected_json.out",
+    exit_code: 1,
+});
 
 itest!(ignore {
   args:
-    "lint --ignore=lint/file1.js,lint/malformed.js,lint/lint_with_config/ lint/",
+    "lint --ignore=lint/without_config/file1.js,lint/without_config/malformed.js,lint/without_config/lint_with_config/ lint/without_config/",
   output: "lint/expected_ignore.out",
   exit_code: 1,
 });
 
 itest!(glob {
-  args: "lint --ignore=lint/malformed.js,lint/lint_with_config/ lint/",
+  args: "lint --ignore=lint/without_config/malformed.js,lint/with_config/ lint/without_config/",
   output: "lint/expected_glob.out",
   exit_code: 1,
 });
@@ -83,26 +83,26 @@ itest!(rules_quiet {
 });
 
 itest!(lint_with_config {
-  args: "lint --config lint/Deno.jsonc lint/lint_with_config/",
-  output: "lint/lint_with_config.out",
+  args: "lint --config lint/Deno.jsonc lint/with_config/",
+  output: "lint/with_config.out",
   exit_code: 1,
 });
 
 // Check if CLI flags take precedence
 itest!(lint_with_config_and_flags {
-  args: "lint --config lint/Deno.jsonc --ignore=lint/lint_with_config/a.ts",
-  output: "lint/lint_with_config_and_flags.out",
+  args: "lint --config lint/Deno.jsonc --ignore=lint/with_config/a.ts",
+  output: "lint/with_config_and_flags.out",
   exit_code: 1,
 });
 
 itest!(lint_with_malformed_config {
   args: "lint --config lint/Deno.malformed.jsonc",
-  output: "lint/lint_with_malformed_config.out",
+  output: "lint/with_malformed_config.out",
   exit_code: 1,
 });
 
 itest!(lint_with_malformed_config2 {
   args: "lint --config lint/Deno.malformed2.jsonc",
-  output: "lint/lint_with_malformed_config2.out",
+  output: "lint/with_malformed_config2.out",
   exit_code: 1,
 });
