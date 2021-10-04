@@ -23,7 +23,7 @@
   } = window.__bootstrap.primordials;
 
   // Available on start due to bindings.
-  const { opcall } = window.Deno.core;
+  const { opcallSync, opcallAsync } = window.Deno.core;
 
   let opsCache = {};
   const errorMap = {};
@@ -85,7 +85,7 @@
 
   function syncOpsCache() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    opsCache = ObjectFreeze(ObjectFromEntries(opcall(0)));
+    opsCache = ObjectFreeze(ObjectFromEntries(opcallSync(0)));
   }
 
   function opresolve() {
@@ -125,14 +125,14 @@
 
   function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
-    const maybeError = opcall(opsCache[opName], promiseId, arg1, arg2);
+    const maybeError = opcallAsync(opsCache[opName], promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     return PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {
-    return unwrapOpResult(opcall(opsCache[opName], null, arg1, arg2));
+    return unwrapOpResult(opcallSync(opsCache[opName], arg1, arg2));
   }
 
   function resources() {
