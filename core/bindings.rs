@@ -353,7 +353,7 @@ fn opcall_sync<'s>(
     Op::NotFound => {
       throw_type_error(scope, format!("Unknown op id: {}", op_id));
     }
-    // Async ops (ref or unrref)
+    // Async ops (ref or unref)
     _ => {
       throw_type_error(
         scope,
