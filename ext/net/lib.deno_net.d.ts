@@ -49,7 +49,12 @@ declare namespace Deno {
     /** The port to listen on. */
     port: number;
     /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `0.0.0.0`. */
+     * If not specified, defaults to `0.0.0.0`.
+     *
+     * __Note about `0.0.0.0`__ While listening `0.0.0.0` works on all platforms,
+     * the browsers on Windows don't work with the address `0.0.0.0`.
+     * You should show the message like `server running on localhost:8080` instead of
+     * `server running on 0.0.0.0:8080` if your program supports Windows. */
     hostname?: string;
   }
 
@@ -116,8 +121,18 @@ declare namespace Deno {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `127.0.0.1`. */
     hostname?: string;
-    /** Server certificate file. */
+    /**
+     * @deprecated This option is deprecated and will be removed in a future
+     * release.
+     *
+     * Server certificate file.
+     */
     certFile?: string;
+    /** A list of root certificates that will be used in addition to the
+     * default root certificates to verify the peer's certificate.
+     *
+     * Must be in PEM format. */
+    caCerts?: string[];
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
@@ -126,10 +141,11 @@ declare namespace Deno {
    * be used (see also https://github.com/ctz/webpki-roots for specifics)
    *
    * ```ts
+   * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
    * const conn1 = await Deno.connectTls({ port: 80 });
-   * const conn2 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "192.0.2.1", port: 80 });
+   * const conn2 = await Deno.connectTls({ caCerts: [caCert], hostname: "192.0.2.1", port: 80 });
    * const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80 });
-   * const conn4 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "golang.org", port: 80});
+   * const conn4 = await Deno.connectTls({ caCerts: [caCert], hostname: "golang.org", port: 80});
    * ```
    *
    * Requires `allow-net` permission.

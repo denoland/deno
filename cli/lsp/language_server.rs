@@ -7,6 +7,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use import_map::ImportMap;
 use log::error;
 use log::info;
 use log::warn;
@@ -55,12 +56,11 @@ use super::urls;
 use crate::config_file::ConfigFile;
 use crate::config_file::TsConfig;
 use crate::deno_dir;
+use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
-use crate::import_map::ImportMap;
 use crate::logger;
-use crate::media_type::MediaType;
 use crate::tools::fmt::format_file;
-use crate::tools::fmt::get_typescript_config;
+use crate::tools::fmt::format_parsed_module;
 
 pub const REGISTRIES_PATH: &str = "registries";
 const SOURCES_PATH: &str = "deps";
@@ -165,19 +165,17 @@ impl Inner {
 
   /// Analyzes dependencies of a document that has been opened in the editor and
   /// sets the dependencies property on the document.
-  fn analyze_dependencies(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    media_type: &MediaType,
-    source: &str,
-  ) {
-    if let Ok(parsed_module) =
-      analysis::parse_module(specifier, source, media_type)
+  fn analyze_dependencies(&mut self, specifier: &ModuleSpecifier) {
+    if let Some(Ok(parsed_module)) = self
+      .documents
+      .get(specifier)
+      .map(|d| d.source().module())
+      .flatten()
     {
       let (mut deps, _) = analysis::analyze_dependencies(
         specifier,
-        media_type,
-        &parsed_module,
+        parsed_module.media_type(),
+        parsed_module,
         &self.maybe_import_map,
       );
       for (_, dep) in deps.iter_mut() {
@@ -188,7 +186,7 @@ impl Inner {
           }
         }
       }
-      let dep_ranges = analysis::analyze_dependency_ranges(&parsed_module).ok();
+      let dep_ranges = analysis::analyze_dependency_ranges(parsed_module).ok();
       if let Err(err) =
         self
           .documents
@@ -202,18 +200,14 @@ impl Inner {
   /// Analyzes all dependencies for all documents that have been opened in the
   /// editor and sets the dependencies property on the documents.
   fn analyze_dependencies_all(&mut self) {
-    let docs: Vec<(ModuleSpecifier, String, MediaType)> = self
+    let specifiers = self
       .documents
       .docs
-      .iter()
-      .filter_map(|(s, doc)| {
-        let source = doc.content().ok().flatten()?;
-        let media_type = MediaType::from(&doc.language_id);
-        Some((s.clone(), source, media_type))
-      })
-      .collect();
-    for (specifier, source, media_type) in docs {
-      self.analyze_dependencies(&specifier, &media_type, &source);
+      .keys()
+      .map(ToOwned::to_owned)
+      .collect::<Vec<_>>();
+    for specifier in specifiers {
+      self.analyze_dependencies(&specifier);
     }
   }
 
@@ -281,27 +275,16 @@ impl Inner {
   pub(crate) fn get_text_content(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Option<String> {
+  ) -> Option<Arc<String>> {
     if specifier.scheme() == "asset" {
       self
         .assets
         .get(specifier)
         .map(|o| o.clone().map(|a| a.text))?
     } else if self.documents.contains_key(specifier) {
-      self.documents.content(specifier).unwrap()
+      self.documents.content(specifier)
     } else {
       self.sources.get_source(specifier)
-    }
-  }
-
-  pub(crate) fn get_media_type(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<MediaType> {
-    if specifier.scheme() == "asset" || self.documents.contains_key(specifier) {
-      Some(MediaType::from(specifier))
-    } else {
-      self.sources.get_media_type(specifier)
     }
   }
 
@@ -353,15 +336,15 @@ impl Inner {
     Ok(navigation_tree)
   }
 
-  fn merge_user_tsconfig(
-    &mut self,
-    maybe_config: &Option<String>,
-    maybe_root_uri: &Option<Url>,
-    tsconfig: &mut TsConfig,
-  ) -> Result<(), AnyError> {
-    self.maybe_config_file = None;
-    self.maybe_config_uri = None;
-    if let Some(config_str) = maybe_config {
+  /// Returns a tuple with parsed `ConfigFile` and `Url` pointing to that file.
+  /// If there's no config file specified in settings returns `None`.
+  fn get_config_file_and_url(
+    &self,
+  ) -> Result<Option<(ConfigFile, Url)>, AnyError> {
+    let workspace_settings = self.config.get_workspace_settings();
+    let maybe_root_uri = self.config.root_uri.clone();
+    let maybe_config = workspace_settings.config;
+    if let Some(config_str) = &maybe_config {
       if !config_str.is_empty() {
         info!("Setting TypeScript configuration from: \"{}\"", config_str);
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
@@ -391,18 +374,34 @@ impl Inner {
             .ok_or_else(|| anyhow!("Bad uri: \"{}\"", config_url))?;
           ConfigFile::read(path)?
         };
-        let (value, maybe_ignored_options) =
-          config_file.to_compiler_options()?;
-        tsconfig.merge(&value);
-        self.maybe_config_file = Some(config_file);
-        self.maybe_config_uri = Some(config_url);
-        if let Some(ignored_options) = maybe_ignored_options {
-          // TODO(@kitsonk) turn these into diagnostics that can be sent to the
-          // client
-          warn!("{}", ignored_options);
-        }
+        return Ok(Some((config_file, config_url)));
       }
     }
+
+    Ok(None)
+  }
+
+  fn merge_user_tsconfig(
+    &mut self,
+    tsconfig: &mut TsConfig,
+  ) -> Result<(), AnyError> {
+    self.maybe_config_file = None;
+    self.maybe_config_uri = None;
+
+    let maybe_file_and_url = self.get_config_file_and_url()?;
+
+    if let Some((config_file, config_url)) = maybe_file_and_url {
+      let (value, maybe_ignored_options) = config_file.to_compiler_options()?;
+      tsconfig.merge(&value);
+      self.maybe_config_file = Some(config_file);
+      self.maybe_config_uri = Some(config_url);
+      if let Some(ignored_options) = maybe_ignored_options {
+        // TODO(@kitsonk) turn these into diagnostics that can be sent to the
+        // client
+        warn!("{}", ignored_options);
+      }
+    }
+
     Ok(())
   }
 
@@ -492,6 +491,10 @@ impl Inner {
       let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str)
       {
         Ok(url)
+      } else if import_map_str.starts_with("data:") {
+        Url::parse(import_map_str).map_err(|_| {
+          anyhow!("Bad data url for import map: {:?}", import_map_str)
+        })
       } else if let Some(root_uri) = &maybe_root_uri {
         let root_path = root_uri
           .to_file_path()
@@ -506,21 +509,25 @@ impl Inner {
           import_map_str
         ))
       }?;
-      let import_map_path = import_map_url.to_file_path().map_err(|_| {
-        anyhow!("Cannot convert \"{}\" into a file path.", import_map_url)
-      })?;
-      info!(
-        "  Resolved import map: \"{}\"",
-        import_map_path.to_string_lossy()
-      );
-      let import_map_json =
+
+      let import_map_json = if import_map_url.scheme() == "data" {
+        get_source_from_data_url(&import_map_url)?.0
+      } else {
+        let import_map_path = import_map_url.to_file_path().map_err(|_| {
+          anyhow!("Cannot convert \"{}\" into a file path.", import_map_url)
+        })?;
+        info!(
+          "  Resolved import map: \"{}\"",
+          import_map_path.to_string_lossy()
+        );
         fs::read_to_string(import_map_path).await.map_err(|err| {
           anyhow!(
             "Failed to load the import map at: {}. [{}]",
             import_map_url,
             err
           )
-        })?;
+        })?
+      };
       let import_map =
         ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
       self.maybe_import_map_uri = Some(import_map_url);
@@ -584,20 +591,15 @@ impl Inner {
       // TODO(@kitsonk) remove for Deno 1.15
       "useUnknownInCatchVariables": false,
     }));
-    let (maybe_config, maybe_root_uri) = {
-      let config = &self.config;
-      let workspace_settings = config.get_workspace_settings();
-      if workspace_settings.unstable {
-        let unstable_libs = json!({
-          "lib": ["deno.ns", "deno.window", "deno.unstable"]
-        });
-        tsconfig.merge(&unstable_libs);
-      }
-      (workspace_settings.config, config.root_uri.clone())
-    };
-    if let Err(err) =
-      self.merge_user_tsconfig(&maybe_config, &maybe_root_uri, &mut tsconfig)
-    {
+    let config = &self.config;
+    let workspace_settings = config.get_workspace_settings();
+    if workspace_settings.unstable {
+      let unstable_libs = json!({
+        "lib": ["deno.ns", "deno.window", "deno.unstable"]
+      });
+      tsconfig.merge(&unstable_libs);
+    }
+    if let Err(err) = self.merge_user_tsconfig(&mut tsconfig) {
       self.client.show_message(MessageType::Warning, err).await;
     }
     let _ok: bool = self
@@ -789,20 +791,15 @@ impl Inner {
         params.text_document.language_id, params.text_document.uri
       );
     }
-    let media_type = MediaType::from(&language_id);
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
       language_id,
-      &params.text_document.text,
+      Arc::new(params.text_document.text),
     );
 
     if self.documents.is_diagnosable(&specifier) {
-      self.analyze_dependencies(
-        &specifier,
-        &media_type,
-        &params.text_document.text,
-      );
+      self.analyze_dependencies(&specifier);
       self
         .diagnostics_server
         .invalidate(self.documents.dependents(&specifier))
@@ -822,12 +819,9 @@ impl Inner {
       params.text_document.version,
       params.content_changes,
     ) {
-      Ok(Some(source)) => {
+      Ok(()) => {
         if self.documents.is_diagnosable(&specifier) {
-          let media_type = MediaType::from(
-            &self.documents.get_language_id(&specifier).unwrap(),
-          );
-          self.analyze_dependencies(&specifier, &media_type, &source);
+          self.analyze_dependencies(&specifier);
           self
             .diagnostics_server
             .invalidate(self.documents.dependents(&specifier))
@@ -837,7 +831,6 @@ impl Inner {
           }
         }
       }
-      Ok(_) => error!("No content returned from change."),
       Err(err) => error!("{}", err),
     }
     self.performance.measure(mark);
@@ -1021,16 +1014,11 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("formatting", Some(&params));
-    let file_text = self
-      .documents
-      .content(&specifier)
-      .map_err(|_| {
-        LspError::invalid_params(
-          "The specified file could not be found in memory.",
-        )
-      })?
-      .unwrap();
-    let line_index = self.documents.line_index(&specifier);
+    let document_data = self.documents.get(&specifier).ok_or_else(|| {
+      LspError::invalid_params(
+        "The specified file could not be found in memory.",
+      )
+    })?;
     let file_path =
       if let Ok(file_path) = params.text_document.uri.to_file_path() {
         file_path
@@ -1038,14 +1026,51 @@ impl Inner {
         PathBuf::from(params.text_document.uri.path())
       };
 
-    // TODO(lucacasonato): handle error properly
+    let maybe_file_and_url = self.get_config_file_and_url().map_err(|err| {
+      error!("Unable to parse configuration file: {}", err);
+      LspError::internal_error()
+    })?;
+
+    let fmt_options = if let Some((config_file, _)) = maybe_file_and_url {
+      config_file
+        .to_fmt_config()
+        .map_err(|err| {
+          error!("Unable to parse fmt configuration: {}", err);
+          LspError::internal_error()
+        })?
+        .unwrap_or_default()
+    } else {
+      Default::default()
+    };
+
+    let source = document_data.source().clone();
     let text_edits = tokio::task::spawn_blocking(move || {
-      let config = get_typescript_config();
-      match format_file(&file_path, &file_text, config) {
+      let format_result = match source.module() {
+        Some(Ok(parsed_module)) => {
+          Ok(format_parsed_module(parsed_module, fmt_options.options))
+        }
+        Some(Err(err)) => Err(err.to_string()),
+        None => {
+          // it's not a js/ts file, so attempt to format its contents
+          format_file(
+            &file_path,
+            source.text_info().text_str(),
+            fmt_options.options,
+          )
+        }
+      };
+
+      match format_result {
         Ok(new_text) => {
-          Some(text::get_edits(&file_text, &new_text, line_index))
+          let line_index = source.line_index();
+          Some(text::get_edits(
+            source.text_info().text_str(),
+            &new_text,
+            line_index,
+          ))
         }
         Err(err) => {
+          // TODO(lucacasonato): handle error properly
           warn!("Format error: {}", err);
           None
         }
@@ -1257,7 +1282,7 @@ impl Inner {
           Some("deno-lint") => code_actions
             .add_deno_lint_ignore_action(
               &specifier,
-              self.documents.docs.get(&specifier),
+              self.documents.get(&specifier),
               diagnostic,
             )
             .map_err(|err| {
@@ -1436,11 +1461,37 @@ impl Inner {
     }
 
     let mark = self.performance.mark("code_lens", Some(&params));
-    let code_lenses =
-      code_lens::collect(&specifier, self).await.map_err(|err| {
+    let navigation_tree =
+      self.get_navigation_tree(&specifier).await.map_err(|err| {
         error!("Error getting code lenses for \"{}\": {}", specifier, err);
         LspError::internal_error()
       })?;
+    let parsed_module = self
+      .documents
+      .get(&specifier)
+      .map(|d| d.source().module())
+      .flatten()
+      .map(|m| m.as_ref().ok())
+      .flatten();
+    let line_index = self.get_line_index_sync(&specifier).ok_or_else(|| {
+      error!(
+        "Error getting code lenses for \"{}\": Missing line index",
+        specifier
+      );
+      LspError::internal_error()
+    })?;
+    let code_lenses = code_lens::collect(
+      &specifier,
+      parsed_module,
+      &self.config,
+      &line_index,
+      &navigation_tree,
+    )
+    .await
+    .map_err(|err| {
+      error!("Error getting code lenses for \"{}\": {}", specifier, err);
+      LspError::internal_error()
+    })?;
     self.performance.measure(mark);
 
     Ok(Some(code_lenses))
@@ -1672,7 +1723,11 @@ impl Inner {
         position,
         tsc::GetCompletionsAtPositionOptions {
           user_preferences: tsc::UserPreferences {
+            allow_text_changes_in_new_files: Some(specifier.scheme() == "file"),
+            include_automatic_optional_chain_completions: Some(true),
+            provide_refactor_not_applicable_reason: Some(true),
             include_completions_with_insert_text: Some(true),
+            allow_incomplete_completions: Some(true),
             ..Default::default()
           },
           trigger_character,
@@ -2606,11 +2661,7 @@ impl Inner {
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics
     if self.documents.contains_key(&referrer) {
-      if let Some(source) = self.documents.content(&referrer).unwrap() {
-        let media_type =
-          MediaType::from(&self.documents.get_language_id(&referrer).unwrap());
-        self.analyze_dependencies(&referrer, &media_type, &source);
-      }
+      self.analyze_dependencies(&referrer);
       self.diagnostics_server.invalidate(vec![referrer]).await;
     }
 
@@ -2728,7 +2779,7 @@ impl Inner {
             .await
             .map_err(|_| LspError::internal_error())?
           {
-            Some(asset.text)
+            Some(asset.text.to_string())
           } else {
             error!("Missing asset: {}", specifier);
             None
@@ -2736,7 +2787,7 @@ impl Inner {
         }
         _ => {
           if let Some(source) = self.sources.get_source(&specifier) {
-            Some(source)
+            Some(source.to_string())
           } else {
             error!("The cached source was not found: {}", specifier);
             None

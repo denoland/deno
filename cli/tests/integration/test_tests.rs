@@ -180,3 +180,9 @@ itest!(shuffle_with_seed {
   exit_code: 0,
   output: "test/shuffle.out",
 });
+
+itest!(aggregate_error {
+  args: "test test/aggregate_error.ts",
+  exit_code: 1,
+  output: "test/aggregate_error.out",
+});

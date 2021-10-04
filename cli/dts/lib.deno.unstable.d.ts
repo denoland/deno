@@ -713,8 +713,12 @@ declare namespace Deno {
   export function run<
     T extends RunOptions & {
       clearEnv?: boolean;
+      gid?: number;
+      uid?: number;
     } = RunOptions & {
       clearEnv?: boolean;
+      gid?: number;
+      uid?: number;
     },
   >(opt: T): Process<T>;
 
@@ -750,7 +754,8 @@ declare namespace Deno {
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
-   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
    * const req = await fetch("https://myserver.com", { client });
    * ```
    */
@@ -763,11 +768,16 @@ declare namespace Deno {
    * The options used when creating a [HttpClient].
    */
   export interface CreateHttpClientOptions {
-    /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
-     */
-    caData?: string;
+    /** A list of root certificates that will be used in addition to the
+     * default root certificates to verify the peer's certificate.
+     *
+     * Must be in PEM format. */
+    caCerts?: string[];
+    /** A HTTP proxy to use for new connections. */
     proxy?: Proxy;
+    /** PEM formatted client certificate chain. */
     certChain?: string;
+    /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey?: string;
   }
 
@@ -785,7 +795,8 @@ declare namespace Deno {
    * Create a custom HttpClient for to use with `fetch`.
    *
    * ```ts
-   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
@@ -1003,53 +1014,6 @@ declare namespace Deno {
     };
   }
 
-  export interface WebSocketUpgrade {
-    response: Response;
-    socket: WebSocket;
-  }
-
-  export interface UpgradeWebSocketOptions {
-    protocol?: string;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Used to upgrade an incoming HTTP request to a WebSocket.
-   *
-   * Given a request, returns a pair of WebSocket and Response. The original
-   * request must be responded to with the returned response for the websocket
-   * upgrade to be successful.
-   *
-   * ```ts
-   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const httpConn = Deno.serveHttp(conn);
-   * const e = await httpConn.nextRequest();
-   * if (e) {
-   *   const { socket, response } = Deno.upgradeWebSocket(e.request);
-   *   socket.onopen = () => {
-   *     socket.send("Hello World!");
-   *   };
-   *   socket.onmessage = (e) => {
-   *     console.log(e.data);
-   *     socket.close();
-   *   };
-   *   socket.onclose = () => console.log("WebSocket has been closed.");
-   *   socket.onerror = (e) => console.error("WebSocket error:", e);
-   *   e.respondWith(response);
-   * }
-   * ```
-   *
-   * If the request body is disturbed (read from) before the upgrade is
-   * completed, upgrading fails.
-   *
-   * This operation does not yet consume the request or open the websocket. This
-   * only happens once the returned response has been passed to `respondWith`.
-   */
-  export function upgradeWebSocket(
-    request: Request,
-    options?: UpgradeWebSocketOptions,
-  ): WebSocketUpgrade;
-
   /** The type of the resource record.
    * Only the listed types are supported currently. */
   export type RecordType =
@@ -1237,11 +1201,11 @@ declare namespace Deno {
     options: ConnectOptions | UnixConnectOptions,
   ): Promise<Conn>;
 
-  export interface ConnectTlsClientCertOptions {
+  export interface ConnectTlsOptions {
     /** PEM formatted client certificate chain. */
-    certChain: string;
+    certChain?: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate. */
-    privateKey: string;
+    privateKey?: string;
   }
 
   /** **UNSTABLE** New API, yet to be vetted.
@@ -1259,30 +1223,38 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
-  export function connectTls(
-    options: ConnectTlsOptions & ConnectTlsClientCertOptions,
-  ): Promise<Conn>;
+  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
 
   export interface StartTlsOptions {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `127.0.0.1`. */
     hostname?: string;
-    /** Server certificate file. */
+    /**
+     * @deprecated This option is deprecated and will be removed in a future
+     * release.
+     *
+     * Server certificate file.
+     */
     certFile?: string;
+    /** A list of root certificates that will be used in addition to the
+     * default root certificates to verify the peer's certificate.
+     *
+     * Must be in PEM format. */
+    caCerts?: string[];
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Start TLS handshake from an existing connection using
-   * an optional cert file, hostname (default is "127.0.0.1").  The
-   * cert file is optional and if not included Mozilla's root certificates will
-   * be used (see also https://github.com/ctz/webpki-roots for specifics)
+   * an optional cert file, hostname (default is "127.0.0.1"). Specifying CA
+   * certs is optional. By default the configured root certificates are used.
    * Using this function requires that the other end of the connection is
    * prepared for TLS handshake.
    *
    * ```ts
    * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const tlsConn = await Deno.startTls(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "localhost" });
+   * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
+   * const tlsConn = await Deno.startTls(conn, { caCerts: [caCert], hostname: "localhost" });
    * ```
    *
    * Requires `allow-net` permission.
@@ -1301,6 +1273,32 @@ declare namespace Deno {
      */
     alpnProtocols?: string[];
   }
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Acquire an advisory file-system lock for the provided file. `exclusive`
+   * defaults to `false`.
+   */
+  export function flock(rid: number, exclusive?: boolean): Promise<void>;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Acquire an advisory file-system lock for the provided file. `exclusive`
+   * defaults to `false`.
+   */
+  export function flockSync(rid: number, exclusive?: boolean): void;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Release an advisory file-system lock for the provided file.
+   */
+  export function funlock(rid: number): Promise<void>;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Release an advisory file-system lock for the provided file.
+   */
+  export function funlockSync(rid: number): void;
 }
 
 declare function fetch(

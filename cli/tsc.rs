@@ -2,10 +2,10 @@
 
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
-use crate::media_type::MediaType;
 use crate::module_graph::Graph;
 use crate::module_graph::Stats;
 
+use deno_ast::MediaType;
 use deno_core::error::anyhow;
 use deno_core::error::bail;
 use deno_core::error::AnyError;
@@ -380,7 +380,7 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     } else {
       specifier
     };
-    let maybe_source = graph.get_source(&specifier);
+    let maybe_source = graph.get_source(&specifier).map(|t| t.to_string());
     media_type = if let Some(media_type) = graph.get_media_type(&specifier) {
       media_type
     } else {

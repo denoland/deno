@@ -65,19 +65,6 @@
   const CLOSING = 2;
   const CLOSED = 3;
 
-  /**
-   * Tries to close the resource (and ignores BadResource errors).
-   * @param {number} rid
-   */
-  function tryClose(rid) {
-    try {
-      core.close(rid);
-    } catch (err) {
-      // Ignore error if the socket has already been closed.
-      if (!(err instanceof Deno.errors.BadResource)) throw err;
-    }
-  }
-
   const handlerSymbol = Symbol("eventHandlers");
   function makeWrappedHandler(handler) {
     function wrappedHandler(...args) {
@@ -292,7 +279,7 @@
 
                 const event = new CloseEvent("close");
                 this.dispatchEvent(event);
-                tryClose(this[_rid]);
+                core.tryClose(this[_rid]);
               },
             );
           } else {
@@ -430,7 +417,7 @@
               reason,
             });
             this.dispatchEvent(event);
-            tryClose(this[_rid]);
+            core.tryClose(this[_rid]);
           },
         );
       }
@@ -484,7 +471,7 @@
               reason: value.reason,
             });
             this.dispatchEvent(event);
-            tryClose(this[_rid]);
+            core.tryClose(this[_rid]);
             break;
           }
           case "error": {
@@ -497,7 +484,7 @@
 
             const closeEv = new CloseEvent("close");
             this.dispatchEvent(closeEv);
-            tryClose(this[_rid]);
+            core.tryClose(this[_rid]);
             break;
           }
         }

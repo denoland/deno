@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+mod urlpattern;
+
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
@@ -14,11 +16,15 @@ use deno_core::ZeroCopyBuf;
 use std::panic::catch_unwind;
 use std::path::PathBuf;
 
+use crate::urlpattern::op_urlpattern_parse;
+use crate::urlpattern::op_urlpattern_process_match_input;
+
 pub fn init() -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/url",
       "00_url.js",
+      "01_urlpattern.js",
     ))
     .ops(vec![
       ("op_url_parse", op_sync(op_url_parse)),
@@ -30,6 +36,11 @@ pub fn init() -> Extension {
       (
         "op_url_stringify_search_params",
         op_sync(op_url_stringify_search_params),
+      ),
+      ("op_urlpattern_parse", op_sync(op_urlpattern_parse)),
+      (
+        "op_urlpattern_process_match_input",
+        op_sync(op_urlpattern_process_match_input),
       ),
     ])
     .build()

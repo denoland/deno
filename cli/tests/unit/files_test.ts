@@ -2,12 +2,7 @@
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
-import {
-  assert,
-  assertEquals,
-  assertThrowsAsync,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, assertRejects, unitTest } from "./test_util.ts";
 import { copy } from "../../../test_util/std/io/util.ts";
 
 unitTest(function filesStdioFileDescriptors() {
@@ -16,7 +11,7 @@ unitTest(function filesStdioFileDescriptors() {
   assertEquals(Deno.stderr.rid, 2);
 });
 
-unitTest({ perms: { read: true } }, async function filesCopyToStdout() {
+unitTest({ permissions: { read: true } }, async function filesCopyToStdout() {
   const filename = "cli/tests/testdata/fixture.json";
   const file = await Deno.open(filename);
   assert(file.rid > 2);
@@ -26,7 +21,7 @@ unitTest({ perms: { read: true } }, async function filesCopyToStdout() {
   file.close();
 });
 
-unitTest({ perms: { read: true } }, async function filesIter() {
+unitTest({ permissions: { read: true } }, async function filesIter() {
   const filename = "cli/tests/testdata/hello.txt";
   const file = await Deno.open(filename);
 
@@ -40,7 +35,7 @@ unitTest({ perms: { read: true } }, async function filesIter() {
 });
 
 unitTest(
-  { perms: { read: true } },
+  { permissions: { read: true } },
   async function filesIterCustomBufSize() {
     const filename = "cli/tests/testdata/hello.txt";
     const file = await Deno.open(filename);
@@ -58,7 +53,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { read: true } }, function filesIterSync() {
+unitTest({ permissions: { read: true } }, function filesIterSync() {
   const filename = "cli/tests/testdata/hello.txt";
   const file = Deno.openSync(filename);
 
@@ -72,7 +67,7 @@ unitTest({ perms: { read: true } }, function filesIterSync() {
 });
 
 unitTest(
-  { perms: { read: true } },
+  { permissions: { read: true } },
   function filesIterSyncCustomBufSize() {
     const filename = "cli/tests/testdata/hello.txt";
     const file = Deno.openSync(filename);
@@ -162,7 +157,7 @@ unitTest(async function readerIterSync() {
 
 unitTest(
   {
-    perms: { read: true, write: true },
+    permissions: { read: true, write: true },
   },
   function openSyncMode() {
     const path = Deno.makeTempDirSync() + "/test_openSync.txt";
@@ -181,7 +176,7 @@ unitTest(
 
 unitTest(
   {
-    perms: { read: true, write: true },
+    permissions: { read: true, write: true },
   },
   async function openMode() {
     const path = (await Deno.makeTempDir()) + "/test_open.txt";
@@ -200,7 +195,7 @@ unitTest(
 
 unitTest(
   {
-    perms: { read: true, write: true },
+    permissions: { read: true, write: true },
   },
   function openSyncUrl() {
     const tempDir = Deno.makeTempDirSync();
@@ -226,7 +221,7 @@ unitTest(
 
 unitTest(
   {
-    perms: { read: true, write: true },
+    permissions: { read: true, write: true },
   },
   async function openUrl() {
     const tempDir = await Deno.makeTempDir();
@@ -251,12 +246,12 @@ unitTest(
 );
 
 unitTest(
-  { perms: { write: false } },
+  { permissions: { write: false } },
   async function writePermFailure() {
     const filename = "tests/hello.txt";
     const openOptions: Deno.OpenOptions[] = [{ write: true }, { append: true }];
     for (const options of openOptions) {
-      await assertThrowsAsync(async () => {
+      await assertRejects(async () => {
         await Deno.open(filename, options);
       }, Deno.errors.PermissionDenied);
     }
@@ -265,7 +260,7 @@ unitTest(
 
 unitTest(async function openOptions() {
   const filename = "cli/tests/testdata/fixture.json";
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await Deno.open(filename, { write: false });
     },
@@ -273,7 +268,7 @@ unitTest(async function openOptions() {
     "OpenOptions requires at least one option to be true",
   );
 
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await Deno.open(filename, { truncate: true, write: false });
     },
@@ -281,7 +276,7 @@ unitTest(async function openOptions() {
     "'truncate' option requires 'write' option",
   );
 
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await Deno.open(filename, { create: true, write: false });
     },
@@ -289,7 +284,7 @@ unitTest(async function openOptions() {
     "'create' or 'createNew' options require 'write' or 'append' option",
   );
 
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await Deno.open(filename, { createNew: true, append: false });
     },
@@ -298,14 +293,14 @@ unitTest(async function openOptions() {
   );
 });
 
-unitTest({ perms: { read: false } }, async function readPermFailure() {
-  await assertThrowsAsync(async () => {
+unitTest({ permissions: { read: false } }, async function readPermFailure() {
+  await assertRejects(async () => {
     await Deno.open("package.json", { read: true });
   }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
-  { perms: { write: true } },
+  { permissions: { write: true } },
   async function writeNullBufferFailure() {
     const tempDir = Deno.makeTempDirSync();
     const filename = tempDir + "hello.txt";
@@ -317,7 +312,7 @@ unitTest(
     const file = await Deno.open(filename, w);
 
     // writing null should throw an error
-    await assertThrowsAsync(
+    await assertRejects(
       async () => {
         // deno-lint-ignore no-explicit-any
         await file.write(null as any);
@@ -329,7 +324,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { write: true, read: true } },
+  { permissions: { write: true, read: true } },
   async function readNullBufferFailure() {
     const tempDir = Deno.makeTempDirSync();
     const filename = tempDir + "hello.txt";
@@ -345,7 +340,7 @@ unitTest(
     assert(bytesRead === 0);
 
     // reading file into null buffer should throw an error
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       // deno-lint-ignore no-explicit-any
       await file.read(null as any);
     }, TypeError);
@@ -357,17 +352,17 @@ unitTest(
 );
 
 unitTest(
-  { perms: { write: false, read: false } },
+  { permissions: { write: false, read: false } },
   async function readWritePermFailure() {
     const filename = "tests/hello.txt";
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.open(filename, { read: true });
     }, Deno.errors.PermissionDenied);
   },
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function createFile() {
     const tempDir = await Deno.makeTempDir();
     const filename = tempDir + "/test.txt";
@@ -388,7 +383,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function createFileWithUrl() {
     const tempDir = await Deno.makeTempDir();
     const fileUrl = new URL(
@@ -410,7 +405,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function createSyncFile() {
     const tempDir = await Deno.makeTempDir();
     const filename = tempDir + "/test.txt";
@@ -431,7 +426,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function createSyncFileWithUrl() {
     const tempDir = await Deno.makeTempDir();
     const fileUrl = new URL(
@@ -453,7 +448,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function openModeWrite() {
     const tempDir = Deno.makeTempDirSync();
     const encoder = new TextEncoder();
@@ -496,7 +491,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function openModeWriteRead() {
     const tempDir = Deno.makeTempDirSync();
     const encoder = new TextEncoder();
@@ -531,7 +526,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { read: true } }, async function seekStart() {
+unitTest({ permissions: { read: true } }, async function seekStart() {
   const filename = "cli/tests/testdata/hello.txt";
   const file = await Deno.open(filename);
   const seekPosition = 6;
@@ -548,7 +543,7 @@ unitTest({ perms: { read: true } }, async function seekStart() {
   file.close();
 });
 
-unitTest({ perms: { read: true } }, function seekSyncStart() {
+unitTest({ permissions: { read: true } }, function seekSyncStart() {
   const filename = "cli/tests/testdata/hello.txt";
   const file = Deno.openSync(filename);
   const seekPosition = 6;
@@ -565,7 +560,7 @@ unitTest({ perms: { read: true } }, function seekSyncStart() {
   file.close();
 });
 
-unitTest({ perms: { read: true } }, async function seekCurrent() {
+unitTest({ permissions: { read: true } }, async function seekCurrent() {
   const filename = "cli/tests/testdata/hello.txt";
   const file = await Deno.open(filename);
   // Deliberately move 1 step forward
@@ -582,7 +577,7 @@ unitTest({ perms: { read: true } }, async function seekCurrent() {
   file.close();
 });
 
-unitTest({ perms: { read: true } }, function seekSyncCurrent() {
+unitTest({ permissions: { read: true } }, function seekSyncCurrent() {
   const filename = "cli/tests/testdata/hello.txt";
   const file = Deno.openSync(filename);
   // Deliberately move 1 step forward
@@ -599,7 +594,7 @@ unitTest({ perms: { read: true } }, function seekSyncCurrent() {
   file.close();
 });
 
-unitTest({ perms: { read: true } }, async function seekEnd() {
+unitTest({ permissions: { read: true } }, async function seekEnd() {
   const filename = "cli/tests/testdata/hello.txt";
   const file = await Deno.open(filename);
   const seekPosition = -6;
@@ -613,7 +608,7 @@ unitTest({ perms: { read: true } }, async function seekEnd() {
   file.close();
 });
 
-unitTest({ perms: { read: true } }, function seekSyncEnd() {
+unitTest({ permissions: { read: true } }, function seekSyncEnd() {
   const filename = "cli/tests/testdata/hello.txt";
   const file = Deno.openSync(filename);
   const seekPosition = -6;
@@ -627,10 +622,10 @@ unitTest({ perms: { read: true } }, function seekSyncEnd() {
   file.close();
 });
 
-unitTest({ perms: { read: true } }, async function seekMode() {
+unitTest({ permissions: { read: true } }, async function seekMode() {
   const filename = "cli/tests/testdata/hello.txt";
   const file = await Deno.open(filename);
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await file.seek(1, -1);
     },

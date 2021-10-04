@@ -13,6 +13,8 @@ use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use std::net::SocketAddr;
+use std::num::NonZeroU32;
+use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -86,6 +88,11 @@ pub struct FmtFlags {
   pub files: Vec<PathBuf>,
   pub ignore: Vec<PathBuf>,
   pub ext: String,
+  pub use_tabs: Option<bool>,
+  pub line_width: Option<NonZeroU32>,
+  pub indent_width: Option<NonZeroU8>,
+  pub single_quote: Option<bool>,
+  pub prose_wrap: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -101,6 +108,12 @@ pub struct InstallFlags {
   pub name: Option<String>,
   pub root: Option<PathBuf>,
   pub force: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct UninstallFlags {
+  pub name: String,
+  pub root: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -159,6 +172,7 @@ pub enum DenoSubcommand {
   Fmt(FmtFlags),
   Info(InfoFlags),
   Install(InstallFlags),
+  Uninstall(UninstallFlags),
   Lsp,
   Lint(LintFlags),
   Repl(ReplFlags),
@@ -357,7 +371,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)"#;
 
-static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
+static DENO_HELP: &str = "A modern JavaScript and TypeScript runtime
 
 Docs: https://deno.land/manual
 Modules: https://deno.land/std/ https://deno.land/x/
@@ -421,6 +435,8 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     bundle_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("install") {
     install_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("uninstall") {
+    uninstall_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("completions") {
     completions_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("test") {
@@ -492,6 +508,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
+    .subcommand(uninstall_subcommand())
     .subcommand(lsp_subcommand())
     .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
@@ -815,6 +832,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
 
   // deno-fmt-ignore-file",
     )
+    .arg(config_arg())
     .arg(
       Arg::with_name("check")
         .long("check")
@@ -844,6 +862,47 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .required(false),
     )
     .arg(watch_arg())
+    .arg(
+      Arg::with_name("options-use-tabs")
+        .long("options-use-tabs")
+        .help("Use tabs instead of spaces for indentation. Defaults to false."),
+    )
+    .arg(
+      Arg::with_name("options-line-width")
+        .long("options-line-width")
+        .help("Define maximum line width. Defaults to 80.")
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<NonZeroUsize>() {
+          Ok(_) => Ok(()),
+          Err(_) => {
+            Err("options-line-width should be a non zero integer".to_string())
+          }
+        }),
+    )
+    .arg(
+      Arg::with_name("options-indent-width")
+        .long("options-indent-width")
+        .help("Define indentation width. Defaults to 2.")
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<NonZeroUsize>() {
+          Ok(_) => Ok(()),
+          Err(_) => {
+            Err("options-indent-width should be a non zero integer".to_string())
+          }
+        }),
+    )
+    .arg(
+      Arg::with_name("options-single-quote")
+        .long("options-single-quote")
+        .help("Use single quotes. Defaults to false."),
+    )
+    .arg(
+      Arg::with_name("options-prose-wrap")
+        .long("options-prose-wrap")
+        .takes_value(true)
+        .possible_values(&["always", "never", "preserve"])
+        .help("Define how prose should be wrapped. Defaults to always."),
+    )
 }
 
 fn info_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -860,9 +919,8 @@ The following information is shown:
 
 local: Local path of the file.
 type: JavaScript, TypeScript, or JSON.
-compiled: Local path of compiled source code. (TypeScript only.)
-map: Local path of source map. (TypeScript only.)
-deps: Dependency tree of the source file.
+emit: Local path of compiled source code. (TypeScript only.)
+dependencies: Dependency tree of the source file.
 
 Without any additional arguments, 'deno info' shows:
 
@@ -945,6 +1003,36 @@ The installation root is determined, in order of precedence:
   - $HOME/.deno
 
 These must be added to the path manually if required.")
+}
+
+fn uninstall_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("uninstall")
+    .setting(AppSettings::TrailingVarArg)
+    .arg(
+      Arg::with_name("name")
+        .required(true)
+        .multiple(false)
+        .allow_hyphen_values(true))
+    .arg(
+      Arg::with_name("root")
+        .long("root")
+        .help("Installation root")
+        .takes_value(true)
+        .multiple(false))
+    .about("Uninstall a script previously installed with deno install")
+    .long_about(
+      "Uninstalls an executable script in the installation root's bin directory.
+
+  deno uninstall serve
+
+To change the installation root, use --root:
+
+  deno uninstall --root /usr/local serve
+
+The installation root is determined, in order of precedence:
+  - --root option
+  - DENO_INSTALL_ROOT environment variable
+  - $HOME/.deno")
 }
 
 fn lsp_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1581,7 +1669,17 @@ fn config_arg<'a, 'b>() -> Arg<'a, 'b> {
     .short("c")
     .long("config")
     .value_name("FILE")
-    .help("Load tsconfig.json configuration file")
+    .help("Load configuration file")
+    .long_help(
+      "Load configuration file.
+Before 1.14 Deno only supported loading tsconfig.json that allowed
+to customise TypeScript compiler settings. 
+
+Starting with 1.14 configuration file can be used to configure different 
+subcommands like `deno lint` or `deno fmt`. 
+
+It's recommended to use `deno.json` or `deno.jsonc` as a filename.",
+    )
     .takes_value(true)
 }
 
@@ -1733,6 +1831,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  config_arg_parse(flags, matches);
   flags.watch = matches.is_present("watch");
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
@@ -1744,11 +1843,54 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
   let ext = matches.value_of("ext").unwrap().to_string();
 
+  let use_tabs = if matches.is_present("options-use-tabs") {
+    Some(true)
+  } else {
+    None
+  };
+  let line_width = if matches.is_present("options-line-width") {
+    Some(
+      matches
+        .value_of("options-line-width")
+        .unwrap()
+        .parse()
+        .unwrap(),
+    )
+  } else {
+    None
+  };
+  let indent_width = if matches.is_present("options-indent-width") {
+    Some(
+      matches
+        .value_of("options-indent-width")
+        .unwrap()
+        .parse()
+        .unwrap(),
+    )
+  } else {
+    None
+  };
+  let single_quote = if matches.is_present("options-single-quote") {
+    Some(true)
+  } else {
+    None
+  };
+  let prose_wrap = if matches.is_present("options-prose-wrap") {
+    Some(matches.value_of("options-prose-wrap").unwrap().to_string())
+  } else {
+    None
+  };
+
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.is_present("check"),
     ext,
     files,
     ignore,
+    use_tabs,
+    line_width,
+    indent_width,
+    single_quote,
+    prose_wrap,
   });
 }
 
@@ -1792,6 +1934,18 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     root,
     force,
   });
+}
+
+fn uninstall_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let root = if matches.is_present("root") {
+    let install_root = matches.value_of("root").unwrap();
+    Some(PathBuf::from(install_root))
+  } else {
+    None
+  };
+
+  let name = matches.value_of("name").unwrap().to_string();
+  flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
 }
 
 fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
@@ -2465,7 +2619,12 @@ mod tests {
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
           ],
-          ext: "ts".to_string()
+          ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
         }),
         ..Flags::default()
       }
@@ -2480,6 +2639,11 @@ mod tests {
           check: true,
           files: vec![],
           ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
         }),
         ..Flags::default()
       }
@@ -2494,6 +2658,11 @@ mod tests {
           check: false,
           files: vec![],
           ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
         }),
         ..Flags::default()
       }
@@ -2508,6 +2677,11 @@ mod tests {
           check: false,
           files: vec![],
           ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
         }),
         watch: true,
         ..Flags::default()
@@ -2530,8 +2704,91 @@ mod tests {
           check: true,
           files: vec![PathBuf::from("foo.ts")],
           ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
         }),
         watch: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "fmt", "--config", "deno.jsonc"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          ignore: vec![],
+          check: false,
+          files: vec![],
+          ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
+        }),
+        config_path: Some("deno.jsonc".to_string()),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "fmt",
+      "--config",
+      "deno.jsonc",
+      "--watch",
+      "foo.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          ignore: vec![],
+          check: false,
+          files: vec![PathBuf::from("foo.ts")],
+          ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
+        }),
+        config_path: Some("deno.jsonc".to_string()),
+        watch: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "fmt",
+      "--options-use-tabs",
+      "--options-line-width",
+      "60",
+      "--options-indent-width",
+      "4",
+      "--options-single-quote",
+      "--options-prose-wrap",
+      "never"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          ignore: vec![],
+          check: false,
+          files: vec![],
+          ext: "ts".to_string(),
+          use_tabs: Some(true),
+          line_width: Some(NonZeroU32::new(60).unwrap()),
+          indent_width: Some(NonZeroU8::new(4).unwrap()),
+          single_quote: Some(true),
+          prose_wrap: Some("never".to_string()),
+        }),
         ..Flags::default()
       }
     );

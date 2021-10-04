@@ -27,7 +27,7 @@
 
   function signal(signo) {
     if (build.os === "windows") {
-      throw new Error("not implemented!");
+      throw new Error("Signal API is not implemented for Windows");
     }
     return new SignalStream(signo);
   }

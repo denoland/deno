@@ -1,10 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::import_map::ImportMap;
 use crate::module_graph::BundleType;
 use crate::module_graph::EmitOptions;
 use crate::module_graph::GraphBuilder;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use crate::specifier_handler::FetchHandler;
 use crate::specifier_handler::MemoryHandler;
 use crate::specifier_handler::SpecifierHandler;
@@ -20,6 +19,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
+use import_map::ImportMap;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -47,7 +47,7 @@ struct EmitArgs {
   import_map: Option<Value>,
   import_map_path: Option<String>,
   root_specifier: String,
-  sources: Option<HashMap<String, String>>,
+  sources: Option<HashMap<String, Arc<String>>>,
 }
 
 async fn op_emit(
@@ -58,7 +58,7 @@ async fn op_emit(
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
   let args: EmitArgs = serde_json::from_value(args)?;
   let root_specifier = args.root_specifier;
-  let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
+  let ps = state.borrow().borrow::<ProcState>().clone();
   let mut runtime_permissions = {
     let state = state.borrow();
     state.borrow::<Permissions>().clone()
@@ -71,7 +71,7 @@ async fn op_emit(
       Arc::new(Mutex::new(MemoryHandler::new(sources)))
     } else {
       Arc::new(Mutex::new(FetchHandler::new(
-        &program_state,
+        &ps,
         runtime_permissions.clone(),
         runtime_permissions.clone(),
       )?))
@@ -82,7 +82,7 @@ async fn op_emit(
     let import_map = if let Some(value) = args.import_map {
       ImportMap::from_json(import_map_specifier.as_str(), &value.to_string())?
     } else {
-      let file = program_state
+      let file = ps
         .file_fetcher
         .fetch(&import_map_specifier, &mut runtime_permissions)
         .await
@@ -117,7 +117,7 @@ async fn op_emit(
     None => BundleType::None,
   };
   let graph = builder.get_graph();
-  let debug = program_state.flags.log_level == Some(log::Level::Debug);
+  let debug = ps.flags.log_level == Some(log::Level::Debug);
   let graph_errors = graph.get_errors();
   let (files, mut result_info) = graph.emit(EmitOptions {
     bundle_type,

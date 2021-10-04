@@ -7,14 +7,14 @@ import {
   unitTest,
 } from "./test_util.ts";
 
-unitTest({ perms: { read: true } }, function runPermissions() {
+unitTest({ permissions: { read: true } }, function runPermissions() {
   assertThrows(() => {
     Deno.run({ cmd: [Deno.execPath(), "eval", "console.log('hello world')"] });
   }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   async function runSuccess() {
     const p = Deno.run({
       cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
@@ -31,7 +31,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   async function runUrl() {
     const p = Deno.run({
       cmd: [
@@ -52,7 +52,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   async function runStdinRid0(): Promise<
     void
   > {
@@ -72,7 +72,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   function runInvalidStdio() {
     assertThrows(() =>
       Deno.run({
@@ -99,7 +99,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   async function runCommandFailedWithCode() {
     const p = Deno.run({
       cmd: [Deno.execPath(), "eval", "Deno.exit(41 + 1)"],
@@ -114,9 +114,7 @@ unitTest(
 
 unitTest(
   {
-    // No signals on windows.
-    ignore: Deno.build.os === "windows",
-    perms: { run: true, read: true },
+    permissions: { run: true, read: true },
   },
   async function runCommandFailedWithSignal() {
     const p = Deno.run({
@@ -129,13 +127,18 @@ unitTest(
     });
     const status = await p.status();
     assertEquals(status.success, false);
-    assertEquals(status.code, 128 + 9);
-    assertEquals(status.signal, 9);
+    if (Deno.build.os === "windows") {
+      assertEquals(status.code, 1);
+      assertEquals(status.signal, undefined);
+    } else {
+      assertEquals(status.code, 128 + 9);
+      assertEquals(status.signal, 9);
+    }
     p.close();
   },
 );
 
-unitTest({ perms: { run: true } }, function runNotFound() {
+unitTest({ permissions: { run: true } }, function runNotFound() {
   let error;
   try {
     Deno.run({ cmd: ["this file hopefully doesn't exist"] });
@@ -147,7 +150,7 @@ unitTest({ perms: { run: true } }, function runNotFound() {
 });
 
 unitTest(
-  { perms: { write: true, run: true, read: true } },
+  { permissions: { write: true, run: true, read: true } },
   async function runWithCwdIsAsync() {
     const enc = new TextEncoder();
     const cwd = await Deno.makeTempDir({ prefix: "deno_command_test" });
@@ -188,7 +191,7 @@ tryExit();
 );
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   async function runStdinPiped(): Promise<
     void
   > {
@@ -219,7 +222,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   async function runStdoutPiped(): Promise<
     void
   > {
@@ -255,7 +258,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   async function runStderrPiped(): Promise<
     void
   > {
@@ -291,7 +294,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   async function runOutput() {
     const p = Deno.run({
       cmd: [
@@ -309,7 +312,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   async function runStderrOutput(): Promise<
     void
   > {
@@ -329,7 +332,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, write: true, read: true } },
+  { permissions: { run: true, write: true, read: true } },
   async function runRedirectStdoutStderr() {
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
@@ -362,7 +365,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, write: true, read: true } },
+  { permissions: { run: true, write: true, read: true } },
   async function runRedirectStdin() {
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
@@ -387,7 +390,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   async function runEnv() {
     const p = Deno.run({
       cmd: [
@@ -409,7 +412,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   async function runClose() {
     const p = Deno.run({
       cmd: [
@@ -432,7 +435,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { permissions: { run: true, read: true } },
   async function runKillAfterStatus() {
     const p = Deno.run({
       cmd: [Deno.execPath(), "eval", 'console.log("hello")'],
@@ -470,29 +473,49 @@ unitTest(function killPermissions() {
 });
 
 unitTest(
-  { perms: { run: true, read: true } },
+  { ignore: Deno.build.os !== "windows", permissions: { run: true } },
+  function negativePidInvalidWindows() {
+    assertThrows(() => {
+      Deno.kill(-1, "SIGINT");
+    }, TypeError);
+  },
+);
+
+unitTest(
+  { ignore: Deno.build.os !== "windows", permissions: { run: true } },
+  function invalidSignalNameWindows() {
+    assertThrows(() => {
+      Deno.kill(Deno.pid, "SIGUSR1");
+    }, TypeError);
+  },
+);
+
+unitTest(
+  { permissions: { run: true, read: true } },
   async function killSuccess() {
     const p = Deno.run({
       cmd: [Deno.execPath(), "eval", "setTimeout(() => {}, 10000)"],
     });
 
-    Deno.kill(p.pid, "SIGINT");
-    const status = await p.status();
-
-    assertEquals(status.success, false);
     try {
-      assertEquals(status.signal, "SIGINT");
-    } catch {
-      // TODO(nayeemrmn): On Windows sometimes the following values are given
-      // instead. Investigate and remove this catch when fixed.
-      assertEquals(status.code, 130);
-      assertEquals(status.signal, 2);
+      Deno.kill(p.pid, "SIGINT");
+      const status = await p.status();
+
+      assertEquals(status.success, false);
+      if (Deno.build.os === "windows") {
+        assertEquals(status.code, 1);
+        assertEquals(status.signal, undefined);
+      } else {
+        assertEquals(status.code, 130);
+        assertEquals(status.signal, 2);
+      }
+    } finally {
+      p.close();
     }
-    p.close();
   },
 );
 
-unitTest({ perms: { run: true, read: true } }, function killFailed() {
+unitTest({ permissions: { run: true, read: true } }, function killFailed() {
   const p = Deno.run({
     cmd: [Deno.execPath(), "eval", "setTimeout(() => {}, 10000)"],
   });
@@ -508,7 +531,7 @@ unitTest({ perms: { run: true, read: true } }, function killFailed() {
 });
 
 unitTest(
-  { perms: { run: true, read: true, env: true } },
+  { permissions: { run: true, read: true, env: true } },
   async function clearEnv(): Promise<void> {
     const p = Deno.run({
       cmd: [
@@ -532,5 +555,67 @@ unitTest(
     assert(!("PATH" in obj));
 
     p.close();
+  },
+);
+
+unitTest(
+  {
+    permissions: { run: true, read: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function uid(): Promise<void> {
+    const p = Deno.run({
+      cmd: [
+        "id",
+        "-u",
+      ],
+      stdout: "piped",
+    });
+
+    const currentUid = new TextDecoder().decode(await p.output());
+    p.close();
+
+    if (currentUid !== "0") {
+      assertThrows(() => {
+        Deno.run({
+          cmd: [
+            "echo",
+            "fhqwhgads",
+          ],
+          uid: 0,
+        });
+      }, Deno.errors.PermissionDenied);
+    }
+  },
+);
+
+unitTest(
+  {
+    permissions: { run: true, read: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function gid(): Promise<void> {
+    const p = Deno.run({
+      cmd: [
+        "id",
+        "-g",
+      ],
+      stdout: "piped",
+    });
+
+    const currentGid = new TextDecoder().decode(await p.output());
+    p.close();
+
+    if (currentGid !== "0") {
+      assertThrows(() => {
+        Deno.run({
+          cmd: [
+            "echo",
+            "fhqwhgads",
+          ],
+          gid: 0,
+        });
+      }, Deno.errors.PermissionDenied);
+    }
   },
 );

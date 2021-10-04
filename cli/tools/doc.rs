@@ -1,15 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast;
 use crate::colors;
 use crate::file_fetcher::File;
 use crate::flags::Flags;
 use crate::get_types;
-use crate::import_map::ImportMap;
-use crate::media_type::MediaType;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use crate::write_json_to_stdout;
 use crate::write_to_stdout_ignore_sigpipe;
+use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::FutureExt;
@@ -22,6 +20,7 @@ use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use import_map::ImportMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -62,7 +61,7 @@ impl Resolver for DocResolver {
 }
 
 struct DocLoader {
-  program_state: Arc<ProgramState>,
+  ps: ProcState,
 }
 
 impl Loader for DocLoader {
@@ -72,16 +71,16 @@ impl Loader for DocLoader {
     _is_dynamic: bool,
   ) -> LoadFuture {
     let specifier = specifier.clone();
-    let program_state = self.program_state.clone();
+    let ps = self.ps.clone();
     async move {
-      let result = program_state
+      let result = ps
         .file_fetcher
         .fetch(&specifier, &mut Permissions::allow_all())
         .await
         .map(|file| {
           Some(LoadResponse {
             specifier: specifier.clone(),
-            content: Arc::new(file.source),
+            content: file.source.clone(),
             maybe_headers: file.maybe_headers,
           })
         });
@@ -98,8 +97,9 @@ pub async fn print_docs(
   maybe_filter: Option<String>,
   private: bool,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags.clone()).await?;
+  let ps = ProcState::build(flags.clone()).await?;
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
+  let source_parser = deno_graph::DefaultSourceParser::new();
 
   let parse_result = if source_file == "--builtin" {
     let mut loader = StubDocLoader;
@@ -113,12 +113,11 @@ pub async fn print_docs(
       None,
     )
     .await;
-    let doc_parser = doc::DocParser::new(graph, private);
-    let syntax = ast::get_syntax(&MediaType::Dts);
+    let doc_parser = doc::DocParser::new(graph, private, &source_parser);
     doc_parser.parse_source(
       &source_file_specifier,
-      syntax,
-      get_types(flags.unstable).as_str(),
+      MediaType::Dts,
+      Arc::new(get_types(flags.unstable)),
     )
   } else {
     let module_specifier = resolve_url_or_path(&source_file)?;
@@ -130,19 +129,17 @@ pub async fn print_docs(
       local: PathBuf::from("./$deno$doc.ts"),
       maybe_types: None,
       media_type: MediaType::TypeScript,
-      source: format!("export * from \"{}\";", module_specifier),
+      source: Arc::new(format!("export * from \"{}\";", module_specifier)),
       specifier: root_specifier.clone(),
       maybe_headers: None,
     };
 
     // Save our fake file into file fetcher cache.
-    program_state.file_fetcher.insert_cached(root);
+    ps.file_fetcher.insert_cached(root);
 
-    let mut loader = DocLoader {
-      program_state: program_state.clone(),
-    };
+    let mut loader = DocLoader { ps: ps.clone() };
     let resolver = DocResolver {
-      import_map: program_state.maybe_import_map.clone(),
+      import_map: ps.maybe_import_map.clone(),
     };
     let graph = create_graph(
       root_specifier.clone(),
@@ -152,7 +149,7 @@ pub async fn print_docs(
       None,
     )
     .await;
-    let doc_parser = doc::DocParser::new(graph, private);
+    let doc_parser = doc::DocParser::new(graph, private, &source_parser);
     doc_parser.parse_with_reexports(&root_specifier)
   };
 

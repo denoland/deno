@@ -24,9 +24,9 @@
     StringPrototypeToUpperCase,
     StringPrototypeReplace,
     StringPrototypeCharCodeAt,
+    StringFromCharCode,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     WeakMap,
     WeakMapPrototypeGet,
     WeakMapPrototypeSet,
@@ -61,8 +61,14 @@
     RsaPssParams: {},
     EcdsaParams: { hash: "HashAlgorithmIdentifier" },
     HmacImportParams: { hash: "HashAlgorithmIdentifier" },
+    HkdfParams: {
+      hash: "HashAlgorithmIdentifier",
+      salt: "BufferSource",
+      info: "BufferSource",
+    },
     Pbkdf2Params: { hash: "HashAlgorithmIdentifier", salt: "BufferSource" },
     RsaOaepParams: { label: "BufferSource" },
+    RsaHashedImportParams: { hash: "HashAlgorithmIdentifier" },
   };
 
   const supportedAlgorithms = {
@@ -77,6 +83,7 @@
       "RSA-PSS": "RsaHashedKeyGenParams",
       "RSA-OAEP": "RsaHashedKeyGenParams",
       "ECDSA": "EcKeyGenParams",
+      "ECDH": "EcKeyGenParams",
       "AES-CTR": "AesKeyGenParams",
       "AES-CBC": "AesKeyGenParams",
       "AES-GCM": "AesKeyGenParams",
@@ -92,13 +99,19 @@
     "verify": {
       "RSASSA-PKCS1-v1_5": null,
       "RSA-PSS": "RsaPssParams",
+      "ECDSA": "EcdsaParams",
       "HMAC": null,
     },
     "importKey": {
+      "RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
+      "RSA-PSS": "RsaHashedImportParams",
+      "RSA-OAEP": "RsaHashedImportParams",
       "HMAC": "HmacImportParams",
+      "HKDF": null,
       "PBKDF2": null,
     },
     "deriveBits": {
+      "HKDF": "HkdfParams",
       "PBKDF2": "Pbkdf2Params",
     },
     "encrypt": {
@@ -106,6 +119,10 @@
     },
     "decrypt": {
       "RSA-OAEP": "RsaOaepParams",
+    },
+    "wrapKey": {
+      // TODO(@littledivy): Enable this once implemented.
+      // "AES-KW": "AesKeyWrapParams",
     },
   };
 
@@ -127,9 +144,11 @@
   }
 
   function unpaddedBase64(bytes) {
-    const binaryString = core.decode(bytes);
+    let binaryString = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binaryString += StringFromCharCode(bytes[i]);
+    }
     const base64String = btoa(binaryString);
-
     return StringPrototypeReplace(base64String, /=/g, "");
   }
 
@@ -252,10 +271,6 @@
       webidl.assertBranded(this, CryptoKey);
       // TODO(lucacasonato): return a SameObject copy
       return this[_algorithm];
-    }
-
-    get [SymbolToStringTag]() {
-      return "CryptoKey";
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
@@ -655,7 +670,6 @@
      * @param {KeyUsages[]} keyUsages
      * @returns {Promise<any>}
      */
-    // deno-lint-ignore require-await
     async importKey(format, keyData, algorithm, extractable, keyUsages) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'importKey' on 'SubtleCrypto'";
@@ -889,9 +903,226 @@
 
           return key;
         }
-        // TODO(@littledivy): RSASSA-PKCS1-v1_5
-        // TODO(@littledivy): RSA-PSS
+        case "RSASSA-PKCS1-v1_5": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["sign"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+
+              if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }
+
+              // 2-9.
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSASSA-PKCS1-v1_5",
+                    format: "pkcs8",
+                    // Needed to perform step 7 without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  keyData,
+                );
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                // PKCS#1 for RSA
+                type: "raw",
+                data,
+              });
+
+              const algorithm = {
+                name: "RSASSA-PKCS1-v1_5",
+                modulusLength,
+                publicExponent,
+                hash: normalizedAlgorithm.hash,
+              };
+
+              const key = constructKey(
+                "private",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "RSA-PSS": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["sign"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+
+              if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }
+
+              // 2-9.
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSA-PSS",
+                    format: "pkcs8",
+                    // Needed to perform step 7 without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  keyData,
+                );
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                // PKCS#1 for RSA
+                type: "raw",
+                data,
+              });
+
+              const algorithm = {
+                name: "RSA-PSS",
+                modulusLength,
+                publicExponent,
+                hash: normalizedAlgorithm.hash,
+              };
+
+              const key = constructKey(
+                "private",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "RSA-OAEP": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["decrypt", "unwrapKey"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+
+              if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }
+
+              // 2-9.
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSA-OAEP",
+                    format: "pkcs8",
+                    // Needed to perform step 7 without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  keyData,
+                );
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                // PKCS#1 for RSA
+                type: "raw",
+                data,
+              });
+
+              const algorithm = {
+                name: "RSA-OAEP",
+                modulusLength,
+                publicExponent,
+                hash: normalizedAlgorithm.hash,
+              };
+
+              const key = constructKey(
+                "private",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
         // TODO(@littledivy): ECDSA
+        case "HKDF": {
+          if (format !== "raw") {
+            throw new DOMException("Format not supported", "NotSupportedError");
+          }
+
+          // 1.
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+
+          // 2.
+          if (extractable !== false) {
+            throw new DOMException(
+              "Key must not be extractable",
+              "SyntaxError",
+            );
+          }
+
+          // 3.
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "raw",
+            data: keyData,
+          });
+
+          // 4-8.
+          const algorithm = {
+            name: "HKDF",
+          };
+          const key = constructKey(
+            "secret",
+            false,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+
+          // 9.
+          return key;
+        }
         case "PBKDF2": {
           // 1.
           if (format !== "raw") {
@@ -948,7 +1179,6 @@
      * @param {CryptoKey} key
      * @returns {Promise<any>}
      */
-    // deno-lint-ignore require-await
     async exportKey(format, key) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'exportKey' on 'SubtleCrypto'";
@@ -1024,8 +1254,92 @@
           // TODO(@littledivy): Redundant break but deno_lint complains without it
           break;
         }
-        // TODO(@littledivy): RSASSA-PKCS1-v1_5
-        // TODO(@littledivy): RSA-PSS
+        case "RSASSA-PKCS1-v1_5": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (key[_type] !== "private") {
+                throw new DOMException(
+                  "Key is not a private key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "pkcs8",
+                  algorithm: "RSASSA-PKCS1-v1_5",
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "RSA-PSS": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (key[_type] !== "private") {
+                throw new DOMException(
+                  "Key is not a private key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "pkcs8",
+                  algorithm: "RSA-PSS",
+                  hash: key[_algorithm].hash.name,
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "RSA-OAEP": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (key[_type] !== "private") {
+                throw new DOMException(
+                  "Key is not a private key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "pkcs8",
+                  algorithm: "RSA-PSS",
+                  hash: key[_algorithm].hash.name,
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
         // TODO(@littledivy): ECDSA
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
@@ -1185,9 +1499,126 @@
             signature,
           }, data);
         }
+        case "ECDSA": {
+          // 1.
+          if (key[_type] !== "public") {
+            throw new DOMException(
+              "Key type not supported",
+              "InvalidAccessError",
+            );
+          }
+          // 2.
+          const hash = normalizedAlgorithm.hash.name;
+          // 3-8.
+          return await core.opAsync("op_crypto_verify_key", {
+            key: keyData,
+            algorithm: "ECDSA",
+            hash,
+            signature,
+            namedCurve: key[_algorithm].namedCurve,
+          }, data);
+        }
       }
 
       throw new TypeError("unreachable");
+    }
+
+    /**
+     * @param {string} algorithm
+     * @param {boolean} extractable
+     * @param {KeyUsage[]} keyUsages
+     * @returns {Promise<any>}
+     */
+    async wrapKey(format, key, wrappingKey, wrapAlgorithm) {
+      webidl.assertBranded(this, SubtleCrypto);
+      const prefix = "Failed to execute 'wrapKey' on 'SubtleCrypto'";
+      webidl.requiredArguments(arguments.length, 4, { prefix });
+      format = webidl.converters.KeyFormat(format, {
+        prefix,
+        context: "Argument 1",
+      });
+      key = webidl.converters.CryptoKey(key, {
+        prefix,
+        context: "Argument 2",
+      });
+      wrappingKey = webidl.converters.CryptoKey(wrappingKey, {
+        prefix,
+        context: "Argument 3",
+      });
+      wrapAlgorithm = webidl.converters.AlgorithmIdentifier(wrapAlgorithm, {
+        prefix,
+        context: "Argument 4",
+      });
+
+      let normalizedAlgorithm;
+
+      try {
+        // 2.
+        normalizedAlgorithm = normalizeAlgorithm(wrapAlgorithm, "wrapKey");
+      } catch (_) {
+        // 3.
+        normalizedAlgorithm = normalizeAlgorithm(wrapAlgorithm, "encrypt");
+      }
+
+      // 8.
+      if (normalizedAlgorithm.name !== wrappingKey[_algorithm].name) {
+        throw new DOMException(
+          "Wrapping algorithm doesn't match key algorithm.",
+          "InvalidAccessError",
+        );
+      }
+
+      // 9.
+      if (!ArrayPrototypeIncludes(wrappingKey[_usages], "wrapKey")) {
+        throw new DOMException(
+          "Key does not support the 'wrapKey' operation.",
+          "InvalidAccessError",
+        );
+      }
+
+      // 10. NotSupportedError will be thrown in step 12.
+      // 11.
+      if (key[_extractable] === false) {
+        throw new DOMException(
+          "Key is not extractable",
+          "InvalidAccessError",
+        );
+      }
+
+      // 12.
+      const exportedKey = await this.exportKey(format, key);
+
+      let bytes;
+      // 13.
+      if (format !== "jwk") {
+        bytes = exportedKey;
+      } else {
+        // TODO(@littledivy): Implement JWK.
+        throw new DOMException(
+          "Not implemented",
+          "NotSupportedError",
+        );
+      }
+
+      // 14-15.
+      if (
+        supportedAlgorithms["wrapKey"][normalizedAlgorithm.name] !== undefined
+      ) {
+        // TODO(@littledivy): Implement this for AES-KW.
+        throw new DOMException(
+          "Not implemented",
+          "NotSupportedError",
+        );
+      } else if (
+        supportedAlgorithms["encrypt"][normalizedAlgorithm.name] !== undefined
+      ) {
+        return this.encrypt(normalizedAlgorithm, wrappingKey, bytes);
+      } else {
+        throw new DOMException(
+          "Algorithm not supported",
+          "NotSupportedError",
+        );
+      }
     }
 
     /**
@@ -1236,10 +1667,6 @@
 
       return result;
     }
-
-    get [SymbolToStringTag]() {
-      return "SubtleCrypto";
-    }
   }
 
   async function generateKey(normalizedAlgorithm, extractable, usages) {
@@ -1267,7 +1694,8 @@
         );
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "pkcs8",
+          // PKCS#1 for RSA
+          type: "raw",
           data: keyData,
         });
 
@@ -1327,7 +1755,8 @@
         );
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "pkcs8",
+          // PKCS#1 for RSA
+          type: "raw",
           data: keyData,
         });
 
@@ -1418,7 +1847,64 @@
         // 17-20.
         return { publicKey, privateKey };
       }
-      // TODO(lucacasonato): ECDH
+      case "ECDH": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        // 2-3.
+        const handle = {};
+        if (
+          ArrayPrototypeIncludes(
+            supportedNamedCurves,
+            normalizedAlgorithm.namedCurve,
+          )
+        ) {
+          const keyData = await core.opAsync("op_crypto_generate_key", {
+            name: "ECDH",
+            namedCurve: normalizedAlgorithm.namedCurve,
+          });
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "pkcs8",
+            data: keyData,
+          });
+        } else {
+          throw new DOMException("Curve not supported", "NotSupportedError");
+        }
+
+        // 4-6.
+        const algorithm = {
+          name: "ECDH",
+          namedCurve: normalizedAlgorithm.namedCurve,
+        };
+
+        // 7-11.
+        const publicKey = constructKey(
+          "public",
+          true,
+          usageIntersection(usages, []),
+          algorithm,
+          handle,
+        );
+
+        // 12-16.
+        const privateKey = constructKey(
+          "private",
+          extractable,
+          usageIntersection(usages, ["deriveKey", "deriveBits"]),
+          algorithm,
+          handle,
+        );
+
+        // 17-20.
+        return { publicKey, privateKey };
+      }
       case "AES-CTR":
       case "AES-CBC":
       case "AES-GCM": {
@@ -1584,11 +2070,57 @@
 
         return buf.buffer;
       }
+      case "HKDF": {
+        // 1.
+        if (length === null || length === 0 || length % 8 !== 0) {
+          throw new DOMException("Invalid length", "OperationError");
+        }
+
+        const handle = baseKey[_handle];
+        const keyDerivationKey = WeakMapPrototypeGet(KEY_STORE, handle);
+
+        if (ArrayBufferIsView(normalizedAlgorithm.salt)) {
+          normalizedAlgorithm.salt = new Uint8Array(
+            normalizedAlgorithm.salt.buffer,
+            normalizedAlgorithm.salt.byteOffset,
+            normalizedAlgorithm.salt.byteLength,
+          );
+        } else {
+          normalizedAlgorithm.salt = new Uint8Array(normalizedAlgorithm.salt);
+        }
+        normalizedAlgorithm.salt = TypedArrayPrototypeSlice(
+          normalizedAlgorithm.salt,
+        );
+
+        if (ArrayBufferIsView(normalizedAlgorithm.info)) {
+          normalizedAlgorithm.info = new Uint8Array(
+            normalizedAlgorithm.info.buffer,
+            normalizedAlgorithm.info.byteOffset,
+            normalizedAlgorithm.info.byteLength,
+          );
+        } else {
+          normalizedAlgorithm.info = new Uint8Array(normalizedAlgorithm.info);
+        }
+        normalizedAlgorithm.info = TypedArrayPrototypeSlice(
+          normalizedAlgorithm.info,
+        );
+
+        const buf = await core.opAsync("op_crypto_derive_bits", {
+          key: keyDerivationKey,
+          algorithm: "HKDF",
+          hash: normalizedAlgorithm.hash.name,
+          info: normalizedAlgorithm.info,
+          length,
+        }, normalizedAlgorithm.salt);
+
+        return buf.buffer;
+      }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");
     }
   }
 
+  webidl.configurePrototype(SubtleCrypto);
   const subtle = webidl.createBranded(SubtleCrypto);
 
   class Crypto {
@@ -1639,10 +2171,6 @@
     get subtle() {
       webidl.assertBranded(this, Crypto);
       return subtle;
-    }
-
-    get [SymbolToStringTag]() {
-      return "Crypto";
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {

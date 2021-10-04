@@ -10,6 +10,7 @@ mod code_lens;
 mod completions;
 mod config;
 mod diagnostics;
+mod document_source;
 mod documents;
 pub(crate) mod language_server;
 mod lsp_custom;

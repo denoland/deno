@@ -1,0 +1,15 @@
+{
+  "fmt": {
+    "files": {
+      "include": ["fmt/fmt_with_config/"],
+      "exclude": ["fmt/fmt_with_config/b.ts"]
+    },
+    "options": {
+      "useTabs": true,
+      "lineWidth": 40,
+      "indentWidth": 8,
+      "singleQuote": true,
+      "proseWrap": "always"
+    }
+  }
+}
