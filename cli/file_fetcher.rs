@@ -371,7 +371,9 @@ impl FileFetcher {
         })?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
-    self.http_cache.set(specifier, headers, source.as_bytes())?;
+    self
+      .http_cache
+      .set(specifier, headers.clone(), source.as_bytes())?;
 
     Ok(File {
       local,
@@ -379,7 +381,7 @@ impl FileFetcher {
       media_type,
       source: Arc::new(source),
       specifier: specifier.clone(),
-      maybe_headers: None,
+      maybe_headers: Some(headers),
     })
   }
 
@@ -433,7 +435,9 @@ impl FileFetcher {
         })?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
-    self.http_cache.set(specifier, headers, source.as_bytes())?;
+    self
+      .http_cache
+      .set(specifier, headers.clone(), source.as_bytes())?;
 
     Ok(File {
       local,
@@ -441,7 +445,7 @@ impl FileFetcher {
       media_type,
       source: Arc::new(source),
       specifier: specifier.clone(),
-      maybe_headers: None,
+      maybe_headers: Some(headers),
     })
   }
   /// Asynchronously fetch remote source file specified by the URL following

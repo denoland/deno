@@ -865,6 +865,11 @@ pub async fn run_tests_with_watch(
 
     let maybe_resolver = ps.maybe_import_map.as_ref().map(|r| r.as_resolver());
     let maybe_locker = lockfile::as_maybe_locker(&ps.lockfile);
+    let maybe_imports = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| cf.to_maybe_imports())
+      .flatten();
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
@@ -889,6 +894,7 @@ pub async fn run_tests_with_watch(
       let graph = deno_graph::create_graph(
         test_modules.clone(),
         false,
+        maybe_imports,
         cache.as_mut_loader(),
         maybe_resolver,
         maybe_locker,

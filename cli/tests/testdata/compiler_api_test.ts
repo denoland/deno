@@ -313,10 +313,9 @@ Deno.test({
 Deno.test({
   name: "Deno.emit() - invalid syntax does not panic",
   async fn() {
-    await assertThrowsAsync(async () => {
-      await Deno.emit("/main.js", {
-        sources: {
-          "/main.js": `
+    const { diagnostics } = await Deno.emit("/main.js", {
+      sources: {
+        "/main.js": `
             export class Foo {
               constructor() {
                 console.log("foo");
@@ -325,9 +324,23 @@ Deno.test({
                 console.log("bar");
               }
             }`,
-        },
-      });
+      },
     });
+    assertEquals(diagnostics, [
+      {
+        category: 1,
+        code: 900001,
+        start: null,
+        end: null,
+        messageText:
+          "The module's source code would not be parsed: Unexpected token `get`. Expected * for generator, private key, identifier or async at file:///main.js:6:22",
+        messageChain: null,
+        source: null,
+        sourceLine: null,
+        fileName: "file:///main.js",
+        relatedInformation: null,
+      },
+    ]);
   },
 });
 
@@ -356,12 +369,10 @@ Deno.test({
 Deno.test({
   name: "Deno.emit() - Unknown media type does not panic",
   async fn() {
-    await assertThrowsAsync(async () => {
-      await Deno.emit("https://example.com/foo", {
-        sources: {
-          "https://example.com/foo": `let foo: string = "foo";`,
-        },
-      });
+    await Deno.emit("https://example.com/foo", {
+      sources: {
+        "https://example.com/foo": `let foo: string = "foo";`,
+      },
     });
   },
 });
@@ -487,7 +498,7 @@ Deno.test({
         code: 900001,
         start: null,
         end: null,
-        messageText: "Unable to find specifier in sources: file:///b.ts",
+        messageText: 'Cannot load module "file:///b.ts".',
         messageChain: null,
         source: null,
         sourceLine: null,
@@ -497,7 +508,7 @@ Deno.test({
     ]);
     assert(
       Deno.formatDiagnostics(diagnostics).includes(
-        "Unable to find specifier in sources: file:///b.ts",
+        'Cannot load module "file:///b.ts".',
       ),
     );
   },

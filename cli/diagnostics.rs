@@ -357,7 +357,7 @@ impl Diagnostics {
 
   pub fn extend_graph_errors(
     &mut self,
-    errors: Vec<(&ModuleSpecifier, &ModuleGraphError)>,
+    errors: Vec<(ModuleSpecifier, ModuleGraphError)>,
   ) {
     self.0.extend(errors.into_iter().map(|(s, e)| Diagnostic {
       category: DiagnosticCategory::Error,

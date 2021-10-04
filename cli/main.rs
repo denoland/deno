@@ -438,6 +438,7 @@ async fn info_command(
     let graph = deno_graph::create_graph(
       vec![specifier],
       false,
+      None,
       &mut cache,
       ps.maybe_import_map.as_ref().map(|r| r.as_resolver()),
       maybe_locker,
@@ -607,10 +608,16 @@ async fn create_graph_and_maybe_check(
     Permissions::allow_all(),
   );
   let maybe_locker = lockfile::as_maybe_locker(&ps.lockfile);
+  let maybe_imports = ps
+    .maybe_config_file
+    .as_ref()
+    .map(|cf| cf.to_maybe_imports())
+    .flatten();
   let graph = Arc::new(
     deno_graph::create_graph(
       vec![root],
       false,
+      maybe_imports,
       &mut cache,
       ps.maybe_import_map.as_ref().map(|r| r.as_resolver()),
       maybe_locker,
@@ -650,6 +657,7 @@ async fn create_graph_and_maybe_check(
       &mut cache,
       emit::CheckOptions {
         debug,
+        emit_with_diagnostics: false,
         maybe_config_specifier,
         ts_config,
       },
@@ -918,9 +926,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         Permissions::allow_all(),
       );
       let maybe_locker = lockfile::as_maybe_locker(&ps.lockfile);
+      let maybe_imports = ps
+        .maybe_config_file
+        .as_ref()
+        .map(|cf| cf.to_maybe_imports())
+        .flatten();
       let graph = deno_graph::create_graph(
         vec![main_module.clone()],
         false,
+        maybe_imports,
         &mut cache,
         ps.maybe_import_map.as_ref().map(|r| r.as_resolver()),
         maybe_locker,

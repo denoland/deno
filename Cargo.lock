@@ -740,7 +740,7 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.14.0"
-source = "git+https://github.com/kitsonk/deno_doc?branch=cli_changes#815d14a656cf5729d855a7dff5410c107854fd0c"
+source = "git+https://github.com/kitsonk/deno_doc?branch=cli_changes#b7ec3a0db1bd1f299033cdf4c11ddee81fd90181"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
@@ -782,7 +782,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.5.0"
-source = "git+https://github.com/kitsonk/deno_graph?branch=cli_changes#af8eeb974a33e62989d5d033b0793dd41d2cf08f"
+source = "git+https://github.com/kitsonk/deno_graph?branch=cli_changes#2d87856979cf4ba7c2a05f5fdfb47152a5d3eec2"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -1050,12 +1050,12 @@ dependencies = [
 
 [[package]]
 name = "dprint-core"
-version = "0.46.3"
+version = "0.46.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87f1c6d4df7c373f49dc25a511382aab15747862306f64152e7852a29ff2f483"
+checksum = "df98b7d98583d9d57311b9df81f571f35a6ca3e8675d0128333b2e923dc85bcd"
 dependencies = [
  "bumpalo",
- "fnv",
+ "rustc-hash",
  "serde",
 ]
 
@@ -1541,9 +1541,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.3.4"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7f3675cfef6a30c8031cf9e6493ebdc3bb3272a3fea3923c4210d1830e6a472"
+checksum = "6c06815895acec637cd6ed6e9662c935b866d20a106f8361892893a7d9234964"
 dependencies = [
  "bytes",
  "fnv",
@@ -1718,8 +1718,8 @@ checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 
 [[package]]
 name = "import_map"
-version = "0.3.0"
-source = "git+https://github.com/kitsonk/import_map?branch=cli_changes#d9cfd153ed595f0b902c9d8572d82be0b2aed2ab"
+version = "0.3.3"
+source = "git+https://github.com/kitsonk/import_map?branch=cli_changes#5b018d614ed140d9843368f6508407c516c5058d"
 dependencies = [
  "anyhow",
  "deno_graph",
@@ -1914,9 +1914,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.102"
+version = "0.2.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2a5ac8f984bfcf3a823267e5fde638acc3325f6496633a5da6bb6eb2171e103"
+checksum = "dd8f7255a17a627354f321ef0055d63b898c6fb27eff628af4d1b66b7331edf6"
 
 [[package]]
 name = "libloading"
@@ -2158,9 +2158,9 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.22.1"
+version = "0.22.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7555d6c7164cc913be1ce7f95cbecdabda61eb2ccd89008524af306fb7f5031"
+checksum = "d3bb9a13fa32bc5aeb64150cd3f32d6cf4c748f8f8a417cce5d2eb976a8370ba"
 dependencies = [
  "bitflags",
  "cc",
@@ -2920,6 +2920,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustc-hash"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+
+[[package]]
 name = "rustc_version"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3240,9 +3246,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.6.1"
+version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
+checksum = "1ecab6c735a6bb4139c0caafd0cc3635748bbb3acf4550e8138122099251f309"
 
 [[package]]
 name = "socket2"
@@ -3951,9 +3957,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-macros"
-version = "1.3.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54473be61f4ebe4efd09cec9bd5d16fa51d70ea0192213d754d2d500457db110"
+checksum = "154794c8f499c2619acd19e839294703e9e32e7630ef5f46ea80d4ef0fbee5eb"
 dependencies = [
  "proc-macro2 1.0.29",
  "quote 1.0.9",
@@ -4041,9 +4047,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-core"
-version = "0.1.20"
+version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46125608c26121c81b0c6d693eab5a420e416da7e43c426d2e8f7df8da8a3acf"
+checksum = "1f4ed65637b8390770814083d20756f87bfa2c21bf2f110babdc5438351746e4"
 dependencies = [
  "lazy_static",
 ]
@@ -4633,9 +4639,9 @@ dependencies = [
 
 [[package]]
 name = "winres"
-version = "0.1.11"
+version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff4fb510bbfe5b8992ff15f77a2e6fe6cf062878f0eda00c0f44963a807ca5dc"
+checksum = "b68db261ef59e9e52806f688020631e987592bd83619edccda9c47d42cde4f6c"
 dependencies = [
  "toml",
 ]

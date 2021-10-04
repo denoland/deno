@@ -26,7 +26,6 @@ use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
-use deno_graph;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
@@ -291,9 +290,15 @@ impl ProcState {
       dynamic_permissions,
     );
     let maybe_locker = as_maybe_locker(&self.lockfile);
+    let maybe_imports = self
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| cf.to_maybe_imports())
+      .flatten();
     let graph = deno_graph::create_graph(
       roots,
       is_dynamic,
+      maybe_imports,
       &mut cache,
       self.maybe_import_map.as_ref().map(|r| r.as_resolver()),
       maybe_locker,
@@ -350,6 +355,7 @@ impl ProcState {
           .map(|ref cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
         let options = emit::CheckOptions {
           debug: self.flags.log_level == Some(log::Level::Debug),
+          emit_with_diagnostics: false,
           maybe_config_specifier,
           ts_config,
         };
@@ -407,7 +413,12 @@ impl ProcState {
             resolved_map.insert(specifier.clone(), span.clone());
             return Ok(specifier.clone());
           }
-          deno_graph::Resolved::Err(err, _) => return Err(err.clone().into()),
+          deno_graph::Resolved::Err(err, span) => {
+            return Err(custom_error(
+              "TypeError",
+              format!("{}\n    at {}\n", err, span),
+            ))
+          }
           _ => (),
         }
       }

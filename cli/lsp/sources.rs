@@ -22,7 +22,6 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
-use deno_graph;
 use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
 use std::collections::HashMap;
@@ -52,6 +51,7 @@ pub async fn cache(
   let _graph = deno_graph::create_graph(
     roots,
     false,
+    None,
     &mut cache,
     maybe_import_map.as_ref().map(|r| r.as_resolver()),
     None,

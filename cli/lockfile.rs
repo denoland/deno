@@ -4,7 +4,6 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use deno_graph;
 use log::debug;
 use std::cell::RefCell;
 use std::collections::BTreeMap;

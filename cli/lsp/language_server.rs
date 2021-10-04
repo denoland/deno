@@ -2643,8 +2643,7 @@ impl Inner {
       {
         error!("{}", err);
       }
-    } else {
-      if let Err(err) = sources::cache(
+    } else if let Err(err) = sources::cache(
         vec![referrer.clone()],
         &self.maybe_import_map,
         &self.maybe_cache_path,
@@ -2653,7 +2652,6 @@ impl Inner {
       {
         error!("{}", err);
       }
-    }
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics
     if self.documents.contains_key(&referrer) {

@@ -13,6 +13,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_graph;
 use deno_runtime::permissions::Permissions;
@@ -55,6 +56,16 @@ struct EmitArgs {
   import_map_path: Option<String>,
   root_specifier: String,
   sources: Option<HashMap<String, Arc<String>>>,
+}
+
+fn to_maybe_imports(
+  referrer: &ModuleSpecifier,
+  maybe_options: &Option<HashMap<String, Value>>,
+) -> Option<Vec<(ModuleSpecifier, Vec<String>)>> {
+  let options = maybe_options.as_ref()?;
+  let types_value = options.get("types")?;
+  let types: Vec<String> = serde_json::from_value(types_value.clone()).ok()?;
+  Some(vec![(referrer.clone(), types)])
 }
 
 async fn op_emit(
@@ -104,10 +115,12 @@ async fn op_emit(
     None
   };
   let roots = vec![resolve_url_or_path(&root_specifier)?];
+  let maybe_imports = to_maybe_imports(&roots[0], &args.compiler_options);
   let graph = Arc::new(
     deno_graph::create_graph(
       roots,
       true,
+      maybe_imports,
       cache.as_mut_loader(),
       maybe_import_map.as_ref().map(|r| r.as_resolver()),
       None,
@@ -115,8 +128,6 @@ async fn op_emit(
     )
     .await,
   );
-  // Validate if the graph is valid or not.
-  emit::graph_valid(graph.as_ref())?;
   let check = args.check.unwrap_or(true);
   let debug = ps.flags.log_level == Some(log::Level::Debug);
   let tsc_emit = check && args.bundle.is_none();
@@ -126,13 +137,14 @@ async fn op_emit(
     &args.compiler_options,
   )?;
   let (files, mut diagnostics, stats) = if check && args.bundle.is_none() {
-    let (diagnostics, stats) = if emit::valid_emit(
-      graph.as_ref(),
-      cache.as_cacher(),
-      &ts_config,
-      ps.flags.reload,
-      &HashSet::default(),
-    ) {
+    let (diagnostics, stats) = if args.sources.is_none()
+      && emit::valid_emit(
+        graph.as_ref(),
+        cache.as_cacher(),
+        &ts_config,
+        ps.flags.reload,
+        &HashSet::default(),
+      ) {
       log::debug!(
         "cache is valid for \"{}\", skipping check/emit",
         root_specifier
@@ -144,8 +156,9 @@ async fn op_emit(
         cache.as_mut_cacher(),
         emit::CheckOptions {
           debug,
+          emit_with_diagnostics: true,
           maybe_config_specifier: None,
-          ts_config: ts_config.clone(),
+          ts_config,
         },
       )?;
       (emit_result.diagnostics, emit_result.stats)
@@ -153,7 +166,7 @@ async fn op_emit(
     let files = emit::to_file_map(graph.as_ref(), cache.as_mut_cacher());
     (files, diagnostics, stats)
   } else if let Some(bundle) = &args.bundle {
-    let diagnostics = if check {
+    let (diagnostics, stats) = if check {
       if ts_config.get_declaration() {
         return Err(custom_error("TypeError", "The bundle option is set, but the compiler option of `declaration` is true which is not currently supported."));
       }
@@ -162,13 +175,14 @@ async fn op_emit(
         cache.as_mut_cacher(),
         emit::CheckOptions {
           debug,
+          emit_with_diagnostics: true,
           maybe_config_specifier: None,
           ts_config: ts_config.clone(),
         },
       )?;
-      emit_result.diagnostics
+      (emit_result.diagnostics, emit_result.stats)
     } else {
-      Diagnostics::default()
+      (Diagnostics::default(), Default::default())
     };
     let (emit, maybe_map) = emit::bundle(
       graph.as_ref(),
@@ -178,11 +192,11 @@ async fn op_emit(
       },
     )?;
     let mut files = HashMap::new();
-    files.insert(format!("{}.js", root_specifier), emit);
+    files.insert("deno:///bundle.js".to_string(), emit);
     if let Some(map) = maybe_map {
-      files.insert(format!("{}.js.map", root_specifier), map);
+      files.insert("deno:///bundle.js.map".to_string(), map);
     }
-    (files, diagnostics, Default::default())
+    (files, diagnostics, stats)
   } else {
     if ts_config.get_declaration() {
       return Err(custom_error("TypeError", "The option of `check` is false, but the compiler option of `declaration` is true which is not currently supported."));

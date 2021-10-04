@@ -362,7 +362,7 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
       specifier
     };
     let maybe_source = if let Some(module) = state.graph.get(&specifier) {
-      media_type = module.media_type.clone();
+      media_type = module.media_type;
       Some(module.source.as_str().to_string())
     } else {
       media_type = MediaType::Unknown;
@@ -416,7 +416,7 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
               .map_or(&MediaType::Unknown, |m| &m.media_type);
             let resolved_specifier_str = match resolved_specifier.scheme() {
               "data" | "blob" => {
-                let specifier_str = hash_url(&resolved_specifier, &media_type);
+                let specifier_str = hash_url(resolved_specifier, media_type);
                 state
                   .data_url_map
                   .insert(specifier_str.clone(), resolved_specifier.clone());

@@ -2761,7 +2761,6 @@ fn lsp_diagnostics_warn() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-
   let (method, _) = client.read_notification::<Value>().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
   let (method, _) = client.read_notification::<Value>().unwrap();

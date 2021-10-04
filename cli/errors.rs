@@ -38,6 +38,7 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
       get_resolution_error_class(err)
     }
     ModuleGraphError::UnsupportedMediaType(_, _) => "TypeError",
+    ModuleGraphError::Missing(_) => "NotFound",
   }
 }
 

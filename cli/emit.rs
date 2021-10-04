@@ -188,6 +188,7 @@ pub(crate) fn get_ts_config(
         "checkJs": false,
         "emitDecoratorMetadata": false,
         "experimentalDecorators": true,
+        "importsNotUsedAsValues": "remove",
         "incremental": true,
         "isolatedModules": true,
         "jsx": "react",
@@ -258,7 +259,7 @@ fn get_root_names(
       .filter_map(|s| {
         graph
           .get(s)
-          .map(|m| (m.specifier.clone(), m.media_type.clone()))
+          .map(|m| (m.specifier.clone(), m.media_type))
       })
       .collect()
   }
@@ -289,6 +290,10 @@ fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
 pub(crate) struct CheckOptions {
   /// Set the debug flag on the TypeScript type checker.
   pub debug: bool,
+  /// If true, any files emitted will be cached, even if there are diagnostics
+  /// produced. If false, if there are diagnostics, caching emitted files will
+  /// be skipped.
+  pub emit_with_diagnostics: bool,
   pub maybe_config_specifier: Option<ModuleSpecifier>,
   pub ts_config: TsConfig,
 }
@@ -342,7 +347,9 @@ pub(crate) fn check_and_maybe_emit(
       cache.set_tsbuildinfo(root, info.clone())?;
     }
   }
-  if response.diagnostics.is_empty() && !response.emitted_files.is_empty() {
+  if (response.diagnostics.is_empty() || options.emit_with_diagnostics)
+    && !response.emitted_files.is_empty()
+  {
     for emit in &response.emitted_files {
       if let Some(specifiers) = &emit.maybe_specifiers {
         assert!(specifiers.len() == 1);
@@ -428,7 +435,7 @@ impl swc::bundler::Load for BundleLoader<'_> {
           let (fm, module) = ast::transpile_module(
             specifier,
             &m.source,
-            m.media_type.clone(),
+            m.media_type,
             self.emit_options,
             self.globals,
             self.cm.clone(),
@@ -727,13 +734,11 @@ pub(crate) fn to_file_map(
         if let Some(map) = cache.get_map(&fs) {
           files.insert(format!("{}.js.map", fs), map);
         }
-      } else {
-        if mt == MediaType::JavaScript || mt == MediaType::Unknown {
+      } else if mt == MediaType::JavaScript || mt == MediaType::Unknown {
           if let Some(module) = graph.get(&fs) {
             files.insert(fs.to_string(), module.source.to_string());
           }
         }
-      }
       if let Some(declaration) = cache.get_declaration(&fs) {
         files.insert(format!("{}.d.ts", fs), declaration);
       }

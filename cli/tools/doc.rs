@@ -108,6 +108,7 @@ pub async fn print_docs(
     let graph = create_graph(
       vec![source_file_specifier.clone()],
       false,
+      None,
       &mut loader,
       None,
       None,
@@ -145,6 +146,7 @@ pub async fn print_docs(
     let graph = create_graph(
       vec![root_specifier.clone()],
       false,
+      None,
       &mut loader,
       Some(&resolver),
       None,
