@@ -96,11 +96,16 @@
       });
       this.#code = nameToCodeMapping[this.#name] ?? 0;
 
-      // `DOMException` does not have `.stack`, so `Error.prepareStackTrace()`
-      // is not called on it, meaning our structured stack trace hack doesn't
-      // apply. This patches it in.
-      const error = new Error();
-      error.stack;
+      const error = new Error(`DOMException: ${this.#message}`);
+      ObjectDefineProperty(this, "stack", {
+        value: error.stack,
+        writable: true,
+        configurable: true,
+      });
+
+      // `DOMException` isn't a native error, so `Error.prepareStackTrace()` is
+      // not called when accessing `.stack`, meaning our structured stack trace
+      // hack doesn't apply. This patches it in.
       ObjectDefineProperty(this, "__callSiteEvals", {
         value: ArrayPrototypeSlice(error.__callSiteEvals, 1),
         configurable: true,
