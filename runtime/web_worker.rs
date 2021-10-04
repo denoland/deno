@@ -19,6 +19,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8;
 use deno_core::CancelHandle;
+use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
@@ -206,9 +207,9 @@ impl WebWorkerHandle {
   /// Terminate the worker
   /// This function will set terminated to true, terminate the isolate and close the message channel
   pub fn terminate(self) {
-    // This function can be called multiple times by whomever holds
-    // the handle. However only a single "termination" should occur so
-    // we need a guard here.
+    // A WebWorkerHandle can be terminated / dropped after `self.close()` has
+    // been called inside the worker, but only a single "termination" can occur,
+    // so we need a guard here.
     let already_terminated = self.terminated.swap(true, Ordering::SeqCst);
 
     if !already_terminated {
@@ -285,6 +286,7 @@ pub struct WebWorkerOptions {
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub cpu_count: usize,
 }
 
@@ -384,6 +386,7 @@ impl WebWorker {
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
+      compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       ..Default::default()
     });
@@ -505,18 +508,7 @@ impl WebWorker {
     }
   }
 
-  #[deprecated(
-    since = "0.26.0",
-    note = "This method had a bug, marking multiple modules loaded as \"main\". Use `execute_main_module`."
-  )]
-  pub async fn execute_module(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
-    self.execute_main_module(module_specifier).await
-  }
-
-  pub fn poll_event_loop(
+  fn poll_event_loop(
     &mut self,
     cx: &mut Context,
     wait_for_inspector: bool,
@@ -533,15 +525,8 @@ impl WebWorker {
           return Poll::Ready(Ok(()));
         }
 
-        // In case of an error, pass to parent without terminating worker
         if let Err(e) = r {
-          print_worker_error(e.to_string(), &self.name);
-          let handle = self.internal_handle.clone();
-          handle
-            .post_event(WorkerControlEvent::Error(e))
-            .expect("Failed to post message to host");
-
-          return Poll::Pending;
+          return Poll::Ready(Err(e));
         }
 
         panic!(
@@ -601,6 +586,12 @@ pub fn run_web_worker(
       return Ok(());
     }
 
+    let result = if result.is_ok() {
+      worker.run_event_loop(true).await
+    } else {
+      result
+    };
+
     if let Err(e) = result {
       print_worker_error(e.to_string(), &name);
       internal_handle
@@ -611,7 +602,6 @@ pub fn run_web_worker(
       return Ok(());
     }
 
-    let result = worker.run_event_loop(true).await;
     debug!("Worker thread shuts down {}", &name);
     result
   };

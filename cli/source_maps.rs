@@ -6,9 +6,8 @@ use deno_core::error::JsError;
 use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::str;
-use std::sync::Arc;
 
-pub trait SourceMapGetter: Sync + Send {
+pub trait SourceMapGetter: Sync + Send + Clone {
   /// Returns the raw source map file.
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>>;
   fn get_source_line(
@@ -27,7 +26,7 @@ pub type CachedMaps = HashMap<String, Option<SourceMap>>;
 /// source, rather than the transpiled source code.
 pub fn apply_source_map<G: SourceMapGetter>(
   js_error: &JsError,
-  getter: Arc<G>,
+  getter: G,
 ) -> JsError {
   // Note that js_error.frames has already been source mapped in
   // prepareStackTrace().
@@ -97,7 +96,7 @@ fn get_maybe_orig_position<G: SourceMapGetter>(
   line_number: Option<i64>,
   column_number: Option<i64>,
   mappings_map: &mut CachedMaps,
-  getter: Arc<G>,
+  getter: G,
 ) -> (Option<String>, Option<i64>, Option<i64>, Option<String>) {
   match (file_name, line_number, column_number) {
     (Some(file_name_v), Some(line_v), Some(column_v)) => {
@@ -119,7 +118,7 @@ pub fn get_orig_position<G: SourceMapGetter>(
   line_number: i64,
   column_number: i64,
   mappings_map: &mut CachedMaps,
-  getter: Arc<G>,
+  getter: G,
 ) -> (String, i64, i64, Option<String>) {
   // Lookup expects 0-based line and column numbers, but ours are 1-based.
   let line_number = line_number - 1;
@@ -173,7 +172,7 @@ pub fn get_orig_position<G: SourceMapGetter>(
 fn get_mappings<'a, G: SourceMapGetter>(
   file_name: &str,
   mappings_map: &'a mut CachedMaps,
-  getter: Arc<G>,
+  getter: G,
 ) -> &'a Option<SourceMap> {
   mappings_map
     .entry(file_name.to_string())
@@ -184,7 +183,7 @@ fn get_mappings<'a, G: SourceMapGetter>(
 // the module meta data.
 fn parse_map_string<G: SourceMapGetter>(
   file_name: &str,
-  getter: Arc<G>,
+  getter: G,
 ) -> Option<SourceMap> {
   getter
     .get_source_map(file_name)
@@ -195,6 +194,7 @@ fn parse_map_string<G: SourceMapGetter>(
 mod tests {
   use super::*;
 
+  #[derive(Clone)]
   struct MockSourceMapGetter {}
 
   impl SourceMapGetter for MockSourceMapGetter {
@@ -246,7 +246,7 @@ mod tests {
       frames: vec![],
       stack: None,
     };
-    let getter = Arc::new(MockSourceMapGetter {});
+    let getter = MockSourceMapGetter {};
     let actual = apply_source_map(&e, getter);
     assert_eq!(actual.source_line, Some("console.log('foo');".to_string()));
   }
