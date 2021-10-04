@@ -321,6 +321,16 @@ delete Object.prototype.__proto__;
         return numCpus;
       },
     },
+    language: {
+      get() {
+        return os.language()
+      }
+    },
+    languages: {
+      get() {
+        return os.languages()
+      }
+    }
   });
 
   class WorkerNavigator {

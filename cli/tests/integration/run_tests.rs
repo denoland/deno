@@ -1902,3 +1902,28 @@ itest!(long_data_url_formatting {
   output: "long_data_url_formatting.ts.out",
   exit_code: 1,
 });
+
+#[test]
+#[cfg(unix)]
+fn navigator_language_unix() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run --allow-env navigator_language.ts",
+    None,
+    Some(vec![("LANG".to_owned(), "en-US".to_owned())]),
+    false,
+  );
+  assert_eq!(res, "en-US\n")
+}
+
+#[test]
+fn navigator_language() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run --allow-env navigator_language.ts",
+    None,
+    None,
+    false,
+  );
+  assert!(!res.is_empty())
+}

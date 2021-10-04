@@ -11,6 +11,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
+use locale_config::Locale;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -21,6 +22,7 @@ pub fn init() -> Extension {
       ("op_set_env", op_sync(op_set_env)),
       ("op_get_env", op_sync(op_get_env)),
       ("op_delete_env", op_sync(op_delete_env)),
+      ("op_languages", op_sync(op_languages)),
       ("op_hostname", op_sync(op_hostname)),
       ("op_loadavg", op_sync(op_loadavg)),
       ("op_os_release", op_sync(op_os_release)),
@@ -122,6 +124,15 @@ fn op_loadavg(
     Ok(loadavg) => Ok((loadavg.one, loadavg.five, loadavg.fifteen)),
     Err(_) => Ok((0.0, 0.0, 0.0)),
   }
+}
+
+fn op_languages(
+  state: &mut OpState,
+  _args: (),
+  _: (),
+) -> Result<Vec<String>, AnyError> {
+  state.borrow_mut::<Permissions>().env.check_all()?;
+  Ok(Locale::user_default().to_string().split(",").map(String::from).collect())
 }
 
 fn op_hostname(
