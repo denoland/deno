@@ -34,11 +34,6 @@ Deno.test({
       tsWorker.postMessage("Hello World");
     };
 
-    jsWorker.onerror = (e: Event) => {
-      e.preventDefault();
-      jsWorker.postMessage("Hello World");
-    };
-
     jsWorker.postMessage("Hello World");
     await promise;
     tsWorker.terminate();

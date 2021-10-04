@@ -53,6 +53,7 @@ use crate::flags::LintFlags;
 use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
 use crate::flags::TestFlags;
+use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
 use crate::module_loader::CliModuleLoader;
@@ -134,6 +135,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       blob_store: ps.blob_store.clone(),
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
+      compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
       cpu_count: num_cpus::get(),
     };
 
@@ -222,6 +224,7 @@ pub fn create_main_worker(
     blob_store: ps.blob_store.clone(),
     broadcast_channel: ps.broadcast_channel.clone(),
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
+    compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     cpu_count: num_cpus::get(),
   };
 
@@ -483,6 +486,12 @@ async fn install_command(
     install_flags.root,
     install_flags.force,
   )
+}
+
+async fn uninstall_command(
+  uninstall_flags: UninstallFlags,
+) -> Result<(), AnyError> {
+  tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)
 }
 
 async fn lsp_command() -> Result<(), AnyError> {
@@ -1137,6 +1146,9 @@ fn get_subcommand(
     }
     DenoSubcommand::Install(install_flags) => {
       install_command(flags, install_flags).boxed_local()
+    }
+    DenoSubcommand::Uninstall(uninstall_flags) => {
+      uninstall_command(uninstall_flags).boxed_local()
     }
     DenoSubcommand::Lsp => lsp_command().boxed_local(),
     DenoSubcommand::Lint(lint_flags) => {

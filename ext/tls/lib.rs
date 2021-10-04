@@ -136,7 +136,7 @@ pub fn create_default_root_cert_store() -> RootCertStore {
 
 pub fn create_client_config(
   root_cert_store: Option<RootCertStore>,
-  ca_data: Option<Vec<u8>>,
+  ca_certs: Vec<Vec<u8>>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Result<ClientConfig, AnyError> {
   let mut tls_config = ClientConfig::new();
@@ -144,11 +144,11 @@ pub fn create_client_config(
   tls_config.root_store =
     root_cert_store.unwrap_or_else(create_default_root_cert_store);
 
-  // If a custom cert is specified, add it to the store
-  if let Some(cert) = ca_data {
+  // If custom certs are specified, add them to the store
+  for cert in ca_certs {
     let reader = &mut BufReader::new(Cursor::new(cert));
     // This function does not return specific errors, if it fails give a generic message.
-    if let Err(_err) = tls_config.root_store.add_pem_file(reader) {
+    if let Err(()) = tls_config.root_store.add_pem_file(reader) {
       return Err(anyhow!("Unable to add pem file to certificate store"));
     }
   }
@@ -215,14 +215,14 @@ pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
 pub fn create_http_client(
   user_agent: String,
   root_cert_store: Option<RootCertStore>,
-  ca_data: Option<Vec<u8>>,
+  ca_certs: Vec<Vec<u8>>,
   proxy: Option<Proxy>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
   client_cert_chain_and_key: Option<(String, String)>,
 ) -> Result<Client, AnyError> {
   let mut tls_config = create_client_config(
     root_cert_store,
-    ca_data,
+    ca_certs,
     unsafely_ignore_certificate_errors,
   )?;
 

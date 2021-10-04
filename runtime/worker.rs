@@ -12,6 +12,7 @@ use deno_core::located_script_name;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
@@ -73,6 +74,7 @@ pub struct WorkerOptions {
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub cpu_count: usize,
 }
 
@@ -156,6 +158,7 @@ impl MainWorker {
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
+      compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       ..Default::default()
     });
@@ -345,6 +348,7 @@ mod tests {
       blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
       shared_array_buffer_store: None,
+      compiled_wasm_module_store: None,
       cpu_count: 1,
     };
 
