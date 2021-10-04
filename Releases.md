@@ -6,6 +6,32 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.14.3 / 2021.10.04
+
+- feat(core): implement Deno.core.isProxy() (#12288)
+- fix(core/runtime): sync_ops_cache if nuked Deno ns (#12302)
+- fix(ext/crypto): decode id-RSASSA-PSS with default params (#12147)
+- fix(ext/crypto): missing Aes key typings (#12307)
+- fix(ext/crypto): use NotSupportedError for importKey() (#12289)
+- fix(ext/fetch): avoid panic when header is invalid (#12244)
+- fix(ext/http): merge identical if/else branches (#12269)
+- fix(ext/net): should not panic when listening to unix abstract address
+  (#12300)
+- fix(repl): avoid panic when assigned to globalThis (#12273)
+- fix(runtime/js/workers): throw errors instead of using an op (#12249)
+- fix(runtime/testing): format aggregate errors (#12183)
+- fix: Don't panic when a worker is closed in the reactions to a wasm operation.
+  (#12270)
+- fix: worker environment permissions should accept an array (#12250)
+- perf(core): use opcall() directly (#12310)
+- perf(fetch): optimize fillHeaders() key iteration (#12287)
+- perf(web): optimize byteLowerCase() (#12282)
+- perf(web): ~400x faster http header trimming (#12277)
+- perf(web/Event): move last class field to constructor (#12265)
+- perf(webidl): optimize createDictionaryConverter() (#12279)
+- perf(webidl): optimize createRecordConverter() (#12286)
+- perf(webidl/DOMString): don't wrap string primitives (#12266)
+
 ### 1.14.2 / 2021.09.28
 
 - feat(cli/fmt): support more markdown extensions (#12195)
