@@ -132,7 +132,7 @@ fn op_languages(
   _: (),
 ) -> Result<Vec<String>, AnyError> {
   state.borrow_mut::<Permissions>().env.check_all()?;
-  Ok(Locale::user_default().to_string().split(",").map(String::from).collect())
+  Ok(Locale::user_default().tags().map(|(_, l)| l.to_string()).collect())
 }
 
 fn op_hostname(

@@ -51,6 +51,8 @@ declare class WorkerNavigator {
   constructor();
   readonly gpu: GPU;
   readonly hardwareConcurrency: number;
+  readonly language: string;
+  readonly languages: string[];
 }
 
 declare var navigator: WorkerNavigator;

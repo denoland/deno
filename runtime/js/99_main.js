@@ -323,11 +323,13 @@ delete Object.prototype.__proto__;
     },
     language: {
       get() {
+        webidl.assertBranded(this, Navigator);
         return os.language()
       }
     },
     languages: {
       get() {
+        webidl.assertBranded(this, Navigator);
         return os.languages()
       }
     }
