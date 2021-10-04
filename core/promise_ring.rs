@@ -18,12 +18,9 @@ pub struct PromiseRing {
 
 impl PromiseRing {
   pub(crate) fn new() -> Self {
-    // let mut ring = Vec::with_capacity(RING_SIZE);
-    // ring.fill(None);
     Self {
       len: 0,
       cursor: 0,
-      // ring,
       ring: vec![None; RING_SIZE],
       map: BTreeMap::new(),
     }
