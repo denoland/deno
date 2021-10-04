@@ -1,0 +1,73 @@
+use crate::PromiseId;
+use rusty_v8 as v8;
+use std::collections::btree_map::BTreeMap;
+
+type PromiseResolver = v8::Global<v8::PromiseResolver>;
+const RING_SIZE: usize = 4 * 1024;
+
+// NOTE: could generalize to a "RingMap"
+pub struct PromiseRing {
+  len: u64,
+  cursor: u64,
+  // TODO(@AaronO): Maybe optimize by tracking existence with a bitset
+  // would reduce mem usage from 2*usize*RING_SIZE to (1+1/8)*usize*RING_SIZE
+  // with the current approach the Option tag "wastes" 32kb per isolate
+  ring: Vec<Option<PromiseResolver>>,
+  map: BTreeMap<PromiseId, PromiseResolver>,
+}
+
+impl PromiseRing {
+  pub(crate) fn new() -> Self {
+    // let mut ring = Vec::with_capacity(RING_SIZE);
+    // ring.fill(None);
+    Self {
+      len: 0,
+      cursor: 0,
+      // ring,
+      ring: vec![None; RING_SIZE],
+      map: BTreeMap::new(),
+    }
+  }
+
+  // TODO(@AaronO): decide if this is useful (but it should match length of futures stream so ...)
+  // pub(crate) fn len(&self) -> u64 {
+  //   self.len
+  // }
+
+  pub(crate) fn take(&mut self, id: PromiseId) -> Option<PromiseResolver> {
+    let ring_start = if self.cursor < (RING_SIZE as u64) {
+      0
+    } else {
+      self.cursor - RING_SIZE as u64
+    };
+    let resolver = if id >= ring_start {
+      self.ring.get_mut(Self::ring_idx(id)).unwrap().take()
+    } else {
+      self.map.remove(&id)
+    };
+    if resolver.is_some() {
+      self.len -= 1;
+    }
+    resolver
+  }
+
+  pub(crate) fn head(&self) -> PromiseId {
+    self.cursor as PromiseId
+  }
+
+  pub(crate) fn put(&mut self, resolver: PromiseResolver) -> PromiseId {
+    let id = self.cursor;
+    self.cursor += 1;
+    self.len += 1;
+    let slot = self.ring.get_mut(Self::ring_idx(id));
+    if let Some(old_resolver) = slot.unwrap().replace(resolver) {
+      let old_id = id - RING_SIZE as u64; // Since we're looping on the ring
+      self.map.insert(old_id, old_resolver);
+    }
+    id as PromiseId
+  }
+
+  fn ring_idx(id: u64) -> usize {
+    (id as usize) % RING_SIZE
+  }
+}

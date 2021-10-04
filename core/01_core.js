@@ -9,23 +9,12 @@
     SyntaxError,
     TypeError,
     URIError,
-    Map,
-    Array,
-    ArrayPrototypeFill,
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
-    Promise,
     ObjectEntries,
     ObjectFreeze,
     ObjectFromEntries,
-    MapPrototypeGet,
-    MapPrototypeDelete,
-    MapPrototypeSet,
-    PromisePrototypeThen,
-    PromisePrototypeFinally,
-    StringPrototypeSlice,
     ObjectAssign,
-    SymbolFor,
   } = window.__bootstrap.primordials;
 
   // Available on start due to bindings.
@@ -41,64 +30,6 @@
   registerErrorClass("TypeError", TypeError);
   registerErrorClass("URIError", URIError);
 
-  let nextPromiseId = 1;
-  const promiseMap = new Map();
-  const RING_SIZE = 4 * 1024;
-  const NO_PROMISE = null; // Alias to null is faster than plain nulls
-  const promiseRing = ArrayPrototypeFill(new Array(RING_SIZE), NO_PROMISE);
-  // TODO(bartlomieju): it future use `v8::Private` so it's not visible
-  // to users. Currently missing bindings.
-  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
-
-  let opCallTracingEnabled = false;
-  const opCallTraces = new Map();
-
-  function enableOpCallTracing() {
-    opCallTracingEnabled = true;
-  }
-
-  function isOpCallTracingEnabled() {
-    return opCallTracingEnabled;
-  }
-
-  function setPromise(promiseId) {
-    const idx = promiseId % RING_SIZE;
-    // Move old promise from ring to map
-    const oldPromise = promiseRing[idx];
-    if (oldPromise !== NO_PROMISE) {
-      const oldPromiseId = promiseId - RING_SIZE;
-      MapPrototypeSet(promiseMap, oldPromiseId, oldPromise);
-    }
-    // Set new promise
-    return promiseRing[idx] = newPromise();
-  }
-
-  function getPromise(promiseId) {
-    // Check if out of ring bounds, fallback to map
-    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
-    if (outOfBounds) {
-      const promise = MapPrototypeGet(promiseMap, promiseId);
-      MapPrototypeDelete(promiseMap, promiseId);
-      return promise;
-    }
-    // Otherwise take from ring
-    const idx = promiseId % RING_SIZE;
-    const promise = promiseRing[idx];
-    promiseRing[idx] = NO_PROMISE;
-    return promise;
-  }
-
-  function newPromise() {
-    let resolve, reject;
-    const promise = new Promise((resolve_, reject_) => {
-      resolve = resolve_;
-      reject = reject_;
-    });
-    promise.resolve = resolve;
-    promise.reject = reject;
-    return promise;
-  }
-
   function ops() {
     return opsCache;
   }
@@ -106,15 +37,6 @@
   function syncOpsCache() {
     // op id 0 is a special value to retrieve the map of registered ops.
     opsCache = ObjectFreeze(ObjectFromEntries(opcallSync(0)));
-  }
-
-  function opresolve() {
-    for (let i = 0; i < arguments.length; i += 2) {
-      const promiseId = arguments[i];
-      const res = arguments[i + 1];
-      const promise = getPromise(promiseId);
-      promise.resolve(res);
-    }
   }
 
   function registerErrorClass(className, errorClass) {
@@ -148,24 +70,12 @@
   }
 
   function opAsync(opName, arg1 = null, arg2 = null) {
-    const promiseId = nextPromiseId++;
-    const maybeError = opcallAsync(opsCache[opName], promiseId, arg1, arg2);
-    // Handle sync error (e.g: error parsing args)
-    if (maybeError) return unwrapOpResult(maybeError);
-    let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
-    if (opCallTracingEnabled) {
-      // Capture a stack trace by creating a new `Error` object. We remove the
-      // first 6 characters (the `Error\n` prefix) to get just the stack trace.
-      const stack = StringPrototypeSlice(new Error().stack, 6);
-      MapPrototypeSet(opCallTraces, promiseId, { opName, stack });
-      p = PromisePrototypeFinally(
-        p,
-        () => MapPrototypeDelete(opCallTraces, promiseId),
-      );
-    }
-    // Save the id on the promise so it can later be ref'ed or unref'ed
-    p[promiseIdSymbol] = promiseId;
-    return p;
+    const promiseOrErr = opcallAsync(opsCache[opName], arg1, arg2);
+    // Handle sync error (e.g: error parsing args
+    return unwrapOpResult(promiseOrErr);
+    // const promise = unwrapOpResult(promiseOrErr);
+    // TODO(@AaronO): remove by moving rejection rust-side
+    // return PromisePrototypeCatch(promise, unwrapOpResult);
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {
@@ -243,7 +153,6 @@
     metrics,
     registerErrorBuilder,
     registerErrorClass,
-    opresolve,
     syncOpsCache,
     BadResource,
     BadResourcePrototype,

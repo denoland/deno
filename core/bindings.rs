@@ -13,7 +13,6 @@ use crate::OpId;
 use crate::OpPayload;
 use crate::OpResult;
 use crate::OpTable;
-use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
 use log::debug;
@@ -534,7 +533,6 @@ fn opcall_async<'s>(
   mut rv: v8::ReturnValue,
 ) {
   let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
     .map(|l| l.value() as OpId)
@@ -552,24 +550,13 @@ fn opcall_async<'s>(
     }
   };
 
-  // PromiseId
-  let arg1 = args.get(1);
-  let promise_id = v8::Local::<v8::Integer>::try_from(arg1)
-    .map(|l| l.value() as PromiseId)
-    .map_err(Error::from);
-  // Fail if promise id invalid (not an int)
-  let promise_id: PromiseId = match promise_id {
-    Ok(promise_id) => promise_id,
-    Err(err) => {
-      throw_type_error(scope, format!("invalid promise id: {}", err));
-      return;
-    }
-  };
-
   // Deserializable args (may be structured args or ZeroCopyBuf)
-  let a = args.get(2);
-  let b = args.get(3);
+  let a = args.get(1);
+  let b = args.get(2);
 
+  let op_state = state_rc.borrow().op_state.clone();
+  let mut state = state_rc.borrow_mut();
+  let promise_id = state.promise_ring.as_ref().unwrap().head();
   let payload = OpPayload {
     scope,
     a,
@@ -577,7 +564,7 @@ fn opcall_async<'s>(
     op_id,
     promise_id,
   };
-  let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
+  let op = OpTable::route_op(op_id, op_state, payload);
   match op {
     Op::Sync(result) => match result {
       OpResult::Ok(_) => throw_type_error(
@@ -590,6 +577,11 @@ fn opcall_async<'s>(
       state.op_state.borrow().tracker.track_async(op_id);
       state.pending_ops.push(fut);
       state.have_unpolled_ops = true;
+      let resolver = v8::PromiseResolver::new(scope).unwrap();
+      let promise = resolver.get_promise(scope);
+      rv.set(promise.into());
+      let resolver = v8::Global::new(scope, resolver);
+      state.promise_ring.as_mut().unwrap().put(resolver);
     }
     Op::NotFound => {
       throw_type_error(scope, format!("Unknown op id: {}", op_id));

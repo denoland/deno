@@ -14,6 +14,7 @@ use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::NoopModuleLoader;
 use crate::ops::*;
+use crate::promise_ring::PromiseRing;
 use crate::Extension;
 use crate::OpMiddlewareFn;
 use crate::OpPayload;
@@ -142,7 +143,6 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
-  pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
@@ -154,6 +154,7 @@ pub(crate) struct JsRuntimeState {
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
   pending_mod_evaluate: Option<ModEvaluate>,
+  pub(crate) promise_ring: Option<PromiseRing>,
   /// A counter used to delay our dynamic import deadlock detection by one spin
   /// of the event loop.
   dyn_module_evaluate_idle_counter: u32,
@@ -351,7 +352,6 @@ impl JsRuntime {
       pending_dyn_mod_evaluate: vec![],
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
-      js_recv_cb: None,
       js_sync_cb: None,
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
@@ -362,6 +362,8 @@ impl JsRuntime {
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       unrefed_ops: HashSet::new(),
+      pending_unref_ops: FuturesUnordered::new(),
+      promise_ring: Some(PromiseRing::new()),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
@@ -510,12 +512,10 @@ impl JsRuntime {
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
     let mut scope = self.handle_scope();
-    let recv_cb = Self::grab_fn(&mut scope, "Deno.core.opresolve");
     let sync_cb = Self::grab_fn(&mut scope, "Deno.core.syncOpsCache");
     // Put global handles in state
     let state_rc = JsRuntime::state(&scope);
     let mut state = state_rc.borrow_mut();
-    state.js_recv_cb.replace(recv_cb);
     state.js_sync_cb.replace(sync_cb);
   }
 
@@ -611,7 +611,6 @@ impl JsRuntime {
         state.borrow().op_state.clone(),
       ))));
     // Drop other v8::Global handles before snapshotting
-    std::mem::take(&mut state.borrow_mut().js_recv_cb);
     std::mem::take(&mut state.borrow_mut().js_sync_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
@@ -1557,21 +1556,32 @@ impl JsRuntime {
       while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
       {
         let (promise_id, op_id, resp) = item;
-        op_state.borrow().tracker.track_async_completed(op_id);
-        state.unrefed_ops.remove(&promise_id);
-        args.push(v8::Integer::new(scope, promise_id as i32).into());
-        args.push(resp.to_v8(scope).unwrap());
+        let resolver = state_rc
+        .borrow_mut()
+        .promise_ring
+        .as_mut()
+        .unwrap()
+        .take(promise_id);
+      match resolver {
+        Some(resolver) => {
+          let resolver = resolver.get(scope);
+          match resp {
+            OpResult::Ok(x) => {
+              let value = x.to_v8(scope).unwrap();
+              resolver.resolve(scope, value);
+            }
+            OpResult::Err(err) => {
+              let value = serde_v8::to_v8(scope, err).unwrap();
+              resolver.reject(scope, value);
+            }
+          }
+        }
+        None => panic!(
+          "tried to resolve a promise_id: {} without a resolver !",
+          promise_id
+        ),
       }
     }
-
-    if args.is_empty() {
-      return Ok(());
-    }
-
-    let tc_scope = &mut v8::TryCatch::new(scope);
-    let js_recv_cb = js_recv_cb_handle.open(tc_scope);
-    let this = v8::undefined(tc_scope).into();
-    js_recv_cb.call(tc_scope, this, args.as_slice());
 
     match tc_scope.exception() {
       None => Ok(()),
