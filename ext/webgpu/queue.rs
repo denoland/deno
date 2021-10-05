@@ -2,7 +2,6 @@
 
 use std::num::NonZeroU32;
 
-use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -77,9 +76,8 @@ pub struct QueueWriteBufferArgs {
 pub fn op_webgpu_write_buffer(
   state: &mut OpState,
   args: QueueWriteBufferArgs,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<WebGpuResult, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
@@ -116,9 +114,8 @@ pub struct QueueWriteTextureArgs {
 pub fn op_webgpu_write_texture(
   state: &mut OpState,
   args: QueueWriteTextureArgs,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<WebGpuResult, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table
