@@ -411,7 +411,7 @@
       converter: webidl.converters["HeadersInit"],
     }],
   );
-  webidl.converters["ResponseInit_fast"] = function(init, opts) {
+  webidl.converters["ResponseInit_fast"] = function (init, opts) {
     if (!init) {
       return { status: 200, statusText: "", headers: undefined };
     }
@@ -431,7 +431,7 @@
     }
     // Slow default path
     return webidl.converters["ResponseInit"](init, opts);
-  }
+  };
 
   /**
    * @param {Response} response
