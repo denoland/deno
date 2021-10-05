@@ -338,7 +338,7 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
           }
 
           let msg = String::from_utf16_lossy(&buf[..length as usize]);
-          msg
+          return msg;
         }
       }
     }
