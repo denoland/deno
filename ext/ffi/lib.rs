@@ -272,7 +272,7 @@ struct FfiLoadArgs {
 
 // `path` is only used on Windows.
 #[allow(unused_variables)]
-fn format_error(e: dlopen::Error, path: String) -> String {
+pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
   match e {
     #[cfg(target_os = "windows")]
     // This calls FormatMessageW with library path
@@ -289,12 +289,19 @@ fn format_error(e: dlopen::Error, path: String) -> String {
       use winapi::um::winbase::FormatMessageW;
       use winapi::um::winbase::FORMAT_MESSAGE_ARGUMENT_ARRAY;
       use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
+      use winapi::um::winnt::LANG_SYSTEM_DEFAULT;
+      use winapi::um::winnt::MAKELANGID;
+      use winapi::um::winnt::SUBLANG_SYS_DEFAULT;
 
-      let err_num = e.raw_os_error().unwrap();
+      let err_num = match e.raw_os_error() {
+        Some(err_num) => err_num,
+        // This should never hit unless dlopen changes its error type.
+        None => return e.to_string(),
+      };
 
-      // Language ID given by
-      // MAKELANGID(LANG_SYSTEM_DEFAULT, SUBLANG_SYS_DEFAULT);
-      let lang_id = 0x0800 as DWORD;
+      // Language ID (0x0800)
+      let lang_id =
+        MAKELANGID(LANG_SYSTEM_DEFAULT, SUBLANG_SYS_DEFAULT) as DWORD;
 
       let mut buf = [0 as WCHAR; 2048];
 
@@ -434,4 +441,21 @@ fn op_ffi_call(
       json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
     }
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use super::format_error;
+
+  #[cfg(target_os = "windows")]
+  fn test_format_error() {
+    // BAD_EXE_FORMAT
+    let err = dlopen::Error::OpeningLibraryError(
+      std::io::Error::from_raw_os_error(0x000000C1),
+    );
+    assert_eq!(
+      format_error(err, "foo.dll".to_string()),
+      "foo.dll is not a valid Win32 application."
+    );
+  }
 }
