@@ -1919,11 +1919,7 @@ pub mod tests {
 
   #[test]
   fn test_error_builder() {
-    fn op_err(
-      _: &mut OpState,
-      _: (),
-      _: Option<ZeroCopyBuf>,
-    ) -> Result<(), AnyError> {
+    fn op_err(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
       Err(custom_error("DOMExceptionOperationError", "abc"))
     }
 

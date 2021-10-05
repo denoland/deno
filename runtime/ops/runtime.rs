@@ -20,7 +20,7 @@ pub fn init(main_module: ModuleSpecifier) -> Extension {
 
 fn op_main_module(
   state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<String, AnyError> {
   let main = state.borrow::<ModuleSpecifier>().to_string();

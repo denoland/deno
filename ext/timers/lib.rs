@@ -102,7 +102,7 @@ impl GlobalTimer {
 
 pub fn op_global_timer_stop(
   state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   let global_timer = state.borrow_mut::<GlobalTimer>();
@@ -136,7 +136,7 @@ pub fn op_global_timer_start(
 
 pub async fn op_global_timer(
   state: Rc<RefCell<OpState>>,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   let maybe_timer_fut = {

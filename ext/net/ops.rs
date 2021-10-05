@@ -7,7 +7,6 @@ use crate::NetPermissions;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
-use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op_async;
@@ -167,9 +166,8 @@ pub(crate) struct ReceiveArgs {
 async fn receive_udp(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<OpPacket, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let mut zero_copy = zero_copy.clone();
 
   let rid = args.rid;
@@ -197,7 +195,7 @@ async fn receive_udp(
 async fn op_datagram_receive(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<OpPacket, AnyError> {
   match args.transport.as_str() {
     "udp" => receive_udp(state, args, zero_copy).await,
@@ -218,12 +216,11 @@ struct SendArgs {
 async fn op_datagram_send<NP>(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let zero_copy = zero_copy.clone();
 
   match args {
