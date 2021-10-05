@@ -163,8 +163,8 @@
       return res;
     }
 
-    kill(signal) {
-      core.opSync("op_kill", this.#pid, signal);
+    kill(signo) {
+      core.opSync("op_kill", this.#pid, signo);
     }
   }
 
