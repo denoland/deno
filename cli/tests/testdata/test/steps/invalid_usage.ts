@@ -1,12 +1,12 @@
 import { deferred } from "../../../../../test_util/std/async/deferred.ts";
 
 Deno.test("capturing", async (t) => {
-  let capturedTester!: Deno.Tester;
+  let capturedContext!: Deno.TestContext;
   await t.step("some step", (t) => {
-    capturedTester = t;
+    capturedContext = t;
   });
   // this should error because the scope of the tester has already completed
-  await capturedTester.step("next step", () => {});
+  await capturedContext.step("next step", () => {});
 });
 
 Deno.test("top level missing await", (t) => {
