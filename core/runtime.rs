@@ -2303,4 +2303,18 @@ assertEquals(1, notify_return_value);
     let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
     assert!(all_true.is_true());
   }
+
+  #[test]
+  fn test_binding_names() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let all_true: v8::Global<v8::Value> = runtime
+      .execute_script(
+        "binding_names.js",
+        "Deno.core.encode.toString() === 'function encode() { [native code] }'",
+      )
+      .unwrap();
+    let mut scope = runtime.handle_scope();
+    let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
+    assert!(all_true.is_true());
+  }
 }
