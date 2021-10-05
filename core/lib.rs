@@ -59,6 +59,7 @@ pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::ModuleType;
 pub use crate::modules::NoopModuleLoader;
+pub use crate::runtime::CompiledWasmModuleStore;
 pub use crate::runtime::SharedArrayBufferStore;
 // TODO(bartlomieju): this struct should be implementation
 // detail nad not be public

@@ -6,6 +6,57 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.14.3 / 2021.10.04
+
+- feat(core): implement Deno.core.isProxy() (#12288)
+- fix(core/runtime): sync_ops_cache if nuked Deno ns (#12302)
+- fix(ext/crypto): decode id-RSASSA-PSS with default params (#12147)
+- fix(ext/crypto): missing Aes key typings (#12307)
+- fix(ext/crypto): use NotSupportedError for importKey() (#12289)
+- fix(ext/fetch): avoid panic when header is invalid (#12244)
+- fix(ext/http): merge identical if/else branches (#12269)
+- fix(ext/net): should not panic when listening to unix abstract address
+  (#12300)
+- fix(repl): avoid panic when assigned to globalThis (#12273)
+- fix(runtime/js/workers): throw errors instead of using an op (#12249)
+- fix(runtime/testing): format aggregate errors (#12183)
+- fix: Don't panic when a worker is closed in the reactions to a wasm operation.
+  (#12270)
+- fix: worker environment permissions should accept an array (#12250)
+- perf(core): use opcall() directly (#12310)
+- perf(fetch): optimize fillHeaders() key iteration (#12287)
+- perf(web): optimize byteLowerCase() (#12282)
+- perf(web): ~400x faster http header trimming (#12277)
+- perf(web/Event): move last class field to constructor (#12265)
+- perf(webidl): optimize createDictionaryConverter() (#12279)
+- perf(webidl): optimize createRecordConverter() (#12286)
+- perf(webidl/DOMString): don't wrap string primitives (#12266)
+
+### 1.14.2 / 2021.09.28
+
+- feat(cli/fmt): support more markdown extensions (#12195)
+- fix(cli/permissions): ensure revoked permissions are no longer granted
+  (#12159)
+- fix(ext/http): fortify "is websocket?" check (#12179)
+- fix(ext/http): include port number in h2 urls (#12181)
+- fix(ext/web): FileReader error messages (#12218)
+- fix(ext/webidl): correctly apply [SymbolToStringTag] to interfaces (#11851)
+- fix(http): panic when responding to a closed conn (#12216)
+- fix(workers): Don't panic when a worker's parent thread stops running (#12156)
+- fix: subprocess kill support on windows (#12134)
+- perf(ext/fetch): Use the WebIDL conversion to DOMString rather than USVString
+  for Response constructor (#12201)
+- perf(ext/fetch): skip USVString webidl conv on string constructor (#12168)
+- perf(fetch): optimize InnerBody constructor (#12232)
+- perf(fetch): optimize newInnerRequest blob url check (#12245)
+- perf(fetch/Response): avoid class fields (#12237)
+- perf(fetch/headers): optimize appendHeader (#12234)
+- perf(ops): optimize permission check (#11800)
+- perf(web): optimize Event constructor (#12231)
+- perf(webidl/ByteString): 3x faster ASCII check (#12230)
+- quickfix(ci): only run "Build product size info" on main/tag (#12184)
+- upgrade serde_v8 and rusty_v8 (#12175)
+
 ### 1.14.1 / 2021.09.21
 
 - fix(cli): don't ignore diagnostics about for await (#12116)

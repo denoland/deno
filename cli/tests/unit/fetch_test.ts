@@ -997,40 +997,16 @@ unitTest(function fetchResponseEmptyConstructor() {
   assertEquals([...response.headers], []);
 });
 
-// TODO(lucacasonato): reenable this test
 unitTest(
-  { permissions: { net: true }, ignore: true },
+  { permissions: { net: true, read: true } },
   async function fetchCustomHttpClientParamCertificateSuccess(): Promise<
     void
   > {
-    const client = Deno.createHttpClient(
-      {
-        caData: `-----BEGIN CERTIFICATE-----
-MIIDIzCCAgugAwIBAgIJAMKPPW4tsOymMA0GCSqGSIb3DQEBCwUAMCcxCzAJBgNV
-BAYTAlVTMRgwFgYDVQQDDA9FeGFtcGxlLVJvb3QtQ0EwIBcNMTkxMDIxMTYyODIy
-WhgPMjExODA5MjcxNjI4MjJaMCcxCzAJBgNVBAYTAlVTMRgwFgYDVQQDDA9FeGFt
-cGxlLVJvb3QtQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDMH/IO
-2qtHfyBKwANNPB4K0q5JVSg8XxZdRpTTlz0CwU0oRO3uHrI52raCCfVeiQutyZop
-eFZTDWeXGudGAFA2B5m3orWt0s+touPi8MzjsG2TQ+WSI66QgbXTNDitDDBtTVcV
-5G3Ic+3SppQAYiHSekLISnYWgXLl+k5CnEfTowg6cjqjVr0KjL03cTN3H7b+6+0S
-ws4rYbW1j4ExR7K6BFNH6572yq5qR20E6GqlY+EcOZpw4CbCk9lS8/CWuXze/vMs
-OfDcc6K+B625d27wyEGZHedBomT2vAD7sBjvO8hn/DP1Qb46a8uCHR6NSfnJ7bXO
-G1igaIbgY1zXirNdAgMBAAGjUDBOMB0GA1UdDgQWBBTzut+pwwDfqmMYcI9KNWRD
-hxcIpTAfBgNVHSMEGDAWgBTzut+pwwDfqmMYcI9KNWRDhxcIpTAMBgNVHRMEBTAD
-AQH/MA0GCSqGSIb3DQEBCwUAA4IBAQB9AqSbZ+hEglAgSHxAMCqRFdhVu7MvaQM0
-P090mhGlOCt3yB7kdGfsIrUW6nQcTz7PPQFRaJMrFHPvFvPootkBUpTYR4hTkdce
-H6RCRu2Jxl4Y9bY/uezd9YhGCYfUtfjA6/TH9FcuZfttmOOlxOt01XfNvVMIR6RM
-z/AYhd+DeOXjr35F/VHeVpnk+55L0PYJsm1CdEbOs5Hy1ecR7ACuDkXnbM4fpz9I
-kyIWJwk2zJReKcJMgi1aIinDM9ao/dca1G99PHOw8dnr4oyoTiv8ao6PWiSRHHMi
-MNf4EgWfK+tZMnuqfpfO9740KzfcVoMNo4QJD4yn5YxroUOO/Azi
------END CERTIFICATE-----
-`,
-      },
-    );
-    const response = await fetch(
-      "https://localhost:5545/fixture.json",
-      { client },
-    );
+    const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
+    const response = await fetch("https://localhost:5545/fixture.json", {
+      client,
+    });
     const json = await response.json();
     assertEquals(json.name, "deno");
     client.close();
@@ -1250,6 +1226,7 @@ unitTest(
     void
   > {
     const data = "Hello World";
+    const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.crt");
     const client = Deno.createHttpClient({
       certChain: await Deno.readTextFile(
         "cli/tests/testdata/tls/localhost.crt",
@@ -1257,7 +1234,7 @@ unitTest(
       privateKey: await Deno.readTextFile(
         "cli/tests/testdata/tls/localhost.key",
       ),
-      caData: await Deno.readTextFile("cli/tests/testdata/tls/RootCA.crt"),
+      caCerts: [caCert],
     });
     const response = await fetch("https://localhost:5552/echo_server", {
       client,
@@ -1297,5 +1274,53 @@ unitTest(
       assertEquals(error.name, "AbortError");
       assertEquals(error.message, "Ongoing fetch was aborted.");
     }
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchHeaderValueShouldNotPanic() {
+    for (let i = 0; i < 0x21; i++) {
+      if (i === 0x09 || i === 0x0A || i === 0x0D || i === 0x20) {
+        continue; // these header value will be normalized, will not cause an error.
+      }
+      // ensure there will be an error instead of panic.
+      await assertRejects(() =>
+        fetch("http://localhost:4545/echo_server", {
+          method: "HEAD",
+          headers: { "val": String.fromCharCode(i) },
+        }), TypeError);
+    }
+    await assertRejects(() =>
+      fetch("http://localhost:4545/echo_server", {
+        method: "HEAD",
+        headers: { "val": String.fromCharCode(127) },
+      }), TypeError);
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchHeaderNameShouldNotPanic() {
+    const validTokens =
+      "!#$%&'*+-.0123456789ABCDEFGHIJKLMNOPQRSTUWVXYZ^_`abcdefghijklmnopqrstuvwxyz|~"
+        .split("");
+    for (let i = 0; i <= 255; i++) {
+      const token = String.fromCharCode(i);
+      if (validTokens.includes(token)) {
+        continue;
+      }
+      // ensure there will be an error instead of panic.
+      await assertRejects(() =>
+        fetch("http://localhost:4545/echo_server", {
+          method: "HEAD",
+          headers: { [token]: "value" },
+        }), TypeError);
+    }
+    await assertRejects(() =>
+      fetch("http://localhost:4545/echo_server", {
+        method: "HEAD",
+        headers: { "": "value" },
+      }), TypeError);
   },
 );

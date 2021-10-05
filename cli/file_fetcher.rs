@@ -255,7 +255,7 @@ impl FileFetcher {
       http_client: create_http_client(
         get_user_agent(),
         root_cert_store,
-        None,
+        vec![],
         None,
         unsafely_ignore_certificate_errors,
         None,

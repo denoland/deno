@@ -114,8 +114,6 @@ unitTest(
 
 unitTest(
   {
-    // No signals on windows.
-    ignore: Deno.build.os === "windows",
     permissions: { run: true, read: true },
   },
   async function runCommandFailedWithSignal() {
@@ -129,8 +127,13 @@ unitTest(
     });
     const status = await p.status();
     assertEquals(status.success, false);
-    assertEquals(status.code, 128 + 9);
-    assertEquals(status.signal, 9);
+    if (Deno.build.os === "windows") {
+      assertEquals(status.code, 1);
+      assertEquals(status.signal, undefined);
+    } else {
+      assertEquals(status.code, 128 + 9);
+      assertEquals(status.signal, 9);
+    }
     p.close();
   },
 );
@@ -448,9 +451,11 @@ unitTest(
 
     assert(
       error instanceof Deno.errors.NotFound ||
-        // This is not yet implemented on Windows
+        // On Windows, the underlying Windows API may return
+        // `ERROR_ACCESS_DENIED` when the process has exited, but hasn't been
+        // completely cleaned up yet and its `pid` is still valid.
         (Deno.build.os === "windows" &&
-          error instanceof Error && error.message === "not implemented"),
+          error instanceof Deno.errors.PermissionDenied),
     );
 
     p.close();
@@ -468,6 +473,24 @@ unitTest(function killPermissions() {
 });
 
 unitTest(
+  { ignore: Deno.build.os !== "windows", permissions: { run: true } },
+  function negativePidInvalidWindows() {
+    assertThrows(() => {
+      Deno.kill(-1, "SIGINT");
+    }, TypeError);
+  },
+);
+
+unitTest(
+  { ignore: Deno.build.os !== "windows", permissions: { run: true } },
+  function invalidSignalNameWindows() {
+    assertThrows(() => {
+      Deno.kill(Deno.pid, "SIGUSR1");
+    }, TypeError);
+  },
+);
+
+unitTest(
   { permissions: { run: true, read: true } },
   async function killSuccess() {
     const p = Deno.run({
@@ -475,16 +498,14 @@ unitTest(
     });
 
     try {
-      if (Deno.build.os === "windows") {
-        // currently not implemented
-        assertThrows(() => {
-          Deno.kill(p.pid, "SIGINT");
-        }, Error);
-      } else {
-        Deno.kill(p.pid, "SIGINT");
-        const status = await p.status();
+      Deno.kill(p.pid, "SIGINT");
+      const status = await p.status();
 
-        assertEquals(status.success, false);
+      assertEquals(status.success, false);
+      if (Deno.build.os === "windows") {
+        assertEquals(status.code, 1);
+        assertEquals(status.signal, undefined);
+      } else {
         assertEquals(status.code, 130);
         assertEquals(status.signal, 2);
       }
@@ -501,11 +522,10 @@ unitTest({ permissions: { run: true, read: true } }, function killFailed() {
   assert(!p.stdin);
   assert(!p.stdout);
 
-  // windows is currently not implemented so it throws a regular Error saying so
   assertThrows(() => {
     // @ts-expect-error testing runtime error of bad signal
     Deno.kill(p.pid, "foobar");
-  }, Deno.build.os === "windows" ? Error : TypeError);
+  }, TypeError);
 
   p.close();
 });

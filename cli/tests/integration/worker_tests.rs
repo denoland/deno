@@ -20,6 +20,20 @@ itest!(worker_nested_error {
   exit_code: 1,
 });
 
+itest!(worker_async_error {
+  args: "run -A --quiet --reload workers/worker_async_error.ts",
+  output: "workers/worker_async_error.ts.out",
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(worker_message_handler_error {
+  args: "run -A --quiet --reload workers/worker_message_handler_error.ts",
+  output: "workers/worker_message_handler_error.ts.out",
+  http_server: true,
+  exit_code: 1,
+});
+
 itest!(nonexistent_worker {
   args: "run --allow-read workers/nonexistent_worker.ts",
   output: "workers/nonexistent_worker.out",

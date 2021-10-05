@@ -182,7 +182,7 @@ unitTest(
     const conn = await Deno.connectTls({
       hostname,
       port,
-      certFile: "cli/tests/testdata/tls/RootCA.pem",
+      caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
     });
     assert(conn.rid > 0);
     const w = new BufWriter(conn);
@@ -230,7 +230,7 @@ async function tlsPair(): Promise<[Deno.Conn, Deno.Conn]> {
   const connectPromise = Deno.connectTls({
     hostname: "localhost",
     port,
-    certFile: "cli/tests/testdata/tls/RootCA.pem",
+    caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
   });
   const endpoints = await Promise.all([acceptPromise, connectPromise]);
 
@@ -570,7 +570,7 @@ async function tlsWithTcpFailureTestImpl(
     Deno.connectTls({
       hostname: "localhost",
       port: tcpPort,
-      certFile: "cli/tests/testdata/tls/RootCA.crt",
+      caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
     }),
   ]);
 
@@ -1052,7 +1052,69 @@ unitTest(
       privateKey: await Deno.readTextFile(
         "cli/tests/testdata/tls/localhost.key",
       ),
-      certFile: "cli/tests/testdata/tls/RootCA.crt",
+      caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
+    });
+    const result = decoder.decode(await readAll(conn));
+    assertEquals(result, "PASS");
+    conn.close();
+  },
+);
+
+unitTest(
+  { permissions: { read: true, net: true } },
+  async function connectTLSCaCerts() {
+    const conn = await Deno.connectTls({
+      hostname: "localhost",
+      port: 4557,
+      caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
+    });
+    const result = decoder.decode(await readAll(conn));
+    assertEquals(result, "PASS");
+    conn.close();
+  },
+);
+
+unitTest(
+  { permissions: { read: true, net: true } },
+  async function connectTLSCertFile() {
+    const conn = await Deno.connectTls({
+      hostname: "localhost",
+      port: 4557,
+      certFile: "cli/tests/testdata/tls/RootCA.pem",
+    });
+    const result = decoder.decode(await readAll(conn));
+    assertEquals(result, "PASS");
+    conn.close();
+  },
+);
+
+unitTest(
+  { permissions: { read: true, net: true } },
+  async function startTLSCaCerts() {
+    const plainConn = await Deno.connect({
+      hostname: "localhost",
+      port: 4557,
+    });
+    const conn = await Deno.startTls(plainConn, {
+      hostname: "localhost",
+      caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
+    });
+    const result = decoder.decode(await readAll(conn));
+    assertEquals(result, "PASS");
+    conn.close();
+  },
+);
+
+unitTest(
+  { permissions: { read: true, net: true } },
+  async function startTLSCertFile() {
+    const plainConn = await Deno.connect({
+      hostname: "localhost",
+      port: 4557,
+    });
+    const conn = await Deno.startTls(plainConn, {
+      hostname: "localhost",
+      certFile: "cli/tests/testdata/tls/RootCA.pem",
     });
     const result = decoder.decode(await readAll(conn));
     assertEquals(result, "PASS");

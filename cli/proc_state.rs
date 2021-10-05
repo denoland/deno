@@ -23,6 +23,7 @@ use deno_core::error::Context;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::url::Url;
+use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
@@ -35,6 +36,7 @@ use deno_tls::rustls_native_certs::load_native_certs;
 use deno_tls::webpki_roots::TLS_SERVER_ROOTS;
 use import_map::ImportMap;
 use log::debug;
+use log::info;
 use log::warn;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -66,6 +68,7 @@ pub struct Inner {
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: SharedArrayBufferStore,
+  pub compiled_wasm_module_store: CompiledWasmModuleStore,
 }
 
 impl Deref for ProcState {
@@ -155,6 +158,7 @@ impl ProcState {
     let blob_store = BlobStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();
     let shared_array_buffer_store = SharedArrayBufferStore::default();
+    let compiled_wasm_module_store = CompiledWasmModuleStore::default();
 
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -179,7 +183,7 @@ impl ProcState {
         None
       };
 
-    let maybe_import_map: Option<ImportMap> =
+    let mut maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
         Some(import_map_url) => {
@@ -200,6 +204,32 @@ impl ProcState {
           Some(import_map)
         }
       };
+
+    if flags.compat {
+      let mut import_map = match maybe_import_map {
+        Some(import_map) => import_map,
+        None => {
+          // INFO: we're creating an empty import map, with its specifier pointing
+          // to `CWD/node_import_map.json` to make sure the map still works as expected.
+          let import_map_specifier =
+            std::env::current_dir()?.join("node_import_map.json");
+          ImportMap::from_json(import_map_specifier.to_str().unwrap(), "{}")
+            .unwrap()
+        }
+      };
+      let node_builtins = crate::compat::get_mapped_node_builtins();
+      let diagnostics = import_map.update_imports(node_builtins)?;
+
+      if !diagnostics.is_empty() {
+        info!("Some Node built-ins were not added to the import map:");
+        for diagnostic in diagnostics {
+          info!("  - {}", diagnostic);
+        }
+        info!("If you want to use Node built-ins provided by Deno remove listed specifiers from \"imports\" mapping in the import map file.");
+      }
+
+      maybe_import_map = Some(import_map);
+    }
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
     let maybe_inspector_server = maybe_inspect_host.map(|host| {
@@ -225,6 +255,7 @@ impl ProcState {
       blob_store,
       broadcast_channel,
       shared_array_buffer_store,
+      compiled_wasm_module_store,
     })))
   }
 
