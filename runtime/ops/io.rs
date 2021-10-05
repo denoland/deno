@@ -197,6 +197,10 @@ where
     stream.shutdown().await?;
     Ok(())
   }
+
+  pub fn into_inner(self) -> S {
+    self.stream.into_inner()
+  }
 }
 
 #[derive(Debug)]

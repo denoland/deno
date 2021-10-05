@@ -257,13 +257,20 @@ fn op_command_child_status(
 async fn op_command_child_wait(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
+  stdin_rid: Option<ResourceId>,
 ) -> Result<CommandStatus, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .take::<ChildResource>(rid)?;
   let mut child = RcRef::map(resource, |r| &r.0).borrow_mut().await;
+  if let Some(stdin_rid) = stdin_rid {
+    let stdin = state
+      .borrow_mut()
+      .resource_table
+      .take::<ChildStdinResource>(stdin_rid)?;
+    child.stdin = Some(Rc::try_unwrap(stdin).unwrap().into_inner());
+  }
   Ok(child.wait().await?.into())
 }
 

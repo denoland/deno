@@ -41,14 +41,20 @@
     }
 
     async status(options = {}) {
-      return await core.opAsync("op_command_status", {
+      const status = await core.opAsync("op_command_status", {
         ...this.#options,
         ...options,
       });
+      // TODO(@crowlKats): change typings to return null instead of undefined for status.signal
+      status.signal ??= undefined;
+      return status;
     }
 
     async output() {
-      return await core.opAsync("op_command_output", this.#options);
+      const res = await core.opAsync("op_command_output", this.#options);
+      // TODO(@crowlKats): change typings to return null instead of undefined for status.signal
+      res.status.signal ??= undefined;
+      return res;
     }
   }
 
@@ -60,6 +66,7 @@
       return this.#pid;
     }
 
+    #stdinRid;
     #stdin;
     get stdin() {
       return this.#stdin;
@@ -92,19 +99,22 @@
       this.#pid = pid;
 
       if (stdinRid !== null) {
+        this.#stdinRid = stdinRid;
         this.#stdin = new WritableStream({
           async write(chunk) {
             await write(stdinRid, chunk);
           },
-          close() {
-            core.close(stdinRid);
+          abort() {
+            core.tryClose(stdinRid);
           },
         });
+      } else {
+        this.#stdin = null;
       }
 
       if (stdoutRid !== null) {
         this.#stdoutRid = stdoutRid;
-        // TODO(crowlkats): BYOB Stream
+        // TODO(@crowlkats): BYOB Stream
         this.#stdout = new ReadableStream({
           async pull(controller) {
             const buf = new Uint8Array(16384);
@@ -120,11 +130,13 @@
             core.close(stdoutRid);
           },
         });
+      } else {
+        this.#stdout = null;
       }
 
       if (stderrRid !== null) {
         this.#stderrRid = stderrRid;
-        // TODO(crowlkats): BYOB Stream
+        // TODO(@crowlkats): BYOB Stream
         this.#stderr = new ReadableStream({
           async pull(controller) {
             const buf = new Uint8Array(16384);
@@ -140,17 +152,28 @@
             core.close(stderrRid);
           },
         });
+      } else {
+        this.#stderr = null;
       }
     }
 
     get status() {
-      return core.opSync("op_command_child_status", this.#rid);
+      const status = core.opSync("op_command_child_status", this.#rid);
+      // TODO(@crowlKats): change typings to return null instead of undefined for status.signal
+      status.signal ??= undefined;
+      return status;
     }
 
     async wait() {
-      const res = await core.opAsync("op_command_child_wait", this.#rid);
-      await this.stdin?.close();
-      return res;
+      const status = await core.opAsync(
+        "op_command_child_wait",
+        this.#rid,
+        this.#stdinRid,
+      );
+      await this.stdin?.abort();
+      // TODO(@crowlKats): change typings to return null instead of undefined for status.signal
+      status.signal ??= undefined;
+      return status;
     }
 
     async output() {
@@ -159,7 +182,9 @@
         stdoutRid: this.#stdoutRid,
         stderrRid: this.#stderrRid,
       });
-      await this.stdin?.close();
+      await this.stdin?.abort();
+      // TODO(@crowlKats): change typings to return null instead of undefined for status.signal
+      res.status.signal ??= undefined;
       return res;
     }
 
