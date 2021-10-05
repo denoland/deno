@@ -26,26 +26,6 @@ pub trait NetPermissions {
   fn check_write(&mut self, _p: &Path) -> Result<(), AnyError>;
 }
 
-/// For use with this crate when the user does not want permission checks.
-pub struct NoNetPermissions;
-
-impl NetPermissions for NoNetPermissions {
-  fn check_net<T: AsRef<str>>(
-    &mut self,
-    _host: &(T, Option<u16>),
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
-
-  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError> {
-    Ok(())
-  }
-
-  fn check_write(&mut self, _p: &Path) -> Result<(), AnyError> {
-    Ok(())
-  }
-}
-
 /// `UnstableChecker` is a struct so it can be placed inside `GothamState`;
 /// using type alias for a bool could work, but there's a high chance
 /// that there might be another type alias pointing to a bool, which
@@ -94,7 +74,7 @@ pub struct DefaultTlsOptions {
 /// using type alias for a `Option<Vec<String>>` could work, but there's a high chance
 /// that there might be another type alias pointing to a `Option<Vec<String>>`, which
 /// would override previously used alias.
-pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
+pub struct UnsafelyIgnoreCertificateErrors(pub Option<Vec<String>>);
 
 pub fn init<P: NetPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,

@@ -157,10 +157,7 @@ delete Object.prototype.__proto__;
 
         globalDispatchEvent(errorEvent);
         if (!errorEvent.defaultPrevented) {
-          core.opSync(
-            "op_worker_unhandled_error",
-            e.message,
-          );
+          throw e;
         }
       }
     }
@@ -218,17 +215,13 @@ delete Object.prototype.__proto__;
     );
     build.setBuildInfo(runtimeOptions.target);
     util.setLogDebug(runtimeOptions.debugFlag, source);
-    // TODO(bartlomieju): a very crude way to disable
-    // source mapping of errors. This condition is true
-    // only for compiled standalone binaries.
-    let prepareStackTrace;
-    if (runtimeOptions.applySourceMaps) {
-      prepareStackTrace = core.createPrepareStackTrace(
-        errorStack.opApplySourceMap,
-      );
-    } else {
-      prepareStackTrace = core.createPrepareStackTrace();
-    }
+    const prepareStackTrace = core.createPrepareStackTrace(
+      // TODO(bartlomieju): a very crude way to disable
+      // source mapping of errors. This condition is true
+      // only for compiled standalone binaries.
+      runtimeOptions.applySourceMaps ? errorStack.opApplySourceMap : undefined,
+      errorStack.opFormatFileName,
+    );
     // deno-lint-ignore prefer-primordials
     Error.prepareStackTrace = prepareStackTrace;
   }
@@ -399,6 +392,7 @@ delete Object.prototype.__proto__;
     TextEncoderStream: util.nonEnumerable(encoding.TextEncoderStream),
     TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
+    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
     MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
@@ -439,7 +433,6 @@ delete Object.prototype.__proto__;
 
   const unstableWindowOrWorkerGlobalScope = {
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
-    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
     WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
 
     GPU: util.nonEnumerable(webgpu.GPU),

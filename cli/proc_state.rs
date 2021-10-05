@@ -23,6 +23,7 @@ use deno_core::error::Context;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::url::Url;
+use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
@@ -35,18 +36,23 @@ use deno_tls::rustls_native_certs::load_native_certs;
 use deno_tls::webpki_roots::TLS_SERVER_ROOTS;
 use import_map::ImportMap;
 use log::debug;
+use log::info;
 use log::warn;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
+use std::ops::Deref;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
 ///
 /// It is shared by all created workers (thus V8 isolates).
-pub struct ProgramState {
+#[derive(Clone)]
+pub struct ProcState(Arc<Inner>);
+
+pub struct Inner {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   pub dir: deno_dir::DenoDir,
@@ -62,10 +68,18 @@ pub struct ProgramState {
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: SharedArrayBufferStore,
+  pub compiled_wasm_module_store: CompiledWasmModuleStore,
 }
 
-impl ProgramState {
-  pub async fn build(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
+impl Deref for ProcState {
+  type Target = Arc<Inner>;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl ProcState {
+  pub async fn build(flags: flags::Flags) -> Result<Self, AnyError> {
     let maybe_custom_root = flags
       .cache_path
       .clone()
@@ -144,6 +158,7 @@ impl ProgramState {
     let blob_store = BlobStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();
     let shared_array_buffer_store = SharedArrayBufferStore::default();
+    let compiled_wasm_module_store = CompiledWasmModuleStore::default();
 
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -168,7 +183,7 @@ impl ProgramState {
         None
       };
 
-    let maybe_import_map: Option<ImportMap> =
+    let mut maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
         Some(import_map_url) => {
@@ -190,6 +205,32 @@ impl ProgramState {
         }
       };
 
+    if flags.compat {
+      let mut import_map = match maybe_import_map {
+        Some(import_map) => import_map,
+        None => {
+          // INFO: we're creating an empty import map, with its specifier pointing
+          // to `CWD/node_import_map.json` to make sure the map still works as expected.
+          let import_map_specifier =
+            std::env::current_dir()?.join("node_import_map.json");
+          ImportMap::from_json(import_map_specifier.to_str().unwrap(), "{}")
+            .unwrap()
+        }
+      };
+      let node_builtins = crate::compat::get_mapped_node_builtins();
+      let diagnostics = import_map.update_imports(node_builtins)?;
+
+      if !diagnostics.is_empty() {
+        info!("Some Node built-ins were not added to the import map:");
+        for diagnostic in diagnostics {
+          info!("  - {}", diagnostic);
+        }
+        info!("If you want to use Node built-ins provided by Deno remove listed specifiers from \"imports\" mapping in the import map file.");
+      }
+
+      maybe_import_map = Some(import_map);
+    }
+
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
     let maybe_inspector_server = maybe_inspect_host.map(|host| {
       Arc::new(InspectorServer::new(host, version::get_user_agent()))
@@ -200,7 +241,7 @@ impl ProgramState {
       .clone()
       .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok());
 
-    let program_state = ProgramState {
+    Ok(ProcState(Arc::new(Inner {
       dir,
       coverage_dir,
       flags,
@@ -214,14 +255,13 @@ impl ProgramState {
       blob_store,
       broadcast_channel,
       shared_array_buffer_store,
-    };
-    Ok(Arc::new(program_state))
+      compiled_wasm_module_store,
+    })))
   }
 
   /// Prepares a set of module specifiers for loading in one shot.
-  ///
   pub async fn prepare_module_graph(
-    self: &Arc<Self>,
+    &self,
     specifiers: Vec<ModuleSpecifier>,
     lib: TypeLib,
     root_permissions: Permissions,
@@ -293,12 +333,11 @@ impl ProgramState {
     Ok(())
   }
 
-  /// This function is called when new module load is
-  /// initialized by the JsRuntime. Its resposibility is to collect
-  /// all dependencies and if it is required then also perform TS typecheck
-  /// and traspilation.
+  /// This function is called when new module load is initialized by the JsRuntime. Its
+  /// resposibility is to collect all dependencies and if it is required then also perform TS
+  /// typecheck and traspilation.
   pub async fn prepare_module_load(
-    self: &Arc<Self>,
+    &self,
     specifier: ModuleSpecifier,
     lib: TypeLib,
     root_permissions: Permissions,
@@ -448,7 +487,7 @@ impl ProgramState {
 
 // TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
 // else, like a refactored file_fetcher.
-impl SourceMapGetter for ProgramState {
+impl SourceMapGetter for ProcState {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     if let Ok(specifier) = resolve_url(file_name) {
       if let Some((code, maybe_map)) = self.get_emit(&specifier) {

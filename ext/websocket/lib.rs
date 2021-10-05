@@ -59,15 +59,6 @@ pub trait WebSocketPermissions {
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 
-/// For use with `op_websocket_*` when the user does not want permissions.
-pub struct NoWebSocketPermissions;
-
-impl WebSocketPermissions for NoWebSocketPermissions {
-  fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError> {
-    Ok(())
-  }
-}
-
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 pub enum WebSocketStreamType {
   Client {
@@ -224,9 +215,8 @@ where
 
   let unsafely_ignore_certificate_errors = state
     .borrow()
-    .borrow::<UnsafelyIgnoreCertificateErrors>()
-    .0
-    .clone();
+    .try_borrow::<UnsafelyIgnoreCertificateErrors>()
+    .and_then(|it| it.0.clone());
   let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = args.url.parse()?;
@@ -253,7 +243,7 @@ where
     Some("wss") => {
       let tls_config = create_client_config(
         root_cert_store,
-        None,
+        vec![],
         unsafely_ignore_certificate_errors,
       )?;
       let tls_connector = TlsConnector::from(Arc::new(tls_config));

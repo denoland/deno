@@ -22,7 +22,6 @@
     ObjectSetPrototypeOf,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
     WeakSet,
     WeakSetPrototypeAdd,
@@ -58,10 +57,6 @@
       return `MessageChannel ${
         inspect({ port1: this.port1, port2: this.port2 })
       }`;
-    }
-
-    get [SymbolToStringTag]() {
-      return "MessageChannel";
     }
   }
 
@@ -173,10 +168,6 @@
         core.close(this[_id]);
         this[_id] = null;
       }
-    }
-
-    get [SymbolToStringTag]() {
-      return "MessagePort";
     }
   }
 

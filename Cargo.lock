@@ -567,7 +567,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.14.0"
+version = "1.14.2"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -597,7 +597,6 @@ dependencies = [
  "dprint-plugin-typescript",
  "encoding_rs",
  "env_logger",
- "exec",
  "fancy-regex",
  "flaky_test",
  "fwdansi",
@@ -677,7 +676,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.11.0"
+version = "0.13.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -686,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.11.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -696,14 +695,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.17.0"
+version = "0.19.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.99.0"
+version = "0.101.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -722,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.31.0"
+version = "0.33.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -757,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.40.0"
+version = "0.42.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -773,12 +772,13 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.4.0"
+version = "0.6.0"
 dependencies = [
  "deno-libffi",
  "deno_core",
  "dlopen",
  "serde",
+ "tokio",
 ]
 
 [[package]]
@@ -803,7 +803,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.9.0"
+version = "0.11.0"
 dependencies = [
  "base64 0.13.0",
  "bytes",
@@ -835,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.8.0"
+version = "0.11.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.25.0"
+version = "0.27.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
@@ -893,7 +893,7 @@ dependencies = [
 
 [[package]]
 name = "deno_timers"
-version = "0.15.0"
+version = "0.17.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -905,7 +905,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.4.0"
+version = "0.6.0"
 dependencies = [
  "deno_core",
  "lazy_static",
@@ -919,7 +919,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.17.0"
+version = "0.19.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -931,7 +931,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.48.0"
+version = "0.50.0"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
@@ -944,7 +944,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.18.0"
+version = "0.20.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -955,14 +955,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.17.0"
+version = "0.19.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.22.0"
+version = "0.24.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -976,7 +976,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -1184,27 +1184,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "errno"
-version = "0.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa68f2fb9cae9d37c9b2b3584aba698a2e97f72d7aef7b9f7aa71d8b54ce46fe"
-dependencies = [
- "errno-dragonfly",
- "libc",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "errno-dragonfly"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14ca354e36190500e1e1fb267c647932382b54053c50b14970856c0b00a35067"
-dependencies = [
- "gcc",
- "libc",
-]
-
-[[package]]
 name = "error-code"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1212,16 +1191,6 @@ checksum = "b5115567ac25674e0043e472be13d14e537f37ea8aa4bdc4aef0c89add1db1ff"
 dependencies = [
  "libc",
  "str-buf",
-]
-
-[[package]]
-name = "exec"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "886b70328cba8871bfc025858e1de4be16b1d5088f2ba50b57816f4210672615"
-dependencies = [
- "errno 0.2.7",
- "libc",
 ]
 
 [[package]]
@@ -1491,12 +1460,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gcc"
-version = "0.3.55"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
-
-[[package]]
 name = "generic-array"
 version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1758,9 +1721,9 @@ checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 
 [[package]]
 name = "import_map"
-version = "0.3.0"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae79a7af71e92e4038963b64884106d28d508da6bf3c7f36294efcb3bb3b003d"
+checksum = "d315210af92bcde7a84672d5554fc2b4268c4d40dc9c930ae1d1ed765a8f6381"
 dependencies = [
  "indexmap",
  "log",
@@ -2636,7 +2599,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f50f3d255966981eb4e4c5df3e983e6f7d163221f547406d83b6a460ff5c5ee8"
 dependencies = [
- "errno 0.1.8",
+ "errno",
  "libc",
 ]
 
@@ -3003,9 +2966,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.28.0"
+version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7d44250ec4d38c9640cd3e3be9375466966593608ab644d9b37d36acbebc1a7"
+checksum = "cbceb7583f5db95a57e4cbf43847f5cc95dedc60671d7f6b6ca7578caa058ea9"
 dependencies = [
  "bitflags",
  "fslock",
@@ -3207,9 +3170,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.11.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77240c6cc91c6ffcce6900d8b4ce5d0966a0d2f8614dd43d1948b52ebd915071"
+checksum = "0fd01a049079c0355135da2d05463ecc21b8af584f3a30288812643c0935960e"
 dependencies = [
  "rusty_v8",
  "serde",
@@ -3881,6 +3844,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
+ "atty",
  "base64 0.13.0",
  "futures",
  "hyper",
@@ -3894,6 +3858,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
+ "winapi 0.3.9",
 ]
 
 [[package]]

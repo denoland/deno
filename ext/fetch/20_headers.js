@@ -15,12 +15,11 @@
   const {
     HTTP_TAB_OR_SPACE_PREFIX_RE,
     HTTP_TAB_OR_SPACE_SUFFIX_RE,
-    HTTP_WHITESPACE_PREFIX_RE,
-    HTTP_WHITESPACE_SUFFIX_RE,
     HTTP_TOKEN_CODE_POINT_RE,
     byteLowerCase,
     collectSequenceOfCodepoints,
     collectHttpQuotedString,
+    httpTrim,
   } = window.__bootstrap.infra;
   const {
     ArrayIsArray,
@@ -30,15 +29,13 @@
     ArrayPrototypeJoin,
     ArrayPrototypeSplice,
     ArrayPrototypeFilter,
-    ObjectKeys,
+    ObjectPrototypeHasOwnProperty,
     ObjectEntries,
     RegExpPrototypeTest,
     Symbol,
     SymbolFor,
     SymbolIterator,
-    SymbolToStringTag,
     StringPrototypeReplaceAll,
-    StringPrototypeIncludes,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -61,17 +58,7 @@
    * @returns {string}
    */
   function normalizeHeaderValue(potentialValue) {
-    potentialValue = StringPrototypeReplaceAll(
-      potentialValue,
-      HTTP_WHITESPACE_PREFIX_RE,
-      "",
-    );
-    potentialValue = StringPrototypeReplaceAll(
-      potentialValue,
-      HTTP_WHITESPACE_SUFFIX_RE,
-      "",
-    );
-    return potentialValue;
+    return httpTrim(potentialValue);
   }
 
   /**
@@ -89,11 +76,18 @@
         appendHeader(headers, header[0], header[1]);
       }
     } else {
-      for (const key of ObjectKeys(object)) {
+      for (const key in object) {
+        if (!ObjectPrototypeHasOwnProperty(object, key)) {
+          continue;
+        }
         appendHeader(headers, key, object[key]);
       }
     }
   }
+
+  // Regex matching illegal chars in a header value
+  // deno-lint-ignore no-control-regex
+  const ILLEGAL_VALUE_CHARS = /[\x00\x0A\x0D]/g;
 
   /**
    * https://fetch.spec.whatwg.org/#concept-headers-append
@@ -109,11 +103,7 @@
     if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
       throw new TypeError("Header name is not valid.");
     }
-    if (
-      StringPrototypeIncludes(value, "\x00") ||
-      StringPrototypeIncludes(value, "\x0A") ||
-      StringPrototypeIncludes(value, "\x0D")
-    ) {
+    if (RegExpPrototypeTest(ILLEGAL_VALUE_CHARS, value)) {
       throw new TypeError("Header value is not valid.");
     }
 
@@ -373,11 +363,7 @@
       if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
         throw new TypeError("Header name is not valid.");
       }
-      if (
-        StringPrototypeIncludes(value, "\x00") ||
-        StringPrototypeIncludes(value, "\x0A") ||
-        StringPrototypeIncludes(value, "\x0D")
-      ) {
+      if (RegExpPrototypeTest(ILLEGAL_VALUE_CHARS, value)) {
         throw new TypeError("Header value is not valid.");
       }
 
@@ -410,10 +396,6 @@
         headers[header[0]] = header[1];
       }
       return `Headers ${inspect(headers)}`;
-    }
-
-    get [SymbolToStringTag]() {
-      return "Headers";
     }
   }
 

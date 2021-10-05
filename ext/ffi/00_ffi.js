@@ -13,8 +13,15 @@
       this.#rid = core.opSync("op_ffi_load", { path, symbols });
 
       for (const symbol in symbols) {
-        this.symbols[symbol] = (...parameters) =>
-          core.opSync("op_ffi_call", { rid: this.#rid, symbol, parameters });
+        this.symbols[symbol] = symbols[symbol].nonblocking
+          ? (...parameters) =>
+            core.opAsync("op_ffi_call_nonblocking", {
+              rid: this.#rid,
+              symbol,
+              parameters,
+            })
+          : (...parameters) =>
+            core.opSync("op_ffi_call", { rid: this.#rid, symbol, parameters });
       }
     }
 

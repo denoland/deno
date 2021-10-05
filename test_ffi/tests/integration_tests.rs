@@ -39,6 +39,17 @@ fn basic() {
   let expected = "\
     something\n\
     579\n\
+    579\n\
+    579\n\
+    579\n\
+    579\n\
+    579\n\
+    579.9119873046875\n\
+    579.912\n\
+    Before\n\
+    true\n\
+    After\n\
+    true\n\
     Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");

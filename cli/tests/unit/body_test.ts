@@ -35,7 +35,7 @@ unitTest(async function arrayBufferFromByteArrays() {
 
 //FormData
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function bodyMultipartFormData() {
     const response = await fetch(
       "http://localhost:4545/multipart_form_data.txt",
@@ -54,7 +54,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function bodyURLEncodedFormData() {
     const response = await fetch(
       "http://localhost:4545/subdir/form_urlencoded.txt",
@@ -73,7 +73,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: {} }, async function bodyURLSearchParams() {
+unitTest({ permissions: {} }, async function bodyURLSearchParams() {
   const body = buildBody(new URLSearchParams({ hello: "world" }));
 
   const text = await body.text();
