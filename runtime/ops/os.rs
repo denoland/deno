@@ -7,11 +7,11 @@ use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
+use locale_config::Locale;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
-use locale_config::Locale;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -132,7 +132,12 @@ fn op_languages(
   _: (),
 ) -> Result<Vec<String>, AnyError> {
   state.borrow_mut::<Permissions>().env.check_all()?;
-  Ok(Locale::user_default().tags().map(|(_, l)| l.to_string()).collect())
+  Ok(
+    Locale::user_default()
+      .tags()
+      .map(|(_, l)| l.to_string())
+      .collect(),
+  )
 }
 
 fn op_hostname(
