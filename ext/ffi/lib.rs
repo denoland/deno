@@ -468,7 +468,7 @@ mod tests {
     );
     assert_eq!(
       format_error(err, "foo.dll".to_string()),
-      "foo.dll is not a valid Win32 application.".to_string(),
+      "foo.dll is not a valid Win32 application.\r\n".to_string(),
     );
   }
 }
