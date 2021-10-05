@@ -73,6 +73,7 @@ pub struct StateSnapshot {
   pub assets: Assets,
   pub config: ConfigSnapshot,
   pub documents: DocumentCache,
+  pub maybe_config_file: Option<ConfigFile>,
   pub maybe_config_uri: Option<ModuleSpecifier>,
   pub module_registries: registries::ModuleRegistry,
   pub performance: Performance,
@@ -413,6 +414,7 @@ impl Inner {
         LspError::internal_error()
       })?,
       documents: self.documents.clone(),
+      maybe_config_file: self.maybe_config_file.clone(),
       maybe_config_uri: self.maybe_config_uri.clone(),
       module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
