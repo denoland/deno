@@ -250,25 +250,10 @@
         prefix,
         context: "Argument 1",
       });
-      if (!init) {
-        init = { status: 200, statusText: "", headers: undefined };
-      } else if (!isProxy(init)) {
-        // Not a proxy fast path
-        init.status = init?.status !== undefined
-          ? webidl.converters["unsigned short"](init.status)
-          : 200;
-        init.statusText = init?.statusText !== undefined
-          ? webidl.converters["ByteString"](init.statusText)
-          : "";
-        init.headers = init?.headers !== undefined
-          ? webidl.converters["HeadersInit"](init.headers)
-          : undefined;
-      } else {
-        init = webidl.converters["ResponseInit"](init, {
-          prefix,
-          context: "Argument 2",
-        });
-      }
+      init = webidl.converters["ResponseInit_fast"](init, {
+        prefix,
+        context: "Argument 2",
+      });
 
       if (init.status < 200 || init.status > 599) {
         throw new RangeError(
@@ -426,6 +411,27 @@
       converter: webidl.converters["HeadersInit"],
     }],
   );
+  webidl.converters["ResponseInit_fast"] = function(init, opts) {
+    if (!init) {
+      return { status: 200, statusText: "", headers: undefined };
+    }
+    // Fast path, if not a proxy
+    if (!isProxy(init)) {
+      // Not a proxy fast path
+      const status = init.status !== undefined
+        ? webidl.converters["unsigned short"](init.status)
+        : 200;
+      const statusText = init.statusText !== undefined
+        ? webidl.converters["ByteString"](init.statusText)
+        : "";
+      const headers = init.headers !== undefined
+        ? webidl.converters["HeadersInit"](init.headers)
+        : undefined;
+      return { status, statusText, headers };
+    }
+    // Slow default path
+    return webidl.converters["ResponseInit"](init, opts);
+  }
 
   /**
    * @param {Response} response
