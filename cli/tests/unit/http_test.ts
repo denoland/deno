@@ -865,6 +865,7 @@ unitTest(
     const writer = writable.getWriter();
 
     async function writeResponse() {
+      await delay(50);
       await writer.write(
         new TextEncoder().encode(
           "written to the writable side of a TransformStream",
