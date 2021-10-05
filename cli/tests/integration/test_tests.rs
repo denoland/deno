@@ -181,6 +181,12 @@ itest!(shuffle_with_seed {
   output: "test/shuffle.out",
 });
 
+itest!(aggregate_error {
+  args: "test test/aggregate_error.ts",
+  exit_code: 1,
+  output: "test/aggregate_error.out",
+});
+
 itest!(steps_passing_steps {
   args: "test --unstable test/steps/passing_steps.ts",
   exit_code: 0,

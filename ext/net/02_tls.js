@@ -28,6 +28,7 @@
     hostname = "127.0.0.1",
     transport = "tcp",
     certFile = undefined,
+    caCerts = [],
     certChain = undefined,
     privateKey = undefined,
   }) {
@@ -36,6 +37,7 @@
       hostname,
       transport,
       certFile,
+      caCerts,
       certChain,
       privateKey,
     });
@@ -70,12 +72,13 @@
 
   async function startTls(
     conn,
-    { hostname = "127.0.0.1", certFile } = {},
+    { hostname = "127.0.0.1", certFile = undefined, caCerts = [] } = {},
   ) {
     const res = await opStartTls({
       rid: conn.rid,
       hostname,
       certFile,
+      caCerts,
     });
     return new Conn(res.rid, res.remoteAddr, res.localAddr);
   }

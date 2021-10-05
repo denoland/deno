@@ -224,7 +224,7 @@ pub fn op_signal_unbind(
 #[cfg(not(unix))]
 pub fn op_signal_bind(
   _state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
@@ -233,7 +233,7 @@ pub fn op_signal_bind(
 #[cfg(not(unix))]
 fn op_signal_unbind(
   _state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
@@ -242,7 +242,7 @@ fn op_signal_unbind(
 #[cfg(not(unix))]
 async fn op_signal_poll(
   _state: Rc<RefCell<OpState>>,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   Err(generic_error("not implemented"))

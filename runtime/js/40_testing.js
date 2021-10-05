@@ -260,6 +260,23 @@ finishing test case.`;
     ArrayPrototypePush(tests, testDef);
   }
 
+  function formatFailure(error) {
+    if (error.errors) {
+      const message = error
+        .errors
+        .map((error) =>
+          inspectArgs([error]).replace(/^(?!\s*$)/gm, " ".repeat(4))
+        )
+        .join("\n");
+
+      return {
+        failed: error.name + "\n" + message + error.stack,
+      };
+    }
+
+    return { failed: inspectArgs([error]) };
+  }
+
   function createTestFilter(filter) {
     return (def) => {
       if (filter) {
@@ -305,13 +322,15 @@ finishing test case.`;
         ]),
       };
     } catch (error) {
-      return { "failed": inspectArgs([error]) };
+      return formatFailure(error);
     } finally {
       // ensure the children report their result
       for (const child of step.children) {
         child.reportResult();
       }
     }
+
+    return "ok";
   }
 
   function getTestOrigin() {

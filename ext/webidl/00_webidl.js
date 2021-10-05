@@ -9,6 +9,7 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const {
     ArrayBuffer,
     ArrayBufferIsView,
@@ -41,12 +42,14 @@
     NumberMAX_SAFE_INTEGER,
     // deno-lint-ignore camelcase
     NumberMIN_SAFE_INTEGER,
+    ObjectAssign,
     ObjectCreate,
     ObjectDefineProperties,
     ObjectDefineProperty,
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertyDescriptors,
     ObjectGetPrototypeOf,
+    ObjectPrototypeHasOwnProperty,
     ObjectIs,
     PromisePrototypeThen,
     PromiseReject,
@@ -726,7 +729,7 @@
       }
       const esDict = V;
 
-      const idlDict = { ...defaultValues };
+      const idlDict = ObjectAssign({}, defaultValues);
 
       // NOTE: fast path Null and Undefined.
       if ((V === undefined || V === null) && !hasRequiredKey) {
@@ -843,8 +846,21 @@
           opts,
         );
       }
-      const keys = ReflectOwnKeys(V);
       const result = {};
+      // Fast path for common case (not a Proxy)
+      if (!core.isProxy(V)) {
+        for (const key in V) {
+          if (!ObjectPrototypeHasOwnProperty(V, key)) {
+            continue;
+          }
+          const typedKey = keyConverter(key, opts);
+          const value = V[key];
+          const typedValue = valueConverter(value, opts);
+          result[typedKey] = typedValue;
+        }
+      }
+      // Slow path if Proxy (e.g: in WPT tests)
+      const keys = ReflectOwnKeys(V);
       for (const key of keys) {
         const desc = ObjectGetOwnPropertyDescriptor(V, key);
         if (desc !== undefined && desc.enumerable === true) {

@@ -157,10 +157,7 @@ delete Object.prototype.__proto__;
 
         globalDispatchEvent(errorEvent);
         if (!errorEvent.defaultPrevented) {
-          core.opSync(
-            "op_worker_unhandled_error",
-            e.message,
-          );
+          throw e;
         }
       }
     }

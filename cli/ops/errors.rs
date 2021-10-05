@@ -11,6 +11,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
 use serde::Deserialize;
+use serde::Serialize;
 use std::collections::HashMap;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
@@ -27,13 +28,19 @@ struct ApplySourceMap {
   column_number: i32,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppliedSourceMap {
+  file_name: String,
+  line_number: u32,
+  column_number: u32,
+}
+
 fn op_apply_source_map(
   state: &mut OpState,
-  args: Value,
+  args: ApplySourceMap,
   _: (),
-) -> Result<Value, AnyError> {
-  let args: ApplySourceMap = serde_json::from_value(args)?;
-
+) -> Result<AppliedSourceMap, AnyError> {
   let mut mappings_map: CachedMaps = HashMap::new();
   let ps = state.borrow::<ProcState>().clone();
 
@@ -46,11 +53,11 @@ fn op_apply_source_map(
       ps,
     );
 
-  Ok(json!({
-    "fileName": orig_file_name,
-    "lineNumber": orig_line_number as u32,
-    "columnNumber": orig_column_number as u32,
-  }))
+  Ok(AppliedSourceMap {
+    file_name: orig_file_name,
+    line_number: orig_line_number as u32,
+    column_number: orig_column_number as u32,
+  })
 }
 
 fn op_format_diagnostic(

@@ -3,6 +3,7 @@
 mod ast;
 mod auth_tokens;
 mod checksum;
+mod compat;
 mod config_file;
 mod deno_dir;
 mod diagnostics;
@@ -53,6 +54,7 @@ use crate::flags::LintFlags;
 use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
 use crate::flags::TestFlags;
+use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
 use crate::module_loader::CliModuleLoader;
@@ -80,6 +82,7 @@ use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
+use deno_runtime::BootstrapOptions;
 use log::debug;
 use log::info;
 use std::env;
@@ -109,11 +112,21 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
     let create_web_worker_cb = create_web_worker_callback(ps.clone());
 
     let options = WebWorkerOptions {
-      args: ps.flags.argv.clone(),
-      apply_source_maps: true,
-      debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
-      unstable: ps.flags.unstable,
-      enable_testing_features: ps.flags.enable_testing_features,
+      bootstrap: BootstrapOptions {
+        args: ps.flags.argv.clone(),
+        apply_source_maps: true,
+        cpu_count: num_cpus::get(),
+        debug_flag: ps
+          .flags
+          .log_level
+          .map_or(false, |l| l == log::Level::Debug),
+        enable_testing_features: ps.flags.enable_testing_features,
+        location: Some(args.main_module.clone()),
+        no_color: !colors::use_color(),
+        runtime_version: version::deno(),
+        ts_version: version::TYPESCRIPT.to_string(),
+        unstable: ps.flags.unstable,
+      },
       unsafely_ignore_certificate_errors: ps
         .flags
         .unsafely_ignore_certificate_errors
@@ -127,25 +140,26 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       use_deno_namespace: args.use_deno_namespace,
       worker_type: args.worker_type,
       maybe_inspector_server,
-      runtime_version: version::deno(),
-      ts_version: version::TYPESCRIPT.to_string(),
-      no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
       blob_store: ps.blob_store.clone(),
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
-      cpu_count: num_cpus::get(),
     };
+    let bootstrap_options = options.bootstrap.clone();
 
+    // TODO(@AaronO): switch to bootstrap_from_options() once ops below are an extension
+    // since it uses sync_ops_cache() which currently depends on the Deno namespace
+    // which can be nuked when bootstrapping workers (use_deno_namespace: false)
     let (mut worker, external_handle) = WebWorker::from_options(
       args.name,
       args.permissions,
       args.main_module,
       args.worker_id,
-      &options,
+      options,
     );
 
+    // TODO(@AaronO): move to a JsRuntime Extension passed into options
     // This block registers additional ops and state that
     // are only available in the CLI
     {
@@ -162,7 +176,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       }
       js_runtime.sync_ops_cache();
     }
-    worker.bootstrap(&options);
+    worker.bootstrap(&bootstrap_options);
 
     (worker, external_handle)
   })
@@ -190,11 +204,18 @@ pub fn create_main_worker(
   let create_web_worker_cb = create_web_worker_callback(ps.clone());
 
   let options = WorkerOptions {
-    apply_source_maps: true,
-    args: ps.flags.argv.clone(),
-    debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
-    unstable: ps.flags.unstable,
-    enable_testing_features: ps.flags.enable_testing_features,
+    bootstrap: BootstrapOptions {
+      apply_source_maps: true,
+      args: ps.flags.argv.clone(),
+      cpu_count: num_cpus::get(),
+      debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
+      enable_testing_features: ps.flags.enable_testing_features,
+      location: ps.flags.location.clone(),
+      no_color: !colors::use_color(),
+      runtime_version: version::deno(),
+      ts_version: version::TYPESCRIPT.to_string(),
+      unstable: ps.flags.unstable,
+    },
     unsafely_ignore_certificate_errors: ps
       .flags
       .unsafely_ignore_certificate_errors
@@ -207,11 +228,7 @@ pub fn create_main_worker(
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
-    runtime_version: version::deno(),
-    ts_version: version::TYPESCRIPT.to_string(),
-    no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
-    location: ps.flags.location.clone(),
     origin_storage_dir: ps.flags.location.clone().map(|loc| {
       ps.dir
         .root
@@ -224,11 +241,12 @@ pub fn create_main_worker(
     broadcast_channel: ps.broadcast_channel.clone(),
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
-    cpu_count: num_cpus::get(),
   };
 
-  let mut worker = MainWorker::from_options(main_module, permissions, &options);
+  let mut worker =
+    MainWorker::bootstrap_from_options(main_module, permissions, options);
 
+  // TODO(@AaronO): move to a JsRuntime Extension passed into options
   // This block registers additional ops and state that
   // are only available in the CLI
   {
@@ -248,7 +266,6 @@ pub fn create_main_worker(
 
     js_runtime.sync_ops_cache();
   }
-  worker.bootstrap(&options);
 
   worker
 }
@@ -485,6 +502,12 @@ async fn install_command(
     install_flags.root,
     install_flags.force,
   )
+}
+
+async fn uninstall_command(
+  uninstall_flags: UninstallFlags,
+) -> Result<(), AnyError> {
+  tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)
 }
 
 async fn lsp_command() -> Result<(), AnyError> {
@@ -1148,6 +1171,9 @@ fn get_subcommand(
     }
     DenoSubcommand::Install(install_flags) => {
       install_command(flags, install_flags).boxed_local()
+    }
+    DenoSubcommand::Uninstall(uninstall_flags) => {
+      uninstall_command(uninstall_flags).boxed_local()
     }
     DenoSubcommand::Lsp => lsp_command().boxed_local(),
     DenoSubcommand::Lint(lint_flags) => {

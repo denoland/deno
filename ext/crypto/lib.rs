@@ -2,7 +2,6 @@
 
 use deno_core::error::custom_error;
 use deno_core::error::not_supported;
-use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
@@ -94,6 +93,8 @@ const ID_MFG1: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.8");
 const RSAES_OAEP_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.7");
+const ID_P_SPECIFIED: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.9");
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
@@ -294,9 +295,8 @@ pub struct SignArg {
 pub async fn op_crypto_sign_key(
   _state: Rc<RefCell<OpState>>,
   args: SignArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -449,9 +449,8 @@ pub struct VerifyArg {
 pub async fn op_crypto_verify_key(
   _state: Rc<RefCell<OpState>>,
   args: VerifyArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<bool, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -597,7 +596,7 @@ pub struct ExportKeyArg {
 pub async fn op_crypto_export_key(
   _state: Rc<RefCell<OpState>>,
   args: ExportKeyArg,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {
@@ -729,9 +728,8 @@ pub struct DeriveKeyArg {
 pub async fn op_crypto_derive_bits(
   _state: Rc<RefCell<OpState>>,
   args: DeriveKeyArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let salt = &*zero_copy;
   let algorithm = args.algorithm;
   match algorithm {
@@ -796,9 +794,8 @@ pub struct EncryptArg {
 pub async fn op_crypto_encrypt_key(
   _state: Rc<RefCell<OpState>>,
   args: EncryptArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -874,6 +871,58 @@ const MASK_GEN_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
 const SALT_LENGTH_TAG: rsa::pkcs8::der::TagNumber =
   rsa::pkcs8::der::TagNumber::new(2);
 
+// Context-specific tag number for pSourceAlgorithm
+const P_SOURCE_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
+  rsa::pkcs8::der::TagNumber::new(2);
+
+lazy_static! {
+  // Default HashAlgorithm for RSASSA-PSS-params (sha1)
+  //
+  // sha1 HashAlgorithm ::= {
+  //   algorithm   id-sha1,
+  //   parameters  SHA1Parameters : NULL
+  // }
+  //
+  // SHA1Parameters ::= NULL
+  static ref SHA1_HASH_ALGORITHM: rsa::pkcs8::AlgorithmIdentifier<'static> = rsa::pkcs8::AlgorithmIdentifier {
+    // id-sha1
+    oid: ID_SHA1_OID,
+    // NULL
+    parameters: Some(asn1::Any::from(asn1::Null)),
+  };
+
+  // TODO(@littledivy): `pkcs8` should provide AlgorithmIdentifier to Any conversion.
+  static ref ENCODED_SHA1_HASH_ALGORITHM: Vec<u8> = SHA1_HASH_ALGORITHM.to_vec().unwrap();
+  // Default MaskGenAlgrithm for RSASSA-PSS-params (mgf1SHA1)
+  //
+  // mgf1SHA1 MaskGenAlgorithm ::= {
+  //   algorithm   id-mgf1,
+  //   parameters  HashAlgorithm : sha1
+  // }
+  static ref MGF1_SHA1_MASK_ALGORITHM: rsa::pkcs8::AlgorithmIdentifier<'static> = rsa::pkcs8::AlgorithmIdentifier {
+    // id-mgf1
+    oid: ID_MFG1,
+    // sha1
+    parameters: Some(asn1::Any::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap()),
+  };
+
+  // Default PSourceAlgorithm for RSAES-OAEP-params
+  // The default label is an empty string.
+  //
+  // pSpecifiedEmpty    PSourceAlgorithm ::= {
+  //   algorithm   id-pSpecified,
+  //   parameters  EncodingParameters : emptyString
+  // }
+  //
+  // emptyString    EncodingParameters ::= ''H
+  static ref P_SPECIFIED_EMPTY: rsa::pkcs8::AlgorithmIdentifier<'static> = rsa::pkcs8::AlgorithmIdentifier {
+    // id-pSpecified
+    oid: ID_P_SPECIFIED,
+    // EncodingParameters
+    parameters: Some(asn1::Any::from(asn1::OctetString::new(b"").unwrap())),
+  };
+}
+
 impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
   for PssPrivateKeyParameters<'a>
 {
@@ -887,13 +936,13 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
         .context_specific(HASH_ALGORITHM_TAG)?
         .map(TryInto::try_into)
         .transpose()?
-        .unwrap();
+        .unwrap_or(*SHA1_HASH_ALGORITHM);
 
       let mask_gen_algorithm = decoder
         .context_specific(MASK_GEN_ALGORITHM_TAG)?
         .map(TryInto::try_into)
         .transpose()?
-        .unwrap();
+        .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
 
       let salt_length = decoder
         .context_specific(SALT_LENGTH_TAG)?
@@ -933,9 +982,24 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
     any: rsa::pkcs8::der::asn1::Any<'a>,
   ) -> rsa::pkcs8::der::Result<OaepPrivateKeyParameters> {
     any.sequence(|decoder| {
-      let hash_algorithm = decoder.decode()?;
-      let mask_gen_algorithm = decoder.decode()?;
-      let p_source_algorithm = decoder.decode()?;
+      let hash_algorithm = decoder
+        .context_specific(HASH_ALGORITHM_TAG)?
+        .map(TryInto::try_into)
+        .transpose()?
+        .unwrap_or(*SHA1_HASH_ALGORITHM);
+
+      let mask_gen_algorithm = decoder
+        .context_specific(MASK_GEN_ALGORITHM_TAG)?
+        .map(TryInto::try_into)
+        .transpose()?
+        .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
+
+      let p_source_algorithm = decoder
+        .context_specific(P_SOURCE_ALGORITHM_TAG)?
+        .map(TryInto::try_into)
+        .transpose()?
+        .unwrap_or(*P_SPECIFIED_EMPTY);
+
       Ok(Self {
         hash_algorithm,
         mask_gen_algorithm,
@@ -966,9 +1030,8 @@ pub struct ImportKeyResult {
 pub async fn op_crypto_import_key(
   _state: Rc<RefCell<OpState>>,
   args: ImportKeyArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ImportKeyResult, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -1068,13 +1131,20 @@ pub async fn op_crypto_import_key(
             RSA_ENCRYPTION_OID => None,
             // id-RSASSA-PSS
             RSASSA_PSS_OID => {
-              // TODO(@littledivy): NotSupported error
               let params = PssPrivateKeyParameters::try_from(
                 pk_info.algorithm.parameters.ok_or_else(|| {
-                  type_error("Malformed parameters".to_string())
+                  custom_error(
+                    "DOMExceptionNotSupportedError",
+                    "Malformed parameters".to_string(),
+                  )
                 })?,
               )
-              .map_err(|_| type_error("Malformed parameters".to_string()))?;
+              .map_err(|_| {
+                custom_error(
+                  "DOMExceptionNotSupportedError",
+                  "Malformed parameters".to_string(),
+                )
+              })?;
 
               let hash_alg = params.hash_algorithm;
               let hash = match hash_alg.oid {
@@ -1095,8 +1165,8 @@ pub async fn op_crypto_import_key(
               };
 
               if params.mask_gen_algorithm.oid != ID_MFG1 {
-                // TODO(@littledivy): NotSupportedError
-                return Err(type_error(
+                return Err(custom_error(
+                  "DOMExceptionNotSupportedError",
                   "Unsupported hash algorithm".to_string(),
                 ));
               }
@@ -1175,13 +1245,20 @@ pub async fn op_crypto_import_key(
             RSA_ENCRYPTION_OID => None,
             // id-RSAES-OAEP
             RSAES_OAEP_OID => {
-              // TODO(@littledivy): NotSupported error
               let params = OaepPrivateKeyParameters::try_from(
                 pk_info.algorithm.parameters.ok_or_else(|| {
-                  type_error("Malformed parameters".to_string())
+                  custom_error(
+                    "DOMExceptionNotSupportedError",
+                    "Malformed parameters".to_string(),
+                  )
                 })?,
               )
-              .map_err(|_| type_error("Malformed parameters".to_string()))?;
+              .map_err(|_| {
+                custom_error(
+                  "DOMExceptionNotSupportedError",
+                  "Malformed parameters".to_string(),
+                )
+              })?;
 
               let hash_alg = params.hash_algorithm;
               let hash = match hash_alg.oid {
@@ -1202,8 +1279,8 @@ pub async fn op_crypto_import_key(
               };
 
               if params.mask_gen_algorithm.oid != ID_MFG1 {
-                // TODO(@littledivy): NotSupportedError
-                return Err(type_error(
+                return Err(custom_error(
+                  "DOMExceptionNotSupportedError",
                   "Unsupported hash algorithm".to_string(),
                 ));
               }
@@ -1276,9 +1353,8 @@ pub struct DecryptArg {
 pub async fn op_crypto_decrypt_key(
   _state: Rc<RefCell<OpState>>,
   args: DecryptArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -1348,11 +1424,10 @@ pub fn op_crypto_random_uuid(
 pub async fn op_crypto_subtle_digest(
   _state: Rc<RefCell<OpState>>,
   algorithm: CryptoHash,
-  data: Option<ZeroCopyBuf>,
+  data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let input = data.ok_or_else(null_opbuf)?;
   let output = tokio::task::spawn_blocking(move || {
-    digest::digest(algorithm.into(), &input)
+    digest::digest(algorithm.into(), &data)
       .as_ref()
       .to_vec()
       .into()
