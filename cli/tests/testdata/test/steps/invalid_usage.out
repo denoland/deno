@@ -66,8 +66,8 @@ FAILED ([WILDCARD])
 failures:
 
 capturing
-Error: Cannot run test step after tester's scope has finished execution. Ensure any `.step(...)` calls are executed before their parent scope completes execution.
-    at Tester.step ([WILDCARD])
+Error: Cannot run test step after parent scope has finished execution. Ensure any `.step(...)` calls are executed before their parent scope completes execution.
+    at TestContext.step ([WILDCARD])
     at [WILDCARD]/invalid_usage.ts:[WILDCARD]
     at [WILDCARD]
 

@@ -1015,7 +1015,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New option, yet to be vetted. */
-  export interface Tester {
+  export interface TestContext {
     /** Run a sub step of the parent test with a given name. Returns a promise
      * that resolves to a boolean signifying if the step completed successfully.
      * The returned promise never rejects unless the arguments are invalid.
@@ -1030,13 +1030,13 @@ declare namespace Deno {
      */
     step(
       name: string,
-      fn: (t: Tester) => void | Promise<void>,
+      fn: (t: TestContext) => void | Promise<void>,
     ): Promise<boolean>;
   }
 
   /** **UNSTABLE**: New option, yet to be vetted. */
   export interface TestStepDefinition {
-    fn: (t: Tester) => void | Promise<void>;
+    fn: (t: TestContext) => void | Promise<void>;
     name: string;
     ignore?: boolean;
     /** Check that the number of async completed ops after the test is the same

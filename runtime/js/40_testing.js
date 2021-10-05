@@ -118,7 +118,7 @@ finishing test case.`;
       if (step.canStreamReporting()) {
         step.reportWait();
       }
-      await fn(createTester(step));
+      await fn(createTestContext(step));
       postValidation();
 
       function preValidation() {
@@ -329,8 +329,6 @@ finishing test case.`;
         child.reportResult();
       }
     }
-
-    return "ok";
   }
 
   function getTestOrigin() {
@@ -433,7 +431,7 @@ finishing test case.`;
 
   /**
    * @typedef {{
-   *   fn: (t: Tester) => void | Promise<void>,
+   *   fn: (t: TestContext) => void | Promise<void>,
    *   name: string,
    *   ignore?: boolean,
    *   sanitizeOps?: boolean,
@@ -606,12 +604,12 @@ finishing test case.`;
   }
 
   /** @param parentStep {TestStep} */
-  function createTester(parentStep) {
+  function createTestContext(parentStep) {
     return {
-      [SymbolToStringTag]: "Tester",
+      [SymbolToStringTag]: "TestContext",
       /**
        * @param nameOrTestDefinition {string | TestStepDefinition}
-       * @param fn {(t: Tester) => void | Promise<void>}
+       * @param fn {(t: TestContext) => void | Promise<void>}
        */
       async step(nameOrTestDefinition, fn) {
         if (!testStepsEnabled) {
@@ -622,7 +620,7 @@ finishing test case.`;
 
         if (parentStep.finalized) {
           throw new Error(
-            "Cannot run test step after tester's scope has finished execution. " +
+            "Cannot run test step after parent scope has finished execution. " +
               "Ensure any `.step(...)` calls are executed before their parent scope completes execution.",
           );
         }

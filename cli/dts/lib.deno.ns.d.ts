@@ -114,11 +114,11 @@ declare namespace Deno {
   export const noColor: boolean;
 
   /** **UNSTABLE**: New option, yet to be vetted. */
-  export interface Tester {
+  export interface TestContext {
   }
 
   export interface TestDefinition {
-    fn: (t: Tester) => void | Promise<void>;
+    fn: (t: TestContext) => void | Promise<void>;
     name: string;
     ignore?: boolean;
     /** If at least one test has `only` set to true, only run tests that have
@@ -189,7 +189,7 @@ declare namespace Deno {
    */
   export function test(
     name: string,
-    fn: (t: Tester) => void | Promise<void>,
+    fn: (t: TestContext) => void | Promise<void>,
   ): void;
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
