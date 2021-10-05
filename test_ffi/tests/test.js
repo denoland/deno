@@ -22,6 +22,11 @@ const dylib = Deno.dlopen(libPath, {
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
   "sleep_blocking": { parameters: ["u64"], result: "void", nonblocking: true },
+  "nonblocking_buffer": {
+    parameters: ["buffer", "usize"],
+    result: "void",
+    nonblocking: true,
+  },
 });
 
 dylib.symbols.print_something();
@@ -37,6 +42,30 @@ console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
 
 // Test non blocking calls
+
+function deferred() {
+  let methods;
+  const promise = new Promise((resolve, reject) => {
+    methods = {
+      async resolve(value) {
+        await value;
+        resolve(value);
+      },
+      reject(reason) {
+        reject(reason);
+      },
+    };
+  });
+  return Object.assign(promise, methods);
+}
+
+const promise = deferred();
+const buffer2 = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+dylib.symbols.nonblocking_buffer(buffer2, buffer2.length).then(() => {
+  promise.resolve();
+});
+await promise;
+
 const start = performance.now();
 dylib.symbols.sleep_blocking(100).then(() => {
   console.log("After");
