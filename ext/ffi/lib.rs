@@ -39,14 +39,6 @@ pub trait FfiPermissions {
   fn check(&mut self, path: &str) -> Result<(), AnyError>;
 }
 
-pub struct NoFfiPermissions;
-
-impl FfiPermissions for NoFfiPermissions {
-  fn check(&mut self, _path: &str) -> Result<(), AnyError> {
-    Ok(())
-  }
-}
-
 #[derive(Clone)]
 struct Symbol {
   cif: libffi::middle::Cif,

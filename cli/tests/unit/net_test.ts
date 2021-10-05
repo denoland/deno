@@ -625,3 +625,18 @@ unitTest(
     listener.close();
   },
 );
+
+unitTest(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { read: true, write: true },
+  },
+  function netUnixAbstractPathShouldNotPanic() {
+    const listener = Deno.listen({
+      path: "\0aaa",
+      transport: "unix",
+    });
+    assert("not panic");
+    listener.close();
+  },
+);

@@ -31,15 +31,6 @@ pub trait TimersPermission {
   fn check_unstable(&self, state: &OpState, api_name: &'static str);
 }
 
-pub struct NoTimersPermission;
-
-impl TimersPermission for NoTimersPermission {
-  fn allow_hrtime(&mut self) -> bool {
-    false
-  }
-  fn check_unstable(&self, _: &OpState, _: &'static str) {}
-}
-
 pub fn init<P: TimersPermission + 'static>() -> Extension {
   Extension::builder()
     .js(include_js_files!(
