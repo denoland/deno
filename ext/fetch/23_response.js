@@ -12,6 +12,7 @@
 "use strict";
 
 ((window) => {
+  const { isProxy } = Deno.core;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
   const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
@@ -249,34 +250,47 @@
         prefix,
         context: "Argument 1",
       });
-      const status = init?.status !== undefined
-        ? webidl.converters["unsigned short"](init.status)
-        : 200;
-      const statusText = init?.statusText !== undefined
-        ? webidl.converters["ByteString"](init.statusText)
-        : "";
-      const headers = init?.headers !== undefined
-        ? webidl.converters["HeadersInit"](init.headers)
-        : null;
+      if (!init) {
+        init = { status: 200, statusText: "", headers: undefined };
+      } else if (!isProxy(init)) {
+        // Not a proxy fast path
+        init.status = init?.status !== undefined
+          ? webidl.converters["unsigned short"](init.status)
+          : 200;
+        init.statusText = init?.statusText !== undefined
+          ? webidl.converters["ByteString"](init.statusText)
+          : "";
+        init.headers = init?.headers !== undefined
+          ? webidl.converters["HeadersInit"](init.headers)
+          : undefined;
+      } else {
+        init = webidl.converters["ResponseInit"](init, {
+          prefix,
+          context: "Argument 2",
+        });
+      }
 
-      if (status < 200 || status > 599) {
+      if (init.status < 200 || init.status > 599) {
         throw new RangeError(
-          `The status provided (${status}) is outside the range [200, 599].`,
+          `The status provided (${init.status}) is outside the range [200, 599].`,
         );
       }
 
-      if (statusText && !RegExpPrototypeTest(REASON_PHRASE_RE, statusText)) {
+      if (
+        init.statusText &&
+        !RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)
+      ) {
         throw new TypeError("Status text is not valid.");
       }
 
       this[webidl.brand] = webidl.brand;
-      const response = newInnerResponse(status, statusText);
+      const response = newInnerResponse(init.status, init.statusText);
       /** @type {InnerResponse} */
       this[_response] = response;
       /** @type {Headers} */
       this[_headers] = headersFromHeaderList(response.headerList, "response");
-      if (headers) {
-        fillHeaders(this[_headers], headers);
+      if (init.headers) {
+        fillHeaders(this[_headers], init.headers);
       }
       if (body !== null) {
         if (nullBodyStatus(response.status)) {
@@ -396,6 +410,21 @@
   webidl.converters["Response"] = webidl.createInterfaceConverter(
     "Response",
     Response,
+  );
+  webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
+    "ResponseInit",
+    [{
+      key: "status",
+      defaultValue: 200,
+      converter: webidl.converters["unsigned short"],
+    }, {
+      key: "statusText",
+      defaultValue: "",
+      converter: webidl.converters["ByteString"],
+    }, {
+      key: "headers",
+      converter: webidl.converters["HeadersInit"],
+    }],
   );
 
   /**
