@@ -34,13 +34,19 @@
           }
 
           if (isNonBlocking) {
-            core.opAsync("op_ffi_call_nonblocking", {
+            return core.opAsync("op_ffi_call_nonblocking", {
               rid: this.#rid,
               symbol,
               parameters,
+              buffers,
             });
           } else {
-            core.opSync("op_ffi_call", { rid: this.#rid, symbol, parameters });
+            return core.opSync("op_ffi_call", {
+              rid: this.#rid,
+              symbol,
+              parameters,
+              buffers,
+            });
           }
         };
       }
