@@ -458,6 +458,7 @@ fn op_ffi_call(
 #[cfg(test)]
 mod tests {
   #[cfg(target_os = "windows")]
+  #[test]
   fn test_format_error() {
     use super::format_error;
 
