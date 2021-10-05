@@ -20,6 +20,7 @@ const dylib = Deno.dlopen(libPath, {
   "add_isize": { parameters: ["isize", "isize"], result: "isize" },
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
+  "sleep_blocking": { parameters: ["u64"], result: "void", nonblocking: true },
 });
 
 dylib.symbols.print_something();
@@ -32,16 +33,31 @@ console.log(dylib.symbols.add_isize(123, 456));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
 
-dylib.close();
-const resourcesPost = Deno.resources();
+// Test non blocking calls
+const start = performance.now();
+dylib.symbols.sleep_blocking(100).then(() => {
+  console.log("After");
+  console.log(performance.now() - start >= 100);
+  // Close after task is complete.
+  cleanup();
+});
+console.log("Before");
+console.log(performance.now() - start < 100);
 
-const preStr = JSON.stringify(resourcesPre, null, 2);
-const postStr = JSON.stringify(resourcesPost, null, 2);
-if (preStr !== postStr) {
-  throw new Error(
-    `Difference in open resources before dlopen and after closing:
+function cleanup() {
+  dylib.close();
+
+  const resourcesPost = Deno.resources();
+
+  const preStr = JSON.stringify(resourcesPre, null, 2);
+  const postStr = JSON.stringify(resourcesPost, null, 2);
+  if (preStr !== postStr) {
+    throw new Error(
+      `Difference in open resources before dlopen and after closing:
 Before: ${preStr}
 After: ${postStr}`,
-  );
+    );
+  }
+
+  console.log("Correct number of resources");
 }
-console.log("Correct number of resources");

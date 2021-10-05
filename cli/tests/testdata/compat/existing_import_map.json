@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "fs/promises": "./non_existent_file.js"
+  }
+}
