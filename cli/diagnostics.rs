@@ -6,7 +6,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
-use deno_core::ModuleSpecifier;
 use deno_graph::ModuleGraphError;
 use regex::Regex;
 use std::error::Error;
@@ -357,18 +356,18 @@ impl Diagnostics {
 
   pub fn extend_graph_errors(
     &mut self,
-    errors: Vec<(ModuleSpecifier, ModuleGraphError)>,
+    errors: Vec<ModuleGraphError>,
   ) {
-    self.0.extend(errors.into_iter().map(|(s, e)| Diagnostic {
+    self.0.extend(errors.into_iter().map(|err| Diagnostic {
       category: DiagnosticCategory::Error,
       code: 900001,
       start: None,
       end: None,
-      message_text: Some(e.to_string()),
+      message_text: Some(err.to_string()),
       message_chain: None,
       source: None,
       source_line: None,
-      file_name: Some(s.to_string()),
+      file_name: Some(err.specifier().to_string()),
       related_information: None,
     }));
   }

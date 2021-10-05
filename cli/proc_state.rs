@@ -408,15 +408,15 @@ impl ProcState {
     {
       if let Some(resolved) = map.get(specifier) {
         match resolved {
-          deno_graph::Resolved::Specifier(specifier, span) => {
+          Some(Ok((specifier, span))) => {
             let mut resolved_map = self.resolved_map.lock();
             resolved_map.insert(specifier.clone(), span.clone());
             return Ok(specifier.clone());
           }
-          deno_graph::Resolved::Err(err, span) => {
+          Some(Err(err)) => {
             return Err(custom_error(
               "TypeError",
-              format!("{}\n    at {}\n", err, span),
+              format!("{}", err.to_string_with_span()),
             ))
           }
           _ => (),

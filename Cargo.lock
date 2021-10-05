@@ -740,7 +740,7 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.14.0"
-source = "git+https://github.com/kitsonk/deno_doc?branch=cli_changes#b7ec3a0db1bd1f299033cdf4c11ddee81fd90181"
+source = "git+https://github.com/kitsonk/deno_doc?branch=cli_changes#fc8926a53beecb23d4e966c23763e0dba7a25540"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
@@ -782,7 +782,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.5.0"
-source = "git+https://github.com/kitsonk/deno_graph?branch=cli_changes#2d87856979cf4ba7c2a05f5fdfb47152a5d3eec2"
+source = "git+https://github.com/kitsonk/deno_graph?branch=cli_changes#148b22c11a3f9889ccb78318fde883e4fd0fe4d8"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",

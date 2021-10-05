@@ -698,13 +698,13 @@ impl std::error::Error for GraphError {}
 impl fmt::Display for GraphError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match &self.error {
-      ModuleGraphError::ResolutionError(err, span) => {
+      ModuleGraphError::ResolutionError(err) => {
         if matches!(
           err,
-          ResolutionError::InvalidDowngrade(_)
-            | ResolutionError::InvalidLocalImport(_)
+          ResolutionError::InvalidDowngrade(_, _)
+            | ResolutionError::InvalidLocalImport(_, _)
         ) {
-          write!(f, "{}\n    at {}", err, span)
+          write!(f, "{}", err.to_string_with_span())
         } else {
           self.error.fmt(f)
         }

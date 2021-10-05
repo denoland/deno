@@ -31,10 +31,10 @@ fn get_graph_error_class(err: &GraphError) -> &'static str {
 
 fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
   match err {
-    ModuleGraphError::LoadingErr(err) => get_error_class_name(err.as_ref()),
+    ModuleGraphError::LoadingErr(_, err) => get_error_class_name(err.as_ref()),
     ModuleGraphError::InvalidSource(_, _) => "SyntaxError",
-    ModuleGraphError::ParseErr(diagnostic) => get_diagnostic_class(diagnostic),
-    ModuleGraphError::ResolutionError(err, _) => {
+    ModuleGraphError::ParseErr(_, diagnostic) => get_diagnostic_class(diagnostic),
+    ModuleGraphError::ResolutionError(err) => {
       get_resolution_error_class(err)
     }
     ModuleGraphError::UnsupportedMediaType(_, _) => "TypeError",
@@ -44,7 +44,7 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
 
 fn get_resolution_error_class(err: &ResolutionError) -> &'static str {
   match err {
-    ResolutionError::ResolverError(err) => get_error_class_name(err.as_ref()),
+    ResolutionError::ResolverError(err, _, _) => get_error_class_name(err.as_ref()),
     _ => "TypeError",
   }
 }
