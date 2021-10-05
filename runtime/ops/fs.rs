@@ -1769,7 +1769,7 @@ async fn op_utime_async(
   .unwrap()
 }
 
-fn op_cwd(state: &mut OpState, _args: (), _: ()) -> Result<String, AnyError> {
+fn op_cwd(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
   let path = current_dir()?;
   state
     .borrow_mut::<Permissions>()

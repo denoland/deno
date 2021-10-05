@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
-use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
@@ -513,10 +512,8 @@ async fn op_http_response_close(
 async fn op_http_request_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: Option<ZeroCopyBuf>,
+  mut data: ZeroCopyBuf,
 ) -> Result<usize, AnyError> {
-  let mut data = data.ok_or_else(null_opbuf)?;
-
   let resource = state
     .borrow()
     .resource_table
@@ -565,9 +562,8 @@ async fn op_http_request_read(
 async fn op_http_response_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: Option<ZeroCopyBuf>,
+  data: ZeroCopyBuf,
 ) -> Result<(), AnyError> {
-  let buf = data.ok_or_else(null_opbuf)?;
   let resource = state
     .borrow()
     .resource_table
@@ -580,7 +576,7 @@ async fn op_http_response_write(
 
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
 
-  let mut send_data_fut = body.send_data(Vec::from(&*buf).into()).boxed_local();
+  let mut send_data_fut = body.send_data(data.to_vec().into()).boxed_local();
 
   poll_fn(|cx| {
     let r = send_data_fut.poll_unpin(cx).map_err(AnyError::from);

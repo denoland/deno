@@ -222,6 +222,9 @@ pub struct Flags {
   pub log_level: Option<Level>,
   pub no_check: bool,
   pub no_remote: bool,
+  /// If true, a list of Node built-in modules will be injected into
+  /// the import map.
+  pub compat: bool,
   pub prompt: bool,
   pub reload: bool,
   pub repl: bool,
@@ -1491,6 +1494,7 @@ fn runtime_args<'a, 'b>(
     .arg(v8_flags_arg())
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
+    .arg(compat_arg())
 }
 
 fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
@@ -1618,6 +1622,12 @@ fn seed_arg<'a, 'b>() -> Arg<'a, 'b> {
       Ok(_) => Ok(()),
       Err(_) => Err("Seed should be a number".to_string()),
     })
+}
+
+fn compat_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("compat")
+    .long("compat")
+    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs'.")
 }
 
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -2230,6 +2240,7 @@ fn runtime_args_parse(
   location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
+  compat_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
 }
@@ -2312,6 +2323,12 @@ fn seed_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
     flags.seed = Some(seed);
 
     flags.v8_flags.push(format!("--random-seed={}", seed));
+  }
+}
+
+fn compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
+  if matches.is_present("compat") {
+    flags.compat = true;
   }
 }
 
@@ -4432,5 +4449,20 @@ mod tests {
       .unwrap_err()
       .to_string()
       .contains("Expected protocol \"http\" or \"https\""));
+  }
+
+  #[test]
+  fn compat() {
+    let r = flags_from_vec(svec!["deno", "run", "--compat", "foo.js"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "foo.js".to_string(),
+        }),
+        compat: true,
+        ..Flags::default()
+      }
+    );
   }
 }
