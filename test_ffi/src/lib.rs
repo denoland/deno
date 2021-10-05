@@ -16,11 +16,6 @@ pub extern "C" fn print_buffer(ptr: *const u8, len: usize) {
 }
 
 #[no_mangle]
-pub extern "C" fn return_buffer() -> *const u8 {
-  [1, 2, 3, 4, 5, 6, 7, 8].as_ptr()
-}
-
-#[no_mangle]
 pub extern "C" fn add_u32(a: u32, b: u32) -> u32 {
   a + b
 }
