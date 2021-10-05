@@ -322,17 +322,21 @@ delete Object.prototype.__proto__;
       },
     },
     language: {
+      configurable: true,
+      enumerable: true,
       get() {
         webidl.assertBranded(this, Navigator);
-        return os.language()
-      }
+        return os.language();
+      },
     },
     languages: {
+      configurable: true,
+      enumerable: true,
       get() {
         webidl.assertBranded(this, Navigator);
-        return os.languages()
-      }
-    }
+        return os.languages();
+      },
+    },
   });
 
   class WorkerNavigator {
@@ -362,6 +366,22 @@ delete Object.prototype.__proto__;
       get() {
         webidl.assertBranded(this, Navigator);
         return numCpus;
+      },
+      language: {
+        configurable: true,
+        enumerable: true,
+        get() {
+          webidl.assertBranded(this, Navigator);
+          return os.language();
+        },
+      },
+      languages: {
+        configurable: true,
+        enumerable: true,
+        get() {
+          webidl.assertBranded(this, Navigator);
+          return os.languages();
+        },
       },
     },
   });
