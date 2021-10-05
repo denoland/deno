@@ -567,7 +567,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.14.2"
+version = "1.14.3"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -676,7 +676,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -685,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -695,14 +695,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.101.0"
+version = "0.102.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -721,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -756,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -772,12 +772,13 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "deno-libffi",
  "deno_core",
  "dlopen",
  "serde",
+ "tokio",
 ]
 
 [[package]]
@@ -802,7 +803,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "base64 0.13.0",
  "bytes",
@@ -834,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -847,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
@@ -892,7 +893,7 @@ dependencies = [
 
 [[package]]
 name = "deno_timers"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -904,7 +905,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "deno_core",
  "lazy_static",
@@ -918,7 +919,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -930,7 +931,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.50.0"
+version = "0.51.0"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
@@ -943,7 +944,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -954,14 +955,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -975,7 +976,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -1720,9 +1721,9 @@ checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 
 [[package]]
 name = "import_map"
-version = "0.3.0"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae79a7af71e92e4038963b64884106d28d508da6bf3c7f36294efcb3bb3b003d"
+checksum = "d315210af92bcde7a84672d5554fc2b4268c4d40dc9c930ae1d1ed765a8f6381"
 dependencies = [
  "indexmap",
  "log",
@@ -2965,9 +2966,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.30.0"
+version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbceb7583f5db95a57e4cbf43847f5cc95dedc60671d7f6b6ca7578caa058ea9"
+checksum = "edd0fa61ffbb34d8051afdcf1f9b5a08000106700477fd72c35ef77308edd36f"
 dependencies = [
  "bitflags",
  "fslock",
@@ -3169,9 +3170,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.13.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fd01a049079c0355135da2d05463ecc21b8af584f3a30288812643c0935960e"
+checksum = "8e8a7f7715016dc5eefc015fef0c86441b9fe18d70ea7bfffce171dee77e5782"
 dependencies = [
  "rusty_v8",
  "serde",

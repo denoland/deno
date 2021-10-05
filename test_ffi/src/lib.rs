@@ -1,5 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use std::thread::sleep;
+use std::time::Duration;
+
 #[no_mangle]
 pub extern "C" fn print_something() {
   println!("something");
@@ -55,4 +58,10 @@ pub extern "C" fn add_f32(a: f32, b: f32) -> f32 {
 #[no_mangle]
 pub extern "C" fn add_f64(a: f64, b: f64) -> f64 {
   a + b
+}
+
+#[no_mangle]
+pub extern "C" fn sleep_blocking(ms: u64) {
+  let duration = Duration::from_millis(ms);
+  sleep(duration);
 }

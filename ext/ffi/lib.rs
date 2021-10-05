@@ -3,6 +3,7 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
+use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -15,6 +16,7 @@ use dlopen::raw::Library;
 use libffi::middle::Arg;
 use serde::Deserialize;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ffi::c_void;
@@ -38,14 +40,7 @@ pub trait FfiPermissions {
   fn check(&mut self, path: &str) -> Result<(), AnyError>;
 }
 
-pub struct NoFfiPermissions;
-
-impl FfiPermissions for NoFfiPermissions {
-  fn check(&mut self, _path: &str) -> Result<(), AnyError> {
-    Ok(())
-  }
-}
-
+#[derive(Clone)]
 struct Symbol {
   cif: libffi::middle::Cif,
   ptr: libffi::middle::CodePtr,
@@ -53,6 +48,9 @@ struct Symbol {
   result_type: NativeType,
   result_length: Option<usize>,
 }
+
+unsafe impl Send for Symbol {}
+unsafe impl Sync for Symbol {}
 
 struct DynamicLibraryResource {
   lib: Library,
@@ -109,6 +107,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     .ops(vec![
       ("op_ffi_load", op_sync(op_ffi_load::<P>)),
       ("op_ffi_call", op_sync(op_ffi_call)),
+      ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
     ])
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
@@ -309,20 +308,7 @@ struct FfiCallArgs {
   buffers: Vec<ZeroCopyBuf>,
 }
 
-fn op_ffi_call(
-  state: &mut deno_core::OpState,
-  args: FfiCallArgs,
-  _: (),
-) -> Result<Value, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(args.rid)?;
-
-  let symbol = resource
-    .symbols
-    .get(&args.symbol)
-    .ok_or_else(bad_resource_id)?;
-
+fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
   let buffers: Vec<&[u8]> =
     args.buffers.iter().map(|buffer| &buffer[..]).collect();
 
@@ -396,4 +382,42 @@ fn op_ffi_call(
       }
     }
   })
+}
+
+fn op_ffi_call(
+  state: &mut deno_core::OpState,
+  args: FfiCallArgs,
+  _: (),
+) -> Result<Value, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let symbol = resource
+    .symbols
+    .get(&args.symbol)
+    .ok_or_else(bad_resource_id)?;
+
+  ffi_call(args, symbol)
+}
+
+/// A non-blocking FFI call.
+async fn op_ffi_call_nonblocking(
+  state: Rc<RefCell<deno_core::OpState>>,
+  args: FfiCallArgs,
+  _: (),
+) -> Result<Value, AnyError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+  let symbols = &resource.symbols;
+  let symbol = symbols
+    .get(&args.symbol)
+    .ok_or_else(bad_resource_id)?
+    .clone();
+
+  tokio::task::spawn_blocking(move || ffi_call(args, &symbol))
+    .await
+    .unwrap()
 }

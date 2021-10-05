@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use data_url::DataUrl;
-use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::Future;
@@ -118,19 +117,6 @@ pub struct HttpClientDefaults {
 pub trait FetchPermissions {
   fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
   fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
-}
-
-/// For use with `op_fetch` when the user does not want permissions.
-pub struct NoFetchPermissions;
-
-impl FetchPermissions for NoFetchPermissions {
-  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError> {
-    Ok(())
-  }
-
-  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError> {
-    Ok(())
-  }
 }
 
 pub fn get_declaration() -> PathBuf {
@@ -354,10 +340,9 @@ pub async fn op_fetch_send(
 pub async fn op_fetch_request_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: Option<ZeroCopyBuf>,
+  data: ZeroCopyBuf,
 ) -> Result<(), AnyError> {
-  let data = data.ok_or_else(null_opbuf)?;
-  let buf = Vec::from(&*data);
+  let buf = data.to_vec();
 
   let resource = state
     .borrow()
@@ -375,10 +360,8 @@ pub async fn op_fetch_request_write(
 pub async fn op_fetch_response_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: Option<ZeroCopyBuf>,
+  data: ZeroCopyBuf,
 ) -> Result<usize, AnyError> {
-  let data = data.ok_or_else(null_opbuf)?;
-
   let resource = state
     .borrow()
     .resource_table

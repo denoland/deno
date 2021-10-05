@@ -2,7 +2,6 @@
 
 use deno_core::error::custom_error;
 use deno_core::error::not_supported;
-use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
@@ -296,9 +295,8 @@ pub struct SignArg {
 pub async fn op_crypto_sign_key(
   _state: Rc<RefCell<OpState>>,
   args: SignArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -451,9 +449,8 @@ pub struct VerifyArg {
 pub async fn op_crypto_verify_key(
   _state: Rc<RefCell<OpState>>,
   args: VerifyArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<bool, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -599,7 +596,7 @@ pub struct ExportKeyArg {
 pub async fn op_crypto_export_key(
   _state: Rc<RefCell<OpState>>,
   args: ExportKeyArg,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {
@@ -731,9 +728,8 @@ pub struct DeriveKeyArg {
 pub async fn op_crypto_derive_bits(
   _state: Rc<RefCell<OpState>>,
   args: DeriveKeyArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let salt = &*zero_copy;
   let algorithm = args.algorithm;
   match algorithm {
@@ -798,9 +794,8 @@ pub struct EncryptArg {
 pub async fn op_crypto_encrypt_key(
   _state: Rc<RefCell<OpState>>,
   args: EncryptArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -1035,9 +1030,8 @@ pub struct ImportKeyResult {
 pub async fn op_crypto_import_key(
   _state: Rc<RefCell<OpState>>,
   args: ImportKeyArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ImportKeyResult, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -1359,9 +1353,8 @@ pub struct DecryptArg {
 pub async fn op_crypto_decrypt_key(
   _state: Rc<RefCell<OpState>>,
   args: DecryptArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -1431,11 +1424,10 @@ pub fn op_crypto_random_uuid(
 pub async fn op_crypto_subtle_digest(
   _state: Rc<RefCell<OpState>>,
   algorithm: CryptoHash,
-  data: Option<ZeroCopyBuf>,
+  data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let input = data.ok_or_else(null_opbuf)?;
   let output = tokio::task::spawn_blocking(move || {
-    digest::digest(algorithm.into(), &input)
+    digest::digest(algorithm.into(), &data)
       .as_ref()
       .to_vec()
       .into()

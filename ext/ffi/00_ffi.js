@@ -15,6 +15,8 @@
       this.#rid = core.opSync("op_ffi_load", { path, symbols });
 
       for (const symbol in symbols) {
+        const isNonBlocking = symbols[symbol].nonblocking;
+
         this.symbols[symbol] = (...args) => {
           const parameters = [];
           const buffers = [];
@@ -31,12 +33,15 @@
             }
           }
 
-          return core.opSync("op_ffi_call", {
-            rid: this.#rid,
-            symbol,
-            parameters,
-            buffers,
-          });
+          if (isNonBlocking) {
+            core.opAsync("op_ffi_call_nonblocking", {
+              rid: this.#rid,
+              symbol,
+              parameters,
+            });
+          } else {
+            core.opSync("op_ffi_call", { rid: this.#rid, symbol, parameters });
+          }
         };
       }
     }
