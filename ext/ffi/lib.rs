@@ -18,9 +18,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ffi::c_void;
-use std::ffi::CStr;
-use std::ffi::CString;
-use std::os::raw::c_char;
 use std::rc::Rc;
 
 pub struct Unstable(pub bool);
@@ -137,7 +134,6 @@ enum NativeType {
   ISize,
   F32,
   F64,
-  String,
   Buffer,
 }
 
@@ -157,7 +153,6 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::ISize => libffi::middle::Type::isize(),
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
-      NativeType::String => libffi::middle::Type::pointer(),
       NativeType::Buffer => libffi::middle::Type::pointer(),
     }
   }
@@ -179,7 +174,6 @@ impl From<String> for NativeType {
       "isize" => NativeType::ISize,
       "f32" => NativeType::F32,
       "f64" => NativeType::F64,
-      "string" => NativeType::String,
       "buffer" => NativeType::Buffer,
       _ => unimplemented!(),
     }
@@ -200,7 +194,6 @@ enum NativeValue {
   ISize(isize),
   F32(f32),
   F64(f64),
-  String(*const i8),
   Buffer(*const u8),
 }
 
@@ -220,15 +213,6 @@ impl NativeValue {
       NativeType::ISize => Self::ISize(value_as_int::<isize>(value)),
       NativeType::F32 => Self::F32(value_as_f32(value)),
       NativeType::F64 => Self::F64(value_as_f64(value)),
-      NativeType::String => Self::String(
-        CString::new(
-          value
-            .as_str()
-            .expect("Expected ffi arg value to be a string"),
-        )
-        .unwrap()
-        .into_raw(),
-      ),
       NativeType::Buffer => unreachable!(),
     }
   }
@@ -248,7 +232,6 @@ impl NativeValue {
       Self::ISize(value) => Arg::new(value),
       Self::F32(value) => Arg::new(value),
       Self::F64(value) => Arg::new(value),
-      Self::String(value) => Arg::new(value),
       Self::Buffer(value) => Arg::new(value),
     }
   }
@@ -402,13 +385,6 @@ fn op_ffi_call(
     }
     NativeType::F64 => {
       json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
-    }
-    NativeType::String => {
-      json!(unsafe {
-        let ptr = symbol.cif.call::<*const c_char>(symbol.ptr, &call_args);
-        let cstr = CStr::from_ptr(ptr);
-        cstr.to_str().unwrap()
-      })
     }
     NativeType::Buffer => {
       let ptr = unsafe { symbol.cif.call::<*const u8>(symbol.ptr, &call_args) };

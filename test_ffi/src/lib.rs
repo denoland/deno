@@ -1,5 +1,4 @@
-use std::ffi::{CStr, CString};
-use std::os::raw::c_char;
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 #[no_mangle]
 pub extern "C" fn print_something() {
@@ -8,23 +7,9 @@ pub extern "C" fn print_something() {
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
-pub extern "C" fn print_string(ptr: *const c_char) {
-  let cstr = unsafe { CStr::from_ptr(ptr) };
-  let name = cstr.to_str().unwrap();
-  println!("{}", name);
-}
-
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
 pub extern "C" fn print_buffer(ptr: *const u8, len: usize) {
   let buf = unsafe { std::slice::from_raw_parts(ptr, len) };
   println!("{:?}", buf);
-}
-
-#[no_mangle]
-pub extern "C" fn return_string() -> *const c_char {
-  let cstring = CString::new("Hello from test ffi!").unwrap();
-  cstring.into_raw()
 }
 
 #[no_mangle]

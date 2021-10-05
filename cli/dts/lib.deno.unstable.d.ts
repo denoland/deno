@@ -118,18 +118,15 @@ declare namespace Deno {
     | "isize"
     | "f32"
     | "f64"
-    | "string"
     | "buffer";
 
   /** A foreign function as defined by its parameter and result types */
-  export type ForeignFunction = {
+  export interface ForeignFunction {
     parameters: NativeType[];
     result: NativeType;
-  } | {
-    parameters: NativeType[];
-    result: "buffer";
+    /** Only present if `result` is of type "buffer". */
     resultLength?: number;
-  };
+  }
 
   /** A dynamic library resource */
   export interface DynamicLibrary<S extends Record<string, ForeignFunction>> {

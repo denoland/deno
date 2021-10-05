@@ -12,9 +12,7 @@ const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 const resourcesPre = Deno.resources();
 const dylib = Deno.dlopen(libPath, {
   "print_something": { parameters: [], result: "void" },
-  "print_string": { parameters: ["string"], result: "void" },
   "print_buffer": { parameters: ["buffer", "usize"], result: "void" },
-  "return_string": { parameters: [], result: "string" },
   "return_buffer": { parameters: [], result: "buffer", resultLength: 8 },
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "add_i32": { parameters: ["i32", "i32"], result: "i32" },
@@ -27,10 +25,8 @@ const dylib = Deno.dlopen(libPath, {
 });
 
 dylib.symbols.print_something();
-dylib.symbols.print_string("hello from deno!");
 const buffer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 dylib.symbols.print_buffer(buffer, buffer.length);
-console.log(dylib.symbols.return_string());
 console.log("[" + dylib.symbols.return_buffer().join(", ") + "]");
 console.log(dylib.symbols.add_u32(123, 456));
 console.log(dylib.symbols.add_i32(123, 456));
