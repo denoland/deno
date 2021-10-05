@@ -260,7 +260,7 @@ finishing test case.`;
     ArrayPrototypePush(tests, testDef);
   }
 
-  function formatFailure(error) {
+  function formatError(error) {
     if (error.errors) {
       const message = error
         .errors
@@ -269,12 +269,10 @@ finishing test case.`;
         )
         .join("\n");
 
-      return {
-        failed: error.name + "\n" + message + error.stack,
-      };
+      return error.name + "\n" + message + error.stack;
     }
 
-    return { failed: inspectArgs([error]) };
+    return inspectArgs([error]);
   }
 
   function createTestFilter(filter) {
@@ -315,14 +313,16 @@ finishing test case.`;
       await test.fn(step);
       const failCount = step.failedChildStepsCount();
       return failCount === 0 ? "ok" : {
-        "failed": inspectArgs([
+        "failed": formatError(
           new Error(
             `${failCount} test step${failCount === 1 ? "" : "s"} failed.`,
           ),
-        ]),
+        ),
       };
     } catch (error) {
-      return formatFailure(error);
+      return {
+        "failed": formatError(error),
+      };
     } finally {
       // ensure the children report their result
       for (const child of step.children) {
@@ -577,11 +577,11 @@ finishing test case.`;
           return "ignored";
         case "pending":
           return {
-            "pending": this.error && inspectArgs([this.error]),
+            "pending": this.error && formatError(this.error),
           };
         case "failed":
           return {
-            "failed": this.error && inspectArgs([this.error]),
+            "failed": this.error && formatError(this.error),
           };
         default:
           throw new Error(`Unhandled status: ${this.status}`);
@@ -673,7 +673,7 @@ finishing test case.`;
               subStep.status = "ok";
             }
           } catch (error) {
-            subStep.error = inspectArgs([error]);
+            subStep.error = formatError(error);
             subStep.status = "failed";
           }
 
