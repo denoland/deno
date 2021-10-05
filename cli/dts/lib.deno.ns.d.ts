@@ -2059,6 +2059,54 @@ declare namespace Deno {
    * Requires `allow-run` permission. */
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
 
+  interface CommandOptions {
+    args?: string[];
+    cwd?: string | URL;
+    clearEnv?: boolean;
+    env?: Record<string, string>;
+    gid?: number;
+    uid?: number;
+  }
+
+  interface ProcessIoOptions {
+    stdin?: "piped" | "inherit" | "null";
+    stdout?: "piped" | "inherit" | "null";
+    stderr?: "piped" | "inherit" | "null";
+  }
+
+  class Command {
+    constructor(command: string | URL, options?: CommandOptions);
+
+    spawn<T extends ProcessIoOptions = ProcessIoOptions>(options?: T): Child<T>;
+    status(options?: {
+      stdout?: "inherit" | "null";
+      stderr?: "inherit" | "null";
+    }): Promise<ProcessStatus>;
+    output(): Promise<CommandOutput<{ stdin: "piped"; stderr: "piped" }>>;
+  }
+
+  class Child<T extends ProcessIoOptions = ProcessIoOptions> {
+    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
+      : null;
+    readonly stdout: T["stdout"] extends "piped" ? ReadableStream<Uint8Array>
+      : null;
+    readonly stderr: T["stderr"] extends "piped" ? ReadableStream<Uint8Array>
+      : null;
+
+    readonly pid: number;
+    readonly status: ProcessStatus | null;
+
+    wait(): Promise<ProcessStatus>;
+    output(): Promise<CommandOutput>;
+    kill(signo: number): void;
+  }
+
+  interface CommandOutput<T extends ProcessIoOptions = ProcessIoOptions> {
+    status: ProcessStatus;
+    stdout: T["stdin"] extends "piped" ? Uint8Array : null;
+    stderr: T["stderr"] extends "piped" ? Uint8Array : null;
+  }
+
   export interface InspectOptions {
     /** Stylize output with ANSI colors. Defaults to false. */
     colors?: boolean;
