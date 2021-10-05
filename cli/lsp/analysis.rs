@@ -140,19 +140,21 @@ pub fn get_lint_references(
   maybe_config_file: Option<&ConfigFile>,
 ) -> Result<Vec<Reference>, AnyError> {
   let syntax = deno_ast::get_syntax(parsed_source.media_type());
-  let lint_config = if let Some(config_file) = maybe_config_file {
-    config_file
-      .to_lint_config()
-      .map_err(|err| {
-        error!("Unable to parse lint configuration: {}", err);
-        err
-      })?
-      .unwrap_or_default()
+  let maybe_lint_config = if let Some(config_file) = maybe_config_file {
+    Some(
+      config_file
+        .to_lint_config()
+        .map_err(|err| {
+          error!("Unable to parse lint configuration: {}", err);
+          err
+        })?
+        .unwrap_or_default(),
+    )
   } else {
-    Default::default()
+    None
   };
   let lint_rules =
-    get_configured_rules(Some(&lint_config), vec![], vec![], vec![])?;
+    get_configured_rules(maybe_lint_config.as_ref(), vec![], vec![], vec![])?;
   let linter = create_linter(syntax, lint_rules);
   // TODO(dsherret): do not re-parse here again
   let (_, lint_diagnostics) = linter.lint(
