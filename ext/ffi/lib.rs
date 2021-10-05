@@ -445,10 +445,10 @@ fn op_ffi_call(
 
 #[cfg(test)]
 mod tests {
-  use super::format_error;
-
   #[cfg(target_os = "windows")]
   fn test_format_error() {
+    use super::format_error;
+
     // BAD_EXE_FORMAT
     let err = dlopen::Error::OpeningLibraryError(
       std::io::Error::from_raw_os_error(0x000000C1),
