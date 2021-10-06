@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::compat;
 use crate::config_file::ConfigFile;
 use crate::deno_dir;
 use crate::file_fetcher::CacheSetting;
@@ -15,7 +16,6 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
-use crate::compat;
 
 use deno_core::error::anyhow;
 use deno_core::error::get_custom_error_class;
