@@ -370,8 +370,8 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(&path)?;
 
-  let lib =
-    Library::open(&path).map_err(|e| AnyError::from(anyhow!(format_error(e, path))))?;
+  let lib = Library::open(&path)
+    .map_err(|e| AnyError::from(anyhow!(format_error(e, path))))?;
 
   let mut resource = DynamicLibraryResource {
     lib,
