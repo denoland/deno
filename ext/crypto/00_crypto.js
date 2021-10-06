@@ -1513,13 +1513,13 @@
       const result = await deriveBits(normalizedAlgorithm, baseKey, length);
       // 7.
       if (normalizedAlgorithm.name !== baseKey[_algorithm].name) {
-        throw new DOMException("InvalidAccessError", "Invalid algorithm name");
+        throw new DOMException("Invalid algorithm name", "InvalidAccessError");
       }
       // 8.
       if (!ArrayPrototypeIncludes(baseKey[_usages], "deriveBits")) {
         throw new DOMException(
-          "InvalidAccessError",
           "baseKey usages does not contain `deriveBits`",
+          "InvalidAccessError",
         );
       }
       // 9-10.
