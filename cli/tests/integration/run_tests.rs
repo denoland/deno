@@ -1908,7 +1908,7 @@ itest!(long_data_url_formatting {
 fn navigator_language_unix() {
   let (res, _) = util::run_and_collect_output(
     true,
-    "run --allow-env navigator_language.ts",
+    "run navigator_language.ts",
     None,
     Some(vec![("LANG".to_owned(), "en-US".to_owned())]),
     false,
@@ -1920,7 +1920,7 @@ fn navigator_language_unix() {
 fn navigator_language() {
   let (res, _) = util::run_and_collect_output(
     true,
-    "run --allow-env navigator_language.ts",
+    "run navigator_language.ts",
     None,
     None,
     false,

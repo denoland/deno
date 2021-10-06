@@ -127,11 +127,10 @@ fn op_loadavg(
 }
 
 fn op_languages(
-  state: &mut OpState,
+  _state: &mut OpState,
   _args: (),
   _: (),
 ) -> Result<Vec<String>, AnyError> {
-  state.borrow_mut::<Permissions>().env.check_all()?;
   Ok(
     Locale::user_default()
       .tags()
