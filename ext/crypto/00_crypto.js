@@ -1583,16 +1583,16 @@
       // 11.
       if (normalizedAlgorithm.name !== baseKey[_algorithm].name) {
         throw new DOMException(
-          "InvalidAccessError",
           "Invalid algorithm name",
+          "InvalidAccessError",
         );
       }
 
       // 12.
       if (!ArrayPrototypeIncludes(baseKey[_usages], "deriveKey")) {
         throw new DOMException(
-          "InvalidAccessError",
           "baseKey usages does not contain `deriveKey`",
+          "InvalidAccessError",
         );
       }
 
