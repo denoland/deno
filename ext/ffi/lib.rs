@@ -1,5 +1,6 @@
 // Copyright 2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::anyhow;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
@@ -279,6 +280,82 @@ struct FfiLoadArgs {
   symbols: HashMap<String, ForeignFunction>,
 }
 
+// `path` is only used on Windows.
+#[allow(unused_variables)]
+pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
+  match e {
+    #[cfg(target_os = "windows")]
+    // This calls FormatMessageW with library path
+    // as replacement for the insert sequences.
+    // Unlike libstd which passes the FORMAT_MESSAGE_IGNORE_INSERTS
+    // flag without any arguments.
+    //
+    // https://github.com/denoland/deno/issues/11632
+    dlopen::Error::OpeningLibraryError(e) => {
+      use std::ffi::OsStr;
+      use std::os::windows::ffi::OsStrExt;
+      use winapi::shared::minwindef::DWORD;
+      use winapi::shared::ntdef::WCHAR;
+      use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
+      use winapi::um::errhandlingapi::GetLastError;
+      use winapi::um::winbase::FormatMessageW;
+      use winapi::um::winbase::FORMAT_MESSAGE_ARGUMENT_ARRAY;
+      use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
+      use winapi::um::winnt::LANG_SYSTEM_DEFAULT;
+      use winapi::um::winnt::MAKELANGID;
+      use winapi::um::winnt::SUBLANG_SYS_DEFAULT;
+
+      let err_num = match e.raw_os_error() {
+        Some(err_num) => err_num,
+        // This should never hit unless dlopen changes its error type.
+        None => return e.to_string(),
+      };
+
+      // Language ID (0x0800)
+      let lang_id =
+        MAKELANGID(LANG_SYSTEM_DEFAULT, SUBLANG_SYS_DEFAULT) as DWORD;
+
+      let mut buf = vec![0 as WCHAR; 500];
+
+      let path = OsStr::new(&path)
+        .encode_wide()
+        .chain(Some(0).into_iter())
+        .collect::<Vec<_>>();
+
+      let arguments = [path.as_ptr()];
+
+      loop {
+        unsafe {
+          let length = FormatMessageW(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY,
+            std::ptr::null_mut(),
+            err_num as DWORD,
+            lang_id as DWORD,
+            buf.as_mut_ptr(),
+            buf.len() as DWORD,
+            arguments.as_ptr() as _,
+          );
+
+          if length == 0 {
+            let err_num = GetLastError();
+            if err_num == ERROR_INSUFFICIENT_BUFFER {
+              buf.resize(buf.len() * 2, 0);
+              continue;
+            }
+
+            // Something went wrong, just return the original error.
+            return e.to_string();
+          }
+
+          let msg = String::from_utf16_lossy(&buf[..length as usize]);
+          return msg;
+        }
+      }
+    }
+    _ => e.to_string(),
+  }
+}
+
 fn op_ffi_load<FP>(
   state: &mut deno_core::OpState,
   args: FfiLoadArgs,
@@ -287,11 +364,14 @@ fn op_ffi_load<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  let path = args.path;
+
   check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(&args.path)?;
+  permissions.check(&path)?;
 
-  let lib = Library::open(args.path)?;
+  let lib = Library::open(&path).map_err(|e| anyhow!(format_error(e, path)))?;
+
   let mut resource = DynamicLibraryResource {
     lib,
     symbols: HashMap::new(),
@@ -421,4 +501,22 @@ async fn op_ffi_call_nonblocking(
   tokio::task::spawn_blocking(move || ffi_call(args, &symbol))
     .await
     .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+  #[cfg(target_os = "windows")]
+  #[test]
+  fn test_format_error() {
+    use super::format_error;
+
+    // BAD_EXE_FORMAT
+    let err = dlopen::Error::OpeningLibraryError(
+      std::io::Error::from_raw_os_error(0x000000C1),
+    );
+    assert_eq!(
+      format_error(err, "foo.dll".to_string()),
+      "foo.dll is not a valid Win32 application.\r\n".to_string(),
+    );
+  }
 }
