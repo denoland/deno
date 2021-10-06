@@ -12,7 +12,6 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use dlopen::raw::Library;
 use libffi::middle::Arg;
 use serde::Deserialize;
@@ -133,7 +132,6 @@ enum NativeType {
   ISize,
   F32,
   F64,
-  Buffer,
 }
 
 impl From<NativeType> for libffi::middle::Type {
@@ -152,7 +150,6 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::ISize => libffi::middle::Type::isize(),
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
-      NativeType::Buffer => libffi::middle::Type::pointer(),
     }
   }
 }
@@ -172,7 +169,6 @@ union NativeValue {
   isize_value: isize,
   f32_value: f32,
   f64_value: f64,
-  buffer: *const u8,
 }
 
 impl NativeValue {
@@ -215,12 +211,7 @@ impl NativeValue {
       NativeType::F64 => Self {
         f64_value: value_as_f64(value),
       },
-      NativeType::Buffer => unreachable!(),
     }
-  }
-
-  fn buffer(ptr: *const u8) -> Self {
-    Self { buffer: ptr }
   }
 
   unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
@@ -238,7 +229,6 @@ impl NativeValue {
       NativeType::ISize => Arg::new(&self.isize_value),
       NativeType::F32 => Arg::new(&self.f32_value),
       NativeType::F64 => Arg::new(&self.f64_value),
-      NativeType::Buffer => Arg::new(&self.buffer),
     }
   }
 }
@@ -268,7 +258,6 @@ fn value_as_f64(value: Value) -> f64 {
 }
 
 #[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
 struct ForeignFunction {
   parameters: Vec<NativeType>,
   result: NativeType,
@@ -384,32 +373,20 @@ where
   Ok(state.resource_table.add(resource))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct FfiCallArgs {
   rid: ResourceId,
   symbol: String,
   parameters: Vec<Value>,
-  buffers: Vec<ZeroCopyBuf>,
 }
 
 fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
-  let buffers: Vec<&[u8]> =
-    args.buffers.iter().map(|buffer| &buffer[..]).collect();
-
   let native_values = symbol
     .parameter_types
     .iter()
     .zip(args.parameters.into_iter())
-    .map(|(&native_type, value)| {
-      if let NativeType::Buffer = native_type {
-        let idx: usize = value_as_uint(value);
-        let ptr = buffers[idx].as_ptr();
-        NativeValue::buffer(ptr)
-      } else {
-        NativeValue::new(native_type, value)
-      }
-    })
+    .map(|(&native_type, value)| NativeValue::new(native_type, value))
     .collect::<Vec<_>>();
 
   let call_args = symbol
@@ -461,7 +438,6 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     NativeType::F64 => {
       json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
     }
-    NativeType::Buffer => unreachable!(),
   })
 }
 
