@@ -222,7 +222,8 @@ pub async fn op_crypto_generate_key(
     | Algorithm::AesGcm
     | Algorithm::AesKw => {
       let length = args.length.ok_or_else(not_supported)?;
-      let mut key_data = vec![0u8; length];
+      // Caller must guarantee divisibility by 8
+      let mut key_data = vec![0u8; length / 8];
       let rng = RingRand::SystemRandom::new();
       rng.fill(&mut key_data).map_err(|_| {
         custom_error("DOMExceptionOperationError", "Key generation failed")
