@@ -1,9 +1,4 @@
-import {
-  assert,
-  assertEquals,
-  assertThrowsAsync,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, assertRejects, unitTest } from "./test_util.ts";
 
 // https://github.com/denoland/deno/issues/11664
 unitTest(async function testImportArrayBufferKey() {
@@ -141,7 +136,7 @@ unitTest(async function testEncryptDecrypt() {
     const badPlainText = new Uint8Array(plainText.byteLength + 1);
     badPlainText.set(plainText, 0);
     badPlainText.set(new Uint8Array([32]), plainText.byteLength);
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       // Should fail
       await subtle.encrypt(
         encryptAlgorithm,
@@ -189,7 +184,7 @@ unitTest(async function testGenerateHMACKey() {
   assert(key.usages.includes("sign"));
 });
 
-unitTest(async function testSignECDSA() {
+unitTest(async function testECDSASignVerify() {
   const key = await window.crypto.subtle.generateKey(
     {
       name: "ECDSA",
@@ -208,6 +203,56 @@ unitTest(async function testSignECDSA() {
   );
 
   assert(signature);
+  assert(signature instanceof ArrayBuffer);
+
+  const verified = await window.crypto.subtle.verify(
+    { hash: { name: "SHA-384" }, name: "ECDSA" },
+    key.publicKey,
+    signature,
+    encoded,
+  );
+  assert(verified);
+});
+
+// Tests the "bad paths" as a temporary replacement for sign_verify/ecdsa WPT.
+unitTest(async function testECDSASignVerifyFail() {
+  const key = await window.crypto.subtle.generateKey(
+    {
+      name: "ECDSA",
+      namedCurve: "P-384",
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+  const encoded = new Uint8Array([1]);
+  // Signing with a public key (InvalidAccessError)
+  await assertRejects(async () => {
+    await window.crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-384" },
+      key.publicKey,
+      new Uint8Array([1]),
+    );
+    throw new TypeError("unreachable");
+  }, DOMException);
+
+  // Do a valid sign for later verifying.
+  const signature = await window.crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-384" },
+    key.privateKey,
+    encoded,
+  );
+
+  // Verifying with a private key (InvalidAccessError)
+  await assertRejects(async () => {
+    await window.crypto.subtle.verify(
+      { hash: { name: "SHA-384" }, name: "ECDSA" },
+      key.privateKey,
+      signature,
+      encoded,
+    );
+    throw new TypeError("unreachable");
+  }, DOMException);
 });
 
 // https://github.com/denoland/deno/issues/11313
@@ -305,4 +350,210 @@ unitTest(async function subtleCryptoHmacImportExport() {
 
   const exportedKey2 = await crypto.subtle.exportKey("jwk", key2);
   assertEquals(exportedKey2, jwk);
+});
+
+// https://github.com/denoland/deno/issues/12085
+unitTest(async function generateImportHmacJwk() {
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "HMAC",
+      hash: "SHA-512",
+    },
+    true,
+    ["sign"],
+  );
+  assert(key);
+  assertEquals(key.type, "secret");
+  assertEquals(key.extractable, true);
+  assertEquals(key.usages, ["sign"]);
+
+  const exportedKey = await crypto.subtle.exportKey("jwk", key);
+  assertEquals(exportedKey.kty, "oct");
+  assertEquals(exportedKey.alg, "HS512");
+  assertEquals(exportedKey.key_ops, ["sign"]);
+  assertEquals(exportedKey.ext, true);
+  assert(typeof exportedKey.k == "string");
+  assertEquals(exportedKey.k.length, 171);
+});
+
+// 2048-bits publicExponent=65537
+const pkcs8TestVectors = [
+  // rsaEncryption
+  { pem: "cli/tests/testdata/webcrypto/id_rsaEncryption.pem", hash: "SHA-256" },
+  // id-RSASSA-PSS (sha256)
+  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_md:sha256 -out id_rsassaPss.pem`
+  { pem: "cli/tests/testdata/webcrypto/id_rsassaPss.pem", hash: "SHA-256" },
+  // id-RSASSA-PSS (default parameters)
+  // `openssl genpkey -algorithm rsa-pss -out id_rsassaPss.pem`
+  {
+    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_default.pem",
+    hash: "SHA-1",
+  },
+  // id-RSASSA-PSS (default hash)
+  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_saltlen:30 -out rsaPss_saltLen_30.pem`
+  {
+    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_saltLen_30.pem",
+    hash: "SHA-1",
+  },
+];
+
+unitTest({ permissions: { read: true } }, async function importRsaPkcs8() {
+  const pemHeader = "-----BEGIN PRIVATE KEY-----";
+  const pemFooter = "-----END PRIVATE KEY-----";
+  for (const { pem, hash } of pkcs8TestVectors) {
+    const keyFile = await Deno.readTextFile(pem);
+    const pemContents = keyFile.substring(
+      pemHeader.length,
+      keyFile.length - pemFooter.length,
+    );
+    const binaryDerString = atob(pemContents);
+    const binaryDer = new Uint8Array(binaryDerString.length);
+    for (let i = 0; i < binaryDerString.length; i++) {
+      binaryDer[i] = binaryDerString.charCodeAt(i);
+    }
+
+    const key = await crypto.subtle.importKey(
+      "pkcs8",
+      binaryDer,
+      { name: "RSA-PSS", hash },
+      true,
+      ["sign"],
+    );
+
+    assert(key);
+    assertEquals(key.type, "private");
+    assertEquals(key.extractable, true);
+    assertEquals(key.usages, ["sign"]);
+    const algorithm = key.algorithm as RsaHashedKeyAlgorithm;
+    assertEquals(algorithm.name, "RSA-PSS");
+    assertEquals(algorithm.hash.name, hash);
+    assertEquals(algorithm.modulusLength, 2048);
+    assertEquals(algorithm.publicExponent, new Uint8Array([1, 0, 1]));
+  }
+});
+
+// deno-fmt-ignore
+const asn1AlgorithmIdentifier = new Uint8Array([
+  0x02, 0x01, 0x00, // INTEGER
+  0x30, 0x0d, // SEQUENCE (2 elements)
+  0x06, 0x09, // OBJECT IDENTIFIER
+  0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, // 1.2.840.113549.1.1.1 (rsaEncryption)
+  0x05, 0x00, // NULL
+]);
+
+unitTest(async function rsaExportPkcs8() {
+  for (const algorithm of ["RSASSA-PKCS1-v1_5", "RSA-PSS", "RSA-OAEP"]) {
+    const keyPair = await crypto.subtle.generateKey(
+      {
+        name: algorithm,
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      true,
+      algorithm !== "RSA-OAEP" ? ["sign", "verify"] : ["encrypt", "decrypt"],
+    );
+
+    assert(keyPair.privateKey);
+    assert(keyPair.publicKey);
+    assertEquals(keyPair.privateKey.extractable, true);
+
+    const exportedKey = await crypto.subtle.exportKey(
+      "pkcs8",
+      keyPair.privateKey,
+    );
+
+    assert(exportedKey);
+    assert(exportedKey instanceof ArrayBuffer);
+
+    const pkcs8 = new Uint8Array(exportedKey);
+    assert(pkcs8.length > 0);
+
+    assertEquals(
+      pkcs8.slice(4, asn1AlgorithmIdentifier.byteLength + 4),
+      asn1AlgorithmIdentifier,
+    );
+  }
+});
+
+unitTest(async function testHkdfDeriveBits() {
+  const rawKey = await crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    rawKey,
+    { name: "HKDF", hash: "SHA-256" },
+    false,
+    ["deriveBits"],
+  );
+  const salt = await crypto.getRandomValues(new Uint8Array(16));
+  const info = await crypto.getRandomValues(new Uint8Array(16));
+  const result = await crypto.subtle.deriveBits(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: salt,
+      info: info,
+    },
+    key,
+    128,
+  );
+  assertEquals(result.byteLength, 128 / 8);
+});
+
+unitTest(async function testWrapKey() {
+  // Test wrapKey
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "RSA-OAEP",
+      modulusLength: 4096,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["wrapKey", "unwrapKey"],
+  );
+
+  const hmacKey = await crypto.subtle.generateKey(
+    {
+      name: "HMAC",
+      hash: "SHA-256",
+      length: 128,
+    },
+    true,
+    ["sign"],
+  );
+
+  const wrappedKey = await crypto.subtle.wrapKey(
+    "raw",
+    hmacKey,
+    key.publicKey,
+    {
+      name: "RSA-OAEP",
+      label: new Uint8Array(8),
+    },
+  );
+
+  assert(wrappedKey instanceof ArrayBuffer);
+  assertEquals(wrappedKey.byteLength, 512);
+});
+
+// Doesn't need to cover all cases.
+// Only for testing types.
+unitTest(async function testAesKeyGen() {
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "AES-GCM",
+      length: 256,
+    },
+    true,
+    ["encrypt", "decrypt"],
+  );
+
+  assert(key);
+  assertEquals(key.type, "secret");
+  assertEquals(key.extractable, true);
+  assertEquals(key.usages, ["encrypt", "decrypt"]);
+  const algorithm = key.algorithm as AesKeyAlgorithm;
+  assertEquals(algorithm.name, "AES-GCM");
+  assertEquals(algorithm.length, 256);
 });

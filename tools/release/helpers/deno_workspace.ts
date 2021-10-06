@@ -141,15 +141,15 @@ export class DenoWorkspaceCrate {
 
     console.log(`Publishing ${this.name} ${this.version}...`);
 
-    // Sometimes a publish may fail due to local caching issues.
-    // Usually it will fix itself after retrying so try a few
-    // times before failing hard.
+    // Sometimes a publish may fail due to the crates.io index
+    // not being updated yet. Usually it will be resolved after
+    // retrying, so try a few times before failing hard.
     return await withRetries({
       action: async () => {
         await cargo.publishCrate(this.directoryPath);
         return true;
       },
-      retryCount: 3,
+      retryCount: 5,
       retryDelaySeconds: 10,
     });
   }

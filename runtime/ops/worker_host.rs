@@ -65,7 +65,8 @@ pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, Sendable
 pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 
 pub struct WorkerThread {
-  join_handle: JoinHandle<Result<(), AnyError>>,
+  // It's an Option so we can take the value before dropping the WorkerThread.
+  join_handle: Option<JoinHandle<Result<(), AnyError>>>,
   worker_handle: WebWorkerHandle,
 
   // A WorkerThread that hasn't been explicitly terminated can only be removed
@@ -73,6 +74,34 @@ pub struct WorkerThread {
   // control and message channels. See `close_channel`.
   ctrl_closed: bool,
   message_closed: bool,
+}
+
+impl WorkerThread {
+  fn terminate(mut self) {
+    self.worker_handle.clone().terminate();
+    self
+      .join_handle
+      .take()
+      .unwrap()
+      .join()
+      .expect("Worker thread panicked")
+      .expect("Panic in worker event loop");
+
+    // Optimization so the Drop impl doesn't try to terminate the worker handle
+    // again.
+    self.ctrl_closed = true;
+    self.message_closed = true;
+  }
+}
+
+impl Drop for WorkerThread {
+  fn drop(&mut self) {
+    // If either of the channels is closed, the worker thread has at least
+    // started closing, and its event loop won't start another run.
+    if !(self.ctrl_closed || self.message_closed) {
+      self.worker_handle.clone().terminate();
+    }
+  }
 }
 
 pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
@@ -194,7 +223,10 @@ fn merge_env_permission(
 ) -> Result<UnaryPermission<EnvDescriptor>, AnyError> {
   if let Some(worker) = worker {
     if (worker.global_state < main.global_state)
-      || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
+      || !worker
+        .granted_list
+        .iter()
+        .all(|x| main.check(x.as_ref()).is_ok())
     {
       return Err(custom_error(
         "PermissionDenied",
@@ -419,11 +451,7 @@ where
 
   Ok(Some(UnaryPermission::<EnvDescriptor> {
     global_state: value.global_state,
-    granted_list: value
-      .paths
-      .into_iter()
-      .map(|env| EnvDescriptor(env.to_uppercase()))
-      .collect(),
+    granted_list: value.paths.into_iter().map(EnvDescriptor::new).collect(),
     ..Default::default()
   }))
 }
@@ -557,7 +585,7 @@ fn op_create_worker(
   let worker_handle = handle_receiver.recv().unwrap()?;
 
   let worker_thread = WorkerThread {
-    join_handle,
+    join_handle: Some(join_handle),
     worker_handle: worker_handle.into(),
     ctrl_closed: false,
     message_closed: false,
@@ -578,12 +606,7 @@ fn op_host_terminate_worker(
   _: (),
 ) -> Result<(), AnyError> {
   if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
-    worker_thread.worker_handle.terminate();
-    worker_thread
-      .join_handle
-      .join()
-      .expect("Panic in worker thread")
-      .expect("Panic in worker event loop");
+    worker_thread.terminate();
   } else {
     debug!("tried to terminate non-existent worker {}", id);
   }
@@ -625,13 +648,7 @@ fn close_channel(
     };
 
     if terminate {
-      let worker_thread = entry.remove();
-      worker_thread.worker_handle.terminate();
-      worker_thread
-        .join_handle
-        .join()
-        .expect("Worker thread panicked")
-        .expect("Panic in worker event loop");
+      entry.remove().terminate();
     }
   }
 }

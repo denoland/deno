@@ -68,7 +68,7 @@ async fn check_auto_config_registry(
           let origin = specifier.origin().ascii_serialization();
           let suggestions = snapshot
             .module_registries
-            .fetch_config(&origin)
+            .check_origin(&origin)
             .await
             .is_ok();
           client

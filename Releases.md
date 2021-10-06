@@ -6,6 +6,142 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.14.3 / 2021.10.04
+
+- feat(core): implement Deno.core.isProxy() (#12288)
+- fix(core/runtime): sync_ops_cache if nuked Deno ns (#12302)
+- fix(ext/crypto): decode id-RSASSA-PSS with default params (#12147)
+- fix(ext/crypto): missing Aes key typings (#12307)
+- fix(ext/crypto): use NotSupportedError for importKey() (#12289)
+- fix(ext/fetch): avoid panic when header is invalid (#12244)
+- fix(ext/http): merge identical if/else branches (#12269)
+- fix(ext/net): should not panic when listening to unix abstract address
+  (#12300)
+- fix(repl): avoid panic when assigned to globalThis (#12273)
+- fix(runtime/js/workers): throw errors instead of using an op (#12249)
+- fix(runtime/testing): format aggregate errors (#12183)
+- fix: Don't panic when a worker is closed in the reactions to a wasm operation.
+  (#12270)
+- fix: worker environment permissions should accept an array (#12250)
+- perf(core): use opcall() directly (#12310)
+- perf(fetch): optimize fillHeaders() key iteration (#12287)
+- perf(web): optimize byteLowerCase() (#12282)
+- perf(web): ~400x faster http header trimming (#12277)
+- perf(web/Event): move last class field to constructor (#12265)
+- perf(webidl): optimize createDictionaryConverter() (#12279)
+- perf(webidl): optimize createRecordConverter() (#12286)
+- perf(webidl/DOMString): don't wrap string primitives (#12266)
+
+### 1.14.2 / 2021.09.28
+
+- feat(cli/fmt): support more markdown extensions (#12195)
+- fix(cli/permissions): ensure revoked permissions are no longer granted
+  (#12159)
+- fix(ext/http): fortify "is websocket?" check (#12179)
+- fix(ext/http): include port number in h2 urls (#12181)
+- fix(ext/web): FileReader error messages (#12218)
+- fix(ext/webidl): correctly apply [SymbolToStringTag] to interfaces (#11851)
+- fix(http): panic when responding to a closed conn (#12216)
+- fix(workers): Don't panic when a worker's parent thread stops running (#12156)
+- fix: subprocess kill support on windows (#12134)
+- perf(ext/fetch): Use the WebIDL conversion to DOMString rather than USVString
+  for Response constructor (#12201)
+- perf(ext/fetch): skip USVString webidl conv on string constructor (#12168)
+- perf(fetch): optimize InnerBody constructor (#12232)
+- perf(fetch): optimize newInnerRequest blob url check (#12245)
+- perf(fetch/Response): avoid class fields (#12237)
+- perf(fetch/headers): optimize appendHeader (#12234)
+- perf(ops): optimize permission check (#11800)
+- perf(web): optimize Event constructor (#12231)
+- perf(webidl/ByteString): 3x faster ASCII check (#12230)
+- quickfix(ci): only run "Build product size info" on main/tag (#12184)
+- upgrade serde_v8 and rusty_v8 (#12175)
+
+### 1.14.1 / 2021.09.21
+
+- fix(cli): don't ignore diagnostics about for await (#12116)
+- fix(cli): move Deno.flock and Deno.funlock to unstable types (#12138)
+- fix(cli/fmt_errors): Abbreviate long data URLs in stack traces (#12127)
+- fix(config-schema): correct default value of "lib" (#12145)
+- fix(core): prevent multiple main module loading (#12128)
+- fix(ext/crypto): don't use core.decode for encoding jwk keys (#12088)
+- fix(ext/crypto): use DataError in importKey() (#12071)
+- fix(lsp): align filter text to vscode logic (#12081)
+- fix(runtime/ops/signal.rs): Add FreeBSD signal definitions (#12084)
+- perf(ext/web): optimize EventTarget (#12166)
+- perf(runtime/fs): optimize readFile by using a single large buffer (#12057)
+- perf(web): optimize AbortController (#12165)
+
+### 1.14.0 / 2021.09.14
+
+- BREAKING(unstable): Fix casing in FfiPermissionDescriptor (#11659)
+- BREAKING(unstable): Remove Deno.Signals enum, Deno.signals.* (#11909)
+- feat(cli): Support Basic authentication in DENO_AUTH_TOKENS (#11910)
+- feat(cli): Update to TypeScript 4.4 (#11678)
+- feat(cli): add --ignore flag to test command (#11712)
+- feat(cli): close test worker once all tests complete (#11727)
+- feat(core): facilitate op-disabling middleware (#11858)
+- feat(ext/crypto): AES key generation (#11869)
+- feat(ext/crypto): export RSA keys as pkcs#8 (#11880)
+- feat(ext/crypto): generate ECDH keys (#11870)
+- feat(ext/crypto): implement HKDF operations (#11865)
+- feat(ext/crypto): implement encrypt, decrypt & generateKey for RSA-OAEP
+  (#11654)
+- feat(ext/crypto): implement importKey and deriveBits for PBKDF2 (#11642)
+- feat(ext/crypto): import RSA pkcs#8 keys (#11891)
+- feat(ext/crypto): support JWK export for HMAC (#11864)
+- feat(ext/crypto): support JWK import for HMAC (#11716)
+- feat(ext/crypto): verify ECDSA signatures (#11739)
+- feat(extensions/console): right align numeric columns in table (#11748)
+- feat(fetch): mTLS client certificates for fetch() (#11721)
+- feat(fmt): add basic JS doc formatting (#11902)
+- feat(fmt): add support for configuration file (#11944)
+- feat(lint): add support for config file and CLI flags for rules (#11776)
+- feat(lsp): ignore specific lint for entire file (#12023)
+- feat(unstable): Add file locking APIs (#11746)
+- feat(unstable): Support file URLs in Deno.dlopen() (#11658)
+- feat(unstable): allow specifing gid and uid for subprocess (#11586)
+- feat(workers): Make the `Deno` namespace configurable and unfrozen (#11888)
+- feat: ArrayBuffer in structured clone transfer (#11840)
+- feat: add URLPattern API (#11941)
+- feat: add option flags to 'deno fmt' (#12060)
+- feat: stabilise Deno.upgradeWebSocket (#12024)
+- fix(cli): better handling of source maps (#11954)
+- fix(cli): dispatch unload event on watch drop (#11696)
+- fix(cli): retain path based test mode inference (#11878)
+- fix(cli): use updated names in deno info help text (#11989)
+- fix(doc): fix rustdoc bare_urls warning (#11921)
+- fix(ext/crypto): KeyAlgorithm typings for supported algorithms (#11738)
+- fix(ext/crypto): add HkdfParams and Pkdf2Params types (#11991)
+- fix(ext/fetch): Properly cancel upload stream when aborting (#11966)
+- fix(ext/http): resource leak if request body is not consumed (#11955)
+- fix(ext/http): websocket upgrade header check (#11830)
+- fix(ext/web): Format terminal DOMExceptions properly (#11834)
+- fix(ext/web): Preserve stack traces for DOMExceptions (#11959)
+- fix(lsp): correctly parse registry patterns (#12063)
+- fix(lsp): support data urls in `deno.importMap` option (#11397)
+- fix(runtime): return error instead of panicking for windows signals (#11940)
+- fix(test): propagate join errors in deno test (#11953)
+- fix(typings): fix property name in DiagnosticMessageChain interface (#11821)
+- fix(workers): don't drop messages from workers that have already been closed
+  (#11913)
+- fix: FileReader onevent attributes don't conform to spec (#11908)
+- fix: FileReader.readAsText compat (#11814)
+- fix: Query string percent-encoded in import map (#11976)
+- fix: a `Request` whose URL is a revoked blob URL should still fetch (#11947)
+- fix: bring back Deno.Signal to unstable props (#11945)
+- fix: change assertion in httpServerIncompleteMessage test (#12052)
+- fix: exit process on panic in a tokio task (#11942)
+- fix: move unstable declarations to deno.unstable (#11876)
+- fix: permission prompt stuffing (#11931)
+- fix: permission prompt stuffing on Windows (#11969)
+- fix: remove windows-only panic when calling `Deno.kill` (#11948)
+- fix: worker_message_before_close was flaky (#12019)
+- perf(ext/http): optimize auto cleanup of request resource (#11978)
+
+Release notes for std version 0.107.0:
+https://github.com/denoland/deno_std/releases/tag/0.107.0
+
 ### 1.13.2 / 2021.08.23
 
 - fix(cli/flags): require a non zero usize for concurrent jobs (#11802)
@@ -21,6 +157,9 @@ https://github.com/denoland/deno_install
 - perf(ext/url): use DOMString instead of USVString as webidl converter for URL
   parsing (#11775)
 - perf(url): build with opt-level 3 (#11779)
+
+Release notes for std version 0.106.0:
+https://github.com/denoland/deno_std/releases/tag/0.106.0
 
 ### 1.13.1 / 2021.08.16
 
@@ -51,6 +190,9 @@ https://github.com/denoland/deno_install
 - perf: improve localStorage throughput (#11709)
 - perf(ext/http): faster req_url string assembly (#11711)
 - perf(wpt/crypto): optimize num-bigint-dig for debug builds (#11681)
+
+Release notes for std version 0.105.0:
+https://github.com/denoland/deno_std/releases/tag/0.105.0
 
 ### 1.13.0 / 2021.08.10
 

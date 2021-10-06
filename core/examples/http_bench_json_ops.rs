@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -121,7 +120,7 @@ fn create_js_runtime() -> JsRuntime {
 
 fn op_listen(
   state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<ResourceId, AnyError> {
   log::debug!("listen");
@@ -158,9 +157,8 @@ async fn op_accept(
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: Option<ZeroCopyBuf>,
+  mut buf: ZeroCopyBuf,
 ) -> Result<usize, AnyError> {
-  let mut buf = buf.ok_or_else(null_opbuf)?;
   log::debug!("read rid={}", rid);
 
   let stream = state.borrow().resource_table.get::<TcpStream>(rid)?;
@@ -171,9 +169,8 @@ async fn op_read(
 async fn op_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: Option<ZeroCopyBuf>,
+  buf: ZeroCopyBuf,
 ) -> Result<usize, AnyError> {
-  let buf = buf.ok_or_else(null_opbuf)?;
   log::debug!("write rid={}", rid);
 
   let stream = state.borrow().resource_table.get::<TcpStream>(rid)?;

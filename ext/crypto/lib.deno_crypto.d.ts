@@ -69,6 +69,10 @@ interface EcdsaParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
 }
 
+interface RsaHashedImportParams extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+}
+
 interface RsaHashedKeyGenParams extends RsaKeyGenParams {
   hash: HashAlgorithmIdentifier;
 }
@@ -109,6 +113,26 @@ interface RsaKeyAlgorithm extends KeyAlgorithm {
   publicExponent: Uint8Array;
 }
 
+interface HkdfParams extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+  info: BufferSource;
+  salt: BufferSource;
+}
+
+interface Pbkdf2Params extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+  iterations: number;
+  salt: BufferSource;
+}
+
+interface AesKeyGenParams extends Algorithm {
+  length: number;
+}
+
+interface AesKeyAlgorithm extends KeyAlgorithm {
+  length: number;
+}
+
 /** The CryptoKey dictionary of the Web Crypto API represents a cryptographic key. */
 interface CryptoKey {
   readonly algorithm: KeyAlgorithm;
@@ -141,7 +165,7 @@ interface SubtleCrypto {
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair>;
   generateKey(
-    algorithm: HmacKeyGenParams,
+    algorithm: AesKeyGenParams | HmacKeyGenParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -158,9 +182,9 @@ interface SubtleCrypto {
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
   importKey(
-    format: "raw",
+    format: Exclude<KeyFormat, "jwk">,
     keyData: BufferSource,
-    algorithm: AlgorithmIdentifier | HmacImportParams,
+    algorithm: AlgorithmIdentifier | HmacImportParams | RsaHashedImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -175,7 +199,7 @@ interface SubtleCrypto {
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   verify(
-    algorithm: AlgorithmIdentifier | RsaPssParams,
+    algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
     key: CryptoKey,
     signature: BufferSource,
     data: BufferSource,
@@ -193,6 +217,17 @@ interface SubtleCrypto {
     algorithm: AlgorithmIdentifier | RsaOaepParams,
     key: CryptoKey,
     data: BufferSource,
+  ): Promise<ArrayBuffer>;
+  deriveBits(
+    algorithm: AlgorithmIdentifier | HkdfParams | Pbkdf2Params,
+    baseKey: CryptoKey,
+    length: number,
+  ): Promise<ArrayBuffer>;
+  wrapKey(
+    format: KeyFormat,
+    key: CryptoKey,
+    wrappingKey: CryptoKey,
+    wrapAlgorithm: AlgorithmIdentifier | RsaOaepParams,
   ): Promise<ArrayBuffer>;
 }
 

@@ -1,0 +1,10 @@
+[WILDCARD]
+error: TS1103 [ERROR]: 'for await' loops are only allowed within async functions and at the top levels of modules.
+  for await (const event of httpConn) {
+      ~~~~~
+    at [WILDCARD]error_for_await.ts:9:7
+
+TS1356 [ERROR]:     Did you mean to mark this function as 'async'?
+    function handleConn(conn: Deno.Conn) {
+             ~~~~~~~~~~
+        at [WILDCARD]error_for_await.ts:7:10

@@ -60,7 +60,7 @@ fn get_io_error_class(error: &io::Error) -> &'static str {
     WouldBlock => unreachable!(),
     // Non-exhaustive enum - might add new variants
     // in the future
-    _ => unreachable!(),
+    _ => "Error",
   }
 }
 

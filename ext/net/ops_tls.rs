@@ -649,6 +649,7 @@ pub struct ConnectTlsArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
+  ca_certs: Vec<String>,
   cert_chain: Option<String>,
   private_key: Option<String>,
 }
@@ -658,6 +659,7 @@ pub struct ConnectTlsArgs {
 struct StartTlsArgs {
   rid: ResourceId,
   cert_file: Option<String>,
+  ca_certs: Vec<String>,
   hostname: String,
 }
 
@@ -685,13 +687,16 @@ where
     }
   }
 
-  let ca_data = match cert_file {
-    Some(path) => {
-      let mut buf = Vec::new();
-      File::open(path)?.read_to_end(&mut buf)?;
-      Some(buf)
-    }
-    _ => None,
+  let mut ca_certs = args
+    .ca_certs
+    .into_iter()
+    .map(|s| s.into_bytes())
+    .collect::<Vec<_>>();
+
+  if let Some(path) = cert_file {
+    let mut buf = Vec::new();
+    File::open(path)?.read_to_end(&mut buf)?;
+    ca_certs.push(buf);
   };
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
@@ -699,9 +704,8 @@ where
 
   let unsafely_ignore_certificate_errors = state
     .borrow()
-    .borrow::<UnsafelyIgnoreCertificateErrors>()
-    .0
-    .clone();
+    .try_borrow::<UnsafelyIgnoreCertificateErrors>()
+    .and_then(|it| it.0.clone());
 
   // TODO(@justinmchase): Ideally the certificate store is created once
   // and not cloned. The store should be wrapped in Arc<T> to reduce
@@ -725,7 +729,7 @@ where
 
   let tls_config = Arc::new(create_client_config(
     root_cert_store,
-    ca_data,
+    ca_certs,
     unsafely_ignore_certificate_errors,
   )?);
   let tls_stream =
@@ -751,7 +755,7 @@ where
   })
 }
 
-async fn op_connect_tls<NP>(
+pub async fn op_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
   _: (),
@@ -768,9 +772,8 @@ where
   let cert_file = args.cert_file.as_deref();
   let unsafely_ignore_certificate_errors = state
     .borrow()
-    .borrow::<UnsafelyIgnoreCertificateErrors>()
-    .0
-    .clone();
+    .try_borrow::<UnsafelyIgnoreCertificateErrors>()
+    .and_then(|it| it.0.clone());
 
   if args.cert_chain.is_some() {
     super::check_unstable2(&state, "ConnectTlsOptions.certChain");
@@ -788,13 +791,16 @@ where
     }
   }
 
-  let ca_data = match cert_file {
-    Some(path) => {
-      let mut buf = Vec::new();
-      File::open(path)?.read_to_end(&mut buf)?;
-      Some(buf)
-    }
-    _ => None,
+  let mut ca_certs = args
+    .ca_certs
+    .into_iter()
+    .map(|s| s.into_bytes())
+    .collect::<Vec<_>>();
+
+  if let Some(path) = cert_file {
+    let mut buf = Vec::new();
+    File::open(path)?.read_to_end(&mut buf)?;
+    ca_certs.push(buf);
   };
 
   let root_cert_store = state
@@ -814,7 +820,7 @@ where
   let remote_addr = tcp_stream.peer_addr()?;
   let mut tls_config = create_client_config(
     root_cert_store,
-    ca_data,
+    ca_certs,
     unsafely_ignore_certificate_errors,
   )?;
 

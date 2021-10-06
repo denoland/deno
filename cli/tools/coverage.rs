@@ -4,7 +4,7 @@ use crate::colors;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
 use crate::module_graph::TypeLib;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use crate::source_maps::SourceMapGetter;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
@@ -22,7 +22,6 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Arc;
 use uuid::Uuid;
 
 // TODO(caspervonb) These structs are specific to the inspector protocol and should be refactored
@@ -530,7 +529,7 @@ fn line_col_to_offset(source: &str, line: u32, col: u32) -> Option<usize> {
 }
 
 async fn cover_script(
-  program_state: Arc<ProgramState>,
+  program_state: ProcState,
   script: ScriptCoverage,
 ) -> Result<CoverageResult, AnyError> {
   let module_specifier = resolve_url_or_path(&script.url)?;
@@ -811,7 +810,7 @@ pub async fn cover_scripts(
   exclude: Vec<String>,
   lcov: bool,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags).await?;
+  let ps = ProcState::build(flags).await?;
 
   let script_coverages = collect_script_coverages(files, ignore)?;
   let script_coverages =
@@ -826,11 +825,10 @@ pub async fn cover_scripts(
   let mut reporter = create_reporter(reporter_kind);
 
   for script_coverage in script_coverages {
-    let result =
-      cover_script(program_state.clone(), script_coverage.clone()).await?;
+    let result = cover_script(ps.clone(), script_coverage.clone()).await?;
 
     let module_specifier = resolve_url_or_path(&script_coverage.url)?;
-    let file = program_state
+    let file = ps
       .file_fetcher
       .fetch(&module_specifier, &mut Permissions::allow_all())
       .await?;

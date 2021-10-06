@@ -277,7 +277,7 @@ pub struct LintRulesConfig {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct LintFilesConfig {
+pub struct FilesConfig {
   pub include: Vec<String>,
   pub exclude: Vec<String>,
 }
@@ -286,7 +286,32 @@ pub struct LintFilesConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct LintConfig {
   pub rules: LintRulesConfig,
-  pub files: LintFilesConfig,
+  pub files: FilesConfig,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub enum ProseWrap {
+  Always,
+  Never,
+  Preserve,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct FmtOptionsConfig {
+  pub use_tabs: Option<bool>,
+  pub line_width: Option<u32>,
+  pub indent_width: Option<u8>,
+  pub single_quote: Option<bool>,
+  pub prose_wrap: Option<ProseWrap>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FmtConfig {
+  pub options: FmtOptionsConfig,
+  pub files: FilesConfig,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -294,6 +319,7 @@ pub struct LintConfig {
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
   pub lint: Option<Value>,
+  pub fmt: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -374,6 +400,16 @@ impl ConfigFile {
       Ok(None)
     }
   }
+
+  pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
+    if let Some(config) = self.json.fmt.clone() {
+      let fmt_config: FmtConfig = serde_json::from_value(config)
+        .context("Failed to parse \"fmt\" configuration")?;
+      Ok(Some(fmt_config))
+    } else {
+      Ok(None)
+    }
+  }
 }
 
 #[cfg(test)]
@@ -441,6 +477,19 @@ mod tests {
           "tags": ["recommended"],
           "include": ["ban-untagged-todo"]
         }
+      },
+      "fmt": {
+        "files": {
+          "include": ["src/"],
+          "exclude": ["src/testdata/"]
+        },
+        "options": {
+          "useTabs": true,
+          "lineWidth": 80,
+          "indentWidth": 4,
+          "singleQuote": true,
+          "proseWrap": "preserve"
+        }
       }
     }"#;
     let config_path = PathBuf::from("/deno/tsconfig.json");
@@ -474,6 +523,17 @@ mod tests {
       Some(vec!["recommended".to_string()])
     );
     assert!(lint_config.rules.exclude.is_none());
+
+    let fmt_config = config_file
+      .to_fmt_config()
+      .expect("error parsing fmt object")
+      .expect("fmt object should be defined");
+    assert_eq!(fmt_config.files.include, vec!["src/"]);
+    assert_eq!(fmt_config.files.exclude, vec!["src/testdata/"]);
+    assert_eq!(fmt_config.options.use_tabs, Some(true));
+    assert_eq!(fmt_config.options.line_width, Some(80));
+    assert_eq!(fmt_config.options.indent_width, Some(4));
+    assert_eq!(fmt_config.options.single_quote, Some(true));
   }
 
   #[test]
