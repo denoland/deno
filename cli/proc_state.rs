@@ -15,6 +15,7 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
+use crate::compat;
 
 use deno_core::error::anyhow;
 use deno_core::error::get_custom_error_class;
@@ -217,7 +218,7 @@ impl ProcState {
             .unwrap()
         }
       };
-      let node_builtins = crate::compat::get_mapped_node_builtins();
+      let node_builtins = compat::get_mapped_node_builtins();
       let diagnostics = import_map.update_imports(node_builtins)?;
 
       if !diagnostics.is_empty() {
@@ -353,6 +354,9 @@ impl ProcState {
     )?));
     let mut builder =
       GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
+    if self.flags.compat {
+      builder.add(&compat::get_node_globals_url(), false).await?;
+    }
     builder.add(&specifier, is_dynamic).await?;
     builder.analyze_config_file(&self.maybe_config_file).await?;
     let mut graph = builder.get_graph();
