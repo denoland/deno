@@ -45,8 +45,8 @@ struct Unstable(bool); // --unstable
 
 pub fn op_broadcast_subscribe<BC: BroadcastChannel + 'static>(
   state: &mut OpState,
-  _args: (),
-  _buf: (),
+  _: (),
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   let unstable = state.borrow::<Unstable>().0;
 
@@ -85,7 +85,7 @@ pub async fn op_broadcast_send<BC: BroadcastChannel + 'static>(
 pub async fn op_broadcast_recv<BC: BroadcastChannel + 'static>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _buf: (),
+  _: (),
 ) -> Result<Option<Message>, AnyError> {
   let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
   let bc = state.borrow().borrow::<BC>().clone();

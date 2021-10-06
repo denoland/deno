@@ -34,7 +34,7 @@ pub(crate) fn init_builtins() -> Extension {
 /// and string representation as value.
 pub fn op_resources(
   state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<Vec<(ResourceId, String)>, AnyError> {
   let serialized_resources = state

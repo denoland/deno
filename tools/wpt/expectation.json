@@ -13603,9 +13603,7 @@
         "DOMException-constants.any.html": true,
         "DOMException-constructor-and-prototype.any.html": true,
         "DOMException-constructor-behavior.any.html": true,
-        "DOMException-custom-bindings.any.html": [
-          "If the implementation has a stack property on normal errors, it also does on DOMExceptions"
-        ]
+        "DOMException-custom-bindings.any.html": true
       },
       "class-string-interface.any.html": true,
       "class-string-iterator-prototype-object.any.html": true,
