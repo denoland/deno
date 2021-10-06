@@ -271,6 +271,7 @@ pub async fn op_crypto_generate_key(
 pub enum KeyFormat {
   Raw,
   Pkcs8,
+  Spki,
 }
 
 #[derive(Deserialize)]
@@ -631,7 +632,27 @@ pub async fn op_crypto_export_key(
 
           Ok(pk_info.to_der().as_ref().to_vec().into())
         }
-        // TODO(@littledivy): spki
+        KeyFormat::Spki => {
+          // public_key is a PKCS#1 DER-encoded public key
+
+          let subject_public_key = &args.key.data;
+
+          // the SPKI structure
+          let key_info = spki::SubjectPublicKeyInfo {
+            algorithm: spki::AlgorithmIdentifier {
+              // rsaEncryption(1)
+              oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL.
+              parameters: Some(asn1::Any::from(asn1::Null)),
+            },
+            subject_public_key,
+          };
+
+          // Infallible based on spec because of the way we import and generate keys.
+          let spki_der = key_info.to_vec().unwrap();
+          Ok(spki_der.into())
+        }
         // TODO(@littledivy): jwk
         _ => unreachable!(),
       }
@@ -668,7 +689,31 @@ pub async fn op_crypto_export_key(
 
           Ok(pk_info.to_der().as_ref().to_vec().into())
         }
-        // TODO(@littledivy): spki
+        KeyFormat::Spki => {
+          // Intentionally unused but required. Not encoded into SPKI (see below).
+          let _hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // public_key is a PKCS#1 DER-encoded public key
+          let subject_public_key = &args.key.data;
+
+          // the SPKI structure
+          let key_info = spki::SubjectPublicKeyInfo {
+            algorithm: spki::AlgorithmIdentifier {
+              // rsaEncryption(1)
+              oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL.
+              parameters: Some(asn1::Any::from(asn1::Null)),
+            },
+            subject_public_key,
+          };
+
+          // Infallible based on spec because of the way we import and generate keys.
+          let spki_der = key_info.to_vec().unwrap();
+          Ok(spki_der.into())
+        }
         // TODO(@littledivy): jwk
         _ => unreachable!(),
       }
@@ -705,7 +750,31 @@ pub async fn op_crypto_export_key(
 
           Ok(pk_info.to_der().as_ref().to_vec().into())
         }
-        // TODO(@littledivy): spki
+        KeyFormat::Spki => {
+          // Intentionally unused but required. Not encoded into SPKI (see below).
+          let _hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // public_key is a PKCS#1 DER-encoded public key
+          let subject_public_key = &args.key.data;
+
+          // the SPKI structure
+          let key_info = spki::SubjectPublicKeyInfo {
+            algorithm: spki::AlgorithmIdentifier {
+              // rsaEncryption(1)
+              oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL.
+              parameters: Some(asn1::Any::from(asn1::Null)),
+            },
+            subject_public_key,
+          };
+
+          // Infallible based on spec because of the way we import and generate keys.
+          let spki_der = key_info.to_vec().unwrap();
+          Ok(spki_der.into())
+        }
         // TODO(@littledivy): jwk
         _ => unreachable!(),
       }

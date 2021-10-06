@@ -1278,6 +1278,28 @@
               // 3.
               return data.buffer;
             }
+            case "spki": {
+              // 1.
+              if (key[_type] !== "public") {
+                throw new DOMException(
+                  "Key is not a public key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "spki",
+                  algorithm: "RSASSA-PKCS1-v1_5",
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
@@ -1299,6 +1321,29 @@
                 {
                   key: innerKey,
                   format: "pkcs8",
+                  algorithm: "RSA-PSS",
+                  hash: key[_algorithm].hash.name,
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            case "spki": {
+              // 1.
+              if (key[_type] !== "public") {
+                throw new DOMException(
+                  "Key is not a public key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "spki",
                   algorithm: "RSA-PSS",
                   hash: key[_algorithm].hash.name,
                 },
@@ -1329,6 +1374,29 @@
                   key: innerKey,
                   format: "pkcs8",
                   algorithm: "RSA-PSS",
+                  hash: key[_algorithm].hash.name,
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            case "spki": {
+              // 1.
+              if (key[_type] !== "public") {
+                throw new DOMException(
+                  "Key is not a public key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "spki",
+                  algorithm: "RSA-OAEP",
                   hash: key[_algorithm].hash.name,
                 },
               );
