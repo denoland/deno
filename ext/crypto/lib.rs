@@ -701,9 +701,8 @@ pub struct ImportKeyArg {
 pub async fn op_crypto_import_key(
   _state: Rc<RefCell<OpState>>,
   args: ImportKeyArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
