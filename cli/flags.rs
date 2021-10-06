@@ -1627,7 +1627,8 @@ fn seed_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn compat_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("compat")
     .long("compat")
-    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs'.")
+    .requires("unstable")
+    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs' and globals like 'process'.")
 }
 
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -4453,7 +4454,8 @@ mod tests {
 
   #[test]
   fn compat() {
-    let r = flags_from_vec(svec!["deno", "run", "--compat", "foo.js"]);
+    let r =
+      flags_from_vec(svec!["deno", "run", "--compat", "--unstable", "foo.js"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4461,6 +4463,7 @@ mod tests {
           script: "foo.js".to_string(),
         }),
         compat: true,
+        unstable: true,
         ..Flags::default()
       }
     );

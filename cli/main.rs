@@ -568,7 +568,7 @@ async fn eval_command(
   // Force TypeScript compile.
   let main_module = resolve_url_or_path("./$deno$eval.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::build(flags.clone()).await?;
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions, None);
   // Create a dummy source file.
@@ -600,6 +600,11 @@ async fn eval_command(
   // to allow module access by TS compiler.
   ps.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
+  if flags.compat {
+    worker
+      .execute_side_module(&compat::get_node_globals_url())
+      .await?;
+  }
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
@@ -845,6 +850,11 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   ps.file_fetcher.insert_cached(source_file);
 
   debug!("main_module {}", main_module);
+  if flags.compat {
+    worker
+      .execute_side_module(&compat::get_node_globals_url())
+      .await?;
+  }
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
@@ -912,13 +922,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   struct FileWatcherModuleExecutor {
     worker: MainWorker,
     pending_unload: bool,
+    compat: bool,
   }
 
   impl FileWatcherModuleExecutor {
-    pub fn new(worker: MainWorker) -> FileWatcherModuleExecutor {
+    pub fn new(worker: MainWorker, compat: bool) -> FileWatcherModuleExecutor {
       FileWatcherModuleExecutor {
         worker,
         pending_unload: false,
+        compat,
       }
     }
 
@@ -928,6 +940,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       &mut self,
       main_module: &ModuleSpecifier,
     ) -> Result<(), AnyError> {
+      if self.compat {
+        self
+          .worker
+          .execute_side_module(&compat::get_node_globals_url())
+          .await?;
+      }
       self.worker.execute_main_module(main_module).await?;
       self.worker.execute_script(
         &located_script_name!(),
@@ -967,16 +985,14 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
   let operation = |(ps, main_module): (ProcState, ModuleSpecifier)| {
     let flags = flags.clone();
-    let permissions = Permissions::from_options(&flags.into());
+    let permissions = Permissions::from_options(&flags.clone().into());
     async move {
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
-      let mut executor = FileWatcherModuleExecutor::new(create_main_worker(
-        &ps,
-        main_module.clone(),
-        permissions,
-        None,
-      ));
+      let mut executor = FileWatcherModuleExecutor::new(
+        create_main_worker(&ps, main_module.clone(), permissions, None),
+        flags.compat,
+      );
 
       executor.execute(&main_module).await?;
 
@@ -1022,6 +1038,11 @@ async fn run_command(
     };
 
   debug!("main_module {}", main_module);
+  if flags.compat {
+    worker
+      .execute_side_module(&compat::get_node_globals_url())
+      .await?;
+  }
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
