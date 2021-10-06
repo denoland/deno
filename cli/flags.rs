@@ -4454,7 +4454,7 @@ mod tests {
 
   #[test]
   fn compat() {
-    let r = flags_from_vec(svec!["deno", "run", "--compat", "foo.js"]);
+    let r = flags_from_vec(svec!["deno", "run", "--compat", "--unstable", "foo.js"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4462,6 +4462,7 @@ mod tests {
           script: "foo.js".to_string(),
         }),
         compat: true,
+        unstable: true,
         ..Flags::default()
       }
     );
