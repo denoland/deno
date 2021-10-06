@@ -27,3 +27,6 @@ pub mod permissions;
 pub mod tokio_util;
 pub mod web_worker;
 pub mod worker;
+
+mod worker_bootstrap;
+pub use worker_bootstrap::BootstrapOptions;

@@ -324,10 +324,10 @@
       const sendTypedArray = (ta) => {
         this[_bufferedAmount] += ta.byteLength;
         PromisePrototypeThen(
-          core.opAsync("op_ws_send", {
-            rid: this[_rid],
+          core.opAsync("op_ws_send", this[_rid], {
             kind: "binary",
-          }, ta),
+            value: ta,
+          }),
           () => {
             this[_bufferedAmount] -= ta.byteLength;
           },
@@ -348,10 +348,9 @@
         const d = core.encode(string);
         this[_bufferedAmount] += d.byteLength;
         PromisePrototypeThen(
-          core.opAsync("op_ws_send", {
-            rid: this[_rid],
+          core.opAsync("op_ws_send", this[_rid], {
             kind: "text",
-            text: string,
+            value: string,
           }),
           () => {
             this[_bufferedAmount] -= d.byteLength;
@@ -456,8 +455,7 @@
             break;
           }
           case "ping": {
-            core.opAsync("op_ws_send", {
-              rid: this[_rid],
+            core.opAsync("op_ws_send", this[_rid], {
               kind: "pong",
             });
             break;

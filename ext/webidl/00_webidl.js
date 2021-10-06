@@ -9,6 +9,7 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const {
     ArrayBuffer,
     ArrayBufferIsView,
@@ -48,6 +49,7 @@
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertyDescriptors,
     ObjectGetPrototypeOf,
+    ObjectPrototypeHasOwnProperty,
     ObjectIs,
     PromisePrototypeThen,
     PromiseReject,
@@ -844,8 +846,22 @@
           opts,
         );
       }
-      const keys = ReflectOwnKeys(V);
       const result = {};
+      // Fast path for common case (not a Proxy)
+      if (!core.isProxy(V)) {
+        for (const key in V) {
+          if (!ObjectPrototypeHasOwnProperty(V, key)) {
+            continue;
+          }
+          const typedKey = keyConverter(key, opts);
+          const value = V[key];
+          const typedValue = valueConverter(value, opts);
+          result[typedKey] = typedValue;
+        }
+        return result;
+      }
+      // Slow path if Proxy (e.g: in WPT tests)
+      const keys = ReflectOwnKeys(V);
       for (const key of keys) {
         const desc = ObjectGetOwnPropertyDescriptor(V, key);
         if (desc !== undefined && desc.enumerable === true) {

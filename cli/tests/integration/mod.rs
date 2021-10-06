@@ -54,6 +54,8 @@ macro_rules! itest_flaky(
 mod bundle;
 #[path = "cache_tests.rs"]
 mod cache;
+#[path = "compat_tests.rs"]
+mod compat;
 #[path = "compile_tests.rs"]
 mod compile;
 #[path = "coverage_tests.rs"]

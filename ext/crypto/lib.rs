@@ -2,7 +2,6 @@
 
 use deno_core::error::custom_error;
 use deno_core::error::not_supported;
-use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
@@ -223,7 +222,8 @@ pub async fn op_crypto_generate_key(
     | Algorithm::AesGcm
     | Algorithm::AesKw => {
       let length = args.length.ok_or_else(not_supported)?;
-      let mut key_data = vec![0u8; length];
+      // Caller must guarantee divisibility by 8
+      let mut key_data = vec![0u8; length / 8];
       let rng = RingRand::SystemRandom::new();
       rng.fill(&mut key_data).map_err(|_| {
         custom_error("DOMExceptionOperationError", "Key generation failed")
@@ -272,6 +272,7 @@ pub async fn op_crypto_generate_key(
 pub enum KeyFormat {
   Raw,
   Pkcs8,
+  Spki,
 }
 
 #[derive(Deserialize)]
@@ -296,9 +297,8 @@ pub struct SignArg {
 pub async fn op_crypto_sign_key(
   _state: Rc<RefCell<OpState>>,
   args: SignArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -451,9 +451,8 @@ pub struct VerifyArg {
 pub async fn op_crypto_verify_key(
   _state: Rc<RefCell<OpState>>,
   args: VerifyArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<bool, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -599,7 +598,7 @@ pub struct ExportKeyArg {
 pub async fn op_crypto_export_key(
   _state: Rc<RefCell<OpState>>,
   args: ExportKeyArg,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {
@@ -634,7 +633,27 @@ pub async fn op_crypto_export_key(
 
           Ok(pk_info.to_der().as_ref().to_vec().into())
         }
-        // TODO(@littledivy): spki
+        KeyFormat::Spki => {
+          // public_key is a PKCS#1 DER-encoded public key
+
+          let subject_public_key = &args.key.data;
+
+          // the SPKI structure
+          let key_info = spki::SubjectPublicKeyInfo {
+            algorithm: spki::AlgorithmIdentifier {
+              // rsaEncryption(1)
+              oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL.
+              parameters: Some(asn1::Any::from(asn1::Null)),
+            },
+            subject_public_key,
+          };
+
+          // Infallible based on spec because of the way we import and generate keys.
+          let spki_der = key_info.to_vec().unwrap();
+          Ok(spki_der.into())
+        }
         // TODO(@littledivy): jwk
         _ => unreachable!(),
       }
@@ -671,7 +690,31 @@ pub async fn op_crypto_export_key(
 
           Ok(pk_info.to_der().as_ref().to_vec().into())
         }
-        // TODO(@littledivy): spki
+        KeyFormat::Spki => {
+          // Intentionally unused but required. Not encoded into SPKI (see below).
+          let _hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // public_key is a PKCS#1 DER-encoded public key
+          let subject_public_key = &args.key.data;
+
+          // the SPKI structure
+          let key_info = spki::SubjectPublicKeyInfo {
+            algorithm: spki::AlgorithmIdentifier {
+              // rsaEncryption(1)
+              oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL.
+              parameters: Some(asn1::Any::from(asn1::Null)),
+            },
+            subject_public_key,
+          };
+
+          // Infallible based on spec because of the way we import and generate keys.
+          let spki_der = key_info.to_vec().unwrap();
+          Ok(spki_der.into())
+        }
         // TODO(@littledivy): jwk
         _ => unreachable!(),
       }
@@ -708,7 +751,31 @@ pub async fn op_crypto_export_key(
 
           Ok(pk_info.to_der().as_ref().to_vec().into())
         }
-        // TODO(@littledivy): spki
+        KeyFormat::Spki => {
+          // Intentionally unused but required. Not encoded into SPKI (see below).
+          let _hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // public_key is a PKCS#1 DER-encoded public key
+          let subject_public_key = &args.key.data;
+
+          // the SPKI structure
+          let key_info = spki::SubjectPublicKeyInfo {
+            algorithm: spki::AlgorithmIdentifier {
+              // rsaEncryption(1)
+              oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL.
+              parameters: Some(asn1::Any::from(asn1::Null)),
+            },
+            subject_public_key,
+          };
+
+          // Infallible based on spec because of the way we import and generate keys.
+          let spki_der = key_info.to_vec().unwrap();
+          Ok(spki_der.into())
+        }
         // TODO(@littledivy): jwk
         _ => unreachable!(),
       }
@@ -731,9 +798,8 @@ pub struct DeriveKeyArg {
 pub async fn op_crypto_derive_bits(
   _state: Rc<RefCell<OpState>>,
   args: DeriveKeyArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let salt = &*zero_copy;
   let algorithm = args.algorithm;
   match algorithm {
@@ -798,9 +864,8 @@ pub struct EncryptArg {
 pub async fn op_crypto_encrypt_key(
   _state: Rc<RefCell<OpState>>,
   args: EncryptArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -1035,9 +1100,8 @@ pub struct ImportKeyResult {
 pub async fn op_crypto_import_key(
   _state: Rc<RefCell<OpState>>,
   args: ImportKeyArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ImportKeyResult, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -1359,9 +1423,8 @@ pub struct DecryptArg {
 pub async fn op_crypto_decrypt_key(
   _state: Rc<RefCell<OpState>>,
   args: DecryptArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -1431,11 +1494,10 @@ pub fn op_crypto_random_uuid(
 pub async fn op_crypto_subtle_digest(
   _state: Rc<RefCell<OpState>>,
   algorithm: CryptoHash,
-  data: Option<ZeroCopyBuf>,
+  data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let input = data.ok_or_else(null_opbuf)?;
   let output = tokio::task::spawn_blocking(move || {
-    digest::digest(algorithm.into(), &input)
+    digest::digest(algorithm.into(), &data)
       .as_ref()
       .to_vec()
       .into()

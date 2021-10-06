@@ -6,6 +6,7 @@ use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
+use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -15,7 +16,6 @@ use deno_core::futures::stream::StreamExt;
 use deno_core::located_script_name;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8;
 use deno_core::CancelHandle;
@@ -35,7 +35,6 @@ use deno_web::BlobStore;
 use deno_web::MessagePort;
 use log::debug;
 use std::cell::RefCell;
-use std::env;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -260,11 +259,7 @@ pub struct WebWorker {
 }
 
 pub struct WebWorkerOptions {
-  /// Sets `Deno.args` in JS runtime.
-  pub args: Vec<String>,
-  pub debug_flag: bool,
-  pub unstable: bool,
-  pub enable_testing_features: bool,
+  pub bootstrap: BootstrapOptions,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
@@ -275,32 +270,38 @@ pub struct WebWorkerOptions {
   pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
-  pub apply_source_maps: bool,
-  /// Sets `Deno.version.deno` in JS runtime.
-  pub runtime_version: String,
-  /// Sets `Deno.version.typescript` in JS runtime.
-  pub ts_version: String,
-  /// Sets `Deno.noColor` in JS runtime.
-  pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
-  pub cpu_count: usize,
 }
 
 impl WebWorker {
+  pub fn bootstrap_from_options(
+    name: String,
+    permissions: Permissions,
+    main_module: ModuleSpecifier,
+    worker_id: WorkerId,
+    options: WebWorkerOptions,
+  ) -> (Self, SendableWebWorkerHandle) {
+    let bootstrap_options = options.bootstrap.clone();
+    let (mut worker, handle) =
+      Self::from_options(name, permissions, main_module, worker_id, options);
+    worker.bootstrap(&bootstrap_options);
+    (worker, handle)
+  }
+
   pub fn from_options(
     name: String,
     permissions: Permissions,
     main_module: ModuleSpecifier,
     worker_id: WorkerId,
-    options: &WebWorkerOptions,
+    options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
     // Permissions: many ops depend on this
-    let unstable = options.unstable;
-    let enable_testing_features = options.enable_testing_features;
+    let unstable = options.bootstrap.unstable;
+    let enable_testing_features = options.bootstrap.enable_testing_features;
     let perm_ext = Extension::builder()
       .state(move |state| {
         state.put::<Permissions>(permissions.clone());
@@ -329,15 +330,12 @@ impl WebWorker {
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_broadcast_channel::init(
-        options.broadcast_channel.clone(),
-        options.unstable,
-      ),
+      deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
       deno_crypto::init(options.seed),
-      deno_webgpu::init(options.unstable),
+      deno_webgpu::init(unstable),
       deno_timers::init::<Permissions>(),
       // ffi
-      deno_ffi::init::<Permissions>(options.unstable),
+      deno_ffi::init::<Permissions>(unstable),
       // Metrics
       metrics::init(),
       // Permissions ext (worker specific state)
@@ -360,7 +358,7 @@ impl WebWorker {
         deno_tls::init(),
         deno_net::init::<Permissions>(
           options.root_cert_store.clone(),
-          options.unstable,
+          unstable,
           options.unsafely_ignore_certificate_errors.clone(),
         ),
         ops::os::init(),
@@ -419,32 +417,15 @@ impl WebWorker {
     )
   }
 
-  pub fn bootstrap(&mut self, options: &WebWorkerOptions) {
-    let runtime_options = json!({
-      "args": options.args,
-      "applySourceMaps": options.apply_source_maps,
-      "debugFlag": options.debug_flag,
-      "denoVersion": options.runtime_version,
-      "noColor": options.no_color,
-      "pid": std::process::id(),
-      "ppid": ops::runtime::ppid(),
-      "target": env!("TARGET"),
-      "tsVersion": options.ts_version,
-      "unstableFlag": options.unstable,
-      "enableTestingFeaturesFlag": options.enable_testing_features,
-      "v8Version": deno_core::v8_version(),
-      "location": self.main_module,
-      "cpuCount": options.cpu_count,
-    });
-
-    let runtime_options_str =
-      serde_json::to_string_pretty(&runtime_options).unwrap();
-
+  pub fn bootstrap(&mut self, options: &BootstrapOptions) {
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     let script = format!(
       "bootstrap.workerRuntime({}, \"{}\", {}, \"{}\")",
-      runtime_options_str, self.name, options.use_deno_namespace, self.id
+      options.as_json(),
+      self.name,
+      self.use_deno_namespace,
+      self.id
     );
     self
       .execute_script(&located_script_name!(), &script)
