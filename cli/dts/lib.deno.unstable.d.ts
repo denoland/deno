@@ -123,6 +123,7 @@ declare namespace Deno {
   export interface ForeignFunction {
     parameters: NativeType[];
     result: NativeType;
+    nonblocking?: boolean;
   }
 
   /** A dynamic library resource */
