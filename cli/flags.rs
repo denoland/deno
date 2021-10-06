@@ -1627,7 +1627,8 @@ fn seed_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn compat_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("compat")
     .long("compat")
-    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs'.")
+    .requires("unstable")
+    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs' and globals like 'process'.")
 }
 
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
