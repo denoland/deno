@@ -434,7 +434,7 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
   });
 }
 
-pub fn get_configured_rules(
+pub(crate) fn get_configured_rules(
   maybe_lint_config: Option<&LintConfig>,
   rules_tags: Vec<String>,
   rules_include: Vec<String>,
