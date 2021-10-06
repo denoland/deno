@@ -808,7 +808,6 @@ pub async fn op_crypto_derive_bits(
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::Pbkdf2 => {
-      let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
       let salt = &*zero_copy;
       // The caller must validate these cases.
       assert!(args.length > 0);
@@ -857,7 +856,6 @@ pub async fn op_crypto_derive_bits(
       }
     }
     Algorithm::Hkdf => {
-      let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
       let salt = &*zero_copy;
       let algorithm = match args.hash.ok_or_else(not_supported)? {
         CryptoHash::Sha1 => hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
