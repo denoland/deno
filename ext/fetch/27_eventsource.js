@@ -6,17 +6,16 @@
   const { DOMException } = window.__bootstrap.domException;
   const { defineEventHandler } = window.__bootstrap.webUtil;
   const { ObjectDefineProperties } = window.__bootstrap.primordials;
-  const eventSourceInitDict = [
-    {
-      key: "withCredentials",
-      converter: webidl.converters.boolean,
-      required: true,
-    },
-  ];
 
   webidl.converters["EventSourceInit"] = webidl.createDictionaryConverter(
     "EventSourceInit",
-    eventSourceInitDict,
+    [
+      {
+        key: "withCredentials",
+        converter: webidl.converters.boolean,
+        required: true,
+      },
+    ],
   );
 
   class EventSource extends EventTarget {
