@@ -4,7 +4,8 @@
 ((window) => {
   const { webidl } = window.__bootstrap;
   const { DOMException } = window.__bootstrap.domException;
-
+  const { defineEventHandler } = window.__bootstrap.webUtil;
+  const { ObjectDefineProperties } = window.__bootstrap.primordials;
   const eventSourceInitDict = [
     {
       key: "withCredentials",
@@ -32,14 +33,6 @@
       reconnectionTime: 2200,
       lastEventID: "",
     };
-
-    onopen = null;
-    onmessage = null;
-    onerror = null;
-
-    CONNECTING = 0;
-    OPEN = 1;
-    CLOSED = 2;
 
     get readyState() {
       webidl.assertBranded(this, EventSource);
@@ -267,6 +260,21 @@
     }
   }
 
+  ObjectDefineProperties(EventSource, {
+    CONNECTING: {
+      value: 0,
+    },
+    OPEN: {
+      value: 1,
+    },
+    CLOSED: {
+      value: 2,
+    },
+  });
+
+  defineEventHandler(EventSource.prototype, "message");
+  defineEventHandler(EventSource.prototype, "error");
+  defineEventHandler(EventSource.prototype, "open");
   webidl.configurePrototype(EventSource);
 
   window.__bootstrap.eventSource = EventSource;
