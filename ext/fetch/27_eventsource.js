@@ -9,6 +9,7 @@
   const {
     FunctionPrototypeCall,
     MapPrototypeGet,
+    MapPrototypeSet,
     ObjectDefineProperties,
     ObjectDefineProperty,
     Symbol,
