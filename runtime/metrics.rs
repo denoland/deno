@@ -27,7 +27,7 @@ struct MetricsReturn {
 
 fn op_metrics(
   state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<MetricsReturn, AnyError> {
   let m = state.borrow::<RuntimeMetrics>();

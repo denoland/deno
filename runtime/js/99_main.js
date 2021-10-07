@@ -348,7 +348,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, Navigator);
+        webidl.assertBranded(this, WorkerNavigator);
         return numCpus;
       },
     },

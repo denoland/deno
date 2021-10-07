@@ -79,6 +79,7 @@ use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
+use deno_runtime::BootstrapOptions;
 use log::debug;
 use log::info;
 use std::cell::RefCell;
@@ -109,11 +110,21 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
     let create_web_worker_cb = create_web_worker_callback(ps.clone());
 
     let options = WebWorkerOptions {
-      args: ps.flags.argv.clone(),
-      apply_source_maps: true,
-      debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
-      unstable: ps.flags.unstable,
-      enable_testing_features: ps.flags.enable_testing_features,
+      bootstrap: BootstrapOptions {
+        args: ps.flags.argv.clone(),
+        apply_source_maps: true,
+        cpu_count: num_cpus::get(),
+        debug_flag: ps
+          .flags
+          .log_level
+          .map_or(false, |l| l == log::Level::Debug),
+        enable_testing_features: ps.flags.enable_testing_features,
+        location: Some(args.main_module.clone()),
+        no_color: !colors::use_color(),
+        runtime_version: version::deno(),
+        ts_version: version::TYPESCRIPT.to_string(),
+        unstable: ps.flags.unstable,
+      },
       unsafely_ignore_certificate_errors: ps
         .flags
         .unsafely_ignore_certificate_errors
@@ -127,25 +138,26 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       use_deno_namespace: args.use_deno_namespace,
       worker_type: args.worker_type,
       maybe_inspector_server,
-      runtime_version: version::deno(),
-      ts_version: version::TYPESCRIPT.to_string(),
-      no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
       blob_store: ps.blob_store.clone(),
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
-      cpu_count: num_cpus::get(),
     };
+    let bootstrap_options = options.bootstrap.clone();
 
+    // TODO(@AaronO): switch to bootstrap_from_options() once ops below are an extension
+    // since it uses sync_ops_cache() which currently depends on the Deno namespace
+    // which can be nuked when bootstrapping workers (use_deno_namespace: false)
     let (mut worker, external_handle) = WebWorker::from_options(
       args.name,
       args.permissions,
       args.main_module,
       args.worker_id,
-      &options,
+      options,
     );
 
+    // TODO(@AaronO): move to a JsRuntime Extension passed into options
     // This block registers additional ops and state that
     // are only available in the CLI
     {
@@ -162,7 +174,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       }
       js_runtime.sync_ops_cache();
     }
-    worker.bootstrap(&options);
+    worker.bootstrap(&bootstrap_options);
 
     (worker, external_handle)
   })
@@ -190,11 +202,18 @@ pub fn create_main_worker(
   let create_web_worker_cb = create_web_worker_callback(ps.clone());
 
   let options = WorkerOptions {
-    apply_source_maps: true,
-    args: ps.flags.argv.clone(),
-    debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
-    unstable: ps.flags.unstable,
-    enable_testing_features: ps.flags.enable_testing_features,
+    bootstrap: BootstrapOptions {
+      apply_source_maps: true,
+      args: ps.flags.argv.clone(),
+      cpu_count: num_cpus::get(),
+      debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
+      enable_testing_features: ps.flags.enable_testing_features,
+      location: ps.flags.location.clone(),
+      no_color: !colors::use_color(),
+      runtime_version: version::deno(),
+      ts_version: version::TYPESCRIPT.to_string(),
+      unstable: ps.flags.unstable,
+    },
     unsafely_ignore_certificate_errors: ps
       .flags
       .unsafely_ignore_certificate_errors
@@ -207,11 +226,7 @@ pub fn create_main_worker(
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
-    runtime_version: version::deno(),
-    ts_version: version::TYPESCRIPT.to_string(),
-    no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
-    location: ps.flags.location.clone(),
     origin_storage_dir: ps.flags.location.clone().map(|loc| {
       ps.dir
         .root
@@ -224,11 +239,12 @@ pub fn create_main_worker(
     broadcast_channel: ps.broadcast_channel.clone(),
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
-    cpu_count: num_cpus::get(),
   };
 
-  let mut worker = MainWorker::from_options(main_module, permissions, &options);
+  let mut worker =
+    MainWorker::bootstrap_from_options(main_module, permissions, options);
 
+  // TODO(@AaronO): move to a JsRuntime Extension passed into options
   // This block registers additional ops and state that
   // are only available in the CLI
   {
@@ -248,7 +264,6 @@ pub fn create_main_worker(
 
     js_runtime.sync_ops_cache();
   }
-  worker.bootstrap(&options);
 
   worker
 }
@@ -509,16 +524,7 @@ async fn lint_command(
     None
   };
 
-  tools::lint::lint_files(
-    maybe_lint_config,
-    lint_flags.rules_tags,
-    lint_flags.rules_include,
-    lint_flags.rules_exclude,
-    lint_flags.files,
-    lint_flags.ignore,
-    lint_flags.json,
-  )
-  .await
+  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch).await
 }
 
 async fn cache_command(
@@ -559,7 +565,7 @@ async fn eval_command(
   let main_module =
     resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext)).unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::build(flags.clone()).await?;
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions, None);
   // Create a dummy source file.
@@ -583,6 +589,11 @@ async fn eval_command(
   // to allow module access by TS compiler.
   ps.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
+  if flags.compat {
+    worker
+      .execute_side_module(&compat::get_node_globals_url())
+      .await?;
+  }
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
@@ -899,6 +910,11 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   ps.file_fetcher.insert_cached(source_file);
 
   debug!("main_module {}", main_module);
+  if flags.compat {
+    worker
+      .execute_side_module(&compat::get_node_globals_url())
+      .await?;
+  }
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
@@ -981,13 +997,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   struct FileWatcherModuleExecutor {
     worker: MainWorker,
     pending_unload: bool,
+    compat: bool,
   }
 
   impl FileWatcherModuleExecutor {
-    pub fn new(worker: MainWorker) -> FileWatcherModuleExecutor {
+    pub fn new(worker: MainWorker, compat: bool) -> FileWatcherModuleExecutor {
       FileWatcherModuleExecutor {
         worker,
         pending_unload: false,
+        compat,
       }
     }
 
@@ -997,6 +1015,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       &mut self,
       main_module: &ModuleSpecifier,
     ) -> Result<(), AnyError> {
+      if self.compat {
+        self
+          .worker
+          .execute_side_module(&compat::get_node_globals_url())
+          .await?;
+      }
       self.worker.execute_main_module(main_module).await?;
       self.worker.execute_script(
         &located_script_name!(),
@@ -1036,16 +1060,14 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
   let operation = |(ps, main_module): (ProcState, ModuleSpecifier)| {
     let flags = flags.clone();
-    let permissions = Permissions::from_options(&flags.into());
+    let permissions = Permissions::from_options(&flags.clone().into());
     async move {
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
-      let mut executor = FileWatcherModuleExecutor::new(create_main_worker(
-        &ps,
-        main_module.clone(),
-        permissions,
-        None,
-      ));
+      let mut executor = FileWatcherModuleExecutor::new(
+        create_main_worker(&ps, main_module.clone(), permissions, None),
+        flags.compat,
+      );
 
       executor.execute(&main_module).await?;
 
@@ -1091,6 +1113,11 @@ async fn run_command(
     };
 
   debug!("main_module {}", main_module);
+  if flags.compat {
+    worker
+      .execute_side_module(&compat::get_node_globals_url())
+      .await?;
+  }
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),

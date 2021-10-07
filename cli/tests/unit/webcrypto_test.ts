@@ -441,7 +441,7 @@ const asn1AlgorithmIdentifier = new Uint8Array([
   0x05, 0x00, // NULL
 ]);
 
-unitTest(async function rsaExportPkcs8() {
+unitTest(async function rsaExport() {
   for (const algorithm of ["RSASSA-PKCS1-v1_5", "RSA-PSS", "RSA-OAEP"]) {
     const keyPair = await crypto.subtle.generateKey(
       {
@@ -458,20 +458,33 @@ unitTest(async function rsaExportPkcs8() {
     assert(keyPair.publicKey);
     assertEquals(keyPair.privateKey.extractable, true);
 
-    const exportedKey = await crypto.subtle.exportKey(
+    const exportedPrivateKey = await crypto.subtle.exportKey(
       "pkcs8",
       keyPair.privateKey,
     );
 
-    assert(exportedKey);
-    assert(exportedKey instanceof ArrayBuffer);
+    assert(exportedPrivateKey);
+    assert(exportedPrivateKey instanceof ArrayBuffer);
 
-    const pkcs8 = new Uint8Array(exportedKey);
+    const pkcs8 = new Uint8Array(exportedPrivateKey);
     assert(pkcs8.length > 0);
 
     assertEquals(
       pkcs8.slice(4, asn1AlgorithmIdentifier.byteLength + 4),
       asn1AlgorithmIdentifier,
+    );
+
+    const exportedPublicKey = await crypto.subtle.exportKey(
+      "spki",
+      keyPair.publicKey,
+    );
+
+    const spki = new Uint8Array(exportedPublicKey);
+    assert(spki.length > 0);
+
+    assertEquals(
+      spki.slice(4, asn1AlgorithmIdentifier.byteLength + 1),
+      asn1AlgorithmIdentifier.slice(3),
     );
   }
 });

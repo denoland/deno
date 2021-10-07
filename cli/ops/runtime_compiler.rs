@@ -11,8 +11,6 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::resolve_url_or_path;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -20,6 +18,7 @@ use deno_graph;
 use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
 use serde::Deserialize;
+use serde::Serialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -59,6 +58,15 @@ struct EmitArgs {
   sources: Option<HashMap<String, Arc<String>>>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EmitResult {
+  diagnostics: crate::diagnostics::Diagnostics,
+  files: HashMap<String, String>,
+  ignored_options: Option<crate::config_file::IgnoredCompilerOptions>,
+  stats: crate::module_graph::Stats,
+}
+
 fn to_maybe_imports(
   referrer: &ModuleSpecifier,
   maybe_options: &Option<HashMap<String, Value>>,
@@ -71,11 +79,10 @@ fn to_maybe_imports(
 
 async fn op_emit(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: EmitArgs,
   _: (),
-) -> Result<Value, AnyError> {
+) -> Result<EmitResult, AnyError> {
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
-  let args: EmitArgs = serde_json::from_value(args)?;
   let root_specifier = args.root_specifier;
   let state = state.borrow();
   let ps = state.borrow::<ProcState>();
@@ -228,10 +235,10 @@ async fn op_emit(
   // them to the diagnostics.
   diagnostics.extend_graph_errors(graph.errors());
 
-  Ok(json!({
-    "diagnostics": diagnostics,
-    "files": files,
-    "ignoredOptions": maybe_ignored_options,
-    "stats": stats,
-  }))
+  Ok(EmitResult {
+    diagnostics: result_info.diagnostics,
+    files,
+    ignored_options: result_info.maybe_ignored_options,
+    stats: result_info.stats,
+  })
 }

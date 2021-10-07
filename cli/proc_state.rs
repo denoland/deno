@@ -2,6 +2,7 @@
 
 use crate::cache;
 use crate::colors;
+use crate::compat;
 use crate::config_file::ConfigFile;
 use crate::deno_dir;
 use crate::emit;
@@ -221,7 +222,7 @@ impl ProcState {
             .unwrap()
         }
       };
-      let node_builtins = crate::compat::get_mapped_node_builtins();
+      let node_builtins = compat::get_mapped_node_builtins();
       let diagnostics = import_map.update_imports(node_builtins)?;
 
       if !diagnostics.is_empty() {
@@ -288,6 +289,23 @@ impl ProcState {
       dynamic_permissions.clone(),
     );
     let maybe_locker = as_maybe_locker(&self.lockfile);
+    let maybe_imports = {
+      let mut imports = Vec::new();
+      if let Some(config_file) = &self.maybe_config_file {
+        if let Some(config_imports) = config_file.to_maybe_imports() {
+          imports.extend(config_imports)
+        }
+      }
+      if self.flags.compat {
+        let compat_url = ModuleSpecifier::parse("flags:compat").unwrap();
+        imports.push((compat_url, vec![compat::get_node_globals_url().to_string()]));
+      }
+      if imports.is_empty() {
+        None
+      } else {
+        Some(imports)
+      }
+    };
     let maybe_imports = self
       .maybe_config_file
       .as_ref()

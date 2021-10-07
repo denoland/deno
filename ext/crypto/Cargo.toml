@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.33.0"
+version = "0.34.0"
 authors = ["the Deno authors"]
 edition = "2018"
 license = "MIT"
@@ -14,8 +14,8 @@ description = "Web Cryptography API implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.101.0", path = "../../core" }
-deno_web = { version = "0.50.0", path = "../web" }
+deno_core = { version = "0.102.0", path = "../../core" }
+deno_web = { version = "0.51.0", path = "../web" }
 lazy_static = "1.4.0"
 num-traits = "0.2.14"
 rand = "0.8.4"
@@ -24,5 +24,6 @@ rsa = { version = "0.5.0", default-features = false, features = ["std"] }
 serde = { version = "1.0.129", features = ["derive"] }
 sha-1 = "0.9.7"
 sha2 = "0.9.5"
+spki = "0.4.1"
 tokio = { version = "1.10.1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }
