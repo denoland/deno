@@ -147,7 +147,7 @@ impl MainWorker {
       // Permissions ext (worker specific state)
       perm_ext,
     ];
-    extensions.extend(options.extensions.drain(..));
+    extensions.extend(std::mem::take(&mut options.extensions));
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),

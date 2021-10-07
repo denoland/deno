@@ -378,7 +378,7 @@ impl WebWorker {
     // Append exts
     extensions.extend(runtime_exts);
     extensions.extend(deno_ns_exts); // May be empty
-    extensions.extend(options.extensions.drain(..));
+    extensions.extend(std::mem::take(&mut options.extensions));
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
