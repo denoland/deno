@@ -931,7 +931,7 @@
               }
 
               // 3.
-              const Q = await core.opAsync("op_crypto_import_key", {
+              const { data } = await core.opAsync("op_crypto_import_key", {
                 algorithm: "ECDSA",
                 namedCurve: normalizedAlgorithm.namedCurve,
               }, keyData);
@@ -939,7 +939,7 @@
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 type: "raw",
-                data: Q,
+                data,
               });
 
               // 4-5.
