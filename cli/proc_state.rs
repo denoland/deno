@@ -267,6 +267,25 @@ impl ProcState {
     })))
   }
 
+  /// Return any imports that should be brought into the scope of the module
+  /// graph.
+  fn get_maybe_imports(&self) -> Option<Vec<(ModuleSpecifier, Vec<String>)>> {
+    let mut imports = Vec::new();
+    if let Some(config_file) = &self.maybe_config_file {
+      if let Some(config_imports) = config_file.to_maybe_imports() {
+        imports.extend(config_imports);
+      }
+    }
+    if self.flags.compat {
+      imports.extend(compat::get_node_imports());
+    }
+    if imports.is_empty() {
+      None
+    } else {
+      Some(imports)
+    }
+  }
+
   /// This method is called when a module requested by the `JsRuntime` is not
   /// available, or in other sub-commands that need to "load" a module graph.
   /// The method will collect all the dependencies of the provided specifier,
@@ -289,28 +308,7 @@ impl ProcState {
       dynamic_permissions.clone(),
     );
     let maybe_locker = as_maybe_locker(&self.lockfile);
-    let maybe_imports = {
-      let mut imports = Vec::new();
-      if let Some(config_file) = &self.maybe_config_file {
-        if let Some(config_imports) = config_file.to_maybe_imports() {
-          imports.extend(config_imports)
-        }
-      }
-      if self.flags.compat {
-        let compat_url = ModuleSpecifier::parse("flags:compat").unwrap();
-        imports.push((compat_url, vec![compat::get_node_globals_url().to_string()]));
-      }
-      if imports.is_empty() {
-        None
-      } else {
-        Some(imports)
-      }
-    };
-    let maybe_imports = self
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.to_maybe_imports())
-      .flatten();
+    let maybe_imports = self.get_maybe_imports();
     let graph = deno_graph::create_graph(
       roots,
       is_dynamic,

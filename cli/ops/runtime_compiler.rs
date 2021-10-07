@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache;
+use crate::config_file::IgnoredCompilerOptions;
 use crate::diagnostics::Diagnostics;
 use crate::emit;
 use crate::errors::get_error_class_name;
@@ -11,6 +12,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::resolve_url_or_path;
+use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -61,10 +63,11 @@ struct EmitArgs {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct EmitResult {
-  diagnostics: crate::diagnostics::Diagnostics,
+  diagnostics: Diagnostics,
   files: HashMap<String, String>,
-  ignored_options: Option<crate::config_file::IgnoredCompilerOptions>,
-  stats: crate::module_graph::Stats,
+  #[serde(rename = "ignoredOptions")]
+  maybe_ignored_options: Option<IgnoredCompilerOptions>,
+  stats: emit::Stats,
 }
 
 fn to_maybe_imports(
@@ -236,9 +239,9 @@ async fn op_emit(
   diagnostics.extend_graph_errors(graph.errors());
 
   Ok(EmitResult {
-    diagnostics: result_info.diagnostics,
+    diagnostics,
     files,
-    ignored_options: result_info.maybe_ignored_options,
-    stats: result_info.stats,
+    maybe_ignored_options,
+    stats,
   })
 }
