@@ -26,17 +26,19 @@ fn get_diagnostic_class(_: &Diagnostic) -> &'static str {
 }
 
 fn get_graph_error_class(err: &GraphError) -> &'static str {
-  get_module_graph_error_class(&err.error)
+  get_module_graph_error_class(&err.0)
 }
 
-fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
+pub(crate) fn get_module_graph_error_class(
+  err: &ModuleGraphError,
+) -> &'static str {
   match err {
     ModuleGraphError::LoadingErr(_, err) => get_error_class_name(err.as_ref()),
     ModuleGraphError::InvalidSource(_, _) => "SyntaxError",
-    ModuleGraphError::ParseErr(_, diagnostic) => get_diagnostic_class(diagnostic),
-    ModuleGraphError::ResolutionError(err) => {
-      get_resolution_error_class(err)
+    ModuleGraphError::ParseErr(_, diagnostic) => {
+      get_diagnostic_class(diagnostic)
     }
+    ModuleGraphError::ResolutionError(err) => get_resolution_error_class(err),
     ModuleGraphError::UnsupportedMediaType(_, _) => "TypeError",
     ModuleGraphError::Missing(_) => "NotFound",
   }
@@ -44,7 +46,9 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
 
 fn get_resolution_error_class(err: &ResolutionError) -> &'static str {
   match err {
-    ResolutionError::ResolverError(err, _, _) => get_error_class_name(err.as_ref()),
+    ResolutionError::ResolverError(err, _, _) => {
+      get_error_class_name(err.as_ref())
+    }
     _ => "TypeError",
   }
 }

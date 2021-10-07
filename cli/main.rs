@@ -626,14 +626,15 @@ async fn create_graph_and_maybe_check(
     .await,
   );
 
-  // Ensure that all non-dynamic imports are properly loaded and if not, error
-  // with the first issue encountered.
-  emit::graph_valid(graph.as_ref())?;
+  // Ensure that all non-dynamic, non-type only imports are properly loaded and
+  // if not, error with the first issue encountered.
+  graph.valid().map_err(emit::GraphError::from)?;
   // If there was a locker, validate the integrity of all the modules in the
   // locker.
   emit::lock(graph.as_ref());
 
   if !ps.flags.no_check {
+    graph.valid_types_only().map_err(emit::GraphError::from)?;
     let lib = if ps.flags.unstable {
       emit::TypeLib::UnstableDenoWindow
     } else {

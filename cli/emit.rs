@@ -256,11 +256,7 @@ fn get_root_names(
     graph
       .roots
       .iter()
-      .filter_map(|s| {
-        graph
-          .get(s)
-          .map(|m| (m.specifier.clone(), m.media_type))
-      })
+      .filter_map(|s| graph.get(s).map(|m| (m.specifier.clone(), m.media_type)))
       .collect()
   }
 }
@@ -688,16 +684,19 @@ pub(crate) fn valid_emit(
 }
 
 #[derive(Debug)]
-pub(crate) struct GraphError {
-  pub error: ModuleGraphError,
-  pub specifier: ModuleSpecifier,
-}
+pub(crate) struct GraphError(pub ModuleGraphError);
 
 impl std::error::Error for GraphError {}
 
+impl From<ModuleGraphError> for GraphError {
+  fn from(err: ModuleGraphError) -> Self {
+    Self(err)
+  }
+}
+
 impl fmt::Display for GraphError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match &self.error {
+    match &self.0 {
       ModuleGraphError::ResolutionError(err) => {
         if matches!(
           err,
@@ -706,18 +705,12 @@ impl fmt::Display for GraphError {
         ) {
           write!(f, "{}", err.to_string_with_span())
         } else {
-          self.error.fmt(f)
+          self.0.fmt(f)
         }
       }
-      _ => self.error.fmt(f),
+      _ => self.0.fmt(f),
     }
   }
-}
-
-pub(crate) fn graph_valid(graph: &ModuleGraph) -> Result<(), GraphError> {
-  graph
-    .valid()
-    .map_err(|(specifier, error)| GraphError { error, specifier })
 }
 
 /// Convert a module graph to a map of "files", which are used by the runtime
@@ -735,10 +728,10 @@ pub(crate) fn to_file_map(
           files.insert(format!("{}.js.map", fs), map);
         }
       } else if mt == MediaType::JavaScript || mt == MediaType::Unknown {
-          if let Some(module) = graph.get(&fs) {
-            files.insert(fs.to_string(), module.source.to_string());
-          }
+        if let Some(module) = graph.get(&fs) {
+          files.insert(fs.to_string(), module.source.to_string());
         }
+      }
       if let Some(declaration) = cache.get_declaration(&fs) {
         files.insert(format!("{}.d.ts", fs), declaration);
       }
@@ -756,41 +749,43 @@ pub(crate) fn to_module_sources(
   graph
     .specifiers()
     .into_iter()
-    .filter_map(|(rs, r)| match r {
-      Err(err) => Some((rs, Err(err.into()))),
-      Ok((_, mt)) if mt == MediaType::Dts => None,
+    .map(|(rs, r)| match r {
+      Err(err) => (rs, Err(err.into())),
       Ok((fs, mt)) => {
+        // First we check to see if there is an emitted file in the cache.
         if let Some(code) = cache.get_emit(&fs) {
-          Some((
+          (
             rs.clone(),
             Ok(ModuleSource {
               code,
               module_url_found: fs.to_string(),
               module_url_specified: rs.to_string(),
             }),
-          ))
+          )
+        // Then if the file is JavaScript (or unknown) and wasn't emitted, we
+        // will load the original source code in the module.
         } else if mt == MediaType::JavaScript || mt == MediaType::Unknown {
           if let Some(module) = graph.get(&fs) {
-            Some((
+            (
               rs.clone(),
               Ok(ModuleSource {
                 code: module.source.as_str().to_string(),
                 module_url_found: module.specifier.to_string(),
                 module_url_specified: rs.to_string(),
               }),
-            ))
+            )
           } else {
-            Some((
-              rs.clone(),
-              Err(custom_error(
-                "NotFound",
-                format!("Emitted or source for \"{}\" not found.", rs),
-              )),
-            ))
+            unreachable!("unexpected module missing from graph")
           }
+        // Otherwise we will add a not found error.
         } else {
-          log::debug!("un-emitted file {} media type {}", fs, mt);
-          None
+          (
+            rs.clone(),
+            Err(custom_error(
+              "NotFound",
+              format!("Emitted code for \"{}\" not found.", rs),
+            )),
+          )
         }
       }
     })

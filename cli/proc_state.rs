@@ -5,6 +5,7 @@ use crate::colors;
 use crate::config_file::ConfigFile;
 use crate::deno_dir;
 use crate::emit;
+use crate::errors::get_module_graph_error_class;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
@@ -34,9 +35,6 @@ use deno_tls::rustls::RootCertStore;
 use deno_tls::rustls_native_certs::load_native_certs;
 use deno_tls::webpki_roots::TLS_SERVER_ROOTS;
 use import_map::ImportMap;
-use log::debug;
-use log::info;
-use log::warn;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -227,11 +225,11 @@ impl ProcState {
       let diagnostics = import_map.update_imports(node_builtins)?;
 
       if !diagnostics.is_empty() {
-        info!("Some Node built-ins were not added to the import map:");
+        log::info!("Some Node built-ins were not added to the import map:");
         for diagnostic in diagnostics {
-          info!("  - {}", diagnostic);
+          log::info!("  - {}", diagnostic);
         }
-        info!("If you want to use Node built-ins provided by Deno remove listed specifiers from \"imports\" mapping in the import map file.");
+        log::info!("If you want to use Node built-ins provided by Deno remove listed specifiers from \"imports\" mapping in the import map file.");
       }
 
       maybe_import_map = Some(import_map);
@@ -286,8 +284,8 @@ impl ProcState {
     let mut cache = cache::FetchCacher::new(
       self.dir.gen_cache.clone(),
       self.file_fetcher.clone(),
-      root_permissions,
-      dynamic_permissions,
+      root_permissions.clone(),
+      dynamic_permissions.clone(),
     );
     let maybe_locker = as_maybe_locker(&self.lockfile);
     let maybe_imports = self
@@ -300,7 +298,7 @@ impl ProcState {
       is_dynamic,
       maybe_imports,
       &mut cache,
-      self.maybe_import_map.as_ref().map(|r| r.as_resolver()),
+      self.maybe_import_map.as_ref().map(|im| im.as_resolver()),
       maybe_locker,
       None,
     )
@@ -333,13 +331,13 @@ impl ProcState {
       &reload_exclusions,
     ) {
       if let Some(root) = graph.roots.get(0) {
-        debug!("specifier \"{}\" and dependencies have valid emit, skipping checking and emitting", root);
+        log::debug!("specifier \"{}\" and dependencies have valid emit, skipping checking and emitting", root);
       } else {
-        debug!("rootless graph, skipping checking and emitting");
+        log::debug!("rootless graph, skipping checking and emitting");
       }
     } else {
       if let Some(ignored_options) = maybe_ignored_options {
-        eprintln!("{}", ignored_options);
+        log::warn!("{}", ignored_options);
       }
       let emit_result = if self.flags.no_check {
         let options = emit::EmitOptions {
@@ -349,13 +347,14 @@ impl ProcState {
         };
         emit::emit(graph.as_ref(), &mut cache, options)?
       } else {
+        graph.valid_types_only()?;
         let maybe_config_specifier = self
           .maybe_config_file
           .clone()
           .map(|ref cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
         let options = emit::CheckOptions {
           debug: self.flags.log_level == Some(log::Level::Debug),
-          emit_with_diagnostics: false,
+          emit_with_diagnostics: true,
           maybe_config_specifier,
           ts_config,
         };
@@ -372,7 +371,7 @@ impl ProcState {
         }
         emit::check_and_maybe_emit(graph.clone(), &mut cache, options)?
       };
-      debug!("{}", emit_result.stats);
+      log::debug!("{}", emit_result.stats);
       // if the graph is not valid then the diagnostics returned are bogus and
       // should just be ignored so that module loading can proceed to allow the
       // "real" error to be surfaced
@@ -386,7 +385,7 @@ impl ProcState {
     let mut resolution_map = self.resolution_map.lock();
     resolution_map.extend(graph.resolution_map());
     let mut self_maybe_graph_error = self.maybe_graph_error.lock();
-    *self_maybe_graph_error = maybe_graph_error.map(|(_, err)| err);
+    *self_maybe_graph_error = maybe_graph_error;
 
     if let Some(ref lockfile) = self.lockfile {
       let g = lockfile.lock();
@@ -416,7 +415,7 @@ impl ProcState {
           Some(Err(err)) => {
             return Err(custom_error(
               "TypeError",
-              format!("{}", err.to_string_with_span()),
+              format!("{}\n", err.to_string_with_span()),
             ))
           }
           _ => (),
@@ -444,45 +443,66 @@ impl ProcState {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dynamic: bool,
   ) -> Result<ModuleSource, AnyError> {
+    log::debug!(
+      "specifier: {} maybe_referrer: {} is_dynamic: {}",
+      specifier,
+      maybe_referrer
+        .as_ref()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "<none>".to_string()),
+      is_dynamic
+    );
     let modules = self.modules.lock();
     modules
       .get(&specifier)
       .map(|r| match r {
         Ok(module_source) => Ok(module_source.clone()),
         Err(err) => {
-          // TODO(@kitsonk) this feels a bit hacky but it works, without
-          // introducing another enum to have to try to deal with.
-          if get_custom_error_class(err) == Some("NotFound") {
-            let message = if let Some(referrer) = &maybe_referrer {
-              format!("{}\n  From: {}\n    If the source module contains only types, use `import type` and `export type` to import it instead.", err, referrer)
-            } else {
-              format!("{}\n  If the source module contains only types, use `import type` and `export type` to import it instead.", err)
-            };
-            warn!("{}: {}", crate::colors::yellow("warning"), message);
-            Ok(ModuleSource {
-              code: "".to_string(),
-              module_url_found: specifier.to_string(),
-              module_url_specified: specifier.to_string(),
-            })
+          // this is the "pending" error we will return
+          let err = if let Some(error_class) = get_custom_error_class(err) {
+            if error_class == "NotFound" && maybe_referrer.is_some() && !is_dynamic {
+              let resolved_map = self.resolved_map.lock();
+              // in situations where we were to try to load a module that wasn't
+              // emitted and we can't run the original source code (it isn't)
+              // JavaScript, we will load a blank module instead.  This is
+              // usually caused by people exporting type only exports and not
+              // type checking.
+              if let Some(span) = resolved_map.get(&specifier) {
+                log::warn!("{}: Cannot load module \"{}\".\n    at {}\n  If the source module contains only types, use `import type` and `export type` to import it instead.", colors::yellow("warning"), specifier, span);
+                return Ok(ModuleSource {
+                  code: "".to_string(),
+                  module_url_found: specifier.to_string(),
+                  module_url_specified: specifier.to_string(),
+                });
+              }
+            }
+            custom_error(error_class, err.to_string())
           } else {
-            // anyhow errors don't support cloning, so we have to manage this
-            // ourselves
-            Err(anyhow!(err.to_string()))
-          }
-        },
-      })
-      .unwrap_or_else(|| {
-        if let Some(referrer) = maybe_referrer {
-          if !is_dynamic {
+            anyhow!(err.to_string())
+          };
+          // if there is a pending graph error though we haven't returned, we
+          // will return that one
+          let mut maybe_graph_error = self.maybe_graph_error.lock();
+          if let Some(graph_error) = maybe_graph_error.take() {
+            log::debug!("returning cached graph error");
             let resolved_map = self.resolved_map.lock();
             if let Some(span) = resolved_map.get(&specifier) {
-              return Err(custom_error("NotFound", format!("Cannot load module \"{}\" from \"{}\".\n    at {}", specifier, referrer, span)))
+              if !span.specifier.as_str().contains("$deno") {
+                return Err(custom_error(get_module_graph_error_class(&graph_error), format!("{}\n    at {}", graph_error, span)));
+              }
             }
+            Err(graph_error.into())
+          } else {
+            Err(err)
           }
         }
-        let mut maybe_graph_error = self.maybe_graph_error.lock();
-        if let Some(graph_error) = maybe_graph_error.take() {
-          return Err(graph_error.into());
+      })
+      .unwrap_or_else(|| {
+        if maybe_referrer.is_some() && !is_dynamic {
+          let resolved_map = self.resolved_map.lock();
+          if let Some(span) = resolved_map.get(&specifier) {
+            return Err(custom_error("NotFound", format!("Cannot load module \"{}\".\n    at {}", specifier, span)));
+          }
         }
         Err(custom_error("NotFound", format!("Cannot load module \"{}\".", specifier)))
       })

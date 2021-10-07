@@ -742,11 +742,14 @@ fn collect_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
-/// Collects module and document specifiers with test modes via `collect_specifiers_with_test_mode`
-/// which are then pre-fetched and adjusted based on the media type.
+/// Collects module and document specifiers with test modes via
+/// `collect_specifiers_with_test_mode` which are then pre-fetched and adjusted
+/// based on the media type.
 ///
-/// Specifiers that do not have a known media type that can be executed as a module are marked as
-/// `TestMode::Documentation`.
+/// Specifiers that do not have a known media type that can be executed as a
+/// module are marked as `TestMode::Documentation`. Type definition files
+/// cannot be run, and therefore need to be marked as `TestMode::Documentation`
+/// as well.
 async fn fetch_specifiers_with_test_mode(
   ps: ProcState,
   include: Vec<String>,
@@ -761,7 +764,9 @@ async fn fetch_specifiers_with_test_mode(
       .fetch(specifier, &mut Permissions::allow_all())
       .await?;
 
-    if file.media_type == MediaType::Unknown {
+    if file.media_type == MediaType::Unknown
+      || file.media_type == MediaType::Dts
+    {
       *mode = TestMode::Documentation
     }
   }

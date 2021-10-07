@@ -44,12 +44,15 @@ use log::warn;
 use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
+use std::borrow::Cow;
+use std::cmp;
+use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::Path;
 use std::sync::Arc;
 use std::thread;
-use std::{borrow::Cow, cmp};
-use std::{collections::HashMap, path::Path};
-use text_size::{TextRange, TextSize};
+use text_size::TextRange;
+use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 

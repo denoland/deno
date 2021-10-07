@@ -93,8 +93,12 @@ impl ModuleLoader for CliModuleLoader {
     let ps = self.ps.clone();
     let state = op_state.borrow();
 
-    let root_permissions = self.root_permissions.clone();
     let dynamic_permissions = state.borrow::<Permissions>().clone();
+    let root_permissions = if is_dynamic {
+      dynamic_permissions.clone()
+    } else {
+      self.root_permissions.clone()
+    };
 
     let lib = match self.lib {
       TypeLib::DenoWindow => crate::emit::TypeLib::DenoWindow,

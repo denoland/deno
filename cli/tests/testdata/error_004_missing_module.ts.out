@@ -1,2 +1,2 @@
-[WILDCARD]error: Cannot load module "file:///[WILDCARD]/bad-module.ts" from "file:///[WILDCARD]/error_004_missing_module.ts".
+[WILDCARD]error: Cannot load module "file:///[WILDCARD]/bad-module.ts".
     at file:///[WILDCARD]/error_004_missing_module.ts:1:28

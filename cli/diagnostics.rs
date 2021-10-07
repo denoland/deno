@@ -354,10 +354,7 @@ impl Diagnostics {
     Diagnostics(diagnostics)
   }
 
-  pub fn extend_graph_errors(
-    &mut self,
-    errors: Vec<ModuleGraphError>,
-  ) {
+  pub fn extend_graph_errors(&mut self, errors: Vec<ModuleGraphError>) {
     self.0.extend(errors.into_iter().map(|err| Diagnostic {
       category: DiagnosticCategory::Error,
       code: 900001,

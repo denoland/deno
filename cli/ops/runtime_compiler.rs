@@ -3,6 +3,7 @@
 use crate::cache;
 use crate::diagnostics::Diagnostics;
 use crate::emit;
+use crate::errors::get_error_class_name;
 use crate::proc_state::ProcState;
 
 use deno_core::error::custom_error;
@@ -122,12 +123,21 @@ async fn op_emit(
       true,
       maybe_imports,
       cache.as_mut_loader(),
-      maybe_import_map.as_ref().map(|r| r.as_resolver()),
+      maybe_import_map.as_ref().map(|im| im.as_resolver()),
       None,
       None,
     )
     .await,
   );
+  // There are certain graph errors that we want to return as an error of an op,
+  // versus something that gets returned as a diagnostic of the op, this is
+  // handled here.
+  if let Err(err) = graph.valid() {
+    let err: AnyError = err.into();
+    if get_error_class_name(&err) == "PermissionDenied" {
+      return Err(err);
+    }
+  }
   let check = args.check.unwrap_or(true);
   let debug = ps.flags.log_level == Some(log::Level::Debug);
   let tsc_emit = check && args.bundle.is_none();
@@ -214,7 +224,10 @@ async fn op_emit(
     (files, emit_result.diagnostics, emit_result.stats)
   };
 
+  // we want to add any errors that were returned as an `Err` earlier by adding
+  // them to the diagnostics.
   diagnostics.extend_graph_errors(graph.errors());
+
   Ok(json!({
     "diagnostics": diagnostics,
     "files": files,

@@ -121,6 +121,7 @@ fn bundle_js_watch() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
   std::thread::sleep(std::time::Duration::from_secs(1));
+  assert_contains!(stderr_lines.next().unwrap(), "Check");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
   assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
   let file = PathBuf::from(&bundle);
@@ -129,6 +130,7 @@ fn bundle_js_watch() {
 
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
+  assert_contains!(stderr_lines.next().unwrap(), "Check");
   assert_contains!(stderr_lines.next().unwrap(), "File change detected!");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
   assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
@@ -176,6 +178,7 @@ fn bundle_watch_not_exit() {
   // Make sure the watcher actually restarts and works fine with the proper syntax
   write(&file_to_watch, "console.log(42);").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
+  assert_contains!(stderr_lines.next().unwrap(), "Check");
   assert_contains!(stderr_lines.next().unwrap(), "File change detected!");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
   assert_contains!(stderr_lines.next().unwrap(), "target.js");

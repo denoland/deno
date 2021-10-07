@@ -6,14 +6,11 @@ use super::text::LineIndex;
 use super::tsc;
 use super::urls::INVALID_SPECIFIER;
 
-use crate::cache::FetchCacher;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
-use crate::flags::Flags;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
-use crate::proc_state::ProcState;
 use crate::text_encoding;
 
 use deno_ast::MediaType;
@@ -22,7 +19,6 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
-use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
 use std::collections::HashMap;
 use std::fs;
@@ -31,34 +27,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tsc::NavigationTree;
-
-pub async fn cache(
-  roots: Vec<ModuleSpecifier>,
-  maybe_import_map: &Option<ImportMap>,
-  maybe_cache_path: &Option<PathBuf>,
-) -> Result<(), AnyError> {
-  let ps = ProcState::build(Flags {
-    cache_path: maybe_cache_path.clone(),
-    ..Default::default()
-  })
-  .await?;
-  let mut cache = FetchCacher::new(
-    ps.dir.gen_cache.clone(),
-    ps.file_fetcher.clone(),
-    Permissions::allow_all(),
-    Permissions::allow_all(),
-  );
-  let _graph = deno_graph::create_graph(
-    roots,
-    false,
-    None,
-    &mut cache,
-    maybe_import_map.as_ref().map(|r| r.as_resolver()),
-    None,
-    None,
-  );
-  Ok(())
-}
 
 fn get_remote_headers(
   cache_filename: &Path,
