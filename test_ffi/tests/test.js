@@ -10,6 +10,14 @@ const [libPrefix, libSuffix] = {
 const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 
 const resourcesPre = Deno.resources();
+
+// dlopen shouldn't panic
+try {
+  Deno.dlopen("cli/src/main.rs", {});
+} catch (_) {
+  console.log("dlopen doesn't panic");
+}
+
 const dylib = Deno.dlopen(libPath, {
   "print_something": { parameters: [], result: "void" },
   "print_buffer": { parameters: ["buffer", "usize"], result: "void" },
