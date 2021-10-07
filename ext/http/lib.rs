@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
-use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
@@ -22,6 +21,10 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use hyper::body::HttpBody;
+use hyper::header::CONNECTION;
+use hyper::header::SEC_WEBSOCKET_KEY;
+use hyper::header::SEC_WEBSOCKET_VERSION;
+use hyper::header::UPGRADE;
 use hyper::http;
 use hyper::server::conn::Http;
 use hyper::service::Service as HyperService;
@@ -34,7 +37,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
@@ -44,10 +46,6 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::sync::oneshot;
 use tokio_util::io::StreamReader;
-
-pub fn get_unstable_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_http.unstable.d.ts")
-}
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -109,7 +107,14 @@ impl HyperService<Request<Body>> for Service {
       response_tx: resp_tx,
     });
 
-    async move { Ok(resp_rx.await.unwrap()) }.boxed_local()
+    async move {
+      resp_rx.await.or_else(|_|
+        // Fallback dummy response in case sender was dropped due to closed conn
+        Response::builder()
+          .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+          .body(vec![].into()))
+    }
+    .boxed_local()
   }
 }
 
@@ -274,7 +279,13 @@ fn req_url(
   scheme: &'static str,
   addr: SocketAddr,
 ) -> Result<String, AnyError> {
-  let host: Cow<str> = if let Some(host) = req.uri().host() {
+  let host: Cow<str> = if let Some(auth) = req.uri().authority() {
+    match addr.port() {
+      443 if scheme == "https" => Cow::Borrowed(auth.host()),
+      80 if scheme == "http" => Cow::Borrowed(auth.host()),
+      _ => Cow::Borrowed(auth.as_str()), // Includes port number.
+    }
+  } else if let Some(host) = req.uri().host() {
     Cow::Borrowed(host)
   } else if let Some(host) = req.headers().get("HOST") {
     Cow::Borrowed(host.to_str()?)
@@ -317,20 +328,23 @@ fn req_headers(
 }
 
 fn is_websocket_request(req: &hyper::Request<hyper::Body>) -> bool {
-  req_header_contains(req, hyper::header::CONNECTION, "upgrade")
-    && req_header_contains(req, hyper::header::UPGRADE, "websocket")
+  req.version() == hyper::Version::HTTP_11
+    && req.method() == hyper::Method::GET
+    && req.headers().contains_key(&SEC_WEBSOCKET_KEY)
+    && header(req.headers(), &SEC_WEBSOCKET_VERSION) == b"13"
+    && header(req.headers(), &UPGRADE).eq_ignore_ascii_case(b"websocket")
+    && header(req.headers(), &CONNECTION)
+      .split(|c| *c == b' ' || *c == b',')
+      .any(|token| token.eq_ignore_ascii_case(b"upgrade"))
 }
 
-fn req_header_contains(
-  req: &hyper::Request<hyper::Body>,
-  key: impl hyper::header::AsHeaderName,
-  value: &str,
-) -> bool {
-  req.headers().get_all(key).iter().any(|v| {
-    v.to_str()
-      .map(|s| s.to_lowercase().contains(value))
-      .unwrap_or(false)
-  })
+fn header<'a>(
+  h: &'a hyper::http::HeaderMap,
+  name: &hyper::header::HeaderName,
+) -> &'a [u8] {
+  h.get(name)
+    .map(hyper::header::HeaderValue::as_bytes)
+    .unwrap_or_default()
 }
 
 fn should_ignore_error(e: &AnyError) -> bool {
@@ -498,10 +512,8 @@ async fn op_http_response_close(
 async fn op_http_request_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: Option<ZeroCopyBuf>,
+  mut data: ZeroCopyBuf,
 ) -> Result<usize, AnyError> {
-  let mut data = data.ok_or_else(null_opbuf)?;
-
   let resource = state
     .borrow()
     .resource_table
@@ -550,9 +562,8 @@ async fn op_http_request_read(
 async fn op_http_response_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: Option<ZeroCopyBuf>,
+  data: ZeroCopyBuf,
 ) -> Result<(), AnyError> {
-  let buf = data.ok_or_else(null_opbuf)?;
   let resource = state
     .borrow()
     .resource_table
@@ -565,7 +576,7 @@ async fn op_http_response_write(
 
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
 
-  let mut send_data_fut = body.send_data(Vec::from(&*buf).into()).boxed_local();
+  let mut send_data_fut = body.send_data(data.to_vec().into()).boxed_local();
 
   poll_fn(|cx| {
     let r = send_data_fut.poll_unpin(cx).map_err(AnyError::from);

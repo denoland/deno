@@ -7,6 +7,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use lspower::lsp;
+use pretty_assertions::assert_eq;
 use std::fs;
 use tempfile::TempDir;
 use test_util::deno_exe_path;
@@ -313,6 +314,32 @@ fn lsp_import_map() {
       }
     }))
   );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_import_map_data_url() {
+  let mut client = init("initialize_params_import_map.json");
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import example from \"example\";\n"
+      }
+    }),
+  );
+
+  let mut diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  // This indicates that the import map from initialize_params_import_map.json
+  // is applied correctly.
+  assert!(diagnostics.any(|diagnostic| diagnostic.code
+    == Some(lsp::NumberOrString::String("no-cache".to_string()))
+    && diagnostic
+      .message
+      .contains("https://deno.land/x/example/mod.ts")));
   shutdown(&mut client);
 }
 
@@ -2935,7 +2962,7 @@ fn lsp_diagnostics_refresh_dependents() {
     if queue_len - i <= 3 {
       assert!(maybe_params.is_some());
       let params = maybe_params.unwrap();
-      assert!(params.diagnostics.is_empty());
+      assert_eq!(params.diagnostics, Vec::with_capacity(0));
     }
   }
   assert!(client.queue_is_empty());
@@ -3171,6 +3198,169 @@ fn lsp_format_markdown() {
 }
 
 #[test]
+fn lsp_format_with_config() {
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let deno_fmt_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.fmt.jsonc")).unwrap();
+  fs::write(temp_dir.path().join("deno.fmt.jsonc"), deno_fmt_jsonc).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./deno.fmt.jsonc"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "languageId": "typescript",
+          "version": 1,
+          "text": "export async function someVeryLongFunctionName() {\nconst response = fetch(\"http://localhost:4545/some/non/existent/path.json\");\nconsole.log(response.text());\nconsole.log(\"finished!\")\n}"
+        }
+      }),
+    )
+    .unwrap();
+
+  // The options below should be ignored in favor of configuration from config file.
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!([{
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "newText": "\t"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 23
+          },
+          "end": {
+            "line": 1,
+            "character": 24
+          }
+        },
+        "newText": "\n\t\t'"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 73
+          },
+          "end": {
+            "line": 1,
+            "character": 74
+          }
+        },
+        "newText": "',\n\t"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 0
+          },
+          "end": {
+            "line": 2,
+            "character": 0
+          }
+        },
+        "newText": "\t"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 0
+          }
+        },
+        "newText": "\t"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 12
+          },
+          "end": {
+            "line": 3,
+            "character": 13
+          }
+        },
+        "newText": "'"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 22
+          },
+          "end": {
+            "line": 3,
+            "character": 24
+          }
+        },
+        "newText": "');"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 1
+          },
+          "end": {
+            "line": 4,
+            "character": 1
+          }
+        },
+        "newText": "\n"
+      }]
+    ))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_markdown_no_diagnostics() {
   let mut client = init("initialize_params.json");
   client
@@ -3334,6 +3524,40 @@ fn lsp_code_actions_ignore_lint() {
   assert_eq!(
     maybe_res,
     Some(load_fixture("code_action_ignore_lint_response.json"))
+  );
+  shutdown(&mut client);
+}
+
+/// This test exercises updating an existing deno-lint-ignore-file comment.
+#[test]
+fn lsp_code_actions_update_ignore_lint() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text":
+"#!/usr/bin/env -S deno run
+// deno-lint-ignore-file camelcase
+let snake_case = 'Hello, Deno!';
+console.log(snake_case);
+",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      load_fixture("code_action_update_ignore_lint_params.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_update_ignore_lint_response.json"))
   );
   shutdown(&mut client);
 }

@@ -333,8 +333,8 @@
   };
 
   /**
- * @type {typeof primordials.makeSafe}
- */
+   * @type {typeof primordials.makeSafe}
+   */
   const makeSafe = (unsafe, safe) => {
     if (SymbolIterator in unsafe.prototype) {
       const dummy = new unsafe();

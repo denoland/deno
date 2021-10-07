@@ -33,10 +33,34 @@ export async function getMetadata(directory: string) {
   return JSON.parse(result!) as CargoMetadata;
 }
 
-export async function publishCrate(directory: string) {
+export function publishCrate(directory: string) {
+  return runCargoSubCommand({
+    directory,
+    args: ["publish"],
+  });
+}
+
+export function build(directory: string) {
+  return runCargoSubCommand({
+    directory,
+    args: ["build", "-vv"],
+  });
+}
+
+export function check(directory: string) {
+  return runCargoSubCommand({
+    directory,
+    args: ["check"],
+  });
+}
+
+async function runCargoSubCommand(params: {
+  args: string[];
+  directory: string;
+}) {
   const p = Deno.run({
-    cwd: directory,
-    cmd: ["cargo", "publish"],
+    cwd: params.directory,
+    cmd: ["cargo", ...params.args],
     stderr: "inherit",
     stdout: "inherit",
   });

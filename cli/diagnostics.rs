@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
+use deno_runtime::colors;
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
@@ -25,17 +25,14 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "EmitOptions",
   "EmitResult",
   "HttpClient",
-  "LinuxSignal",
   "Location",
   "MXRecord",
-  "MacOSSignal",
   "Metrics",
   "OpMetrics",
   "RecordType",
   "ResolveDnsOptions",
   "SRVRecord",
   "SetRawOptions",
-  "Signal",
   "SignalStream",
   "StartTlsOptions",
   "SystemMemoryInfo",
@@ -60,6 +57,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "resolveDns",
   "setRaw",
   "shutdown",
+  "Signal",
   "signal",
   "signals",
   "sleepSync",
@@ -423,9 +421,9 @@ impl Error for Diagnostics {}
 #[cfg(test)]
 mod tests {
   use super::*;
-  use colors::strip_ansi_codes;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
+  use test_util::strip_ansi_codes;
 
   #[test]
   fn test_de_diagnostics() {

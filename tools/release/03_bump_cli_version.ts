@@ -13,6 +13,7 @@ const originalVersion = cliCrate.version;
 
 // increment the version
 await cliCrate.increment(getVersionIncrement());
+await workspace.updateLockFile();
 
 // output the Releases.md markdown text
 console.log(

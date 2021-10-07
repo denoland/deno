@@ -1,4 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// deno-lint-ignore-file no-window-prefix
 import { assert, unitTest } from "./test_util.ts";
 
 unitTest(function globalThisExists() {

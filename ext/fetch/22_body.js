@@ -36,19 +36,17 @@
   } = window.__bootstrap.primordials;
 
   class InnerBody {
-    /** @type {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} */
-    streamOrStatic;
-    /** @type {null | Uint8Array | Blob | FormData} */
-    source = null;
-    /** @type {null | number} */
-    length = null;
-
     /**
      * @param {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} stream
      */
     constructor(stream) {
+      /** @type {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} */
       this.streamOrStatic = stream ??
         { body: new Uint8Array(), consumed: false };
+      /** @type {null | Uint8Array | Blob | FormData} */
+      this.source = null;
+      /** @type {null | number} */
+      this.length = null;
     }
 
     get stream() {
@@ -372,7 +370,7 @@
     return { body, contentType };
   }
 
-  webidl.converters["BodyInit"] = (V, opts) => {
+  webidl.converters["BodyInit_DOMString"] = (V, opts) => {
     // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
     if (V instanceof ReadableStream) {
       // TODO(lucacasonato): ReadableStream is not branded
@@ -393,10 +391,13 @@
         return webidl.converters["ArrayBufferView"](V, opts);
       }
     }
-    return webidl.converters["USVString"](V, opts);
+    // BodyInit conversion is passed to extractBody(), which calls core.encode().
+    // core.encode() will UTF-8 encode strings with replacement, being equivalent to the USV normalization.
+    // Therefore we can convert to DOMString instead of USVString and avoid a costly redundant conversion.
+    return webidl.converters["DOMString"](V, opts);
   };
-  webidl.converters["BodyInit?"] = webidl.createNullableConverter(
-    webidl.converters["BodyInit"],
+  webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
+    webidl.converters["BodyInit_DOMString"],
   );
 
   window.__bootstrap.fetchBody = { mixinBody, InnerBody, extractBody };

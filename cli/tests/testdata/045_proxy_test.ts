@@ -1,5 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { serve, ServerRequest } from "../../../test_util/std/http/server.ts";
+import {
+  serve,
+  ServerRequest,
+} from "../../../test_util/std/http/server_legacy.ts";
 import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 
 const addr = Deno.args[1] || "127.0.0.1:4555";

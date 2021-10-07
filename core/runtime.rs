@@ -99,41 +99,54 @@ struct ModEvaluate {
   sender: oneshot::Sender<Result<(), AnyError>>,
 }
 
-#[derive(Default, Clone)]
-pub struct SharedArrayBufferStore(Arc<Mutex<SharedArrayBufferStoreInner>>);
+pub struct CrossIsolateStore<T>(Arc<Mutex<CrossIsolateStoreInner<T>>>);
 
-#[derive(Default)]
-pub struct SharedArrayBufferStoreInner {
-  buffers: HashMap<u32, v8::SharedRef<v8::BackingStore>>,
+struct CrossIsolateStoreInner<T> {
+  map: HashMap<u32, T>,
   last_id: u32,
 }
 
-impl SharedArrayBufferStore {
-  pub(crate) fn insert(
-    &self,
-    backing_store: v8::SharedRef<v8::BackingStore>,
-  ) -> u32 {
-    let mut buffers = self.0.lock().unwrap();
-    let last_id = buffers.last_id;
-    buffers.buffers.insert(last_id, backing_store);
-    buffers.last_id += 1;
+impl<T> CrossIsolateStore<T> {
+  pub(crate) fn insert(&self, value: T) -> u32 {
+    let mut store = self.0.lock().unwrap();
+    let last_id = store.last_id;
+    store.map.insert(last_id, value);
+    store.last_id += 1;
     last_id
   }
 
-  pub(crate) fn take(
-    &self,
-    id: u32,
-  ) -> Option<v8::SharedRef<v8::BackingStore>> {
-    let mut buffers = self.0.lock().unwrap();
-    buffers.buffers.remove(&id)
+  pub(crate) fn take(&self, id: u32) -> Option<T> {
+    let mut store = self.0.lock().unwrap();
+    store.map.remove(&id)
   }
 }
+
+impl<T> Default for CrossIsolateStore<T> {
+  fn default() -> Self {
+    CrossIsolateStore(Arc::new(Mutex::new(CrossIsolateStoreInner {
+      map: Default::default(),
+      last_id: 0,
+    })))
+  }
+}
+
+impl<T> Clone for CrossIsolateStore<T> {
+  fn clone(&self) -> Self {
+    Self(self.0.clone())
+  }
+}
+
+pub type SharedArrayBufferStore =
+  CrossIsolateStore<v8::SharedRef<v8::BackingStore>>;
+
+pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -149,6 +162,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   waker: AtomicWaker,
 }
 
@@ -238,11 +252,20 @@ pub struct RuntimeOptions {
   /// (which it only does once), otherwise it's silenty dropped.
   pub v8_platform: Option<v8::SharedRef<v8::Platform>>,
 
-  /// The buffer to use for transferring SharedArrayBuffers between isolates.
+  /// The store to use for transferring SharedArrayBuffers between isolates.
   /// If multiple isolates should have the possibility of sharing
-  /// SharedArrayBuffers, they should use the same SharedArrayBufferStore. If no
-  /// SharedArrayBufferStore is specified, SharedArrayBuffer can not be serialized.
+  /// SharedArrayBuffers, they should use the same [SharedArrayBufferStore]. If
+  /// no [SharedArrayBufferStore] is specified, SharedArrayBuffer can not be
+  /// serialized.
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+
+  /// The store to use for transferring `WebAssembly.Module` objects between
+  /// isolates.
+  /// If multiple isolates should have the possibility of sharing
+  /// `WebAssembly.Module` objects, they should use the same
+  /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
+  /// `WebAssembly.Module` objects cannot be serialized.
+  pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
 }
 
 impl JsRuntime {
@@ -328,12 +351,14 @@ impl JsRuntime {
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
       js_recv_cb: None,
+      js_sync_cb: None,
       js_macrotask_cb: None,
       js_wasm_streaming_cb: None,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
+      compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),
@@ -363,9 +388,10 @@ impl JsRuntime {
     }
     // Init extension ops
     js_runtime.init_extension_ops().unwrap();
+    // Init callbacks (opresolve & syncOpsCache)
+    js_runtime.init_cbs();
+    // Sync ops cache
     js_runtime.sync_ops_cache();
-    // Init async ops callback
-    js_runtime.init_recv_cb();
 
     js_runtime
   }
@@ -453,35 +479,44 @@ impl JsRuntime {
         self.register_op(name, macroware(name, opfn));
       }
     }
-    // Sync ops cache
-    self.sync_ops_cache();
     // Restore extensions
     self.extensions = extensions;
 
     Ok(())
   }
 
-  /// Grabs a reference to core.js' opresolve
-  fn init_recv_cb(&mut self) {
-    let scope = &mut self.handle_scope();
-
-    // Get Deno.core.opresolve
-    let code = v8::String::new(scope, "Deno.core.opresolve").unwrap();
+  /// Grab a Global handle to a function returned by the given expression
+  fn grab_fn(
+    scope: &mut v8::HandleScope,
+    code: &str,
+  ) -> v8::Global<v8::Function> {
+    let code = v8::String::new(scope, code).unwrap();
     let script = v8::Script::compile(scope, code, None).unwrap();
     let v8_value = script.run(scope).unwrap();
-
-    // Put global handle in state.js_recv_cb
-    let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
     let cb = v8::Local::<v8::Function>::try_from(v8_value).unwrap();
-    state.js_recv_cb.replace(v8::Global::new(scope, cb));
+    v8::Global::new(scope, cb)
+  }
+
+  /// Grabs a reference to core.js' opresolve & syncOpsCache()
+  fn init_cbs(&mut self) {
+    let mut scope = self.handle_scope();
+    let recv_cb = Self::grab_fn(&mut scope, "Deno.core.opresolve");
+    let sync_cb = Self::grab_fn(&mut scope, "Deno.core.syncOpsCache");
+    // Put global handles in state
+    let state_rc = JsRuntime::state(&scope);
+    let mut state = state_rc.borrow_mut();
+    state.js_recv_cb.replace(recv_cb);
+    state.js_sync_cb.replace(sync_cb);
   }
 
   /// Ensures core.js has the latest op-name to op-id mappings
   pub fn sync_ops_cache(&mut self) {
-    self
-      .execute_script("<anon>", "Deno.core.syncOpsCache()")
-      .unwrap();
+    let scope = &mut self.handle_scope();
+    let state_rc = JsRuntime::state(scope);
+    let js_sync_cb_handle = state_rc.borrow().js_sync_cb.clone().unwrap();
+    let js_sync_cb = js_sync_cb_handle.get(scope);
+    let this = v8::undefined(scope).into();
+    js_sync_cb.call(scope, this, &[]);
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -567,6 +602,7 @@ impl JsRuntime {
       ))));
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
+    std::mem::take(&mut state.borrow_mut().js_sync_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -645,6 +681,48 @@ impl JsRuntime {
     }
 
     scope.perform_microtask_checkpoint();
+  }
+
+  /// Waits for the given value to resolve while polling the event loop.
+  ///
+  /// This future resolves when either the value is resolved or the event loop runs to
+  /// completion.
+  pub async fn resolve_value(
+    &mut self,
+    global: v8::Global<v8::Value>,
+  ) -> Result<v8::Global<v8::Value>, AnyError> {
+    poll_fn(|cx| {
+      let state = self.poll_event_loop(cx, false);
+
+      let mut scope = self.handle_scope();
+      let local = v8::Local::<v8::Value>::new(&mut scope, &global);
+
+      if let Ok(promise) = v8::Local::<v8::Promise>::try_from(local) {
+        match promise.state() {
+          v8::PromiseState::Pending => match state {
+            Poll::Ready(Ok(_)) => {
+              let msg = "Promise resolution is still pending but the event loop has already resolved.";
+              Poll::Ready(Err(generic_error(msg)))
+            },
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+            Poll::Pending => Poll::Pending,
+          },
+          v8::PromiseState::Fulfilled => {
+            let value = promise.result(&mut scope);
+            let value_handle = v8::Global::new(&mut scope, value);
+            Poll::Ready(Ok(value_handle))
+          }
+          v8::PromiseState::Rejected => {
+            let exception = promise.result(&mut scope);
+            Poll::Ready(exception_to_err_result(&mut scope, exception, false))
+          }
+        }
+      } else {
+        let value_handle = v8::Global::new(&mut scope, local);
+        Poll::Ready(Ok(value_handle))
+      }
+    })
+    .await
   }
 
   /// Runs event loop to completion
@@ -1308,11 +1386,14 @@ impl JsRuntime {
     state_rc.borrow_mut().pending_dyn_mod_evaluate = still_pending;
   }
 
-  /// Asynchronously load specified module and all of its dependencies
+  /// Asynchronously load specified module and all of its dependencies.
+  ///
+  /// The module will be marked as "main", and because of that
+  /// "import.meta.main" will return true when checked inside that module.
   ///
   /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
   /// manually after load is finished.
-  pub async fn load_module(
+  pub async fn load_main_module(
     &mut self,
     specifier: &ModuleSpecifier,
     code: Option<String>,
@@ -1321,6 +1402,7 @@ impl JsRuntime {
     if let Some(code) = code {
       module_map_rc.borrow_mut().new_module(
         &mut self.handle_scope(),
+        // main module
         true,
         specifier.as_str(),
         &code,
@@ -1329,6 +1411,43 @@ impl JsRuntime {
 
     let mut load =
       ModuleMap::load_main(module_map_rc.clone(), specifier.as_str()).await?;
+
+    while let Some(info_result) = load.next().await {
+      let info = info_result?;
+      let scope = &mut self.handle_scope();
+      load.register_and_recurse(scope, &info)?;
+    }
+
+    let root_id = load.root_module_id.expect("Root module should be loaded");
+    self.instantiate_module(root_id)?;
+    Ok(root_id)
+  }
+
+  /// Asynchronously load specified ES module and all of its dependencies.
+  ///
+  /// This method is meant to be used when loading some utility code that
+  /// might be later imported by the main module (ie. an entry point module).
+  ///
+  /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
+  /// manually after load is finished.
+  pub async fn load_side_module(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    code: Option<String>,
+  ) -> Result<ModuleId, AnyError> {
+    let module_map_rc = Self::module_map(self.v8_isolate());
+    if let Some(code) = code {
+      module_map_rc.borrow_mut().new_module(
+        &mut self.handle_scope(),
+        // not main module
+        false,
+        specifier.as_str(),
+        &code,
+      )?;
+    }
+
+    let mut load =
+      ModuleMap::load_side(module_map_rc.clone(), specifier.as_str()).await?;
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
@@ -1464,6 +1583,10 @@ impl JsRuntime {
 
       if let Some(exception) = tc_scope.exception() {
         return exception_to_err_result(tc_scope, exception, false);
+      }
+
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        break;
       }
 
       let is_done = is_done.unwrap();
@@ -1628,6 +1751,55 @@ pub mod tests {
     }
   }
 
+  #[tokio::test]
+  async fn test_resolve_value() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let value_global = runtime
+      .execute_script("a.js", "Promise.resolve(1 + 2)")
+      .unwrap();
+    let result_global = runtime.resolve_value(value_global).await.unwrap();
+    {
+      let scope = &mut runtime.handle_scope();
+      let value = result_global.get(scope);
+      assert_eq!(value.integer_value(scope).unwrap(), 3);
+    }
+
+    let value_global = runtime
+      .execute_script(
+        "a.js",
+        "Promise.resolve(new Promise(resolve => resolve(2 + 2)))",
+      )
+      .unwrap();
+    let result_global = runtime.resolve_value(value_global).await.unwrap();
+    {
+      let scope = &mut runtime.handle_scope();
+      let value = result_global.get(scope);
+      assert_eq!(value.integer_value(scope).unwrap(), 4);
+    }
+
+    let value_global = runtime
+      .execute_script("a.js", "Promise.reject(new Error('fail'))")
+      .unwrap();
+    let err = runtime.resolve_value(value_global).await.unwrap_err();
+    assert_eq!(
+      "Uncaught Error: fail",
+      err.downcast::<JsError>().unwrap().message
+    );
+
+    let value_global = runtime
+      .execute_script("a.js", "new Promise(resolve => {})")
+      .unwrap();
+    let error_string = runtime
+      .resolve_value(value_global)
+      .await
+      .unwrap_err()
+      .to_string();
+    assert_eq!(
+      "Promise resolution is still pending but the event loop has already resolved.",
+      error_string,
+    );
+  }
+
   #[test]
   fn terminate_execution() {
     let (mut isolate, _dispatch_count) = setup(Mode::Async);
@@ -1689,7 +1861,7 @@ pub mod tests {
           r#"
           let thrown;
           try {
-            Deno.core.opSync(100);
+            Deno.core.opcallSync(100, null, null);
           } catch (e) {
             thrown = e;
           }
@@ -1747,11 +1919,7 @@ pub mod tests {
 
   #[test]
   fn test_error_builder() {
-    fn op_err(
-      _: &mut OpState,
-      _: (),
-      _: Option<ZeroCopyBuf>,
-    ) -> Result<(), AnyError> {
+    fn op_err(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
       Err(custom_error("DOMExceptionOperationError", "abc"))
     }
 
@@ -1916,7 +2084,6 @@ pub mod tests {
     impl ModuleLoader for ModsLoader {
       fn resolve(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
@@ -1929,7 +2096,6 @@ pub mod tests {
 
       fn load(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
@@ -1949,7 +2115,7 @@ pub mod tests {
     let source_code = "Deno.core.print('hello\\n')".to_string();
 
     let module_id = futures::executor::block_on(
-      runtime.load_module(&specifier, Some(source_code)),
+      runtime.load_main_module(&specifier, Some(source_code)),
     )
     .unwrap();
 
@@ -2115,5 +2281,40 @@ assertEquals(1, notify_return_value);
     };
     let mut runtime = JsRuntime::new(options);
     runtime.execute_script("<none>", "").unwrap();
+  }
+
+  #[test]
+  fn test_is_proxy() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let all_true: v8::Global<v8::Value> = runtime
+      .execute_script(
+        "is_proxy.js",
+        r#"
+      (function () {
+        const { isProxy } = Deno.core;
+        const o = { a: 1, b: 2};
+        const p = new Proxy(o, {});
+        return isProxy(p) && !isProxy(o) && !isProxy(42);
+      })()
+    "#,
+      )
+      .unwrap();
+    let mut scope = runtime.handle_scope();
+    let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
+    assert!(all_true.is_true());
+  }
+
+  #[test]
+  fn test_binding_names() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let all_true: v8::Global<v8::Value> = runtime
+      .execute_script(
+        "binding_names.js",
+        "Deno.core.encode.toString() === 'function encode() { [native code] }'",
+      )
+      .unwrap();
+    let mut scope = runtime.handle_scope();
+    let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
+    assert!(all_true.is_true());
   }
 }

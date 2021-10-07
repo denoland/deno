@@ -31,7 +31,6 @@
     Symbol,
     SymbolAsyncIterator,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
     Uint8Array,
     WeakMap,
@@ -2850,7 +2849,7 @@
   /**
    * @template W
    * @param {WritableStream<W>} stream
-   * */
+   */
   function writableStreamMarkFirstWriteRequestInFlight(stream) {
     assert(stream[_inFlightWriteRequest] === undefined);
     assert(stream[_writeRequests].length);
@@ -3031,10 +3030,6 @@
         ],
       }));
     }
-
-    get [SymbolToStringTag]() {
-      return "ByteLengthQueuingStrategy";
-    }
   }
 
   webidl.configurePrototype(ByteLengthQueuingStrategy);
@@ -3086,10 +3081,6 @@
           "size",
         ],
       }));
-    }
-
-    get [SymbolToStringTag]() {
-      return "CountQueuingStrategy";
     }
   }
 
@@ -3339,10 +3330,6 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
-
-    get [SymbolToStringTag]() {
-      return "ReadableStream";
-    }
   }
 
   // TODO(lucacasonato): should be moved to webidl crate
@@ -3458,10 +3445,6 @@
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ closed: this.closed })}`;
-    }
-
-    get [SymbolToStringTag]() {
-      return "ReadableStreamDefaultReader";
     }
   }
 
@@ -3580,10 +3563,6 @@
         evaluate: this instanceof ReadableByteStreamController,
         keys: ["desiredSize"],
       }));
-    }
-
-    get [SymbolToStringTag]() {
-      return "ReadableByteStreamController";
     }
 
     /**
@@ -3707,10 +3686,6 @@
       }));
     }
 
-    get [SymbolToStringTag]() {
-      return "ReadableStreamDefaultController";
-    }
-
     /**
      * @param {any} reason
      * @returns {Promise<void>}
@@ -3765,7 +3740,6 @@
     [_writable];
 
     /**
-     *
      * @param {Transformer<I, O>} transformer
      * @param {QueuingStrategy<I>} writableStrategy
      * @param {QueuingStrategy<O>} readableStrategy
@@ -3862,10 +3836,6 @@
         inspect({ readable: this.readable, writable: this.writable })
       }`;
     }
-
-    get [SymbolToStringTag]() {
-      return "TransformStream";
-    }
   }
 
   webidl.configurePrototype(TransformStream);
@@ -3928,10 +3898,6 @@
         evaluate: this instanceof TransformStreamDefaultController,
         keys: ["desiredSize"],
       }));
-    }
-
-    get [SymbolToStringTag]() {
-      return "TransformStreamDefaultController";
     }
   }
 
@@ -4062,10 +4028,6 @@
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
-    }
-
-    get [SymbolToStringTag]() {
-      return "WritableStream";
     }
   }
 
@@ -4212,10 +4174,6 @@
         ],
       }));
     }
-
-    get [SymbolToStringTag]() {
-      return "WritableStreamDefaultWriter";
-    }
   }
 
   webidl.configurePrototype(WritableStreamDefaultWriter);
@@ -4267,10 +4225,6 @@
         evaluate: this instanceof WritableStreamDefaultController,
         keys: [],
       }));
-    }
-
-    get [SymbolToStringTag]() {
-      return "WritableStreamDefaultController";
     }
 
     /**

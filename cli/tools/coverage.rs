@@ -1,36 +1,34 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast;
-use crate::ast::TokenOrComment;
 use crate::colors;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
-use crate::media_type::MediaType;
 use crate::module_graph::TypeLib;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use crate::source_maps::SourceMapGetter;
 use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
 use sourcemap::SourceMap;
+use std::cmp;
 use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
-use swc_common::Span;
 use uuid::Uuid;
 
-// TODO(caspervonb) all of these structs can and should be made private, possibly moved to
-// inspector::protocol.
+// TODO(caspervonb) These structs are specific to the inspector protocol and should be refactored
+// into a reusable module.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct CoverageRange {
+struct CoverageRange {
   pub start_offset: usize,
   pub end_offset: usize,
   pub count: usize,
@@ -38,23 +36,36 @@ pub struct CoverageRange {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct FunctionCoverage {
+struct FunctionCoverage {
   pub function_name: String,
   pub ranges: Vec<CoverageRange>,
   pub is_block_coverage: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+struct LineCoverage {
+  pub start_offset: usize,
+  pub end_offset: usize,
+  pub ranges: Vec<CoverageRange>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ScriptCoverage {
+struct ScriptCoverage {
   pub script_id: String,
   pub url: String,
   pub functions: Vec<FunctionCoverage>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct CoverageResult {
+  pub lines: Vec<LineCoverage>,
+  pub functions: Vec<FunctionCoverage>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StartPreciseCoverageParameters {
+struct StartPreciseCoverageParameters {
   pub call_count: bool,
   pub detailed: bool,
   pub allow_triggered_updates: bool,
@@ -62,13 +73,13 @@ pub struct StartPreciseCoverageParameters {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StartPreciseCoverageReturnObject {
+struct StartPreciseCoverageReturnObject {
   pub timestamp: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TakePreciseCoverageReturnObject {
+struct TakePreciseCoverageReturnObject {
   pub result: Vec<ScriptCoverage>,
   pub timestamp: f64,
 }
@@ -170,7 +181,7 @@ impl CoverageCollector {
   }
 }
 
-pub enum CoverageReporterKind {
+enum CoverageReporterKind {
   Pretty,
   Lcov,
 }
@@ -179,21 +190,18 @@ fn create_reporter(
   kind: CoverageReporterKind,
 ) -> Box<dyn CoverageReporter + Send> {
   match kind {
-    CoverageReporterKind::Lcov => Box::new(LcovCoverageReporter::new()),
     CoverageReporterKind::Pretty => Box::new(PrettyCoverageReporter::new()),
+    CoverageReporterKind::Lcov => Box::new(LcovCoverageReporter::new()),
   }
 }
 
-pub trait CoverageReporter {
-  fn visit_coverage(
+trait CoverageReporter {
+  fn report_result(
     &mut self,
-    script_coverage: &ScriptCoverage,
-    script_source: &str,
-    maybe_source_map: Option<Vec<u8>>,
-    maybe_original_source: Option<String>,
+    specifier: &ModuleSpecifier,
+    result: &CoverageResult,
+    source: &str,
   );
-
-  fn done(&mut self);
 }
 
 pub struct LcovCoverageReporter {}
@@ -205,86 +213,45 @@ impl LcovCoverageReporter {
 }
 
 impl CoverageReporter for LcovCoverageReporter {
-  fn visit_coverage(
+  fn report_result(
     &mut self,
-    script_coverage: &ScriptCoverage,
-    script_source: &str,
-    maybe_source_map: Option<Vec<u8>>,
-    _maybe_original_source: Option<String>,
+    specifier: &ModuleSpecifier,
+    result: &CoverageResult,
+    source: &str,
   ) {
-    // TODO(caspervonb) cleanup and reduce duplication between reporters, pre-compute line coverage
-    // elsewhere.
-    let maybe_source_map = maybe_source_map
-      .map(|source_map| SourceMap::from_slice(&source_map).unwrap());
+    println!("SF:{}", specifier.to_file_path().unwrap().to_str().unwrap());
 
-    let url = Url::parse(&script_coverage.url).unwrap();
-    let file_path = url.to_file_path().unwrap();
-    println!("SF:{}", file_path.to_str().unwrap());
+    let named_functions = result
+      .functions
+      .iter()
+      .filter(|block| !block.function_name.is_empty())
+      .collect::<Vec<&FunctionCoverage>>();
 
-    let mut functions_found = 0;
-    for function in &script_coverage.functions {
-      if function.function_name.is_empty() {
-        continue;
-      }
+    for block in &named_functions {
+      let index = source[0..block.ranges[0].start_offset].split('\n').count();
 
-      let source_line = script_source[0..function.ranges[0].start_offset]
-        .split('\n')
-        .count();
-
-      let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
-        source_map
-          .tokens()
-          .find(|token| token.get_dst_line() as usize == source_line)
-          .map(|token| token.get_src_line() as usize)
-          .unwrap_or(0)
-      } else {
-        source_line
-      };
-
-      let function_name = &function.function_name;
-
-      println!("FN:{},{}", line_index + 1, function_name);
-
-      functions_found += 1;
+      println!("FN:{},{}", index + 1, block.function_name);
     }
 
-    let mut functions_hit = 0;
-    for function in &script_coverage.functions {
-      if function.function_name.is_empty() {
-        continue;
-      }
+    let hit_functions = named_functions
+      .iter()
+      .filter(|block| block.ranges[0].count > 0)
+      .cloned()
+      .collect::<Vec<&FunctionCoverage>>();
 
-      let execution_count = function.ranges[0].count;
-      let function_name = &function.function_name;
-
-      println!("FNDA:{},{}", execution_count, function_name);
-
-      if execution_count != 0 {
-        functions_hit += 1;
-      }
+    for block in &hit_functions {
+      println!("FNDA:{},{}", block.ranges[0].count, block.function_name);
     }
 
-    println!("FNF:{}", functions_found);
-    println!("FNH:{}", functions_hit);
+    println!("FNF:{}", named_functions.len());
+    println!("FNH:{}", hit_functions.len());
 
     let mut branches_found = 0;
     let mut branches_hit = 0;
-    for (block_number, function) in script_coverage.functions.iter().enumerate()
-    {
-      let block_hits = function.ranges[0].count;
-      for (branch_number, range) in function.ranges[1..].iter().enumerate() {
-        let source_line =
-          script_source[0..range.start_offset].split('\n').count();
-
-        let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
-          source_map
-            .tokens()
-            .find(|token| token.get_dst_line() as usize == source_line)
-            .map(|token| token.get_src_line() as usize)
-            .unwrap_or(0)
-        } else {
-          source_line
-        };
+    for (block_number, block) in result.functions.iter().enumerate() {
+      let block_hits = block.ranges[0].count;
+      for (branch_number, range) in block.ranges[1..].iter().enumerate() {
+        let line_index = source[0..range.start_offset].split('\n').count();
 
         // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
         //
@@ -319,97 +286,49 @@ impl CoverageReporter for LcovCoverageReporter {
     println!("BRF:{}", branches_found);
     println!("BRH:{}", branches_hit);
 
-    let lines = script_source.split('\n').collect::<Vec<_>>();
-    let line_offsets = {
-      let mut offsets: Vec<(usize, usize)> = Vec::new();
-      let mut index = 0;
+    let enumerated_lines = result
+      .lines
+      .iter()
+      .enumerate()
+      .collect::<Vec<(usize, &LineCoverage)>>();
 
-      for line in &lines {
-        offsets.push((index, index + line.len() + 1));
-        index += line.len() + 1;
+    for (index, line) in &enumerated_lines {
+      if line.ranges.is_empty() {
+        continue;
       }
 
-      offsets
-    };
+      let mut count = 0;
+      for range in &line.ranges {
+        count += range.count;
 
-    let line_counts = line_offsets
-      .iter()
-      .map(|(line_start_offset, line_end_offset)| {
-        let mut count = 0;
-
-        // Count the hits of ranges that include the entire line which will always be at-least one
-        // as long as the code has been evaluated.
-        for function in &script_coverage.functions {
-          for range in &function.ranges {
-            if range.start_offset <= *line_start_offset
-              && range.end_offset >= *line_end_offset
-            {
-              count += range.count;
-            }
-          }
+        if range.count == 0 {
+          count = 0;
+          break;
         }
+      }
 
-        // We reset the count if any block with a zero count overlaps with the line range.
-        for function in &script_coverage.functions {
-          for range in &function.ranges {
-            if range.count > 0 {
-              continue;
-            }
-
-            let overlaps = std::cmp::max(line_end_offset, &range.end_offset)
-              - std::cmp::min(line_start_offset, &range.start_offset)
-              < (line_end_offset - line_start_offset)
-                + (range.end_offset - range.start_offset);
-
-            if overlaps {
-              count = 0;
-            }
-          }
-        }
-
-        count
-      })
-      .collect::<Vec<usize>>();
-
-    let found_lines = if let Some(source_map) = maybe_source_map.as_ref() {
-      let mut found_lines = line_counts
-        .iter()
-        .enumerate()
-        .map(|(index, count)| {
-          source_map
-            .tokens()
-            .filter(move |token| token.get_dst_line() as usize == index)
-            .map(move |token| (token.get_src_line() as usize, *count))
-        })
-        .flatten()
-        .collect::<Vec<(usize, usize)>>();
-
-      found_lines.sort_unstable_by_key(|(index, _)| *index);
-      found_lines.dedup_by_key(|(index, _)| *index);
-      found_lines
-    } else {
-      line_counts
-        .iter()
-        .enumerate()
-        .map(|(index, count)| (index, *count))
-        .collect::<Vec<(usize, usize)>>()
-    };
-
-    for (index, count) in &found_lines {
       println!("DA:{},{}", index + 1, count);
     }
 
-    let lines_hit = found_lines.iter().filter(|(_, count)| *count != 0).count();
+    let lines_found = enumerated_lines
+      .iter()
+      .filter(|(_, line)| !line.ranges.is_empty())
+      .count();
+
+    println!("LF:{}", lines_found);
+
+    let lines_hit = enumerated_lines
+      .iter()
+      .filter(|(_, line)| {
+        !line.ranges.is_empty()
+          && !line.ranges.iter().any(|range| range.count == 0)
+      })
+      .count();
 
     println!("LH:{}", lines_hit);
 
-    let lines_found = found_lines.len();
-    println!("LF:{}", lines_found);
-
     println!("end_of_record");
   }
-
-  fn done(&mut self) {}
 }
 
 pub struct PrettyCoverageReporter {}
@@ -420,135 +339,45 @@ impl PrettyCoverageReporter {
   }
 }
 
+const PRETTY_LINE_WIDTH: usize = 4;
+const PRETTY_LINE_SEPERATOR: &str = "|";
 impl CoverageReporter for PrettyCoverageReporter {
-  fn visit_coverage(
+  fn report_result(
     &mut self,
-    script_coverage: &ScriptCoverage,
-    script_source: &str,
-    maybe_source_map: Option<Vec<u8>>,
-    maybe_original_source: Option<String>,
+    specifier: &ModuleSpecifier,
+    result: &CoverageResult,
+    source: &str,
   ) {
-    let maybe_source_map = maybe_source_map
-      .map(|source_map| SourceMap::from_slice(&source_map).unwrap());
+    print!("cover {} ... ", specifier);
 
-    let mut ignored_spans: Vec<Span> = Vec::new();
-    for item in ast::lex(script_source, &MediaType::JavaScript) {
-      if let TokenOrComment::Token(_) = item.inner {
-        continue;
-      }
-
-      ignored_spans.push(item.span);
-    }
-
-    let lines = script_source.split('\n').collect::<Vec<_>>();
-
-    let line_offsets = {
-      let mut offsets: Vec<(usize, usize)> = Vec::new();
-      let mut index = 0;
-
-      for line in &lines {
-        offsets.push((index, index + line.len() + 1));
-        index += line.len() + 1;
-      }
-
-      offsets
-    };
-
-    // TODO(caspervonb): collect uncovered ranges on the lines so that we can highlight specific
-    // parts of a line in color (word diff style) instead of the entire line.
-    let line_counts = line_offsets
+    let enumerated_lines = result
+      .lines
       .iter()
       .enumerate()
-      .map(|(index, (line_start_offset, line_end_offset))| {
-        let ignore = ignored_spans.iter().any(|span| {
-          (span.lo.0 as usize) <= *line_start_offset
-            && (span.hi.0 as usize) >= *line_end_offset
-        });
+      .collect::<Vec<(usize, &LineCoverage)>>();
 
-        if ignore {
-          return (index, 1);
-        }
+    let found_lines = enumerated_lines
+      .iter()
+      .filter(|(_, coverage)| !coverage.ranges.is_empty())
+      .cloned()
+      .collect::<Vec<(usize, &LineCoverage)>>();
 
-        let mut count = 0;
-
-        // Count the hits of ranges that include the entire line which will always be at-least one
-        // as long as the code has been evaluated.
-        for function in &script_coverage.functions {
-          for range in &function.ranges {
-            if range.start_offset <= *line_start_offset
-              && range.end_offset >= *line_end_offset
-            {
-              count += range.count;
-            }
-          }
-        }
-
-        // We reset the count if any block with a zero count overlaps with the line range.
-        for function in &script_coverage.functions {
-          for range in &function.ranges {
-            if range.count > 0 {
-              continue;
-            }
-
-            let overlaps = std::cmp::max(line_end_offset, &range.end_offset)
-              - std::cmp::min(line_start_offset, &range.start_offset)
-              < (line_end_offset - line_start_offset)
-                + (range.end_offset - range.start_offset);
-
-            if overlaps {
-              count = 0;
-            }
-          }
-        }
-
-        (index, count)
+    let missed_lines = found_lines
+      .iter()
+      .filter(|(_, coverage)| {
+        coverage.ranges.iter().any(|range| range.count == 0)
       })
-      .collect::<Vec<(usize, usize)>>();
+      .cloned()
+      .collect::<Vec<(usize, &LineCoverage)>>();
 
-    let lines = if let Some(original_source) = maybe_original_source.as_ref() {
-      original_source.split('\n').collect::<Vec<_>>()
-    } else {
-      lines
-    };
-
-    let line_counts = if let Some(source_map) = maybe_source_map.as_ref() {
-      let mut line_counts = line_counts
-        .iter()
-        .map(|(index, count)| {
-          source_map
-            .tokens()
-            .filter(move |token| token.get_dst_line() as usize == *index)
-            .map(move |token| (token.get_src_line() as usize, *count))
-        })
-        .flatten()
-        .collect::<Vec<(usize, usize)>>();
-
-      line_counts.sort_unstable_by_key(|(index, _)| *index);
-      line_counts.dedup_by_key(|(index, _)| *index);
-
-      line_counts
-    } else {
-      line_counts
-    };
-
-    print!("cover {} ... ", script_coverage.url);
-
-    let hit_lines = line_counts
-      .iter()
-      .filter(|(_, count)| *count != 0)
-      .map(|(index, _)| *index);
-
-    let missed_lines = line_counts
-      .iter()
-      .filter(|(_, count)| *count == 0)
-      .map(|(index, _)| *index);
-
-    let lines_found = line_counts.len();
-    let lines_hit = hit_lines.count();
-    let line_ratio = lines_hit as f32 / lines_found as f32;
-
-    let line_coverage =
-      format!("{:.3}% ({}/{})", line_ratio * 100.0, lines_hit, lines_found,);
+    let line_ratio = (found_lines.len() - missed_lines.len()) as f32
+      / found_lines.len() as f32;
+    let line_coverage = format!(
+      "{:.3}% ({}/{})",
+      line_ratio * 100.0,
+      found_lines.len() - missed_lines.len(),
+      found_lines.len()
+    );
 
     if line_ratio >= 0.9 {
       println!("{}", colors::green(&line_coverage));
@@ -558,35 +387,31 @@ impl CoverageReporter for PrettyCoverageReporter {
       println!("{}", colors::red(&line_coverage));
     }
 
-    let mut last_line = None;
-    for line_index in missed_lines {
-      const WIDTH: usize = 4;
-      const SEPERATOR: &str = "|";
-
-      // Put a horizontal separator between disjoint runs of lines
-      if let Some(last_line) = last_line {
-        if last_line + 1 != line_index {
-          let dash = colors::gray("-".repeat(WIDTH + 1));
-          println!("{}{}{}", dash, colors::gray(SEPERATOR), dash);
+    let mut maybe_last_index = None;
+    for (index, line) in missed_lines {
+      if let Some(last_index) = maybe_last_index {
+        if last_index + 1 != index {
+          let dash = colors::gray("-".repeat(PRETTY_LINE_WIDTH + 1));
+          println!("{}{}{}", dash, colors::gray(PRETTY_LINE_SEPERATOR), dash);
         }
       }
 
+      let slice = &source[line.start_offset..line.end_offset];
+
       println!(
         "{:width$} {} {}",
-        line_index + 1,
-        colors::gray(SEPERATOR),
-        colors::red(&lines[line_index]),
-        width = WIDTH
+        index + 1,
+        colors::gray(PRETTY_LINE_SEPERATOR),
+        colors::red(&slice),
+        width = PRETTY_LINE_WIDTH,
       );
 
-      last_line = Some(line_index);
+      maybe_last_index = Some(index);
     }
   }
-
-  fn done(&mut self) {}
 }
 
-fn collect_coverages(
+fn collect_script_coverages(
   files: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
@@ -637,7 +462,7 @@ fn collect_coverages(
   Ok(coverages)
 }
 
-fn filter_coverages(
+fn filter_script_coverages(
   coverages: Vec<ScriptCoverage>,
   include: Vec<String>,
   exclude: Vec<String>,
@@ -663,7 +488,321 @@ fn filter_coverages(
     .collect::<Vec<ScriptCoverage>>()
 }
 
-pub async fn cover_files(
+fn offset_to_line_col(source: &str, offset: usize) -> Option<(u32, u32)> {
+  let mut line = 0;
+  let mut col = 0;
+
+  if let Some(slice) = source.get(0..offset) {
+    for ch in slice.bytes() {
+      if ch == b'\n' {
+        line += 1;
+        col = 0;
+      } else {
+        col += 1;
+      }
+    }
+
+    return Some((line, col));
+  }
+
+  None
+}
+
+fn line_col_to_offset(source: &str, line: u32, col: u32) -> Option<usize> {
+  let mut current_col = 0;
+  let mut current_line = 0;
+
+  for (i, ch) in source.bytes().enumerate() {
+    if current_line == line && current_col == col {
+      return Some(i);
+    }
+
+    if ch == b'\n' {
+      current_line += 1;
+      current_col = 0;
+    } else {
+      current_col += 1;
+    }
+  }
+
+  None
+}
+
+async fn cover_script(
+  program_state: ProcState,
+  script: ScriptCoverage,
+) -> Result<CoverageResult, AnyError> {
+  let module_specifier = resolve_url_or_path(&script.url)?;
+  let file = program_state
+    .file_fetcher
+    .fetch(&module_specifier, &mut Permissions::allow_all())
+    .await?;
+
+  let source = file.source.as_str();
+
+  let line_offsets = {
+    let mut line_offsets: Vec<(usize, usize)> = Vec::new();
+    let mut offset = 0;
+
+    for line in source.split('\n') {
+      line_offsets.push((offset, offset + line.len()));
+      offset += line.len() + 1;
+    }
+
+    line_offsets
+  };
+
+  program_state
+    .prepare_module_load(
+      module_specifier.clone(),
+      TypeLib::UnstableDenoWindow,
+      Permissions::allow_all(),
+      Permissions::allow_all(),
+      false,
+      program_state.maybe_import_map.clone(),
+    )
+    .await?;
+
+  let compiled_source =
+    program_state.load(module_specifier.clone(), None)?.code;
+
+  // TODO(caspervonb): source mapping is still a bit of a mess and we should try look into avoiding
+  // doing any loads at this stage of execution but it'll do for now.
+  let maybe_raw_source_map = program_state.get_source_map(&script.url);
+  if let Some(raw_source_map) = maybe_raw_source_map {
+    let source_map = SourceMap::from_slice(&raw_source_map)?;
+
+    // To avoid false positives we base our line ranges on the ranges of the compiled lines
+    let compiled_line_offsets = {
+      let mut line_offsets: Vec<(usize, usize)> = Vec::new();
+      let mut offset = 0;
+
+      for line in compiled_source.split('\n') {
+        line_offsets.push((offset, offset + line.len()));
+        offset += line.len() + 1;
+      }
+
+      line_offsets
+    };
+
+    // First we get the adjusted ranges of these lines
+    let compiled_line_ranges = compiled_line_offsets
+      .iter()
+      .filter_map(|(start_offset, end_offset)| {
+        // We completely ignore empty lines, they just cause trouble and can't map to anything
+        // meaningful.
+        let line = &compiled_source[*start_offset..*end_offset];
+        if line == "\n" {
+          return None;
+        }
+
+        let ranges = script
+          .functions
+          .iter()
+          .map(|function| {
+            function.ranges.iter().filter_map(|function_range| {
+              if &function_range.start_offset > end_offset {
+                return None;
+              }
+
+              if &function_range.end_offset < start_offset {
+                return None;
+              }
+
+              Some(CoverageRange {
+                start_offset: cmp::max(
+                  *start_offset,
+                  function_range.start_offset,
+                ),
+                end_offset: cmp::min(*end_offset, function_range.end_offset),
+                count: function_range.count,
+              })
+            })
+          })
+          .flatten()
+          .collect::<Vec<CoverageRange>>();
+
+        Some(ranges)
+      })
+      .flatten()
+      .collect::<Vec<CoverageRange>>();
+
+    // Then we map those adjusted ranges from their closest tokens to their source locations.
+    let mapped_line_ranges = compiled_line_ranges
+      .iter()
+      .map(|line_range| {
+        let (start_line, start_col) =
+          offset_to_line_col(&compiled_source, line_range.start_offset)
+            .unwrap();
+
+        let start_token =
+          source_map.lookup_token(start_line, start_col).unwrap();
+
+        let (end_line, end_col) =
+          offset_to_line_col(&compiled_source, line_range.end_offset).unwrap();
+
+        let end_token = source_map.lookup_token(end_line, end_col).unwrap();
+
+        let mapped_start_offset = line_col_to_offset(
+          source,
+          start_token.get_src_line(),
+          start_token.get_src_col(),
+        )
+        .unwrap();
+
+        let mapped_end_offset = line_col_to_offset(
+          source,
+          end_token.get_src_line(),
+          end_token.get_src_col(),
+        )
+        .unwrap();
+
+        CoverageRange {
+          start_offset: mapped_start_offset,
+          end_offset: mapped_end_offset,
+          count: line_range.count,
+        }
+      })
+      .collect::<Vec<CoverageRange>>();
+
+    // Then we go through the source lines and grab any ranges that apply to any given line
+    // adjusting them as we go.
+    let lines = line_offsets
+      .iter()
+      .map(|(start_offset, end_offset)| {
+        let ranges = mapped_line_ranges
+          .iter()
+          .filter_map(|line_range| {
+            if &line_range.start_offset > end_offset {
+              return None;
+            }
+
+            if &line_range.end_offset < start_offset {
+              return None;
+            }
+
+            Some(CoverageRange {
+              start_offset: cmp::max(*start_offset, line_range.start_offset),
+              end_offset: cmp::min(*end_offset, line_range.end_offset),
+              count: line_range.count,
+            })
+          })
+          .collect();
+
+        LineCoverage {
+          start_offset: *start_offset,
+          end_offset: *end_offset,
+          ranges,
+        }
+      })
+      .collect();
+
+    let functions = script
+      .functions
+      .iter()
+      .map(|function| {
+        let ranges = function
+          .ranges
+          .iter()
+          .map(|function_range| {
+            let (start_line, start_col) =
+              offset_to_line_col(&compiled_source, function_range.start_offset)
+                .unwrap();
+
+            let start_token =
+              source_map.lookup_token(start_line, start_col).unwrap();
+
+            let mapped_start_offset = line_col_to_offset(
+              source,
+              start_token.get_src_line(),
+              start_token.get_src_col(),
+            )
+            .unwrap();
+
+            let (end_line, end_col) =
+              offset_to_line_col(&compiled_source, function_range.end_offset)
+                .unwrap();
+
+            let end_token = source_map.lookup_token(end_line, end_col).unwrap();
+
+            let mapped_end_offset = line_col_to_offset(
+              source,
+              end_token.get_src_line(),
+              end_token.get_src_col(),
+            )
+            .unwrap();
+
+            CoverageRange {
+              start_offset: mapped_start_offset,
+              end_offset: mapped_end_offset,
+              count: function_range.count,
+            }
+          })
+          .collect();
+
+        FunctionCoverage {
+          ranges,
+          is_block_coverage: function.is_block_coverage,
+          function_name: function.function_name.clone(),
+        }
+      })
+      .collect::<Vec<FunctionCoverage>>();
+
+    return Ok(CoverageResult { lines, functions });
+  }
+
+  let functions = script.functions.clone();
+
+  let lines = line_offsets
+    .iter()
+    .map(|(start_offset, end_offset)| {
+      let line = &source[*start_offset..*end_offset];
+      if line == "\n" {
+        return LineCoverage {
+          start_offset: *start_offset,
+          end_offset: *end_offset,
+          ranges: Vec::new(),
+        };
+      }
+
+      let ranges = script
+        .functions
+        .iter()
+        .map(|function| {
+          function.ranges.iter().filter_map(|function_range| {
+            if &function_range.start_offset > end_offset {
+              return None;
+            }
+
+            if &function_range.end_offset < start_offset {
+              return None;
+            }
+
+            Some(CoverageRange {
+              start_offset: cmp::max(
+                *start_offset,
+                function_range.start_offset,
+              ),
+              end_offset: cmp::min(*end_offset, function_range.end_offset),
+              count: function_range.count,
+            })
+          })
+        })
+        .flatten()
+        .collect();
+
+      LineCoverage {
+        start_offset: *start_offset,
+        end_offset: *end_offset,
+        ranges,
+      }
+    })
+    .collect();
+
+  Ok(CoverageResult { lines, functions })
+}
+
+pub async fn cover_scripts(
   flags: Flags,
   files: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
@@ -671,10 +810,11 @@ pub async fn cover_files(
   exclude: Vec<String>,
   lcov: bool,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags).await?;
+  let ps = ProcState::build(flags).await?;
 
-  let script_coverages = collect_coverages(files, ignore)?;
-  let script_coverages = filter_coverages(script_coverages, include, exclude);
+  let script_coverages = collect_script_coverages(files, ignore)?;
+  let script_coverages =
+    filter_script_coverages(script_coverages, include, exclude);
 
   let reporter_kind = if lcov {
     CoverageReporterKind::Lcov
@@ -685,37 +825,16 @@ pub async fn cover_files(
   let mut reporter = create_reporter(reporter_kind);
 
   for script_coverage in script_coverages {
-    let module_specifier =
-      deno_core::resolve_url_or_path(&script_coverage.url)?;
-    program_state
-      .prepare_module_load(
-        module_specifier.clone(),
-        TypeLib::UnstableDenoWindow,
-        Permissions::allow_all(),
-        Permissions::allow_all(),
-        false,
-        program_state.maybe_import_map.clone(),
-      )
+    let result = cover_script(ps.clone(), script_coverage.clone()).await?;
+
+    let module_specifier = resolve_url_or_path(&script_coverage.url)?;
+    let file = ps
+      .file_fetcher
+      .fetch(&module_specifier, &mut Permissions::allow_all())
       .await?;
 
-    let module_source = program_state.load(module_specifier.clone(), None)?;
-    let script_source = &module_source.code;
-
-    let maybe_source_map = program_state.get_source_map(&script_coverage.url);
-    let maybe_cached_source = program_state
-      .file_fetcher
-      .get_source(&module_specifier)
-      .map(|f| f.source);
-
-    reporter.visit_coverage(
-      &script_coverage,
-      script_source,
-      maybe_source_map,
-      maybe_cached_source,
-    );
+    reporter.report_result(&module_specifier, &result, &file.source);
   }
-
-  reporter.done();
 
   Ok(())
 }

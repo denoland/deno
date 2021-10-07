@@ -3,10 +3,9 @@
 use crate::ast::Location;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::FileFetcher;
-use crate::media_type::MediaType;
-use crate::program_state::ProgramState;
-use deno_runtime::permissions::Permissions;
+use crate::proc_state::ProcState;
 
+use deno_ast::MediaType;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
@@ -16,6 +15,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
+use deno_runtime::permissions::Permissions;
 use log::debug;
 use std::collections::HashMap;
 use std::fmt;
@@ -24,13 +24,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 pub type DependencyMap = HashMap<String, Dependency>;
-pub type FetchFuture = Pin<
-  Box<
-    (dyn Future<Output = Result<CachedModule, (ModuleSpecifier, AnyError)>>
-       + 'static
-       + Send),
-  >,
->;
+type FetchFutureOutput = Result<CachedModule, (ModuleSpecifier, AnyError)>;
+pub type FetchFuture = Pin<Box<dyn Future<Output = FetchFutureOutput> + Send>>;
 
 /// A group of errors that represent errors that can occur with an
 /// an implementation of `SpecifierHandler`.
@@ -62,7 +57,7 @@ pub struct CachedModule {
   pub maybe_version: Option<String>,
   pub media_type: MediaType,
   pub requested_specifier: ModuleSpecifier,
-  pub source: String,
+  pub source: Arc<String>,
   pub source_path: PathBuf,
   pub specifier: ModuleSpecifier,
 }
@@ -79,7 +74,7 @@ impl Default for CachedModule {
       maybe_version: None,
       media_type: MediaType::Unknown,
       requested_specifier: specifier.clone(),
-      source: "".to_string(),
+      source: Arc::new(String::default()),
       source_path: PathBuf::new(),
       specifier,
     }
@@ -224,18 +219,18 @@ pub struct FetchHandler {
   root_permissions: Permissions,
   /// The set of permissions which are used for dynamic imports.
   dynamic_permissions: Permissions,
-  /// A clone of the `program_state` file fetcher.
+  /// A clone of the `ps` file fetcher.
   file_fetcher: FileFetcher,
 }
 
 impl FetchHandler {
   pub fn new(
-    program_state: &Arc<ProgramState>,
+    ps: &ProcState,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
   ) -> Result<Self, AnyError> {
-    let disk_cache = program_state.dir.gen_cache.clone();
-    let file_fetcher = program_state.file_fetcher.clone();
+    let disk_cache = ps.dir.gen_cache.clone();
+    let file_fetcher = ps.file_fetcher.clone();
 
     Ok(FetchHandler {
       disk_cache,
@@ -467,11 +462,11 @@ impl SpecifierHandler for FetchHandler {
 }
 
 pub struct MemoryHandler {
-  sources: HashMap<String, String>,
+  sources: HashMap<String, Arc<String>>,
 }
 
 impl MemoryHandler {
-  pub fn new(sources: HashMap<String, String>) -> Self {
+  pub fn new(sources: HashMap<String, Arc<String>>) -> Self {
     Self { sources }
   }
 }
@@ -496,7 +491,7 @@ impl SpecifierHandler for MemoryHandler {
       let is_remote = specifier.scheme() != "file";
 
       Ok(CachedModule {
-        source: source.to_string(),
+        source: source.clone(),
         requested_specifier: specifier.clone(),
         specifier,
         media_type,
@@ -626,7 +621,7 @@ pub mod tests {
     assert!(cached_module.maybe_dependencies.is_none());
     assert_eq!(cached_module.media_type, MediaType::TypeScript);
     assert_eq!(
-      cached_module.source,
+      cached_module.source.as_str(),
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(cached_module.specifier, specifier);
@@ -700,9 +695,9 @@ pub mod tests {
       "https://deno.land/x/c.js" => c_src,
       "https://deno.land/x/d.d.ts" => d_src
     );
-    let sources: HashMap<String, String> = sources
+    let sources: HashMap<String, Arc<String>> = sources
       .iter()
-      .map(|(k, v)| (k.to_string(), v.to_string()))
+      .map(|(k, v)| (k.to_string(), Arc::new(v.to_string())))
       .collect();
     let mut handler = MemoryHandler::new(sources);
     let specifier = resolve_url_or_path("file:///a.ts").unwrap();
@@ -710,7 +705,7 @@ pub mod tests {
       .fetch(specifier.clone(), None, false)
       .await
       .expect("could not fetch module");
-    assert_eq!(actual.source, a_src.to_string());
+    assert_eq!(actual.source.as_str(), a_src);
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::TypeScript);
@@ -721,7 +716,7 @@ pub mod tests {
       .fetch(specifier.clone(), None, false)
       .await
       .expect("could not fetch module");
-    assert_eq!(actual.source, b_src.to_string());
+    assert_eq!(actual.source.as_str(), b_src);
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::TypeScript);
@@ -732,7 +727,7 @@ pub mod tests {
       .fetch(specifier.clone(), None, false)
       .await
       .expect("could not fetch module");
-    assert_eq!(actual.source, c_src.to_string());
+    assert_eq!(actual.source.as_str(), c_src);
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::JavaScript);
@@ -743,7 +738,7 @@ pub mod tests {
       .fetch(specifier.clone(), None, false)
       .await
       .expect("could not fetch module");
-    assert_eq!(actual.source, d_src.to_string());
+    assert_eq!(actual.source.as_str(), d_src);
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::Dts);
@@ -761,7 +756,7 @@ pub mod tests {
       .fetch(specifier.clone(), None, false)
       .await
       .expect("could not fetch module");
-    assert_eq!(actual.source, a_src.to_string());
+    assert_eq!(actual.source.as_str(), a_src);
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::TypeScript);
@@ -772,7 +767,7 @@ pub mod tests {
       .fetch(specifier.clone(), None, false)
       .await
       .expect("could not fetch module");
-    assert_eq!(actual.source, a_src.to_string());
+    assert_eq!(actual.source.as_str(), a_src);
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::TypeScript);

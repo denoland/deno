@@ -1,16 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::file_fetcher::get_source_from_bytes;
-use crate::file_fetcher::strip_shebang;
+use crate::file_fetcher::get_source_from_data_url;
 use crate::flags::Flags;
 use crate::ops;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use crate::version;
-use data_url::DataUrl;
 use deno_core::error::anyhow;
 use deno_core::error::type_error;
-use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::futures::FutureExt;
@@ -23,16 +20,15 @@ use deno_core::url::Url;
 use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
-use deno_core::OpState;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
+use deno_runtime::BootstrapOptions;
 use deno_tls::create_default_root_cert_store;
 use log::Level;
-use std::cell::RefCell;
 use std::convert::TryInto;
 use std::env::current_exe;
 use std::fs::File;
@@ -123,19 +119,6 @@ fn read_string_slice(
   Ok(string)
 }
 
-fn get_source_from_data_url(
-  specifier: &ModuleSpecifier,
-) -> Result<String, AnyError> {
-  let data_url = DataUrl::process(specifier.as_str())
-    .map_err(|e| uri_error(format!("{:?}", e)))?;
-  let mime = data_url.mime_type();
-  let charset = mime.get_parameter("charset").map(|v| v.to_string());
-  let (bytes, _) = data_url
-    .decode_to_vec()
-    .map_err(|e| uri_error(format!("{:?}", e)))?;
-  Ok(strip_shebang(get_source_from_bytes(bytes, charset)?))
-}
-
 const SPECIFIER: &str = "file://$deno$/bundle.js";
 
 struct EmbeddedModuleLoader(String);
@@ -143,7 +126,6 @@ struct EmbeddedModuleLoader(String);
 impl ModuleLoader for EmbeddedModuleLoader {
   fn resolve(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     _referrer: &str,
     _is_main: bool,
@@ -162,14 +144,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
   fn load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
     let is_data_uri = get_source_from_data_url(&module_specifier).ok();
-    let code = if let Some(ref source) = is_data_uri {
+    let code = if let Some((ref source, _)) = is_data_uri {
       source.to_string()
     } else {
       self.0.to_string()
@@ -218,7 +199,7 @@ pub async fn run(
 ) -> Result<(), AnyError> {
   let flags = metadata_to_flags(&metadata);
   let main_module = resolve_url(SPECIFIER)?;
-  let program_state = ProgramState::build(flags).await?;
+  let ps = ProcState::build(flags).await?;
   let permissions = Permissions::from_options(&metadata.permissions);
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
@@ -234,7 +215,7 @@ pub async fn run(
       .collect::<Vec<_>>(),
   );
 
-  let mut root_cert_store = program_state
+  let mut root_cert_store = ps
     .root_cert_store
     .clone()
     .unwrap_or_else(create_default_root_cert_store);
@@ -248,12 +229,19 @@ pub async fn run(
   }
 
   let options = WorkerOptions {
-    apply_source_maps: false,
-    args: metadata.argv,
-    debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
+    bootstrap: BootstrapOptions {
+      apply_source_maps: false,
+      args: metadata.argv,
+      cpu_count: num_cpus::get(),
+      debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
+      enable_testing_features: false,
+      location: metadata.location,
+      no_color: !colors::use_color(),
+      runtime_version: version::deno(),
+      ts_version: version::TYPESCRIPT.to_string(),
+      unstable: metadata.unstable,
+    },
     user_agent: version::get_user_agent(),
-    unstable: metadata.unstable,
-    enable_testing_features: false,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
     root_cert_store: Some(root_cert_store),
@@ -263,31 +251,30 @@ pub async fn run(
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     module_loader,
-    runtime_version: version::deno(),
-    ts_version: version::TYPESCRIPT.to_string(),
-    no_color: !colors::use_color(),
     get_error_class_fn: Some(&get_error_class_name),
-    location: metadata.location,
     origin_storage_dir: None,
     blob_store,
     broadcast_channel,
     shared_array_buffer_store: None,
-    cpu_count: num_cpus::get(),
+    compiled_wasm_module_store: None,
   };
-  let mut worker =
-    MainWorker::from_options(main_module.clone(), permissions, &options);
+  let mut worker = MainWorker::bootstrap_from_options(
+    main_module.clone(),
+    permissions,
+    options,
+  );
+  // TODO(@AaronO): move to a JsRuntime Extension passed into options
   {
     let js_runtime = &mut worker.js_runtime;
     js_runtime
       .op_state()
       .borrow_mut()
-      .put::<Arc<ProgramState>>(program_state.clone());
+      .put::<ProcState>(ps.clone());
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
     js_runtime.sync_ops_cache();
   }
-  worker.bootstrap(&options);
-  worker.execute_module(&main_module).await?;
+  worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",

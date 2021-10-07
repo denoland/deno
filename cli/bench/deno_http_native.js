@@ -12,11 +12,8 @@ for await (const conn of listener) {
   (async () => {
     const requests = Deno.serveHttp(conn);
     for await (const { respondWith } of requests) {
-      try {
-        respondWith(new Response(body));
-      } catch {
-        // Ignore.
-      }
+      respondWith(new Response(body))
+        .catch((e) => console.log(e));
     }
   })();
 }

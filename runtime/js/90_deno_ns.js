@@ -102,11 +102,11 @@
     Permissions: __bootstrap.permissions.Permissions,
     PermissionStatus: __bootstrap.permissions.PermissionStatus,
     serveHttp: __bootstrap.http.serveHttp,
+    upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
   };
 
   __bootstrap.denoNsUnstable = {
     signal: __bootstrap.signals.signal,
-    signals: __bootstrap.signals.signals,
     Signal: __bootstrap.signals.Signal,
     SignalStream: __bootstrap.signals.SignalStream,
     emit: __bootstrap.compilerApi.emit,
@@ -127,7 +127,6 @@
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
     startTls: __bootstrap.tls.startTls,
     umask: __bootstrap.fs.umask,
-    upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
     futime: __bootstrap.fs.futime,
     futimeSync: __bootstrap.fs.futimeSync,
     utime: __bootstrap.fs.utime,

@@ -335,14 +335,19 @@ itest!(_089_run_allow_list {
   output: "089_run_allow_list.ts.out",
 });
 
-#[cfg(unix)]
 #[test]
 fn _090_run_permissions_request() {
-  let args = "run 090_run_permissions_request.ts";
-  let output = "090_run_permissions_request.ts.out";
-  let input = b"y\nn\n";
-
-  util::test_pty(args, output, input);
+  let args = "run --quiet 090_run_permissions_request.ts";
+  use util::PtyData::*;
+  util::test_pty2(args, vec![
+    Output("⚠️  ️Deno requests run access to \"ls\". Allow? [y/n (y = yes allow, n = no deny)] "),
+    Input("y\n"),
+    Output("⚠️  ️Deno requests run access to \"cat\". Allow? [y/n (y = yes allow, n = no deny)] "),
+    Input("n\n"),
+    Output("granted\r\n"),
+    Output("prompt\r\n"),
+    Output("denied\r\n"),
+  ]);
 }
 
 itest!(_091_use_define_for_class_fields {
@@ -614,6 +619,12 @@ itest!(error_026_remote_import_error {
   output: "error_026_remote_import_error.ts.out",
   exit_code: 1,
   http_server: true,
+});
+
+itest!(error_for_await {
+  args: "run --reload error_for_await.ts",
+  output: "error_for_await.ts.out",
+  exit_code: 1,
 });
 
 itest!(error_missing_module_named_import {
@@ -1177,6 +1188,27 @@ itest!(worker_close_race {
   output: "worker_close_race.js.out",
 });
 
+itest!(worker_drop_handle_race {
+  args: "run --quiet --reload --allow-read worker_drop_handle_race.js",
+  output: "worker_drop_handle_race.js.out",
+  exit_code: 1,
+});
+
+itest!(worker_close_nested {
+  args: "run --quiet --reload --allow-read worker_close_nested.js",
+  output: "worker_close_nested.js.out",
+});
+
+itest!(worker_message_before_close {
+  args: "run --quiet --reload --allow-read worker_message_before_close.js",
+  output: "worker_message_before_close.js.out",
+});
+
+itest!(worker_close_in_wasm_reactions {
+  args: "run --quiet --reload --allow-read worker_close_in_wasm_reactions.js",
+  output: "worker_close_in_wasm_reactions.js.out",
+});
+
 #[test]
 fn no_validate_asm() {
   let output = util::deno_cmd()
@@ -1709,24 +1741,32 @@ mod permissions {
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
-  #[cfg(unix)]
   #[test]
   fn _061_permissions_request() {
-    let args = "run 061_permissions_request.ts";
-    let output = "061_permissions_request.ts.out";
-    let input = b"y\nn\n";
-
-    util::test_pty(args, output, input);
+    let args = "run --quiet 061_permissions_request.ts";
+    use util::PtyData::*;
+    util::test_pty2(args, vec![
+      Output("⚠️  ️Deno requests read access to \"foo\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Input("y\n"),
+      Output("⚠️  ️Deno requests read access to \"bar\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Input("n\n"),
+      Output("granted\r\n"),
+      Output("prompt\r\n"),
+      Output("denied\r\n"),
+    ]);
   }
 
-  #[cfg(unix)]
   #[test]
   fn _062_permissions_request_global() {
-    let args = "run 062_permissions_request_global.ts";
-    let output = "062_permissions_request_global.ts.out";
-    let input = b"y\n";
-
-    util::test_pty(args, output, input);
+    let args = "run --quiet 062_permissions_request_global.ts";
+    use util::PtyData::*;
+    util::test_pty2(args, vec![
+      Output("⚠️  ️Deno requests read access. Allow? [y/n (y = yes allow, n = no deny)] "),
+      Input("y\n"),
+      Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
+      Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
+      Output("PermissionStatus { state: \"granted\", onchange: null }\r\n"),
+    ]);
   }
 
   itest!(_063_permissions_revoke {
@@ -1739,15 +1779,47 @@ mod permissions {
     output: "064_permissions_revoke_global.ts.out",
   });
 
-  #[cfg(unix)]
   #[test]
   fn _066_prompt() {
-    let args = "run --unstable 066_prompt.ts";
-    let output = "066_prompt.ts.out";
-    // These are answers to prompt, confirm, and alert calls.
-    let input = b"John Doe\n\nfoo\nY\nN\nyes\n\nwindows\r\n\n\n";
-
-    util::test_pty(args, output, input);
+    let args = "run --quiet --unstable 066_prompt.ts";
+    use util::PtyData::*;
+    util::test_pty2(
+      args,
+      vec![
+        Output("What is your name? [Jane Doe] "),
+        Input("John Doe\n"),
+        Output("Your name is John Doe.\r\n"),
+        Output("What is your name? [Jane Doe] "),
+        Input("\n"),
+        Output("Your name is Jane Doe.\r\n"),
+        Output("Prompt "),
+        Input("foo\n"),
+        Output("Your input is foo.\r\n"),
+        Output("Question 0 [y/N] "),
+        Input("Y\n"),
+        Output("Your answer is true\r\n"),
+        Output("Question 1 [y/N] "),
+        Input("N\n"),
+        Output("Your answer is false\r\n"),
+        Output("Question 2 [y/N] "),
+        Input("yes\n"),
+        Output("Your answer is false\r\n"),
+        Output("Confirm [y/N] "),
+        Input("\n"),
+        Output("Your answer is false\r\n"),
+        Output("What is Windows EOL? "),
+        Input("windows\n"),
+        Output("Your answer is \"windows\"\r\n"),
+        Output("Hi [Enter] "),
+        Input("\n"),
+        Output("Alert [Enter] "),
+        Input("\n"),
+        Output("The end of test\r\n"),
+        Output("What is EOF? "),
+        Input("\n"),
+        Output("Your answer is null\r\n"),
+      ],
+    );
   }
 
   itest!(dynamic_import_permissions_remote_remote {
@@ -1799,4 +1871,34 @@ itest!(tls_connecttls {
 itest!(byte_order_mark {
   args: "run --no-check byte_order_mark.ts",
   output: "byte_order_mark.out",
+});
+
+#[test]
+fn issue9750() {
+  use util::PtyData::*;
+  util::test_pty2(
+    "run --prompt issue9750.js",
+    vec![
+      Output("Enter 'yy':\r\n"),
+      Input("yy\n"),
+      Output("⚠️  ️Deno requests env access. Allow? [y/n (y = yes allow, n = no deny)] "),
+      Input("n\n"),
+      Output("⚠️  ️Deno requests env access to \"SECRET\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Input("n\n"),
+      Output("error: Uncaught (in promise) PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag\r\n"),
+    ],
+  );
+}
+
+// Regression test for https://github.com/denoland/deno/issues/11451.
+itest!(dom_exception_formatting {
+  args: "run dom_exception_formatting.ts",
+  output: "dom_exception_formatting.ts.out",
+  exit_code: 1,
+});
+
+itest!(long_data_url_formatting {
+  args: "run long_data_url_formatting.ts",
+  output: "long_data_url_formatting.ts.out",
+  exit_code: 1,
 });

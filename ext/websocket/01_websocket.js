@@ -65,19 +65,6 @@
   const CLOSING = 2;
   const CLOSED = 3;
 
-  /**
-   * Tries to close the resource (and ignores BadResource errors).
-   * @param {number} rid
-   */
-  function tryClose(rid) {
-    try {
-      core.close(rid);
-    } catch (err) {
-      // Ignore error if the socket has already been closed.
-      if (!(err instanceof Deno.errors.BadResource)) throw err;
-    }
-  }
-
   const handlerSymbol = Symbol("eventHandlers");
   function makeWrappedHandler(handler) {
     function wrappedHandler(...args) {
@@ -292,7 +279,7 @@
 
                 const event = new CloseEvent("close");
                 this.dispatchEvent(event);
-                tryClose(this[_rid]);
+                core.tryClose(this[_rid]);
               },
             );
           } else {
@@ -337,10 +324,10 @@
       const sendTypedArray = (ta) => {
         this[_bufferedAmount] += ta.byteLength;
         PromisePrototypeThen(
-          core.opAsync("op_ws_send", {
-            rid: this[_rid],
+          core.opAsync("op_ws_send", this[_rid], {
             kind: "binary",
-          }, ta),
+            value: ta,
+          }),
           () => {
             this[_bufferedAmount] -= ta.byteLength;
           },
@@ -361,10 +348,9 @@
         const d = core.encode(string);
         this[_bufferedAmount] += d.byteLength;
         PromisePrototypeThen(
-          core.opAsync("op_ws_send", {
-            rid: this[_rid],
+          core.opAsync("op_ws_send", this[_rid], {
             kind: "text",
-            text: string,
+            value: string,
           }),
           () => {
             this[_bufferedAmount] -= d.byteLength;
@@ -430,7 +416,7 @@
               reason,
             });
             this.dispatchEvent(event);
-            tryClose(this[_rid]);
+            core.tryClose(this[_rid]);
           },
         );
       }
@@ -469,8 +455,7 @@
             break;
           }
           case "ping": {
-            core.opAsync("op_ws_send", {
-              rid: this[_rid],
+            core.opAsync("op_ws_send", this[_rid], {
               kind: "pong",
             });
             break;
@@ -484,7 +469,7 @@
               reason: value.reason,
             });
             this.dispatchEvent(event);
-            tryClose(this[_rid]);
+            core.tryClose(this[_rid]);
             break;
           }
           case "error": {
@@ -497,7 +482,7 @@
 
             const closeEv = new CloseEvent("close");
             this.dispatchEvent(closeEv);
-            tryClose(this[_rid]);
+            core.tryClose(this[_rid]);
             break;
           }
         }

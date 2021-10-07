@@ -65,8 +65,43 @@ pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, Sendable
 pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 
 pub struct WorkerThread {
-  join_handle: JoinHandle<Result<(), AnyError>>,
+  // It's an Option so we can take the value before dropping the WorkerThread.
+  join_handle: Option<JoinHandle<Result<(), AnyError>>>,
   worker_handle: WebWorkerHandle,
+
+  // A WorkerThread that hasn't been explicitly terminated can only be removed
+  // from the WorkersTable once close messages have been received for both the
+  // control and message channels. See `close_channel`.
+  ctrl_closed: bool,
+  message_closed: bool,
+}
+
+impl WorkerThread {
+  fn terminate(mut self) {
+    self.worker_handle.clone().terminate();
+    self
+      .join_handle
+      .take()
+      .unwrap()
+      .join()
+      .expect("Worker thread panicked")
+      .expect("Panic in worker event loop");
+
+    // Optimization so the Drop impl doesn't try to terminate the worker handle
+    // again.
+    self.ctrl_closed = true;
+    self.message_closed = true;
+  }
+}
+
+impl Drop for WorkerThread {
+  fn drop(&mut self) {
+    // If either of the channels is closed, the worker thread has at least
+    // started closing, and its event loop won't start another run.
+    if !(self.ctrl_closed || self.message_closed) {
+      self.worker_handle.clone().terminate();
+    }
+  }
 }
 
 pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
@@ -188,7 +223,10 @@ fn merge_env_permission(
 ) -> Result<UnaryPermission<EnvDescriptor>, AnyError> {
   if let Some(worker) = worker {
     if (worker.global_state < main.global_state)
-      || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
+      || !worker
+        .granted_list
+        .iter()
+        .all(|x| main.check(x.as_ref()).is_ok())
     {
       return Err(custom_error(
         "PermissionDenied",
@@ -413,11 +451,7 @@ where
 
   Ok(Some(UnaryPermission::<EnvDescriptor> {
     global_state: value.global_state,
-    granted_list: value
-      .paths
-      .into_iter()
-      .map(|env| EnvDescriptor(env.to_uppercase()))
-      .collect(),
+    granted_list: value.paths.into_iter().map(EnvDescriptor::new).collect(),
     ..Default::default()
   }))
 }
@@ -551,8 +585,10 @@ fn op_create_worker(
   let worker_handle = handle_receiver.recv().unwrap()?;
 
   let worker_thread = WorkerThread {
-    join_handle,
+    join_handle: Some(join_handle),
     worker_handle: worker_handle.into(),
+    ctrl_closed: false,
+    message_closed: false,
   };
 
   // At this point all interactions with worker happen using thread
@@ -570,31 +606,50 @@ fn op_host_terminate_worker(
   _: (),
 ) -> Result<(), AnyError> {
   if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
-    worker_thread.worker_handle.terminate();
-    worker_thread
-      .join_handle
-      .join()
-      .expect("Panic in worker thread")
-      .expect("Panic in worker event loop");
+    worker_thread.terminate();
   } else {
     debug!("tried to terminate non-existent worker {}", id);
   }
   Ok(())
 }
 
-/// Try to remove worker from workers table - NOTE: `Worker.terminate()`
-/// might have been called already meaning that we won't find worker in
-/// table - in that case ignore.
-fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: WorkerId) {
+enum WorkerChannel {
+  Ctrl,
+  Messages,
+}
+
+/// Close a worker's channel. If this results in both of a worker's channels
+/// being closed, the worker will be removed from the workers table.
+fn close_channel(
+  state: Rc<RefCell<OpState>>,
+  id: WorkerId,
+  channel: WorkerChannel,
+) {
+  use std::collections::hash_map::Entry;
+
   let mut s = state.borrow_mut();
   let workers = s.borrow_mut::<WorkersTable>();
-  if let Some(worker_thread) = workers.remove(&id) {
-    worker_thread.worker_handle.terminate();
-    worker_thread
-      .join_handle
-      .join()
-      .expect("Worker thread panicked")
-      .expect("Panic in worker event loop");
+
+  // `Worker.terminate()` might have been called already, meaning that we won't
+  // find the worker in the table - in that case ignore.
+  if let Entry::Occupied(mut entry) = workers.entry(id) {
+    let terminate = {
+      let worker_thread = entry.get_mut();
+      match channel {
+        WorkerChannel::Ctrl => {
+          worker_thread.ctrl_closed = true;
+          worker_thread.message_closed
+        }
+        WorkerChannel::Messages => {
+          worker_thread.message_closed = true;
+          worker_thread.ctrl_closed
+        }
+      }
+    };
+
+    if terminate {
+      entry.remove().terminate();
+    }
   }
 }
 
@@ -620,13 +675,13 @@ async fn op_host_recv_ctrl(
   if let Some(event) = maybe_event {
     // Terminal error means that worker should be removed from worker table.
     if let WorkerControlEvent::TerminalError(_) = &event {
-      try_remove_and_close(state, id);
+      close_channel(state, id, WorkerChannel::Ctrl);
     }
     return Ok(event);
   }
 
   // If there was no event from worker it means it has already been closed.
-  try_remove_and_close(state, id);
+  close_channel(state, id, WorkerChannel::Ctrl);
   Ok(WorkerControlEvent::Close)
 }
 
@@ -646,7 +701,12 @@ async fn op_host_recv_message(
       return Ok(None);
     }
   };
-  worker_handle.port.recv(state).await
+
+  let ret = worker_handle.port.recv(state.clone()).await?;
+  if ret.is_none() {
+    close_channel(state, id, WorkerChannel::Messages);
+  }
+  Ok(ret)
 }
 
 /// Post message to guest worker as host

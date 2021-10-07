@@ -54,7 +54,7 @@ declare interface PerformanceMeasureOptions {
   detail?: any;
 
   /** Timestamp to be used as the start time or string to be used as start
-   * mark.*/
+   * mark. */
   start?: string | number;
 
   /** Duration between the start and end times. */
@@ -121,7 +121,7 @@ declare namespace Deno {
      * `only` set to true and fail the test suite. */
     only?: boolean;
     /** Check that the number of async completed ops after the test is the same
-     * as number of dispatched ops. Defaults to true.*/
+     * as number of dispatched ops. Defaults to true. */
     sanitizeOps?: boolean;
     /** Ensure the test case does not "leak" resources - ie. the resource table
      * after the test has exactly the same contents as before the test. Defaults
@@ -183,7 +183,7 @@ declare namespace Deno {
    *   assertEquals(decoder.decode(data), "Hello world");
    * });
    * ```
-   * */
+   */
   export function test(name: string, fn: () => void | Promise<void>): void;
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
@@ -295,7 +295,6 @@ declare namespace Deno {
   export function linkSync(oldpath: string, newpath: string): void;
 
   /**
-   *
    * Creates `newpath` as a hard link to `oldpath`.
    *
    * ```ts
@@ -787,32 +786,6 @@ declare namespace Deno {
    */
   export function fdatasync(rid: number): Promise<void>;
 
-  /** **UNSTABLE**: New API should be tested first.
-   *
-   * Acquire an advisory file-system lock for the provided file. `exclusive`
-   * defaults to `false`.
-   */
-  export function flock(rid: number, exclusive?: boolean): Promise<void>;
-
-  /** **UNSTABLE**: New API should be tested first.
-   *
-   * Acquire an advisory file-system lock for the provided file. `exclusive`
-   * defaults to `false`.
-   */
-  export function flockSync(rid: number, exclusive?: boolean): void;
-
-  /** **UNSTABLE**: New API should be tested first.
-   *
-   * Release an advisory file-system lock for the provided file.
-   */
-  export function funlock(rid: number): Promise<void>;
-
-  /** **UNSTABLE**: New API should be tested first.
-   *
-   * Release an advisory file-system lock for the provided file.
-   */
-  export function funlockSync(rid: number): void;
-
   /** Close the given resource ID (rid) which has been previously opened, such
    * as via opening or creating a file.  Closing a file when you are finished
    * with it is important to avoid leaking resources.
@@ -866,7 +839,7 @@ declare namespace Deno {
      * any write calls on it will overwrite its contents, by default without
      * truncating it. */
     write?: boolean;
-    /**Sets the option for the append mode. This option, when `true`, means that
+    /** Sets the option for the append mode. This option, when `true`, means that
      * writes will append to a file instead of overwriting previous contents.
      * Note that setting `{ write: true, append: true }` has the same effect as
      * setting only `{ append: true }`. */
@@ -901,7 +874,6 @@ declare namespace Deno {
   }
 
   /**
-   *
    *  Check if a given resource id (`rid`) is a TTY.
    *
    * ```ts
@@ -1536,7 +1508,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission for the target path.
    * Also requires `allow-read` permission for the CWD if the target path is
-   * relative.*/
+   * relative. */
   export function realPathSync(path: string | URL): string;
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
@@ -1552,7 +1524,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission for the target path.
    * Also requires `allow-read` permission for the CWD if the target path is
-   * relative.*/
+   * relative. */
   export function realPath(path: string | URL): Promise<string>;
 
   export interface DirEntry {
@@ -1914,7 +1886,7 @@ declare namespace Deno {
    *    console.log(">>>> event", event);
    *    // { kind: "create", paths: [ "/foo.txt" ] }
    * }
-   *```
+   * ```
    *
    * Requires `allow-read` permission.
    *
@@ -1968,7 +1940,7 @@ declare namespace Deno {
      * ]);
      * p.close();
      * ```
-     **/
+     */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.
      *
@@ -1984,13 +1956,12 @@ declare namespace Deno {
     stderrOutput(): Promise<Uint8Array>;
     close(): void;
 
-    /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
-     * enum.
+    /** **UNSTABLE**
      *
      * Send a signal to process. This functionality currently only works on
      * Linux and Mac OS.
      */
-    kill(signo: number): void;
+    kill(signo: string): void; // TODO(ry): Use Signal type here once made stable.
   }
 
   export type ProcessStatus =
@@ -2036,6 +2007,12 @@ declare namespace Deno {
    *
    * Environmental variables for subprocess can be specified using `opt.env`
    * mapping.
+   *
+   * `opt.uid` sets the child process’s user ID. This translates to a setuid call
+   * in the child process. Failure in the setuid call will cause the spawn to fail.
+   *
+   * `opt.gid` is similar to `opt.uid`, but sets the group ID of the child process.
+   * This has the same semantics as the uid field.
    *
    * By default subprocess inherits stdio of parent process. To change that
    * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
@@ -2431,8 +2408,8 @@ declare namespace Deno {
    * Services HTTP requests given a TCP or TLS socket.
    *
    * ```ts
-   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const httpConn = Deno.serveHttp(conn);
+   * const conn = await Deno.listen({ port: 80 });
+   * const httpConn = Deno.serveHttp(await conn.accept());
    * const e = await httpConn.nextRequest();
    * if (e) {
    *   e.respondWith(new Response("Hello World"));
@@ -2457,4 +2434,50 @@ declare namespace Deno {
    * ```
    */
   export function serveHttp(conn: Conn): HttpConn;
+
+  export interface WebSocketUpgrade {
+    response: Response;
+    socket: WebSocket;
+  }
+
+  export interface UpgradeWebSocketOptions {
+    protocol?: string;
+  }
+
+  /**
+   * Used to upgrade an incoming HTTP request to a WebSocket.
+   *
+   * Given a request, returns a pair of WebSocket and Response. The original
+   * request must be responded to with the returned response for the websocket
+   * upgrade to be successful.
+   *
+   * ```ts
+   * const conn = await Deno.listen({ port: 80 });
+   * const httpConn = Deno.serveHttp(await conn.accept());
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   const { socket, response } = Deno.upgradeWebSocket(e.request);
+   *   socket.onopen = () => {
+   *     socket.send("Hello World!");
+   *   };
+   *   socket.onmessage = (e) => {
+   *     console.log(e.data);
+   *     socket.close();
+   *   };
+   *   socket.onclose = () => console.log("WebSocket has been closed.");
+   *   socket.onerror = (e) => console.error("WebSocket error:", e);
+   *   e.respondWith(response);
+   * }
+   * ```
+   *
+   * If the request body is disturbed (read from) before the upgrade is
+   * completed, upgrading fails.
+   *
+   * This operation does not yet consume the request or open the websocket. This
+   * only happens once the returned response has been passed to `respondWith`.
+   */
+  export function upgradeWebSocket(
+    request: Request,
+    options?: UpgradeWebSocketOptions,
+  ): WebSocketUpgrade;
 }

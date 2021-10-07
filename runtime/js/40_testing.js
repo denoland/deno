@@ -186,6 +186,23 @@ finishing test case.`;
     ArrayPrototypePush(tests, testDef);
   }
 
+  function formatFailure(error) {
+    if (error.errors) {
+      const message = error
+        .errors
+        .map((error) =>
+          inspectArgs([error]).replace(/^(?!\s*$)/gm, " ".repeat(4))
+        )
+        .join("\n");
+
+      return {
+        failed: error.name + "\n" + message + error.stack,
+      };
+    }
+
+    return { failed: inspectArgs([error]) };
+  }
+
   function createTestFilter(filter) {
     return (def) => {
       if (filter) {
@@ -213,30 +230,49 @@ finishing test case.`;
 
     try {
       await fn();
-      return "ok";
     } catch (error) {
-      return { "failed": inspectArgs([error]) };
+      return formatFailure(error);
     }
+
+    return "ok";
   }
 
   function getTestOrigin() {
     return core.opSync("op_get_test_origin");
   }
 
-  function dispatchTestEvent(event) {
-    return core.opSync("op_dispatch_test_event", event);
+  function reportTestPlan(plan) {
+    core.opSync("op_dispatch_test_event", {
+      plan,
+    });
+  }
+
+  function reportTestConsoleOutput(console) {
+    core.opSync("op_dispatch_test_event", {
+      output: { console },
+    });
+  }
+
+  function reportTestWait(test) {
+    core.opSync("op_dispatch_test_event", {
+      wait: test,
+    });
+  }
+
+  function reportTestResult(test, result, elapsed) {
+    core.opSync("op_dispatch_test_event", {
+      result: [test, result, elapsed],
+    });
   }
 
   async function runTests({
-    disableLog = false,
     filter = null,
     shuffle = null,
   } = {}) {
     const origin = getTestOrigin();
     const originalConsole = globalThis.console;
-    if (disableLog) {
-      globalThis.console = new Console(() => {});
-    }
+
+    globalThis.console = new Console(reportTestConsoleOutput);
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
     const filtered = ArrayPrototypeFilter(
@@ -244,13 +280,11 @@ finishing test case.`;
       createTestFilter(filter),
     );
 
-    dispatchTestEvent({
-      plan: {
-        origin,
-        total: filtered.length,
-        filteredOut: tests.length - filtered.length,
-        usedOnly: only.length > 0,
-      },
+    reportTestPlan({
+      origin,
+      total: filtered.length,
+      filteredOut: tests.length - filtered.length,
+      usedOnly: only.length > 0,
     });
 
     if (shuffle !== null) {
@@ -278,17 +312,15 @@ finishing test case.`;
       };
       const earlier = DateNow();
 
-      dispatchTestEvent({ wait: description });
+      reportTestWait(description);
 
       const result = await runTest(test);
       const elapsed = DateNow() - earlier;
 
-      dispatchTestEvent({ result: [description, result, elapsed] });
+      reportTestResult(description, result, elapsed);
     }
 
-    if (disableLog) {
-      globalThis.console = originalConsole;
-    }
+    globalThis.console = originalConsole;
   }
 
   window.__bootstrap.internals = {

@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use data_url::DataUrl;
-use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::Future;
@@ -26,7 +25,6 @@ use deno_core::ZeroCopyBuf;
 use deno_tls::create_http_client;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
-use deno_web::BlobStore;
 use http::header::CONTENT_LENGTH;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -41,8 +39,6 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
-use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -88,7 +84,7 @@ pub fn init<P: FetchPermissions + 'static>(
         create_http_client(
           user_agent.clone(),
           root_cert_store.clone(),
-          None,
+          vec![],
           proxy.clone(),
           unsafely_ignore_certificate_errors.clone(),
           client_cert_chain_and_key.clone(),
@@ -121,19 +117,6 @@ pub struct HttpClientDefaults {
 pub trait FetchPermissions {
   fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
   fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
-}
-
-/// For use with `op_fetch` when the user does not want permissions.
-pub struct NoFetchPermissions;
-
-impl FetchPermissions for NoFetchPermissions {
-  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError> {
-    Ok(())
-  }
-
-  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError> {
-    Ok(())
-  }
 }
 
 pub fn get_declaration() -> PathBuf {
@@ -221,8 +204,10 @@ where
       };
 
       for (key, value) in args.headers {
-        let name = HeaderName::from_bytes(&key).unwrap();
-        let v = HeaderValue::from_bytes(&value).unwrap();
+        let name = HeaderName::from_bytes(&key)
+          .map_err(|err| type_error(err.to_string()))?;
+        let v = HeaderValue::from_bytes(&value)
+          .map_err(|err| type_error(err.to_string()))?;
         if name != HOST {
           request = request.header(name, v);
         }
@@ -275,49 +260,9 @@ where
       (request_rid, None, None)
     }
     "blob" => {
-      let blob_store = state.try_borrow::<BlobStore>().ok_or_else(|| {
-        type_error("Blob URLs are not supported in this context.")
-      })?;
-
-      let blob = blob_store
-        .get_object_url(url)?
-        .ok_or_else(|| type_error("Blob for the given URL not found."))?;
-
-      if method != "GET" {
-        return Err(type_error("Blob URL fetch only supports GET method."));
-      }
-
-      let cancel_handle = CancelHandle::new_rc();
-      let cancel_handle_ = cancel_handle.clone();
-
-      let fut = async move {
-        // TODO(lucacsonato): this should be a stream!
-        let chunk = match blob.read_all().or_cancel(cancel_handle_).await? {
-          Ok(chunk) => chunk,
-          Err(err) => return Ok(Err(err)),
-        };
-
-        let res = http::Response::builder()
-          .status(http::StatusCode::OK)
-          .header(http::header::CONTENT_LENGTH, chunk.len())
-          .header(http::header::CONTENT_TYPE, blob.media_type.clone())
-          .body(reqwest::Body::from(chunk))
-          .map_err(|err| type_error(err.to_string()));
-
-        match res {
-          Ok(response) => Ok(Ok(Response::from(response))),
-          Err(err) => Ok(Err(err)),
-        }
-      };
-
-      let request_rid = state
-        .resource_table
-        .add(FetchRequestResource(Box::pin(fut)));
-
-      let cancel_handle_rid =
-        state.resource_table.add(FetchCancelHandle(cancel_handle));
-
-      (request_rid, None, Some(cancel_handle_rid))
+      // Blob URL resolution happens in the JS side of fetch. If we got here is
+      // because the URL isn't an object URL.
+      return Err(type_error("Blob for the given URL not found."));
     }
     _ => return Err(type_error(format!("scheme '{}' not supported", scheme))),
   };
@@ -395,10 +340,9 @@ pub async fn op_fetch_send(
 pub async fn op_fetch_request_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: Option<ZeroCopyBuf>,
+  data: ZeroCopyBuf,
 ) -> Result<(), AnyError> {
-  let data = data.ok_or_else(null_opbuf)?;
-  let buf = Vec::from(&*data);
+  let buf = data.to_vec();
 
   let resource = state
     .borrow()
@@ -416,10 +360,8 @@ pub async fn op_fetch_request_write(
 pub async fn op_fetch_response_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: Option<ZeroCopyBuf>,
+  data: ZeroCopyBuf,
 ) -> Result<usize, AnyError> {
-  let data = data.ok_or_else(null_opbuf)?;
-
   let resource = state
     .borrow()
     .resource_table
@@ -504,13 +446,10 @@ impl HttpClientResource {
   }
 }
 
-#[derive(Deserialize, Default, Debug)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-#[serde(default)]
 pub struct CreateHttpClientOptions {
-  ca_stores: Option<Vec<String>>,
-  ca_file: Option<String>,
-  ca_data: Option<ByteString>,
+  ca_certs: Vec<String>,
   proxy: Option<Proxy>,
   cert_chain: Option<String>,
   private_key: Option<String>,
@@ -524,11 +463,6 @@ pub fn op_create_http_client<FP>(
 where
   FP: FetchPermissions + 'static,
 {
-  if let Some(ca_file) = args.ca_file.clone() {
-    let permissions = state.borrow_mut::<FP>();
-    permissions.check_read(&PathBuf::from(ca_file))?;
-  }
-
   if let Some(proxy) = args.proxy.clone() {
     let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
@@ -551,13 +485,16 @@ where
   };
 
   let defaults = state.borrow::<HttpClientDefaults>();
-  let cert_data =
-    get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
+  let ca_certs = args
+    .ca_certs
+    .into_iter()
+    .map(|cert| cert.into_bytes())
+    .collect::<Vec<_>>();
 
   let client = create_http_client(
     defaults.user_agent.clone(),
     defaults.root_cert_store.clone(),
-    cert_data,
+    ca_certs,
     args.proxy,
     defaults.unsafely_ignore_certificate_errors.clone(),
     client_cert_chain_and_key,
@@ -565,19 +502,4 @@ where
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(rid)
-}
-
-fn get_cert_data(
-  ca_file: Option<&str>,
-  ca_data: Option<&[u8]>,
-) -> Result<Option<Vec<u8>>, AnyError> {
-  if let Some(ca_data) = ca_data {
-    Ok(Some(ca_data.to_vec()))
-  } else if let Some(ca_file) = ca_file {
-    let mut buf = Vec::new();
-    File::open(ca_file)?.read_to_end(&mut buf)?;
-    Ok(Some(buf))
-  } else {
-    Ok(None)
-  }
 }

@@ -1,7 +1,7 @@
 Deno.setRaw(0, true);
 Deno.setRaw(0, true, { cbreak: true }); // Can be called multiple times
 
-const signal = Deno.signals.interrupt();
+const signal = Deno.signal("SIGINT");
 
 Deno.stdout.writeSync(new TextEncoder().encode("S"));
 

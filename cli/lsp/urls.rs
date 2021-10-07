@@ -1,9 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::file_fetcher::map_content_type;
-use crate::media_type::MediaType;
 
 use data_url::DataUrl;
+use deno_ast::MediaType;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::url::Position;
@@ -20,7 +20,7 @@ lazy_static::lazy_static! {
 /// Matches the `encodeURIComponent()` encoding from JavaScript, which matches
 /// the component percent encoding set.
 ///
-/// See: https://url.spec.whatwg.org/#component-percent-encode-set
+/// See: <https://url.spec.whatwg.org/#component-percent-encode-set>
 ///
 // TODO(@kitsonk) - refactor when #9934 is landed.
 const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS

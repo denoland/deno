@@ -25,6 +25,7 @@ pub struct EmitConfigOptions {
   pub emit_decorator_metadata: bool,
   pub imports_not_used_as_values: String,
   pub inline_source_map: bool,
+  pub inline_sources: bool,
   pub source_map: bool,
   pub jsx: String,
   pub jsx_factory: String,
@@ -234,7 +235,7 @@ impl TsConfig {
     maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<IgnoredCompilerOptions>, AnyError> {
     if let Some(config_file) = maybe_config_file {
-      let (value, maybe_ignored_options) = config_file.as_compiler_options()?;
+      let (value, maybe_ignored_options) = config_file.to_compiler_options()?;
       self.merge(&value);
       Ok(maybe_ignored_options)
     } else {
@@ -266,10 +267,59 @@ impl Serialize for TsConfig {
   }
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LintRulesConfig {
+  pub tags: Option<Vec<String>>,
+  pub include: Option<Vec<String>>,
+  pub exclude: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FilesConfig {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LintConfig {
+  pub rules: LintRulesConfig,
+  pub files: FilesConfig,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub enum ProseWrap {
+  Always,
+  Never,
+  Preserve,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct FmtOptionsConfig {
+  pub use_tabs: Option<bool>,
+  pub line_width: Option<u32>,
+  pub indent_width: Option<u8>,
+  pub single_quote: Option<bool>,
+  pub prose_wrap: Option<ProseWrap>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FmtConfig {
+  pub options: FmtOptionsConfig,
+  pub files: FilesConfig,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
+  pub lint: Option<Value>,
+  pub fmt: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -328,7 +378,7 @@ impl ConfigFile {
 
   /// Parse `compilerOptions` and return a serde `Value`.
   /// The result also contains any options that were ignored.
-  pub fn as_compiler_options(
+  pub fn to_compiler_options(
     &self,
   ) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
     if let Some(compiler_options) = self.json.compiler_options.clone() {
@@ -338,6 +388,26 @@ impl ConfigFile {
       parse_compiler_options(&options, Some(self.path.to_owned()), false)
     } else {
       Ok((json!({}), None))
+    }
+  }
+
+  pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
+    if let Some(config) = self.json.lint.clone() {
+      let lint_config: LintConfig = serde_json::from_value(config)
+        .context("Failed to parse \"lint\" configuration")?;
+      Ok(Some(lint_config))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
+    if let Some(config) = self.json.fmt.clone() {
+      let fmt_config: FmtConfig = serde_json::from_value(config)
+        .context("Failed to parse \"fmt\" configuration")?;
+      Ok(Some(fmt_config))
+    } else {
+      Ok(None)
     }
   }
 }
@@ -397,12 +467,35 @@ mod tests {
         "build": true,
         // comments are allowed
         "strict": true
+      },
+      "lint": {
+        "files": {
+          "include": ["src/"],
+          "exclude": ["src/testdata/"]
+        },
+        "rules": {
+          "tags": ["recommended"],
+          "include": ["ban-untagged-todo"]
+        }
+      },
+      "fmt": {
+        "files": {
+          "include": ["src/"],
+          "exclude": ["src/testdata/"]
+        },
+        "options": {
+          "useTabs": true,
+          "lineWidth": 80,
+          "indentWidth": 4,
+          "singleQuote": true,
+          "proseWrap": "preserve"
+        }
       }
     }"#;
     let config_path = PathBuf::from("/deno/tsconfig.json");
     let config_file = ConfigFile::new(config_text, &config_path).unwrap();
     let (options_value, ignored) =
-      config_file.as_compiler_options().expect("error parsing");
+      config_file.to_compiler_options().expect("error parsing");
     assert!(options_value.is_object());
     let options = options_value.as_object().unwrap();
     assert!(options.contains_key("strict"));
@@ -414,6 +507,33 @@ mod tests {
         maybe_path: Some(config_path),
       }),
     );
+
+    let lint_config = config_file
+      .to_lint_config()
+      .expect("error parsing lint object")
+      .expect("lint object should be defined");
+    assert_eq!(lint_config.files.include, vec!["src/"]);
+    assert_eq!(lint_config.files.exclude, vec!["src/testdata/"]);
+    assert_eq!(
+      lint_config.rules.include,
+      Some(vec!["ban-untagged-todo".to_string()])
+    );
+    assert_eq!(
+      lint_config.rules.tags,
+      Some(vec!["recommended".to_string()])
+    );
+    assert!(lint_config.rules.exclude.is_none());
+
+    let fmt_config = config_file
+      .to_fmt_config()
+      .expect("error parsing fmt object")
+      .expect("fmt object should be defined");
+    assert_eq!(fmt_config.files.include, vec!["src/"]);
+    assert_eq!(fmt_config.files.exclude, vec!["src/testdata/"]);
+    assert_eq!(fmt_config.options.use_tabs, Some(true));
+    assert_eq!(fmt_config.options.line_width, Some(80));
+    assert_eq!(fmt_config.options.indent_width, Some(4));
+    assert_eq!(fmt_config.options.single_quote, Some(true));
   }
 
   #[test]
@@ -422,7 +542,7 @@ mod tests {
     let config_path = PathBuf::from("/deno/tsconfig.json");
     let config_file = ConfigFile::new(config_text, &config_path).unwrap();
     let (options_value, _) =
-      config_file.as_compiler_options().expect("error parsing");
+      config_file.to_compiler_options().expect("error parsing");
     assert!(options_value.is_object());
   }
 
@@ -432,7 +552,7 @@ mod tests {
     let config_path = PathBuf::from("/deno/tsconfig.json");
     let config_file = ConfigFile::new(config_text, &config_path).unwrap();
     let (options_value, _) =
-      config_file.as_compiler_options().expect("error parsing");
+      config_file.to_compiler_options().expect("error parsing");
     assert!(options_value.is_object());
   }
 

@@ -7,9 +7,9 @@ use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
 use crate::OpPayload;
+use crate::OpResult;
 use crate::OpTable;
 use crate::PromiseId;
-use crate::ResourceId;
 use crate::ZeroCopyBuf;
 use log::debug;
 use rusty_v8 as v8;
@@ -20,7 +20,6 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::option::Option;
-use std::rc::Rc;
 use url::Url;
 use v8::HandleScope;
 use v8::Local;
@@ -33,7 +32,10 @@ lazy_static::lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
     v8::ExternalReferences::new(&[
       v8::ExternalReference {
-        function: opcall.map_fn_to()
+        function: opcall_async.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: opcall_sync.map_fn_to()
       },
       v8::ExternalReference {
         function: set_macrotask_callback.map_fn_to()
@@ -66,6 +68,9 @@ lazy_static::lazy_static! {
         function: get_proxy_details.map_fn_to()
       },
       v8::ExternalReference {
+        function: is_proxy.map_fn_to()
+      },
+      v8::ExternalReference {
         function: memory_usage.map_fn_to(),
       },
       v8::ExternalReference {
@@ -73,9 +78,6 @@ lazy_static::lazy_static! {
       },
       v8::ExternalReference {
         function: set_wasm_streaming_callback.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: wasm_streaming_feed.map_fn_to()
       }
     ]);
 }
@@ -137,7 +139,8 @@ pub fn initialize_context<'s>(
   deno_val.set(scope, core_key.into(), core_val.into());
 
   // Bind functions to Deno.core.*
-  set_func(scope, core_val, "opcall", opcall);
+  set_func(scope, core_val, "opcallSync", opcall_sync);
+  set_func(scope, core_val, "opcallAsync", opcall_async);
   set_func(
     scope,
     core_val,
@@ -151,6 +154,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "deserialize", deserialize);
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
+  set_func(scope, core_val, "isProxy", is_proxy);
   set_func(scope, core_val, "memoryUsage", memory_usage);
   set_func(scope, core_val, "callConsole", call_console);
   set_func(scope, core_val, "createHostObject", create_host_object);
@@ -160,8 +164,6 @@ pub fn initialize_context<'s>(
     "setWasmStreamingCallback",
     set_wasm_streaming_callback,
   );
-  set_func(scope, core_val, "wasmStreamingFeed", wasm_streaming_feed);
-
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
@@ -178,6 +180,7 @@ pub fn set_func(
   let key = v8::String::new(scope, name).unwrap();
   let tmpl = v8::FunctionTemplate::new(scope, callback);
   let val = tmpl.get_function(scope).unwrap();
+  val.set_name(key);
   obj.set(scope, key.into(), val.into());
 }
 
@@ -306,13 +309,13 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   };
 }
 
-fn opcall<'s>(
+fn opcall_sync<'s>(
   scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
   let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let state = state_rc.borrow();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
     .map(|l| l.value() as OpId)
@@ -333,17 +336,59 @@ fn opcall<'s>(
     return;
   }
 
+  // Deserializable args (may be structured args or ZeroCopyBuf)
+  let a = args.get(1);
+  let b = args.get(2);
+
+  let payload = OpPayload {
+    scope,
+    a,
+    b,
+    promise_id: 0,
+  };
+  let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
+  match op {
+    Op::Sync(result) => {
+      rv.set(result.to_v8(scope).unwrap());
+    }
+    Op::NotFound => {
+      throw_type_error(scope, format!("Unknown op id: {}", op_id));
+    }
+    // Async ops (ref or unref)
+    _ => {
+      throw_type_error(
+        scope,
+        format!("Can not call an async op [{}] with opSync()", op_id),
+      );
+    }
+  }
+}
+
+fn opcall_async<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map(|l| l.value() as OpId)
+    .map_err(AnyError::from)
+  {
+    Ok(op_id) => op_id,
+    Err(err) => {
+      throw_type_error(scope, format!("invalid op id: {}", err));
+      return;
+    }
+  };
+
   // PromiseId
   let arg1 = args.get(1);
-  let promise_id = if arg1.is_null_or_undefined() {
-    Ok(0) // Accept null or undefined as 0
-  } else {
-    // Otherwise expect int
-    v8::Local::<v8::Integer>::try_from(arg1)
-      .map(|l| l.value() as PromiseId)
-      .map_err(AnyError::from)
-  };
-  // Fail if promise id invalid (not null/undefined or int)
+  let promise_id = v8::Local::<v8::Integer>::try_from(arg1)
+    .map(|l| l.value() as PromiseId)
+    .map_err(AnyError::from);
+  // Fail if promise id invalid (not an int)
   let promise_id: PromiseId = match promise_id {
     Ok(promise_id) => promise_id,
     Err(err) => {
@@ -364,9 +409,13 @@ fn opcall<'s>(
   };
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {
-    Op::Sync(result) => {
-      rv.set(result.to_v8(scope).unwrap());
-    }
+    Op::Sync(result) => match result {
+      OpResult::Ok(_) => throw_type_error(
+        scope,
+        format!("Can not call a sync op [{}] with opAsync()", op_id),
+      ),
+      OpResult::Err(_) => rv.set(result.to_v8(scope).unwrap()),
+    },
     Op::Async(fut) => {
       state.pending_ops.push(fut);
       state.have_unpolled_ops = true;
@@ -535,14 +584,13 @@ fn call_console(
   deno_console_method.call(scope, receiver.into(), &call_args);
 }
 
-struct WasmStreamingResource(RefCell<v8::WasmStreaming>);
-impl crate::Resource for WasmStreamingResource {}
-
 fn set_wasm_streaming_callback(
   scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
+  use crate::ops_builtin::WasmStreamingResource;
+
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
@@ -582,67 +630,6 @@ fn set_wasm_streaming_callback(
       .get(scope)
       .call(scope, undefined.into(), &[arg, rid]);
   });
-}
-
-fn wasm_streaming_feed(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "snake_case")]
-  enum MessageType {
-    Bytes,
-    Abort,
-    Finish,
-  }
-
-  let rid: ResourceId = match serde_v8::from_v8(scope, args.get(0)) {
-    Ok(rid) => rid,
-    Err(_) => return throw_type_error(scope, "Invalid argument"),
-  };
-  let message_type = match serde_v8::from_v8(scope, args.get(1)) {
-    Ok(message_type) => message_type,
-    Err(_) => return throw_type_error(scope, "Invalid argument"),
-  };
-
-  let wasm_streaming = {
-    let state_rc = JsRuntime::state(scope);
-    let state = state_rc.borrow();
-    // If message_type is not Bytes, we'll be consuming the WasmStreaming
-    // instance, so let's also remove it from the resource table.
-    let wasm_streaming: Result<Rc<WasmStreamingResource>, AnyError> =
-      match message_type {
-        MessageType::Bytes => state.op_state.borrow().resource_table.get(rid),
-        _ => state.op_state.borrow_mut().resource_table.take(rid),
-      };
-    match wasm_streaming {
-      Ok(wasm_streaming) => wasm_streaming,
-      Err(e) => return throw_type_error(scope, e.to_string()),
-    }
-  };
-
-  match message_type {
-    MessageType::Bytes => {
-      let bytes: ZeroCopyBuf = match serde_v8::from_v8(scope, args.get(2)) {
-        Ok(bytes) => bytes,
-        Err(_) => return throw_type_error(scope, "Invalid resource ID."),
-      };
-      wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
-    }
-    _ => {
-      // These types need to consume the WasmStreaming instance.
-      let wasm_streaming = match Rc::try_unwrap(wasm_streaming) {
-        Ok(streaming) => streaming.0.into_inner(),
-        Err(_) => panic!("Couldn't consume WasmStreamingResource."),
-      };
-      match message_type {
-        MessageType::Bytes => unreachable!(),
-        MessageType::Finish => wasm_streaming.finish(),
-        MessageType::Abort => wasm_streaming.abort(Some(args.get(2))),
-      }
-    }
-  }
 }
 
 fn encode(
@@ -734,6 +721,23 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     }
   }
 
+  fn get_wasm_module_transfer_id(
+    &mut self,
+    scope: &mut HandleScope<'_>,
+    module: Local<v8::WasmModuleObject>,
+  ) -> Option<u32> {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    if let Some(compiled_wasm_module_store) = &state.compiled_wasm_module_store
+    {
+      let compiled_wasm_module = module.get_compiled_module();
+      let id = compiled_wasm_module_store.insert(compiled_wasm_module);
+      Some(id)
+    } else {
+      None
+    }
+  }
+
   fn write_host_object<'s>(
     &mut self,
     scope: &mut v8::HandleScope<'s>,
@@ -768,6 +772,22 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
       let shared_array_buffer =
         v8::SharedArrayBuffer::with_backing_store(scope, &backing_store);
       Some(shared_array_buffer)
+    } else {
+      None
+    }
+  }
+
+  fn get_wasm_module_from_id<'s>(
+    &mut self,
+    scope: &mut HandleScope<'s>,
+    clone_id: u32,
+  ) -> Option<Local<'s, v8::WasmModuleObject>> {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    if let Some(compiled_wasm_module_store) = &state.compiled_wasm_module_store
+    {
+      let compiled_module = compiled_wasm_module_store.take(clone_id)?;
+      v8::WasmModuleObject::from_compiled_module(scope, &compiled_module)
     } else {
       None
     }
@@ -1153,6 +1173,14 @@ fn get_proxy_details(
   let handler = proxy.get_handler(scope);
   let p: (serde_v8::Value, serde_v8::Value) = (target.into(), handler.into());
   rv.set(to_v8(scope, p).unwrap());
+}
+
+fn is_proxy(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  rv.set(v8::Boolean::new(scope, args.get(0).is_proxy()).into())
 }
 
 fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {

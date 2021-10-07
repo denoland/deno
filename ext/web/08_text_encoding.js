@@ -20,7 +20,6 @@
     PromiseResolve,
     StringPrototypeCharCodeAt,
     StringPrototypeSlice,
-    SymbolToStringTag,
     TypedArrayPrototypeSubarray,
     TypedArrayPrototypeSlice,
     Uint8Array,
@@ -38,7 +37,6 @@
     #rid = null;
 
     /**
-     *
      * @param {string} label
      * @param {TextDecoderOptions} options
      */
@@ -127,10 +125,6 @@
         }
       }
     }
-
-    get [SymbolToStringTag]() {
-      return "TextDecoder";
-    }
   }
 
   webidl.configurePrototype(TextDecoder);
@@ -183,10 +177,6 @@
       });
       return core.opSync("op_encoding_encode_into", source, destination);
     }
-
-    get [SymbolToStringTag]() {
-      return "TextEncoder";
-    }
   }
 
   webidl.configurePrototype(TextEncoder);
@@ -198,7 +188,6 @@
     #transform;
 
     /**
-     *
      * @param {string} label
      * @param {TextDecoderOptions} options
      */
@@ -274,10 +263,6 @@
       webidl.assertBranded(this, TextDecoderStream);
       return this.#transform.writable;
     }
-
-    get [SymbolToStringTag]() {
-      return "TextDecoderStream";
-    }
   }
 
   webidl.configurePrototype(TextDecoderStream);
@@ -346,10 +331,6 @@
     get writable() {
       webidl.assertBranded(this, TextEncoderStream);
       return this.#transform.writable;
-    }
-
-    get [SymbolToStringTag]() {
-      return "TextEncoderStream";
     }
   }
 

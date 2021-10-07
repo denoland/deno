@@ -1,24 +1,24 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
+use super::document_source::DocumentSource;
 use super::text::LineIndex;
 use super::tsc;
 
-use crate::media_type::MediaType;
-
+use deno_ast::MediaType;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::ModuleSpecifier;
 use lspower::lsp;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Range;
 use std::str::FromStr;
+use std::sync::Arc;
 
 /// A representation of the language id sent from the LSP client, which is used
 /// to determine how the document is handled within the language server.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum LanguageId {
   JavaScript,
   Jsx,
@@ -81,11 +81,10 @@ impl IndexValid {
 
 #[derive(Debug, Clone)]
 pub struct DocumentData {
-  bytes: Option<Vec<u8>>,
+  source: DocumentSource,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   dependency_ranges: Option<analysis::DependencyRanges>,
   pub(crate) language_id: LanguageId,
-  line_index: Option<LineIndex>,
   maybe_navigation_tree: Option<tsc::NavigationTree>,
   specifier: ModuleSpecifier,
   version: Option<i32>,
@@ -96,14 +95,19 @@ impl DocumentData {
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
-    source: &str,
+    source_text: Arc<String>,
   ) -> Self {
+    let line_index = LineIndex::new(&source_text);
     Self {
-      bytes: Some(source.as_bytes().to_owned()),
+      source: DocumentSource::new(
+        &specifier,
+        MediaType::from(&language_id),
+        source_text,
+        line_index,
+      ),
       dependencies: None,
       dependency_ranges: None,
       language_id,
-      line_index: Some(LineIndex::new(source)),
       maybe_navigation_tree: None,
       specifier,
       version: Some(version),
@@ -114,59 +118,39 @@ impl DocumentData {
     &mut self,
     content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<(), AnyError> {
-    if self.bytes.is_none() {
-      return Ok(());
-    }
-    let content = &mut String::from_utf8(self.bytes.clone().unwrap())
-      .context("unable to parse bytes to string")?;
-    let mut line_index = if let Some(line_index) = &self.line_index {
-      line_index.clone()
-    } else {
-      LineIndex::new(content)
-    };
+    let mut content = self.source.text_info().text_str().to_string();
+    let mut line_index = self.source.line_index().clone();
     let mut index_valid = IndexValid::All;
     for change in content_changes {
       if let Some(range) = change.range {
         if !index_valid.covers(range.start.line) {
-          line_index = LineIndex::new(content);
+          line_index = LineIndex::new(&content);
         }
         index_valid = IndexValid::UpTo(range.start.line);
         let range = line_index.get_text_range(range)?;
         content.replace_range(Range::<usize>::from(range), &change.text);
       } else {
-        *content = change.text;
+        content = change.text;
         index_valid = IndexValid::UpTo(0);
       }
     }
-    self.bytes = Some(content.as_bytes().to_owned());
-    self.line_index = if index_valid == IndexValid::All {
-      Some(line_index)
+    let line_index = if index_valid == IndexValid::All {
+      line_index
     } else {
-      Some(LineIndex::new(content))
+      LineIndex::new(&content)
     };
+    self.source = DocumentSource::new(
+      &self.specifier,
+      MediaType::from(&self.language_id),
+      Arc::new(content),
+      line_index,
+    );
     self.maybe_navigation_tree = None;
     Ok(())
   }
 
-  pub fn content(&self) -> Result<Option<String>, AnyError> {
-    if let Some(bytes) = &self.bytes {
-      Ok(Some(
-        String::from_utf8(bytes.clone())
-          .context("cannot decode bytes to string")?,
-      ))
-    } else {
-      Ok(None)
-    }
-  }
-
-  pub fn content_line(&self, line: usize) -> Result<Option<String>, AnyError> {
-    let content = self.content().ok().flatten();
-    if let Some(content) = content {
-      let lines = content.lines().into_iter().collect::<Vec<&str>>();
-      Ok(Some(lines[line].to_string()))
-    } else {
-      Ok(None)
-    }
+  pub fn source(&self) -> &DocumentSource {
+    &self.source
   }
 
   /// Determines if a position within the document is within a dependency range
@@ -223,7 +207,7 @@ impl DocumentCache {
     specifier: &ModuleSpecifier,
     version: i32,
     content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
-  ) -> Result<Option<String>, AnyError> {
+  ) -> Result<(), AnyError> {
     if !self.contains_key(specifier) {
       return Err(custom_error(
         "NotFound",
@@ -237,7 +221,7 @@ impl DocumentCache {
     let doc = self.docs.get_mut(specifier).unwrap();
     doc.apply_content_changes(content_changes)?;
     doc.version = Some(version);
-    doc.content()
+    Ok(())
   }
 
   pub fn close(&mut self, specifier: &ModuleSpecifier) {
@@ -249,15 +233,15 @@ impl DocumentCache {
     self.docs.contains_key(specifier)
   }
 
-  pub fn content(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<String>, AnyError> {
-    if let Some(doc) = self.docs.get(specifier) {
-      doc.content()
-    } else {
-      Ok(None)
-    }
+  pub fn get(&self, specifier: &ModuleSpecifier) -> Option<&DocumentData> {
+    self.docs.get(specifier)
+  }
+
+  pub fn content(&self, specifier: &ModuleSpecifier) -> Option<Arc<String>> {
+    self
+      .docs
+      .get(specifier)
+      .map(|d| d.source().text_info().text())
   }
 
   // For a given specifier, get all open documents which directly or indirectly
@@ -280,13 +264,6 @@ impl DocumentCache {
       .get(specifier)
       .map(|doc| doc.dependencies.clone())
       .flatten()
-  }
-
-  pub fn get_language_id(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<LanguageId> {
-    self.docs.get(specifier).map(|doc| doc.language_id.clone())
   }
 
   pub fn get_navigation_tree(
@@ -349,8 +326,10 @@ impl DocumentCache {
   }
 
   pub fn line_index(&self, specifier: &ModuleSpecifier) -> Option<LineIndex> {
-    let doc = self.docs.get(specifier)?;
-    doc.line_index.clone()
+    self
+      .docs
+      .get(specifier)
+      .map(|d| d.source().line_index().clone())
   }
 
   pub fn open(
@@ -358,7 +337,7 @@ impl DocumentCache {
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
-    source: &str,
+    source: Arc<String>,
   ) {
     self.docs.insert(
       specifier.clone(),
@@ -489,7 +468,7 @@ mod tests {
       specifier.clone(),
       1,
       LanguageId::TypeScript,
-      "console.log(\"Hello Deno\");\n",
+      Arc::new("console.log(\"Hello Deno\");\n".to_string()),
     );
     assert!(document_cache.contains_key(&specifier));
     assert!(!document_cache.contains_key(&missing_specifier));
@@ -503,7 +482,7 @@ mod tests {
       specifier.clone(),
       1,
       LanguageId::TypeScript,
-      "console.log(\"Hello deno\");\n",
+      Arc::new("console.log(\"Hello deno\");\n".to_string()),
     );
     document_cache
       .change(
@@ -527,8 +506,9 @@ mod tests {
       .expect("failed to make changes");
     let actual = document_cache
       .content(&specifier)
-      .expect("failed to get content");
-    assert_eq!(actual, Some("console.log(\"Hello Deno\");\n".to_string()));
+      .expect("failed to get content")
+      .to_string();
+    assert_eq!(actual, "console.log(\"Hello Deno\");\n");
   }
 
   #[test]
@@ -539,7 +519,7 @@ mod tests {
       specifier.clone(),
       1,
       LanguageId::TypeScript,
-      "console.log(\"Hello 🦕\");\n",
+      Arc::new("console.log(\"Hello 🦕\");\n".to_string()),
     );
     document_cache
       .change(
@@ -563,8 +543,9 @@ mod tests {
       .expect("failed to make changes");
     let actual = document_cache
       .content(&specifier)
-      .expect("failed to get content");
-    assert_eq!(actual, Some("console.log(\"Hello Deno\");\n".to_string()));
+      .expect("failed to get content")
+      .to_string();
+    assert_eq!(actual, "console.log(\"Hello Deno\");\n");
   }
 
   #[test]
@@ -576,7 +557,7 @@ mod tests {
       specifier.clone(),
       1,
       "typescript".parse().unwrap(),
-      "console.log(\"hello world\");\n",
+      Arc::new("console.log(\"hello world\");\n".to_string()),
     );
     assert!(document_cache.is_diagnosable(&specifier));
     let specifier = resolve_url("file:///a/file.rs").unwrap();
@@ -584,7 +565,7 @@ mod tests {
       specifier.clone(),
       1,
       "rust".parse().unwrap(),
-      "pub mod a;",
+      Arc::new("pub mod a;".to_string()),
     );
     assert!(!document_cache.is_diagnosable(&specifier));
     let specifier =

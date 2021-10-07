@@ -61,10 +61,22 @@ itest!(load_unload {
   output: "test/load_unload.out",
 });
 
+itest!(interval {
+  args: "test test/interval.ts",
+  exit_code: 0,
+  output: "test/interval.out",
+});
+
 itest!(doc {
   args: "test --doc --allow-all test/doc.ts",
   exit_code: 1,
   output: "test/doc.out",
+});
+
+itest!(doc_only {
+  args: "test --doc --allow-all test/doc_only",
+  exit_code: 0,
+  output: "test/doc_only.out",
 });
 
 itest!(markdown {
@@ -167,4 +179,10 @@ itest!(shuffle_with_seed {
   args: "test --shuffle=42 test/shuffle",
   exit_code: 0,
   output: "test/shuffle.out",
+});
+
+itest!(aggregate_error {
+  args: "test test/aggregate_error.ts",
+  exit_code: 1,
+  output: "test/aggregate_error.out",
 });

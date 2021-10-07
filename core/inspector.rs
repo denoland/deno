@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 //! The documentation for the inspector API is sparse, but these are helpful:
-//! https://chromedevtools.github.io/devtools-protocol/
-//! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
+//! <https://chromedevtools.github.io/devtools-protocol/>
+//! <https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/>
 
 use crate::error::generic_error;
 use crate::error::AnyError;
@@ -48,12 +48,6 @@ pub type SessionProxyReceiver = UnboundedReceiver<Vec<u8>>;
 pub struct InspectorSessionProxy {
   pub tx: SessionProxySender,
   pub rx: SessionProxyReceiver,
-}
-
-impl InspectorSessionProxy {
-  pub fn split(self) -> (SessionProxySender, SessionProxyReceiver) {
-    (self.tx, self.rx)
-  }
 }
 
 #[derive(Clone, Copy)]

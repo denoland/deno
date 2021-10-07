@@ -6,10 +6,10 @@ use crate::http_cache::HttpCache;
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
-use crate::media_type::MediaType;
 use crate::text_encoding;
 use crate::version::get_user_agent;
 use data_url::DataUrl;
+use deno_ast::MediaType;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::uri_error;
@@ -52,10 +52,12 @@ pub struct File {
   /// The resolved media type for the file.
   pub media_type: MediaType,
   /// The source of the file as a string.
-  pub source: String,
+  pub source: Arc<String>,
   /// The _final_ specifier for the file.  The requested specifier and the final
   /// specifier maybe different for remote files that have been redirected.
   pub specifier: ModuleSpecifier,
+
+  pub maybe_headers: Option<HashMap<String, String>>,
 }
 
 /// Simple struct implementing in-process caching to prevent multiple
@@ -135,9 +137,28 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
     local,
     maybe_types: None,
     media_type,
-    source,
+    source: Arc::new(source),
     specifier: specifier.clone(),
+    maybe_headers: None,
   })
+}
+
+/// Returns the decoded body and content-type of a provided
+/// data URL.
+pub fn get_source_from_data_url(
+  specifier: &ModuleSpecifier,
+) -> Result<(String, String), AnyError> {
+  let data_url = DataUrl::process(specifier.as_str())
+    .map_err(|e| uri_error(format!("{:?}", e)))?;
+  let mime = data_url.mime_type();
+  let charset = mime.get_parameter("charset").map(|v| v.to_string());
+  let (bytes, _) = data_url
+    .decode_to_vec()
+    .map_err(|e| uri_error(format!("{:?}", e)))?;
+  Ok((
+    strip_shebang(get_source_from_bytes(bytes, charset)?),
+    format!("{}", mime),
+  ))
 }
 
 /// Given a vector of bytes and optionally a charset, decode the bytes to a
@@ -192,7 +213,7 @@ pub fn map_content_type(
 }
 
 /// Remove shebangs from the start of source code strings
-pub fn strip_shebang(mut value: String) -> String {
+fn strip_shebang(mut value: String) -> String {
   if value.starts_with("#!") {
     if let Some(mid) = value.find('\n') {
       let (_, rest) = value.split_at(mid);
@@ -234,7 +255,7 @@ impl FileFetcher {
       http_client: create_http_client(
         get_user_agent(),
         root_cert_store,
-        None,
+        vec![],
         None,
         unsafely_ignore_certificate_errors,
         None,
@@ -272,8 +293,9 @@ impl FileFetcher {
       local,
       maybe_types,
       media_type,
-      source,
+      source: Arc::new(source),
       specifier: specifier.clone(),
+      maybe_headers: Some(headers.clone()),
     })
   }
 
@@ -336,15 +358,7 @@ impl FileFetcher {
       ));
     }
 
-    let data_url = DataUrl::process(specifier.as_str())
-      .map_err(|e| uri_error(format!("{:?}", e)))?;
-    let mime = data_url.mime_type();
-    let charset = mime.get_parameter("charset").map(|v| v.to_string());
-    let (bytes, _) = data_url
-      .decode_to_vec()
-      .map_err(|e| uri_error(format!("{:?}", e)))?;
-    let source = strip_shebang(get_source_from_bytes(bytes, charset)?);
-    let content_type = format!("{}", mime);
+    let (source, content_type) = get_source_from_data_url(specifier)?;
     let (media_type, _) =
       map_content_type(specifier, Some(content_type.clone()));
 
@@ -363,8 +377,9 @@ impl FileFetcher {
       local,
       maybe_types: None,
       media_type,
-      source,
+      source: Arc::new(source),
       specifier: specifier.clone(),
+      maybe_headers: None,
     })
   }
 
@@ -424,8 +439,9 @@ impl FileFetcher {
       local,
       maybe_types: None,
       media_type,
-      source,
+      source: Arc::new(source),
       specifier: specifier.clone(),
+      maybe_headers: None,
     })
   }
   /// Asynchronously fetch remote source file specified by the URL following
@@ -667,7 +683,7 @@ mod tests {
     let url_str = format!("http://127.0.0.1:4545/encoding/{}", fixture);
     let specifier = resolve_url(&url_str).unwrap();
     let (file, headers) = test_fetch_remote(&specifier).await;
-    assert_eq!(file.source, expected);
+    assert_eq!(file.source.as_str(), expected);
     assert_eq!(file.media_type, MediaType::TypeScript);
     assert_eq!(
       headers.get("content-type").unwrap(),
@@ -679,7 +695,7 @@ mod tests {
     let p = test_util::testdata_path().join(format!("encoding/{}.ts", charset));
     let specifier = resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let (file, _) = test_fetch(&specifier).await;
-    assert_eq!(file.source, expected);
+    assert_eq!(file.source.as_str(), expected);
   }
 
   #[test]
@@ -892,8 +908,9 @@ mod tests {
       local,
       maybe_types: None,
       media_type: MediaType::TypeScript,
-      source: "some source code".to_string(),
+      source: Arc::new("some source code".to_string()),
       specifier: specifier.clone(),
+      maybe_headers: None,
     };
     file_fetcher.insert_cached(file.clone());
 
@@ -921,7 +938,7 @@ mod tests {
     let maybe_file = file_fetcher.get_source(&specifier);
     assert!(maybe_file.is_some());
     let file = maybe_file.unwrap();
-    assert_eq!(file.source, "export const redirect = 1;\n");
+    assert_eq!(file.source.as_str(), "export const redirect = 1;\n");
     assert_eq!(
       file.specifier,
       resolve_url("http://localhost:4545/subdir/redirects/redirect1.js")
@@ -948,7 +965,7 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source,
+      file.source.as_str(),
       "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
@@ -980,7 +997,7 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source,
+      file.source.as_str(),
       "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
@@ -1003,7 +1020,7 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source,
+      file.source.as_str(),
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
@@ -1026,7 +1043,7 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source,
+      file.source.as_str(),
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     // This validates that when using the cached value, because we modified
@@ -1047,7 +1064,7 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source,
+      file.source.as_str(),
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(file.media_type, MediaType::Json);
@@ -1070,7 +1087,7 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source,
+      file.source.as_str(),
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
@@ -1490,7 +1507,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    assert_eq!(file.source, r#"console.log("hello deno");"#);
+    assert_eq!(file.source.as_str(), r#"console.log("hello deno");"#);
 
     fs::write(fixture_path, r#"console.log("goodbye deno");"#)
       .expect("could not write file");
@@ -1499,7 +1516,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    assert_eq!(file.source, r#"console.log("goodbye deno");"#);
+    assert_eq!(file.source.as_str(), r#"console.log("goodbye deno");"#);
   }
 
   #[tokio::test]

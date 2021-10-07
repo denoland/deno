@@ -11,6 +11,33 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
 
+/// A helper function that returns a sync NOP OpFn
+///
+/// It's mainly intended for embedders who want to disable ops, see ./examples/disable_ops.rs
+pub fn void_op_sync() -> Box<OpFn> {
+  // TODO(@AaronO): use this simpler implementation after changing serde_v8 to allow all values
+  // to deserialize to the unit type instead of failing with `ExpectedNull`
+  // op_sync(|_, _: (), _: ()| Ok(()))
+  Box::new(move |state, _| -> Op {
+    let op_result = serialize_op_result(Ok(()), state);
+    Op::Sync(op_result)
+  })
+}
+
+/// A helper function that returns an async NOP OpFn
+///
+/// It's mainly intended for embedders who want to disable ops, see ./examples/disable_ops.rs
+pub fn void_op_async() -> Box<OpFn> {
+  // TODO(@AaronO): use this simpler implementation after changing serde_v8 to allow all values
+  // to deserialize to the unit type instead of failing with `ExpectedNull`
+  // op_async(|_, _: (), _: ()| futures::future::ok(()))
+  Box::new(move |state, payload| -> Op {
+    let pid = payload.promise_id;
+    let op_result = serialize_op_result(Ok(()), state);
+    Op::Async(Box::pin(futures::future::ready((pid, op_result))))
+  })
+}
+
 /// Creates an op that passes data synchronously using JSON.
 ///
 /// The provided function `op_fn` has the following parameters:

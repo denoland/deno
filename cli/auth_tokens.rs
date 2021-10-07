@@ -6,14 +6,26 @@ use log::error;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuthTokenData {
+  Bearer(String),
+  Basic { username: String, password: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthToken {
   host: String,
-  token: String,
+  token: AuthTokenData,
 }
 
 impl fmt::Display for AuthToken {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "Bearer {}", self.token)
+    match &self.token {
+      AuthTokenData::Bearer(token) => write!(f, "Bearer {}", token),
+      AuthTokenData::Basic { username, password } => {
+        let credentials = format!("{}:{}", username, password);
+        write!(f, "Basic {}", base64::encode(credentials))
+      }
+    }
   }
 }
 
@@ -34,9 +46,22 @@ impl AuthTokens {
       for token_str in tokens_str.split(';') {
         if token_str.contains('@') {
           let pair: Vec<&str> = token_str.rsplitn(2, '@').collect();
-          let token = pair[1].to_string();
+          let token = pair[1];
           let host = pair[0].to_lowercase();
-          tokens.push(AuthToken { host, token });
+          if token.contains(':') {
+            let pair: Vec<&str> = token.rsplitn(2, ':').collect();
+            let username = pair[1].to_string();
+            let password = pair[0].to_string();
+            tokens.push(AuthToken {
+              host,
+              token: AuthTokenData::Basic { username, password },
+            })
+          } else {
+            tokens.push(AuthToken {
+              host,
+              token: AuthTokenData::Bearer(token.to_string()),
+            });
+          }
         } else {
           error!("Badly formed auth token discarded.");
         }
@@ -132,5 +157,27 @@ mod tests {
       auth_tokens.get(&fixture).unwrap().to_string(),
       "Bearer abc@123".to_string()
     );
+  }
+
+  #[test]
+  fn test_auth_token_basic() {
+    let auth_tokens = AuthTokens::new(Some("abc:123@deno.land".to_string()));
+    let fixture = resolve_url("https://deno.land/x/mod.ts").unwrap();
+    assert_eq!(
+      auth_tokens.get(&fixture).unwrap().to_string(),
+      "Basic YWJjOjEyMw=="
+    );
+    let fixture = resolve_url("https://www.deno.land/x/mod.ts").unwrap();
+    assert_eq!(
+      auth_tokens.get(&fixture).unwrap().to_string(),
+      "Basic YWJjOjEyMw==".to_string()
+    );
+    let fixture = resolve_url("http://127.0.0.1:8080/x/mod.ts").unwrap();
+    assert_eq!(auth_tokens.get(&fixture), None);
+    let fixture =
+      resolve_url("https://deno.land.example.com/x/mod.ts").unwrap();
+    assert_eq!(auth_tokens.get(&fixture), None);
+    let fixture = resolve_url("https://deno.land:8080/x/mod.ts").unwrap();
+    assert_eq!(auth_tokens.get(&fixture), None);
   }
 }

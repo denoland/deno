@@ -2,6 +2,7 @@
 
 use crate::itest;
 use deno_core::url;
+use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::webpki;
@@ -53,6 +54,8 @@ macro_rules! itest_flaky(
 mod bundle;
 #[path = "cache_tests.rs"]
 mod cache;
+#[path = "compat_tests.rs"]
+mod compat;
 #[path = "compile_tests.rs"]
 mod compile;
 #[path = "coverage_tests.rs"]
@@ -1077,6 +1080,54 @@ fn js_unit_tests() {
   assert!(status.success());
 }
 
+#[test]
+fn basic_auth_tokens() {
+  let _g = util::http_server();
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("http://127.0.0.1:4554/001_hello.js")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  assert!(!output.status.success());
+
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert!(stdout_str.is_empty());
+
+  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+  eprintln!("{}", stderr_str);
+
+  assert!(stderr_str.contains(
+    "Import 'http://127.0.0.1:4554/001_hello.js' failed: 404 Not Found"
+  ));
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("http://127.0.0.1:4554/001_hello.js")
+    .env("DENO_AUTH_TOKENS", "testuser123:testpassabc@127.0.0.1:4554")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+  eprintln!("{}", stderr_str);
+
+  assert!(output.status.success());
+
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!(util::strip_ansi_codes(stdout_str), "Hello World");
+}
+
 #[tokio::test]
 async fn listen_tls_alpn() {
   // TLS streams require the presence of an ambient local task set to gracefully
@@ -1175,6 +1226,54 @@ async fn listen_tls_alpn_fail() {
       let (_, session) = tls_stream.get_ref();
 
       assert!(session.get_alpn_protocol().is_none());
+
+      child.kill().unwrap();
+      child.wait().unwrap();
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn http2_request_url() {
+  // TLS streams require the presence of an ambient local task set to gracefully
+  // close dropped connections in the background.
+  LocalSet::new()
+    .run_until(async {
+      let mut child = util::deno_cmd()
+        .current_dir(util::testdata_path())
+        .arg("run")
+        .arg("--unstable")
+        .arg("--quiet")
+        .arg("--allow-net")
+        .arg("--allow-read")
+        .arg("./http2_request_url.ts")
+        .arg("4506")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+      let stdout = child.stdout.as_mut().unwrap();
+      let mut buffer = [0; 5];
+      let read = stdout.read(&mut buffer).unwrap();
+      assert_eq!(read, 5);
+      let msg = std::str::from_utf8(&buffer).unwrap();
+      assert_eq!(msg, "READY");
+
+      let cert = reqwest::Certificate::from_pem(include_bytes!(
+        "../testdata/tls/RootCA.crt"
+      ))
+      .unwrap();
+
+      let client = reqwest::Client::builder()
+        .add_root_certificate(cert)
+        .http2_prior_knowledge()
+        .build()
+        .unwrap();
+
+      let res = client.get("http://127.0.0.1:4506").send().await.unwrap();
+      assert_eq!(200, res.status());
+
+      let body = res.text().await.unwrap();
+      assert_eq!(body, "http://127.0.0.1:4506/");
 
       child.kill().unwrap();
       child.wait().unwrap();

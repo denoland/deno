@@ -10,10 +10,10 @@
     StringPrototypeStartsWith,
     String,
     SymbolIterator,
+    SymbolToStringTag,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
   const { URL } = window.__bootstrap.url;
-  const { Window } = window.__bootstrap.globalInterfaces;
   const { getLocationHref } = window.__bootstrap.location;
   const { log, pathFromURL } = window.__bootstrap.util;
   const { defineEventHandler } = window.__bootstrap.webUtil;
@@ -57,6 +57,7 @@
   }
 
   /**
+   * @param {"inherit" | boolean} value
    * @param {string} permission
    * @return {boolean}
    */
@@ -75,7 +76,7 @@
   /**
    * @param {string} permission
    * @return {(boolean | string[])}
-   * */
+   */
   function parseArrayPermission(
     value,
     permission,
@@ -126,7 +127,7 @@
     write = "inherit",
   }) {
     return {
-      env: parseUnitPermission(env, "env"),
+      env: parseArrayPermission(env, "env"),
       hrtime: parseUnitPermission(hrtime, "hrtime"),
       net: parseArrayPermission(net, "net"),
       ffi: parseUnitPermission(ffi, "ffi"),
@@ -139,7 +140,13 @@
   class Worker extends EventTarget {
     #id = 0;
     #name = "";
-    #terminated = false;
+
+    // "RUNNING" | "CLOSED" | "TERMINATED"
+    // "TERMINATED" means that any controls or messages received will be
+    // discarded. "CLOSED" means that we have received a control
+    // indicating that the worker is no longer running, but there might
+    // still be messages left to receive.
+    #status = "RUNNING";
 
     constructor(specifier, options = {}) {
       super();
@@ -243,34 +250,27 @@
     }
 
     #pollControl = async () => {
-      while (!this.#terminated) {
+      while (this.#status === "RUNNING") {
         const [type, data] = await hostRecvCtrl(this.#id);
 
         // If terminate was called then we ignore all messages
-        if (this.#terminated) {
+        if (this.#status === "TERMINATED") {
           return;
         }
 
         switch (type) {
           case 1: { // TerminalError
-            this.#terminated = true;
+            this.#status = "CLOSED";
           } /* falls through */
           case 2: { // Error
             if (!this.#handleError(data)) {
-              if (globalThis instanceof Window) {
-                throw new Error("Unhandled error event reached main worker.");
-              } else {
-                core.opSync(
-                  "op_worker_unhandled_error",
-                  data.message,
-                );
-              }
+              throw new Error("Unhandled error event in child worker.");
             }
             break;
           }
           case 3: { // Close
             log(`Host got "close" message from worker: ${this.#name}`);
-            this.#terminated = true;
+            this.#status = "CLOSED";
             return;
           }
           default: {
@@ -281,9 +281,11 @@
     };
 
     #pollMessages = async () => {
-      while (!this.terminated) {
+      while (this.#status !== "TERMINATED") {
         const data = await hostRecvMessage(this.#id);
-        if (data === null) break;
+        if (this.#status === "TERMINATED" || data === null) {
+          return;
+        }
         let message, transferables;
         try {
           const v = deserializeJsMessageData(data);
@@ -332,16 +334,19 @@
       }
       const { transfer } = options;
       const data = serializeJsMessageData(message, transfer);
-      if (this.#terminated) return;
-      hostPostMessage(this.#id, data);
+      if (this.#status === "RUNNING") {
+        hostPostMessage(this.#id, data);
+      }
     }
 
     terminate() {
-      if (!this.#terminated) {
-        this.#terminated = true;
+      if (this.#status !== "TERMINATED") {
+        this.#status = "TERMINATED";
         hostTerminateWorker(this.#id);
       }
     }
+
+    [SymbolToStringTag] = "Worker";
   }
 
   defineEventHandler(Worker.prototype, "error");

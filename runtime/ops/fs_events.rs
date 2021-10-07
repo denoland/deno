@@ -101,7 +101,7 @@ fn op_fs_events_open(
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = Mutex::new(sender);
   let mut watcher: RecommendedWatcher =
-    Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
+    Watcher::new(move |res: Result<NotifyEvent, NotifyError>| {
       let res2 = res.map(FsEvent::from).map_err(AnyError::from);
       let sender = sender.lock();
       // Ignore result, if send failed it means that watcher was already closed,
@@ -114,11 +114,9 @@ fn op_fs_events_open(
     RecursiveMode::NonRecursive
   };
   for path in &args.paths {
-    state
-      .borrow_mut::<Permissions>()
-      .read
-      .check(&PathBuf::from(path))?;
-    watcher.watch(path, recursive_mode)?;
+    let path = PathBuf::from(path);
+    state.borrow_mut::<Permissions>().read.check(&path)?;
+    watcher.watch(&path, recursive_mode)?;
   }
   let resource = FsEventsResource {
     watcher,

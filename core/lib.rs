@@ -58,6 +58,7 @@ pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::NoopModuleLoader;
+pub use crate::runtime::CompiledWasmModuleStore;
 pub use crate::runtime::SharedArrayBufferStore;
 // TODO(bartlomieju): this struct should be implementation
 // detail nad not be public
@@ -79,6 +80,8 @@ pub use crate::ops_builtin::op_resources;
 pub use crate::ops_json::op_async;
 pub use crate::ops_json::op_async_unref;
 pub use crate::ops_json::op_sync;
+pub use crate::ops_json::void_op_async;
+pub use crate::ops_json::void_op_sync;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
 pub use crate::resources::ResourceTable;
@@ -99,7 +102,7 @@ pub fn v8_version() -> &'static str {
 /// A helper macro that will return a call site in Rust code. Should be
 /// used when executing internal one-line scripts for JsRuntime lifecycle.
 ///
-/// Returns a string in form of: "[deno:<filename>:<line>:<column>]"
+/// Returns a string in form of: "`[deno:<filename>:<line>:<column>]`"
 #[macro_export]
 macro_rules! located_script_name {
   () => {
