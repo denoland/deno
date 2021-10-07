@@ -26,26 +26,6 @@ pub trait NetPermissions {
   fn check_write(&mut self, _p: &Path) -> Result<(), AnyError>;
 }
 
-/// For use with this crate when the user does not want permission checks.
-pub struct NoNetPermissions;
-
-impl NetPermissions for NoNetPermissions {
-  fn check_net<T: AsRef<str>>(
-    &mut self,
-    _host: &(T, Option<u16>),
-  ) -> Result<(), AnyError> {
-    Ok(())
-  }
-
-  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError> {
-    Ok(())
-  }
-
-  fn check_write(&mut self, _p: &Path) -> Result<(), AnyError> {
-    Ok(())
-  }
-}
-
 /// `UnstableChecker` is a struct so it can be placed inside `GothamState`;
 /// using type alias for a bool could work, but there's a high chance
 /// that there might be another type alias pointing to a bool, which
