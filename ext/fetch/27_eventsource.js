@@ -21,26 +21,28 @@
   const CONNECTING = 0;
   const OPEN = 1;
   const CLOSED = 2;
+  const defaultFetchSettings = {
+    headers: [["Accept", "text/event-stream"]],
+    credentials: "same-origin",
+    mode: "cors",
+  }
 
   const _readyState = Symbol("readystate");
   const _withCredentials = Symbol("withcredentials");
   const _abortController = Symbol("abortcontroller");
+  const _url = Symbol("url");
+  const _fetchSettings = Symbol("fetchsettings");
+  const _lastEventID = Symbol("lasteventid");
+  const _reconnectionTime = Symbol("reconnetiontime");
 
   class EventSource extends EventTarget {
     [_readyState] = CONNECTING;
     [_withCredentials] = false;
     [_abortController] = new AbortController();
-    #settings = {
-      url: "",
-      fetchSettings: {
-        headers: [["Accept", "text/event-stream"]],
-        credentials: "same-origin",
-        mode: "cors",
-      },
-      reconnectionTime: 2200,
-      lastEventID: "",
-    };
-
+    [_url] = "";
+    [_fetchSettings] = defaultFetchSettings;
+    [_lastEventID] = "";
+    [_reconnectionTime] = 2200;
     get CONNECTING() {
       webidl.assertBranded(this, EventSource);
       return CONNECTING;
@@ -63,7 +65,7 @@
 
     get url() {
       webidl.assertBranded(this, EventSource);
-      return this.#settings.url;
+      return this[_url];
     }
 
     get withCredentials() {
@@ -86,18 +88,18 @@
       try {
         // Allow empty url
         // https://github.com/web-platform-tests/wpt/blob/master/eventsource/eventsource-constructor-empty-url.any.js
-        this.#settings.url = url == ""
+        this[_url] = url == ""
           ? window.location.toString()
           : new URL(url, window.location.href).toString();
       } catch (e) {
         // Dunno if this is allowd in the spec. But handy for testing purposes
         if (e instanceof ReferenceError) {
-          this.#settings.url = new URL(url).toString();
+          this[_url] = new URL(url).toString();
         } else throw new DOMException(e.message, "SyntaxError");
       }
 
       if (eventSourceInitDict?.withCredentials) {
-        this.#settings.fetchSettings.credentials = "include";
+        this[_fetchSettings].credentials = "include";
         this[_withCredentials] = true;
       }
 
@@ -114,13 +116,13 @@
     async #fetch() {
       let currentRetries = 0;
       while (this[_readyState] < CLOSED) {
-        const res = await fetch(this.url, {
+        const res = await fetch(this[_url], {
           cache: "no-store",
           // This seems to cause problems if the abort happens while `res.body` is being used
           // signal: this[_abortController].signal,
           keepalive: true,
           redirect: "follow",
-          ...this.#settings.fetchSettings,
+          ...this[_fetchSettings],
         }).catch(() => void (0));
 
         if (
@@ -175,7 +177,7 @@
                   const event = new MessageEvent(eventTypeBuffer, {
                     data: messageBuffer.trim(),
                     origin: res.url,
-                    lastEventId: this.#settings.lastEventID,
+                    lastEventId: this[_lastEventID],
                     cancelable: false,
                     bubbles: false,
                   });
@@ -221,7 +223,7 @@
                   // set reconnectionTime to Field Value if int
                   const num = Number(data);
                   if (!isNaN(num) && isFinite(num)) {
-                    this.#settings.reconnectionTime = num;
+                    this[_reconnectionTime] = num;
                   }
                   break;
                 }
@@ -265,16 +267,16 @@
           await new Promise((res) => {
             const id = setTimeout(
               () => res(clearTimeout(id)),
-              this.#settings.reconnectionTime,
+              this[_reconnectionTime],
             );
           });
 
           if (this[_readyState] !== CONNECTING) break;
 
-          if (this.#settings.lastEventID) {
-            this.#settings.fetchSettings.headers.push([
+          if (this[_lastEventID]) {
+            this[_fetchSettings].headers.push([
               "Last-Event-ID",
-              this.#settings.lastEventID,
+              this[_lastEventID],
             ]);
           }
         }
