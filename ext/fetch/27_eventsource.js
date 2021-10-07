@@ -5,7 +5,7 @@
   const { webidl } = window.__bootstrap;
   const { DOMException } = window.__bootstrap.domException;
   const { defineEventHandler } = window.__bootstrap.webUtil;
-  const { ObjectDefineProperties } = window.__bootstrap.primordials;
+  const { ObjectDefineProperties, Symbol } = window.__bootstrap.primordials;
 
   webidl.converters["EventSourceInit"] = webidl.createDictionaryConverter(
     "EventSourceInit",
@@ -18,10 +18,18 @@
     ],
   );
 
+  const CONNECTING = 0;
+  const OPEN = 1;
+  const CLOSED = 2;
+
+  const _readyState = Symbol("readystate");
+  const _withCredentials = Symbol("withcredentials");
+  const _abortController = Symbol("abortcontroller");
+
   class EventSource extends EventTarget {
-    #withCredentials = false;
-    #readyState = 0;
-    #abortController = new AbortController();
+    [_readyState] = CONNECTING;
+    [_withCredentials] = false;
+    [_abortController] = new AbortController();
     #settings = {
       url: "",
       fetchSettings: {
@@ -33,9 +41,24 @@
       lastEventID: "",
     };
 
+    get CONNECTING() {
+      webidl.assertBranded(this, EventSource);
+      return CONNECTING;
+    }
+
+    get OPEN() {
+      webidl.assertBranded(this, EventSource);
+      return OPEN;
+    }
+
+    get CLOSED() {
+      webidl.assertBranded(this, EventSource);
+      return CLOSED;
+    }
+
     get readyState() {
       webidl.assertBranded(this, EventSource);
-      return this.#readyState;
+      return this[_readyState];
     }
 
     get url() {
@@ -45,7 +68,7 @@
 
     get withCredentials() {
       webidl.assertBranded(this, EventSource);
-      return this.#withCredentials;
+      return this[_withCredentials];
     }
 
     constructor(url, eventSourceInitDict) {
@@ -75,7 +98,7 @@
 
       if (eventSourceInitDict?.withCredentials) {
         this.#settings.fetchSettings.credentials = "include";
-        this.#withCredentials = true;
+        this[_withCredentials] = true;
       }
 
       this.#fetch();
@@ -84,17 +107,17 @@
 
     close() {
       webidl.assertBranded(this, EventSource);
-      this.#readyState = this.CLOSED;
-      this.#abortController.abort();
+      this[_readyState] = CLOSED;
+      this[_abortController].abort();
     }
 
     async #fetch() {
       let currentRetries = 0;
-      while (this.#readyState < this.CLOSED) {
+      while (this[_readyState] < CLOSED) {
         const res = await fetch(this.url, {
           cache: "no-store",
           // This seems to cause problems if the abort happens while `res.body` is being used
-          // signal: this.#abortController.signal,
+          // signal: this[_abortController].signal,
           keepalive: true,
           redirect: "follow",
           ...this.#settings.fetchSettings,
@@ -106,8 +129,8 @@
           res.headers.get("content-type")?.startsWith("text/event-stream")
         ) {
           // Announce connection
-          if (this.#readyState !== this.CLOSED) {
-            this.#readyState = this.OPEN;
+          if (this[_readyState] !== CLOSED) {
+            this[_readyState] = OPEN;
             const openEvent = new Event("open", {
               bubbles: false,
               cancelable: false,
@@ -130,7 +153,7 @@
           let readBuffer = "";
 
           for await (const chunk of reader) {
-            if (this.#abortController.signal.aborted) break;
+            if (this[_abortController].signal.aborted) break;
             const lines = decodeURIComponent(readBuffer + chunk)
               .replaceAll("\r\n", "\n")
               .replaceAll("\r", "\n")
@@ -157,7 +180,7 @@
                     bubbles: false,
                   });
 
-                  if (this.readyState !== this.CLOSED) {
+                  if (this[_readyState] !== CLOSED) {
                     // Fire event
                     super.dispatchEvent(event);
                     if (this.onmessage) this.onmessage(event);
@@ -205,16 +228,16 @@
               }
             }
           }
-          if (this.#abortController.signal.aborted) {
+          if (this[_abortController].signal.aborted) {
             // Cancel reader to close the EventSource properly
             await reader.cancel();
-            this.#readyState = this.CLOSED;
+            this[_readyState] = CLOSED;
             break;
           }
         } else {
           // Connection failed for whatever reason
-          this.#readyState = this.CLOSED;
-          this.#abortController.abort();
+          this[_readyState] = CLOSED;
+          this[_abortController].abort();
           const errorEvent = new Event("error", {
             bubbles: false,
             cancelable: false,
@@ -226,8 +249,8 @@
         }
 
         // Set readyState to CONNECTING
-        if (this.#readyState !== this.CLOSED) {
-          this.#readyState = this.CONNECTING;
+        if (this[_readyState] !== CLOSED) {
+          this[_readyState] = CONNECTING;
 
           // Fire onerror
           const errorEvent = new Event("error", {
@@ -246,7 +269,7 @@
             );
           });
 
-          if (this.#readyState !== this.CONNECTING) break;
+          if (this[_readyState] !== CONNECTING) break;
 
           if (this.#settings.lastEventID) {
             this.#settings.fetchSettings.headers.push([
