@@ -15020,9 +15020,7 @@
     "WorkerLocation-origin.sub.window.html": [
       "workerLocation.origin must use ASCII code points"
     ],
-    "WorkerNavigator-hardware-concurrency.any.worker.html": [
-      "Test worker navigator hardware concurrency."
-    ],
+    "WorkerNavigator-hardware-concurrency.any.worker.html": true,
     "WorkerNavigator.any.worker.html": [
       "Testing Navigator properties on workers."
     ],
