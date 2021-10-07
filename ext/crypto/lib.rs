@@ -116,7 +116,6 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_export_key", op_async(op_crypto_export_key)),
       ("op_crypto_encrypt_key", op_async(op_crypto_encrypt_key)),
       ("op_crypto_decrypt_key", op_async(op_crypto_decrypt_key)),
-      ("op_crypto_import_key", op_async(op_crypto_import_key)),
       ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
       ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
     ])
