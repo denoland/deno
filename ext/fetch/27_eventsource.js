@@ -4,8 +4,75 @@
 ((window) => {
   const { webidl } = window.__bootstrap;
   const { DOMException } = window.__bootstrap.domException;
-  const { defineEventHandler } = window.__bootstrap.webUtil;
-  const { ObjectDefineProperties, Symbol } = window.__bootstrap.primordials;
+  const { URL } = window.__bootstrap.url;
+  const { EventTarget } = window.__bootstrap.eventTarget;
+  const {
+    FunctionPrototypeCall,
+    MapPrototypeGet,
+    ObjectDefineProperties,
+    ObjectDefineProperty,
+    Symbol,
+    StringPrototypeToString,
+    StringPrototypeStartsWith,
+    Promise,
+    isNaN,
+    isFinite,
+    Number,
+    Map,
+    ReferenceError,
+    StringPrototypeTrim,
+    StringPrototypeSlice,
+    StringPrototypeReplaceAll,
+    StringPrototypeSplit,
+    StringPrototypeIncludes,
+    ArrayPrototypePop,
+    StringPrototypeIndexOf,
+    setTimeout,
+    clearTimeout,
+    decodeURIComponent,
+  } = window.__bootstrap.primordials;
+  const { getLocationHref } = window.__bootstrap.location;
+  const { TextDecoderStream } = window.__bootstrap.encoding;
+  const { fetch } = window.__bootstrap.fetch;
+
+  const handlerSymbol = Symbol("eventHandlers");
+  function makeWrappedHandler(handler) {
+    function wrappedHandler(...args) {
+      if (typeof wrappedHandler.handler !== "function") {
+        return;
+      }
+      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
+    }
+    wrappedHandler.handler = handler;
+    return wrappedHandler;
+  }
+
+  function defineEventHandler(emitter, name) {
+    // HTML specification section 8.1.5.1
+    ObjectDefineProperty(emitter, `on${name}`, {
+      get() {
+        if (!this[handlerSymbol]) {
+          return null;
+        }
+        return MapPrototypeGet(this[handlerSymbol], name)?.handler;
+      },
+      set(value) {
+        if (!this[handlerSymbol]) {
+          this[handlerSymbol] = new Map();
+        }
+        let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
+        if (handlerWrapper) {
+          handlerWrapper.handler = value;
+        } else {
+          handlerWrapper = makeWrappedHandler(value);
+          this.addEventListener(name, handlerWrapper);
+        }
+        MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
+      },
+      configurable: true,
+      enumerable: true,
+    });
+  }
 
   webidl.converters["EventSourceInit"] = webidl.createDictionaryConverter(
     "EventSourceInit",
@@ -25,7 +92,7 @@
     headers: [["Accept", "text/event-stream"]],
     credentials: "same-origin",
     mode: "cors",
-  }
+  };
 
   const _readyState = Symbol("readystate");
   const _withCredentials = Symbol("withcredentials");
@@ -34,12 +101,12 @@
   const _fetchSettings = Symbol("fetchsettings");
   const _lastEventID = Symbol("lasteventid");
   const _reconnectionTime = Symbol("reconnetiontime");
+  const _fetch = Symbol("fetch");
 
   class EventSource extends EventTarget {
     [_readyState] = CONNECTING;
     [_withCredentials] = false;
     [_abortController] = new AbortController();
-    [_url] = "";
     [_fetchSettings] = defaultFetchSettings;
     [_lastEventID] = "";
     [_reconnectionTime] = 2200;
@@ -88,13 +155,12 @@
       try {
         // Allow empty url
         // https://github.com/web-platform-tests/wpt/blob/master/eventsource/eventsource-constructor-empty-url.any.js
-        this[_url] = url == ""
-          ? window.location.toString()
-          : new URL(url, window.location.href).toString();
+        const baseURL = getLocationHref();
+        this[_url] = new URL(url, baseURL).href;
       } catch (e) {
         // Dunno if this is allowd in the spec. But handy for testing purposes
         if (e instanceof ReferenceError) {
-          this[_url] = new URL(url).toString();
+          this[_url] = StringPrototypeToString(new URL(url));
         } else throw new DOMException(e.message, "SyntaxError");
       }
 
@@ -103,7 +169,7 @@
         this[_withCredentials] = true;
       }
 
-      this.#fetch();
+      this[_fetch]();
       return;
     }
 
@@ -113,7 +179,7 @@
       this[_abortController].abort();
     }
 
-    async #fetch() {
+    async [_fetch]() {
       let currentRetries = 0;
       while (this[_readyState] < CLOSED) {
         const res = await fetch(this[_url], {
@@ -128,7 +194,10 @@
         if (
           res?.body &&
           res?.status === 200 &&
-          res.headers.get("content-type")?.startsWith("text/event-stream")
+          StringPrototypeStartsWith(
+            res.headers.get("content-type"),
+            "text/event-stream",
+          )
         ) {
           // Announce connection
           if (this[_readyState] !== CLOSED) {
@@ -156,16 +225,24 @@
 
           for await (const chunk of reader) {
             if (this[_abortController].signal.aborted) break;
-            const lines = decodeURIComponent(readBuffer + chunk)
-              .replaceAll("\r\n", "\n")
-              .replaceAll("\r", "\n")
-              .split("\n");
-            readBuffer = lines.pop() ?? "";
+            const lines = StringPrototypeSplit(
+              StringPrototypeReplaceAll(
+                StringPrototypeReplaceAll(
+                  decodeURIComponent(readBuffer + chunk),
+                  "\r\n",
+                  "\n",
+                ),
+                "\r",
+                "\n",
+              ),
+              "\n",
+            );
+            readBuffer = ArrayPrototypePop(lines) ?? "";
 
             // Start loop for interpreting
             for (const line of lines) {
               if (!line) {
-                this.#settings.lastEventID = lastEventIDBuffer;
+                this[_lastEventID] = lastEventIDBuffer;
 
                 // Check if buffer is not an empty string
                 if (messageBuffer) {
@@ -175,7 +252,7 @@
                   }
 
                   const event = new MessageEvent(eventTypeBuffer, {
-                    data: messageBuffer.trim(),
+                    data: StringPrototypeTrim(messageBuffer),
                     origin: res.url,
                     lastEventId: this[_lastEventID],
                     cancelable: false,
@@ -198,10 +275,15 @@
               // Ignore comments
               if (line[0] === ":") continue;
 
-              let splitIndex = line.indexOf(":");
+              let splitIndex = StringPrototypeIndexOf(line, ":");
               splitIndex = splitIndex > 0 ? splitIndex : line.length;
-              const field = line.slice(0, splitIndex).trim();
-              const data = line.slice(splitIndex + 1).trim();
+              const field = StringPrototypeTrim(
+                StringPrototypeSlice(line, 0, splitIndex),
+              );
+              /** @type { string } */
+              const data = StringPrototypeTrim(
+                StringPrototypeSlice(line, splitIndex + 1),
+              );
               switch (field) {
                 case "event":
                   // Set fieldBuffer to Field Value
@@ -214,7 +296,8 @@
                 case "id":
                   // set lastEventID to Field Value
                   if (
-                    data && !data.includes("\u0000") && !data.includes("\x00")
+                    data && !StringPrototypeIncludes(data, "\u0000") &&
+                    !StringPrototypeIncludes(data, "\x00")
                   ) {
                     lastEventIDBuffer = data;
                   }
@@ -296,9 +379,9 @@
     },
   });
 
-  defineEventHandler(EventSource.prototype, "message");
-  defineEventHandler(EventSource.prototype, "error");
-  defineEventHandler(EventSource.prototype, "open");
+  defineEventHandler(EventSource.prototype, "message", null);
+  defineEventHandler(EventSource.prototype, "error", null);
+  defineEventHandler(EventSource.prototype, "open", null);
   webidl.configurePrototype(EventSource);
 
   window.__bootstrap.eventSource = EventSource;
