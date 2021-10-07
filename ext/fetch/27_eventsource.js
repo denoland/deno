@@ -159,10 +159,7 @@
         const baseURL = getLocationHref();
         this[_url] = new URL(url, baseURL).href;
       } catch (e) {
-        // Dunno if this is allowd in the spec. But handy for testing purposes
-        if (e instanceof ReferenceError) {
-          this[_url] = StringPrototypeToString(new URL(url));
-        } else throw new DOMException(e.message, "SyntaxError");
+        throw new DOMException(e.message, "SyntaxError");
       }
 
       if (eventSourceInitDict?.withCredentials) {
