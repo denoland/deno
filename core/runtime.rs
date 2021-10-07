@@ -401,7 +401,9 @@ impl JsRuntime {
     // Sync ops cache
     js_runtime.sync_ops_cache();
     // Run microtasks explicitly
-    js_runtime.v8_isolate().set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
+    js_runtime
+      .v8_isolate()
+      .set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
 
     js_runtime
   }
