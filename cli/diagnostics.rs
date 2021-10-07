@@ -349,10 +349,10 @@ impl fmt::Display for Diagnostic {
 pub struct Diagnostics(Vec<Diagnostic>);
 
 impl Diagnostics {
-  #[cfg(test)]
-  pub fn new(diagnostics: Vec<Diagnostic>) -> Self {
-    Diagnostics(diagnostics)
-  }
+  // #[cfg(test)]
+  // pub fn new(diagnostics: Vec<Diagnostic>) -> Self {
+  //   Diagnostics(diagnostics)
+  // }
 
   pub fn extend_graph_errors(&mut self, errors: Vec<ModuleGraphError>) {
     self.0.extend(errors.into_iter().map(|err| Diagnostic {

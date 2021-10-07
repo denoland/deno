@@ -906,7 +906,9 @@ pub async fn run_tests_with_watch(
         None,
       )
       .await;
+      graph.valid()?;
 
+      // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
         fn get_dependencies<'a>(
           graph: &'a deno_graph::ModuleGraph,

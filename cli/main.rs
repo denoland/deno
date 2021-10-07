@@ -942,6 +942,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         None,
       )
       .await;
+      graph.valid()?;
 
       // Find all local files in graph
       let mut paths_to_watch: Vec<PathBuf> = graph
