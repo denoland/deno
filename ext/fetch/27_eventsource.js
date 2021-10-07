@@ -208,7 +208,7 @@
               cancelable: false,
             });
             super.dispatchEvent(openEvent);
-            if (this.onopen) this.onopen(openEvent);
+            this.onopen?.(openEvent);
           }
 
           // Decode body for interpreting
@@ -263,7 +263,7 @@
                   if (this[_readyState] !== CLOSED) {
                     // Fire event
                     super.dispatchEvent(event);
-                    if (this.onmessage) this.onmessage(event);
+                    this.onmessage?.(event);
                   }
                 }
 
@@ -329,7 +329,7 @@
             cancelable: false,
           });
           super.dispatchEvent(errorEvent);
-          if (this.onerror) this.onerror(errorEvent);
+          this.onerror?.(errorEvent);
           if (currentRetries >= 3) break;
           currentRetries++;
         }
@@ -345,7 +345,7 @@
           });
 
           super.dispatchEvent(errorEvent);
-          if (this.onerror) this.onerror(errorEvent);
+          this.onerror?.(errorEvent);
 
           // Timeout for re-establishing the connection
           await new Promise((res) => {
