@@ -23,6 +23,8 @@ use deno_core::ZeroCopyBuf;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
+use trust_dns_resolver::error::ResolveErrorKind;
+
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::net::SocketAddr;
@@ -630,7 +632,19 @@ where
   let results = resolver
     .lookup(query, record_type, Default::default())
     .await
-    .map_err(|e| generic_error(format!("{}", e)))?
+    .map_err(|e| {
+      let message = format!("{}", e);
+      match e.kind() {
+        ResolveErrorKind::NoRecordsFound { .. } => {
+          custom_error("NotFound", message)
+        }
+        ResolveErrorKind::Message("No connections available") => {
+          custom_error("NotConnected", message)
+        }
+        ResolveErrorKind::Timeout => custom_error("TimedOut", message),
+        _ => generic_error(message),
+      }
+    })?
     .iter()
     .filter_map(rdata_to_return_record(record_type))
     .collect();
