@@ -113,6 +113,7 @@
     "deriveBits": {
       "HKDF": "HkdfParams",
       "PBKDF2": "Pbkdf2Params",
+      "ECDH": "EcdhKeyDeriveParams",
     },
     "encrypt": {
       "RSA-OAEP": "RsaOaepParams",
@@ -2137,6 +2138,58 @@
         }, normalizedAlgorithm.salt);
 
         return buf.buffer;
+      }
+      case "ECDH": {
+        // 1.
+        if (baseKey[_type] !== "private") {
+          throw new DOMException("Invalid key type", "InvalidAccessError");
+        }
+        // 2.
+        const publicKey = normalizedAlgorithm.public;
+        // 3.
+        if (publicKey[_type] !== "public") {
+          throw new DOMException("Invalid key type", "InvalidAccessError");
+        }
+        // 4.
+        if (publicKey[_algorithm].name !== baseKey[_algorithm].name) {
+          throw new DOMException(
+            "Algorithm mismatch",
+            "InvalidAccessError",
+          );
+        }
+        // 5.
+        if (
+          publicKey[_algorithm].namedCurve !== baseKey[_algorithm].namedCurve
+        ) {
+          throw new DOMException(
+            "namedCurve mismatch",
+            "InvalidAccessError",
+          );
+        }
+        // 6.
+        if (
+          ArrayPrototypeIncludes(
+            supportedNamedCurves,
+            publicKey[_algorithm].namedCurve,
+          )
+        ) {
+          const baseKeyhandle = baseKey[_handle];
+          const baseKeyData = WeakMapPrototypeGet(KEY_STORE, baseKeyhandle);
+          const publicKeyhandle = baseKey[_handle];
+          const publicKeyData = WeakMapPrototypeGet(KEY_STORE, publicKeyhandle);
+
+          const buf = await core.opAsync("op_crypto_derive_bits", {
+            key: baseKeyData,
+            publicKey: publicKeyData,
+            algorithm: "ECDH",
+            namedCurve: publicKey[_algorithm].namedCurve,
+            length,
+          });
+
+          return buf.buffer;
+        } else {
+          throw new DOMException("Not implemented", "NotSupportedError");
+        }
       }
       case "HKDF": {
         // 1.
