@@ -402,6 +402,8 @@ impl ConfigFile {
     }
   }
 
+  /// If the configuration file contains "extra" modules (like TypeScript
+  /// `"types"`) options, return them as imports to be added to a module graph.
   pub fn to_maybe_imports(
     &self,
   ) -> Option<Vec<(ModuleSpecifier, Vec<String>)>> {

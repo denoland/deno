@@ -5,4 +5,4 @@ error: Uncaught (in promise) TypeError: Remote modules are not allowed to import
 
   await import("http://localhost:4545/subdir/evil_remote_import.js");
   ^
-    at async file:///Users/kitsonk/github/deno/cli/tests/testdata/error_016_dynamic_import_permissions2.js:4:3
+    at async file://[WILDCARD]/error_016_dynamic_import_permissions2.js:4:3
