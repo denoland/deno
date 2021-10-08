@@ -309,7 +309,6 @@ fn op_kill(
   pid: i32,
   signal: String,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
   kill(pid, &signal)?;
   Ok(())

@@ -103,6 +103,7 @@
     PermissionStatus: __bootstrap.permissions.PermissionStatus,
     serveHttp: __bootstrap.http.serveHttp,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
+    kill: __bootstrap.process.kill,
   };
 
   __bootstrap.denoNsUnstable = {
@@ -110,7 +111,6 @@
     Signal: __bootstrap.signals.Signal,
     SignalStream: __bootstrap.signals.SignalStream,
     emit: __bootstrap.compilerApi.emit,
-    kill: __bootstrap.process.kill,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
