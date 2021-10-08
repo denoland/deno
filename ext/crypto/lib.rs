@@ -43,6 +43,7 @@ use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::ToRsaPrivateKey;
 use rsa::pkcs8::der::asn1;
+use rsa::pkcs8::FromPrivateKey;
 use rsa::BigUint;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
@@ -792,18 +793,23 @@ pub struct DeriveKeyArg {
   hash: Option<CryptoHash>,
   length: usize,
   iterations: Option<u32>,
+  // ECDH
+  public_key: Option<KeyData>,
+  named_curve: Option<CryptoNamedCurve>,
+  // HKDF
   info: Option<ZeroCopyBuf>,
 }
 
 pub async fn op_crypto_derive_bits(
   _state: Rc<RefCell<OpState>>,
   args: DeriveKeyArg,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let salt = &*zero_copy;
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::Pbkdf2 => {
+      let zero_copy = zero_copy.ok_or_else(not_supported)?;
+      let salt = &*zero_copy;
       // The caller must validate these cases.
       assert!(args.length > 0);
       assert!(args.length % 8 == 0);
@@ -823,7 +829,36 @@ pub async fn op_crypto_derive_bits(
       pbkdf2::derive(algorithm, iterations, salt, &secret, &mut out);
       Ok(out.into())
     }
+    Algorithm::Ecdh => {
+      let named_curve = args
+        .named_curve
+        .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?;
+
+      let public_key = args
+        .public_key
+        .ok_or_else(|| type_error("Missing argument publicKey".to_string()))?;
+
+      match named_curve {
+        CryptoNamedCurve::P256 => {
+          let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)?;
+          let public_key =
+            p256::SecretKey::from_pkcs8_der(&public_key.data)?.public_key();
+
+          let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
+            secret_key.to_secret_scalar(),
+            public_key.as_affine(),
+          );
+
+          Ok(shared_secret.as_bytes().to_vec().into())
+        }
+        // TODO(@littledivy): support for P384
+        // https://github.com/RustCrypto/elliptic-curves/issues/240
+        _ => Err(type_error("Unsupported namedCurve".to_string())),
+      }
+    }
     Algorithm::Hkdf => {
+      let zero_copy = zero_copy.ok_or_else(not_supported)?;
+      let salt = &*zero_copy;
       let algorithm = match args.hash.ok_or_else(not_supported)? {
         CryptoHash::Sha1 => hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
         CryptoHash::Sha256 => hkdf::HKDF_SHA256,

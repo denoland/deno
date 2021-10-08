@@ -260,6 +260,7 @@ pub struct WebWorker {
 
 pub struct WebWorkerOptions {
   pub bootstrap: BootstrapOptions,
+  pub extensions: Vec<Extension>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
@@ -297,7 +298,7 @@ impl WebWorker {
     permissions: Permissions,
     main_module: ModuleSpecifier,
     worker_id: WorkerId,
-    options: WebWorkerOptions,
+    mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
@@ -377,6 +378,7 @@ impl WebWorker {
     // Append exts
     extensions.extend(runtime_exts);
     extensions.extend(deno_ns_exts); // May be empty
+    extensions.extend(std::mem::take(&mut options.extensions));
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
