@@ -96,7 +96,8 @@
       });
       this.#code = nameToCodeMapping[this.#name] ?? 0;
 
-      const error = new Error(`DOMException: ${this.#message}`);
+      const error = new Error(this.#message);
+      error.name = "DOMException";
       ObjectDefineProperty(this, "stack", {
         value: error.stack,
         writable: true,
