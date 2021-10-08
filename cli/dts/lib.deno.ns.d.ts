@@ -1956,8 +1956,7 @@ declare namespace Deno {
     stderrOutput(): Promise<Uint8Array>;
     close(): void;
 
-    /** Send a signal to process. This functionality currently only works on
-     * Linux and Mac OS.
+    /** Send a signal to process.
      */
     kill(signo: Signal): void;
   }
