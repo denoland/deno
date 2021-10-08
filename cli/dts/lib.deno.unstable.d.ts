@@ -121,7 +121,7 @@ declare namespace Deno {
 
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction {
-    parameters: NativeType[];
+    parameters: (NativeType | "buffer")[];
     result: NativeType;
   }
 
