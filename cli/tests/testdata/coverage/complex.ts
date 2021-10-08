@@ -69,6 +69,3 @@ export function ƒ(): number {
 
 // This arrow function should also show up as uncovered.
 console.log("%s", () => 1);
-
-// End with a newline:
-

@@ -12,6 +12,7 @@
     Map,
     Array,
     ArrayPrototypeFill,
+    ErrorCaptureStackTrace,
     Promise,
     ObjectFreeze,
     ObjectFromEntries,
@@ -113,12 +114,12 @@
     if (res?.$err_class_name) {
       const className = res.$err_class_name;
       const errorBuilder = errorMap[className];
-      if (!errorBuilder) {
-        throw new Error(
-          `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
-        );
-      }
-      throw errorBuilder(res.message);
+      const err = errorBuilder ? errorBuilder(res.message) : new Error(
+        `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+      );
+      // Strip unwrapOpResult() and errorBuilder() calls from stack trace
+      ErrorCaptureStackTrace(err, unwrapOpResult);
+      throw err;
     }
     return res;
   }
