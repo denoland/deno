@@ -590,9 +590,7 @@ async fn eval_command(
   ps.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
   if flags.compat {
-    worker
-      .execute_side_module(&compat::GLOBAL_URL)
-      .await?;
+    worker.execute_side_module(&compat::GLOBAL_URL).await?;
   }
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
@@ -652,7 +650,10 @@ async fn create_graph_and_maybe_check(
       emit::TypeLib::DenoWindow
     };
     let (ts_config, maybe_ignored_options) = emit::get_ts_config(
-      emit::ConfigType::Check { emit: false, lib },
+      emit::ConfigType::Check {
+        tsc_emit: false,
+        lib,
+      },
       &ps.maybe_config_file,
       &None,
     )?;
@@ -911,9 +912,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
   debug!("main_module {}", main_module);
   if flags.compat {
-    worker
-      .execute_side_module(&compat::GLOBAL_URL)
-      .await?;
+    worker.execute_side_module(&compat::GLOBAL_URL).await?;
   }
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
@@ -1016,10 +1015,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       main_module: &ModuleSpecifier,
     ) -> Result<(), AnyError> {
       if self.compat {
-        self
-          .worker
-          .execute_side_module(&compat::GLOBAL_URL)
-          .await?;
+        self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
       }
       self.worker.execute_main_module(main_module).await?;
       self.worker.execute_script(
@@ -1114,9 +1110,7 @@ async fn run_command(
 
   debug!("main_module {}", main_module);
   if flags.compat {
-    worker
-      .execute_side_module(&compat::GLOBAL_URL)
-      .await?;
+    worker.execute_side_module(&compat::GLOBAL_URL).await?;
   }
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
