@@ -2514,8 +2514,7 @@ declare namespace Deno {
     options?: UpgradeWebSocketOptions,
   ): WebSocketUpgrade;
 
-  /** Send a signal to process under given `pid`. This
-   * functionality only works on Linux and Mac OS.
+  /** Send a signal to process under given `pid`.
    *
    * If `pid` is negative, the signal will be sent to the process group
    * identified by `pid`.
