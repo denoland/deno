@@ -22,7 +22,7 @@
           }
         }
       ],
-      "local": "[WILDCARD]/005_more_imports.ts",
+      "local": "[WILDCARD]005_more_imports.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
       [WILDCARD]
@@ -47,7 +47,7 @@
           }
         }
       ],
-      "local": "[WILDCARD]/subdir/mod1.ts",
+      "local": "[WILDCARD]mod1.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
       [WILDCARD]
@@ -55,7 +55,7 @@
     },
     {
       "dependencies": [],
-      "local": "[WILDCARD]/subdir/print_hello.ts",
+      "local": "[WILDCARD]print_hello.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
       [WILDCARD]
@@ -80,7 +80,7 @@
           }
         }
       ],
-      "local": "[WILDCARD]/subdir/subdir2/mod2.ts",
+      "local": "[WILDCARD]mod2.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
       [WILDCARD]
