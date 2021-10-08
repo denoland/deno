@@ -925,7 +925,6 @@ async fn test_resolve_dns() {
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
