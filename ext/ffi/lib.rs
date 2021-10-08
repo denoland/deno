@@ -1,6 +1,5 @@
 // Copyright 2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::anyhow;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
@@ -370,7 +369,12 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(&path)?;
 
-  let lib = Library::open(&path).map_err(|e| anyhow!(format_error(e, path)))?;
+  let lib = Library::open(&path).map_err(|e| {
+    dlopen::Error::OpeningLibraryError(std::io::Error::new(
+      std::io::ErrorKind::Other,
+      format_error(e, path),
+    ))
+  })?;
 
   let mut resource = DynamicLibraryResource {
     lib,

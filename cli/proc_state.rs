@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::compat;
 use crate::config_file::ConfigFile;
 use crate::deno_dir;
 use crate::file_fetcher::CacheSetting;
@@ -217,7 +218,7 @@ impl ProcState {
             .unwrap()
         }
       };
-      let node_builtins = crate::compat::get_mapped_node_builtins();
+      let node_builtins = compat::get_mapped_node_builtins();
       let diagnostics = import_map.update_imports(node_builtins)?;
 
       if !diagnostics.is_empty() {
@@ -353,6 +354,9 @@ impl ProcState {
     )?));
     let mut builder =
       GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
+    if self.flags.compat {
+      builder.add(&compat::get_node_globals_url(), false).await?;
+    }
     builder.add(&specifier, is_dynamic).await?;
     builder.analyze_config_file(&self.maybe_config_file).await?;
     let mut graph = builder.get_graph();

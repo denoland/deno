@@ -331,6 +331,10 @@
       if (object.type.length !== 0) {
         contentType = object.type;
       }
+    } else if (object instanceof Uint8Array) {
+      // Fast(er) path for common case of Uint8Array
+      const copy = TypedArrayPrototypeSlice(object, 0, object.byteLength);
+      source = copy;
     } else if (ArrayBufferIsView(object) || object instanceof ArrayBuffer) {
       const u8 = ArrayBufferIsView(object)
         ? new Uint8Array(
