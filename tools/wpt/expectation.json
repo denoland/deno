@@ -29184,9 +29184,9 @@
     "constructor.any.worker.html": true,
     "constructor.any.worker.html?wpt_flags=h2": true,
     "constructor.any.worker.html?wss": true,
-    "eventhandlers.any.html": false,
-    "eventhandlers.any.html?wpt_flags=h2": false,
-    "eventhandlers.any.html?wss": false,
+    "eventhandlers.any.html": true,
+    "eventhandlers.any.html?wpt_flags=h2": true,
+    "eventhandlers.any.html?wss": true,
     "eventhandlers.any.worker.html": false,
     "eventhandlers.any.worker.html?wpt_flags=h2": false,
     "eventhandlers.any.worker.html?wss": false,
@@ -29244,9 +29244,7 @@
     "WorkerLocation-origin.sub.window.html": [
       "workerLocation.origin must use ASCII code points"
     ],
-    "WorkerNavigator-hardware-concurrency.any.worker.html": [
-      "Test worker navigator hardware concurrency."
-    ],
+    "WorkerNavigator-hardware-concurrency.any.worker.html": true,
     "WorkerNavigator.any.worker.html": [
       "Testing Navigator properties on workers."
     ],
@@ -29282,10 +29280,7 @@
     "interfaces": {
       "DedicatedWorkerGlobalScope": {
         "EventTarget.worker.html": true,
-        "onmessage.worker.html": [
-          "Setting onmessage to 1",
-          "Setting onmessage to 1 (again)"
-        ],
+        "onmessage.worker.html": true,
         "postMessage": {
           "return-value.worker.html": true
         }
