@@ -14979,9 +14979,9 @@
     "constructor.any.html": true,
     "constructor.any.html?wpt_flags=h2": true,
     "constructor.any.html?wss": true,
-    "eventhandlers.any.html": false,
-    "eventhandlers.any.html?wpt_flags=h2": false,
-    "eventhandlers.any.html?wss": false,
+    "eventhandlers.any.html": true,
+    "eventhandlers.any.html?wpt_flags=h2": true,
+    "eventhandlers.any.html?wss": true,
     "referrer.any.html": true,
     "Close-delayed.any.html": false,
     "Close-delayed.any.html?wpt_flags=h2": false,
@@ -15056,10 +15056,7 @@
     "interfaces": {
       "DedicatedWorkerGlobalScope": {
         "EventTarget.worker.html": true,
-        "onmessage.worker.html": [
-          "Setting onmessage to 1",
-          "Setting onmessage to 1 (again)"
-        ],
+        "onmessage.worker.html": true,
         "postMessage": {
           "return-value.worker.html": true
         }
