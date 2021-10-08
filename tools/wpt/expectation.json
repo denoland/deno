@@ -27840,7 +27840,7 @@
         "headers-normalize.any.html": true,
         "headers-record.any.html": true,
         "headers-structure.any.html": true,
-        "headers-basic.any.worker.html": false,
+        "headers-basic.any.worker.html": true,
         "headers-casing.any.worker.html": true,
         "headers-combine.any.worker.html": true,
         "headers-errors.any.worker.html": true,

@@ -472,7 +472,7 @@ delete Object.prototype.__proto__;
     location: location.locationDescriptor,
     Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),
-    self: util.readOnly(globalThis),
+    self: util.writable(globalThis),
     Navigator: util.nonEnumerable(Navigator),
     navigator: {
       configurable: true,
@@ -625,7 +625,7 @@ delete Object.prototype.__proto__;
       ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
     }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
-    ObjectDefineProperties(globalThis, { name: util.readOnly(name) });
+    ObjectDefineProperties(globalThis, { name: util.writable(name) });
     if (runtimeOptions.enableTestingFeaturesFlag) {
       ObjectDefineProperty(
         globalThis,
