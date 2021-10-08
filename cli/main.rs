@@ -127,6 +127,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.flags.unstable,
       },
+      extensions: vec![],
       unsafely_ignore_certificate_errors: ps
         .flags
         .unsafely_ignore_certificate_errors
@@ -216,6 +217,7 @@ pub fn create_main_worker(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: ps.flags.unstable,
     },
+    extensions: vec![],
     unsafely_ignore_certificate_errors: ps
       .flags
       .unsafely_ignore_certificate_errors
