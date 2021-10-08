@@ -5,6 +5,7 @@
 //! loading into an isolate.
 
 use crate::ast;
+use crate::cache::CacheType;
 use crate::cache::Cacher;
 use crate::colors;
 use crate::config_file::ConfigFile;
@@ -111,10 +112,17 @@ impl fmt::Display for Stats {
   }
 }
 
+/// An enum that represents the base tsc configuration to return.
 pub(crate) enum ConfigType {
+  /// Return a configuration for bundling, using swc to emit the bundle. This is
+  /// independent of type checking.
   Bundle,
-  Check { emit: bool, lib: TypeLib },
+  /// Return a configuration to use tsc to type check and optionally emit. This
+  /// is independent of either bundling or just emitting via swc
+  Check { lib: TypeLib, tsc_emit: bool },
+  /// Return a configuration to use swc to emit single module files.
   Emit,
+  /// Return a configuration as a base for the runtime `Deno.emit()` API.
   RuntimeEmit { tsc_emit: bool },
 }
 
@@ -138,7 +146,7 @@ pub(crate) fn get_ts_config(
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     })),
-    ConfigType::Check { emit, lib } => {
+    ConfigType::Check { tsc_emit, lib } => {
       let mut ts_config = TsConfig::new(json!({
         "allowJs": true,
         "experimentalDecorators": true,
@@ -154,7 +162,7 @@ pub(crate) fn get_ts_config(
         // TODO(@kitsonk) remove for Deno 2.0
         "useUnknownInCatchVariables": false,
       }));
-      if emit {
+      if tsc_emit {
         ts_config.merge(&json!({
           "emitDecoratorMetadata": false,
           "importsNotUsedAsValues": "remove",
@@ -290,7 +298,10 @@ pub(crate) struct CheckOptions {
   /// produced. If false, if there are diagnostics, caching emitted files will
   /// be skipped.
   pub emit_with_diagnostics: bool,
+  /// The module specifier to the configuration file, passed to tsc so that
+  /// configuration related diagnostics are properly formed.
   pub maybe_config_specifier: Option<ModuleSpecifier>,
+  /// The derived tsconfig that should be used when checking.
   pub ts_config: TsConfig,
 }
 
@@ -319,7 +330,11 @@ pub(crate) fn check_and_maybe_emit(
   // while there might be multiple roots, we can't "merge" the build info, so we
   // try to retrieve the build info for first root, which is the most common use
   // case.
-  let maybe_tsbuildinfo = cache.get_tsbuildinfo(&graph.roots[0]);
+  let maybe_tsbuildinfo =
+    cache.get(CacheType::TypeScriptBuildInfo, &graph.roots[0]);
+  // to make tsc build info work, we need to consistently hash modules, so that
+  // tsc can better determine if an emit is still valid or not, so we provide
+  // that data here.
   let hash_data = vec![
     options.ts_config.as_bytes(),
     version::deno().as_bytes().to_owned(),
@@ -340,9 +355,11 @@ pub(crate) fn check_and_maybe_emit(
     // while we retrieve the build info for just the first module, it can be
     // used for all the roots in the graph, so we will cache it for all roots
     for root in &graph.roots {
-      cache.set_tsbuildinfo(root, info.clone())?;
+      cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
     }
   }
+  // sometimes we want to emit when there are diagnostics, and sometimes we
+  // don't. tsc will always return an emit if there are diagnostics
   if (response.diagnostics.is_empty() || options.emit_with_diagnostics)
     && !response.emitted_files.is_empty()
   {
@@ -368,14 +385,16 @@ pub(crate) fn check_and_maybe_emit(
         match emit.media_type {
           MediaType::JavaScript => {
             let version = get_version(source.as_bytes(), &config_bytes);
-            cache.set_version(&specifier, version)?;
-            cache.set_emit(&specifier, emit.data.clone())?;
+            cache.set(CacheType::Version, &specifier, version)?;
+            cache.set(CacheType::Emit, &specifier, emit.data.clone())?;
           }
           MediaType::SourceMap => {
-            cache.set_map(&specifier, emit.data.clone())?;
+            cache.set(CacheType::SourceMap, &specifier, emit.data.clone())?;
           }
+          // this only occurs with the runtime emit, but we are using the same
+          // code paths, so we handle it here.
           MediaType::Dts => {
-            cache.set_declaration(&specifier, emit.data.clone())?;
+            cache.set(CacheType::Declaration, &specifier, emit.data.clone())?;
           }
           _ => unreachable!(),
         }
@@ -413,6 +432,8 @@ pub(crate) struct BundleOptions {
   pub ts_config: TsConfig,
 }
 
+/// A module loader for swc which does the appropriate retrieval and transpiling
+/// of modules from the graph.
 struct BundleLoader<'a> {
   cm: Rc<swc::common::SourceMap>,
   emit_options: &'a ast::EmitOptions,
@@ -456,6 +477,7 @@ impl swc::bundler::Load for BundleLoader<'_> {
   }
 }
 
+/// A resolver implementation for swc that resolves specifiers from the graph.
 struct BundleResolver<'a>(&'a ModuleGraph);
 
 impl swc::bundler::Resolve for BundleResolver<'_> {
@@ -487,7 +509,9 @@ impl swc::bundler::Resolve for BundleResolver<'_> {
 }
 
 /// Given a module graph, generate and return a bundle of the graph and
-/// optionally its source map.
+/// optionally its source map. Unlike emitting with `check_and_maybe_emit` and
+/// `emit`, which store the emitted modules in the cache, this function simply
+/// returns the output.
 pub(crate) fn bundle(
   graph: &ModuleGraph,
   options: BundleOptions,
@@ -509,6 +533,8 @@ pub(crate) fn bundle(
     module: options.bundle_type.into(),
     ..Default::default()
   };
+  // This hook will rewrite the `import.meta` when bundling to give a consistent
+  // behavior between bundled and unbundled code.
   let hook = Box::new(ast::BundleHook);
   let bundler = swc::bundler::Bundler::new(
     &globals,
@@ -594,21 +620,23 @@ pub(crate) fn emit(
     let needs_reload =
       options.reload && !options.reload_exclusions.contains(&module.specifier);
     let version = get_version(module.source.as_bytes(), &config_bytes);
-    let is_valid = cache.get_version(&module.specifier).map_or(false, |v| {
-      v == get_version(module.source.as_bytes(), &config_bytes)
-    });
+    let is_valid = cache
+      .get(CacheType::Version, &module.specifier)
+      .map_or(false, |v| {
+        v == get_version(module.source.as_bytes(), &config_bytes)
+      });
     if is_valid && !needs_reload {
       continue;
     }
     let (emit, maybe_map) =
       ast::transpile(&module.parsed_source, &emit_options)?;
     emit_count += 1;
-    cache.set_emit(&module.specifier, emit)?;
+    cache.set(CacheType::Emit, &module.specifier, emit)?;
     if let Some(map) = maybe_map {
-      cache.set_map(&module.specifier, map)?;
+      cache.set(CacheType::SourceMap, &module.specifier, map)?;
     }
     if !is_valid {
-      cache.set_version(&module.specifier, version)?;
+      cache.set(CacheType::Version, &module.specifier, version)?;
     }
   }
 
@@ -662,7 +690,7 @@ pub(crate) fn valid_emit(
           // we are reloading and the specifier isn't excluded from being
           // reloaded
           false
-        } else if let Some(version) = cache.get_version(s) {
+        } else if let Some(version) = cache.get(CacheType::Version, s) {
           if let Some(module) = graph.get(s) {
             version == get_version(module.source.as_bytes(), &config_bytes)
           } else {
@@ -683,6 +711,8 @@ pub(crate) fn valid_emit(
     })
 }
 
+/// An adapter struct to make a deno_graph::ModuleGraphError display as expected
+/// in the Deno CLI.
 #[derive(Debug)]
 pub(crate) struct GraphError(pub ModuleGraphError);
 
@@ -722,9 +752,9 @@ pub(crate) fn to_file_map(
   let mut files = HashMap::new();
   for (_, result) in graph.specifiers().into_iter() {
     if let Ok((fs, mt)) = result {
-      if let Some(emit) = cache.get_emit(&fs) {
+      if let Some(emit) = cache.get(CacheType::Emit, &fs) {
         files.insert(format!("{}.js", fs), emit);
-        if let Some(map) = cache.get_map(&fs) {
+        if let Some(map) = cache.get(CacheType::SourceMap, &fs) {
           files.insert(format!("{}.js.map", fs), map);
         }
       } else if mt == MediaType::JavaScript || mt == MediaType::Unknown {
@@ -732,7 +762,7 @@ pub(crate) fn to_file_map(
           files.insert(fs.to_string(), module.source.to_string());
         }
       }
-      if let Some(declaration) = cache.get_declaration(&fs) {
+      if let Some(declaration) = cache.get(CacheType::Declaration, &fs) {
         files.insert(format!("{}.d.ts", fs), declaration);
       }
     }
@@ -753,7 +783,7 @@ pub(crate) fn to_module_sources(
       Err(err) => (rs, Err(err.into())),
       Ok((fs, mt)) => {
         // First we check to see if there is an emitted file in the cache.
-        if let Some(code) = cache.get_emit(&fs) {
+        if let Some(code) = cache.get(CacheType::Emit, &fs) {
           (
             rs.clone(),
             Ok(ModuleSource {

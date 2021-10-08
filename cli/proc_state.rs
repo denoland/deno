@@ -66,8 +66,14 @@ pub struct Inner {
   // so we cache the error and then surface it when appropriate (e.g. load)
   pub(crate) maybe_graph_error:
     Arc<Mutex<Option<deno_graph::ModuleGraphError>>>,
+  // because the graph detects resolution issues early, but is build and dropped
+  // during the `prepare_module_load` method, we need to extract out the module
+  // resolution map so that those errors can be surfaced at the appropriate time
   resolution_map:
     Arc<Mutex<HashMap<ModuleSpecifier, HashMap<String, deno_graph::Resolved>>>>,
+  // in some cases we want to provide the span where the resolution error
+  // occurred but need to surface it on load, but on load we don't know who the
+  // referrer and span was, so we need to cache those
   resolved_map: Arc<Mutex<HashMap<ModuleSpecifier, deno_graph::Span>>>,
   pub root_cert_store: Option<RootCertStore>,
   pub blob_store: BlobStore,
@@ -322,7 +328,6 @@ impl ProcState {
     // If there was a locker, validate the integrity of all the modules in the
     // locker.
     emit::lock(&graph);
-    let maybe_graph_error = graph.valid().err();
 
     // Determine any modules that have already been emitted this session and
     // should be skipped.
@@ -334,11 +339,20 @@ impl ProcState {
     let config_type = if self.flags.no_check {
       emit::ConfigType::Emit
     } else {
-      emit::ConfigType::Check { emit: true, lib }
+      emit::ConfigType::Check {
+        tsc_emit: true,
+        lib,
+      }
     };
+
     let (ts_config, maybe_ignored_options) =
       emit::get_ts_config(config_type, &self.maybe_config_file, &None)?;
     let graph = Arc::new(graph);
+
+    // we will store this in proc state later, as if we were to return it from
+    // prepare_load, some dynamic errors would not be catchable
+    let maybe_graph_error = graph.valid().err();
+
     if emit::valid_emit(
       graph.as_ref(),
       &cache,
@@ -363,7 +377,12 @@ impl ProcState {
         };
         emit::emit(graph.as_ref(), &mut cache, options)?
       } else {
+        // here, we are type checking, so we want to error here if any of the
+        // type only dependencies are missing or we have other errors with them
+        // where as if we are not type checking, we shouldn't care about these
+        // errors, and they don't get returned in `graph.valid()` above.
         graph.valid_types_only()?;
+
         let maybe_config_specifier = self
           .maybe_config_file
           .clone()
@@ -378,11 +397,12 @@ impl ProcState {
           let root_str = root.to_string();
           // `$deno$` specifiers are internal specifiers, printing out that
           // they are being checked is confusing to a user, since they don't
-          // actually exist.
+          // actually exist, so we will simply indicate that a generated module
+          // is being checked instead of the cryptic internal module
           if !root_str.contains("$deno$") {
             log::info!("{} {}", colors::green("Check"), root);
           } else {
-            log::info!("{} a dynamic module", colors::green("Check"))
+            log::info!("{} a generated module", colors::green("Check"))
           }
         }
         emit::check_and_maybe_emit(graph.clone(), &mut cache, options)?
@@ -396,13 +416,23 @@ impl ProcState {
       }
     }
 
+    // we iterate over the graph, looking for any modules that were emitted, or
+    // should be loaded as their un-emitted source and add them to the in memory
+    // cache of modules for loading by deno_core.
     let mut modules = self.modules.lock();
     modules.extend(emit::to_module_sources(graph.as_ref(), &cache));
+
+    // since we can't store the graph in proc state, because proc state needs to
+    // be thread safe because of the need to provide source map resolution and
+    // the graph needs to not be thread safe (due to wasmbind_gen constraints),
+    // we have no choice but to extract out other meta data from the graph to
+    // provide the correct loading behaviors for CLI
     let mut resolution_map = self.resolution_map.lock();
     resolution_map.extend(graph.resolution_map());
     let mut self_maybe_graph_error = self.maybe_graph_error.lock();
     *self_maybe_graph_error = maybe_graph_error;
 
+    // any updates to the lockfile should be updated now
     if let Some(ref lockfile) = self.lockfile {
       let g = lockfile.lock();
       g.write()?;

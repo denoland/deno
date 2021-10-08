@@ -23,45 +23,43 @@ pub struct EmitMetadata {
   pub version_hash: String,
 }
 
+pub(crate) enum CacheType {
+  Declaration,
+  Emit,
+  SourceMap,
+  TypeScriptBuildInfo,
+  Version,
+}
+
+/// A trait which provides a concise implementation to getting and setting
+/// values in a cache.
 pub(crate) trait Cacher {
-  fn get_declaration(&self, specifier: &ModuleSpecifier) -> Option<String>;
-  fn get_emit(&self, specifier: &ModuleSpecifier) -> Option<String>;
-  fn get_map(&self, specifier: &ModuleSpecifier) -> Option<String>;
-  fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String>;
-  fn get_version(&self, specifier: &ModuleSpecifier) -> Option<String>;
-  fn set_declaration(
-    &mut self,
+  /// Get a value from the cache.
+  fn get(
+    &self,
+    cache_type: CacheType,
     specifier: &ModuleSpecifier,
-    declaration: String,
-  ) -> Result<(), AnyError>;
-  fn set_emit(
+  ) -> Option<String>;
+  /// Set a value in the cache.
+  fn set(
     &mut self,
+    cache_type: CacheType,
     specifier: &ModuleSpecifier,
-    emit: String,
-  ) -> Result<(), AnyError>;
-  fn set_map(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    map: String,
-  ) -> Result<(), AnyError>;
-  fn set_tsbuildinfo(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    info: String,
-  ) -> Result<(), AnyError>;
-  fn set_version(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    hash: String,
+    value: String,
   ) -> Result<(), AnyError>;
 }
 
+/// Combines the cacher trait along with the deno_graph Loader trait to provide
+/// a single interface to be able to load and cache modules when building a
+/// graph.
 pub(crate) trait CacherLoader: Cacher + Loader {
   fn as_cacher(&self) -> &dyn Cacher;
   fn as_mut_loader(&mut self) -> &mut dyn Loader;
   fn as_mut_cacher(&mut self) -> &mut dyn Cacher;
 }
 
+/// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
+/// a concise interface to the DENO_DIR when building module graphs.
 pub(crate) struct FetchCacher {
   disk_cache: DiskCache,
   dynamic_permissions: Permissions,
@@ -196,130 +194,62 @@ impl Loader for FetchCacher {
 }
 
 impl Cacher for FetchCacher {
-  fn get_declaration(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    let filename = self
-      .disk_cache
-      .get_cache_filename_with_extension(specifier, "d.ts")?;
-    self
-      .disk_cache
-      .get(&filename)
-      .ok()
-      .map(|b| String::from_utf8(b).ok())
-      .flatten()
-  }
-
-  fn get_emit(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    let filename = self
-      .disk_cache
-      .get_cache_filename_with_extension(specifier, "js")?;
-    self
-      .disk_cache
-      .get(&filename)
-      .ok()
-      .map(|b| String::from_utf8(b).ok())
-      .flatten()
-  }
-
-  fn get_map(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    let filename = self
-      .disk_cache
-      .get_cache_filename_with_extension(specifier, "js.map")?;
-    self
-      .disk_cache
-      .get(&filename)
-      .ok()
-      .map(|b| String::from_utf8(b).ok())
-      .flatten()
-  }
-
-  fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    let filename = self
-      .disk_cache
-      .get_cache_filename_with_extension(specifier, "buildinfo")?;
-    self
-      .disk_cache
-      .get(&filename)
-      .ok()
-      .map(|b| String::from_utf8(b).ok())
-      .flatten()
-  }
-
-  fn get_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.get_emit_metadata(specifier).map(|d| d.version_hash)
-  }
-
-  fn set_declaration(
-    &mut self,
+  fn get(
+    &self,
+    cache_type: CacheType,
     specifier: &ModuleSpecifier,
-    declaration: String,
-  ) -> Result<(), AnyError> {
-    let filename = self
-      .disk_cache
-      .get_cache_filename_with_extension(specifier, "d.ts")
-      .unwrap();
-    self
-      .disk_cache
-      .set(&filename, declaration.as_bytes())
-      .map_err(|e| e.into())
-  }
-
-  fn set_emit(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    emit: String,
-  ) -> Result<(), AnyError> {
-    let filename = self
-      .disk_cache
-      .get_cache_filename_with_extension(specifier, "js")
-      .unwrap();
-    self
-      .disk_cache
-      .set(&filename, emit.as_bytes())
-      .map_err(|e| e.into())
-  }
-
-  fn set_map(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    map: String,
-  ) -> Result<(), AnyError> {
-    let filename = self
-      .disk_cache
-      .get_cache_filename_with_extension(specifier, "js.map")
-      .unwrap();
-    self
-      .disk_cache
-      .set(&filename, map.as_bytes())
-      .map_err(|e| e.into())
-  }
-
-  fn set_tsbuildinfo(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    info: String,
-  ) -> Result<(), AnyError> {
-    let filename = self
-      .disk_cache
-      .get_cache_filename_with_extension(specifier, "buildinfo")
-      .unwrap();
-    self
-      .disk_cache
-      .set(&filename, info.as_bytes())
-      .map_err(|e| e.into())
-  }
-
-  fn set_version(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    version_hash: String,
-  ) -> Result<(), AnyError> {
-    let data = if let Some(mut data) = self.get_emit_metadata(specifier) {
-      data.version_hash = version_hash;
-      data
-    } else {
-      EmitMetadata { version_hash }
+  ) -> Option<String> {
+    let extension = match cache_type {
+      CacheType::Declaration => "d.ts",
+      CacheType::Emit => "js",
+      CacheType::SourceMap => "js.map",
+      CacheType::TypeScriptBuildInfo => "buildinfo",
+      CacheType::Version => {
+        return self.get_emit_metadata(specifier).map(|d| d.version_hash)
+      }
     };
-    self.set_emit_metadata(specifier, data)
+    let filename = self
+      .disk_cache
+      .get_cache_filename_with_extension(specifier, extension)?;
+    self
+      .disk_cache
+      .get(&filename)
+      .ok()
+      .map(|b| String::from_utf8(b).ok())
+      .flatten()
+  }
+
+  fn set(
+    &mut self,
+    cache_type: CacheType,
+    specifier: &ModuleSpecifier,
+    value: String,
+  ) -> Result<(), AnyError> {
+    let extension = match cache_type {
+      CacheType::Declaration => "d.ts",
+      CacheType::Emit => "js",
+      CacheType::SourceMap => "js.map",
+      CacheType::TypeScriptBuildInfo => "buildinfo",
+      CacheType::Version => {
+        let data = if let Some(mut data) = self.get_emit_metadata(specifier) {
+          data.version_hash = value;
+          data
+        } else {
+          EmitMetadata {
+            version_hash: value,
+          }
+        };
+        return self.set_emit_metadata(specifier, data);
+      }
+    };
+    let filename = self
+      .disk_cache
+      .get_cache_filename_with_extension(specifier, extension)
+      .unwrap();
+    self
+      .disk_cache
+      .set(&filename, value.as_bytes())
+      .map_err(|e| e.into())
   }
 }
 
@@ -337,6 +267,8 @@ impl CacherLoader for FetchCacher {
   }
 }
 
+/// An in memory cache that is used by the runtime `Deno.emit()` API to provide
+/// the same behavior as the disk cache when sources are provided.
 #[derive(Debug)]
 pub(crate) struct MemoryCacher {
   sources: HashMap<String, Arc<String>>,
@@ -383,68 +315,39 @@ impl Loader for MemoryCacher {
 }
 
 impl Cacher for MemoryCacher {
-  fn get_declaration(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.declarations.get(specifier).cloned()
-  }
-
-  fn get_emit(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.emits.get(specifier).cloned()
-  }
-
-  fn get_map(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.maps.get(specifier).cloned()
-  }
-
-  fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.build_infos.get(specifier).cloned()
-  }
-
-  fn get_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.versions.get(specifier).cloned()
-  }
-
-  fn set_declaration(
-    &mut self,
+  fn get(
+    &self,
+    cache_type: CacheType,
     specifier: &ModuleSpecifier,
-    declaration: String,
-  ) -> Result<(), AnyError> {
-    self.declarations.insert(specifier.clone(), declaration);
-    Ok(())
+  ) -> Option<String> {
+    match cache_type {
+      CacheType::Declaration => self.declarations.get(specifier).cloned(),
+      CacheType::Emit => self.emits.get(specifier).cloned(),
+      CacheType::SourceMap => self.maps.get(specifier).cloned(),
+      CacheType::TypeScriptBuildInfo => {
+        self.build_infos.get(specifier).cloned()
+      }
+      CacheType::Version => self.versions.get(specifier).cloned(),
+    }
   }
 
-  fn set_emit(
+  fn set(
     &mut self,
+    cache_type: CacheType,
     specifier: &ModuleSpecifier,
-    emit: String,
+    value: String,
   ) -> Result<(), AnyError> {
-    self.emits.insert(specifier.clone(), emit);
-    Ok(())
-  }
-
-  fn set_map(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    map: String,
-  ) -> Result<(), AnyError> {
-    self.maps.insert(specifier.clone(), map);
-    Ok(())
-  }
-
-  fn set_tsbuildinfo(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    info: String,
-  ) -> Result<(), AnyError> {
-    self.build_infos.insert(specifier.clone(), info);
-    Ok(())
-  }
-
-  fn set_version(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    version: String,
-  ) -> Result<(), AnyError> {
-    self.versions.insert(specifier.clone(), version);
+    match cache_type {
+      CacheType::Declaration => {
+        self.declarations.insert(specifier.clone(), value)
+      }
+      CacheType::Emit => self.emits.insert(specifier.clone(), value),
+      CacheType::SourceMap => self.maps.insert(specifier.clone(), value),
+      CacheType::TypeScriptBuildInfo => {
+        self.build_infos.insert(specifier.clone(), value)
+      }
+      CacheType::Version => self.versions.insert(specifier.clone(), value),
+    };
     Ok(())
   }
 }
