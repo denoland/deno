@@ -326,21 +326,11 @@ Deno.test({
             }`,
       },
     });
-    assertEquals(diagnostics, [
-      {
-        category: 1,
-        code: 900001,
-        start: null,
-        end: null,
-        messageText:
-          "The module's source code would not be parsed: Unexpected token `get`. Expected * for generator, private key, identifier or async at file:///main.js:6:22",
-        messageChain: null,
-        source: null,
-        sourceLine: null,
-        fileName: "file:///main.js",
-        relatedInformation: null,
-      },
-    ]);
+    assertEquals(diagnostics.length, 1);
+    assert(
+      diagnostics[0].messageText.startsWith(),
+      "The module's source code would not be parsed: Unexpected token `get`. Expected * for generator, private key, identifier or async at file:",
+    );
   },
 });
 
