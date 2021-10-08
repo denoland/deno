@@ -23,8 +23,6 @@ use deno_core::ZeroCopyBuf;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
-use trust_dns_resolver::error::ResolveErrorKind;
-
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::net::SocketAddr;
@@ -37,6 +35,7 @@ use trust_dns_proto::rr::record_type::RecordType;
 use trust_dns_resolver::config::NameServerConfigGroup;
 use trust_dns_resolver::config::ResolverConfig;
 use trust_dns_resolver::config::ResolverOpts;
+use trust_dns_resolver::error::ResolveErrorKind;
 use trust_dns_resolver::system_conf;
 use trust_dns_resolver::AsyncResolver;
 
