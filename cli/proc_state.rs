@@ -282,9 +282,6 @@ impl ProcState {
         imports.extend(config_imports);
       }
     }
-    if self.flags.compat {
-      imports.push((compat::get_node_globals_url(), Vec::new()));
-    }
     if imports.is_empty() {
       None
     } else {
@@ -301,7 +298,7 @@ impl ProcState {
   /// It then populates the `loadable_modules` with what can be loaded into v8.
   pub(crate) async fn prepare_module_load(
     &self,
-    roots: Vec<ModuleSpecifier>,
+    mut roots: Vec<ModuleSpecifier>,
     is_dynamic: bool,
     lib: emit::TypeLib,
     root_permissions: Permissions,
@@ -315,6 +312,9 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(&self.lockfile);
     let maybe_imports = self.get_maybe_imports();
+    if self.flags.compat {
+      roots.push(compat::get_node_globals_url());
+    }
     let graph = deno_graph::create_graph(
       roots,
       is_dynamic,
