@@ -283,7 +283,7 @@ impl ProcState {
       }
     }
     if self.flags.compat {
-      imports.extend(compat::get_node_imports());
+      imports.push((compat::get_node_globals_url(), Vec::new()));
     }
     if imports.is_empty() {
       None

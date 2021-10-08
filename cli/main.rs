@@ -592,7 +592,9 @@ async fn eval_command(
   ps.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
   if flags.compat {
-    worker.execute_side_module(&compat::GLOBAL_URL).await?;
+    worker
+      .execute_side_module(&compat::get_node_globals_url())
+      .await?;
   }
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
@@ -919,7 +921,9 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
   debug!("main_module {}", main_module);
   if flags.compat {
-    worker.execute_side_module(&compat::GLOBAL_URL).await?;
+    worker
+      .execute_side_module(&compat::get_node_globals_url())
+      .await?;
   }
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
@@ -1022,7 +1026,10 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       main_module: &ModuleSpecifier,
     ) -> Result<(), AnyError> {
       if self.compat {
-        self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
+        self
+          .worker
+          .execute_side_module(&compat::get_node_globals_url())
+          .await?;
       }
       self.worker.execute_main_module(main_module).await?;
       self.worker.execute_script(
@@ -1117,7 +1124,9 @@ async fn run_command(
 
   debug!("main_module {}", main_module);
   if flags.compat {
-    worker.execute_side_module(&compat::GLOBAL_URL).await?;
+    worker
+      .execute_side_module(&compat::get_node_globals_url())
+      .await?;
   }
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
