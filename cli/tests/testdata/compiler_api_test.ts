@@ -329,7 +329,7 @@ Deno.test({
     assertEquals(diagnostics.length, 1);
     assert(
       diagnostics[0].messageText!.startsWith(
-        "The module's source code would not be parsed: Unexpected token `get`. Expected * for generator, private key, identifier or async at file:",
+        "The module's source code could not be parsed: Unexpected token `get`. Expected * for generator, private key, identifier or async at file:",
       ),
     );
   },

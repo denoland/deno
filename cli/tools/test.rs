@@ -17,6 +17,7 @@ use crate::located_script_name;
 use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
+use crate::resolver::ImportMapResolver;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
 
@@ -868,7 +869,8 @@ pub async fn run_tests_with_watch(
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
-    let maybe_resolver = ps.maybe_import_map.as_ref().map(|r| r.as_resolver());
+    let maybe_resolver =
+      ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
     let maybe_locker = lockfile::as_maybe_locker(&ps.lockfile);
     let maybe_imports = ps
       .maybe_config_file
@@ -901,7 +903,7 @@ pub async fn run_tests_with_watch(
         false,
         maybe_imports,
         cache.as_mut_loader(),
-        maybe_resolver,
+        maybe_resolver.as_ref().map(|r| r.as_resolver()),
         maybe_locker,
         None,
       )

@@ -6,6 +6,7 @@ use crate::diagnostics::Diagnostics;
 use crate::emit;
 use crate::errors::get_error_class_name;
 use crate::proc_state::ProcState;
+use crate::resolver::ImportMapResolver;
 
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -127,13 +128,14 @@ async fn op_emit(
   };
   let roots = vec![resolve_url_or_path(&root_specifier)?];
   let maybe_imports = to_maybe_imports(&roots[0], &args.compiler_options);
+  let maybe_resolver = maybe_import_map.as_ref().map(ImportMapResolver::new);
   let graph = Arc::new(
     deno_graph::create_graph(
       roots,
       true,
       maybe_imports,
       cache.as_mut_loader(),
-      maybe_import_map.as_ref().map(|im| im.as_resolver()),
+      maybe_resolver.as_ref().map(|r| r.as_resolver()),
       None,
       None,
     )

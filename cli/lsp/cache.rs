@@ -4,6 +4,7 @@ use crate::cache::CacherLoader;
 use crate::cache::FetchCacher;
 use crate::flags::Flags;
 use crate::proc_state::ProcState;
+use crate::resolver::ImportMapResolver;
 use crate::tokio_util::create_basic_runtime;
 
 use deno_core::error::anyhow;
@@ -38,6 +39,8 @@ impl CacheServer {
         })
         .await
         .unwrap();
+        let maybe_resolver =
+          maybe_import_map.as_ref().map(ImportMapResolver::new);
         let mut cache = FetchCacher::new(
           ps.dir.gen_cache.clone(),
           ps.file_fetcher.clone(),
@@ -51,7 +54,7 @@ impl CacheServer {
             false,
             None,
             cache.as_mut_loader(),
-            maybe_import_map.as_ref().map(|r| r.as_resolver()),
+            maybe_resolver.as_ref().map(|r| r.as_resolver()),
             None,
             None,
           )

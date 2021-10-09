@@ -754,7 +754,7 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.14.0"
-source = "git+https://github.com/kitsonk/deno_doc?branch=cli_changes#fc8926a53beecb23d4e966c23763e0dba7a25540"
+source = "git+https://github.com/kitsonk/deno_doc?branch=cli_changes#8e71f5293d32a6e253c6e81d45385c8cd5b6dbf1"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
@@ -798,7 +798,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.5.0"
-source = "git+https://github.com/kitsonk/deno_graph?branch=cli_changes#9e9017ea4a61cd340e5cecf400fddc9bcc6af1d0"
+source = "git+https://github.com/kitsonk/deno_graph?branch=main#79ba1efac3cdb11c6c0a759555a5ed614f9848d1"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -1794,10 +1794,9 @@ checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 [[package]]
 name = "import_map"
 version = "0.3.3"
-source = "git+https://github.com/kitsonk/import_map?branch=cli_changes#5b018d614ed140d9843368f6508407c516c5058d"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d315210af92bcde7a84672d5554fc2b4268c4d40dc9c930ae1d1ed765a8f6381"
 dependencies = [
- "anyhow",
- "deno_graph",
  "indexmap",
  "log",
  "serde",
@@ -3997,18 +3996,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.29"
+version = "1.0.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "602eca064b2d83369e2b2f34b09c70b605402801927c65c11071ac911d299b88"
+checksum = "854babe52e4df1653706b98fcfc05843010039b406875930a70e4d9644e5c417"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.29"
+version = "1.0.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bad553cc2c78e8de258400763a647e80e6d1b31ee237275d756f6836d204494c"
+checksum = "aa32fd3f627f367fe16f893e2597ae3c05020f8bba2666a4e6ea73d377e5714b"
 dependencies = [
  "proc-macro2 1.0.29",
  "quote 1.0.10",

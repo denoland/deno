@@ -26,6 +26,7 @@ mod lsp;
 mod module_loader;
 mod ops;
 mod proc_state;
+mod resolver;
 mod source_maps;
 mod standalone;
 mod text_encoding;
@@ -58,6 +59,7 @@ use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
 use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
+use crate::resolver::ImportMapResolver;
 use crate::source_maps::apply_source_map;
 use crate::tools::installer::infer_name_from_url;
 use deno_ast::MediaType;
@@ -452,12 +454,14 @@ async fn info_command(
       ps.lockfile.clone(),
     ))
       as Box<dyn deno_graph::source::Locker>)));
+    let maybe_resolver =
+      ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
     let graph = deno_graph::create_graph(
       vec![specifier],
       false,
       None,
       &mut cache,
-      ps.maybe_import_map.as_ref().map(|r| r.as_resolver()),
+      maybe_resolver.as_ref().map(|r| r.as_resolver()),
       maybe_locker,
       None,
     )
@@ -626,13 +630,14 @@ async fn create_graph_and_maybe_check(
     .as_ref()
     .map(|cf| cf.to_maybe_imports())
     .flatten();
+  let maybe_resolver = ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
   let graph = Arc::new(
     deno_graph::create_graph(
       vec![root],
       false,
       maybe_imports,
       &mut cache,
-      ps.maybe_import_map.as_ref().map(|r| r.as_resolver()),
+      maybe_resolver.as_ref().map(|r| r.as_resolver()),
       maybe_locker,
       None,
     )
@@ -958,12 +963,14 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         .as_ref()
         .map(|cf| cf.to_maybe_imports())
         .flatten();
+      let maybe_resolver =
+        ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
       let graph = deno_graph::create_graph(
         vec![main_module.clone()],
         false,
         maybe_imports,
         &mut cache,
-        ps.maybe_import_map.as_ref().map(|r| r.as_resolver()),
+        maybe_resolver.as_ref().map(|r| r.as_resolver()),
         maybe_locker,
         None,
       )

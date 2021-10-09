@@ -13,6 +13,7 @@ use crate::flags;
 use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
+use crate::resolver::ImportMapResolver;
 use crate::source_maps::SourceMapGetter;
 use crate::version;
 
@@ -315,12 +316,14 @@ impl ProcState {
     if self.flags.compat {
       roots.push(compat::get_node_globals_url());
     }
+    let maybe_resolver =
+      self.maybe_import_map.as_ref().map(ImportMapResolver::new);
     let graph = deno_graph::create_graph(
       roots,
       is_dynamic,
       maybe_imports,
       &mut cache,
-      self.maybe_import_map.as_ref().map(|im| im.as_resolver()),
+      maybe_resolver.as_ref().map(|im| im.as_resolver()),
       maybe_locker,
       None,
     )
