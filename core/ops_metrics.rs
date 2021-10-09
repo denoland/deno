@@ -14,10 +14,9 @@ pub struct OpMetrics {
   pub ops_completed_sync: u64,
   pub ops_completed_async: u64,
   pub ops_completed_async_unref: u64,
-  // Deprecated
-  // pub bytes_sent_control: u64,
-  // pub bytes_sent_data: u64,
-  // pub bytes_received: u64,
+  pub bytes_sent_control: u64,
+  pub bytes_sent_data: u64,
+  pub bytes_received: u64,
 }
 
 // TODO(@AaronO): track errors
@@ -43,10 +42,9 @@ impl OpsTracker {
       sum.ops_completed_sync += metrics.ops_completed_sync;
       sum.ops_completed_async += metrics.ops_completed_async;
       sum.ops_completed_async_unref += metrics.ops_completed_async_unref;
-      // Deprecated
-      // sum.bytes_sent_control += metrics.bytes_sent_control;
-      // sum.bytes_sent_data += metrics.bytes_sent_data;
-      // sum.bytes_received += metrics.bytes_received;
+      sum.bytes_sent_control += metrics.bytes_sent_control;
+      sum.bytes_sent_data += metrics.bytes_sent_data;
+      sum.bytes_received += metrics.bytes_received;
     }
 
     sum
