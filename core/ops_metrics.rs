@@ -81,7 +81,7 @@ impl OpsTracker {
   pub fn track_async_completed(&mut self, id: OpId) {
     let metrics = self.metrics_mut(id);
     metrics.ops_completed += 1;
-    metrics.ops_completed_sync += 1;
+    metrics.ops_completed_async += 1;
   }
 
   pub fn track_unref(&mut self, id: OpId) {
