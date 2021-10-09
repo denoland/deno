@@ -91,7 +91,7 @@ pub fn get_asset(asset: &str) -> Option<&'static str> {
 }
 
 fn get_maybe_hash(
-  maybe_source: &Option<String>,
+  maybe_source: Option<&String>,
   hash_data: &[Vec<u8>],
 ) -> Option<String> {
   if let Some(source) = maybe_source {
@@ -348,7 +348,7 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   } else if v.specifier.starts_with("asset:///") {
     let name = v.specifier.replace("asset:///", "");
     let maybe_source = get_asset(&name).map(String::from);
-    hash = get_maybe_hash(&maybe_source, &state.hash_data);
+    hash = get_maybe_hash(maybe_source.as_ref(), &state.hash_data);
     media_type = MediaType::from(&v.specifier);
     maybe_source
   } else {
@@ -368,7 +368,7 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
       media_type = MediaType::Unknown;
       None
     };
-    hash = get_maybe_hash(&maybe_source, &state.hash_data);
+    hash = get_maybe_hash(maybe_source.as_ref(), &state.hash_data);
     maybe_source
   };
 

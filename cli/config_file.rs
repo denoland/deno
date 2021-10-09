@@ -233,7 +233,7 @@ impl TsConfig {
   /// compiler options that were ignored.
   pub fn merge_tsconfig_from_config_file(
     &mut self,
-    maybe_config_file: &Option<ConfigFile>,
+    maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<IgnoredCompilerOptions>, AnyError> {
     if let Some(config_file) = maybe_config_file {
       let (value, maybe_ignored_options) = config_file.to_compiler_options()?;

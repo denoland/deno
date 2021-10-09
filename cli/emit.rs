@@ -131,8 +131,8 @@ pub(crate) enum ConfigType {
 /// configuration options that were ignored.
 pub(crate) fn get_ts_config(
   config_type: ConfigType,
-  maybe_config_file: &Option<ConfigFile>,
-  maybe_user_config: &Option<HashMap<String, Value>>,
+  maybe_config_file: Option<&ConfigFile>,
+  maybe_user_config: Option<&HashMap<String, Value>>,
 ) -> Result<(TsConfig, Option<IgnoredCompilerOptions>), AnyError> {
   let mut ts_config = match config_type {
     ConfigType::Bundle => TsConfig::new(json!({
@@ -363,8 +363,8 @@ pub(crate) fn check_and_maybe_emit(
   if (response.diagnostics.is_empty() || options.emit_with_diagnostics)
     && !response.emitted_files.is_empty()
   {
-    for emit in &response.emitted_files {
-      if let Some(specifiers) = &emit.maybe_specifiers {
+    for emit in response.emitted_files.into_iter() {
+      if let Some(specifiers) = emit.maybe_specifiers {
         assert!(specifiers.len() == 1);
         // The emitted specifier might not be the file specifier we want, so we
         // resolve it via the graph.
@@ -386,15 +386,15 @@ pub(crate) fn check_and_maybe_emit(
           MediaType::JavaScript => {
             let version = get_version(source.as_bytes(), &config_bytes);
             cache.set(CacheType::Version, &specifier, version)?;
-            cache.set(CacheType::Emit, &specifier, emit.data.clone())?;
+            cache.set(CacheType::Emit, &specifier, emit.data)?;
           }
           MediaType::SourceMap => {
-            cache.set(CacheType::SourceMap, &specifier, emit.data.clone())?;
+            cache.set(CacheType::SourceMap, &specifier, emit.data)?;
           }
           // this only occurs with the runtime emit, but we are using the same
           // code paths, so we handle it here.
           MediaType::Dts => {
-            cache.set(CacheType::Declaration, &specifier, emit.data.clone())?;
+            cache.set(CacheType::Declaration, &specifier, emit.data)?;
           }
           _ => unreachable!(),
         }
@@ -751,19 +751,21 @@ pub(crate) fn to_file_map(
 ) -> HashMap<String, String> {
   let mut files = HashMap::new();
   for (_, result) in graph.specifiers().into_iter() {
-    if let Ok((fs, mt)) = result {
-      if let Some(emit) = cache.get(CacheType::Emit, &fs) {
-        files.insert(format!("{}.js", fs), emit);
-        if let Some(map) = cache.get(CacheType::SourceMap, &fs) {
-          files.insert(format!("{}.js.map", fs), map);
+    if let Ok((specifier, media_type)) = result {
+      if let Some(emit) = cache.get(CacheType::Emit, &specifier) {
+        files.insert(format!("{}.js", specifier), emit);
+        if let Some(map) = cache.get(CacheType::SourceMap, &specifier) {
+          files.insert(format!("{}.js.map", specifier), map);
         }
-      } else if mt == MediaType::JavaScript || mt == MediaType::Unknown {
-        if let Some(module) = graph.get(&fs) {
-          files.insert(fs.to_string(), module.source.to_string());
+      } else if media_type == MediaType::JavaScript
+        || media_type == MediaType::Unknown
+      {
+        if let Some(module) = graph.get(&specifier) {
+          files.insert(specifier.to_string(), module.source.to_string());
         }
       }
-      if let Some(declaration) = cache.get(CacheType::Declaration, &fs) {
-        files.insert(format!("{}.d.ts", fs), declaration);
+      if let Some(declaration) = cache.get(CacheType::Declaration, &specifier) {
+        files.insert(format!("{}.d.ts", specifier), declaration);
       }
     }
   }
@@ -779,41 +781,49 @@ pub(crate) fn to_module_sources(
   graph
     .specifiers()
     .into_iter()
-    .map(|(rs, r)| match r {
-      Err(err) => (rs, Err(err.into())),
-      Ok((fs, mt)) => {
+    .map(|(requested_specifier, r)| match r {
+      Err(err) => (requested_specifier, Err(err.into())),
+      Ok((found_specifier, media_type)) => {
         // First we check to see if there is an emitted file in the cache.
-        if let Some(code) = cache.get(CacheType::Emit, &fs) {
+        if let Some(code) = cache.get(CacheType::Emit, &found_specifier) {
           (
-            rs.clone(),
+            requested_specifier.clone(),
             Ok(ModuleSource {
               code,
-              module_url_found: fs.to_string(),
-              module_url_specified: rs.to_string(),
+              module_url_found: found_specifier.to_string(),
+              module_url_specified: requested_specifier.to_string(),
             }),
           )
         // Then if the file is JavaScript (or unknown) and wasn't emitted, we
         // will load the original source code in the module.
-        } else if mt == MediaType::JavaScript || mt == MediaType::Unknown {
-          if let Some(module) = graph.get(&fs) {
+        } else if media_type == MediaType::JavaScript
+          || media_type == MediaType::Unknown
+        {
+          if let Some(module) = graph.get(&found_specifier) {
             (
-              rs.clone(),
+              requested_specifier.clone(),
               Ok(ModuleSource {
                 code: module.source.as_str().to_string(),
                 module_url_found: module.specifier.to_string(),
-                module_url_specified: rs.to_string(),
+                module_url_specified: requested_specifier.to_string(),
               }),
             )
           } else {
-            unreachable!("unexpected module missing from graph")
+            unreachable!(
+              "unexpected module missing from graph: {}",
+              found_specifier
+            )
           }
         // Otherwise we will add a not found error.
         } else {
           (
-            rs.clone(),
+            requested_specifier.clone(),
             Err(custom_error(
               "NotFound",
-              format!("Emitted code for \"{}\" not found.", rs),
+              format!(
+                "Emitted code for \"{}\" not found.",
+                requested_specifier
+              ),
             )),
           )
         }
@@ -862,7 +872,7 @@ mod tests {
       vec![("https://example.com/a.ts", r#"console.log("hello deno");"#)],
     )
     .await;
-    let (ts_config, _) = get_ts_config(ConfigType::Emit, &None, &None).unwrap();
+    let (ts_config, _) = get_ts_config(ConfigType::Emit, None, None).unwrap();
     emit(
       &graph,
       &mut cache,
@@ -893,7 +903,7 @@ mod tests {
       vec![("https://example.com/a.js", r#"console.log("hello deno");"#)],
     )
     .await;
-    let (ts_config, _) = get_ts_config(ConfigType::Emit, &None, &None).unwrap();
+    let (ts_config, _) = get_ts_config(ConfigType::Emit, None, None).unwrap();
     emit(
       &graph,
       &mut cache,

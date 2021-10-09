@@ -314,7 +314,7 @@ impl ProcState {
       root_permissions.clone(),
       dynamic_permissions.clone(),
     );
-    let maybe_locker = as_maybe_locker(&self.lockfile);
+    let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports();
     let maybe_resolver =
       self.maybe_import_map.as_ref().map(ImportMapResolver::new);
@@ -349,7 +349,7 @@ impl ProcState {
     };
 
     let (ts_config, maybe_ignored_options) =
-      emit::get_ts_config(config_type, &self.maybe_config_file, &None)?;
+      emit::get_ts_config(config_type, self.maybe_config_file.as_ref(), None)?;
     let graph = Arc::new(graph);
 
     // we will store this in proc state later, as if we were to return it from
@@ -422,18 +422,24 @@ impl ProcState {
     // we iterate over the graph, looking for any modules that were emitted, or
     // should be loaded as their un-emitted source and add them to the in memory
     // cache of modules for loading by deno_core.
-    let mut modules = self.modules.lock();
-    modules.extend(emit::to_module_sources(graph.as_ref(), &cache));
+    {
+      let mut modules = self.modules.lock();
+      modules.extend(emit::to_module_sources(graph.as_ref(), &cache));
+    }
 
     // since we can't store the graph in proc state, because proc state needs to
     // be thread safe because of the need to provide source map resolution and
     // the graph needs to not be thread safe (due to wasmbind_gen constraints),
     // we have no choice but to extract out other meta data from the graph to
     // provide the correct loading behaviors for CLI
-    let mut resolution_map = self.resolution_map.lock();
-    resolution_map.extend(graph.resolution_map());
-    let mut self_maybe_graph_error = self.maybe_graph_error.lock();
-    *self_maybe_graph_error = maybe_graph_error;
+    {
+      let mut resolution_map = self.resolution_map.lock();
+      resolution_map.extend(graph.resolution_map());
+    }
+    {
+      let mut self_maybe_graph_error = self.maybe_graph_error.lock();
+      *self_maybe_graph_error = maybe_graph_error;
+    }
 
     // any updates to the lockfile should be updated now
     if let Some(ref lockfile) = self.lockfile {

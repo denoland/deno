@@ -84,7 +84,6 @@ use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use log::debug;
 use log::info;
-use std::cell::RefCell;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -299,7 +298,7 @@ where
 fn print_cache_info(
   state: &ProcState,
   json: bool,
-  location: &Option<deno_core::url::Url>,
+  location: Option<&deno_core::url::Url>,
 ) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
@@ -448,12 +447,7 @@ async fn info_command(
       Permissions::allow_all(),
       Permissions::allow_all(),
     );
-    // we always generate a locker here, even if there isn't a lock file, as we
-    // want to make sure that the checksums are part of the module graph
-    let maybe_locker = Some(Rc::new(RefCell::new(Box::new(lockfile::Locker(
-      ps.lockfile.clone(),
-    ))
-      as Box<dyn deno_graph::source::Locker>)));
+    let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_resolver =
       ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
     let graph = deno_graph::create_graph(
@@ -475,7 +469,7 @@ async fn info_command(
     }
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&ps, info_flags.json, &ps.flags.location)
+    print_cache_info(&ps, info_flags.json, ps.flags.location.as_ref())
   }
 }
 
@@ -622,7 +616,7 @@ async fn create_graph_and_maybe_check(
     Permissions::allow_all(),
     Permissions::allow_all(),
   );
-  let maybe_locker = lockfile::as_maybe_locker(&ps.lockfile);
+  let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
   let maybe_imports = ps
     .maybe_config_file
     .as_ref()
@@ -661,8 +655,8 @@ async fn create_graph_and_maybe_check(
         tsc_emit: false,
         lib,
       },
-      &ps.maybe_config_file,
-      &None,
+      ps.maybe_config_file.as_ref(),
+      None,
     )?;
     log::info!("{} {}", colors::green("Check"), graph.roots[0]);
     if let Some(ignored_options) = maybe_ignored_options {
@@ -700,8 +694,8 @@ fn bundle_module_graph(
 
   let (ts_config, maybe_ignored_options) = emit::get_ts_config(
     emit::ConfigType::Bundle,
-    &ps.maybe_config_file,
-    &None,
+    ps.maybe_config_file.as_ref(),
+    None,
   )?;
   if flags.no_check {
     if let Some(ignored_options) = maybe_ignored_options {
@@ -810,13 +804,12 @@ async fn bundle_command(
         if let Some(bundle_map) = maybe_bundle_map {
           let map_bytes = bundle_map.as_bytes();
           let map_len = map_bytes.len();
-          let mut map_out_file = out_file.clone();
           let ext = if let Some(curr_ext) = out_file.extension() {
             format!("{}.map", curr_ext.to_string_lossy())
           } else {
             "map".to_string()
           };
-          map_out_file.set_extension(ext);
+          let map_out_file = out_file.with_extension(ext);
           fs_util::write_file(&map_out_file, map_bytes, 0o644)?;
           info!(
             "{} {:?} ({})",
@@ -951,7 +944,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         Permissions::allow_all(),
         Permissions::allow_all(),
       );
-      let maybe_locker = lockfile::as_maybe_locker(&ps.lockfile);
+      let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
       let maybe_imports = ps
         .maybe_config_file
         .as_ref()

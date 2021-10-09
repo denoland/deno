@@ -73,7 +73,7 @@ struct EmitResult {
 
 fn to_maybe_imports(
   referrer: &ModuleSpecifier,
-  maybe_options: &Option<HashMap<String, Value>>,
+  maybe_options: Option<&HashMap<String, Value>>,
 ) -> Option<Vec<(ModuleSpecifier, Vec<String>)>> {
   let options = maybe_options.as_ref()?;
   let types_value = options.get("types")?;
@@ -127,7 +127,8 @@ async fn op_emit(
     None
   };
   let roots = vec![resolve_url_or_path(&root_specifier)?];
-  let maybe_imports = to_maybe_imports(&roots[0], &args.compiler_options);
+  let maybe_imports =
+    to_maybe_imports(&roots[0], args.compiler_options.as_ref());
   let maybe_resolver = maybe_import_map.as_ref().map(ImportMapResolver::new);
   let graph = Arc::new(
     deno_graph::create_graph(
@@ -155,8 +156,8 @@ async fn op_emit(
   let tsc_emit = check && args.bundle.is_none();
   let (ts_config, maybe_ignored_options) = emit::get_ts_config(
     emit::ConfigType::RuntimeEmit { tsc_emit },
-    &None,
-    &args.compiler_options,
+    None,
+    args.compiler_options.as_ref(),
   )?;
   let (files, mut diagnostics, stats) = if check && args.bundle.is_none() {
     let (diagnostics, stats) = if args.sources.is_none()

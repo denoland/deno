@@ -114,34 +114,16 @@ impl Loader for FetchCacher {
     let local = self.file_fetcher.get_local_path(specifier)?;
     if local.is_file() {
       let location = &self.disk_cache.location;
-      let emit = match self
+      let emit = self
         .disk_cache
         .get_cache_filename_with_extension(specifier, "js")
         .map(|p| location.join(p))
-      {
-        Some(path_buf) => {
-          if path_buf.is_file() {
-            Some(path_buf)
-          } else {
-            None
-          }
-        }
-        _ => None,
-      };
-      let map = match self
+        .filter(|p| p.is_file());
+      let map = self
         .disk_cache
         .get_cache_filename_with_extension(specifier, "js.map")
         .map(|p| location.join(p))
-      {
-        Some(path_buf) => {
-          if path_buf.is_file() {
-            Some(path_buf)
-          } else {
-            None
-          }
-        }
-        _ => None,
-      };
+        .filter(|p| p.is_file());
       Some(CacheInfo {
         local: Some(local),
         emit,
