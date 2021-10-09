@@ -865,6 +865,7 @@ itest!(wasm_url {
   args: "run --quiet --allow-net=localhost:4545 wasm_url.js",
   output: "wasm_url.out",
   exit_code: 1,
+  http_server: true,
 });
 
 itest!(weakref {
