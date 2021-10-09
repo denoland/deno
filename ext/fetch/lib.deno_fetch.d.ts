@@ -145,7 +145,6 @@ type RequestCache =
   | "no-store"
   | "only-if-cached"
   | "reload";
-type RequestCredentials = "include" | "omit" | "same-origin";
 type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
 type RequestRedirect = "error" | "follow" | "manual";
 type ReferrerPolicy =
@@ -195,12 +194,6 @@ interface RequestInit {
    * to set request's cache.
    */
   cache?: RequestCache;
-  /**
-   * A string indicating whether credentials will be sent with the request
-   * always, never, or only when sent to a same-origin URL. Sets request's
-   * credentials.
-   */
-  credentials?: RequestCredentials;
   /**
    * A Headers object, an object literal, or an array of two-item arrays to set
    * request's headers.
@@ -259,12 +252,6 @@ declare class Request implements Body {
    * fetching.
    */
   readonly cache: RequestCache;
-  /**
-   * Returns the credentials mode associated with request, which is a string
-   * indicating whether credentials will be sent with the request always, never,
-   * or only when sent to a same-origin URL.
-   */
-  readonly credentials: RequestCredentials;
   /**
    * Returns the kind of resource requested by request, e.g., "document" or "script".
    */
