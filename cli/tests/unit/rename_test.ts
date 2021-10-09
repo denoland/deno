@@ -169,7 +169,7 @@ unitTest(
         Deno.renameSync(olddir, file);
       },
       undefined,
-      `rename '${olddir}' -> '${file}'`
+      `rename '${olddir}' -> '${file}'`,
     );
 
     const fileLink = testDir + "/fileLink";
