@@ -28,7 +28,6 @@ use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
-use futures::Future;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -36,7 +35,6 @@ use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::mem::forget;
 use std::option::Option;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -44,8 +42,7 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture =
-  Pin<Box<dyn Future<Output = (PromiseId, OpId, OpResult)>>>;
+type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -1613,6 +1610,7 @@ pub mod tests {
   use crate::ZeroCopyBuf;
   use futures::future::lazy;
   use std::ops::FnOnce;
+  use std::pin::Pin;
   use std::rc::Rc;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
@@ -1645,16 +1643,15 @@ pub mod tests {
       Mode::Async => {
         assert_eq!(control, 42);
         let resp = (0, 1, serialize_op_result(Ok(43), rc_op_state));
-        Op::Async(Box::pin(futures::future::ready(resp)))
+        Op::Async(OpCall::ready(resp))
       }
       Mode::AsyncZeroCopy(has_buffer) => {
         assert_eq!(buf.is_some(), has_buffer);
         if let Some(buf) = buf {
           assert_eq!(buf.len(), 1);
         }
-
-        let resp = serialize_op_result(Ok(43), rc_op_state);
-        Op::Async(Box::pin(futures::future::ready((0, 1, resp))))
+        let resp = (0, 1, serialize_op_result(Ok(43), rc_op_state));
+        Op::Async(OpCall::ready(resp))
       }
     }
   }
