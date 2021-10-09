@@ -821,3 +821,97 @@ pub(crate) fn to_module_sources(
     })
     .collect()
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::cache::MemoryCacher;
+
+  #[test]
+  fn test_is_emittable() {
+    assert!(is_emittable(&MediaType::TypeScript, false));
+    assert!(!is_emittable(&MediaType::Dts, false));
+    assert!(is_emittable(&MediaType::Tsx, false));
+    assert!(!is_emittable(&MediaType::JavaScript, false));
+    assert!(is_emittable(&MediaType::JavaScript, true));
+    assert!(is_emittable(&MediaType::Jsx, false));
+    assert!(!is_emittable(&MediaType::Json, false));
+  }
+
+  async fn setup<S: AsRef<str>>(
+    root: S,
+    sources: Vec<(S, S)>,
+  ) -> (ModuleGraph, MemoryCacher) {
+    let roots = vec![ModuleSpecifier::parse(root.as_ref()).unwrap()];
+    let sources = sources
+      .into_iter()
+      .map(|(s, c)| (s.as_ref().to_string(), Arc::new(c.as_ref().to_string())))
+      .collect();
+    let mut cache = MemoryCacher::new(sources);
+    let graph = deno_graph::create_graph(
+      roots, false, None, &mut cache, None, None, None,
+    )
+    .await;
+    (graph, cache)
+  }
+
+  #[tokio::test]
+  async fn test_to_module_sources_emitted() {
+    let (graph, mut cache) = setup(
+      "https://example.com/a.ts",
+      vec![("https://example.com/a.ts", r#"console.log("hello deno");"#)],
+    )
+    .await;
+    let (ts_config, _) = get_ts_config(ConfigType::Emit, &None, &None).unwrap();
+    emit(
+      &graph,
+      &mut cache,
+      EmitOptions {
+        ts_config,
+        reload_exclusions: HashSet::default(),
+        reload: false,
+      },
+    )
+    .unwrap();
+    let modules = to_module_sources(&graph, &cache);
+    assert_eq!(modules.len(), 1);
+    let root = ModuleSpecifier::parse("https://example.com/a.ts").unwrap();
+    let maybe_result = modules.get(&root);
+    assert!(maybe_result.is_some());
+    let result = maybe_result.unwrap();
+    assert!(result.is_ok());
+    let module_source = result.as_ref().unwrap();
+    assert!(module_source
+      .code
+      .starts_with(r#"console.log("hello deno");"#));
+  }
+
+  #[tokio::test]
+  async fn test_to_module_sources_not_emitted() {
+    let (graph, mut cache) = setup(
+      "https://example.com/a.js",
+      vec![("https://example.com/a.js", r#"console.log("hello deno");"#)],
+    )
+    .await;
+    let (ts_config, _) = get_ts_config(ConfigType::Emit, &None, &None).unwrap();
+    emit(
+      &graph,
+      &mut cache,
+      EmitOptions {
+        ts_config,
+        reload_exclusions: HashSet::default(),
+        reload: false,
+      },
+    )
+    .unwrap();
+    let modules = to_module_sources(&graph, &cache);
+    assert_eq!(modules.len(), 1);
+    let root = ModuleSpecifier::parse("https://example.com/a.js").unwrap();
+    let maybe_result = modules.get(&root);
+    assert!(maybe_result.is_some());
+    let result = maybe_result.unwrap();
+    assert!(result.is_ok());
+    let module_source = result.as_ref().unwrap();
+    assert_eq!(module_source.code, r#"console.log("hello deno");"#);
+  }
+}
