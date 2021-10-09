@@ -127,6 +127,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.flags.unstable,
       },
+      extensions: vec![],
       unsafely_ignore_certificate_errors: ps
         .flags
         .unsafely_ignore_certificate_errors
@@ -216,6 +217,7 @@ pub fn create_main_worker(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: ps.flags.unstable,
     },
+    extensions: vec![],
     unsafely_ignore_certificate_errors: ps
       .flags
       .unsafely_ignore_certificate_errors
@@ -819,9 +821,14 @@ async fn format_command(
 async fn run_repl(flags: Flags, repl_flags: ReplFlags) -> Result<(), AnyError> {
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
-  let ps = ProcState::build(flags).await?;
+  let ps = ProcState::build(flags.clone()).await?;
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions, None);
+  if flags.compat {
+    worker
+      .execute_side_module(&compat::get_node_globals_url())
+      .await?;
+  }
   worker.run_event_loop(false).await?;
 
   tools::repl::run(&ps, worker, repl_flags.eval).await

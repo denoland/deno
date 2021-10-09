@@ -648,7 +648,8 @@ function discoverTestsToRun(
           if (
             !url.pathname.endsWith(".any.html") &&
             !url.pathname.endsWith(".window.html") &&
-            !url.pathname.endsWith(".worker.html")
+            !url.pathname.endsWith(".worker.html") &&
+            !url.pathname.endsWith(".worker-module.html")
           ) {
             continue;
           }

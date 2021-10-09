@@ -1226,36 +1226,76 @@
 
   const _eventHandlers = Symbol("eventHandlers");
 
-  function makeWrappedHandler(handler) {
-    function wrappedHandler(...args) {
+  function makeWrappedHandler(handler, isSpecialErrorEventHandler) {
+    function wrappedHandler(evt) {
       if (typeof wrappedHandler.handler !== "function") {
         return;
       }
-      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
+
+      if (
+        isSpecialErrorEventHandler &&
+        evt instanceof ErrorEvent && evt.type === "error"
+      ) {
+        const ret = FunctionPrototypeCall(
+          wrappedHandler.handler,
+          this,
+          evt.message,
+          evt.filename,
+          evt.lineno,
+          evt.colno,
+          evt.error,
+        );
+        if (ret === true) {
+          evt.preventDefault();
+        }
+        return;
+      }
+
+      return FunctionPrototypeCall(wrappedHandler.handler, this, evt);
     }
     wrappedHandler.handler = handler;
     return wrappedHandler;
   }
 
-  // TODO(benjamingr) reuse this here and websocket where possible
-  function defineEventHandler(emitter, name, init) {
-    // HTML specification section 8.1.5.1
+  // `init` is an optional function that will be called the first time that the
+  // event handler property is set. It will be called with the object on which
+  // the property is set as its argument.
+  // `isSpecialErrorEventHandler` can be set to true to opt into the special
+  // behavior of event handlers for the "error" event in a global scope.
+  function defineEventHandler(
+    emitter,
+    name,
+    init = undefined,
+    isSpecialErrorEventHandler = false,
+  ) {
+    // HTML specification section 8.1.7.1
     ObjectDefineProperty(emitter, `on${name}`, {
       get() {
-        const map = this[_eventHandlers];
+        if (!this[_eventHandlers]) {
+          return null;
+        }
 
-        if (!map) return undefined;
-        return MapPrototypeGet(map, name)?.handler;
+        return MapPrototypeGet(this[_eventHandlers], name)?.handler ?? null;
       },
       set(value) {
+        // All three Web IDL event handler types are nullable callback functions
+        // with the [LegacyTreatNonObjectAsNull] extended attribute, meaning
+        // anything other than an object is treated as null.
+        if (typeof value !== "object" && typeof value !== "function") {
+          value = null;
+        }
+
         if (!this[_eventHandlers]) {
           this[_eventHandlers] = new Map();
         }
         let handlerWrapper = MapPrototypeGet(this[_eventHandlers], name);
         if (handlerWrapper) {
           handlerWrapper.handler = value;
-        } else {
-          handlerWrapper = makeWrappedHandler(value);
+        } else if (value !== null) {
+          handlerWrapper = makeWrappedHandler(
+            value,
+            isSpecialErrorEventHandler,
+          );
           this.addEventListener(name, handlerWrapper);
           init?.(this);
         }
