@@ -1,0 +1,7 @@
+[WILDCARD]
+process {
+[WILDCARD]
+}
+[Function: Buffer]
+[Function: setImmediate]
+[Function: clearTimeout]

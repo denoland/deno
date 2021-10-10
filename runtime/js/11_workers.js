@@ -16,7 +16,7 @@
   const { URL } = window.__bootstrap.url;
   const { getLocationHref } = window.__bootstrap.location;
   const { log, pathFromURL } = window.__bootstrap.util;
-  const { defineEventHandler } = window.__bootstrap.webUtil;
+  const { defineEventHandler } = window.__bootstrap.event;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
 

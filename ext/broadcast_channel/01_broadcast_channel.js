@@ -7,7 +7,7 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
-  const { setTarget } = window.__bootstrap.event;
+  const { defineEventHandler, setTarget } = window.__bootstrap.event;
   const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayPrototypeIndexOf,
@@ -15,54 +15,7 @@
     ArrayPrototypePush,
     Symbol,
     Uint8Array,
-    ObjectDefineProperty,
-    Map,
-    MapPrototypeSet,
-    MapPrototypeGet,
-    FunctionPrototypeCall,
   } = window.__bootstrap.primordials;
-
-  const handlerSymbol = Symbol("eventHandlers");
-  function makeWrappedHandler(handler) {
-    function wrappedHandler(...args) {
-      if (typeof wrappedHandler.handler !== "function") {
-        return;
-      }
-      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
-    }
-    wrappedHandler.handler = handler;
-    return wrappedHandler;
-  }
-  // TODO(lucacasonato) reuse when we can reuse code between web crates
-  function defineEventHandler(emitter, name) {
-    // HTML specification section 8.1.5.1
-    ObjectDefineProperty(emitter, `on${name}`, {
-      get() {
-        // TODO(bnoordhuis) The "BroadcastChannel should have an onmessage
-        // event" WPT test expects that .onmessage !== undefined. Returning
-        // null makes it pass but is perhaps not exactly in the spirit.
-        if (!this[handlerSymbol]) {
-          return null;
-        }
-        return MapPrototypeGet(this[handlerSymbol], name)?.handler ?? null;
-      },
-      set(value) {
-        if (!this[handlerSymbol]) {
-          this[handlerSymbol] = new Map();
-        }
-        let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
-        if (handlerWrapper) {
-          handlerWrapper.handler = value;
-        } else {
-          handlerWrapper = makeWrappedHandler(value);
-          this.addEventListener(name, handlerWrapper);
-        }
-        MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
-      },
-      configurable: true,
-      enumerable: true,
-    });
-  }
 
   const _name = Symbol("[[name]]");
   const _closed = Symbol("[[closed]]");
