@@ -4,6 +4,7 @@ use deno_core::url::Url;
 use std::collections::HashMap;
 
 static STD_NODE: &str = "https://deno.land/std/node/";
+static GLOBAL_MODULE: &str = "global.ts";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -50,8 +51,15 @@ static SUPPORTED_MODULES: &[&str] = &[
   "zlib",
 ];
 
-pub fn get_node_globals_url() -> Url {
-  Url::parse(&format!("{}global.ts", STD_NODE)).unwrap()
+lazy_static::lazy_static! {
+  static ref GLOBAL_URL_STR: String = format!("{}{}", STD_NODE, GLOBAL_MODULE);
+  pub(crate) static ref GLOBAL_URL: Url = Url::parse(&GLOBAL_URL_STR).unwrap();
+  static ref COMPAT_IMPORT_URL: Url = Url::parse("flags:compat").unwrap();
+}
+
+/// Provide imports into a module graph when the compat flag is true.
+pub(crate) fn get_node_imports() -> Vec<(Url, Vec<String>)> {
+  vec![(COMPAT_IMPORT_URL.clone(), vec![GLOBAL_URL_STR.clone()])]
 }
 
 /// Create a map that can be used to update import map.
