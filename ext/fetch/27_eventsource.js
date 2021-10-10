@@ -11,18 +11,15 @@
     Symbol,
     ArrayPrototypeSome,
     Promise,
-    isNaN,
-    isFinite,
-    Number,
     StringPrototypeTrim,
+    Number,
     StringPrototypeSlice,
     StringPrototypeReplaceAll,
     StringPrototypeSplit,
     StringPrototypeIncludes,
+    StringPrototypeToLowerCase,
     ArrayPrototypePop,
     StringPrototypeIndexOf,
-    setTimeout,
-    clearTimeout,
     decodeURIComponent,
   } = window.__bootstrap.primordials;
   const { getLocationHref } = window.__bootstrap.location;
@@ -65,6 +62,7 @@
     [_fetchHeaders] = defaultHeaders;
     [_lastEventID] = "";
     [_reconnectionTime] = 2200;
+
     get CONNECTING() {
       webidl.assertBranded(this, EventSource);
       return CONNECTING;
@@ -97,7 +95,7 @@
 
     constructor(url, eventSourceInitDict) {
       super();
-
+      this[webidl.brand] = webidl.brand;
       const prefix = "Failed to construct 'EventSource'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       if (eventSourceInitDict) {
@@ -125,8 +123,7 @@
     }
 
     close() {
-      // Why does this error.
-      // webidl.assertBranded(this, EventSource);
+      webidl.assertBranded(this, EventSource);
       this[_readyState] = CLOSED;
       this[_abortSignal].abort();
     }
@@ -138,7 +135,7 @@
         /** @type { InnerResponse } */
         const res = await mainFetch(req, true, this[_abortSignal].signal);
         const correctContentType = ArrayPrototypeSome(res.headerList, (header) =>
-          header[0] === "content-type" && header[1] === "text/event-stream"
+          StringPrototypeToLowerCase(header[0]) === "content-type" && StringPrototypeIncludes(header[1], "text/event-stream")
         );
         if (
           res?.body &&
@@ -251,7 +248,7 @@
                 case "retry": {
                   // set reconnectionTime to Field Value if int
                   const num = Number(data);
-                  if (!isNaN(num) && isFinite(num)) {
+                  if (!Number.isNaN(num) && Number.isFinite(num)) {
                     this[_reconnectionTime] = num;
                   }
                   break;
