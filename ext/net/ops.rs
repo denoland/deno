@@ -538,7 +538,7 @@ where
 
 #[derive(Serialize, PartialEq, Debug)]
 #[serde(untagged)]
-enum DnsReturnRecord {
+pub enum DnsReturnRecord {
   A(String),
   Aaaa(String),
   Aname(String),
@@ -583,7 +583,7 @@ pub struct NameServer {
   port: u16,
 }
 
-async fn op_dns_resolve<NP>(
+pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
   _: (),
