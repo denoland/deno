@@ -1140,6 +1140,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .multiple(true)
         .required(false),
     )
+    .arg(watch_arg())
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1626,7 +1627,8 @@ fn seed_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn compat_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("compat")
     .long("compat")
-    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs'.")
+    .requires("unstable")
+    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs' and globals like 'process'.")
 }
 
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -1964,6 +1966,7 @@ fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
+  flags.watch = matches.is_present("watch");
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -4451,7 +4454,8 @@ mod tests {
 
   #[test]
   fn compat() {
-    let r = flags_from_vec(svec!["deno", "run", "--compat", "foo.js"]);
+    let r =
+      flags_from_vec(svec!["deno", "run", "--compat", "--unstable", "foo.js"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4459,6 +4463,7 @@ mod tests {
           script: "foo.js".to_string(),
         }),
         compat: true,
+        unstable: true,
         ..Flags::default()
       }
     );

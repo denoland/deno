@@ -6,12 +6,12 @@ use super::tsc;
 use crate::ast;
 use crate::ast::Location;
 use crate::lsp::documents::DocumentData;
-use crate::module_graph::parse_deno_types;
-use crate::module_graph::parse_ts_reference;
-use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
 
 use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::comments::Comment;
+use deno_ast::swc::common::BytePos;
+use deno_ast::swc::common::Span;
 use deno_ast::swc::common::DUMMY_SP;
 use deno_ast::swc::visit::Node;
 use deno_ast::swc::visit::Visit;
@@ -68,9 +68,70 @@ lazy_static::lazy_static! {
   .collect();
 
   static ref IMPORT_SPECIFIER_RE: Regex = Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap();
+
+  static ref DENO_TYPES_RE: Regex =
+    Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#)
+      .unwrap();
+  static ref TRIPLE_SLASH_REFERENCE_RE: Regex =
+    Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap();
+  static ref PATH_REFERENCE_RE: Regex =
+    Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap();
+  static ref TYPES_REFERENCE_RE: Regex =
+    Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap();
+
 }
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
+
+// TODO(@kitsonk) remove after deno_graph migration
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum TypeScriptReference {
+  Path(String),
+  Types(String),
+}
+
+fn match_to_span(comment: &Comment, m: &regex::Match) -> Span {
+  Span {
+    lo: comment.span.lo + BytePos((m.start() + 1) as u32),
+    hi: comment.span.lo + BytePos((m.end() + 1) as u32),
+    ctxt: comment.span.ctxt,
+  }
+}
+
+// TODO(@kitsonk) remove after deno_graph migration
+fn parse_deno_types(comment: &Comment) -> Option<(String, Span)> {
+  let captures = DENO_TYPES_RE.captures(&comment.text)?;
+  if let Some(m) = captures.get(1) {
+    Some((m.as_str().to_string(), match_to_span(comment, &m)))
+  } else if let Some(m) = captures.get(2) {
+    Some((m.as_str().to_string(), match_to_span(comment, &m)))
+  } else {
+    unreachable!();
+  }
+}
+
+// TODO(@kitsonk) remove after deno_graph migration
+fn parse_ts_reference(
+  comment: &Comment,
+) -> Option<(TypeScriptReference, Span)> {
+  if !TRIPLE_SLASH_REFERENCE_RE.is_match(&comment.text) {
+    None
+  } else if let Some(captures) = PATH_REFERENCE_RE.captures(&comment.text) {
+    let m = captures.get(1).unwrap();
+    Some((
+      TypeScriptReference::Path(m.as_str().to_string()),
+      match_to_span(comment, &m),
+    ))
+  } else {
+    TYPES_REFERENCE_RE.captures(&comment.text).map(|captures| {
+      let m = captures.get(1).unwrap();
+      (
+        TypeScriptReference::Types(m.as_str().to_string()),
+        match_to_span(comment, &m),
+      )
+    })
+  }
+}
 
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.

@@ -1,4 +1,4 @@
-let messagesReceived = 0;
+const messagesReceived = new Set();
 
 for (let i = 0; i < 4; i++) {
   const worker = new Worker(
@@ -7,21 +7,20 @@ for (let i = 0; i < 4; i++) {
   );
 
   worker.addEventListener("message", () => {
-    messagesReceived += 1;
-
-    if (messagesReceived == 4) {
+    messagesReceived.add(i);
+    if (messagesReceived.size == 4) {
       console.log("received all 4 responses from the workers");
     }
   });
 
-  worker.postMessage(i);
+  worker.postMessage({});
 }
 
 globalThis.addEventListener("unload", () => {
-  if (messagesReceived !== 4) {
+  if (messagesReceived.size !== 4) {
     console.log(
       "received only %d responses from the workers",
-      messagesReceived,
+      messagesReceived.size,
     );
   }
 });

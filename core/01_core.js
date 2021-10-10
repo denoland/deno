@@ -12,7 +12,10 @@
     Map,
     Array,
     ArrayPrototypeFill,
+    ArrayPrototypeMap,
+    ErrorCaptureStackTrace,
     Promise,
+    ObjectEntries,
     ObjectFreeze,
     ObjectFromEntries,
     MapPrototypeGet,
@@ -113,12 +116,12 @@
     if (res?.$err_class_name) {
       const className = res.$err_class_name;
       const errorBuilder = errorMap[className];
-      if (!errorBuilder) {
-        throw new Error(
-          `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
-        );
-      }
-      throw errorBuilder(res.message);
+      const err = errorBuilder ? errorBuilder(res.message) : new Error(
+        `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+      );
+      // Strip unwrapOpResult() and errorBuilder() calls from stack trace
+      ErrorCaptureStackTrace(err, unwrapOpResult);
+      throw err;
     }
     return res;
   }
@@ -151,6 +154,15 @@
     opSync("op_print", str, isErr);
   }
 
+  function metrics() {
+    const [aggregate, perOps] = opSync("op_metrics");
+    aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
+      ObjectEntries(opsCache),
+      ([opName, opId]) => [opName, perOps[opId]],
+    ));
+    return aggregate;
+  }
+
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
   // JS code (eg. "deno_net") so they are provided in "Deno.core" but later
   // reexported on "Deno.errors"
@@ -177,6 +189,7 @@
     tryClose,
     print,
     resources,
+    metrics,
     registerErrorBuilder,
     registerErrorClass,
     opresolve,

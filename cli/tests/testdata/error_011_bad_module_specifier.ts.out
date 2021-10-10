@@ -1,1 +1,3 @@
 [WILDCARD]error: Relative import path "bad-module.ts" not prefixed with / or ./ or ../ from "[WILDCARD]/error_011_bad_module_specifier.ts"
+    at [WILDCARD]/error_011_bad_module_specifier.ts:1:28
+

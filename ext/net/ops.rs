@@ -35,6 +35,7 @@ use trust_dns_proto::rr::record_type::RecordType;
 use trust_dns_resolver::config::NameServerConfigGroup;
 use trust_dns_resolver::config::ResolverConfig;
 use trust_dns_resolver::config::ResolverOpts;
+use trust_dns_resolver::error::ResolveErrorKind;
 use trust_dns_resolver::system_conf;
 use trust_dns_resolver::AsyncResolver;
 
@@ -537,7 +538,7 @@ where
 
 #[derive(Serialize, PartialEq, Debug)]
 #[serde(untagged)]
-enum DnsReturnRecord {
+pub enum DnsReturnRecord {
   A(String),
   Aaaa(String),
   Aname(String),
@@ -582,7 +583,7 @@ pub struct NameServer {
   port: u16,
 }
 
-async fn op_dns_resolve<NP>(
+pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
   _: (),
@@ -630,7 +631,19 @@ where
   let results = resolver
     .lookup(query, record_type, Default::default())
     .await
-    .map_err(|e| generic_error(format!("{}", e)))?
+    .map_err(|e| {
+      let message = format!("{}", e);
+      match e.kind() {
+        ResolveErrorKind::NoRecordsFound { .. } => {
+          custom_error("NotFound", message)
+        }
+        ResolveErrorKind::Message("No connections available") => {
+          custom_error("NotConnected", message)
+        }
+        ResolveErrorKind::Timeout => custom_error("TimedOut", message),
+        _ => generic_error(message),
+      }
+    })?
     .iter()
     .filter_map(rdata_to_return_record(record_type))
     .collect();
