@@ -385,4 +385,16 @@
 
   webidl.converters.CryptoKeyPair = webidl
     .createDictionaryConverter("CryptoKeyPair", dictCryptoKeyPair);
+
+  const dictEcdhKeyDeriveParams = [
+    ...dictAlgorithm,
+    {
+      key: "public",
+      converter: webidl.converters.CryptoKey,
+      required: true,
+    },
+  ];
+
+  webidl.converters.EcdhKeyDeriveParams = webidl
+    .createDictionaryConverter("EcdhKeyDeriveParams", dictEcdhKeyDeriveParams);
 })(this);

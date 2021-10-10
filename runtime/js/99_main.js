@@ -59,7 +59,7 @@ delete Object.prototype.__proto__;
   const errors = window.__bootstrap.errors.errors;
   const webidl = window.__bootstrap.webidl;
   const domException = window.__bootstrap.domException;
-  const { defineEventHandler } = window.__bootstrap.webUtil;
+  const { defineEventHandler } = window.__bootstrap.event;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
 
@@ -364,7 +364,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, Navigator);
+        webidl.assertBranded(this, WorkerNavigator);
         return numCpus;
       },
       language: {
@@ -511,10 +511,6 @@ delete Object.prototype.__proto__;
       enumerable: true,
       get: () => navigator,
     },
-    // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
-    // it seems those two properties should be available to workers as well
-    onload: util.writable(null),
-    onunload: util.writable(null),
     close: util.writable(windowClose),
     closed: util.getterOnly(() => windowIsClosing),
     alert: util.writable(prompt.alert),
@@ -546,8 +542,6 @@ delete Object.prototype.__proto__;
       get: () => workerNavigator,
     },
     self: util.readOnly(globalThis),
-    onmessage: util.writable(null),
-    onerror: util.writable(null),
     // TODO(bartlomieju): should be readonly?
     close: util.nonEnumerable(workerClose),
     postMessage: util.writable(postMessage),
@@ -580,8 +574,8 @@ delete Object.prototype.__proto__;
 
     eventTarget.setEventTargetData(globalThis);
 
-    defineEventHandler(window, "load", null);
-    defineEventHandler(window, "unload", null);
+    defineEventHandler(window, "load");
+    defineEventHandler(window, "unload");
 
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");
     // Stores the flag for checking whether unload is dispatched or not.
@@ -678,8 +672,8 @@ delete Object.prototype.__proto__;
 
     eventTarget.setEventTargetData(globalThis);
 
-    defineEventHandler(self, "message", null);
-    defineEventHandler(self, "error", null, true);
+    defineEventHandler(self, "message");
+    defineEventHandler(self, "error", undefined, true);
 
     runtimeStart(
       runtimeOptions,

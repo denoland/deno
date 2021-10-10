@@ -180,6 +180,7 @@ pub fn set_func(
   let key = v8::String::new(scope, name).unwrap();
   let tmpl = v8::FunctionTemplate::new(scope, callback);
   let val = tmpl.get_function(scope).unwrap();
+  val.set_name(key);
   obj.set(scope, key.into(), val.into());
 }
 

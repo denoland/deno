@@ -57,7 +57,7 @@
   }
 
   function setEnv(key, value) {
-    core.opSync("op_set_env", { key, value });
+    core.opSync("op_set_env", key, value);
   }
 
   function getEnv(key) {
