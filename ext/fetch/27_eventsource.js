@@ -61,7 +61,7 @@
   class EventSource extends EventTarget {
     [_readyState] = CONNECTING;
     [_withCredentials] = false;
-    [_abortSignal] = new AbortSignal();
+    [_abortSignal] = new AbortController();
     [_fetchHeaders] = defaultHeaders;
     [_lastEventID] = "";
     [_reconnectionTime] = 2200;
@@ -133,10 +133,10 @@
     async [_fetch]() {
       let currentRetries = 0;
       while (this[_readyState] < CLOSED) {
-        const req = newInnerRequest("GET", this[_url], this[_fetchHeaders]);
+        const req = newInnerRequest("GET", this[_url], this[_fetchHeaders], null);
         /** @type { InnerResponse } */
-        const res = await mainFetch(req, true, this[_abortSignal]);
-        const correctContentType = ArrayPrototypeSome((header) =>
+        const res = await mainFetch(req, true, this[_abortSignal].signal);
+        const correctContentType = ArrayPrototypeSome(res.headerList, (header) =>
           header[0] === "content-type" && header[1] === "text/event-stream"
         );
         if (
