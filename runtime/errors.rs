@@ -137,7 +137,7 @@ fn get_hyper_error_class(_error: &hyper::Error) -> &'static str {
 }
 
 #[cfg(unix)]
-fn get_nix_error_class(error: &nix::Error) -> &'static str {
+pub fn get_nix_error_class(error: &nix::Error) -> &'static str {
   match error {
     nix::Error::ECHILD => "NotFound",
     nix::Error::EINVAL => "TypeError",

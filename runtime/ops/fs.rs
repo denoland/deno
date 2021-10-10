@@ -163,10 +163,9 @@ fn op_open_sync(
   _: (),
 ) -> Result<ResourceId, AnyError> {
   let (path, open_options) = open_helper(state, args)?;
-  let err_mapper = |err: Error| {
+  let std_file = open_options.open(&path).map_err(|err| {
     Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
-  };
-  let std_file = open_options.open(&path).map_err(err_mapper)?;
+  })?;
   let tokio_file = tokio::fs::File::from_std(std_file);
   let resource = StdFileResource::fs_file(tokio_file);
   let rid = state.resource_table.add(resource);
@@ -180,8 +179,11 @@ async fn op_open_async(
 ) -> Result<ResourceId, AnyError> {
   let (path, open_options) = open_helper(&mut state.borrow_mut(), args)?;
   let tokio_file = tokio::fs::OpenOptions::from(open_options)
-    .open(path)
-    .await?;
+    .open(&path)
+    .await
+    .map_err(|err| {
+      Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
+    })?;
   let resource = StdFileResource::fs_file(tokio_file);
   let rid = state.borrow_mut().resource_table.add(resource);
   Ok(rid)
@@ -506,7 +508,9 @@ fn op_chdir(
 ) -> Result<(), AnyError> {
   let d = PathBuf::from(&directory);
   state.borrow_mut::<Permissions>().read.check(&d)?;
-  set_current_dir(&d)?;
+  set_current_dir(&d).map_err(|err| {
+    Error::new(err.kind(), format!("{}, chdir '{}'", err, directory))
+  })?;
   Ok(())
 }
 
@@ -534,7 +538,9 @@ fn op_mkdir_sync(
     use std::os::unix::fs::DirBuilderExt;
     builder.mode(mode);
   }
-  builder.create(path)?;
+  builder.create(&path).map_err(|err| {
+    Error::new(err.kind(), format!("{}, mkdir '{}'", err, path.display()))
+  })?;
   Ok(())
 }
 
@@ -560,7 +566,9 @@ async fn op_mkdir_async(
       use std::os::unix::fs::DirBuilderExt;
       builder.mode(mode);
     }
-    builder.create(path)?;
+    builder.create(&path).map_err(|err| {
+      Error::new(err.kind(), format!("{}, mkdir '{}'", err, path.display()))
+    })?;
     Ok(())
   })
   .await
@@ -664,9 +672,15 @@ fn op_chown_sync(
   #[cfg(unix)]
   {
     use nix::unistd::{chown, Gid, Uid};
+    use crate::errors::get_nix_error_class;
     let nix_uid = args.uid.map(Uid::from_raw);
     let nix_gid = args.gid.map(Gid::from_raw);
-    chown(&path, nix_uid, nix_gid)?;
+    chown(&path, nix_uid, nix_gid).map_err(|err| {
+      custom_error(
+        get_nix_error_class(&err),
+        format!("{}, chown '{}'", err.desc(), path.display()),
+      )
+    })?;
     Ok(())
   }
   // TODO Implement chown for Windows
@@ -698,9 +712,15 @@ async fn op_chown_async(
     #[cfg(unix)]
     {
       use nix::unistd::{chown, Gid, Uid};
+      use crate::errors::get_nix_error_class;
       let nix_uid = args.uid.map(Uid::from_raw);
       let nix_gid = args.gid.map(Gid::from_raw);
-      chown(&path, nix_uid, nix_gid)?;
+      chown(&path, nix_uid, nix_gid).map_err(|err| {
+        custom_error(
+          get_nix_error_class(&err),
+          format!("{}, chown '{}'", err.desc(), path.display()),
+        )
+      })?;
       Ok(())
     }
     // TODO Implement chown for Windows
@@ -838,7 +858,14 @@ fn op_copy_file_sync(
   // See https://github.com/rust-lang/rust/issues/54800
   // Once the issue is resolved, we should remove this workaround.
   if cfg!(unix) && !from.is_file() {
-    return Err(custom_error("NotFound", "File not found"));
+    return Err(custom_error(
+      "NotFound",
+      format!(
+        "File not found, copy '{}' -> '{}'",
+        from.display(),
+        to.display()
+      ),
+    ));
   }
 
   let err_mapper = |err: Error| {
@@ -873,7 +900,14 @@ async fn op_copy_file_async(
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is resolved, we should remove this workaround.
     if cfg!(unix) && !from.is_file() {
-      return Err(custom_error("NotFound", "File not found"));
+      return Err(custom_error(
+        "NotFound",
+        format!(
+          "File not found, copy '{}' -> '{}'",
+          from.display(),
+          to.display()
+        ),
+      ));
     }
 
     let err_mapper = |err: Error| {
