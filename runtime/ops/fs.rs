@@ -671,8 +671,8 @@ fn op_chown_sync(
   );
   #[cfg(unix)]
   {
-    use nix::unistd::{chown, Gid, Uid};
     use crate::errors::get_nix_error_class;
+    use nix::unistd::{chown, Gid, Uid};
     let nix_uid = args.uid.map(Uid::from_raw);
     let nix_gid = args.gid.map(Gid::from_raw);
     chown(&path, nix_uid, nix_gid).map_err(|err| {
@@ -711,8 +711,8 @@ async fn op_chown_async(
     );
     #[cfg(unix)]
     {
-      use nix::unistd::{chown, Gid, Uid};
       use crate::errors::get_nix_error_class;
+      use nix::unistd::{chown, Gid, Uid};
       let nix_uid = args.uid.map(Uid::from_raw);
       let nix_gid = args.gid.map(Gid::from_raw);
       chown(&path, nix_uid, nix_gid).map_err(|err| {
