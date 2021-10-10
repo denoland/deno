@@ -369,7 +369,7 @@
               );
           }
         } else if (algorithm.length !== 0) {
-          length == algorithm.length;
+          length = algorithm.length;
         } else {
           throw new TypeError("Invalid length.");
         }
