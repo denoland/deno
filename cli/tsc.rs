@@ -547,84 +547,121 @@ pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  // use crate::config_file::TsConfig;
-  // use crate::diagnostics::Diagnostic;
-  // use crate::diagnostics::DiagnosticCategory;
-  // use crate::module_graph::tests::MockSpecifierHandler;
-  // use crate::module_graph::GraphBuilder;
-  // use deno_core::parking_lot::Mutex;
+  use crate::config_file::TsConfig;
+  use crate::diagnostics::Diagnostic;
+  use crate::diagnostics::DiagnosticCategory;
+  use crate::emit::Stats;
+  use deno_core::futures::future;
+  use std::fs;
 
-  // async fn setup(
-  //   maybe_specifier: Option<ModuleSpecifier>,
-  //   maybe_hash_data: Option<Vec<Vec<u8>>>,
-  //   maybe_tsbuildinfo: Option<String>,
-  // ) -> State {
-  //   let specifier = maybe_specifier
-  //     .unwrap_or_else(|| resolve_url_or_path("file:///main.ts").unwrap());
-  //   let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
-  //   let fixtures = test_util::testdata_path().join("tsc2");
-  //   let handler = Arc::new(Mutex::new(MockSpecifierHandler {
-  //     fixtures,
-  //     ..MockSpecifierHandler::default()
-  //   }));
-  //   let mut builder = GraphBuilder::new(handler.clone(), None, None);
-  //   builder
-  //     .add(&specifier, false)
-  //     .await
-  //     .expect("module not inserted");
-  //   let graph =
-  //     GraphOrModuleGraph::Graph(Arc::new(Mutex::new(builder.get_graph())));
-  //   State::new(
-  //     graph,
-  //     hash_data,
-  //     None,
-  //     maybe_tsbuildinfo,
-  //     HashMap::new(),
-  //     HashMap::new(),
-  //   )
-  // }
+  #[derive(Debug, Default)]
+  pub(crate) struct MockLoader {
+    pub fixtures: PathBuf,
+  }
 
-  // async fn test_exec(
-  //   specifier: &ModuleSpecifier,
-  // ) -> Result<Response, AnyError> {
-  //   let hash_data = vec![b"something".to_vec()];
-  //   let fixtures = test_util::testdata_path().join("tsc2");
-  //   let handler = Arc::new(Mutex::new(MockSpecifierHandler {
-  //     fixtures,
-  //     ..Default::default()
-  //   }));
-  //   let mut builder = GraphBuilder::new(handler.clone(), None, None);
-  //   builder.add(specifier, false).await?;
-  //   let graph =
-  //     GraphOrModuleGraph::Graph(Arc::new(Mutex::new(builder.get_graph())));
-  //   let config = TsConfig::new(json!({
-  //     "allowJs": true,
-  //     "checkJs": false,
-  //     "esModuleInterop": true,
-  //     "emitDecoratorMetadata": false,
-  //     "incremental": true,
-  //     "jsx": "react",
-  //     "jsxFactory": "React.createElement",
-  //     "jsxFragmentFactory": "React.Fragment",
-  //     "lib": ["deno.window"],
-  //     "module": "esnext",
-  //     "noEmit": true,
-  //     "outDir": "deno:///",
-  //     "strict": true,
-  //     "target": "esnext",
-  //     "tsBuildInfoFile": "deno:///.tsbuildinfo",
-  //   }));
-  //   let request = Request {
-  //     config,
-  //     debug: false,
-  //     graph,
-  //     hash_data,
-  //     maybe_config_specifier: None,
-  //     maybe_tsbuildinfo: None,
-  //     root_names: vec![(specifier.clone(), MediaType::TypeScript)],
-  //   };
-  //   exec(request)
-  // }
+  impl deno_graph::source::Loader for MockLoader {
+    fn load(
+      &mut self,
+      specifier: &ModuleSpecifier,
+      _is_dynamic: bool,
+    ) -> deno_graph::source::LoadFuture {
+      let specifier_text = specifier
+        .to_string()
+        .replace(":///", "_")
+        .replace("://", "_")
+        .replace("/", "-");
+      let source_path = self.fixtures.join(specifier_text);
+      let response = fs::read_to_string(&source_path)
+        .map(|c| {
+          Some(deno_graph::source::LoadResponse {
+            specifier: specifier.clone(),
+            maybe_headers: None,
+            content: Arc::new(c),
+          })
+        })
+        .map_err(|err| err.into());
+      Box::pin(future::ready((specifier.clone(), response)))
+    }
+  }
+
+  async fn setup(
+    maybe_specifier: Option<ModuleSpecifier>,
+    maybe_hash_data: Option<Vec<Vec<u8>>>,
+    maybe_tsbuildinfo: Option<String>,
+  ) -> State {
+    let specifier = maybe_specifier
+      .unwrap_or_else(|| resolve_url_or_path("file:///main.ts").unwrap());
+    let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
+    let fixtures = test_util::testdata_path().join("tsc2");
+    let mut loader = MockLoader { fixtures };
+    let graph = Arc::new(
+      deno_graph::create_graph(
+        vec![specifier],
+        false,
+        None,
+        &mut loader,
+        None,
+        None,
+        None,
+      )
+      .await,
+    );
+    State::new(
+      graph,
+      hash_data,
+      None,
+      maybe_tsbuildinfo,
+      HashMap::new(),
+      HashMap::new(),
+    )
+  }
+
+  async fn test_exec(
+    specifier: &ModuleSpecifier,
+  ) -> Result<Response, AnyError> {
+    let hash_data = vec![b"something".to_vec()];
+    let fixtures = test_util::testdata_path().join("tsc2");
+    let mut loader = MockLoader { fixtures };
+    let graph = Arc::new(
+      deno_graph::create_graph(
+        vec![specifier.clone()],
+        false,
+        None,
+        &mut loader,
+        None,
+        None,
+        None,
+      )
+      .await,
+    );
+    let config = TsConfig::new(json!({
+      "allowJs": true,
+      "checkJs": false,
+      "esModuleInterop": true,
+      "emitDecoratorMetadata": false,
+      "incremental": true,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+      "lib": ["deno.window"],
+      "module": "esnext",
+      "noEmit": true,
+      "outDir": "deno:///",
+      "strict": true,
+      "target": "esnext",
+      "tsBuildInfoFile": "deno:///.tsbuildinfo",
+    }));
+    let request = Request {
+      config,
+      debug: false,
+      graph,
+      hash_data,
+      maybe_config_specifier: None,
+      maybe_tsbuildinfo: None,
+      root_names: vec![(specifier.clone(), MediaType::TypeScript)],
+    };
+    exec(request)
+  }
 
   #[test]
   fn test_compiler_snapshot() {
@@ -645,17 +682,17 @@ mod tests {
       .unwrap();
   }
 
-  // #[tokio::test]
-  // async fn test_create_hash() {
-  //   let mut state = setup(None, Some(vec![b"something".to_vec()]), None).await;
-  //   let actual =
-  //     op_create_hash(&mut state, json!({ "data": "some sort of content" }))
-  //       .expect("could not invoke op");
-  //   assert_eq!(
-  //     actual,
-  //     json!({"hash": "ae92df8f104748768838916857a1623b6a3c593110131b0a00f81ad9dac16511"})
-  //   );
-  // }
+  #[tokio::test]
+  async fn test_create_hash() {
+    let mut state = setup(None, Some(vec![b"something".to_vec()]), None).await;
+    let actual =
+      op_create_hash(&mut state, json!({ "data": "some sort of content" }))
+        .expect("could not invoke op");
+    assert_eq!(
+      actual,
+      json!({"hash": "ae92df8f104748768838916857a1623b6a3c593110131b0a00f81ad9dac16511"})
+    );
+  }
 
   #[test]
   fn test_hash_url() {
@@ -687,75 +724,75 @@ mod tests {
     }
   }
 
-  // #[tokio::test]
-  // async fn test_emit() {
-  //   let mut state = setup(None, None, None).await;
-  //   let actual = op_emit(
-  //     &mut state,
-  //     json!({
-  //       "data": "some file content",
-  //       "fileName": "cache:///some/file.js",
-  //       "maybeSpecifiers": ["file:///some/file.ts"]
-  //     }),
-  //   )
-  //   .expect("should have invoked op");
-  //   assert_eq!(actual, json!(true));
-  //   assert_eq!(state.emitted_files.len(), 1);
-  //   assert!(state.maybe_tsbuildinfo.is_none());
-  //   assert_eq!(
-  //     state.emitted_files[0],
-  //     EmittedFile {
-  //       data: "some file content".to_string(),
-  //       maybe_specifiers: Some(vec![resolve_url_or_path(
-  //         "file:///some/file.ts"
-  //       )
-  //       .unwrap()]),
-  //       media_type: MediaType::JavaScript,
-  //     }
-  //   );
-  // }
+  #[tokio::test]
+  async fn test_emit() {
+    let mut state = setup(None, None, None).await;
+    let actual = op_emit(
+      &mut state,
+      json!({
+        "data": "some file content",
+        "fileName": "cache:///some/file.js",
+        "maybeSpecifiers": ["file:///some/file.ts"]
+      }),
+    )
+    .expect("should have invoked op");
+    assert_eq!(actual, json!(true));
+    assert_eq!(state.emitted_files.len(), 1);
+    assert!(state.maybe_tsbuildinfo.is_none());
+    assert_eq!(
+      state.emitted_files[0],
+      EmittedFile {
+        data: "some file content".to_string(),
+        maybe_specifiers: Some(vec![resolve_url_or_path(
+          "file:///some/file.ts"
+        )
+        .unwrap()]),
+        media_type: MediaType::JavaScript,
+      }
+    );
+  }
 
-  // #[tokio::test]
-  // async fn test_emit_tsbuildinfo() {
-  //   let mut state = setup(None, None, None).await;
-  //   let actual = op_emit(
-  //     &mut state,
-  //     json!({
-  //       "data": "some file content",
-  //       "fileName": "deno:///.tsbuildinfo",
-  //     }),
-  //   )
-  //   .expect("should have invoked op");
-  //   assert_eq!(actual, json!(true));
-  //   assert_eq!(state.emitted_files.len(), 0);
-  //   assert_eq!(
-  //     state.maybe_tsbuildinfo,
-  //     Some("some file content".to_string())
-  //   );
-  // }
+  #[tokio::test]
+  async fn test_emit_tsbuildinfo() {
+    let mut state = setup(None, None, None).await;
+    let actual = op_emit(
+      &mut state,
+      json!({
+        "data": "some file content",
+        "fileName": "deno:///.tsbuildinfo",
+      }),
+    )
+    .expect("should have invoked op");
+    assert_eq!(actual, json!(true));
+    assert_eq!(state.emitted_files.len(), 0);
+    assert_eq!(
+      state.maybe_tsbuildinfo,
+      Some("some file content".to_string())
+    );
+  }
 
-  // #[tokio::test]
-  // async fn test_load() {
-  //   let mut state = setup(
-  //     Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
-  //     None,
-  //     Some("some content".to_string()),
-  //   )
-  //   .await;
-  //   let actual = op_load(
-  //     &mut state,
-  //     json!({ "specifier": "https://deno.land/x/mod.ts"}),
-  //   )
-  //   .expect("should have invoked op");
-  //   assert_eq!(
-  //     actual,
-  //     json!({
-  //       "data": "console.log(\"hello deno\");\n",
-  //       "hash": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
-  //       "scriptKind": 3,
-  //     })
-  //   );
-  // }
+  #[tokio::test]
+  async fn test_load() {
+    let mut state = setup(
+      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      None,
+      Some("some content".to_string()),
+    )
+    .await;
+    let actual = op_load(
+      &mut state,
+      json!({ "specifier": "https://deno.land/x/mod.ts"}),
+    )
+    .expect("should have invoked op");
+    assert_eq!(
+      actual,
+      json!({
+        "data": "console.log(\"hello deno\");\n",
+        "hash": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
+        "scriptKind": 3,
+      })
+    );
+  }
 
   #[derive(Debug, Deserialize)]
   #[serde(rename_all = "camelCase")]
@@ -765,168 +802,168 @@ mod tests {
     script_kind: i64,
   }
 
-  // #[tokio::test]
-  // async fn test_load_asset() {
-  //   let mut state = setup(
-  //     Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
-  //     None,
-  //     Some("some content".to_string()),
-  //   )
-  //   .await;
-  //   let value =
-  //     op_load(&mut state, json!({ "specifier": "asset:///lib.dom.d.ts" }))
-  //       .expect("should have invoked op");
-  //   let actual: LoadResponse =
-  //     serde_json::from_value(value).expect("failed to deserialize");
-  //   let expected = get_asset("lib.dom.d.ts").unwrap();
-  //   assert_eq!(actual.data, expected);
-  //   assert!(actual.hash.is_some());
-  //   assert_eq!(actual.script_kind, 3);
-  // }
+  #[tokio::test]
+  async fn test_load_asset() {
+    let mut state = setup(
+      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      None,
+      Some("some content".to_string()),
+    )
+    .await;
+    let value =
+      op_load(&mut state, json!({ "specifier": "asset:///lib.dom.d.ts" }))
+        .expect("should have invoked op");
+    let actual: LoadResponse =
+      serde_json::from_value(value).expect("failed to deserialize");
+    let expected = get_asset("lib.dom.d.ts").unwrap();
+    assert_eq!(actual.data, expected);
+    assert!(actual.hash.is_some());
+    assert_eq!(actual.script_kind, 3);
+  }
 
-  // #[tokio::test]
-  // async fn test_load_tsbuildinfo() {
-  //   let mut state = setup(
-  //     Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
-  //     None,
-  //     Some("some content".to_string()),
-  //   )
-  //   .await;
-  //   let actual =
-  //     op_load(&mut state, json!({ "specifier": "deno:///.tsbuildinfo"}))
-  //       .expect("should have invoked op");
-  //   assert_eq!(
-  //     actual,
-  //     json!({
-  //       "data": "some content",
-  //       "hash": null,
-  //       "scriptKind": 0,
-  //     })
-  //   );
-  // }
+  #[tokio::test]
+  async fn test_load_tsbuildinfo() {
+    let mut state = setup(
+      Some(resolve_url_or_path("https://deno.land/x/mod.ts").unwrap()),
+      None,
+      Some("some content".to_string()),
+    )
+    .await;
+    let actual =
+      op_load(&mut state, json!({ "specifier": "deno:///.tsbuildinfo"}))
+        .expect("should have invoked op");
+    assert_eq!(
+      actual,
+      json!({
+        "data": "some content",
+        "hash": null,
+        "scriptKind": 0,
+      })
+    );
+  }
 
-  // #[tokio::test]
-  // async fn test_load_missing_specifier() {
-  //   let mut state = setup(None, None, None).await;
-  //   let actual = op_load(
-  //     &mut state,
-  //     json!({ "specifier": "https://deno.land/x/mod.ts"}),
-  //   )
-  //   .expect("should have invoked op");
-  //   assert_eq!(
-  //     actual,
-  //     json!({
-  //       "data": null,
-  //       "hash": null,
-  //       "scriptKind": 0,
-  //     })
-  //   )
-  // }
+  #[tokio::test]
+  async fn test_load_missing_specifier() {
+    let mut state = setup(None, None, None).await;
+    let actual = op_load(
+      &mut state,
+      json!({ "specifier": "https://deno.land/x/mod.ts"}),
+    )
+    .expect("should have invoked op");
+    assert_eq!(
+      actual,
+      json!({
+        "data": null,
+        "hash": null,
+        "scriptKind": 0,
+      })
+    )
+  }
 
-  // #[tokio::test]
-  // async fn test_resolve() {
-  //   let mut state = setup(
-  //     Some(resolve_url_or_path("https://deno.land/x/a.ts").unwrap()),
-  //     None,
-  //     None,
-  //   )
-  //   .await;
-  //   let actual = op_resolve(
-  //     &mut state,
-  //     json!({ "base": "https://deno.land/x/a.ts", "specifiers": [ "./b.ts" ]}),
-  //   )
-  //   .expect("should have invoked op");
-  //   assert_eq!(actual, json!([["https://deno.land/x/b.ts", ".ts"]]));
-  // }
+  #[tokio::test]
+  async fn test_resolve() {
+    let mut state = setup(
+      Some(resolve_url_or_path("https://deno.land/x/a.ts").unwrap()),
+      None,
+      None,
+    )
+    .await;
+    let actual = op_resolve(
+      &mut state,
+      json!({ "base": "https://deno.land/x/a.ts", "specifiers": [ "./b.ts" ]}),
+    )
+    .expect("should have invoked op");
+    assert_eq!(actual, json!([["https://deno.land/x/b.ts", ".ts"]]));
+  }
 
-  // #[tokio::test]
-  // async fn test_resolve_empty() {
-  //   let mut state = setup(
-  //     Some(resolve_url_or_path("https://deno.land/x/a.ts").unwrap()),
-  //     None,
-  //     None,
-  //   )
-  //   .await;
-  //   let actual = op_resolve(
-  //     &mut state,
-  //     json!({ "base": "https://deno.land/x/a.ts", "specifiers": [ "./bad.ts" ]}),
-  //   ).expect("should have not errored");
-  //   assert_eq!(
-  //     actual,
-  //     json!([["deno:///missing_dependency.d.ts", ".d.ts"]])
-  //   );
-  // }
+  #[tokio::test]
+  async fn test_resolve_empty() {
+    let mut state = setup(
+      Some(resolve_url_or_path("https://deno.land/x/a.ts").unwrap()),
+      None,
+      None,
+    )
+    .await;
+    let actual = op_resolve(
+      &mut state,
+      json!({ "base": "https://deno.land/x/a.ts", "specifiers": [ "./bad.ts" ]}),
+    ).expect("should have not errored");
+    assert_eq!(
+      actual,
+      json!([["deno:///missing_dependency.d.ts", ".d.ts"]])
+    );
+  }
 
-  // #[tokio::test]
-  // async fn test_respond() {
-  //   let mut state = setup(None, None, None).await;
-  //   let actual = op_respond(
-  //     &mut state,
-  //     json!({
-  //       "diagnostics": [
-  //         {
-  //           "messageText": "Unknown compiler option 'invalid'.",
-  //           "category": 1,
-  //           "code": 5023
-  //         }
-  //       ],
-  //       "stats": [["a", 12]]
-  //     }),
-  //   )
-  //   .expect("should have invoked op");
-  //   assert_eq!(actual, json!(true));
-  //   assert_eq!(
-  //     state.maybe_response,
-  //     Some(RespondArgs {
-  //       diagnostics: Diagnostics::new(vec![Diagnostic {
-  //         category: DiagnosticCategory::Error,
-  //         code: 5023,
-  //         start: None,
-  //         end: None,
-  //         message_text: Some(
-  //           "Unknown compiler option \'invalid\'.".to_string()
-  //         ),
-  //         message_chain: None,
-  //         source: None,
-  //         source_line: None,
-  //         file_name: None,
-  //         related_information: None,
-  //       }]),
-  //       stats: Stats(vec![("a".to_string(), 12)])
-  //     })
-  //   );
-  // }
+  #[tokio::test]
+  async fn test_respond() {
+    let mut state = setup(None, None, None).await;
+    let actual = op_respond(
+      &mut state,
+      json!({
+        "diagnostics": [
+          {
+            "messageText": "Unknown compiler option 'invalid'.",
+            "category": 1,
+            "code": 5023
+          }
+        ],
+        "stats": [["a", 12]]
+      }),
+    )
+    .expect("should have invoked op");
+    assert_eq!(actual, json!(true));
+    assert_eq!(
+      state.maybe_response,
+      Some(RespondArgs {
+        diagnostics: Diagnostics::new(vec![Diagnostic {
+          category: DiagnosticCategory::Error,
+          code: 5023,
+          start: None,
+          end: None,
+          message_text: Some(
+            "Unknown compiler option \'invalid\'.".to_string()
+          ),
+          message_chain: None,
+          source: None,
+          source_line: None,
+          file_name: None,
+          related_information: None,
+        }]),
+        stats: Stats(vec![("a".to_string(), 12)])
+      })
+    );
+  }
 
-  // #[tokio::test]
-  // async fn test_exec_basic() {
-  //   let specifier = resolve_url_or_path("https://deno.land/x/a.ts").unwrap();
-  //   let actual = test_exec(&specifier)
-  //     .await
-  //     .expect("exec should not have errored");
-  //   assert!(actual.diagnostics.is_empty());
-  //   assert!(actual.emitted_files.is_empty());
-  //   assert!(actual.maybe_tsbuildinfo.is_some());
-  //   assert_eq!(actual.stats.0.len(), 12);
-  // }
+  #[tokio::test]
+  async fn test_exec_basic() {
+    let specifier = resolve_url_or_path("https://deno.land/x/a.ts").unwrap();
+    let actual = test_exec(&specifier)
+      .await
+      .expect("exec should not have errored");
+    assert!(actual.diagnostics.is_empty());
+    assert!(actual.emitted_files.is_empty());
+    assert!(actual.maybe_tsbuildinfo.is_some());
+    assert_eq!(actual.stats.0.len(), 12);
+  }
 
-  // #[tokio::test]
-  // async fn test_exec_reexport_dts() {
-  //   let specifier = resolve_url_or_path("file:///reexports.ts").unwrap();
-  //   let actual = test_exec(&specifier)
-  //     .await
-  //     .expect("exec should not have errored");
-  //   assert!(actual.diagnostics.is_empty());
-  //   assert!(actual.emitted_files.is_empty());
-  //   assert!(actual.maybe_tsbuildinfo.is_some());
-  //   assert_eq!(actual.stats.0.len(), 12);
-  // }
+  #[tokio::test]
+  async fn test_exec_reexport_dts() {
+    let specifier = resolve_url_or_path("file:///reexports.ts").unwrap();
+    let actual = test_exec(&specifier)
+      .await
+      .expect("exec should not have errored");
+    assert!(actual.diagnostics.is_empty());
+    assert!(actual.emitted_files.is_empty());
+    assert!(actual.maybe_tsbuildinfo.is_some());
+    assert_eq!(actual.stats.0.len(), 12);
+  }
 
-  // #[tokio::test]
-  // async fn fix_lib_ref() {
-  //   let specifier = resolve_url_or_path("file:///libref.ts").unwrap();
-  //   let actual = test_exec(&specifier)
-  //     .await
-  //     .expect("exec should not have errored");
-  //   assert!(actual.diagnostics.is_empty());
-  // }
+  #[tokio::test]
+  async fn fix_lib_ref() {
+    let specifier = resolve_url_or_path("file:///libref.ts").unwrap();
+    let actual = test_exec(&specifier)
+      .await
+      .expect("exec should not have errored");
+    assert!(actual.diagnostics.is_empty());
+  }
 }
