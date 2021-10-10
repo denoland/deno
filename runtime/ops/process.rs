@@ -280,7 +280,7 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use winapi::um::processthreadsapi::TerminateProcess;
   use winapi::um::winnt::PROCESS_TERMINATE;
 
-  if !matches!(signal, "SIGINT" | "SIGKILL" | "SIGTERM") {
+  if !matches!(signal, "SIGKILL" | "SIGTERM") {
     Err(type_error(format!("Invalid signal: {}", signal)))
   } else if pid <= 0 {
     Err(type_error("Invalid pid"))
@@ -309,7 +309,6 @@ fn op_kill(
   pid: i32,
   signal: String,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
   kill(pid, &signal)?;
   Ok(())

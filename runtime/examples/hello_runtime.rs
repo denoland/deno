@@ -36,6 +36,7 @@ async fn main() -> Result<(), AnyError> {
       ts_version: "x".to_string(),
       unstable: false,
     },
+    extensions: vec![],
     unsafely_ignore_certificate_errors: None,
     root_cert_store: None,
     user_agent: "hello_runtime".to_string(),

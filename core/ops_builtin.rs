@@ -26,6 +26,10 @@ pub(crate) fn init_builtins() -> Extension {
       ("op_resources", op_sync(op_resources)),
       ("op_wasm_streaming_feed", op_sync(op_wasm_streaming_feed)),
       ("op_wasm_streaming_abort", op_sync(op_wasm_streaming_abort)),
+      (
+        "op_wasm_streaming_set_url",
+        op_sync(op_wasm_streaming_set_url),
+      ),
     ])
     .build()
 }
@@ -134,6 +138,19 @@ pub fn op_wasm_streaming_abort(
   } else {
     panic!("Couldn't consume WasmStreamingResource.");
   }
+
+  Ok(())
+}
+
+pub fn op_wasm_streaming_set_url(
+  state: &mut OpState,
+  rid: ResourceId,
+  url: String,
+) -> Result<(), AnyError> {
+  let wasm_streaming =
+    state.resource_table.get::<WasmStreamingResource>(rid)?;
+
+  wasm_streaming.0.borrow_mut().set_url(&url);
 
   Ok(())
 }
