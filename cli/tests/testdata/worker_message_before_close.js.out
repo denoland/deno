@@ -1,5 +1,1 @@
-message received in worker 0
-message received in worker 1
-message received in worker 2
-message received in worker 3
 received all 4 responses from the workers

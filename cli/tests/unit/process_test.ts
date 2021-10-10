@@ -121,7 +121,6 @@ unitTest(
       cmd: [
         Deno.execPath(),
         "eval",
-        "--unstable",
         "Deno.kill(Deno.pid, 'SIGKILL')",
       ],
     });
@@ -476,7 +475,7 @@ unitTest(
   { ignore: Deno.build.os !== "windows", permissions: { run: true } },
   function negativePidInvalidWindows() {
     assertThrows(() => {
-      Deno.kill(-1, "SIGINT");
+      Deno.kill(-1, "SIGTERM");
     }, TypeError);
   },
 );
@@ -498,7 +497,7 @@ unitTest(
     });
 
     try {
-      Deno.kill(p.pid, "SIGINT");
+      Deno.kill(p.pid, "SIGKILL");
       const status = await p.status();
 
       assertEquals(status.success, false);
@@ -506,8 +505,8 @@ unitTest(
         assertEquals(status.code, 1);
         assertEquals(status.signal, undefined);
       } else {
-        assertEquals(status.code, 130);
-        assertEquals(status.signal, 2);
+        assertEquals(status.code, 137);
+        assertEquals(status.signal, 9);
       }
     } finally {
       p.close();

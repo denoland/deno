@@ -856,9 +856,16 @@ itest!(wasm_async {
 });
 
 itest!(wasm_unreachable {
-  args: "run wasm_unreachable.js",
+  args: "run --allow-read wasm_unreachable.js",
   output: "wasm_unreachable.out",
   exit_code: 1,
+});
+
+itest!(wasm_url {
+  args: "run --quiet --allow-net=localhost:4545 wasm_url.js",
+  output: "wasm_url.out",
+  exit_code: 1,
+  http_server: true,
 });
 
 itest!(weakref {

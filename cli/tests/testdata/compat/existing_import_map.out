@@ -2,4 +2,5 @@
 Some Node built-ins were not added to the import map:
   - "fs/promises" already exists and is mapped to "[WILDCARD]non_existent_file.js"
 If you want to use Node built-ins provided by Deno remove listed specifiers from "imports" mapping in the import map file.
+[WILDCARD]
 error: Cannot resolve module [WILDCARD]
