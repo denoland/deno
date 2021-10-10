@@ -54,6 +54,8 @@ macro_rules! itest_flaky(
 mod bundle;
 #[path = "cache_tests.rs"]
 mod cache;
+#[path = "compat_tests.rs"]
+mod compat;
 #[path = "compile_tests.rs"]
 mod compile;
 #[path = "coverage_tests.rs"]
@@ -923,7 +925,6 @@ async fn test_resolve_dns() {
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
@@ -949,7 +950,6 @@ async fn test_resolve_dns() {
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net=127.0.0.1:4553")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
@@ -975,7 +975,6 @@ async fn test_resolve_dns() {
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net=deno.land")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
@@ -997,7 +996,6 @@ async fn test_resolve_dns() {
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
       .arg("run")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
