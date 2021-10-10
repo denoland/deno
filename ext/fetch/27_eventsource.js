@@ -127,7 +127,7 @@
     close() {
       webidl.assertBranded(this, EventSource);
       this[_readyState] = CLOSED;
-      this[_abortController].abort();
+      this[_abortSignal].abort();
     }
 
     async [_fetch]() {
@@ -169,7 +169,7 @@
           let readBuffer = "";
 
           for await (const chunk of reader) {
-            if (this[_abortController].signal.aborted) break;
+            if (this[_abortSignal].signal.aborted) break;
             const lines = StringPrototypeSplit(
               StringPrototypeReplaceAll(
                 StringPrototypeReplaceAll(
@@ -258,7 +258,7 @@
               }
             }
           }
-          if (this[_abortController].signal.aborted) {
+          if (this[_abortSignal].signal.aborted) {
             // Cancel reader to close the EventSource properly
             await reader.cancel();
             this[_readyState] = CLOSED;
@@ -267,7 +267,7 @@
         } else {
           // Connection failed for whatever reason
           this[_readyState] = CLOSED;
-          this[_abortController].abort();
+          this[_abortSignal].abort();
           const errorEvent = new Event("error", {
             bubbles: false,
             cancelable: false,
