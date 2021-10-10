@@ -562,41 +562,6 @@ declare namespace Deno {
    */
   export function applySourceMap(location: Location): Location;
 
-  export type Signal =
-    | "SIGABRT"
-    | "SIGALRM"
-    | "SIGBUS"
-    | "SIGCHLD"
-    | "SIGCONT"
-    | "SIGEMT"
-    | "SIGFPE"
-    | "SIGHUP"
-    | "SIGILL"
-    | "SIGINFO"
-    | "SIGINT"
-    | "SIGIO"
-    | "SIGKILL"
-    | "SIGPIPE"
-    | "SIGPROF"
-    | "SIGPWR"
-    | "SIGQUIT"
-    | "SIGSEGV"
-    | "SIGSTKFLT"
-    | "SIGSTOP"
-    | "SIGSYS"
-    | "SIGTERM"
-    | "SIGTRAP"
-    | "SIGTSTP"
-    | "SIGTTIN"
-    | "SIGTTOU"
-    | "SIGURG"
-    | "SIGUSR1"
-    | "SIGUSR2"
-    | "SIGVTALRM"
-    | "SIGWINCH"
-    | "SIGXCPU"
-    | "SIGXFSZ";
-
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Represents the stream of signals, implements both `AsyncIterator` and
@@ -721,21 +686,6 @@ declare namespace Deno {
       uid?: number;
     },
   >(opt: T): Process<T>;
-
-  /** **UNSTABLE**: Send a signal to process under given `pid`. This
-   * functionality only works on Linux and Mac OS.
-   *
-   * If `pid` is negative, the signal will be sent to the process group
-   * identified by `pid`.
-   *
-   *      const p = Deno.run({
-   *        cmd: ["sleep", "10000"]
-   *      });
-   *
-   *      Deno.kill(p.pid, "SIGINT");
-   *
-   * Requires `allow-run` permission. */
-  export function kill(pid: number, signo: Signal): void;
 
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
    * necessary around the permissions required.
