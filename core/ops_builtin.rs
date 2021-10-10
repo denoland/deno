@@ -3,6 +3,8 @@ use crate::error::AnyError;
 use crate::include_js_files;
 use crate::op_sync;
 use crate::resources::ResourceId;
+use crate::void_op_async;
+use crate::void_op_sync;
 use crate::Extension;
 use crate::OpState;
 use crate::Resource;
@@ -30,6 +32,8 @@ pub(crate) fn init_builtins() -> Extension {
         "op_wasm_streaming_set_url",
         op_sync(op_wasm_streaming_set_url),
       ),
+      ("op_void_sync", void_op_sync()),
+      ("op_void_async", void_op_async()),
     ])
     .build()
 }
