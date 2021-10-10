@@ -9,7 +9,7 @@
   const {
     ObjectDefineProperties,
     Symbol,
-    StringPrototypeStartsWith,
+    ArrayPrototypeSome,
     Promise,
     isNaN,
     isFinite,
@@ -27,7 +27,7 @@
   } = window.__bootstrap.primordials;
   const { getLocationHref } = window.__bootstrap.location;
   const { TextDecoderStream } = window.__bootstrap.encoding;
-  const { fetch } = window.__bootstrap.fetch;
+  const { mainFetch, newInnerRequest } = window.__bootstrap.fetch;
   const { defineEventHandler } = window.__bootstrap.event;
 
   webidl.converters["EventSourceInit"] = webidl.createDictionaryConverter(
@@ -44,17 +44,16 @@
   const CONNECTING = 0;
   const OPEN = 1;
   const CLOSED = 2;
-  const defaultFetchSettings = {
-    headers: [["Accept", "text/event-stream"]],
-    credentials: "same-origin",
-    mode: "cors",
-  };
+  const defaultHeaders = [
+    ["Accept", "text/event-stream"],
+    ["Cache-Control", "no-store"],
+  ];
 
   const _readyState = Symbol("readystate");
   const _withCredentials = Symbol("withcredentials");
-  const _abortController = Symbol("abortcontroller");
+  const _abortSignal = Symbol("abortsignal");
   const _url = Symbol("url");
-  const _fetchSettings = Symbol("fetchsettings");
+  const _fetchHeaders = Symbol("fetchheaders");
   const _lastEventID = Symbol("lasteventid");
   const _reconnectionTime = Symbol("reconnetiontime");
   const _fetch = Symbol("fetch");
@@ -62,8 +61,8 @@
   class EventSource extends EventTarget {
     [_readyState] = CONNECTING;
     [_withCredentials] = false;
-    [_abortController] = new AbortController();
-    [_fetchSettings] = defaultFetchSettings;
+    [_abortSignal] = new AbortSignal();
+    [_fetchHeaders] = defaultHeaders;
     [_lastEventID] = "";
     [_reconnectionTime] = 2200;
     get CONNECTING() {
@@ -118,7 +117,6 @@
       }
 
       if (eventSourceInitDict?.withCredentials) {
-        this[_fetchSettings].credentials = "include";
         this[_withCredentials] = true;
       }
 
@@ -135,22 +133,16 @@
     async [_fetch]() {
       let currentRetries = 0;
       while (this[_readyState] < CLOSED) {
-        const res = await fetch(this[_url], {
-          cache: "no-store",
-          // This seems to cause problems if the abort happens while `res.body` is being used
-          // signal: this[_abortController].signal,
-          keepalive: true,
-          redirect: "follow",
-          ...this[_fetchSettings],
-        }).catch(() => void (0));
-
+        const req = newInnerRequest("GET", this[_url], this[_fetchHeaders]);
+        /** @type { InnerResponse } */
+        const res = await mainFetch(req, true, this[_abortSignal]);
+        const correctContentType = ArrayPrototypeSome((header) =>
+          header[0] === "content-type" && header[1] === "text/event-stream"
+        );
         if (
           res?.body &&
           res?.status === 200 &&
-          StringPrototypeStartsWith(
-            res.headers.get("content-type"),
-            "text/event-stream",
-          )
+          correctContentType
         ) {
           // Announce connection
           if (this[_readyState] !== CLOSED) {
@@ -310,7 +302,7 @@
           if (this[_readyState] !== CONNECTING) break;
 
           if (this[_lastEventID]) {
-            this[_fetchSettings].headers.push([
+            this[_fetchHeaders].push([
               "Last-Event-ID",
               this[_lastEventID],
             ]);
