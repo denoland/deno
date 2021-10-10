@@ -6,7 +6,7 @@
   const { parsePermissions } = window.__bootstrap.worker;
   const { setExitHandler } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
-  const { metrics } = window.__bootstrap.metrics;
+  const { metrics } = core;
   const { assert } = window.__bootstrap.util;
   const {
     ArrayPrototypeFilter,

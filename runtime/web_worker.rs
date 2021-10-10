@@ -2,7 +2,6 @@
 use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::js;
-use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
@@ -337,8 +336,6 @@ impl WebWorker {
       deno_timers::init::<Permissions>(),
       // ffi
       deno_ffi::init::<Permissions>(unstable),
-      // Metrics
-      metrics::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
