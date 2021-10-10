@@ -5,7 +5,7 @@ use super::tsc;
 
 use crate::ast;
 use crate::ast::Location;
-use crate::config_file::ConfigFile;
+use crate::config_file::LintConfig;
 use crate::lsp::documents::DocumentData;
 use crate::module_graph::parse_deno_types;
 use crate::module_graph::parse_ts_reference;
@@ -31,7 +31,6 @@ use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use import_map::ImportMap;
-use log::error;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;
@@ -137,24 +136,11 @@ fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
 
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
-  maybe_config_file: Option<&ConfigFile>,
+  maybe_lint_config: Option<&LintConfig>,
 ) -> Result<Vec<Reference>, AnyError> {
   let syntax = deno_ast::get_syntax(parsed_source.media_type());
-  let maybe_lint_config = if let Some(config_file) = maybe_config_file {
-    Some(
-      config_file
-        .to_lint_config()
-        .map_err(|err| {
-          error!("Unable to parse lint configuration: {}", err);
-          err
-        })?
-        .unwrap_or_default(),
-    )
-  } else {
-    None
-  };
   let lint_rules =
-    get_configured_rules(maybe_lint_config.as_ref(), vec![], vec![], vec![])?;
+    get_configured_rules(maybe_lint_config, vec![], vec![], vec![])?;
   let linter = create_linter(syntax, lint_rules);
   // TODO(dsherret): do not re-parse here again
   let (_, lint_diagnostics) = linter.lint(

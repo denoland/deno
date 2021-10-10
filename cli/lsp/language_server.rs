@@ -54,6 +54,8 @@ use super::tsc::Assets;
 use super::tsc::TsServer;
 use super::urls;
 use crate::config_file::ConfigFile;
+use crate::config_file::FmtConfig;
+use crate::config_file::LintConfig;
 use crate::config_file::TsConfig;
 use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
@@ -73,7 +75,8 @@ pub struct StateSnapshot {
   pub assets: Assets,
   pub config: ConfigSnapshot,
   pub documents: DocumentCache,
-  pub maybe_config_file: Option<ConfigFile>,
+  pub maybe_lint_config: Option<LintConfig>,
+  pub maybe_fmt_config: Option<FmtConfig>,
   pub maybe_config_uri: Option<ModuleSpecifier>,
   pub module_registries: registries::ModuleRegistry,
   pub performance: Performance,
@@ -103,6 +106,10 @@ pub(crate) struct Inner {
   /// An optional configuration file which has been specified in the client
   /// options.
   maybe_config_file: Option<ConfigFile>,
+  /// An optional configuration for linter which has been taken from specified config file.
+  maybe_lint_config: Option<LintConfig>,
+  /// An optional configuration for formatter which has been taken from specified config file.
+  maybe_fmt_config: Option<FmtConfig>,
   /// An optional URL which provides the location of a TypeScript configuration
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
@@ -150,6 +157,8 @@ impl Inner {
       diagnostics_server,
       documents: Default::default(),
       maybe_cache_path: None,
+      maybe_lint_config: None,
+      maybe_fmt_config: None,
       maybe_config_file: None,
       maybe_config_uri: None,
       maybe_import_map: None,
@@ -386,16 +395,9 @@ impl Inner {
     &mut self,
     tsconfig: &mut TsConfig,
   ) -> Result<(), AnyError> {
-    self.maybe_config_file = None;
-    self.maybe_config_uri = None;
-
-    let maybe_file_and_url = self.get_config_file_and_url()?;
-
-    if let Some((config_file, config_url)) = maybe_file_and_url {
+    if let Some(config_file) = self.maybe_config_file.as_ref() {
       let (value, maybe_ignored_options) = config_file.to_compiler_options()?;
       tsconfig.merge(&value);
-      self.maybe_config_file = Some(config_file);
-      self.maybe_config_uri = Some(config_url);
       if let Some(ignored_options) = maybe_ignored_options {
         // TODO(@kitsonk) turn these into diagnostics that can be sent to the
         // client
@@ -414,7 +416,8 @@ impl Inner {
         LspError::internal_error()
       })?,
       documents: self.documents.clone(),
-      maybe_config_file: self.maybe_config_file.clone(),
+      maybe_lint_config: self.maybe_lint_config.clone(),
+      maybe_fmt_config: self.maybe_fmt_config.clone(),
       maybe_config_uri: self.maybe_config_uri.clone(),
       module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
@@ -576,6 +579,37 @@ impl Inner {
     Ok(())
   }
 
+  fn update_config_file(&mut self) -> Result<(), AnyError> {
+    self.maybe_config_file = None;
+    self.maybe_config_uri = None;
+    self.maybe_fmt_config = None;
+    self.maybe_lint_config = None;
+
+    let maybe_file_and_url = self.get_config_file_and_url()?;
+
+    if let Some((config_file, config_url)) = maybe_file_and_url {
+      let lint_config = config_file
+        .to_lint_config()
+        .map_err(|err| {
+          anyhow!("Unable to update lint configuration: {:?}", err)
+        })?
+        .unwrap_or_default();
+      let fmt_config = config_file
+        .to_fmt_config()
+        .map_err(|err| {
+          anyhow!("Unable to update formatter configuration: {:?}", err)
+        })?
+        .unwrap_or_default();
+
+      self.maybe_config_file = Some(config_file);
+      self.maybe_config_uri = Some(config_url);
+      self.maybe_lint_config = Some(lint_config);
+      self.maybe_fmt_config = Some(fmt_config);
+    }
+
+    Ok(())
+  }
+
   async fn update_tsconfig(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_tsconfig", None::<()>);
     let mut tsconfig = TsConfig::new(json!({
@@ -689,6 +723,9 @@ impl Inner {
     self.update_debug_flag();
     // Check to see if we need to change the cache path
     if let Err(err) = self.update_cache() {
+      self.client.show_message(MessageType::Warning, err).await;
+    }
+    if let Err(err) = self.update_config_file() {
       self.client.show_message(MessageType::Warning, err).await;
     }
     if let Err(err) = self.update_tsconfig().await {
@@ -915,6 +952,9 @@ impl Inner {
     if let Err(err) = self.update_registries().await {
       self.client.show_message(MessageType::Warning, err).await;
     }
+    if let Err(err) = self.update_config_file() {
+      self.client.show_message(MessageType::Warning, err).await;
+    }
     if let Err(err) = self.update_tsconfig().await {
       self.client.show_message(MessageType::Warning, err).await;
     }
@@ -945,6 +985,9 @@ impl Inner {
     // if the current tsconfig has changed, we need to reload it
     if let Some(config_uri) = &self.maybe_config_uri {
       if params.changes.iter().any(|fe| *config_uri == fe.uri) {
+        if let Err(err) = self.update_config_file() {
+          self.client.show_message(MessageType::Warning, err).await;
+        }
         if let Err(err) = self.update_tsconfig().await {
           self.client.show_message(MessageType::Warning, err).await;
         }
@@ -1028,19 +1071,8 @@ impl Inner {
         PathBuf::from(params.text_document.uri.path())
       };
 
-    let maybe_file_and_url = self.get_config_file_and_url().map_err(|err| {
-      error!("Unable to parse configuration file: {}", err);
-      LspError::internal_error()
-    })?;
-
-    let fmt_options = if let Some((config_file, _)) = maybe_file_and_url {
-      config_file
-        .to_fmt_config()
-        .map_err(|err| {
-          error!("Unable to parse fmt configuration: {}", err);
-          LspError::internal_error()
-        })?
-        .unwrap_or_default()
+    let fmt_options = if let Some(fmt_config) = self.maybe_fmt_config.as_ref() {
+      fmt_config.options.clone()
     } else {
       Default::default()
     };
@@ -1049,16 +1081,12 @@ impl Inner {
     let text_edits = tokio::task::spawn_blocking(move || {
       let format_result = match source.module() {
         Some(Ok(parsed_module)) => {
-          Ok(format_parsed_module(parsed_module, fmt_options.options))
+          Ok(format_parsed_module(parsed_module, fmt_options))
         }
         Some(Err(err)) => Err(err.to_string()),
         None => {
           // it's not a js/ts file, so attempt to format its contents
-          format_file(
-            &file_path,
-            source.text_info().text_str(),
-            fmt_options.options,
-          )
+          format_file(&file_path, source.text_info().text_str(), fmt_options)
         }
       };
 
