@@ -20,7 +20,6 @@ pub fn init() -> Extension {
       ("op_set_env", op_sync(op_set_env)),
       ("op_get_env", op_sync(op_get_env)),
       ("op_delete_env", op_sync(op_delete_env)),
-      ("op_languages", op_sync(op_languages)),
       ("op_hostname", op_sync(op_hostname)),
       ("op_loadavg", op_sync(op_loadavg)),
       ("op_os_release", op_sync(op_os_release)),

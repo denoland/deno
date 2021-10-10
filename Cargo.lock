@@ -616,6 +616,7 @@ dependencies = [
  "jsonc-parser",
  "lazy_static",
  "libc",
+ "locale_config",
  "log",
  "lspower",
  "nix",

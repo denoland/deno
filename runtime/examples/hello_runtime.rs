@@ -8,6 +8,7 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use locale_config::Locale;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -30,6 +31,10 @@ async fn main() -> Result<(), AnyError> {
       cpu_count: 1,
       debug_flag: false,
       enable_testing_features: false,
+      locale: Locale::user_default()
+        .tags()
+        .map(|(_, l)| l.to_string())
+        .collect(),
       location: None,
       no_color: false,
       runtime_version: "x".to_string(),

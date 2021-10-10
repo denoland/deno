@@ -28,6 +28,7 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use deno_tls::create_default_root_cert_store;
+use locale_config::Locale;
 use log::Level;
 use std::convert::TryInto;
 use std::env::current_exe;
@@ -235,6 +236,10 @@ pub async fn run(
       cpu_count: num_cpus::get(),
       debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: false,
+      locale: Locale::user_default()
+        .tags()
+        .map(|(_, l)| l.to_string())
+        .collect(),
       location: metadata.location,
       no_color: !colors::use_color(),
       runtime_version: version::deno(),

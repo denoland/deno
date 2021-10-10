@@ -16,14 +16,6 @@
     return core.opSync("op_hostname");
   }
 
-  function language() {
-    return core.opSync("op_languages")[0];
-  }
-
-  function languages() {
-    return core.opSync("op_languages");
-  }
-
   function osRelease() {
     return core.opSync("op_os_release");
   }
@@ -89,8 +81,6 @@
     osRelease,
     systemMemoryInfo,
     hostname,
-    language,
-    languages,
     loadavg,
   };
 })(this);

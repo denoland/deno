@@ -83,6 +83,7 @@ use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use locale_config::Locale;
 use log::debug;
 use log::info;
 use std::env;
@@ -121,6 +122,10 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
           .log_level
           .map_or(false, |l| l == log::Level::Debug),
         enable_testing_features: ps.flags.enable_testing_features,
+        locale: Locale::user_default()
+          .tags()
+          .map(|(_, l)| l.to_string())
+          .collect(),
         location: Some(args.main_module.clone()),
         no_color: !colors::use_color(),
         runtime_version: version::deno(),
@@ -211,6 +216,10 @@ pub fn create_main_worker(
       cpu_count: num_cpus::get(),
       debug_flag: ps.flags.log_level.map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: ps.flags.enable_testing_features,
+      locale: Locale::user_default()
+        .tags()
+        .map(|(_, l)| l.to_string())
+        .collect(),
       location: ps.flags.location.clone(),
       no_color: !colors::use_color(),
       runtime_version: version::deno(),
