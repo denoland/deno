@@ -87,7 +87,7 @@ impl Lockfile {
 }
 
 #[derive(Debug)]
-pub(crate) struct Locker(pub Option<Arc<Mutex<Lockfile>>>);
+pub(crate) struct Locker(Option<Arc<Mutex<Lockfile>>>);
 
 impl deno_graph::source::Locker for Locker {
   fn check_or_insert(

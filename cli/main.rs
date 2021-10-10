@@ -664,8 +664,8 @@ async fn create_graph_and_maybe_check(
     }
     let maybe_config_specifier = ps
       .maybe_config_file
-      .clone()
-      .map(|ref cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
+      .as_ref()
+      .map(|cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
     let check_result = emit::check_and_maybe_emit(
       graph.clone(),
       &mut cache,

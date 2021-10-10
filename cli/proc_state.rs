@@ -388,8 +388,8 @@ impl ProcState {
 
         let maybe_config_specifier = self
           .maybe_config_file
-          .clone()
-          .map(|ref cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
+          .as_ref()
+          .map(|cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
         let options = emit::CheckOptions {
           debug: self.flags.log_level == Some(log::Level::Debug),
           emit_with_diagnostics: true,
