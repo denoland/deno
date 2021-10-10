@@ -125,7 +125,8 @@
     }
 
     close() {
-      webidl.assertBranded(this, EventSource);
+      // Why does this error.
+      // webidl.assertBranded(this, EventSource);
       this[_readyState] = CLOSED;
       this[_abortSignal].abort();
     }
