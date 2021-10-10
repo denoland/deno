@@ -160,7 +160,7 @@
             ignoreBOM: false,
             fatal: false,
           });
-          const reader = res.body.pipeThrough(decoder);
+          const reader = res.body.stream.pipeThrough(decoder);
 
           // Initiate buffers
           let lastEventIDBuffer = "";
