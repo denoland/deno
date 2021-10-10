@@ -1409,9 +1409,9 @@ fn op_symlink_sync(
         match old_meta {
           Ok(metadata) => {
             if metadata.is_file() {
-              symlink_file(&oldpath, &newpath)?
+              symlink_file(&oldpath, &newpath).map_err(err_mapper)?
             } else if metadata.is_dir() {
-              symlink_dir(&oldpath, &newpath)?
+              symlink_dir(&oldpath, &newpath).map_err(err_mapper)?
             }
           }
           Err(_) => return Err(type_error("you must pass a `options` argument for non-existent target path in windows".to_string())),
@@ -1469,9 +1469,9 @@ async fn op_symlink_async(
           match old_meta {
             Ok(metadata) => {
               if metadata.is_file() {
-                symlink_file(&oldpath, &newpath)?
+                symlink_file(&oldpath, &newpath).map_err(err_mapper)?
               } else if metadata.is_dir() {
-                symlink_dir(&oldpath, &newpath)?
+                symlink_dir(&oldpath, &newpath).map_err(err_mapper)?
               }
             }
             Err(_) => return Err(type_error("you must pass a `options` argument for non-existent target path in windows".to_string())),
@@ -1600,8 +1600,17 @@ fn op_truncate_sync(
   state.borrow_mut::<Permissions>().write.check(&path)?;
 
   debug!("op_truncate_sync {} {}", path.display(), len);
-  let f = std::fs::OpenOptions::new().write(true).open(&path)?;
-  f.set_len(len)?;
+  let err_mapper = |err: Error| {
+    Error::new(
+      err.kind(),
+      format!("{}, truncate '{}'", err, path.display()),
+    )
+  };
+  let f = std::fs::OpenOptions::new()
+    .write(true)
+    .open(&path)
+    .map_err(err_mapper)?;
+  f.set_len(len).map_err(err_mapper)?;
   Ok(())
 }
 
@@ -1618,8 +1627,17 @@ async fn op_truncate_async(
   }
   tokio::task::spawn_blocking(move || {
     debug!("op_truncate_async {} {}", path.display(), len);
-    let f = std::fs::OpenOptions::new().write(true).open(&path)?;
-    f.set_len(len)?;
+    let err_mapper = |err: Error| {
+      Error::new(
+        err.kind(),
+        format!("{}, truncate '{}'", err, path.display()),
+      )
+    };
+    let f = std::fs::OpenOptions::new()
+      .write(true)
+      .open(&path)
+      .map_err(err_mapper)?;
+    f.set_len(len).map_err(err_mapper)?;
     Ok(())
   })
   .await
@@ -1896,7 +1914,9 @@ fn op_utime_sync(
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
   state.borrow_mut::<Permissions>().write.check(&path)?;
-  filetime::set_file_times(path, atime, mtime)?;
+  filetime::set_file_times(&path, atime, mtime).map_err(|err| {
+    Error::new(err.kind(), format!("{}, utime '{}'", err, path.display()))
+  })?;
   Ok(())
 }
 
@@ -1918,7 +1938,9 @@ async fn op_utime_async(
     .check(&path)?;
 
   tokio::task::spawn_blocking(move || {
-    filetime::set_file_times(path, atime, mtime)?;
+    filetime::set_file_times(&path, atime, mtime).map_err(|err| {
+      Error::new(err.kind(), format!("{}, utime '{}'", err, path.display()))
+    })?;
     Ok(())
   })
   .await

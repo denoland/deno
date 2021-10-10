@@ -91,3 +91,31 @@ unitTest({ permissions: { write: false } }, async function truncatePerm() {
     await Deno.truncate("/test_truncatePermission.txt");
   }, Deno.errors.PermissionDenied);
 });
+
+unitTest(
+  { permissions: { read: true, write: true } },
+  function truncateSyncNotFound() {
+    const filename = "/badfile.txt";
+    assertThrows(
+      () => {
+        Deno.truncateSync(filename);
+      },
+      Deno.errors.NotFound,
+      `truncate '${filename}'`,
+    );
+  },
+);
+
+unitTest(
+  { permissions: { read: true, write: true } },
+  async function truncateSyncNotFound() {
+    const filename = "/badfile.txt";
+    await assertRejects(
+      async () => {
+        await Deno.truncate(filename);
+      },
+      Deno.errors.NotFound,
+      `truncate '${filename}'`,
+    );
+  },
+);
