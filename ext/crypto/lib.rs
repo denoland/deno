@@ -43,6 +43,7 @@ use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::ToRsaPrivateKey;
 use rsa::pkcs8::der::asn1;
+use rsa::pkcs8::FromPrivateKey;
 use rsa::BigUint;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
@@ -222,7 +223,8 @@ pub async fn op_crypto_generate_key(
     | Algorithm::AesGcm
     | Algorithm::AesKw => {
       let length = args.length.ok_or_else(not_supported)?;
-      let mut key_data = vec![0u8; length];
+      // Caller must guarantee divisibility by 8
+      let mut key_data = vec![0u8; length / 8];
       let rng = RingRand::SystemRandom::new();
       rng.fill(&mut key_data).map_err(|_| {
         custom_error("DOMExceptionOperationError", "Key generation failed")
@@ -271,6 +273,7 @@ pub async fn op_crypto_generate_key(
 pub enum KeyFormat {
   Raw,
   Pkcs8,
+  Spki,
 }
 
 #[derive(Deserialize)]
@@ -631,7 +634,27 @@ pub async fn op_crypto_export_key(
 
           Ok(pk_info.to_der().as_ref().to_vec().into())
         }
-        // TODO(@littledivy): spki
+        KeyFormat::Spki => {
+          // public_key is a PKCS#1 DER-encoded public key
+
+          let subject_public_key = &args.key.data;
+
+          // the SPKI structure
+          let key_info = spki::SubjectPublicKeyInfo {
+            algorithm: spki::AlgorithmIdentifier {
+              // rsaEncryption(1)
+              oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL.
+              parameters: Some(asn1::Any::from(asn1::Null)),
+            },
+            subject_public_key,
+          };
+
+          // Infallible based on spec because of the way we import and generate keys.
+          let spki_der = key_info.to_vec().unwrap();
+          Ok(spki_der.into())
+        }
         // TODO(@littledivy): jwk
         _ => unreachable!(),
       }
@@ -668,7 +691,31 @@ pub async fn op_crypto_export_key(
 
           Ok(pk_info.to_der().as_ref().to_vec().into())
         }
-        // TODO(@littledivy): spki
+        KeyFormat::Spki => {
+          // Intentionally unused but required. Not encoded into SPKI (see below).
+          let _hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // public_key is a PKCS#1 DER-encoded public key
+          let subject_public_key = &args.key.data;
+
+          // the SPKI structure
+          let key_info = spki::SubjectPublicKeyInfo {
+            algorithm: spki::AlgorithmIdentifier {
+              // rsaEncryption(1)
+              oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL.
+              parameters: Some(asn1::Any::from(asn1::Null)),
+            },
+            subject_public_key,
+          };
+
+          // Infallible based on spec because of the way we import and generate keys.
+          let spki_der = key_info.to_vec().unwrap();
+          Ok(spki_der.into())
+        }
         // TODO(@littledivy): jwk
         _ => unreachable!(),
       }
@@ -705,7 +752,31 @@ pub async fn op_crypto_export_key(
 
           Ok(pk_info.to_der().as_ref().to_vec().into())
         }
-        // TODO(@littledivy): spki
+        KeyFormat::Spki => {
+          // Intentionally unused but required. Not encoded into SPKI (see below).
+          let _hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // public_key is a PKCS#1 DER-encoded public key
+          let subject_public_key = &args.key.data;
+
+          // the SPKI structure
+          let key_info = spki::SubjectPublicKeyInfo {
+            algorithm: spki::AlgorithmIdentifier {
+              // rsaEncryption(1)
+              oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL.
+              parameters: Some(asn1::Any::from(asn1::Null)),
+            },
+            subject_public_key,
+          };
+
+          // Infallible based on spec because of the way we import and generate keys.
+          let spki_der = key_info.to_vec().unwrap();
+          Ok(spki_der.into())
+        }
         // TODO(@littledivy): jwk
         _ => unreachable!(),
       }
@@ -722,18 +793,23 @@ pub struct DeriveKeyArg {
   hash: Option<CryptoHash>,
   length: usize,
   iterations: Option<u32>,
+  // ECDH
+  public_key: Option<KeyData>,
+  named_curve: Option<CryptoNamedCurve>,
+  // HKDF
   info: Option<ZeroCopyBuf>,
 }
 
 pub async fn op_crypto_derive_bits(
   _state: Rc<RefCell<OpState>>,
   args: DeriveKeyArg,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let salt = &*zero_copy;
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::Pbkdf2 => {
+      let zero_copy = zero_copy.ok_or_else(not_supported)?;
+      let salt = &*zero_copy;
       // The caller must validate these cases.
       assert!(args.length > 0);
       assert!(args.length % 8 == 0);
@@ -753,7 +829,36 @@ pub async fn op_crypto_derive_bits(
       pbkdf2::derive(algorithm, iterations, salt, &secret, &mut out);
       Ok(out.into())
     }
+    Algorithm::Ecdh => {
+      let named_curve = args
+        .named_curve
+        .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?;
+
+      let public_key = args
+        .public_key
+        .ok_or_else(|| type_error("Missing argument publicKey".to_string()))?;
+
+      match named_curve {
+        CryptoNamedCurve::P256 => {
+          let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)?;
+          let public_key =
+            p256::SecretKey::from_pkcs8_der(&public_key.data)?.public_key();
+
+          let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
+            secret_key.to_secret_scalar(),
+            public_key.as_affine(),
+          );
+
+          Ok(shared_secret.as_bytes().to_vec().into())
+        }
+        // TODO(@littledivy): support for P384
+        // https://github.com/RustCrypto/elliptic-curves/issues/240
+        _ => Err(type_error("Unsupported namedCurve".to_string())),
+      }
+    }
     Algorithm::Hkdf => {
+      let zero_copy = zero_copy.ok_or_else(not_supported)?;
+      let salt = &*zero_copy;
       let algorithm = match args.hash.ok_or_else(not_supported)? {
         CryptoHash::Sha1 => hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
         CryptoHash::Sha256 => hkdf::HKDF_SHA256,

@@ -858,6 +858,7 @@
           const typedValue = valueConverter(value, opts);
           result[typedKey] = typedValue;
         }
+        return result;
       }
       // Slow path if Proxy (e.g: in WPT tests)
       const keys = ReflectOwnKeys(V);
