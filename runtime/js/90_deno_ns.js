@@ -2,10 +2,11 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const __bootstrap = window.__bootstrap;
   __bootstrap.denoNs = {
+    metrics: core.metrics,
     test: __bootstrap.testing.test,
-    metrics: __bootstrap.metrics.metrics,
     Process: __bootstrap.process.Process,
     run: __bootstrap.process.run,
     isatty: __bootstrap.tty.isatty,

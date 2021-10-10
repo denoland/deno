@@ -1792,7 +1792,7 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  export interface Metrics {
+  export interface OpMetrics {
     opsDispatched: number;
     opsDispatchedSync: number;
     opsDispatchedAsync: number;
@@ -1804,6 +1804,10 @@ declare namespace Deno {
     bytesSentControl: number;
     bytesSentData: number;
     bytesReceived: number;
+  }
+
+  export interface Metrics extends OpMetrics {
+    ops: Record<string, OpMetrics>;
   }
 
   /** Receive metrics from the privileged side of Deno. This is primarily used
