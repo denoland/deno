@@ -314,6 +314,7 @@ async fn generate_lint_diagnostics(
 ) -> Result<DiagnosticVec, AnyError> {
   let documents = snapshot.documents.clone();
   let workspace_settings = snapshot.config.settings.workspace.clone();
+  let maybe_lint_config = snapshot.maybe_lint_config.clone();
   tokio::task::spawn(async move {
     let mut diagnostics_vec = Vec::new();
     if workspace_settings.lint {
@@ -333,7 +334,10 @@ async fn generate_lint_diagnostics(
             .flatten();
           let diagnostics = match module {
             Some(Ok(module)) => {
-              if let Ok(references) = analysis::get_lint_references(module) {
+              if let Ok(references) = analysis::get_lint_references(
+                module,
+                maybe_lint_config.as_ref(),
+              ) {
                 references
                   .into_iter()
                   .map(|r| r.to_diagnostic())

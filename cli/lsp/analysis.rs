@@ -5,8 +5,10 @@ use super::tsc;
 
 use crate::ast;
 use crate::ast::Location;
+use crate::config_file::LintConfig;
 use crate::lsp::documents::DocumentData;
 use crate::tools::lint::create_linter;
+use crate::tools::lint::get_configured_rules;
 
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::common::comments::Comment;
@@ -28,7 +30,6 @@ use deno_core::serde_json::json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
-use deno_lint::rules;
 use import_map::ImportMap;
 use lspower::lsp;
 use lspower::lsp::Position;
@@ -196,9 +197,11 @@ fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
 
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
+  maybe_lint_config: Option<&LintConfig>,
 ) -> Result<Vec<Reference>, AnyError> {
   let syntax = deno_ast::get_syntax(parsed_source.media_type());
-  let lint_rules = rules::get_recommended_rules();
+  let lint_rules =
+    get_configured_rules(maybe_lint_config, vec![], vec![], vec![])?;
   let linter = create_linter(syntax, lint_rules);
   // TODO(dsherret): do not re-parse here again
   let (_, lint_diagnostics) = linter.lint(
@@ -1350,7 +1353,7 @@ mod tests {
       MediaType::TypeScript,
     )
     .unwrap();
-    let actual = get_lint_references(&parsed_module).unwrap();
+    let actual = get_lint_references(&parsed_module, None).unwrap();
 
     assert_eq!(
       actual,

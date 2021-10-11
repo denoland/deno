@@ -3560,3 +3560,39 @@ console.log(snake_case);
   );
   shutdown(&mut client);
 }
+
+#[test]
+fn lsp_lint_with_config() {
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let deno_lint_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.lint.jsonc")).unwrap();
+  fs::write(temp_dir.path().join("deno.lint.jsonc"), deno_lint_jsonc).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./deno.lint.jsonc"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  let diagnostics = did_open(&mut client, load_fixture("did_open_lint.json"));
+  let diagnostics = diagnostics
+    .into_iter()
+    .flat_map(|x| x.diagnostics)
+    .collect::<Vec<_>>();
+  assert_eq!(diagnostics.len(), 3);
+  for diagnostic in diagnostics {
+    assert_eq!(
+      diagnostic.code,
+      Some(lsp::NumberOrString::String("ban-untagged-todo".to_string()))
+    );
+  }
+  shutdown(&mut client);
+}
