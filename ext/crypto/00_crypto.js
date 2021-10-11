@@ -109,6 +109,10 @@
       "HMAC": "HmacImportParams",
       "HKDF": null,
       "PBKDF2": null,
+      "AES-CTR": null,
+      "AES-CBC": null,
+      "AES-GCM": null,
+      "AES-KW": null,
     },
     "deriveBits": {
       "HKDF": "HkdfParams",
