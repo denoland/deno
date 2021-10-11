@@ -123,6 +123,8 @@ declare namespace Deno {
   export interface ForeignFunction {
     parameters: (NativeType | "buffer")[];
     result: NativeType;
+    /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
+    nonblocking?: boolean;
   }
 
   /** A dynamic library resource */
