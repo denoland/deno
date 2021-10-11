@@ -1792,7 +1792,7 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  export interface Metrics {
+  export interface OpMetrics {
     opsDispatched: number;
     opsDispatchedSync: number;
     opsDispatchedAsync: number;
@@ -1804,6 +1804,10 @@ declare namespace Deno {
     bytesSentControl: number;
     bytesSentData: number;
     bytesReceived: number;
+  }
+
+  export interface Metrics extends OpMetrics {
+    ops: Record<string, OpMetrics>;
   }
 
   /** Receive metrics from the privileged side of Deno. This is primarily used
@@ -1956,13 +1960,45 @@ declare namespace Deno {
     stderrOutput(): Promise<Uint8Array>;
     close(): void;
 
-    /** **UNSTABLE**
-     *
-     * Send a signal to process. This functionality currently only works on
-     * Linux and Mac OS.
+    /** Send a signal to process.
      */
-    kill(signo: string): void; // TODO(ry): Use Signal type here once made stable.
+    kill(signo: Signal): void;
   }
+
+  export type Signal =
+    | "SIGABRT"
+    | "SIGALRM"
+    | "SIGBUS"
+    | "SIGCHLD"
+    | "SIGCONT"
+    | "SIGEMT"
+    | "SIGFPE"
+    | "SIGHUP"
+    | "SIGILL"
+    | "SIGINFO"
+    | "SIGINT"
+    | "SIGIO"
+    | "SIGKILL"
+    | "SIGPIPE"
+    | "SIGPROF"
+    | "SIGPWR"
+    | "SIGQUIT"
+    | "SIGSEGV"
+    | "SIGSTKFLT"
+    | "SIGSTOP"
+    | "SIGSYS"
+    | "SIGTERM"
+    | "SIGTRAP"
+    | "SIGTSTP"
+    | "SIGTTIN"
+    | "SIGTTOU"
+    | "SIGURG"
+    | "SIGUSR1"
+    | "SIGUSR2"
+    | "SIGVTALRM"
+    | "SIGWINCH"
+    | "SIGXCPU"
+    | "SIGXFSZ";
 
   export type ProcessStatus =
     | {
@@ -2480,6 +2516,20 @@ declare namespace Deno {
     request: Request,
     options?: UpgradeWebSocketOptions,
   ): WebSocketUpgrade;
+
+  /** Send a signal to process under given `pid`.
+   *
+   * If `pid` is negative, the signal will be sent to the process group
+   * identified by `pid`.
+   *
+   *      const p = Deno.run({
+   *        cmd: ["sleep", "10000"]
+   *      });
+   *
+   *      Deno.kill(p.pid, "SIGINT");
+   *
+   * Requires `allow-run` permission. */
+  export function kill(pid: number, signo: Signal): void;
 
   /** The type of the resource record.
    * Only the listed types are supported currently. */

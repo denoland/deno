@@ -15,6 +15,19 @@ pub extern "C" fn print_buffer(ptr: *const u8, len: usize) {
   println!("{:?}", buf);
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn print_buffer2(
+  ptr1: *const u8,
+  len1: usize,
+  ptr2: *const u8,
+  len2: usize,
+) {
+  let buf1 = unsafe { std::slice::from_raw_parts(ptr1, len1) };
+  let buf2 = unsafe { std::slice::from_raw_parts(ptr2, len2) };
+  println!("{:?} {:?}", buf1, buf2);
+}
+
 #[no_mangle]
 pub extern "C" fn add_u32(a: u32, b: u32) -> u32 {
   a + b
