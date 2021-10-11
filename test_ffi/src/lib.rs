@@ -1,6 +1,31 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+use std::thread::sleep;
+use std::time::Duration;
+
 #[no_mangle]
 pub extern "C" fn print_something() {
   println!("something");
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn print_buffer(ptr: *const u8, len: usize) {
+  let buf = unsafe { std::slice::from_raw_parts(ptr, len) };
+  println!("{:?}", buf);
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn print_buffer2(
+  ptr1: *const u8,
+  len1: usize,
+  ptr2: *const u8,
+  len2: usize,
+) {
+  let buf1 = unsafe { std::slice::from_raw_parts(ptr1, len1) };
+  let buf2 = unsafe { std::slice::from_raw_parts(ptr2, len2) };
+  println!("{:?} {:?}", buf1, buf2);
 }
 
 #[no_mangle]
@@ -41,4 +66,17 @@ pub extern "C" fn add_f32(a: f32, b: f32) -> f32 {
 #[no_mangle]
 pub extern "C" fn add_f64(a: f64, b: f64) -> f64 {
   a + b
+}
+
+#[no_mangle]
+pub extern "C" fn sleep_blocking(ms: u64) {
+  let duration = Duration::from_millis(ms);
+  sleep(duration);
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) {
+  let buf = unsafe { std::slice::from_raw_parts(ptr, len) };
+  assert_eq!(buf, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }

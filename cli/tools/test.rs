@@ -1,8 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast::Location;
+use crate::cache;
+use crate::cache::CacherLoader;
 use crate::colors;
 use crate::create_main_worker;
+use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
@@ -11,15 +14,13 @@ use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
 use crate::located_script_name;
-use crate::module_graph;
-use crate::module_graph::GraphBuilder;
-use crate::module_graph::Module;
-use crate::module_graph::TypeLib;
+use crate::lockfile;
 use crate::ops;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
+use crate::resolver::ImportMapResolver;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
-use crate::FetchHandler;
+
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
@@ -28,7 +29,6 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
@@ -247,7 +247,7 @@ fn create_reporter(
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
 async fn test_specifier(
-  program_state: Arc<ProgramState>,
+  ps: ProcState,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
@@ -264,15 +264,11 @@ async fn test_specifier(
       .put::<Sender<TestEvent>>(channel.clone());
   };
 
-  let mut worker = create_main_worker(
-    &program_state,
-    specifier.clone(),
-    permissions,
-    Some(&init_ops),
-  );
+  let mut worker =
+    create_main_worker(&ps, specifier.clone(), permissions, Some(&init_ops));
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
-    program_state.coverage_dir
+    ps.coverage_dir
   {
     let session = worker.create_inspector_session().await;
     let coverage_dir = PathBuf::from(coverage_dir);
@@ -468,13 +464,13 @@ fn extract_files_from_fenced_blocks(
 }
 
 async fn fetch_inline_files(
-  program_state: Arc<ProgramState>,
+  ps: ProcState,
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
   for specifier in specifiers {
     let mut fetch_permissions = Permissions::allow_all();
-    let file = program_state
+    let file = ps
       .file_fetcher
       .fetch(&specifier, &mut fetch_permissions)
       .await?;
@@ -501,13 +497,13 @@ async fn fetch_inline_files(
 
 /// Type check a collection of module and document specifiers.
 async fn check_specifiers(
-  program_state: Arc<ProgramState>,
+  ps: ProcState,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
-  lib: TypeLib,
+  lib: emit::TypeLib,
 ) -> Result<(), AnyError> {
   let inline_files = fetch_inline_files(
-    program_state.clone(),
+    ps.clone(),
     specifiers
       .iter()
       .filter_map(|(specifier, mode)| {
@@ -528,18 +524,17 @@ async fn check_specifiers(
       .collect();
 
     for file in inline_files {
-      program_state.file_fetcher.insert_cached(file);
+      ps.file_fetcher.insert_cached(file);
     }
 
-    program_state
-      .prepare_module_graph(
-        specifiers,
-        lib.clone(),
-        Permissions::allow_all(),
-        permissions.clone(),
-        program_state.maybe_import_map.clone(),
-      )
-      .await?;
+    ps.prepare_module_load(
+      specifiers,
+      false,
+      lib.clone(),
+      Permissions::allow_all(),
+      permissions.clone(),
+    )
+    .await?;
   }
 
   let module_specifiers = specifiers
@@ -553,22 +548,21 @@ async fn check_specifiers(
     })
     .collect();
 
-  program_state
-    .prepare_module_graph(
-      module_specifiers,
-      lib,
-      Permissions::allow_all(),
-      permissions,
-      program_state.maybe_import_map.clone(),
-    )
-    .await?;
+  ps.prepare_module_load(
+    module_specifiers,
+    false,
+    lib,
+    Permissions::allow_all(),
+    permissions,
+  )
+  .await?;
 
   Ok(())
 }
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
-  program_state: Arc<ProgramState>,
+  ps: ProcState,
   permissions: Permissions,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
   fail_fast: Option<NonZeroUsize>,
@@ -576,7 +570,7 @@ async fn test_specifiers(
   shuffle: Option<u64>,
   concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
-  let log_level = program_state.flags.log_level;
+  let log_level = ps.flags.log_level;
   let specifiers_with_mode = if let Some(seed) = shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers_with_mode = specifiers_with_mode.clone();
@@ -591,7 +585,7 @@ async fn test_specifiers(
 
   let join_handles =
     specifiers_with_mode.iter().map(move |(specifier, mode)| {
-      let program_state = program_state.clone();
+      let ps = ps.clone();
       let permissions = permissions.clone();
       let specifier = specifier.clone();
       let mode = mode.clone();
@@ -601,7 +595,7 @@ async fn test_specifiers(
       tokio::task::spawn_blocking(move || {
         let join_handle = std::thread::spawn(move || {
           let future = test_specifier(
-            program_state,
+            ps,
             permissions,
             specifier,
             mode,
@@ -749,13 +743,16 @@ fn collect_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
-/// Collects module and document specifiers with test modes via `collect_specifiers_with_test_mode`
-/// which are then pre-fetched and adjusted based on the media type.
+/// Collects module and document specifiers with test modes via
+/// `collect_specifiers_with_test_mode` which are then pre-fetched and adjusted
+/// based on the media type.
 ///
-/// Specifiers that do not have a known media type that can be executed as a module are marked as
-/// `TestMode::Documentation`.
+/// Specifiers that do not have a known media type that can be executed as a
+/// module are marked as `TestMode::Documentation`. Type definition files
+/// cannot be run, and therefore need to be marked as `TestMode::Documentation`
+/// as well.
 async fn fetch_specifiers_with_test_mode(
-  program_state: Arc<ProgramState>,
+  ps: ProcState,
   include: Vec<String>,
   ignore: Vec<PathBuf>,
   include_inline: bool,
@@ -763,12 +760,14 @@ async fn fetch_specifiers_with_test_mode(
   let mut specifiers_with_mode =
     collect_specifiers_with_test_mode(include, ignore, include_inline)?;
   for (specifier, mode) in &mut specifiers_with_mode {
-    let file = program_state
+    let file = ps
       .file_fetcher
       .fetch(specifier, &mut Permissions::allow_all())
       .await?;
 
-    if file.media_type == MediaType::Unknown {
+    if file.media_type == MediaType::Unknown
+      || file.media_type == MediaType::Dts
+    {
       *mode = TestMode::Documentation
     }
   }
@@ -789,10 +788,10 @@ pub async fn run_tests(
   shuffle: Option<u64>,
   concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags.clone()).await?;
+  let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
-    program_state.clone(),
+    ps.clone(),
     include.unwrap_or_else(|| vec![".".to_string()]),
     ignore.clone(),
     doc,
@@ -804,13 +803,13 @@ pub async fn run_tests(
   }
 
   let lib = if flags.unstable {
-    TypeLib::UnstableDenoWindow
+    emit::TypeLib::UnstableDenoWindow
   } else {
-    TypeLib::DenoWindow
+    emit::TypeLib::DenoWindow
   };
 
   check_specifiers(
-    program_state.clone(),
+    ps.clone(),
     permissions.clone(),
     specifiers_with_mode.clone(),
     lib,
@@ -822,7 +821,7 @@ pub async fn run_tests(
   }
 
   test_specifiers(
-    program_state,
+    ps,
     permissions,
     specifiers_with_mode,
     fail_fast,
@@ -847,30 +846,37 @@ pub async fn run_tests_with_watch(
   shuffle: Option<u64>,
   concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags.clone()).await?;
+  let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
 
   let lib = if flags.unstable {
-    TypeLib::UnstableDenoWindow
+    emit::TypeLib::UnstableDenoWindow
   } else {
-    TypeLib::DenoWindow
+    emit::TypeLib::DenoWindow
   };
-
-  let handler = Arc::new(Mutex::new(FetchHandler::new(
-    &program_state,
-    Permissions::allow_all(),
-    Permissions::allow_all(),
-  )?));
 
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
+    let mut cache = cache::FetchCacher::new(
+      ps.dir.gen_cache.clone(),
+      ps.file_fetcher.clone(),
+      Permissions::allow_all(),
+      Permissions::allow_all(),
+    );
+
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
-    let handler = handler.clone();
-    let program_state = program_state.clone();
+    let maybe_resolver =
+      ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
+    let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
+    let maybe_imports = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| cf.to_maybe_imports())
+      .flatten();
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
@@ -892,63 +898,51 @@ pub async fn run_tests_with_watch(
           .collect()
       };
 
-      let mut builder = GraphBuilder::new(
-        handler,
-        program_state.maybe_import_map.clone(),
-        program_state.lockfile.clone(),
-      );
-      for specifier in test_modules.iter() {
-        builder.add(specifier, false).await?;
-      }
-      builder
-        .analyze_config_file(&program_state.maybe_config_file)
-        .await?;
-      let graph = builder.get_graph();
+      let graph = deno_graph::create_graph(
+        test_modules.clone(),
+        false,
+        maybe_imports,
+        cache.as_mut_loader(),
+        maybe_resolver.as_ref().map(|r| r.as_resolver()),
+        maybe_locker,
+        None,
+      )
+      .await;
+      graph.valid()?;
 
+      // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
         fn get_dependencies<'a>(
-          graph: &'a module_graph::Graph,
-          module: &'a Module,
+          graph: &'a deno_graph::ModuleGraph,
+          maybe_module: Option<&'a deno_graph::Module>,
           // This needs to be accessible to skip getting dependencies if they're already there,
           // otherwise this will cause a stack overflow with circular dependencies
           output: &mut HashSet<&'a ModuleSpecifier>,
-        ) -> Result<(), AnyError> {
-          for dep in module.dependencies.values() {
-            if let Some(specifier) = &dep.maybe_code {
-              if !output.contains(specifier) {
-                output.insert(specifier);
+        ) {
+          if let Some(module) = maybe_module {
+            for dep in module.dependencies.values() {
+              if let Some(specifier) = &dep.get_code() {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
 
-                get_dependencies(
-                  graph,
-                  graph.get_specifier(specifier)?,
-                  output,
-                )?;
+                  get_dependencies(graph, graph.get(specifier), output);
+                }
               }
-            }
-            if let Some(specifier) = &dep.maybe_type {
-              if !output.contains(specifier) {
-                output.insert(specifier);
+              if let Some(specifier) = &dep.get_type() {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
 
-                get_dependencies(
-                  graph,
-                  graph.get_specifier(specifier)?,
-                  output,
-                )?;
+                  get_dependencies(graph, graph.get(specifier), output);
+                }
               }
             }
           }
-
-          Ok(())
         }
 
         // This test module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
-        get_dependencies(
-          &graph,
-          graph.get_specifier(&specifier)?,
-          &mut modules,
-        )?;
+        get_dependencies(&graph, graph.get(&specifier), &mut modules);
 
         paths_to_watch.extend(
           modules
@@ -998,11 +992,11 @@ pub async fn run_tests_with_watch(
     let ignore = ignore.clone();
     let lib = lib.clone();
     let permissions = permissions.clone();
-    let program_state = program_state.clone();
+    let ps = ps.clone();
 
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
-        program_state.clone(),
+        ps.clone(),
         include.clone(),
         ignore.clone(),
         doc,
@@ -1014,7 +1008,7 @@ pub async fn run_tests_with_watch(
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
       check_specifiers(
-        program_state.clone(),
+        ps.clone(),
         permissions.clone(),
         specifiers_with_mode.clone(),
         lib,
@@ -1026,7 +1020,7 @@ pub async fn run_tests_with_watch(
       }
 
       test_specifiers(
-        program_state.clone(),
+        ps.clone(),
         permissions.clone(),
         specifiers_with_mode,
         fail_fast,

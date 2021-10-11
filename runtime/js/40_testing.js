@@ -6,7 +6,7 @@
   const { parsePermissions } = window.__bootstrap.worker;
   const { setExitHandler } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
-  const { metrics } = window.__bootstrap.metrics;
+  const { metrics } = core;
   const { assert } = window.__bootstrap.util;
   const {
     ArrayPrototypeFilter,
@@ -215,6 +215,23 @@ finishing test case.`;
     ArrayPrototypePush(tests, testDef);
   }
 
+  function formatFailure(error) {
+    if (error.errors) {
+      const message = error
+        .errors
+        .map((error) =>
+          inspectArgs([error]).replace(/^(?!\s*$)/gm, " ".repeat(4))
+        )
+        .join("\n");
+
+      return {
+        failed: error.name + "\n" + message + error.stack,
+      };
+    }
+
+    return { failed: inspectArgs([error]) };
+  }
+
   function createTestFilter(filter) {
     return (def) => {
       if (filter) {
@@ -242,10 +259,11 @@ finishing test case.`;
 
     try {
       await fn();
-      return "ok";
     } catch (error) {
-      return { "failed": inspectArgs([error]) };
+      return formatFailure(error);
     }
+
+    return "ok";
   }
 
   function getTestOrigin() {

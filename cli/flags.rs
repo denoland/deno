@@ -111,6 +111,12 @@ pub struct InstallFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct UninstallFlags {
+  pub name: String,
+  pub root: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct LintFlags {
   pub files: Vec<PathBuf>,
   pub ignore: Vec<PathBuf>,
@@ -166,6 +172,7 @@ pub enum DenoSubcommand {
   Fmt(FmtFlags),
   Info(InfoFlags),
   Install(InstallFlags),
+  Uninstall(UninstallFlags),
   Lsp,
   Lint(LintFlags),
   Repl(ReplFlags),
@@ -215,6 +222,9 @@ pub struct Flags {
   pub log_level: Option<Level>,
   pub no_check: bool,
   pub no_remote: bool,
+  /// If true, a list of Node built-in modules will be injected into
+  /// the import map.
+  pub compat: bool,
   pub prompt: bool,
   pub reload: bool,
   pub repl: bool,
@@ -428,6 +438,8 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     bundle_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("install") {
     install_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("uninstall") {
+    uninstall_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("completions") {
     completions_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("test") {
@@ -499,6 +511,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
+    .subcommand(uninstall_subcommand())
     .subcommand(lsp_subcommand())
     .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
@@ -995,6 +1008,36 @@ The installation root is determined, in order of precedence:
 These must be added to the path manually if required.")
 }
 
+fn uninstall_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("uninstall")
+    .setting(AppSettings::TrailingVarArg)
+    .arg(
+      Arg::with_name("name")
+        .required(true)
+        .multiple(false)
+        .allow_hyphen_values(true))
+    .arg(
+      Arg::with_name("root")
+        .long("root")
+        .help("Installation root")
+        .takes_value(true)
+        .multiple(false))
+    .about("Uninstall a script previously installed with deno install")
+    .long_about(
+      "Uninstalls an executable script in the installation root's bin directory.
+
+  deno uninstall serve
+
+To change the installation root, use --root:
+
+  deno uninstall --root /usr/local serve
+
+The installation root is determined, in order of precedence:
+  - --root option
+  - DENO_INSTALL_ROOT environment variable
+  - $HOME/.deno")
+}
+
 fn lsp_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("lsp")
     .about("Start the language server")
@@ -1097,6 +1140,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .multiple(true)
         .required(false),
     )
+    .arg(watch_arg())
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1450,6 +1494,7 @@ fn runtime_args<'a, 'b>(
     .arg(v8_flags_arg())
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
+    .arg(compat_arg())
 }
 
 fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
@@ -1577,6 +1622,13 @@ fn seed_arg<'a, 'b>() -> Arg<'a, 'b> {
       Ok(_) => Ok(()),
       Err(_) => Err("Seed should be a number".to_string()),
     })
+}
+
+fn compat_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("compat")
+    .long("compat")
+    .requires("unstable")
+    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs' and globals like 'process'.")
 }
 
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -1896,12 +1948,25 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   });
 }
 
+fn uninstall_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let root = if matches.is_present("root") {
+    let install_root = matches.value_of("root").unwrap();
+    Some(PathBuf::from(install_root))
+  } else {
+    None
+  };
+
+  let name = matches.value_of("name").unwrap().to_string();
+  flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
+}
+
 fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Lsp;
 }
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
+  flags.watch = matches.is_present("watch");
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -2176,6 +2241,7 @@ fn runtime_args_parse(
   location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
+  compat_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
 }
@@ -2258,6 +2324,12 @@ fn seed_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
     flags.seed = Some(seed);
 
     flags.v8_flags.push(format!("--random-seed={}", seed));
+  }
+}
+
+fn compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
+  if matches.is_present("compat") {
+    flags.compat = true;
   }
 }
 
@@ -4378,5 +4450,22 @@ mod tests {
       .unwrap_err()
       .to_string()
       .contains("Expected protocol \"http\" or \"https\""));
+  }
+
+  #[test]
+  fn compat() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--compat", "--unstable", "foo.js"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "foo.js".to_string(),
+        }),
+        compat: true,
+        unstable: true,
+        ..Flags::default()
+      }
+    );
   }
 }

@@ -260,14 +260,15 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: j-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: k-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
         # TODO(kt3k): Change the version to the released version
         # when https://github.com/actions/cache/pull/489 (or 571) is merged.
         uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
-        if: matrix.profile == 'release' && github.ref == 'refs/heads/main'
+        if: (matrix.profile == 'release' || matrix.profile == 'fastci') &&
+            github.ref == 'refs/heads/main' 
         with:
           path: |
             ./target
@@ -275,7 +276,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            j-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            k-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -291,7 +292,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            j-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            k-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)

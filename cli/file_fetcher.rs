@@ -213,7 +213,7 @@ pub fn map_content_type(
 }
 
 /// Remove shebangs from the start of source code strings
-pub fn strip_shebang(mut value: String) -> String {
+fn strip_shebang(mut value: String) -> String {
   if value.starts_with("#!") {
     if let Some(mid) = value.find('\n') {
       let (_, rest) = value.split_at(mid);
@@ -255,7 +255,7 @@ impl FileFetcher {
       http_client: create_http_client(
         get_user_agent(),
         root_cert_store,
-        None,
+        vec![],
         None,
         unsafely_ignore_certificate_errors,
         None,
@@ -371,7 +371,9 @@ impl FileFetcher {
         })?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
-    self.http_cache.set(specifier, headers, source.as_bytes())?;
+    self
+      .http_cache
+      .set(specifier, headers.clone(), source.as_bytes())?;
 
     Ok(File {
       local,
@@ -379,7 +381,7 @@ impl FileFetcher {
       media_type,
       source: Arc::new(source),
       specifier: specifier.clone(),
-      maybe_headers: None,
+      maybe_headers: Some(headers),
     })
   }
 
@@ -433,7 +435,9 @@ impl FileFetcher {
         })?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
-    self.http_cache.set(specifier, headers, source.as_bytes())?;
+    self
+      .http_cache
+      .set(specifier, headers.clone(), source.as_bytes())?;
 
     Ok(File {
       local,
@@ -441,7 +445,7 @@ impl FileFetcher {
       media_type,
       source: Arc::new(source),
       specifier: specifier.clone(),
-      maybe_headers: None,
+      maybe_headers: Some(headers),
     })
   }
   /// Asynchronously fetch remote source file specified by the URL following
@@ -570,6 +574,14 @@ impl FileFetcher {
         self.cache.insert(specifier.clone(), file.clone());
       }
       result
+    }
+  }
+
+  pub fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+    if specifier.scheme() == "file" {
+      specifier.to_file_path().ok()
+    } else {
+      self.http_cache.get_cache_filename(specifier)
     }
   }
 

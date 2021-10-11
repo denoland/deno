@@ -29,6 +29,7 @@ use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
 use super::analysis::ResolvedDependency;
+use super::cache::CacheServer;
 use super::capabilities;
 use super::code_lens;
 use super::completions;
@@ -44,7 +45,6 @@ use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
 use super::registries;
-use super::sources;
 use super::sources::Sources;
 use super::text;
 use super::text::LineIndex;
@@ -99,6 +99,8 @@ pub(crate) struct Inner {
   /// An optional path to the DENO_DIR which has been specified in the client
   /// options.
   maybe_cache_path: Option<PathBuf>,
+  /// A lazily created "server" for handling cache requests.
+  maybe_cache_server: Option<CacheServer>,
   /// An optional configuration file which has been specified in the client
   /// options.
   maybe_config_file: Option<ConfigFile>,
@@ -149,6 +151,7 @@ impl Inner {
       diagnostics_server,
       documents: Default::default(),
       maybe_cache_path: None,
+      maybe_cache_server: None,
       maybe_config_file: None,
       maybe_config_uri: None,
       maybe_import_map: None,
@@ -424,6 +427,7 @@ impl Inner {
   pub fn update_cache(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_cache", None::<()>);
     self.performance.measure(mark);
+    self.maybe_cache_server = None;
     let (maybe_cache, maybe_root_uri) = {
       let config = &self.config;
       (
@@ -479,6 +483,7 @@ impl Inner {
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_import_map", None::<()>);
+    self.maybe_cache_server = None;
     let (maybe_import_map, maybe_root_uri) = {
       let config = &self.config;
       (
@@ -2630,34 +2635,30 @@ impl Inner {
     }
 
     let mark = self.performance.mark("cache", Some(&params));
-    if !params.uris.is_empty() {
-      for identifier in &params.uris {
-        let specifier = self.url_map.normalize_url(&identifier.uri);
-        sources::cache(
-          &specifier,
-          &self.maybe_import_map,
-          &self.maybe_config_file,
-          &self.maybe_cache_path,
-        )
-        .await
-        .map_err(|err| {
-          error!("{}", err);
-          LspError::internal_error()
-        })?;
-      }
+    let roots = if !params.uris.is_empty() {
+      params
+        .uris
+        .iter()
+        .map(|t| self.url_map.normalize_url(&t.uri))
+        .collect()
     } else {
-      sources::cache(
-        &referrer,
-        &self.maybe_import_map,
-        &self.maybe_config_file,
-        &self.maybe_cache_path,
-      )
-      .await
-      .map_err(|err| {
-        error!("{}", err);
-        LspError::internal_error()
-      })?;
+      vec![referrer.clone()]
+    };
+
+    if self.maybe_cache_server.is_none() {
+      self.maybe_cache_server = Some(
+        CacheServer::new(
+          self.maybe_cache_path.clone(),
+          self.maybe_import_map.clone(),
+        )
+        .await,
+      );
     }
+    let cache_server = self.maybe_cache_server.as_ref().unwrap();
+    if let Err(err) = cache_server.cache(roots).await {
+      self.client.show_message(MessageType::Warning, err).await;
+    }
+
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics
     if self.documents.contains_key(&referrer) {
