@@ -1633,6 +1633,58 @@
               throw new DOMException("Not implemented", "NotSupportedError");
           }
         }
+        case "AES-CTR": {
+          switch (format) {
+            // 2.
+            case "raw": {
+              // 1.
+              const data = innerKey.data;
+              // 2.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "AES-CBC": {
+          switch (format) {
+            // 2.
+            case "raw": {
+              // 1.
+              const data = innerKey.data;
+              // 2.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "AES-GCM": {
+          switch (format) {
+            // 2.
+            case "raw": {
+              // 1.
+              const data = innerKey.data;
+              // 2.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "AES-KW": {
+          switch (format) {
+            // 2.
+            case "raw": {
+              // 1.
+              const data = innerKey.data;
+              // 2.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
         // TODO(@littledivy): ECDSA
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
