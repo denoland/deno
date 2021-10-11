@@ -123,6 +123,8 @@ declare namespace Deno {
   export interface ForeignFunction {
     parameters: (NativeType | "buffer")[];
     result: NativeType;
+    /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
+    nonblocking?: boolean;
   }
 
   /** A dynamic library resource */
@@ -562,41 +564,6 @@ declare namespace Deno {
    */
   export function applySourceMap(location: Location): Location;
 
-  export type Signal =
-    | "SIGABRT"
-    | "SIGALRM"
-    | "SIGBUS"
-    | "SIGCHLD"
-    | "SIGCONT"
-    | "SIGEMT"
-    | "SIGFPE"
-    | "SIGHUP"
-    | "SIGILL"
-    | "SIGINFO"
-    | "SIGINT"
-    | "SIGIO"
-    | "SIGKILL"
-    | "SIGPIPE"
-    | "SIGPROF"
-    | "SIGPWR"
-    | "SIGQUIT"
-    | "SIGSEGV"
-    | "SIGSTKFLT"
-    | "SIGSTOP"
-    | "SIGSYS"
-    | "SIGTERM"
-    | "SIGTRAP"
-    | "SIGTSTP"
-    | "SIGTTIN"
-    | "SIGTTOU"
-    | "SIGURG"
-    | "SIGUSR1"
-    | "SIGUSR2"
-    | "SIGVTALRM"
-    | "SIGWINCH"
-    | "SIGXCPU"
-    | "SIGXFSZ";
-
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Represents the stream of signals, implements both `AsyncIterator` and
@@ -722,21 +689,6 @@ declare namespace Deno {
     },
   >(opt: T): Process<T>;
 
-  /** **UNSTABLE**: Send a signal to process under given `pid`. This
-   * functionality only works on Linux and Mac OS.
-   *
-   * If `pid` is negative, the signal will be sent to the process group
-   * identified by `pid`.
-   *
-   *      const p = Deno.run({
-   *        cmd: ["sleep", "10000"]
-   *      });
-   *
-   *      Deno.kill(p.pid, "SIGINT");
-   *
-   * Requires `allow-run` permission. */
-  export function kill(pid: number, signo: Signal): void;
-
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
    * necessary around the permissions required.
    *
@@ -853,24 +805,6 @@ declare namespace Deno {
    * ```
    */
   export function sleepSync(millis: number): void;
-
-  export interface Metrics extends OpMetrics {
-    ops: Record<string, OpMetrics>;
-  }
-
-  export interface OpMetrics {
-    opsDispatched: number;
-    opsDispatchedSync: number;
-    opsDispatchedAsync: number;
-    opsDispatchedAsyncUnref: number;
-    opsCompleted: number;
-    opsCompletedSync: number;
-    opsCompletedAsync: number;
-    opsCompletedAsyncUnref: number;
-    bytesSentControl: number;
-    bytesSentData: number;
-    bytesReceived: number;
-  }
 
   /** **UNSTABLE**: New option, yet to be vetted. */
   export interface TestDefinition {
@@ -1012,6 +946,43 @@ declare namespace Deno {
        */
       write?: "inherit" | boolean | Array<string | URL>;
     };
+  }
+
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestContext {
+    /** Run a sub step of the parent test with a given name. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored, the promise returns `false`.
+     */
+    step(t: TestStepDefinition): Promise<boolean>;
+
+    /** Run a sub step of the parent test with a given name. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored, the promise returns `false`.
+     */
+    step(
+      name: string,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): Promise<boolean>;
+  }
+
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestStepDefinition {
+    fn: (t: TestContext) => void | Promise<void>;
+    name: string;
+    ignore?: boolean;
+    /** Check that the number of async completed ops after the test is the same
+     * as number of dispatched ops. Defaults to true. */
+    sanitizeOps?: boolean;
+    /** Ensure the test case does not "leak" resources - ie. the resource table
+     * after the test has exactly the same contents as before the test. Defaults
+     * to true. */
+    sanitizeResources?: boolean;
+    /** Ensure the test case does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to true. */
+    sanitizeExit?: boolean;
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.

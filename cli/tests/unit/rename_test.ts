@@ -164,6 +164,13 @@ unitTest(
       Error,
       "Not a directory",
     );
+    assertThrows(
+      () => {
+        Deno.renameSync(olddir, file);
+      },
+      undefined,
+      `rename '${olddir}' -> '${file}'`,
+    );
 
     const fileLink = testDir + "/fileLink";
     const dirLink = testDir + "/dirLink";
@@ -241,6 +248,13 @@ unitTest(
       },
       Deno.errors.PermissionDenied,
       "Access is denied",
+    );
+    assertThrows(
+      () => {
+        Deno.renameSync(olddir, emptydir);
+      },
+      undefined,
+      `rename '${olddir}' -> '${emptydir}'`,
     );
 
     // should succeed on Windows

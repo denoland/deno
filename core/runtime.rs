@@ -44,7 +44,8 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResult)>>>;
+type PendingOpFuture =
+  Pin<Box<dyn Future<Output = (PromiseId, OpId, OpResult)>>>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -1477,7 +1478,9 @@ impl JsRuntime {
       match pending_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some((promise_id, resp))) => {
+        Poll::Ready(Some((promise_id, op_id, resp))) => {
+          let tracker = &mut state.op_state.borrow_mut().tracker;
+          tracker.track_async_completed(op_id);
           async_responses.push((promise_id, resp));
         }
       };
@@ -1488,7 +1491,9 @@ impl JsRuntime {
       match unref_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some((promise_id, resp))) => {
+        Poll::Ready(Some((promise_id, op_id, resp))) => {
+          let tracker = &mut state.op_state.borrow_mut().tracker;
+          tracker.track_unref_completed(op_id);
           async_responses.push((promise_id, resp));
         }
       };
@@ -1639,7 +1644,7 @@ pub mod tests {
     match test_state.mode {
       Mode::Async => {
         assert_eq!(control, 42);
-        let resp = (0, serialize_op_result(Ok(43), rc_op_state));
+        let resp = (0, 1, serialize_op_result(Ok(43), rc_op_state));
         Op::Async(Box::pin(futures::future::ready(resp)))
       }
       Mode::AsyncZeroCopy(has_buffer) => {
@@ -1649,7 +1654,7 @@ pub mod tests {
         }
 
         let resp = serialize_op_result(Ok(43), rc_op_state);
-        Op::Async(Box::pin(futures::future::ready((0, resp))))
+        Op::Async(Box::pin(futures::future::ready((0, 1, resp))))
       }
     }
   }

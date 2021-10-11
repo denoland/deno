@@ -513,6 +513,40 @@ unitTest(async function testHkdfDeriveBits() {
   assertEquals(result.byteLength, 128 / 8);
 });
 
+unitTest(async function testAesCbcEncryptDecrypt() {
+  const key = await crypto.subtle.generateKey(
+    { name: "AES-CBC", length: 128 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+
+  const iv = await crypto.getRandomValues(new Uint8Array(16));
+  const encrypted = await crypto.subtle.encrypt(
+    {
+      name: "AES-CBC",
+      iv,
+    },
+    key as CryptoKey,
+    new Uint8Array([1, 2, 3, 4, 5, 6]),
+  );
+
+  assert(encrypted instanceof ArrayBuffer);
+  assertEquals(encrypted.byteLength, 16);
+
+  const decrypted = await crypto.subtle.decrypt(
+    {
+      name: "AES-CBC",
+      iv,
+    },
+    key as CryptoKey,
+    encrypted,
+  );
+
+  assert(decrypted instanceof ArrayBuffer);
+  assertEquals(decrypted.byteLength, 6);
+  assertEquals(new Uint8Array(decrypted), new Uint8Array([1, 2, 3, 4, 5, 6]));
+});
+
 // TODO(@littledivy): Enable WPT when we have importKey support
 unitTest(async function testECDH() {
   const namedCurve = "P-256";

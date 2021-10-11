@@ -3,7 +3,12 @@
 use deno_core::url::Url;
 use std::collections::HashMap;
 
-static STD_NODE: &str = "https://deno.land/std/node/";
+// TODO(bartlomieju): this needs to be bumped manually for
+// each release, a better mechanism is preferable, but it's a quick and dirty
+// solution to avoid printing `X-Deno-Warning` headers when the compat layer is
+// downloaded
+static STD_URL: &str = "https://deno.land/std@0.110.0/";
+static GLOBAL_MODULE: &str = "global.ts";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -50,8 +55,15 @@ static SUPPORTED_MODULES: &[&str] = &[
   "zlib",
 ];
 
-pub fn get_node_globals_url() -> Url {
-  Url::parse(&format!("{}global.ts", STD_NODE)).unwrap()
+lazy_static::lazy_static! {
+  static ref GLOBAL_URL_STR: String = format!("{}node/{}", STD_URL, GLOBAL_MODULE);
+  pub(crate) static ref GLOBAL_URL: Url = Url::parse(&GLOBAL_URL_STR).unwrap();
+  static ref COMPAT_IMPORT_URL: Url = Url::parse("flags:compat").unwrap();
+}
+
+/// Provide imports into a module graph when the compat flag is true.
+pub(crate) fn get_node_imports() -> Vec<(Url, Vec<String>)> {
+  vec![(COMPAT_IMPORT_URL.clone(), vec![GLOBAL_URL_STR.clone()])]
 }
 
 /// Create a map that can be used to update import map.
@@ -63,7 +75,7 @@ pub fn get_mapped_node_builtins() -> HashMap<String, String> {
 
   for module in SUPPORTED_MODULES {
     // TODO(bartlomieju): this is unversioned, and should be fixed to use latest stable?
-    let module_url = format!("{}{}.ts", STD_NODE, module);
+    let module_url = format!("{}node/{}.ts", STD_URL, module);
     mappings.insert(module.to_string(), module_url.clone());
 
     // Support for `node:<module_name>`

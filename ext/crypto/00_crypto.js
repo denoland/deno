@@ -117,9 +117,11 @@
     },
     "encrypt": {
       "RSA-OAEP": "RsaOaepParams",
+      "AES-CBC": "AesCbcParams",
     },
     "decrypt": {
       "RSA-OAEP": "RsaOaepParams",
+      "AES-CBC": "AesCbcParams",
     },
     "wrapKey": {
       // TODO(@littledivy): Enable this once implemented.
@@ -440,6 +442,41 @@
           // 6.
           return cipherText.buffer;
         }
+        case "AES-CBC": {
+          if (ArrayBufferIsView(normalizedAlgorithm.iv)) {
+            normalizedAlgorithm.iv = new Uint8Array(
+              normalizedAlgorithm.iv.buffer,
+              normalizedAlgorithm.iv.byteOffset,
+              normalizedAlgorithm.iv.byteLength,
+            );
+          } else {
+            normalizedAlgorithm.iv = new Uint8Array(
+              normalizedAlgorithm.iv,
+            );
+          }
+          normalizedAlgorithm.iv = TypedArrayPrototypeSlice(
+            normalizedAlgorithm.iv,
+          );
+
+          // 1.
+          if (normalizedAlgorithm.iv.byteLength !== 16) {
+            throw new DOMException(
+              "Initialization vector must be 16 bytes",
+              "OperationError",
+            );
+          }
+
+          // 2.
+          const cipherText = await core.opAsync("op_crypto_encrypt_key", {
+            key: keyData,
+            algorithm: "AES-CBC",
+            length: key[_algorithm].length,
+            iv: normalizedAlgorithm.iv,
+          }, data);
+
+          // 4.
+          return cipherText.buffer;
+        }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
@@ -519,6 +556,40 @@
             algorithm: "RSA-OAEP",
             hash: hashAlgorithm,
             label: normalizedAlgorithm.label,
+          }, data);
+
+          // 6.
+          return plainText.buffer;
+        }
+        case "AES-CBC": {
+          if (ArrayBufferIsView(normalizedAlgorithm.iv)) {
+            normalizedAlgorithm.iv = new Uint8Array(
+              normalizedAlgorithm.iv.buffer,
+              normalizedAlgorithm.iv.byteOffset,
+              normalizedAlgorithm.iv.byteLength,
+            );
+          } else {
+            normalizedAlgorithm.iv = new Uint8Array(
+              normalizedAlgorithm.iv,
+            );
+          }
+          normalizedAlgorithm.iv = TypedArrayPrototypeSlice(
+            normalizedAlgorithm.iv,
+          );
+
+          // 1.
+          if (normalizedAlgorithm.iv.byteLength !== 16) {
+            throw new DOMException(
+              "Counter must be 16 bytes",
+              "OperationError",
+            );
+          }
+
+          const plainText = await core.opAsync("op_crypto_decrypt_key", {
+            key: keyData,
+            algorithm: "AES-CBC",
+            iv: normalizedAlgorithm.iv,
+            length: key[_algorithm].length,
           }, data);
 
           // 6.
@@ -904,6 +975,66 @@
 
           return key;
         }
+        // TODO(@littledivy): RSA-PSS
+        case "ECDSA": {
+          switch (format) {
+            case "raw": {
+              // 1.
+              if (
+                !ArrayPrototypeIncludes(
+                  supportedNamedCurves,
+                  normalizedAlgorithm.namedCurve,
+                )
+              ) {
+                throw new DOMException(
+                  "Invalid namedCurve",
+                  "DataError",
+                );
+              }
+
+              // 2.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["verify"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+
+              // 3.
+              const { data } = await core.opAsync("op_crypto_import_key", {
+                algorithm: "ECDSA",
+                namedCurve: normalizedAlgorithm.namedCurve,
+              }, keyData);
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                type: "raw",
+                data,
+              });
+
+              // 4-5.
+              const algorithm = {
+                name: "ECDSA",
+                namedCurve: normalizedAlgorithm.namedCurve,
+              };
+
+              // 6-8.
+              const key = constructKey(
+                "public",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
         case "RSASSA-PKCS1-v1_5": {
           switch (format) {
             case "pkcs8": {
@@ -1078,7 +1209,6 @@
               throw new DOMException("Not implemented", "NotSupportedError");
           }
         }
-        // TODO(@littledivy): ECDSA
         case "HKDF": {
           if (format !== "raw") {
             throw new DOMException("Format not supported", "NotSupportedError");

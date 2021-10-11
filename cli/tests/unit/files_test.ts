@@ -2,7 +2,13 @@
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
-import { assert, assertEquals, assertRejects, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+  unitTest,
+} from "./test_util.ts";
 import { copy } from "../../../test_util/std/io/util.ts";
 
 unitTest(function filesStdioFileDescriptors() {
@@ -358,6 +364,32 @@ unitTest(
     await assertRejects(async () => {
       await Deno.open(filename, { read: true });
     }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
+  { permissions: { write: true, read: true } },
+  async function openNotFound() {
+    await assertRejects(
+      async () => {
+        await Deno.open("bad_file_name");
+      },
+      Deno.errors.NotFound,
+      `open 'bad_file_name'`,
+    );
+  },
+);
+
+unitTest(
+  { permissions: { write: true, read: true } },
+  function openSyncNotFound() {
+    assertThrows(
+      () => {
+        Deno.openSync("bad_file_name");
+      },
+      Deno.errors.NotFound,
+      `open 'bad_file_name'`,
+    );
   },
 );
 

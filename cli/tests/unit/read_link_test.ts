@@ -44,9 +44,13 @@ unitTest({ permissions: { read: false } }, function readLinkSyncPerm() {
 });
 
 unitTest({ permissions: { read: true } }, function readLinkSyncNotFound() {
-  assertThrows(() => {
-    Deno.readLinkSync("bad_filename");
-  }, Deno.errors.NotFound);
+  assertThrows(
+    () => {
+      Deno.readLinkSync("bad_filename");
+    },
+    Deno.errors.NotFound,
+    `readlink 'bad_filename'`,
+  );
 });
 
 unitTest(
@@ -83,4 +87,14 @@ unitTest({ permissions: { read: false } }, async function readLinkPerm() {
   await assertRejects(async () => {
     await Deno.readLink("/symlink");
   }, Deno.errors.PermissionDenied);
+});
+
+unitTest({ permissions: { read: true } }, async function readLinkNotFound() {
+  await assertRejects(
+    async () => {
+      await Deno.readLink("bad_filename");
+    },
+    Deno.errors.NotFound,
+    `readlink 'bad_filename'`,
+  );
 });

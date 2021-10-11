@@ -3,6 +3,7 @@
 use crate::error::type_error;
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
+use crate::ops_metrics::OpsTracker;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
 use futures::Future;
@@ -18,7 +19,8 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 pub type PromiseId = u64;
-pub type OpAsyncFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResult)>>>;
+pub type OpAsyncFuture =
+  Pin<Box<dyn Future<Output = (PromiseId, OpId, OpResult)>>>;
 pub type OpFn = dyn Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static;
 pub type OpId = usize;
 
@@ -26,6 +28,7 @@ pub struct OpPayload<'a, 'b, 'c> {
   pub(crate) scope: &'a mut v8::HandleScope<'b>,
   pub(crate) a: v8::Local<'c, v8::Value>,
   pub(crate) b: v8::Local<'c, v8::Value>,
+  pub(crate) op_id: OpId,
   pub(crate) promise_id: PromiseId,
 }
 
@@ -96,6 +99,7 @@ pub struct OpState {
   pub resource_table: ResourceTable,
   pub op_table: OpTable,
   pub get_error_class_fn: GetErrorClassFn,
+  pub(crate) tracker: OpsTracker,
   gotham_state: GothamState,
 }
 
@@ -105,6 +109,9 @@ impl OpState {
       resource_table: Default::default(),
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
+      tracker: OpsTracker {
+        ops: Vec::with_capacity(256),
+      },
       gotham_state: Default::default(),
     }
   }
