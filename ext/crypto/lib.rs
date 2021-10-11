@@ -1562,7 +1562,7 @@ pub async fn op_crypto_decrypt_key(
         .ok_or_else(|| type_error("Missing argument iv".to_string()))?;
 
       // 2.
-      let mut plaintext = match length {
+      let plaintext = match length {
         128 => {
           // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
           type Aes128Cbc =
