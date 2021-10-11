@@ -3,6 +3,7 @@ import {
   assert,
   assertEquals,
   assertStringIncludes,
+  assertThrows,
   unitTest,
 } from "./test_util.ts";
 
@@ -54,6 +55,17 @@ unitTest(async function responseFormData() {
   const formData = await formDataPromise;
   assert(formData instanceof FormData);
   assertEquals([...formData], [...input]);
+});
+
+unitTest(function responseInvalidInit() {
+  assertThrows(() => new Response("", 0));
+  assertThrows(() => new Response("", { status: 0 }));
+  assertThrows(() => new Response("", { status: null }));
+});
+
+unitTest(function responseNullInit() {
+  const response = new Response("", null);
+  assertEquals(response.status, 200);
 });
 
 unitTest(function customInspectFunction() {
