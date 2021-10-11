@@ -58,12 +58,18 @@ unitTest(async function responseFormData() {
 });
 
 unitTest(function responseInvalidInit() {
+  // deno-lint-ignore ban-ts-comment
+  // @ts-expect-error
   assertThrows(() => new Response("", 0));
   assertThrows(() => new Response("", { status: 0 }));
+  // deno-lint-ignore ban-ts-comment
+  // @ts-expect-error
   assertThrows(() => new Response("", { status: null }));
 });
 
 unitTest(function responseNullInit() {
+  // deno-lint-ignore ban-ts-comment
+  // @ts-expect-error
   const response = new Response("", null);
   assertEquals(response.status, 200);
 });
