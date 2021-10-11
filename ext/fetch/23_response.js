@@ -412,7 +412,7 @@
     }],
   );
   webidl.converters["ResponseInit_fast"] = function (init, opts) {
-    if (init === undefined) {
+    if (init === undefined || init === undefined) {
       return { status: 200, statusText: "", headers: undefined };
     }
     // Fast path, if not a proxy
