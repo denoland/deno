@@ -1948,7 +1948,6 @@ fn navigator_languages_unix() {
     ]),
     false,
   );
-  println!("{}", res);
   assert_eq!(res, "[ \"en-US\", \"en\" ]\n")
 }
 
