@@ -29,6 +29,7 @@ use hyper::http;
 use hyper::server::conn::Http;
 use hyper::service::Service as HyperService;
 use hyper::Body;
+use hyper::Method;
 use hyper::Request;
 use hyper::Response;
 use serde::Deserialize;
@@ -243,13 +244,11 @@ fn prepare_next_request(
   let url = req_url(&req, scheme, addr)?;
 
   let is_websocket = is_websocket_request(&req);
-  let has_body = if let Some(exact_size) = req.size_hint().exact() {
-    exact_size > 0
-  } else {
-    true
-  };
+  let can_have_body = !matches!(*req.method(), Method::GET | Method::HEAD);
+  let has_body =
+    is_websocket || (can_have_body && req.size_hint().exact() != Some(0));
 
-  let maybe_request_rid = if is_websocket || has_body {
+  let maybe_request_rid = if has_body {
     let request_rid = state.resource_table.add(RequestResource {
       conn_rid,
       inner: AsyncRefCell::new(RequestOrStreamReader::Request(Some(req))),
