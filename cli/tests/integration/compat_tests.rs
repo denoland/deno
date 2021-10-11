@@ -26,7 +26,7 @@ itest!(existing_import_map {
 
 #[test]
 fn globals_in_repl() {
-  let (out, err) = util::run_and_collect_output_with_args(
+  let (out, _err) = util::run_and_collect_output_with_args(
     true,
     vec!["repl", "--compat", "--unstable", "--quiet"],
     Some(vec!["global == window"]),
