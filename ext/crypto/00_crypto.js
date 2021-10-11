@@ -975,6 +975,66 @@
 
           return key;
         }
+        // TODO(@littledivy): RSA-PSS
+        case "ECDSA": {
+          switch (format) {
+            case "raw": {
+              // 1.
+              if (
+                !ArrayPrototypeIncludes(
+                  supportedNamedCurves,
+                  normalizedAlgorithm.namedCurve,
+                )
+              ) {
+                throw new DOMException(
+                  "Invalid namedCurve",
+                  "DataError",
+                );
+              }
+
+              // 2.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["verify"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+
+              // 3.
+              const { data } = await core.opAsync("op_crypto_import_key", {
+                algorithm: "ECDSA",
+                namedCurve: normalizedAlgorithm.namedCurve,
+              }, keyData);
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                type: "raw",
+                data,
+              });
+
+              // 4-5.
+              const algorithm = {
+                name: "ECDSA",
+                namedCurve: normalizedAlgorithm.namedCurve,
+              };
+
+              // 6-8.
+              const key = constructKey(
+                "public",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
         case "RSASSA-PKCS1-v1_5": {
           switch (format) {
             case "pkcs8": {
@@ -1149,7 +1209,6 @@
               throw new DOMException("Not implemented", "NotSupportedError");
           }
         }
-        // TODO(@littledivy): ECDSA
         case "HKDF": {
           if (format !== "raw") {
             throw new DOMException("Format not supported", "NotSupportedError");

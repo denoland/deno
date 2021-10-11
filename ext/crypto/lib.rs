@@ -1166,6 +1166,8 @@ pub struct ImportKeyArg {
   format: KeyFormat,
   // RSASSA-PKCS1-v1_5
   hash: Option<CryptoHash>,
+  // ECDSA
+  named_curve: Option<CryptoNamedCurve>,
 }
 
 #[derive(Serialize)]
@@ -1186,6 +1188,36 @@ pub async fn op_crypto_import_key(
   let algorithm = args.algorithm;
 
   match algorithm {
+    Algorithm::Ecdsa => {
+      let curve = args.named_curve.ok_or_else(|| {
+        type_error("Missing argument named_curve".to_string())
+      })?;
+
+      match curve {
+        CryptoNamedCurve::P256 => {
+          // 1-2.
+          let point = p256::EncodedPoint::from_bytes(data)?;
+          // 3.
+          if point.is_identity() {
+            return Err(type_error("Invalid key data".to_string()));
+          }
+        }
+        CryptoNamedCurve::P384 => {
+          // 1-2.
+          let point = p384::EncodedPoint::from_bytes(data)?;
+          // 3.
+          if point.is_identity() {
+            return Err(type_error("Invalid key data".to_string()));
+          }
+        }
+      };
+
+      Ok(ImportKeyResult {
+        data: zero_copy,
+        modulus_length: None,
+        public_exponent: None,
+      })
+    }
     Algorithm::RsassaPkcs1v15 => {
       match args.format {
         KeyFormat::Pkcs8 => {

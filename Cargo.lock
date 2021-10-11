@@ -775,6 +775,7 @@ dependencies = [
  "block-modes",
  "deno_core",
  "deno_web",
+ "elliptic-curve",
  "lazy_static",
  "num-traits",
  "p256",
