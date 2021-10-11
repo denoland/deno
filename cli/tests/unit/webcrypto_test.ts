@@ -543,8 +543,8 @@ unitTest(async function testAesCbcEncryptDecrypt() {
   );
 
   assert(decrypted instanceof ArrayBuffer);
-  assertEquals(decrypted.byteLength, 5);
-  assertEquals(new Uint8Array(decrypted), new Uint8Array([1, 2, 3, 4, 5]));
+  assertEquals(decrypted.byteLength, 6);
+  assertEquals(new Uint8Array(decrypted), new Uint8Array([1, 2, 3, 4, 5, 6]));
 });
 
 // TODO(@littledivy): Enable WPT when we have importKey support
