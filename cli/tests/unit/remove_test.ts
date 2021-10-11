@@ -80,15 +80,23 @@ unitTest(
       const subPathInfo = Deno.statSync(subPath);
       assert(subPathInfo.isDirectory); // check exist first
 
-      await assertRejects(async () => {
-        await Deno[method](path);
-      }, Error);
+      await assertRejects(
+        async () => {
+          await Deno[method](path);
+        },
+        Error,
+        `remove '${path}'`,
+      );
       // TODO(ry) Is Other really the error we should get here? What would Go do?
 
       // NON-EXISTENT DIRECTORY/FILE
-      await assertRejects(async () => {
-        await Deno[method]("/baddir");
-      }, Deno.errors.NotFound);
+      await assertRejects(
+        async () => {
+          await Deno[method]("/baddir");
+        },
+        Deno.errors.NotFound,
+        `remove '/baddir'`,
+      );
     }
   },
 );
@@ -210,10 +218,14 @@ unitTest(
 unitTest({ permissions: { write: true } }, async function removeAllFail() {
   for (const method of REMOVE_METHODS) {
     // NON-EXISTENT DIRECTORY/FILE
-    await assertRejects(async () => {
-      // Non-existent
-      await Deno[method]("/baddir", { recursive: true });
-    }, Deno.errors.NotFound);
+    await assertRejects(
+      async () => {
+        // Non-existent
+        await Deno[method]("/baddir", { recursive: true });
+      },
+      Deno.errors.NotFound,
+      `remove '/baddir'`,
+    );
   }
 });
 
