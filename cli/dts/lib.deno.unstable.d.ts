@@ -121,8 +121,10 @@ declare namespace Deno {
 
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction {
-    parameters: NativeType[];
+    parameters: (NativeType | "buffer")[];
     result: NativeType;
+    /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
+    nonblocking?: boolean;
   }
 
   /** A dynamic library resource */
@@ -562,41 +564,6 @@ declare namespace Deno {
    */
   export function applySourceMap(location: Location): Location;
 
-  export type Signal =
-    | "SIGABRT"
-    | "SIGALRM"
-    | "SIGBUS"
-    | "SIGCHLD"
-    | "SIGCONT"
-    | "SIGEMT"
-    | "SIGFPE"
-    | "SIGHUP"
-    | "SIGILL"
-    | "SIGINFO"
-    | "SIGINT"
-    | "SIGIO"
-    | "SIGKILL"
-    | "SIGPIPE"
-    | "SIGPROF"
-    | "SIGPWR"
-    | "SIGQUIT"
-    | "SIGSEGV"
-    | "SIGSTKFLT"
-    | "SIGSTOP"
-    | "SIGSYS"
-    | "SIGTERM"
-    | "SIGTRAP"
-    | "SIGTSTP"
-    | "SIGTTIN"
-    | "SIGTTOU"
-    | "SIGURG"
-    | "SIGUSR1"
-    | "SIGUSR2"
-    | "SIGVTALRM"
-    | "SIGWINCH"
-    | "SIGXCPU"
-    | "SIGXFSZ";
-
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Represents the stream of signals, implements both `AsyncIterator` and
@@ -722,21 +689,6 @@ declare namespace Deno {
     },
   >(opt: T): Process<T>;
 
-  /** **UNSTABLE**: Send a signal to process under given `pid`. This
-   * functionality only works on Linux and Mac OS.
-   *
-   * If `pid` is negative, the signal will be sent to the process group
-   * identified by `pid`.
-   *
-   *      const p = Deno.run({
-   *        cmd: ["sleep", "10000"]
-   *      });
-   *
-   *      Deno.kill(p.pid, "SIGINT");
-   *
-   * Requires `allow-run` permission. */
-  export function kill(pid: number, signo: Signal): void;
-
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
    * necessary around the permissions required.
    *
@@ -754,7 +706,8 @@ declare namespace Deno {
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
-   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
    * const req = await fetch("https://myserver.com", { client });
    * ```
    */
@@ -767,11 +720,16 @@ declare namespace Deno {
    * The options used when creating a [HttpClient].
    */
   export interface CreateHttpClientOptions {
-    /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
-     */
-    caData?: string;
+    /** A list of root certificates that will be used in addition to the
+     * default root certificates to verify the peer's certificate.
+     *
+     * Must be in PEM format. */
+    caCerts?: string[];
+    /** A HTTP proxy to use for new connections. */
     proxy?: Proxy;
+    /** PEM formatted client certificate chain. */
     certChain?: string;
+    /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey?: string;
   }
 
@@ -789,7 +747,8 @@ declare namespace Deno {
    * Create a custom HttpClient for to use with `fetch`.
    *
    * ```ts
-   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
@@ -846,24 +805,6 @@ declare namespace Deno {
    * ```
    */
   export function sleepSync(millis: number): void;
-
-  export interface Metrics extends OpMetrics {
-    ops: Record<string, OpMetrics>;
-  }
-
-  export interface OpMetrics {
-    opsDispatched: number;
-    opsDispatchedSync: number;
-    opsDispatchedAsync: number;
-    opsDispatchedAsyncUnref: number;
-    opsCompleted: number;
-    opsCompletedSync: number;
-    opsCompletedAsync: number;
-    opsCompletedAsyncUnref: number;
-    bytesSentControl: number;
-    bytesSentData: number;
-    bytesReceived: number;
-  }
 
   /** **UNSTABLE**: New option, yet to be vetted. */
   export interface TestDefinition {
@@ -1007,91 +948,42 @@ declare namespace Deno {
     };
   }
 
-  /** The type of the resource record.
-   * Only the listed types are supported currently. */
-  export type RecordType =
-    | "A"
-    | "AAAA"
-    | "ANAME"
-    | "CNAME"
-    | "MX"
-    | "PTR"
-    | "SRV"
-    | "TXT";
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestContext {
+    /** Run a sub step of the parent test with a given name. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored, the promise returns `false`.
+     */
+    step(t: TestStepDefinition): Promise<boolean>;
 
-  export interface ResolveDnsOptions {
-    /** The name server to be used for lookups.
-     * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
-    nameServer?: {
-      /** The IP address of the name server */
-      ipAddr: string;
-      /** The port number the query will be sent to.
-       * If not specified, defaults to 53. */
-      port?: number;
-    };
+    /** Run a sub step of the parent test with a given name. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored, the promise returns `false`.
+     */
+    step(
+      name: string,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): Promise<boolean>;
   }
 
-  /** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
-  export interface MXRecord {
-    preference: number;
-    exchange: string;
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestStepDefinition {
+    fn: (t: TestContext) => void | Promise<void>;
+    name: string;
+    ignore?: boolean;
+    /** Check that the number of async completed ops after the test is the same
+     * as number of dispatched ops. Defaults to true. */
+    sanitizeOps?: boolean;
+    /** Ensure the test case does not "leak" resources - ie. the resource table
+     * after the test has exactly the same contents as before the test. Defaults
+     * to true. */
+    sanitizeResources?: boolean;
+    /** Ensure the test case does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to true. */
+    sanitizeExit?: boolean;
   }
-
-  /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
-  export interface SRVRecord {
-    priority: number;
-    weight: number;
-    port: number;
-    target: string;
-  }
-
-  export function resolveDns(
-    query: string,
-    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
-    options?: ResolveDnsOptions,
-  ): Promise<string[]>;
-
-  export function resolveDns(
-    query: string,
-    recordType: "MX",
-    options?: ResolveDnsOptions,
-  ): Promise<MXRecord[]>;
-
-  export function resolveDns(
-    query: string,
-    recordType: "SRV",
-    options?: ResolveDnsOptions,
-  ): Promise<SRVRecord[]>;
-
-  export function resolveDns(
-    query: string,
-    recordType: "TXT",
-    options?: ResolveDnsOptions,
-  ): Promise<string[][]>;
-
-  /** ** UNSTABLE**: new API, yet to be vetted.
-   *
-   * Performs DNS resolution against the given query, returning resolved records.
-   * Fails in the cases such as:
-   * - the query is in invalid format
-   * - the options have an invalid parameter, e.g. `nameServer.port` is beyond the range of 16-bit unsigned integer
-   * - timed out
-   *
-   * ```ts
-   * const a = await Deno.resolveDns("example.com", "A");
-   *
-   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
-   *   nameServer: { ipAddr: "8.8.8.8", port: 1234 },
-   * });
-   * ```
-   *
-   * Requires `allow-net` permission.
-   */
-  export function resolveDns(
-    query: string,
-    recordType: RecordType,
-    options?: ResolveDnsOptions,
-  ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -1194,11 +1086,11 @@ declare namespace Deno {
     options: ConnectOptions | UnixConnectOptions,
   ): Promise<Conn>;
 
-  export interface ConnectTlsClientCertOptions {
+  export interface ConnectTlsOptions {
     /** PEM formatted client certificate chain. */
-    certChain: string;
+    certChain?: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate. */
-    privateKey: string;
+    privateKey?: string;
   }
 
   /** **UNSTABLE** New API, yet to be vetted.
@@ -1216,30 +1108,38 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
-  export function connectTls(
-    options: ConnectTlsOptions & ConnectTlsClientCertOptions,
-  ): Promise<Conn>;
+  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
 
   export interface StartTlsOptions {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `127.0.0.1`. */
     hostname?: string;
-    /** Server certificate file. */
+    /**
+     * @deprecated This option is deprecated and will be removed in a future
+     * release.
+     *
+     * Server certificate file.
+     */
     certFile?: string;
+    /** A list of root certificates that will be used in addition to the
+     * default root certificates to verify the peer's certificate.
+     *
+     * Must be in PEM format. */
+    caCerts?: string[];
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Start TLS handshake from an existing connection using
-   * an optional cert file, hostname (default is "127.0.0.1").  The
-   * cert file is optional and if not included Mozilla's root certificates will
-   * be used (see also https://github.com/ctz/webpki-roots for specifics)
+   * an optional cert file, hostname (default is "127.0.0.1"). Specifying CA
+   * certs is optional. By default the configured root certificates are used.
    * Using this function requires that the other end of the connection is
    * prepared for TLS handshake.
    *
    * ```ts
    * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const tlsConn = await Deno.startTls(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "localhost" });
+   * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
+   * const tlsConn = await Deno.startTls(conn, { caCerts: [caCert], hostname: "localhost" });
    * ```
    *
    * Requires `allow-net` permission.

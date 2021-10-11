@@ -313,10 +313,9 @@ Deno.test({
 Deno.test({
   name: "Deno.emit() - invalid syntax does not panic",
   async fn() {
-    await assertThrowsAsync(async () => {
-      await Deno.emit("/main.js", {
-        sources: {
-          "/main.js": `
+    const { diagnostics } = await Deno.emit("/main.js", {
+      sources: {
+        "/main.js": `
             export class Foo {
               constructor() {
                 console.log("foo");
@@ -325,9 +324,14 @@ Deno.test({
                 console.log("bar");
               }
             }`,
-        },
-      });
+      },
     });
+    assertEquals(diagnostics.length, 1);
+    assert(
+      diagnostics[0].messageText!.startsWith(
+        "The module's source code could not be parsed: Unexpected token `get`. Expected * for generator, private key, identifier or async at file:",
+      ),
+    );
   },
 });
 
@@ -356,12 +360,10 @@ Deno.test({
 Deno.test({
   name: "Deno.emit() - Unknown media type does not panic",
   async fn() {
-    await assertThrowsAsync(async () => {
-      await Deno.emit("https://example.com/foo", {
-        sources: {
-          "https://example.com/foo": `let foo: string = "foo";`,
-        },
-      });
+    await Deno.emit("https://example.com/foo", {
+      sources: {
+        "https://example.com/foo": `let foo: string = "foo";`,
+      },
     });
   },
 });
@@ -487,7 +489,7 @@ Deno.test({
         code: 900001,
         start: null,
         end: null,
-        messageText: "Unable to find specifier in sources: file:///b.ts",
+        messageText: 'Cannot load module "file:///b.ts".',
         messageChain: null,
         source: null,
         sourceLine: null,
@@ -497,7 +499,7 @@ Deno.test({
     ]);
     assert(
       Deno.formatDiagnostics(diagnostics).includes(
-        "Unable to find specifier in sources: file:///b.ts",
+        'Cannot load module "file:///b.ts".',
       ),
     );
   },

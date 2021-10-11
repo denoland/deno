@@ -16,7 +16,7 @@ unitTest(function simpleTestFn(): void {
 unitTest(
   {
     ignore: Deno.build.os === "windows",
-    perms: { read: true, write: true },
+    permissions: { read: true, write: true },
   },
   function complexTestFn(): void {
     // test code here

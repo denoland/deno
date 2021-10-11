@@ -180,3 +180,45 @@ itest!(shuffle_with_seed {
   exit_code: 0,
   output: "test/shuffle.out",
 });
+
+itest!(aggregate_error {
+  args: "test test/aggregate_error.ts",
+  exit_code: 1,
+  output: "test/aggregate_error.out",
+});
+
+itest!(steps_passing_steps {
+  args: "test --unstable test/steps/passing_steps.ts",
+  exit_code: 0,
+  output: "test/steps/passing_steps.out",
+});
+
+itest!(steps_passing_steps_concurrent {
+  args: "test --unstable --jobs=2 test/steps/passing_steps.ts",
+  exit_code: 0,
+  output: "test/steps/passing_steps.out",
+});
+
+itest!(steps_failing_steps {
+  args: "test --unstable test/steps/failing_steps.ts",
+  exit_code: 1,
+  output: "test/steps/failing_steps.out",
+});
+
+itest!(steps_ignored_steps {
+  args: "test --unstable test/steps/ignored_steps.ts",
+  exit_code: 0,
+  output: "test/steps/ignored_steps.out",
+});
+
+itest!(steps_invalid_usage {
+  args: "test --unstable test/steps/invalid_usage.ts",
+  exit_code: 1,
+  output: "test/steps/invalid_usage.out",
+});
+
+itest!(steps_no_unstable_flag {
+  args: "test test/steps/no_unstable_flag.ts",
+  exit_code: 1,
+  output: "test/steps/no_unstable_flag.out",
+});

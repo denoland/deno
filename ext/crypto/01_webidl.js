@@ -367,6 +367,18 @@
   webidl.converters.Pbkdf2Params = webidl
     .createDictionaryConverter("Pbkdf2Params", dictPbkdf2Params);
 
+  const dictAesCbcParams = [
+    ...dictAlgorithm,
+    {
+      key: "iv",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+  ];
+
+  webidl.converters.AesCbcParams = webidl
+    .createDictionaryConverter("AesCbcParams", dictAesCbcParams);
+
   webidl.converters.CryptoKey = webidl.createInterfaceConverter(
     "CryptoKey",
     CryptoKey,
@@ -385,4 +397,16 @@
 
   webidl.converters.CryptoKeyPair = webidl
     .createDictionaryConverter("CryptoKeyPair", dictCryptoKeyPair);
+
+  const dictEcdhKeyDeriveParams = [
+    ...dictAlgorithm,
+    {
+      key: "public",
+      converter: webidl.converters.CryptoKey,
+      required: true,
+    },
+  ];
+
+  webidl.converters.EcdhKeyDeriveParams = webidl
+    .createDictionaryConverter("EcdhKeyDeriveParams", dictEcdhKeyDeriveParams);
 })(this);

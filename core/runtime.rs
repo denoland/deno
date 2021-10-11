@@ -44,7 +44,8 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResult)>>>;
+type PendingOpFuture =
+  Pin<Box<dyn Future<Output = (PromiseId, OpId, OpResult)>>>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -99,41 +100,54 @@ struct ModEvaluate {
   sender: oneshot::Sender<Result<(), AnyError>>,
 }
 
-#[derive(Default, Clone)]
-pub struct SharedArrayBufferStore(Arc<Mutex<SharedArrayBufferStoreInner>>);
+pub struct CrossIsolateStore<T>(Arc<Mutex<CrossIsolateStoreInner<T>>>);
 
-#[derive(Default)]
-pub struct SharedArrayBufferStoreInner {
-  buffers: HashMap<u32, v8::SharedRef<v8::BackingStore>>,
+struct CrossIsolateStoreInner<T> {
+  map: HashMap<u32, T>,
   last_id: u32,
 }
 
-impl SharedArrayBufferStore {
-  pub(crate) fn insert(
-    &self,
-    backing_store: v8::SharedRef<v8::BackingStore>,
-  ) -> u32 {
-    let mut buffers = self.0.lock().unwrap();
-    let last_id = buffers.last_id;
-    buffers.buffers.insert(last_id, backing_store);
-    buffers.last_id += 1;
+impl<T> CrossIsolateStore<T> {
+  pub(crate) fn insert(&self, value: T) -> u32 {
+    let mut store = self.0.lock().unwrap();
+    let last_id = store.last_id;
+    store.map.insert(last_id, value);
+    store.last_id += 1;
     last_id
   }
 
-  pub(crate) fn take(
-    &self,
-    id: u32,
-  ) -> Option<v8::SharedRef<v8::BackingStore>> {
-    let mut buffers = self.0.lock().unwrap();
-    buffers.buffers.remove(&id)
+  pub(crate) fn take(&self, id: u32) -> Option<T> {
+    let mut store = self.0.lock().unwrap();
+    store.map.remove(&id)
   }
 }
+
+impl<T> Default for CrossIsolateStore<T> {
+  fn default() -> Self {
+    CrossIsolateStore(Arc::new(Mutex::new(CrossIsolateStoreInner {
+      map: Default::default(),
+      last_id: 0,
+    })))
+  }
+}
+
+impl<T> Clone for CrossIsolateStore<T> {
+  fn clone(&self) -> Self {
+    Self(self.0.clone())
+  }
+}
+
+pub type SharedArrayBufferStore =
+  CrossIsolateStore<v8::SharedRef<v8::BackingStore>>;
+
+pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -149,6 +163,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   waker: AtomicWaker,
 }
 
@@ -238,11 +253,20 @@ pub struct RuntimeOptions {
   /// (which it only does once), otherwise it's silenty dropped.
   pub v8_platform: Option<v8::SharedRef<v8::Platform>>,
 
-  /// The buffer to use for transferring SharedArrayBuffers between isolates.
+  /// The store to use for transferring SharedArrayBuffers between isolates.
   /// If multiple isolates should have the possibility of sharing
-  /// SharedArrayBuffers, they should use the same SharedArrayBufferStore. If no
-  /// SharedArrayBufferStore is specified, SharedArrayBuffer can not be serialized.
+  /// SharedArrayBuffers, they should use the same [SharedArrayBufferStore]. If
+  /// no [SharedArrayBufferStore] is specified, SharedArrayBuffer can not be
+  /// serialized.
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+
+  /// The store to use for transferring `WebAssembly.Module` objects between
+  /// isolates.
+  /// If multiple isolates should have the possibility of sharing
+  /// `WebAssembly.Module` objects, they should use the same
+  /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
+  /// `WebAssembly.Module` objects cannot be serialized.
+  pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
 }
 
 impl JsRuntime {
@@ -328,12 +352,14 @@ impl JsRuntime {
       pending_mod_evaluate: None,
       dyn_module_evaluate_idle_counter: 0,
       js_recv_cb: None,
+      js_sync_cb: None,
       js_macrotask_cb: None,
       js_wasm_streaming_cb: None,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
+      compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),
@@ -363,9 +389,10 @@ impl JsRuntime {
     }
     // Init extension ops
     js_runtime.init_extension_ops().unwrap();
+    // Init callbacks (opresolve & syncOpsCache)
+    js_runtime.init_cbs();
+    // Sync ops cache
     js_runtime.sync_ops_cache();
-    // Init async ops callback
-    js_runtime.init_recv_cb();
 
     js_runtime
   }
@@ -453,35 +480,44 @@ impl JsRuntime {
         self.register_op(name, macroware(name, opfn));
       }
     }
-    // Sync ops cache
-    self.sync_ops_cache();
     // Restore extensions
     self.extensions = extensions;
 
     Ok(())
   }
 
-  /// Grabs a reference to core.js' opresolve
-  fn init_recv_cb(&mut self) {
-    let scope = &mut self.handle_scope();
-
-    // Get Deno.core.opresolve
-    let code = v8::String::new(scope, "Deno.core.opresolve").unwrap();
+  /// Grab a Global handle to a function returned by the given expression
+  fn grab_fn(
+    scope: &mut v8::HandleScope,
+    code: &str,
+  ) -> v8::Global<v8::Function> {
+    let code = v8::String::new(scope, code).unwrap();
     let script = v8::Script::compile(scope, code, None).unwrap();
     let v8_value = script.run(scope).unwrap();
-
-    // Put global handle in state.js_recv_cb
-    let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
     let cb = v8::Local::<v8::Function>::try_from(v8_value).unwrap();
-    state.js_recv_cb.replace(v8::Global::new(scope, cb));
+    v8::Global::new(scope, cb)
+  }
+
+  /// Grabs a reference to core.js' opresolve & syncOpsCache()
+  fn init_cbs(&mut self) {
+    let mut scope = self.handle_scope();
+    let recv_cb = Self::grab_fn(&mut scope, "Deno.core.opresolve");
+    let sync_cb = Self::grab_fn(&mut scope, "Deno.core.syncOpsCache");
+    // Put global handles in state
+    let state_rc = JsRuntime::state(&scope);
+    let mut state = state_rc.borrow_mut();
+    state.js_recv_cb.replace(recv_cb);
+    state.js_sync_cb.replace(sync_cb);
   }
 
   /// Ensures core.js has the latest op-name to op-id mappings
   pub fn sync_ops_cache(&mut self) {
-    self
-      .execute_script("<anon>", "Deno.core.syncOpsCache()")
-      .unwrap();
+    let scope = &mut self.handle_scope();
+    let state_rc = JsRuntime::state(scope);
+    let js_sync_cb_handle = state_rc.borrow().js_sync_cb.clone().unwrap();
+    let js_sync_cb = js_sync_cb_handle.get(scope);
+    let this = v8::undefined(scope).into();
+    js_sync_cb.call(scope, this, &[]);
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -567,6 +603,7 @@ impl JsRuntime {
       ))));
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
+    std::mem::take(&mut state.borrow_mut().js_sync_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -1441,7 +1478,9 @@ impl JsRuntime {
       match pending_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some((promise_id, resp))) => {
+        Poll::Ready(Some((promise_id, op_id, resp))) => {
+          let tracker = &mut state.op_state.borrow_mut().tracker;
+          tracker.track_async_completed(op_id);
           async_responses.push((promise_id, resp));
         }
       };
@@ -1452,7 +1491,9 @@ impl JsRuntime {
       match unref_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some((promise_id, resp))) => {
+        Poll::Ready(Some((promise_id, op_id, resp))) => {
+          let tracker = &mut state.op_state.borrow_mut().tracker;
+          tracker.track_unref_completed(op_id);
           async_responses.push((promise_id, resp));
         }
       };
@@ -1549,6 +1590,10 @@ impl JsRuntime {
         return exception_to_err_result(tc_scope, exception, false);
       }
 
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        break;
+      }
+
       let is_done = is_done.unwrap();
       if is_done.is_true() {
         break;
@@ -1599,7 +1644,7 @@ pub mod tests {
     match test_state.mode {
       Mode::Async => {
         assert_eq!(control, 42);
-        let resp = (0, serialize_op_result(Ok(43), rc_op_state));
+        let resp = (0, 1, serialize_op_result(Ok(43), rc_op_state));
         Op::Async(Box::pin(futures::future::ready(resp)))
       }
       Mode::AsyncZeroCopy(has_buffer) => {
@@ -1609,7 +1654,7 @@ pub mod tests {
         }
 
         let resp = serialize_op_result(Ok(43), rc_op_state);
-        Op::Async(Box::pin(futures::future::ready((0, resp))))
+        Op::Async(Box::pin(futures::future::ready((0, 1, resp))))
       }
     }
   }
@@ -1821,7 +1866,7 @@ pub mod tests {
           r#"
           let thrown;
           try {
-            Deno.core.opSync(100);
+            Deno.core.opcallSync(100, null, null);
           } catch (e) {
             thrown = e;
           }
@@ -1879,11 +1924,7 @@ pub mod tests {
 
   #[test]
   fn test_error_builder() {
-    fn op_err(
-      _: &mut OpState,
-      _: (),
-      _: Option<ZeroCopyBuf>,
-    ) -> Result<(), AnyError> {
+    fn op_err(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
       Err(custom_error("DOMExceptionOperationError", "abc"))
     }
 
@@ -2245,5 +2286,40 @@ assertEquals(1, notify_return_value);
     };
     let mut runtime = JsRuntime::new(options);
     runtime.execute_script("<none>", "").unwrap();
+  }
+
+  #[test]
+  fn test_is_proxy() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let all_true: v8::Global<v8::Value> = runtime
+      .execute_script(
+        "is_proxy.js",
+        r#"
+      (function () {
+        const { isProxy } = Deno.core;
+        const o = { a: 1, b: 2};
+        const p = new Proxy(o, {});
+        return isProxy(p) && !isProxy(o) && !isProxy(42);
+      })()
+    "#,
+      )
+      .unwrap();
+    let mut scope = runtime.handle_scope();
+    let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
+    assert!(all_true.is_true());
+  }
+
+  #[test]
+  fn test_binding_names() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let all_true: v8::Global<v8::Value> = runtime
+      .execute_script(
+        "binding_names.js",
+        "Deno.core.encode.toString() === 'function encode() { [native code] }'",
+      )
+      .unwrap();
+    let mut scope = runtime.handle_scope();
+    let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
+    assert!(all_true.is_true());
   }
 }

@@ -29,6 +29,7 @@ declare namespace globalThis {
       HTTP_TAB_OR_SPACE_SUFFIX_RE: RegExp;
       HTTP_WHITESPACE_PREFIX_RE: RegExp;
       HTTP_WHITESPACE_SUFFIX_RE: RegExp;
+      httpTrim(s: string): string;
       regexMatcher(chars: string[]): string;
       byteUpperCase(s: string): string;
       byteLowerCase(s: string): string;

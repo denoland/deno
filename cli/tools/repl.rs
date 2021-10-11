@@ -485,7 +485,7 @@ impl ReplSession {
 
   pub async fn is_closing(&mut self) -> Result<bool, AnyError> {
     let closed = self
-      .evaluate_expression("(globalThis.closed)")
+      .evaluate_expression("(this.closed)")
       .await?
       .get("result")
       .unwrap()

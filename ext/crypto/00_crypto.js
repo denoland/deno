@@ -113,12 +113,19 @@
     "deriveBits": {
       "HKDF": "HkdfParams",
       "PBKDF2": "Pbkdf2Params",
+      "ECDH": "EcdhKeyDeriveParams",
     },
     "encrypt": {
       "RSA-OAEP": "RsaOaepParams",
+      "AES-CBC": "AesCbcParams",
     },
     "decrypt": {
       "RSA-OAEP": "RsaOaepParams",
+      "AES-CBC": "AesCbcParams",
+    },
+    "wrapKey": {
+      // TODO(@littledivy): Enable this once implemented.
+      // "AES-KW": "AesKeyWrapParams",
     },
   };
 
@@ -435,6 +442,41 @@
           // 6.
           return cipherText.buffer;
         }
+        case "AES-CBC": {
+          if (ArrayBufferIsView(normalizedAlgorithm.iv)) {
+            normalizedAlgorithm.iv = new Uint8Array(
+              normalizedAlgorithm.iv.buffer,
+              normalizedAlgorithm.iv.byteOffset,
+              normalizedAlgorithm.iv.byteLength,
+            );
+          } else {
+            normalizedAlgorithm.iv = new Uint8Array(
+              normalizedAlgorithm.iv,
+            );
+          }
+          normalizedAlgorithm.iv = TypedArrayPrototypeSlice(
+            normalizedAlgorithm.iv,
+          );
+
+          // 1.
+          if (normalizedAlgorithm.iv.byteLength !== 16) {
+            throw new DOMException(
+              "Initialization vector must be 16 bytes",
+              "OperationError",
+            );
+          }
+
+          // 2.
+          const cipherText = await core.opAsync("op_crypto_encrypt_key", {
+            key: keyData,
+            algorithm: "AES-CBC",
+            length: key[_algorithm].length,
+            iv: normalizedAlgorithm.iv,
+          }, data);
+
+          // 4.
+          return cipherText.buffer;
+        }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
@@ -514,6 +556,40 @@
             algorithm: "RSA-OAEP",
             hash: hashAlgorithm,
             label: normalizedAlgorithm.label,
+          }, data);
+
+          // 6.
+          return plainText.buffer;
+        }
+        case "AES-CBC": {
+          if (ArrayBufferIsView(normalizedAlgorithm.iv)) {
+            normalizedAlgorithm.iv = new Uint8Array(
+              normalizedAlgorithm.iv.buffer,
+              normalizedAlgorithm.iv.byteOffset,
+              normalizedAlgorithm.iv.byteLength,
+            );
+          } else {
+            normalizedAlgorithm.iv = new Uint8Array(
+              normalizedAlgorithm.iv,
+            );
+          }
+          normalizedAlgorithm.iv = TypedArrayPrototypeSlice(
+            normalizedAlgorithm.iv,
+          );
+
+          // 1.
+          if (normalizedAlgorithm.iv.byteLength !== 16) {
+            throw new DOMException(
+              "Counter must be 16 bytes",
+              "OperationError",
+            );
+          }
+
+          const plainText = await core.opAsync("op_crypto_decrypt_key", {
+            key: keyData,
+            algorithm: "AES-CBC",
+            iv: normalizedAlgorithm.iv,
+            length: key[_algorithm].length,
           }, data);
 
           // 6.
@@ -1274,6 +1350,28 @@
               // 3.
               return data.buffer;
             }
+            case "spki": {
+              // 1.
+              if (key[_type] !== "public") {
+                throw new DOMException(
+                  "Key is not a public key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "spki",
+                  algorithm: "RSASSA-PKCS1-v1_5",
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
@@ -1295,6 +1393,29 @@
                 {
                   key: innerKey,
                   format: "pkcs8",
+                  algorithm: "RSA-PSS",
+                  hash: key[_algorithm].hash.name,
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            case "spki": {
+              // 1.
+              if (key[_type] !== "public") {
+                throw new DOMException(
+                  "Key is not a public key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "spki",
                   algorithm: "RSA-PSS",
                   hash: key[_algorithm].hash.name,
                 },
@@ -1325,6 +1446,29 @@
                   key: innerKey,
                   format: "pkcs8",
                   algorithm: "RSA-PSS",
+                  hash: key[_algorithm].hash.name,
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            case "spki": {
+              // 1.
+              if (key[_type] !== "public") {
+                throw new DOMException(
+                  "Key is not a public key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "spki",
+                  algorithm: "RSA-OAEP",
                   hash: key[_algorithm].hash.name,
                 },
               );
@@ -1517,6 +1661,104 @@
       }
 
       throw new TypeError("unreachable");
+    }
+
+    /**
+     * @param {string} algorithm
+     * @param {boolean} extractable
+     * @param {KeyUsage[]} keyUsages
+     * @returns {Promise<any>}
+     */
+    async wrapKey(format, key, wrappingKey, wrapAlgorithm) {
+      webidl.assertBranded(this, SubtleCrypto);
+      const prefix = "Failed to execute 'wrapKey' on 'SubtleCrypto'";
+      webidl.requiredArguments(arguments.length, 4, { prefix });
+      format = webidl.converters.KeyFormat(format, {
+        prefix,
+        context: "Argument 1",
+      });
+      key = webidl.converters.CryptoKey(key, {
+        prefix,
+        context: "Argument 2",
+      });
+      wrappingKey = webidl.converters.CryptoKey(wrappingKey, {
+        prefix,
+        context: "Argument 3",
+      });
+      wrapAlgorithm = webidl.converters.AlgorithmIdentifier(wrapAlgorithm, {
+        prefix,
+        context: "Argument 4",
+      });
+
+      let normalizedAlgorithm;
+
+      try {
+        // 2.
+        normalizedAlgorithm = normalizeAlgorithm(wrapAlgorithm, "wrapKey");
+      } catch (_) {
+        // 3.
+        normalizedAlgorithm = normalizeAlgorithm(wrapAlgorithm, "encrypt");
+      }
+
+      // 8.
+      if (normalizedAlgorithm.name !== wrappingKey[_algorithm].name) {
+        throw new DOMException(
+          "Wrapping algorithm doesn't match key algorithm.",
+          "InvalidAccessError",
+        );
+      }
+
+      // 9.
+      if (!ArrayPrototypeIncludes(wrappingKey[_usages], "wrapKey")) {
+        throw new DOMException(
+          "Key does not support the 'wrapKey' operation.",
+          "InvalidAccessError",
+        );
+      }
+
+      // 10. NotSupportedError will be thrown in step 12.
+      // 11.
+      if (key[_extractable] === false) {
+        throw new DOMException(
+          "Key is not extractable",
+          "InvalidAccessError",
+        );
+      }
+
+      // 12.
+      const exportedKey = await this.exportKey(format, key);
+
+      let bytes;
+      // 13.
+      if (format !== "jwk") {
+        bytes = exportedKey;
+      } else {
+        // TODO(@littledivy): Implement JWK.
+        throw new DOMException(
+          "Not implemented",
+          "NotSupportedError",
+        );
+      }
+
+      // 14-15.
+      if (
+        supportedAlgorithms["wrapKey"][normalizedAlgorithm.name] !== undefined
+      ) {
+        // TODO(@littledivy): Implement this for AES-KW.
+        throw new DOMException(
+          "Not implemented",
+          "NotSupportedError",
+        );
+      } else if (
+        supportedAlgorithms["encrypt"][normalizedAlgorithm.name] !== undefined
+      ) {
+        return this.encrypt(normalizedAlgorithm, wrappingKey, bytes);
+      } else {
+        throw new DOMException(
+          "Algorithm not supported",
+          "NotSupportedError",
+        );
+      }
     }
 
     /**
@@ -1967,6 +2209,58 @@
         }, normalizedAlgorithm.salt);
 
         return buf.buffer;
+      }
+      case "ECDH": {
+        // 1.
+        if (baseKey[_type] !== "private") {
+          throw new DOMException("Invalid key type", "InvalidAccessError");
+        }
+        // 2.
+        const publicKey = normalizedAlgorithm.public;
+        // 3.
+        if (publicKey[_type] !== "public") {
+          throw new DOMException("Invalid key type", "InvalidAccessError");
+        }
+        // 4.
+        if (publicKey[_algorithm].name !== baseKey[_algorithm].name) {
+          throw new DOMException(
+            "Algorithm mismatch",
+            "InvalidAccessError",
+          );
+        }
+        // 5.
+        if (
+          publicKey[_algorithm].namedCurve !== baseKey[_algorithm].namedCurve
+        ) {
+          throw new DOMException(
+            "namedCurve mismatch",
+            "InvalidAccessError",
+          );
+        }
+        // 6.
+        if (
+          ArrayPrototypeIncludes(
+            supportedNamedCurves,
+            publicKey[_algorithm].namedCurve,
+          )
+        ) {
+          const baseKeyhandle = baseKey[_handle];
+          const baseKeyData = WeakMapPrototypeGet(KEY_STORE, baseKeyhandle);
+          const publicKeyhandle = baseKey[_handle];
+          const publicKeyData = WeakMapPrototypeGet(KEY_STORE, publicKeyhandle);
+
+          const buf = await core.opAsync("op_crypto_derive_bits", {
+            key: baseKeyData,
+            publicKey: publicKeyData,
+            algorithm: "ECDH",
+            namedCurve: publicKey[_algorithm].namedCurve,
+            length,
+          });
+
+          return buf.buffer;
+        } else {
+          throw new DOMException("Not implemented", "NotSupportedError");
+        }
       }
       case "HKDF": {
         // 1.

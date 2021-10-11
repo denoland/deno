@@ -56,6 +56,10 @@ interface JsonWebKey {
   y?: string;
 }
 
+interface AesCbcParams extends Algorithm {
+  iv: BufferSource;
+}
+
 interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
@@ -125,6 +129,18 @@ interface Pbkdf2Params extends Algorithm {
   salt: BufferSource;
 }
 
+interface EcdhKeyDeriveParams extends Algorithm {
+  public: CryptoKey;
+}
+
+interface AesKeyGenParams extends Algorithm {
+  length: number;
+}
+
+interface AesKeyAlgorithm extends KeyAlgorithm {
+  length: number;
+}
+
 /** The CryptoKey dictionary of the Web Crypto API represents a cryptographic key. */
 interface CryptoKey {
   readonly algorithm: KeyAlgorithm;
@@ -157,7 +173,7 @@ interface SubtleCrypto {
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair>;
   generateKey(
-    algorithm: HmacKeyGenParams,
+    algorithm: AesKeyGenParams | HmacKeyGenParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -201,19 +217,29 @@ interface SubtleCrypto {
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   encrypt(
-    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    algorithm: AlgorithmIdentifier | RsaOaepParams | AesCbcParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   decrypt(
-    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    algorithm: AlgorithmIdentifier | RsaOaepParams | AesCbcParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   deriveBits(
-    algorithm: AlgorithmIdentifier | HkdfParams | Pbkdf2Params,
+    algorithm:
+      | AlgorithmIdentifier
+      | HkdfParams
+      | Pbkdf2Params
+      | EcdhKeyDeriveParams,
     baseKey: CryptoKey,
     length: number,
+  ): Promise<ArrayBuffer>;
+  wrapKey(
+    format: KeyFormat,
+    key: CryptoKey,
+    wrappingKey: CryptoKey,
+    wrapAlgorithm: AlgorithmIdentifier | RsaOaepParams,
   ): Promise<ArrayBuffer>;
 }
 
