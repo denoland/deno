@@ -531,6 +531,20 @@ unitTest(async function testAesCbcEncryptDecrypt() {
   );
 
   assert(encrypted instanceof ArrayBuffer);
+  assertEquals(encrypted.byteLength, 16);
+
+  const decrypted = await crypto.subtle.decrypt(
+    {
+      name: "AES-CBC",
+      iv,
+    },
+    key as CryptoKey,
+    encrypted,
+  );
+
+  assert(decrypted instanceof ArrayBuffer);
+  assertEquals(decrypted.byteLength, 5);
+  assertEquals(new Uint8Array(decrypted), new Uint8Array([1, 2, 3, 4, 5]));
 });
 
 // TODO(@littledivy): Enable WPT when we have importKey support

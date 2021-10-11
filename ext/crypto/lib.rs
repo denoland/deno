@@ -958,7 +958,6 @@ pub async fn op_crypto_encrypt_key(
       let iv = args
         .iv
         .ok_or_else(|| type_error("Missing argument iv".to_string()))?;
-      println!("{}", iv.len());
 
       // 2-3.
       let ciphertext = match length {
@@ -1590,25 +1589,6 @@ pub async fn op_crypto_decrypt_key(
         }
         _ => unreachable!(),
       };
-
-      // 3.
-      // In the Web Crypto API, the only padding mode supported
-      // is PKCS#7 as described by Section 10.3, step 2, of RFC2315.
-      //
-      // plaintext.len() > 0 so this should never panic.
-      let p = *plaintext.last().unwrap() as usize;
-
-      // 4.
-      if p == 0 || p > 16 || plaintext[p..] != vec![p as u8; p] {
-        return Err(custom_error(
-          "DOMExceptionOperationError",
-          "Invalid padding".to_string(),
-        ));
-      }
-
-      // 5.
-      let n = plaintext.len() - p;
-      plaintext.resize(n, 0);
 
       // 6.
       Ok(plaintext.into())
