@@ -19,7 +19,7 @@ deno_web = { version = "0.51.0", path = "../web" }
 elliptic-curve = "0.10.6"
 lazy_static = "1.4.0"
 num-traits = "0.2.14"
-p256 = "0.9.0"
+p256 = { version = "0.9.0", features = ["ecdh"] }
 p384 = "0.8.0"
 rand = "0.8.4"
 ring = { version = "0.16.20", features = ["std"] }

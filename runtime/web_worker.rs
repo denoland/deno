@@ -2,7 +2,6 @@
 use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::js;
-use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
@@ -260,6 +259,7 @@ pub struct WebWorker {
 
 pub struct WebWorkerOptions {
   pub bootstrap: BootstrapOptions,
+  pub extensions: Vec<Extension>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
@@ -297,7 +297,7 @@ impl WebWorker {
     permissions: Permissions,
     main_module: ModuleSpecifier,
     worker_id: WorkerId,
-    options: WebWorkerOptions,
+    mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
@@ -336,8 +336,6 @@ impl WebWorker {
       deno_timers::init::<Permissions>(),
       // ffi
       deno_ffi::init::<Permissions>(unstable),
-      // Metrics
-      metrics::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
@@ -377,6 +375,7 @@ impl WebWorker {
     // Append exts
     extensions.extend(runtime_exts);
     extensions.extend(deno_ns_exts); // May be empty
+    extensions.extend(std::mem::take(&mut options.extensions));
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),

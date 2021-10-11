@@ -2,7 +2,10 @@ use crate::error::type_error;
 use crate::error::AnyError;
 use crate::include_js_files;
 use crate::op_sync;
+use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
+use crate::void_op_async;
+use crate::void_op_sync;
 use crate::Extension;
 use crate::OpState;
 use crate::Resource;
@@ -26,6 +29,13 @@ pub(crate) fn init_builtins() -> Extension {
       ("op_resources", op_sync(op_resources)),
       ("op_wasm_streaming_feed", op_sync(op_wasm_streaming_feed)),
       ("op_wasm_streaming_abort", op_sync(op_wasm_streaming_abort)),
+      (
+        "op_wasm_streaming_set_url",
+        op_sync(op_wasm_streaming_set_url),
+      ),
+      ("op_metrics", op_sync(op_metrics)),
+      ("op_void_sync", void_op_sync()),
+      ("op_void_async", void_op_async()),
     ])
     .build()
 }
@@ -136,4 +146,27 @@ pub fn op_wasm_streaming_abort(
   }
 
   Ok(())
+}
+
+pub fn op_wasm_streaming_set_url(
+  state: &mut OpState,
+  rid: ResourceId,
+  url: String,
+) -> Result<(), AnyError> {
+  let wasm_streaming =
+    state.resource_table.get::<WasmStreamingResource>(rid)?;
+
+  wasm_streaming.0.borrow_mut().set_url(&url);
+
+  Ok(())
+}
+
+pub fn op_metrics(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<(OpMetrics, Vec<OpMetrics>), AnyError> {
+  let aggregate = state.tracker.aggregate();
+  let per_op = state.tracker.per_op();
+  Ok((aggregate, per_op))
 }

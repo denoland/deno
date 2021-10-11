@@ -1,4 +1,8 @@
 [WILDCARD]
-error: Remote modules are not allowed to import local modules.  Consider using a dynamic import instead.
+error: Uncaught (in promise) TypeError: Remote modules are not allowed to import local modules. Consider using a dynamic import instead.
   Importing: file:///c:/etc/passwd
-    at http://localhost:4545/subdir/evil_remote_import.js:3:0
+    at http://localhost:4545/subdir/evil_remote_import.js:3:15
+
+  await import("http://localhost:4545/subdir/evil_remote_import.js");
+  ^
+    at async file://[WILDCARD]/error_016_dynamic_import_permissions2.js:4:3

@@ -13,6 +13,7 @@ mod normalize_path;
 mod ops;
 mod ops_builtin;
 mod ops_json;
+mod ops_metrics;
 mod resources;
 mod runtime;
 

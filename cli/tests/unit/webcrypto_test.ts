@@ -513,6 +513,31 @@ unitTest(async function testHkdfDeriveBits() {
   assertEquals(result.byteLength, 128 / 8);
 });
 
+// TODO(@littledivy): Enable WPT when we have importKey support
+unitTest(async function testECDH() {
+  const namedCurve = "P-256";
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve,
+    },
+    true,
+    ["deriveBits"],
+  );
+
+  const derivedKey = await crypto.subtle.deriveBits(
+    {
+      name: "ECDH",
+      public: keyPair.publicKey,
+    },
+    keyPair.privateKey,
+    256,
+  );
+
+  assert(derivedKey instanceof ArrayBuffer);
+  assertEquals(derivedKey.byteLength, 256 / 8);
+});
+
 unitTest(async function testWrapKey() {
   // Test wrapKey
   const key = await crypto.subtle.generateKey(
