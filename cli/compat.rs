@@ -75,7 +75,7 @@ pub fn get_mapped_node_builtins() -> HashMap<String, String> {
 
   for module in SUPPORTED_MODULES {
     // TODO(bartlomieju): this is unversioned, and should be fixed to use latest stable?
-    let module_url = format!("{}node/{}.ts", STD_URL, STD_VERSION, module);
+    let module_url = format!("{}node/{}.ts", STD_URL, module);
     mappings.insert(module.to_string(), module_url.clone());
 
     // Support for `node:<module_name>`
