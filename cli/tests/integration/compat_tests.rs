@@ -34,5 +34,4 @@ fn globals_in_repl() {
     false,
   );
   assert!(out.contains("true"));
-  assert!(err.contains("Implicitly using latest version"));
 }
