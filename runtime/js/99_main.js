@@ -603,6 +603,7 @@ delete Object.prototype.__proto__;
     }
     numCpus = cpuCount;
     languages = locale;
+    ObjectFreeze(languages);
     registerErrors();
 
     const internalSymbol = Symbol("Deno.internal");

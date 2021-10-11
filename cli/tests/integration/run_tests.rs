@@ -1934,3 +1934,32 @@ fn navigator_language() {
   );
   assert!(!res.is_empty())
 }
+
+#[test]
+#[cfg(unix)]
+fn navigator_languages_unix() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_languages.ts",
+    None,
+    Some(vec![
+      ("LANG".to_owned(), "en-US".to_owned()),
+      ("NO_COLOR".to_owned(), "1".to_owned()),
+    ]),
+    false,
+  );
+  println!("{}", res);
+  assert_eq!(res, "[ \"en-US\", \"en\" ]\n")
+}
+
+#[test]
+fn navigator_languages() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_languages.ts",
+    None,
+    None,
+    false,
+  );
+  assert!(!res.is_empty())
+}
