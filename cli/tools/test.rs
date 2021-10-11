@@ -39,7 +39,9 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::collections::HashSet;
+use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
@@ -60,7 +62,7 @@ enum TestMode {
   Both,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
   pub origin: String,
@@ -84,6 +86,33 @@ pub enum TestResult {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TestStepDescription {
+  pub test: TestDescription,
+  pub level: usize,
+  pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TestStepResult {
+  Ok,
+  Ignored,
+  Failed(Option<String>),
+  Pending(Option<String>),
+}
+
+impl TestStepResult {
+  fn error(&self) -> Option<&str> {
+    match self {
+      TestStepResult::Failed(Some(text)) => Some(text.as_str()),
+      TestStepResult::Pending(Some(text)) => Some(text.as_str()),
+      _ => None,
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestPlan {
   pub origin: String,
   pub total: usize,
@@ -98,6 +127,8 @@ pub enum TestEvent {
   Wait(TestDescription),
   Output(TestOutput),
   Result(TestDescription, TestResult, u64),
+  StepWait(TestStepDescription),
+  StepResult(TestStepDescription, TestStepResult, u64),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -143,12 +174,26 @@ trait TestReporter {
     result: &TestResult,
     elapsed: u64,
   );
+  fn report_step_wait(&mut self, description: &TestStepDescription);
+  fn report_step_result(
+    &mut self,
+    description: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
+  );
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration);
+}
+
+enum DeferredStepOutput {
+  StepWait(TestStepDescription),
+  StepResult(TestStepDescription, TestStepResult, u64),
 }
 
 struct PrettyTestReporter {
   concurrent: bool,
   echo_output: bool,
+  deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
+  last_wait_output_level: usize,
 }
 
 impl PrettyTestReporter {
@@ -156,6 +201,61 @@ impl PrettyTestReporter {
     PrettyTestReporter {
       concurrent,
       echo_output,
+      deferred_step_output: HashMap::new(),
+      last_wait_output_level: 0,
+    }
+  }
+
+  fn force_report_wait(&mut self, description: &TestDescription) {
+    print!("test {} ...", description.name);
+    // flush for faster feedback when line buffered
+    std::io::stdout().flush().unwrap();
+    self.last_wait_output_level = 0;
+  }
+
+  fn force_report_step_wait(&mut self, description: &TestStepDescription) {
+    if self.last_wait_output_level < description.level {
+      println!();
+    }
+    print!(
+      "{}test {} ...",
+      "  ".repeat(description.level),
+      description.name
+    );
+    // flush for faster feedback when line buffered
+    std::io::stdout().flush().unwrap();
+    self.last_wait_output_level = description.level;
+  }
+
+  fn force_report_step_result(
+    &mut self,
+    description: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
+  ) {
+    let status = match result {
+      TestStepResult::Ok => colors::green("ok").to_string(),
+      TestStepResult::Ignored => colors::yellow("ignored").to_string(),
+      TestStepResult::Pending(_) => colors::gray("pending").to_string(),
+      TestStepResult::Failed(_) => colors::red("FAILED").to_string(),
+    };
+
+    if self.last_wait_output_level == description.level {
+      print!(" ");
+    } else {
+      print!("{}", "  ".repeat(description.level));
+    }
+
+    println!(
+      "{} {}",
+      status,
+      colors::gray(format!("({}ms)", elapsed)).to_string()
+    );
+
+    if let Some(error_text) = result.error() {
+      for line in error_text.lines() {
+        println!("{}{}", "  ".repeat(description.level + 1), line);
+      }
     }
   }
 }
@@ -168,7 +268,7 @@ impl TestReporter for PrettyTestReporter {
 
   fn report_wait(&mut self, description: &TestDescription) {
     if !self.concurrent {
-      print!("test {} ...", description.name);
+      self.force_report_wait(description);
     }
   }
 
@@ -187,7 +287,27 @@ impl TestReporter for PrettyTestReporter {
     elapsed: u64,
   ) {
     if self.concurrent {
-      print!("test {} ...", description.name);
+      self.force_report_wait(description);
+
+      if let Some(step_outputs) = self.deferred_step_output.remove(description)
+      {
+        for step_output in step_outputs {
+          match step_output {
+            DeferredStepOutput::StepWait(description) => {
+              self.force_report_step_wait(&description)
+            }
+            DeferredStepOutput::StepResult(
+              step_description,
+              step_result,
+              elapsed,
+            ) => self.force_report_step_result(
+              &step_description,
+              &step_result,
+              elapsed,
+            ),
+          }
+        }
+      }
     }
 
     let status = match result {
@@ -196,11 +316,48 @@ impl TestReporter for PrettyTestReporter {
       TestResult::Failed(_) => colors::red("FAILED").to_string(),
     };
 
+    if self.last_wait_output_level == 0 {
+      print!(" ");
+    }
+
     println!(
-      " {} {}",
+      "{} {}",
       status,
       colors::gray(format!("({}ms)", elapsed)).to_string()
     );
+  }
+
+  fn report_step_wait(&mut self, description: &TestStepDescription) {
+    if self.concurrent {
+      self
+        .deferred_step_output
+        .entry(description.test.to_owned())
+        .or_insert_with(Vec::new)
+        .push(DeferredStepOutput::StepWait(description.clone()));
+    } else {
+      self.force_report_step_wait(description);
+    }
+  }
+
+  fn report_step_result(
+    &mut self,
+    description: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
+  ) {
+    if self.concurrent {
+      self
+        .deferred_step_output
+        .entry(description.test.to_owned())
+        .or_insert_with(Vec::new)
+        .push(DeferredStepOutput::StepResult(
+          description.clone(),
+          result.clone(),
+          elapsed,
+        ));
+    } else {
+      self.force_report_step_result(description, result, elapsed);
+    }
   }
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
@@ -650,11 +807,9 @@ async fn test_specifiers(
               TestResult::Ok => {
                 summary.passed += 1;
               }
-
               TestResult::Ignored => {
                 summary.ignored += 1;
               }
-
               TestResult::Failed(error) => {
                 summary.failed += 1;
                 summary.failures.push((description.clone(), error.clone()));
@@ -662,6 +817,14 @@ async fn test_specifiers(
             }
 
             reporter.report_result(&description, &result, elapsed);
+          }
+
+          TestEvent::StepWait(description) => {
+            reporter.report_step_wait(&description);
+          }
+
+          TestEvent::StepResult(description, result, duration) => {
+            reporter.report_step_result(&description, &result, duration);
           }
         }
 
