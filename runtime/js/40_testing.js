@@ -23,6 +23,7 @@
     StringPrototypeIncludes,
     StringPrototypeSlice,
     RegExp,
+    Number,
     RegExpPrototypeTest,
     SymbolToStringTag,
   } = window.__bootstrap.primordials;
@@ -46,22 +47,50 @@
       }
 
       const post = metrics();
+
       // We're checking diff because one might spawn HTTP server in the background
       // that will be a pending async op before test starts.
       const dispatchedDiff = post.opsDispatchedAsync - pre.opsDispatchedAsync;
       const completedDiff = post.opsCompletedAsync - pre.opsCompletedAsync;
-      assert(
-        dispatchedDiff === completedDiff,
-        `Test case is leaking async ops.
+
+      const details = [];
+      for (const key in post.ops) {
+        const dispatchedDiff = Number(
+          post.ops[key]?.opsDispatchedAsync -
+            (pre.ops[key]?.opsDispatchedAsync ?? 0),
+        );
+        const completedDiff = Number(
+          post.ops[key]?.opsCompletedAsync -
+            (pre.ops[key]?.opsCompletedAsync ?? 0),
+        );
+
+        if (dispatchedDiff !== completedDiff) {
+          details.push(`
+  ${key}:
+    Before:
+      - dispatched: ${pre.ops[key]?.opsDispatchedAsync ?? 0}
+      - completed: ${pre.ops[key]?.opsCompletedAsync ?? 0}
+    After:
+      - dispatched: ${post.ops[key].opsDispatchedAsync}
+      - completed: ${post.ops[key].opsCompletedAsync}`);
+        }
+      }
+
+      const message = `Test case is leaking async ops.
 Before:
   - dispatched: ${pre.opsDispatchedAsync}
   - completed: ${pre.opsCompletedAsync}
 After:
   - dispatched: ${post.opsDispatchedAsync}
   - completed: ${post.opsCompletedAsync}
+${details.length > 0 ? "Ops:" + details.join("") : ""}
 
 Make sure to await all promises returned from Deno APIs before
-finishing test case.`,
+finishing test case.`;
+
+      assert(
+        dispatchedDiff === completedDiff,
+        message,
       );
     };
   }

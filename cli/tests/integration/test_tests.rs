@@ -133,6 +133,12 @@ itest!(allow_none {
   output: "test/allow_none.out",
 });
 
+itest!(ops_sanitizer_unstable {
+  args: "test --unstable test/ops_sanitizer_unstable.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_unstable.out",
+});
+
 itest!(exit_sanitizer {
   args: "test test/exit_sanitizer.ts",
   output: "test/exit_sanitizer.out",
