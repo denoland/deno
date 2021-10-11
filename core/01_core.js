@@ -12,8 +12,10 @@
     Map,
     Array,
     ArrayPrototypeFill,
+    ArrayPrototypeMap,
     ErrorCaptureStackTrace,
     Promise,
+    ObjectEntries,
     ObjectFreeze,
     ObjectFromEntries,
     MapPrototypeGet,
@@ -152,6 +154,15 @@
     opSync("op_print", str, isErr);
   }
 
+  function metrics() {
+    const [aggregate, perOps] = opSync("op_metrics");
+    aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
+      ObjectEntries(opsCache),
+      ([opName, opId]) => [opName, perOps[opId]],
+    ));
+    return aggregate;
+  }
+
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
   // JS code (eg. "deno_net") so they are provided in "Deno.core" but later
   // reexported on "Deno.errors"
@@ -178,6 +189,7 @@
     tryClose,
     print,
     resources,
+    metrics,
     registerErrorBuilder,
     registerErrorClass,
     opresolve,

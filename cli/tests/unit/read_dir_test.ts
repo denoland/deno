@@ -40,15 +40,23 @@ unitTest({ permissions: { read: false } }, function readDirSyncPerm() {
 });
 
 unitTest({ permissions: { read: true } }, function readDirSyncNotDir() {
-  assertThrows(() => {
-    Deno.readDirSync("cli/tests/testdata/fixture.json");
-  }, Error);
+  assertThrows(
+    () => {
+      Deno.readDirSync("cli/tests/testdata/fixture.json");
+    },
+    Error,
+    `readdir 'cli/tests/testdata/fixture.json'`,
+  );
 });
 
 unitTest({ permissions: { read: true } }, function readDirSyncNotFound() {
-  assertThrows(() => {
-    Deno.readDirSync("bad_dir_name");
-  }, Deno.errors.NotFound);
+  assertThrows(
+    () => {
+      Deno.readDirSync("bad_dir_name");
+    },
+    Deno.errors.NotFound,
+    `readdir 'bad_dir_name'`,
+  );
 });
 
 unitTest({ permissions: { read: true } }, async function readDirSuccess() {
@@ -94,3 +102,13 @@ unitTest(
     }
   },
 );
+
+unitTest({ permissions: { read: true } }, async function readDirNotFound() {
+  await assertRejects(
+    async () => {
+      await Deno.readDir("bad_dir_name")[Symbol.asyncIterator]().next();
+    },
+    Deno.errors.NotFound,
+    `readdir 'bad_dir_name'`,
+  );
+});

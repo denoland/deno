@@ -4,6 +4,7 @@ use deno_ast::swc::bundler::ModuleRecord;
 use deno_ast::swc::common::Span;
 use deno_core::error::AnyError;
 
+/// This contains the logic for Deno to rewrite the `import.meta` when bundling.
 pub struct BundleHook;
 
 impl Hook for BundleHook {

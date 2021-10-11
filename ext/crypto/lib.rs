@@ -19,6 +19,7 @@ use std::convert::TryInto;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
+use block_modes::BlockMode;
 use lazy_static::lazy_static;
 use num_traits::cast::FromPrimitive;
 use rand::rngs::OsRng;
@@ -892,8 +893,12 @@ pub async fn op_crypto_derive_bits(
 pub struct EncryptArg {
   key: KeyData,
   algorithm: Algorithm,
+  // RSA-OAEP
   hash: Option<CryptoHash>,
   label: Option<ZeroCopyBuf>,
+  // AES-CBC
+  iv: Option<ZeroCopyBuf>,
+  length: Option<usize>,
 }
 
 pub async fn op_crypto_encrypt_key(
@@ -944,6 +949,46 @@ pub async fn op_crypto_encrypt_key(
           })?
           .into(),
       )
+    }
+    Algorithm::AesCbc => {
+      let key = &*args.key.data;
+      let length = args
+        .length
+        .ok_or_else(|| type_error("Missing argument length".to_string()))?;
+      let iv = args
+        .iv
+        .ok_or_else(|| type_error("Missing argument iv".to_string()))?;
+
+      // 2-3.
+      let ciphertext = match length {
+        128 => {
+          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+          type Aes128Cbc =
+            block_modes::Cbc<aes::Aes128, block_modes::block_padding::Pkcs7>;
+
+          let cipher = Aes128Cbc::new_from_slices(key, &iv)?;
+          cipher.encrypt_vec(data)
+        }
+        192 => {
+          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+          type Aes192Cbc =
+            block_modes::Cbc<aes::Aes192, block_modes::block_padding::Pkcs7>;
+
+          let cipher = Aes192Cbc::new_from_slices(key, &iv)?;
+          cipher.encrypt_vec(data)
+        }
+        256 => {
+          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+          type Aes256Cbc =
+            block_modes::Cbc<aes::Aes256, block_modes::block_padding::Pkcs7>;
+
+          let cipher = Aes256Cbc::new_from_slices(key, &iv)?;
+          cipher.encrypt_vec(data)
+        }
+        _ => unreachable!(),
+      };
+
+      Ok(ciphertext.into())
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }
@@ -1451,8 +1496,12 @@ pub async fn op_crypto_import_key(
 pub struct DecryptArg {
   key: KeyData,
   algorithm: Algorithm,
+  // RSA-OAEP
   hash: Option<CryptoHash>,
   label: Option<ZeroCopyBuf>,
+  // AES-CBC
+  iv: Option<ZeroCopyBuf>,
+  length: Option<usize>,
 }
 
 pub async fn op_crypto_decrypt_key(
@@ -1502,6 +1551,47 @@ pub async fn op_crypto_decrypt_key(
           })?
           .into(),
       )
+    }
+    Algorithm::AesCbc => {
+      let key = &*args.key.data;
+      let length = args
+        .length
+        .ok_or_else(|| type_error("Missing argument length".to_string()))?;
+      let iv = args
+        .iv
+        .ok_or_else(|| type_error("Missing argument iv".to_string()))?;
+
+      // 2.
+      let plaintext = match length {
+        128 => {
+          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+          type Aes128Cbc =
+            block_modes::Cbc<aes::Aes128, block_modes::block_padding::Pkcs7>;
+          let cipher = Aes128Cbc::new_from_slices(key, &iv)?;
+
+          cipher.decrypt_vec(data)?
+        }
+        192 => {
+          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+          type Aes192Cbc =
+            block_modes::Cbc<aes::Aes192, block_modes::block_padding::Pkcs7>;
+          let cipher = Aes192Cbc::new_from_slices(key, &iv)?;
+
+          cipher.decrypt_vec(data)?
+        }
+        256 => {
+          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
+          type Aes256Cbc =
+            block_modes::Cbc<aes::Aes256, block_modes::block_padding::Pkcs7>;
+          let cipher = Aes256Cbc::new_from_slices(key, &iv)?;
+
+          cipher.decrypt_vec(data)?
+        }
+        _ => unreachable!(),
+      };
+
+      // 6.
+      Ok(plaintext.into())
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }

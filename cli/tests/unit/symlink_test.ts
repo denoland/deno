@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
+  assertRejects,
   assertThrows,
   pathToAbsoluteFileUrl,
   unitTest,
@@ -47,6 +48,21 @@ unitTest(function symlinkSyncPerm() {
 
 unitTest(
   { permissions: { read: true, write: true } },
+  function symlinkSyncAlreadyExist() {
+    const existingFile = Deno.makeTempFileSync();
+    const existingFile2 = Deno.makeTempFileSync();
+    assertThrows(
+      () => {
+        Deno.symlinkSync(existingFile, existingFile2);
+      },
+      Deno.errors.AlreadyExists,
+      `symlink '${existingFile}' -> '${existingFile2}'`,
+    );
+  },
+);
+
+unitTest(
+  { permissions: { read: true, write: true } },
   async function symlinkSuccess() {
     const testDir = Deno.makeTempDirSync();
     const oldname = testDir + "/oldname";
@@ -75,5 +91,20 @@ unitTest(
     const newNameInfoStat = Deno.statSync(newname);
     assert(newNameInfoLStat.isSymlink, "NOT SYMLINK");
     assert(newNameInfoStat.isDirectory, "NOT DIRECTORY");
+  },
+);
+
+unitTest(
+  { permissions: { read: true, write: true } },
+  async function symlinkAlreadyExist() {
+    const existingFile = Deno.makeTempFileSync();
+    const existingFile2 = Deno.makeTempFileSync();
+    await assertRejects(
+      async () => {
+        await Deno.symlink(existingFile, existingFile2);
+      },
+      Deno.errors.AlreadyExists,
+      `symlink '${existingFile}' -> '${existingFile2}'`,
+    );
   },
 );

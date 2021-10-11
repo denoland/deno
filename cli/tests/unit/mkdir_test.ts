@@ -59,15 +59,23 @@ unitTest(
 );
 
 unitTest({ permissions: { write: true } }, function mkdirErrSyncIfExists() {
-  assertThrows(() => {
-    Deno.mkdirSync(".");
-  }, Deno.errors.AlreadyExists);
+  assertThrows(
+    () => {
+      Deno.mkdirSync(".");
+    },
+    Deno.errors.AlreadyExists,
+    `mkdir '.'`,
+  );
 });
 
 unitTest({ permissions: { write: true } }, async function mkdirErrIfExists() {
-  await assertRejects(async () => {
-    await Deno.mkdir(".");
-  }, Deno.errors.AlreadyExists);
+  await assertRejects(
+    async () => {
+      await Deno.mkdir(".");
+    },
+    Deno.errors.AlreadyExists,
+    `mkdir '.'`,
+  );
 });
 
 unitTest(
