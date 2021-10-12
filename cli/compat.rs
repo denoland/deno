@@ -7,7 +7,7 @@ use std::collections::HashMap;
 // each release, a better mechanism is preferable, but it's a quick and dirty
 // solution to avoid printing `X-Deno-Warning` headers when the compat layer is
 // downloaded
-static STD_URL: &str = "https://deno.land/std@0.110.0/";
+static STD_URL: &str = "https://deno.land/std@0.111.0/";
 static GLOBAL_MODULE: &str = "global.ts";
 
 static SUPPORTED_MODULES: &[&str] = &[
