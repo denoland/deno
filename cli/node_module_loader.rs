@@ -7,8 +7,31 @@ use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::Resolver;
 use regex::Regex;
 use std::path::PathBuf;
+
+#[derive(Debug, Default)]
+pub(crate) struct NodeResolver;
+
+impl NodeResolver {
+  pub fn as_resolver(&self) -> &dyn Resolver {
+    self
+  }
+}
+
+impl Resolver for NodeResolver {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    if referrer.as_str().starts_with("https://deno.land/std") {
+      return referrer.join(specifier).map_err(AnyError::from);
+    }
+    node_resolve(specifier, referrer.as_str())
+  }
+}
 
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
@@ -16,7 +39,13 @@ fn node_resolve(
   specifier: &str,
   referrer: &str,
 ) -> Result<ModuleSpecifier, AnyError> {
+  // eprintln!("NODE_RESOLVE {} {}", specifier, referrer);
   // TODO(bartlomieju): skipped "policy" part
+
+  if crate::compat::SUPPORTED_MODULES.contains(&specifier) {
+    let module_url = format!("{}node/{}.ts", crate::compat::STD_URL, specifier);
+    return Ok(Url::parse(&module_url).unwrap());
+  }
 
   if let Ok(url) = Url::parse(specifier) {
     if url.scheme() == "data:" {
@@ -32,9 +61,6 @@ fn node_resolve(
     if protocol != "file" && protocol != "data" {
       return Err(generic_error(format!("Only file and data URLs are supported by the default ESM loader. Received protocol '{}'", protocol)));
     }
-
-    // In Deno there's no way to expose internal Node modules anyway,
-    // so calls to NativeModule.canBeRequiredByUsers would only work for built-in modules.
 
     if referrer.starts_with("data:") {
       let referrer_url = Url::parse(referrer)?;
@@ -71,14 +97,14 @@ fn should_be_treated_as_relative_or_absolute_path(specifier: &str) -> bool {
 
 fn is_relative_specifier(specifier: &str) -> bool {
   let specifier_len = specifier.len();
-  let mut specifier_chars = specifier.chars();
+  let specifier_chars: Vec<_> = specifier.chars().collect();
 
-  if specifier_chars.nth(0) == Some('.') {
-    if specifier_len == 1 || specifier_chars.nth(1) == Some('/') {
+  if !specifier_chars.is_empty() && specifier_chars[0] == '.' {
+    if specifier_len == 1 || specifier_chars[1] == '/' {
       return true;
     }
-    if specifier_chars.nth(1) == Some('.') {
-      if specifier_len == 2 || specifier_chars.nth(2) == Some('/') {
+    if specifier_chars[1] == '.' {
+      if specifier_len == 2 || specifier_chars[2] == '/' {
         return true;
       }
     }
@@ -90,6 +116,7 @@ fn module_resolve(
   specifier: &str,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
+  // eprintln!("module resolve {} {}", specifier, base.as_str());
   let resolved = if should_be_treated_as_relative_or_absolute_path(specifier) {
     base.join(specifier)?
   } else if specifier.chars().nth(0) == Some('#') {
@@ -108,6 +135,11 @@ fn finalize_resolution(
   resolved: ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
+  // TODO(bartlomieju): short circuit for remote modules
+  if resolved.scheme().starts_with("http") {
+    return Ok(resolved);
+  }
+
   let encoded_sep_re = Regex::new(r"%2F|%2C").expect("bad regex");
 
   if encoded_sep_re.is_match(resolved.path()) {
@@ -118,6 +150,7 @@ fn finalize_resolution(
     )));
   }
 
+  // eprintln!("resolved {}, base: {}", resolved.as_str(), base.as_str());
   let path = resolved.to_file_path().unwrap();
 
   // TODO(bartlomieju): currently not supported
@@ -132,15 +165,20 @@ fn finalize_resolution(
     p_str.to_string()
   };
 
-  let stats = std::fs::metadata(&p)?;
-  if stats.is_dir() {
+  // eprintln!("meta data path: {}", p);
+  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(&p) {
+    (stats.is_dir(), stats.is_file())
+  } else {
+    (false, false)
+  };
+  if is_dir {
     return Err(
       generic_error(
         format!("Directory import {} is not supported resolving ES modules imported from {}",
           path.display(), base.to_file_path().unwrap().display()
         )
     ));
-  } else if !stats.is_file() {
+  } else if !is_file {
     return Err(generic_error(format!(
       "Cannot find module {} imported from {}",
       path.display(),
@@ -152,8 +190,8 @@ fn finalize_resolution(
 }
 
 fn package_imports_resolve(
-  specifier: &str,
-  base: &ModuleSpecifier,
+  _specifier: &str,
+  _base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
   todo!()
 }
@@ -199,13 +237,13 @@ fn is_conditional_exports_main_sugar(
 fn resolve_package_target_string(
   target: String,
   subpath: String,
-  match_: String,
+  _match_: String,
   package_json_url: Url,
-  base: &ModuleSpecifier,
+  _base: &ModuleSpecifier,
   pattern: bool,
   internal: bool,
 ) -> Result<ModuleSpecifier, AnyError> {
-  if subpath == "" && !pattern && !target.ends_with('/') {
+  if subpath != "" && !pattern && !target.ends_with('/') {
     todo!()
   }
 
@@ -218,7 +256,7 @@ fn resolve_package_target_string(
 
   let invalid_segment_re =
     Regex::new(r"(^|\|/)(..?|node_modules)(\|/|$)").expect("bad regex");
-  let pattern_re = Regex::new(r"*").expect("bad regex");
+  let pattern_re = Regex::new(r"\*").expect("bad regex");
 
   if invalid_segment_re.is_match(&target[2..]) {
     todo!()
@@ -260,9 +298,9 @@ fn resolve_package_target(
   base: &ModuleSpecifier,
   pattern: bool,
   internal: bool,
-) -> Result<ModuleSpecifier, AnyError> {
+) -> Result<Option<ModuleSpecifier>, AnyError> {
   if let Some(target) = target.as_str() {
-    return resolve_package_target_string(
+    return Ok(Some(resolve_package_target_string(
       target.to_string(),
       subpath,
       package_subpath,
@@ -271,7 +309,7 @@ fn resolve_package_target(
       pattern,
       internal,
       // TODO(bartlomieju): last argument "conditions" was skipped
-    );
+    )?));
   } else if let Some(target_arr) = target.as_array() {
     if target_arr.is_empty() {
       todo!()
@@ -279,7 +317,29 @@ fn resolve_package_target(
 
     todo!()
   } else if let Some(target_obj) = target.as_object() {
-    todo!()
+    for key in target_obj.keys() {
+      // TODO(bartlomieju): verify that keys are not numeric
+
+      // TODO(bartlomieju): this should be injected as an
+      // argument to the function
+      let conditions = vec!["node".to_string(), "import".to_string()];
+      if key == "default" || conditions.contains(&key) {
+        let condition_target = target_obj.get(key).unwrap().to_owned();
+        let resolved = resolve_package_target(
+          package_json_url.clone(),
+          condition_target,
+          subpath.clone(),
+          package_subpath.clone(),
+          base,
+          pattern,
+          internal,
+        )?;
+        if resolved.is_none() {
+          continue;
+        }
+        return Ok(resolved);
+      }
+    }
   } else if target.is_null() {
     todo!()
   }
@@ -320,8 +380,11 @@ fn package_exports_resolve(
       false,
       false,
     )?;
-    // TODO()
-    return Ok(resolved);
+    // TODO():
+    if resolved.is_none() {
+      todo!()
+    }
+    return Ok(resolved.unwrap());
   }
 
   todo!()
@@ -331,6 +394,7 @@ fn package_resolve(
   specifier: &str,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
+  // eprintln!("package_resolve {} {}", specifier, base.as_str());
   let (package_name, package_subpath, is_scoped) =
     parse_package_name(specifier, base)?;
 
@@ -339,7 +403,11 @@ fn package_resolve(
   if package_config.exists {
     let package_json_url =
       Url::from_file_path(&package_config.pjsonpath).unwrap();
-    if package_config.name == Some(package_name) {
+    // eprintln!(
+    //   "package_config.name {:?} package_name {:?} exports {:#?}",
+    //   package_config.name, package_name, package_config.exports
+    // );
+    if package_config.name.as_ref() == Some(&package_name) {
       if let Some(exports) = &package_config.exports {
         if !exports.is_null() {
           // TODO(bartlomieju): last argument "conditions" was skipped
@@ -354,7 +422,61 @@ fn package_resolve(
     }
   }
 
-  todo!()
+  let mut package_json_url =
+    base.join(&format!("./node_modules/{}/package.json", package_name))?;
+  let mut package_json_path = package_json_url.to_file_path().unwrap();
+  let mut last_path;
+  loop {
+    let p_str = package_json_path.to_str().unwrap();
+    let p = p_str[0..=p_str.len() - 13].to_string();
+    let is_dir = if let Ok(stats) = std::fs::metadata(&p) {
+      stats.is_dir()
+    } else {
+      false
+    };
+    if !is_dir {
+      last_path = package_json_path;
+
+      let prefix = if is_scoped {
+        "../../../../node_modules/"
+      } else {
+        "../../../node_modules/"
+      };
+      package_json_url = package_json_url
+        .join(&format!("{}{}/package.json", prefix, package_name))?;
+      package_json_path = package_json_url.to_file_path().unwrap();
+      if package_json_path.to_str().unwrap().len()
+        == last_path.to_str().unwrap().len()
+      {
+        break;
+      } else {
+        continue;
+      }
+    }
+
+    // Package match.
+    // eprintln!("got package match!");
+    let package_config =
+      get_package_config(package_json_path.clone(), specifier, Some(base))?;
+    // eprintln!("got package match {} {} {:#?}", package_json_path.display(), specifier, package_config.exports);
+    if package_config.exports.is_some() {
+      return package_exports_resolve(
+        package_json_url,
+        package_subpath,
+        package_config,
+        base,
+      );
+    }
+    if package_subpath == "." {
+      todo!();
+    }
+
+    return package_json_url
+      .join(&package_subpath)
+      .map_err(AnyError::from);
+  }
+
+  Err(generic_error(format!("module not found {}", specifier)))
 }
 
 fn parse_package_name(
@@ -362,7 +484,7 @@ fn parse_package_name(
   base: &ModuleSpecifier,
 ) -> Result<(String, String, bool), AnyError> {
   let mut separator_index = specifier.find('/');
-  let mut valid_package_name = false;
+  let mut valid_package_name = true;
   let mut is_scoped = false;
   if specifier.is_empty() {
     valid_package_name = false;
@@ -378,7 +500,7 @@ fn parse_package_name(
   }
 
   let package_name = if let Some(index) = separator_index {
-    specifier[0..index].to_string()
+    specifier[0..=index].to_string()
   } else {
     specifier.to_string()
   };
@@ -391,6 +513,7 @@ fn parse_package_name(
     }
   }
 
+  // // eprintln!("specifier: {:?}, base: {:?}", specifier, base);
   if !valid_package_name {
     return Err(generic_error(format!(
       "{} is not a valid package name {}",
@@ -432,7 +555,7 @@ struct PackageConfig {
 
 fn get_package_config(
   path: PathBuf,
-  specifier: &ModuleSpecifier,
+  specifier: &str,
   maybe_base: Option<&ModuleSpecifier>,
 ) -> Result<PackageConfig, AnyError> {
   // TODO(bartlomieju):
@@ -441,7 +564,10 @@ fn get_package_config(
   // }
 
   // TODO: maybe shouldn't error be return empty package
-  let source = std::fs::read_to_string(&path)?;
+  // eprintln!("get package config: {} {:?}", specifier, path);
+  let result = std::fs::read_to_string(&path);
+
+  let source = result.unwrap_or_else(|_| "".to_string());
   if source.is_empty() {
     let package_config = PackageConfig {
       pjsonpath: path,
@@ -464,7 +590,7 @@ fn get_package_config(
       msg = format!(
         "{} \"{}\" from {}",
         msg,
-        specifier.as_str(),
+        specifier,
         base.to_file_path().unwrap().display()
       );
     }
@@ -524,7 +650,7 @@ fn get_package_config(
 
   let package_config = PackageConfig {
     pjsonpath: path,
-    exists: false,
+    exists: true,
     main,
     name,
     typ,
@@ -548,11 +674,17 @@ fn get_package_scope_config(
       break;
     }
 
+    // eprintln!("get package scope config");
     let package_config = get_package_config(
       package_json_url.to_file_path().unwrap(),
-      resolved,
+      resolved.as_str(),
       None,
     )?;
+    // eprintln!(
+    //   "found package config {}, exists: {}",
+    //   package_json_url.as_str(),
+    //   package_config.exists
+    // );
     if package_config.exists {
       return Ok(package_config);
     }

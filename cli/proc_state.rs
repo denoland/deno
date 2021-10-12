@@ -13,6 +13,7 @@ use crate::flags;
 use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
+use crate::node_module_loader::NodeResolver;
 use crate::resolver::ImportMapResolver;
 use crate::source_maps::SourceMapGetter;
 use crate::version;
@@ -316,14 +317,20 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports();
-    let maybe_resolver =
+    let node_resolver = NodeResolver;
+    let import_map_resolver =
       self.maybe_import_map.as_ref().map(ImportMapResolver::new);
+    let maybe_resolver = if self.flags.compat {
+      Some(node_resolver.as_resolver())
+    } else {
+      import_map_resolver.as_ref().map(|im| im.as_resolver())
+    };
     let graph = deno_graph::create_graph(
       roots,
       is_dynamic,
       maybe_imports,
       &mut cache,
-      maybe_resolver.as_ref().map(|im| im.as_resolver()),
+      maybe_resolver,
       maybe_locker,
       None,
     )
