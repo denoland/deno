@@ -26917,14 +26917,10 @@
       "prototypes.any.worker.html": false,
       "table": {
         "constructor.any.html": [
-          "initialize externref table with default value",
-          "initialize anyfunc table with default value",
-          "initialize anyfunc table with a bad default value"
+          "initialize externref table with default value"
         ],
         "constructor.any.worker.html": [
-          "initialize externref table with default value",
-          "initialize anyfunc table with default value",
-          "initialize anyfunc table with a bad default value"
+          "initialize externref table with default value"
         ],
         "get-set.any.html": [
           "Arguments for anyfunc table set",
@@ -26954,40 +26950,34 @@
         "type.tentative.any.worker.html": false
       },
       "exception": {
-        "basic.tentative.any.html": false,
-        "basic.tentative.any.worker.html": false,
-        "constructor.tentative.any.html": [
-          "name",
-          "length",
-          "Calling",
-          "Invalid exception argument"
+        "basic.tentative.any.html": [
+          "Wasm function throws argument",
+          "Wasm function throws null",
+          "Imported JS function throws",
+          "Imported JS function throws, Wasm catches and rethrows"
         ],
-        "constructor.tentative.any.worker.html": [
-          "name",
-          "length",
-          "Calling",
-          "Invalid exception argument"
+        "basic.tentative.any.worker.html": [
+          "Wasm function throws argument",
+          "Wasm function throws null",
+          "Imported JS function throws",
+          "Imported JS function throws, Wasm catches and rethrows"
         ],
-        "getArg.tentative.any.html": false,
-        "getArg.tentative.any.worker.html": false,
-        "is.tentative.any.html": false,
-        "is.tentative.any.worker.html": false,
+        "constructor.tentative.any.html": true,
+        "constructor.tentative.any.worker.html": true,
+        "getArg.tentative.any.html": true,
+        "getArg.tentative.any.worker.html": true,
+        "is.tentative.any.html": true,
+        "is.tentative.any.worker.html": true,
         "toString.tentative.any.html": false,
         "toString.tentative.any.worker.html": false,
         "type.tentative.any.html": false,
         "type.tentative.any.worker.html": false
       },
       "tag": {
-        "constructor.tentative.any.html": [
-          "name",
-          "length"
-        ],
-        "constructor.tentative.any.worker.html": [
-          "name",
-          "length"
-        ],
-        "toString.tentative.any.html": false,
-        "toString.tentative.any.worker.html": false,
+        "constructor.tentative.any.html": true,
+        "constructor.tentative.any.worker.html": true,
+        "toString.tentative.any.html": true,
+        "toString.tentative.any.worker.html": true,
         "type.tentative.any.html": false,
         "type.tentative.any.worker.html": false
       },
