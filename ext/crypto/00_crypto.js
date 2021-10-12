@@ -1549,8 +1549,6 @@
               keyUsages,
               (u) =>
                 !ArrayPrototypeIncludes([
-                  "encrypt",
-                  "decrypt",
                   "wrapKey",
                   "unwrapKey",
                 ], u),
