@@ -200,16 +200,108 @@ fn is_conditional_exports_main_sugar(
 }
 
 // TODO(bartlomieju): last argument "conditions" was skipped
+fn resolve_package_target_string(
+  target: String,
+  subpath: String,
+  match_: String,
+  package_json_url: Url,
+  base: &ModuleSpecifier,
+  pattern: bool,
+  internal: bool,
+) -> Result<ModuleSpecifier, AnyError> {
+  if subpath == "" && !pattern && !target.ends_with('/') {
+    todo!()
+  }
+
+  if !target.starts_with("./") {
+    if internal && !target.starts_with("../") && !target.starts_with('/') {
+      todo!()
+    }
+    todo!()
+  }
+
+  let invalid_segment_re =
+    Regex::new(r"(^|\|/)(..?|node_modules)(\|/|$)").expect("bad regex");
+  let pattern_re = Regex::new(r"*").expect("bad regex");
+
+  if invalid_segment_re.is_match(&target[2..]) {
+    todo!()
+  }
+
+  let resolved = package_json_url.join(&target)?;
+  let resolved_path = resolved.path();
+  let package_url = package_json_url.join(".").unwrap();
+  let package_path = package_url.path();
+
+  if !resolved_path.starts_with(package_path) {
+    todo!()
+  }
+
+  if subpath == "" {
+    return Ok(resolved);
+  }
+
+  if invalid_segment_re.is_match(&subpath) {
+    todo!()
+  }
+
+  if pattern {
+    let replaced = pattern_re
+      .replace(resolved.as_str(), |_caps: &regex::Captures| subpath.clone());
+    let url = Url::parse(&replaced)?;
+    return Ok(url);
+  }
+
+  Ok(resolved.join(&subpath)?)
+}
+
+// TODO(bartlomieju): last argument "conditions" was skipped
+fn resolve_package_target(
+  package_json_url: Url,
+  target: Value,
+  subpath: String,
+  package_subpath: String,
+  base: &ModuleSpecifier,
+  pattern: bool,
+  internal: bool,
+) -> Result<ModuleSpecifier, AnyError> {
+  if let Some(target) = target.as_str() {
+    return resolve_package_target_string(
+      target.to_string(),
+      subpath,
+      package_subpath,
+      package_json_url,
+      base,
+      pattern,
+      internal,
+      // TODO(bartlomieju): last argument "conditions" was skipped
+    );
+  } else if let Some(target_arr) = target.as_array() {
+    if target_arr.is_empty() {
+      todo!()
+    }
+
+    todo!()
+  } else if let Some(target_obj) = target.as_object() {
+    todo!()
+  } else if target.is_null() {
+    todo!()
+  }
+
+  todo!()
+}
+
+// TODO(bartlomieju): last argument "conditions" was skipped
 fn package_exports_resolve(
   package_json_url: Url,
   package_subpath: String,
   package_config: PackageConfig,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
-  let exports = &package_config.exports;
+  let exports = &package_config.exports.unwrap();
 
   let exports_map =
-    if is_conditional_exports_main_sugar(exports, &package_json_url, base) {
+    if is_conditional_exports_main_sugar(exports, &package_json_url, base)? {
       let mut map = Map::new();
       map.insert(".".to_string(), exports.to_owned());
       map
@@ -221,12 +313,12 @@ fn package_exports_resolve(
     && package_subpath.find('*').is_none()
     && !package_subpath.ends_with('/')
   {
-    let target = exports_map.get(&package_subpath).unwrap();
+    let target = exports_map.get(&package_subpath).unwrap().to_owned();
     // TODO(bartlomieju): last argument "conditions" was skipped
     let resolved = resolve_package_target(
       package_json_url,
       target,
-      "",
+      "".to_string(),
       package_subpath,
       base,
       false,
