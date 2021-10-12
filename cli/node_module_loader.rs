@@ -4,6 +4,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use regex::Regex;
 
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
@@ -84,46 +85,94 @@ fn is_relative_specifier(specifier: &str) -> bool {
   false
 }
 
-// fn module_resolve(
-//   specifier: &str,
-//   base: &str,
-// ) -> Result<ModuleSpecifier, AnyError> {
-//   let resolved = if should_be_treated_as_relative_or_absolute_path(specifier) {
-//     Url::parse(specifier, base)
-//     // TODO(bartlomieju): check len, can panic
-//   } else if specifier[0] == "#" {
-//     package_imports_resolve(specifier, base)
-//   } else {
-//     if let Ok(resolved) = Url::parse(specifier) {
-//       resolved
-//     } else {
-//       package_resolve(specifier, base)
-//     }
-//   };
-//   finalize_resolution(resolved, base)
-// }
+fn module_resolve(
+  specifier: &str,
+  base: &ModuleSpecifier,
+) -> Result<ModuleSpecifier, AnyError> {
+  let resolved = if should_be_treated_as_relative_or_absolute_path(specifier) {
+    base.join(specifier)?
+  } else if specifier.chars().nth(0) == Some('#') {
+    package_imports_resolve(specifier, base)?
+  } else {
+    if let Ok(resolved) = Url::parse(specifier) {
+      resolved
+    } else {
+      package_resolve(specifier, base)?
+    }
+  };
+  finalize_resolution(resolved, base)
+}
 
-// fn finalize_resolution(resolved: &str, base: &str) {
-//   todo!()
-// }
+fn finalize_resolution(
+  resolved: ModuleSpecifier,
+  base: &ModuleSpecifier,
+) -> Result<ModuleSpecifier, AnyError> {
+  let encoded_sep_re = Regex::new(r"%2F|%2C").expect("bad regex");
 
-// fn package_imports_resolve(specifier: &str, base: &str) {
-//   todo!()
-// }
+  if encoded_sep_re.is_match(resolved.path()) {
+    return Err(generic_error(format!(
+      "{} must not include encoded \"/\" or \"\\\\\" characters {}",
+      resolved.path(),
+      base.to_file_path().unwrap().display()
+    )));
+  }
 
-// fn package_resolve(
-//   specifier: &str,
-//   base: &str,
-// ) -> Result<ModuleSpecifier, AnyError> {
-//   let (package_name, package_subpath, is_scoped) =
-//     parse_package_name(specifier, base);
+  let path = resolved.to_file_path().unwrap();
 
-//   todo!()
-// }
+  // TODO(bartlomieju): currently not supported
+  // if (getOptionValue('--experimental-specifier-resolution') === 'node') {
+  //   ...
+  // }
+
+  let p_str = path.to_str().unwrap();
+  let p = if p_str.ends_with('/') {
+    p_str[p_str.len() - 1..].to_string()
+  } else {
+    p_str.to_string()
+  };
+
+  let stats = std::fs::metadata(&p)?;
+  if stats.is_dir() {
+    return Err(
+      generic_error(
+        format!("Directory import {} is not supported resolving ES modules imported from {}",
+          path.display(), base.to_file_path().unwrap().display()
+        )
+    ));
+  } else if !stats.is_file() {
+    return Err(generic_error(format!(
+      "Cannot find module {} imported from {}",
+      path.display(),
+      base.to_file_path().unwrap().display()
+    )));
+  }
+
+  Ok(resolved)
+}
+
+fn package_imports_resolve(
+  specifier: &str,
+  base: &ModuleSpecifier,
+) -> Result<ModuleSpecifier, AnyError> {
+  todo!()
+}
+
+fn package_resolve(
+  specifier: &str,
+  base: &ModuleSpecifier,
+) -> Result<ModuleSpecifier, AnyError> {
+  let (package_name, package_subpath, is_scoped) =
+    parse_package_name(specifier, base)?;
+
+  // ResolveSelf
+  // let package_config = get_package_scope_config(base);
+
+  todo!()
+}
 
 fn parse_package_name(
   specifier: &str,
-  base: &str,
+  base: &ModuleSpecifier,
 ) -> Result<(String, String, bool), AnyError> {
   let mut separator_index = specifier.find('/');
   let mut valid_package_name = false;
@@ -156,10 +205,10 @@ fn parse_package_name(
   }
 
   if !valid_package_name {
-    // TODO(bartlomieju): apply fileURLToPath
     return Err(generic_error(format!(
       "{} is not a valid package name {}",
-      specifier, base
+      specifier,
+      base.to_file_path().unwrap().display()
     )));
   }
 
@@ -172,3 +221,24 @@ fn parse_package_name(
 
   Ok((package_name, package_subpath, is_scoped))
 }
+
+// enum ExportConfig {
+//   Str(String),
+//   StrArray(Vec<String>),
+// }
+
+// enum PackageType {
+//   Module,
+//   CommonJs,
+// }
+
+// struct PackageConfig {
+//   exports: Option<ExportConfig>,
+//   name: Option<String>,
+//   main: Option<String>,
+//   typ: Option<PackageType>
+// }
+
+// fn get_package_scope_config(resolved: &str) {
+//   todo!()
+// }
