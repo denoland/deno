@@ -199,15 +199,10 @@ pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
   maybe_lint_config: Option<&LintConfig>,
 ) -> Result<Vec<Reference>, AnyError> {
-  let syntax = deno_ast::get_syntax(parsed_source.media_type());
   let lint_rules =
     get_configured_rules(maybe_lint_config, vec![], vec![], vec![])?;
-  let linter = create_linter(syntax, lint_rules);
-  // TODO(dsherret): do not re-parse here again
-  let (_, lint_diagnostics) = linter.lint(
-    parsed_source.specifier().to_string(),
-    parsed_source.source().text_str().to_string(),
-  )?;
+  let linter = create_linter(parsed_source.media_type(), lint_rules);
+  let lint_diagnostics = linter.lint_with_ast(parsed_source);
 
   Ok(
     lint_diagnostics
@@ -357,6 +352,7 @@ pub fn parse_module(
     // capture the tokens for linting and formatting
     capture_tokens: true,
     maybe_syntax: None,
+    scope_analysis: true, // for deno_lint
   })
 }
 

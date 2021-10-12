@@ -978,7 +978,7 @@
         symbolKeys,
         (s1, s2) =>
           StringPrototypeLocaleCompare(
-            (s1.description ?? ""),
+            s1.description ?? "",
             s2.description ?? "",
           ),
       );

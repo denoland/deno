@@ -13,7 +13,6 @@ use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext};
 use crate::tools::fmt::run_parallelized;
 use crate::{colors, file_watcher};
-use deno_ast::swc::parser::Syntax;
 use deno_ast::MediaType;
 use deno_core::error::{anyhow, generic_error, AnyError, JsStackFrame};
 use deno_core::serde_json;
@@ -231,27 +230,26 @@ pub fn print_rules_list(json: bool) {
 }
 
 pub fn create_linter(
-  syntax: Syntax,
-  rules: Arc<Vec<Box<dyn LintRule>>>,
+  media_type: MediaType,
+  rules: Vec<Arc<dyn LintRule>>,
 ) -> Linter {
   LinterBuilder::default()
     .ignore_file_directive("deno-lint-ignore-file")
     .ignore_diagnostic_directive("deno-lint-ignore")
-    .syntax(syntax)
+    .media_type(media_type)
     .rules(rules)
     .build()
 }
 
 fn lint_file(
   file_path: PathBuf,
-  lint_rules: Arc<Vec<Box<dyn LintRule>>>,
+  lint_rules: Vec<Arc<dyn LintRule>>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
   let media_type = MediaType::from(&file_path);
-  let syntax = deno_ast::get_syntax(media_type);
 
-  let linter = create_linter(syntax, lint_rules);
+  let linter = create_linter(media_type, lint_rules);
 
   let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
 
@@ -262,15 +260,14 @@ fn lint_file(
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
 fn lint_stdin(
-  lint_rules: Arc<Vec<Box<dyn LintRule>>>,
+  lint_rules: Vec<Arc<dyn LintRule>>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
     return Err(generic_error("Failed to read from stdin"));
   }
 
-  let syntax = deno_ast::get_syntax(MediaType::TypeScript);
-  let linter = create_linter(syntax, lint_rules);
+  let linter = create_linter(MediaType::TypeScript, lint_rules);
 
   let (_, file_diagnostics) =
     linter.lint(STDIN_FILE_NAME.to_string(), source_code.clone())?;
@@ -489,7 +486,7 @@ pub(crate) fn get_configured_rules(
   rules_tags: Vec<String>,
   rules_include: Vec<String>,
   rules_exclude: Vec<String>,
-) -> Result<Arc<Vec<Box<dyn LintRule>>>, AnyError> {
+) -> Result<Vec<Arc<dyn LintRule>>, AnyError> {
   if maybe_lint_config.is_none()
     && rules_tags.is_empty()
     && rules_include.is_empty()

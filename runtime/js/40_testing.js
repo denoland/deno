@@ -411,7 +411,7 @@ finishing test case.`;
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
     const filtered = ArrayPrototypeFilter(
-      (only.length > 0 ? only : tests),
+      only.length > 0 ? only : tests,
       createTestFilter(filter),
     );
 
