@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_webgpu"
-version = "0.21.0"
+version = "0.22.0"
 authors = ["the Deno authors"]
 edition = "2018"
 license = "MIT"
@@ -14,7 +14,7 @@ description = "WebGPU implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.102.0", path = "../../core" }
+deno_core = { version = "0.103.0", path = "../../core" }
 serde = { version = "1.0.129", features = ["derive"] }
 tokio = { version = "1.10.1", features = ["full"] }
 wgpu-core = { version = "0.10.1", features = ["trace"] }
