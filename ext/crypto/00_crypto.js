@@ -110,6 +110,10 @@
       "HMAC": "HmacImportParams",
       "HKDF": null,
       "PBKDF2": null,
+      "AES-CTR": null,
+      "AES-CBC": null,
+      "AES-GCM": null,
+      "AES-KW": null,
     },
     "deriveBits": {
       "HKDF": "HkdfParams",
@@ -1370,6 +1374,228 @@
           // 10.
           return key;
         }
+        case "AES-CTR": {
+          // 1.
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) =>
+                !ArrayPrototypeIncludes([
+                  "encrypt",
+                  "decrypt",
+                  "wrapKey",
+                  "unwrapKey",
+                ], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+
+          // 2.
+          switch (format) {
+            case "raw": {
+              // 2.
+              if (
+                !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
+              ) {
+                throw new DOMException("Invalid key length", "Datarror");
+              }
+
+              break;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "raw",
+            data: keyData,
+          });
+
+          // 4-7.
+          const algorithm = {
+            name: "AES-CBC",
+            length: keyData.byteLength * 8,
+          };
+
+          const key = constructKey(
+            "secret",
+            false,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+
+          // 8.
+          return key;
+        }
+        case "AES-CBC": {
+          // 1.
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) =>
+                !ArrayPrototypeIncludes([
+                  "encrypt",
+                  "decrypt",
+                  "wrapKey",
+                  "unwrapKey",
+                ], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+
+          // 2.
+          switch (format) {
+            case "raw": {
+              // 2.
+              if (
+                !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
+              ) {
+                throw new DOMException("Invalid key length", "Datarror");
+              }
+
+              break;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "raw",
+            data: keyData,
+          });
+
+          // 4-7.
+          const algorithm = {
+            name: "AES-CTR",
+            length: keyData.byteLength * 8,
+          };
+
+          const key = constructKey(
+            "secret",
+            false,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+
+          // 8.
+          return key;
+        }
+        case "AES-GCM": {
+          // 1.
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) =>
+                !ArrayPrototypeIncludes([
+                  "encrypt",
+                  "decrypt",
+                  "wrapKey",
+                  "unwrapKey",
+                ], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+
+          // 2.
+          switch (format) {
+            case "raw": {
+              // 2.
+              if (
+                !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
+              ) {
+                throw new DOMException("Invalid key length", "Datarror");
+              }
+
+              break;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "raw",
+            data: keyData,
+          });
+
+          // 4-7.
+          const algorithm = {
+            name: "AES-GCM",
+            length: keyData.byteLength * 8,
+          };
+
+          const key = constructKey(
+            "secret",
+            false,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+
+          // 8.
+          return key;
+        }
+        case "AES-KW": {
+          // 1.
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) =>
+                !ArrayPrototypeIncludes([
+                  "wrapKey",
+                  "unwrapKey",
+                ], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+
+          // 2.
+          switch (format) {
+            case "raw": {
+              // 2.
+              if (
+                !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
+              ) {
+                throw new DOMException("Invalid key length", "Datarror");
+              }
+
+              break;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "raw",
+            data: keyData,
+          });
+
+          // 4-7.
+          const algorithm = {
+            name: "AES-KW",
+            length: keyData.byteLength * 8,
+          };
+
+          const key = constructKey(
+            "secret",
+            false,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+
+          // 8.
+          return key;
+        }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
@@ -1603,6 +1829,58 @@
               );
 
               // 3.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "AES-CTR": {
+          switch (format) {
+            // 2.
+            case "raw": {
+              // 1.
+              const data = innerKey.data;
+              // 2.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "AES-CBC": {
+          switch (format) {
+            // 2.
+            case "raw": {
+              // 1.
+              const data = innerKey.data;
+              // 2.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "AES-GCM": {
+          switch (format) {
+            // 2.
+            case "raw": {
+              // 1.
+              const data = innerKey.data;
+              // 2.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "AES-KW": {
+          switch (format) {
+            // 2.
+            case "raw": {
+              // 1.
+              const data = innerKey.data;
+              // 2.
               return data.buffer;
             }
             default:
