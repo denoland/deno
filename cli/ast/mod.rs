@@ -243,7 +243,6 @@ pub fn transpile(
         legacy: true,
         emit_metadata: options.emit_metadata
       }),
-      // DownlevelImportsFolder::new(), // todo: make this conditional
       helpers::inject_helpers(),
       typescript::strip::strip_with_config(strip_config_from_emit_options(
         options
