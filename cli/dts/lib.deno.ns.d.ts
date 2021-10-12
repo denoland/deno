@@ -113,8 +113,12 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestContext {
+  }
+
   export interface TestDefinition {
-    fn: () => void | Promise<void>;
+    fn: (t: TestContext) => void | Promise<void>;
     name: string;
     ignore?: boolean;
     /** If at least one test has `only` set to true, only run tests that have
@@ -127,7 +131,6 @@ declare namespace Deno {
      * after the test has exactly the same contents as before the test. Defaults
      * to true. */
     sanitizeResources?: boolean;
-
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
@@ -184,7 +187,10 @@ declare namespace Deno {
    * });
    * ```
    */
-  export function test(name: string, fn: () => void | Promise<void>): void;
+  export function test(
+    name: string,
+    fn: (t: TestContext) => void | Promise<void>,
+  ): void;
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.

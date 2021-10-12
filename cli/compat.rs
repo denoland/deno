@@ -3,7 +3,11 @@
 use deno_core::url::Url;
 use std::collections::HashMap;
 
-static STD_NODE: &str = "https://deno.land/std/node/";
+// TODO(bartlomieju): this needs to be bumped manually for
+// each release, a better mechanism is preferable, but it's a quick and dirty
+// solution to avoid printing `X-Deno-Warning` headers when the compat layer is
+// downloaded
+static STD_URL: &str = "https://deno.land/std@0.110.0/";
 static GLOBAL_MODULE: &str = "global.ts";
 
 static SUPPORTED_MODULES: &[&str] = &[
@@ -52,7 +56,7 @@ static SUPPORTED_MODULES: &[&str] = &[
 ];
 
 lazy_static::lazy_static! {
-  static ref GLOBAL_URL_STR: String = format!("{}{}", STD_NODE, GLOBAL_MODULE);
+  static ref GLOBAL_URL_STR: String = format!("{}node/{}", STD_URL, GLOBAL_MODULE);
   pub(crate) static ref GLOBAL_URL: Url = Url::parse(&GLOBAL_URL_STR).unwrap();
   static ref COMPAT_IMPORT_URL: Url = Url::parse("flags:compat").unwrap();
 }
@@ -71,7 +75,7 @@ pub fn get_mapped_node_builtins() -> HashMap<String, String> {
 
   for module in SUPPORTED_MODULES {
     // TODO(bartlomieju): this is unversioned, and should be fixed to use latest stable?
-    let module_url = format!("{}{}.ts", STD_NODE, module);
+    let module_url = format!("{}node/{}.ts", STD_URL, module);
     mappings.insert(module.to_string(), module_url.clone());
 
     // Support for `node:<module_name>`

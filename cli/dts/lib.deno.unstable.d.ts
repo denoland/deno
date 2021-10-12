@@ -123,6 +123,8 @@ declare namespace Deno {
   export interface ForeignFunction {
     parameters: (NativeType | "buffer")[];
     result: NativeType;
+    /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
+    nonblocking?: boolean;
   }
 
   /** A dynamic library resource */
@@ -944,6 +946,43 @@ declare namespace Deno {
        */
       write?: "inherit" | boolean | Array<string | URL>;
     };
+  }
+
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestContext {
+    /** Run a sub step of the parent test with a given name. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored, the promise returns `false`.
+     */
+    step(t: TestStepDefinition): Promise<boolean>;
+
+    /** Run a sub step of the parent test with a given name. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored, the promise returns `false`.
+     */
+    step(
+      name: string,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): Promise<boolean>;
+  }
+
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestStepDefinition {
+    fn: (t: TestContext) => void | Promise<void>;
+    name: string;
+    ignore?: boolean;
+    /** Check that the number of async completed ops after the test is the same
+     * as number of dispatched ops. Defaults to true. */
+    sanitizeOps?: boolean;
+    /** Ensure the test case does not "leak" resources - ie. the resource table
+     * after the test has exactly the same contents as before the test. Defaults
+     * to true. */
+    sanitizeResources?: boolean;
+    /** Ensure the test case does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to true. */
+    sanitizeExit?: boolean;
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.

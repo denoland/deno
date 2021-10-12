@@ -14,8 +14,11 @@ description = "Web Cryptography API implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
+aes = "0.7.5"
+block-modes = "0.8.1"
 deno_core = { version = "0.102.0", path = "../../core" }
 deno_web = { version = "0.51.0", path = "../web" }
+elliptic-curve = "0.10.6"
 lazy_static = "1.4.0"
 num-traits = "0.2.14"
 p256 = { version = "0.9.0", features = ["ecdh"] }

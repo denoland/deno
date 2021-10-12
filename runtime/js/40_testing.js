@@ -11,7 +11,10 @@
   const {
     ArrayPrototypeFilter,
     ArrayPrototypePush,
+    ArrayPrototypeSome,
     DateNow,
+    Error,
+    Function,
     JSONStringify,
     Promise,
     TypeError,
@@ -20,8 +23,11 @@
     StringPrototypeIncludes,
     StringPrototypeSlice,
     RegExp,
+    Number,
     RegExpPrototypeTest,
+    SymbolToStringTag,
   } = window.__bootstrap.primordials;
+  let testStepsEnabled = false;
 
   // Wrap test function in additional assertion that makes sure
   // the test case does not leak async "ops" - ie. number of async
@@ -29,10 +35,10 @@
   // ops. Note that "unref" ops are ignored since in nature that are
   // optional.
   function assertOps(fn) {
-    return async function asyncOpSanitizer() {
+    return async function asyncOpSanitizer(...params) {
       const pre = metrics();
       try {
-        await fn();
+        await fn(...params);
       } finally {
         // Defer until next event loop turn - that way timeouts and intervals
         // cleared can actually be removed from resource table, otherwise
@@ -41,22 +47,50 @@
       }
 
       const post = metrics();
+
       // We're checking diff because one might spawn HTTP server in the background
       // that will be a pending async op before test starts.
       const dispatchedDiff = post.opsDispatchedAsync - pre.opsDispatchedAsync;
       const completedDiff = post.opsCompletedAsync - pre.opsCompletedAsync;
-      assert(
-        dispatchedDiff === completedDiff,
-        `Test case is leaking async ops.
+
+      const details = [];
+      for (const key in post.ops) {
+        const dispatchedDiff = Number(
+          post.ops[key]?.opsDispatchedAsync -
+            (pre.ops[key]?.opsDispatchedAsync ?? 0),
+        );
+        const completedDiff = Number(
+          post.ops[key]?.opsCompletedAsync -
+            (pre.ops[key]?.opsCompletedAsync ?? 0),
+        );
+
+        if (dispatchedDiff !== completedDiff) {
+          details.push(`
+  ${key}:
+    Before:
+      - dispatched: ${pre.ops[key]?.opsDispatchedAsync ?? 0}
+      - completed: ${pre.ops[key]?.opsCompletedAsync ?? 0}
+    After:
+      - dispatched: ${post.ops[key].opsDispatchedAsync}
+      - completed: ${post.ops[key].opsCompletedAsync}`);
+        }
+      }
+
+      const message = `Test case is leaking async ops.
 Before:
   - dispatched: ${pre.opsDispatchedAsync}
   - completed: ${pre.opsCompletedAsync}
 After:
   - dispatched: ${post.opsDispatchedAsync}
   - completed: ${post.opsCompletedAsync}
+${details.length > 0 ? "Ops:" + details.join("") : ""}
 
 Make sure to await all promises returned from Deno APIs before
-finishing test case.`,
+finishing test case.`;
+
+      assert(
+        dispatchedDiff === completedDiff,
+        message,
       );
     };
   }
@@ -67,9 +101,9 @@ finishing test case.`,
   function assertResources(
     fn,
   ) {
-    return async function resourceSanitizer() {
+    return async function resourceSanitizer(...params) {
       const pre = core.resources();
-      await fn();
+      await fn(...params);
       const post = core.resources();
 
       const preStr = JSONStringify(pre, null, 2);
@@ -87,7 +121,7 @@ finishing test case.`;
   // Wrap test function in additional assertion that makes sure
   // that the test case does not accidentally exit prematurely.
   function assertExit(fn) {
-    return async function exitSanitizer() {
+    return async function exitSanitizer(...params) {
       setExitHandler((exitCode) => {
         assert(
           false,
@@ -96,11 +130,91 @@ finishing test case.`;
       });
 
       try {
-        await fn();
+        await fn(...params);
       } catch (err) {
         throw err;
       } finally {
         setExitHandler(null);
+      }
+    };
+  }
+
+  function assertTestStepScopes(fn) {
+    /** @param step {TestStep} */
+    return async function testStepSanitizer(step) {
+      preValidation();
+      // only report waiting after pre-validation
+      if (step.canStreamReporting()) {
+        step.reportWait();
+      }
+      await fn(createTestContext(step));
+      postValidation();
+
+      function preValidation() {
+        const runningSteps = getPotentialConflictingRunningSteps();
+        const runningStepsWithSanitizers = ArrayPrototypeFilter(
+          runningSteps,
+          (t) => t.usesSanitizer,
+        );
+
+        if (runningStepsWithSanitizers.length > 0) {
+          throw new Error(
+            "Cannot start test step while another test step with sanitizers is running.\n" +
+              runningStepsWithSanitizers
+                .map((s) => ` * ${s.getFullName()}`)
+                .join("\n"),
+          );
+        }
+
+        if (step.usesSanitizer && runningSteps.length > 0) {
+          throw new Error(
+            "Cannot start test step with sanitizers while another test step is running.\n" +
+              runningSteps.map((s) => ` * ${s.getFullName()}`).join("\n"),
+          );
+        }
+
+        function getPotentialConflictingRunningSteps() {
+          /** @type {TestStep[]} */
+          const results = [];
+
+          let childStep = step;
+          for (const ancestor of step.ancestors()) {
+            for (const siblingStep of ancestor.children) {
+              if (siblingStep === childStep) {
+                continue;
+              }
+              if (!siblingStep.finalized) {
+                ArrayPrototypePush(results, siblingStep);
+              }
+            }
+            childStep = ancestor;
+          }
+          return results;
+        }
+      }
+
+      function postValidation() {
+        // check for any running steps
+        const hasRunningSteps = ArrayPrototypeSome(
+          step.children,
+          (r) => r.status === "pending",
+        );
+        if (hasRunningSteps) {
+          throw new Error(
+            "There were still test steps running after the current scope finished execution. " +
+              "Ensure all steps are awaited (ex. `await t.step(...)`).",
+          );
+        }
+
+        // check if an ancestor already completed
+        for (const ancestor of step.ancestors()) {
+          if (ancestor.finalized) {
+            throw new Error(
+              "Parent scope completed before test step finished execution. " +
+                "Ensure all steps are awaited (ex. `await t.step(...)`).",
+            );
+          }
+        }
       }
     };
   }
@@ -117,11 +231,11 @@ finishing test case.`;
       core.opSync("op_restore_test_permissions", token);
     }
 
-    return async function applyPermissions() {
+    return async function applyPermissions(...params) {
       const token = pledgePermissions(permissions);
 
       try {
-        await fn();
+        await fn(...params);
       } finally {
         restorePermissions(token);
       }
@@ -130,8 +244,7 @@ finishing test case.`;
 
   const tests = [];
 
-  // Main test function provided by Deno, as you can see it merely
-  // creates a new object with "name" and "fn" fields.
+  // Main test function provided by Deno.
   function test(
     t,
     fn,
@@ -164,17 +277,7 @@ finishing test case.`;
       testDef = { ...defaults, ...t };
     }
 
-    if (testDef.sanitizeOps) {
-      testDef.fn = assertOps(testDef.fn);
-    }
-
-    if (testDef.sanitizeResources) {
-      testDef.fn = assertResources(testDef.fn);
-    }
-
-    if (testDef.sanitizeExit) {
-      testDef.fn = assertExit(testDef.fn);
-    }
+    testDef.fn = wrapTestFnWithSanitizers(testDef.fn, testDef);
 
     if (testDef.permissions) {
       testDef.fn = withPermissions(
@@ -186,7 +289,7 @@ finishing test case.`;
     ArrayPrototypePush(tests, testDef);
   }
 
-  function formatFailure(error) {
+  function formatError(error) {
     if (error.errors) {
       const message = error
         .errors
@@ -195,12 +298,10 @@ finishing test case.`;
         )
         .join("\n");
 
-      return {
-        failed: error.name + "\n" + message + error.stack,
-      };
+      return error.name + "\n" + message + error.stack;
     }
 
-    return { failed: inspectArgs([error]) };
+    return inspectArgs([error]);
   }
 
   function createTestFilter(filter) {
@@ -223,18 +324,40 @@ finishing test case.`;
     };
   }
 
-  async function runTest({ ignore, fn }) {
-    if (ignore) {
+  async function runTest(test, description) {
+    if (test.ignore) {
       return "ignored";
     }
 
-    try {
-      await fn();
-    } catch (error) {
-      return formatFailure(error);
-    }
+    const step = new TestStep({
+      name: test.name,
+      parent: undefined,
+      rootTestDescription: description,
+      sanitizeOps: test.sanitizeOps,
+      sanitizeResources: test.sanitizeResources,
+      sanitizeExit: test.sanitizeExit,
+    });
 
-    return "ok";
+    try {
+      await test.fn(step);
+      const failCount = step.failedChildStepsCount();
+      return failCount === 0 ? "ok" : {
+        "failed": formatError(
+          new Error(
+            `${failCount} test step${failCount === 1 ? "" : "s"} failed.`,
+          ),
+        ),
+      };
+    } catch (error) {
+      return {
+        "failed": formatError(error),
+      };
+    } finally {
+      // ensure the children report their result
+      for (const child of step.children) {
+        child.reportResult();
+      }
+    }
   }
 
   function getTestOrigin() {
@@ -262,6 +385,18 @@ finishing test case.`;
   function reportTestResult(test, result, elapsed) {
     core.opSync("op_dispatch_test_event", {
       result: [test, result, elapsed],
+    });
+  }
+
+  function reportTestStepWait(testDescription) {
+    core.opSync("op_dispatch_test_event", {
+      stepWait: testDescription,
+    });
+  }
+
+  function reportTestStepResult(testDescription, result, elapsed) {
+    core.opSync("op_dispatch_test_event", {
+      stepResult: [testDescription, result, elapsed],
     });
   }
 
@@ -314,7 +449,7 @@ finishing test case.`;
 
       reportTestWait(description);
 
-      const result = await runTest(test);
+      const result = await runTest(test, description);
       const elapsed = DateNow() - earlier;
 
       reportTestResult(description, result, elapsed);
@@ -323,9 +458,341 @@ finishing test case.`;
     globalThis.console = originalConsole;
   }
 
+  /**
+   * @typedef {{
+   *   fn: (t: TestContext) => void | Promise<void>,
+   *   name: string,
+   *   ignore?: boolean,
+   *   sanitizeOps?: boolean,
+   *   sanitizeResources?: boolean,
+   *   sanitizeExit?: boolean,
+   * }} TestStepDefinition
+   *
+   * @typedef {{
+   *   name: string;
+   *   parent: TestStep | undefined,
+   *   rootTestDescription: { origin: string; name: string };
+   *   sanitizeOps: boolean,
+   *   sanitizeResources: boolean,
+   *   sanitizeExit: boolean,
+   * }} TestStepParams
+   */
+
+  class TestStep {
+    /** @type {TestStepParams} */
+    #params;
+    reportedWait = false;
+    #reportedResult = false;
+    finalized = false;
+    elapsed = 0;
+    status = "pending";
+    error = undefined;
+    /** @type {TestStep[]} */
+    children = [];
+
+    /** @param params {TestStepParams} */
+    constructor(params) {
+      this.#params = params;
+    }
+
+    get name() {
+      return this.#params.name;
+    }
+
+    get parent() {
+      return this.#params.parent;
+    }
+
+    get rootTestDescription() {
+      return this.#params.rootTestDescription;
+    }
+
+    get sanitizerOptions() {
+      return {
+        sanitizeResources: this.#params.sanitizeResources,
+        sanitizeOps: this.#params.sanitizeOps,
+        sanitizeExit: this.#params.sanitizeExit,
+      };
+    }
+
+    get usesSanitizer() {
+      return this.#params.sanitizeResources ||
+        this.#params.sanitizeOps ||
+        this.#params.sanitizeExit;
+    }
+
+    failedChildStepsCount() {
+      return ArrayPrototypeFilter(
+        this.children,
+        /** @param step {TestStep} */
+        (step) => step.status === "failed",
+      ).length;
+    }
+
+    canStreamReporting() {
+      // there should only ever be one sub step running when running with
+      // sanitizers, so we can use this to tell if we can stream reporting
+      return this.selfAndAllAncestorsUseSanitizer() &&
+        this.children.every((c) => c.usesSanitizer || c.finalized);
+    }
+
+    selfAndAllAncestorsUseSanitizer() {
+      if (!this.usesSanitizer) {
+        return false;
+      }
+
+      for (const ancestor of this.ancestors()) {
+        if (!ancestor.usesSanitizer) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    *ancestors() {
+      let ancestor = this.parent;
+      while (ancestor) {
+        yield ancestor;
+        ancestor = ancestor.parent;
+      }
+    }
+
+    getFullName() {
+      if (this.parent) {
+        return `${this.parent.getFullName()} > ${this.name}`;
+      } else {
+        return this.name;
+      }
+    }
+
+    reportWait() {
+      if (this.reportedWait || !this.parent) {
+        return;
+      }
+
+      reportTestStepWait(this.#getTestStepDescription());
+
+      this.reportedWait = true;
+    }
+
+    reportResult() {
+      if (this.#reportedResult || !this.parent) {
+        return;
+      }
+
+      this.reportWait();
+
+      for (const child of this.children) {
+        child.reportResult();
+      }
+
+      reportTestStepResult(
+        this.#getTestStepDescription(),
+        this.#getStepResult(),
+        this.elapsed,
+      );
+
+      this.#reportedResult = true;
+    }
+
+    #getStepResult() {
+      switch (this.status) {
+        case "ok":
+          return "ok";
+        case "ignored":
+          return "ignored";
+        case "pending":
+          return {
+            "pending": this.error && formatError(this.error),
+          };
+        case "failed":
+          return {
+            "failed": this.error && formatError(this.error),
+          };
+        default:
+          throw new Error(`Unhandled status: ${this.status}`);
+      }
+    }
+
+    #getTestStepDescription() {
+      return {
+        test: this.rootTestDescription,
+        name: this.name,
+        level: this.#getLevel(),
+      };
+    }
+
+    #getLevel() {
+      let count = 0;
+      for (const _ of this.ancestors()) {
+        count++;
+      }
+      return count;
+    }
+  }
+
+  /** @param parentStep {TestStep} */
+  function createTestContext(parentStep) {
+    return {
+      [SymbolToStringTag]: "TestContext",
+      /**
+       * @param nameOrTestDefinition {string | TestStepDefinition}
+       * @param fn {(t: TestContext) => void | Promise<void>}
+       */
+      async step(nameOrTestDefinition, fn) {
+        if (!testStepsEnabled) {
+          throw new Error(
+            "Test steps are unstable. The --unstable flag must be provided.",
+          );
+        }
+
+        if (parentStep.finalized) {
+          throw new Error(
+            "Cannot run test step after parent scope has finished execution. " +
+              "Ensure any `.step(...)` calls are executed before their parent scope completes execution.",
+          );
+        }
+
+        const definition = getDefinition();
+        const subStep = new TestStep({
+          name: definition.name,
+          parent: parentStep,
+          rootTestDescription: parentStep.rootTestDescription,
+          sanitizeOps: getOrDefault(
+            definition.sanitizeOps,
+            parentStep.sanitizerOptions.sanitizeOps,
+          ),
+          sanitizeResources: getOrDefault(
+            definition.sanitizeResources,
+            parentStep.sanitizerOptions.sanitizeResources,
+          ),
+          sanitizeExit: getOrDefault(
+            definition.sanitizeExit,
+            parentStep.sanitizerOptions.sanitizeExit,
+          ),
+        });
+
+        ArrayPrototypePush(parentStep.children, subStep);
+
+        try {
+          if (definition.ignore) {
+            subStep.status = "ignored";
+            subStep.finalized = true;
+            if (subStep.canStreamReporting()) {
+              subStep.reportResult();
+            }
+            return false;
+          }
+
+          const testFn = wrapTestFnWithSanitizers(
+            definition.fn,
+            subStep.sanitizerOptions,
+          );
+          const start = DateNow();
+
+          try {
+            await testFn(subStep);
+
+            if (subStep.failedChildStepsCount() > 0) {
+              subStep.status = "failed";
+            } else {
+              subStep.status = "ok";
+            }
+          } catch (error) {
+            subStep.error = formatError(error);
+            subStep.status = "failed";
+          }
+
+          subStep.elapsed = DateNow() - start;
+
+          if (subStep.parent?.finalized) {
+            // always point this test out as one that was still running
+            // if the parent step finalized
+            subStep.status = "pending";
+          }
+
+          subStep.finalized = true;
+
+          if (subStep.reportedWait && subStep.canStreamReporting()) {
+            subStep.reportResult();
+          }
+
+          return subStep.status === "ok";
+        } finally {
+          if (parentStep.canStreamReporting()) {
+            // flush any buffered steps
+            for (const parentChild of parentStep.children) {
+              parentChild.reportResult();
+            }
+          }
+        }
+
+        /** @returns {TestStepDefinition} */
+        function getDefinition() {
+          if (typeof nameOrTestDefinition === "string") {
+            if (!(fn instanceof Function)) {
+              throw new TypeError("Expected function for second argument.");
+            }
+            return {
+              name: nameOrTestDefinition,
+              fn,
+            };
+          } else if (typeof nameOrTestDefinition === "object") {
+            return nameOrTestDefinition;
+          } else {
+            throw new TypeError(
+              "Expected a test definition or name and function.",
+            );
+          }
+        }
+      },
+    };
+  }
+
+  /**
+   * @template T {Function}
+   * @param testFn {T}
+   * @param opts {{
+   *   sanitizeOps: boolean,
+   *   sanitizeResources: boolean,
+   *   sanitizeExit: boolean,
+   * }}
+   * @returns {T}
+   */
+  function wrapTestFnWithSanitizers(testFn, opts) {
+    testFn = assertTestStepScopes(testFn);
+
+    if (opts.sanitizeOps) {
+      testFn = assertOps(testFn);
+    }
+    if (opts.sanitizeResources) {
+      testFn = assertResources(testFn);
+    }
+    if (opts.sanitizeExit) {
+      testFn = assertExit(testFn);
+    }
+    return testFn;
+  }
+
+  /**
+   * @template T
+   * @param value {T | undefined}
+   * @param defaultValue {T}
+   * @returns T
+   */
+  function getOrDefault(value, defaultValue) {
+    return value == null ? defaultValue : value;
+  }
+
+  function enableTestSteps() {
+    testStepsEnabled = true;
+  }
+
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     runTests,
+    enableTestSteps,
   };
 
   window.__bootstrap.testing = {
