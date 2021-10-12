@@ -367,6 +367,16 @@
   webidl.converters.Pbkdf2Params = webidl
     .createDictionaryConverter("Pbkdf2Params", dictPbkdf2Params);
 
+  const dictAesDerivedKeyParams = [
+    ...dictAlgorithm,
+    {
+      key: "length",
+      converter: (V, opts) =>
+        webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+      required: true,
+    },
+  ];
+
   const dictAesCbcParams = [
     ...dictAlgorithm,
     {
@@ -375,6 +385,9 @@
       required: true,
     },
   ];
+
+  webidl.converters.AesDerivedKeyParams = webidl
+    .createDictionaryConverter("AesDerivedKeyParams", dictAesDerivedKeyParams);
 
   webidl.converters.AesCbcParams = webidl
     .createDictionaryConverter("AesCbcParams", dictAesCbcParams);

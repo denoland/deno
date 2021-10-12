@@ -513,6 +513,42 @@ unitTest(async function testHkdfDeriveBits() {
   assertEquals(result.byteLength, 128 / 8);
 });
 
+unitTest(async function testDeriveKey() {
+  // Test deriveKey
+  const rawKey = await crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    rawKey,
+    "PBKDF2",
+    false,
+    ["deriveKey", "deriveBits"],
+  );
+
+  const salt = await crypto.getRandomValues(new Uint8Array(16));
+  const derivedKey = await crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: 1000,
+      hash: "SHA-256",
+    },
+    key,
+    { name: "HMAC", hash: "SHA-256" },
+    true,
+    ["sign"],
+  );
+
+  assert(derivedKey instanceof CryptoKey);
+  assertEquals(derivedKey.type, "secret");
+  assertEquals(derivedKey.extractable, true);
+  assertEquals(derivedKey.usages, ["sign"]);
+
+  const algorithm = derivedKey.algorithm as HmacKeyAlgorithm;
+  assertEquals(algorithm.name, "HMAC");
+  assertEquals(algorithm.hash.name, "SHA-256");
+  assertEquals(algorithm.length, 256);
+});
+
 unitTest(async function testAesCbcEncryptDecrypt() {
   const key = await crypto.subtle.generateKey(
     { name: "AES-CBC", length: 128 },
