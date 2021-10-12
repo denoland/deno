@@ -56,6 +56,10 @@ interface JsonWebKey {
   y?: string;
 }
 
+interface AesCbcParams extends Algorithm {
+  iv: BufferSource;
+}
+
 interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
@@ -123,6 +127,10 @@ interface Pbkdf2Params extends Algorithm {
   hash: HashAlgorithmIdentifier;
   iterations: number;
   salt: BufferSource;
+}
+
+interface AesDerivedKeyParams extends Algorithm {
+  length: number;
 }
 
 interface EcdhKeyDeriveParams extends Algorithm {
@@ -213,12 +221,12 @@ interface SubtleCrypto {
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   encrypt(
-    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    algorithm: AlgorithmIdentifier | RsaOaepParams | AesCbcParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   decrypt(
-    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    algorithm: AlgorithmIdentifier | RsaOaepParams | AesCbcParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
@@ -231,6 +239,18 @@ interface SubtleCrypto {
     baseKey: CryptoKey,
     length: number,
   ): Promise<ArrayBuffer>;
+  deriveKey(
+    algorithm: AlgorithmIdentifier | HkdfParams | Pbkdf2Params,
+    baseKey: CryptoKey,
+    derivedKeyType:
+      | AlgorithmIdentifier
+      | AesDerivedKeyParams
+      | HmacImportParams
+      | HkdfParams
+      | Pbkdf2Params,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
   wrapKey(
     format: KeyFormat,
     key: CryptoKey,

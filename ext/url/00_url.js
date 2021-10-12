@@ -105,8 +105,9 @@
         this[_list] = ArrayPrototypeMap(init, (pair, i) => {
           if (pair.length !== 2) {
             throw new TypeError(
-              `${prefix}: Item ${i +
-                0} in the parameter list does have length 2 exactly.`,
+              `${prefix}: Item ${
+                i + 0
+              } in the parameter list does have length 2 exactly.`,
             );
           }
           return [pair[0], pair[1]];

@@ -5,6 +5,7 @@ use lspower::LspService;
 use lspower::Server;
 
 mod analysis;
+mod cache;
 mod capabilities;
 mod code_lens;
 mod completions;

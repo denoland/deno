@@ -1499,17 +1499,17 @@
 
             if (canceled1 === false) {
               readableStreamDefaultControllerEnqueue(
-                /** @type {ReadableStreamDefaultController<any>} */ (branch1[
+                /** @type {ReadableStreamDefaultController<any>} */ branch1[
                   _controller
-                ]),
+                ],
                 value1,
               );
             }
             if (canceled2 === false) {
               readableStreamDefaultControllerEnqueue(
-                /** @type {ReadableStreamDefaultController<any>} */ (branch2[
+                /** @type {ReadableStreamDefaultController<any>} */ branch2[
                   _controller
-                ]),
+                ],
                 value2,
               );
             }
@@ -1519,16 +1519,16 @@
           reading = false;
           if (canceled1 === false) {
             readableStreamDefaultControllerClose(
-              /** @type {ReadableStreamDefaultController<any>} */ (branch1[
+              /** @type {ReadableStreamDefaultController<any>} */ branch1[
                 _controller
-              ]),
+              ],
             );
           }
           if (canceled2 === false) {
             readableStreamDefaultControllerClose(
-              /** @type {ReadableStreamDefaultController<any>} */ (branch2[
+              /** @type {ReadableStreamDefaultController<any>} */ branch2[
                 _controller
-              ]),
+              ],
             );
           }
           cancelPromise.resolve(undefined);
@@ -1586,15 +1586,15 @@
 
     uponRejection(reader[_closedPromise].promise, (r) => {
       readableStreamDefaultControllerError(
-        /** @type {ReadableStreamDefaultController<any>} */ (branch1[
+        /** @type {ReadableStreamDefaultController<any>} */ branch1[
           _controller
-        ]),
+        ],
         r,
       );
       readableStreamDefaultControllerError(
-        /** @type {ReadableStreamDefaultController<any>} */ (branch2[
+        /** @type {ReadableStreamDefaultController<any>} */ branch2[
           _controller
-        ]),
+        ],
         r,
       );
       if (canceled1 === false || canceled2 === false) {
@@ -2142,14 +2142,14 @@
     const readableController = stream[_readable][_controller];
     if (
       readableStreamDefaultControllerCanCloseOrEnqueue(
-        /** @type {ReadableStreamDefaultController<O>} */ (readableController),
+        /** @type {ReadableStreamDefaultController<O>} */ readableController,
       ) === false
     ) {
       throw new TypeError("Readable stream is unavailable.");
     }
     try {
       readableStreamDefaultControllerEnqueue(
-        /** @type {ReadableStreamDefaultController<O>} */ (readableController),
+        /** @type {ReadableStreamDefaultController<O>} */ readableController,
         chunk,
       );
     } catch (e) {
@@ -2157,7 +2157,7 @@
       throw stream[_readable][_storedError];
     }
     const backpressure = readableStreamDefaultcontrollerHasBackpressure(
-      /** @type {ReadableStreamDefaultController<O>} */ (readableController),
+      /** @type {ReadableStreamDefaultController<O>} */ readableController,
     );
     if (backpressure !== stream[_backpressure]) {
       assert(backpressure === true);
@@ -2192,7 +2192,7 @@
     const stream = controller[_stream];
     const readableController = stream[_readable][_controller];
     readableStreamDefaultControllerClose(
-      /** @type {ReadableStreamDefaultController} */ (readableController),
+      /** @type {ReadableStreamDefaultController} */ readableController,
     );
     const error = new TypeError("The stream has been terminated.");
     transformStreamErrorWritableAndUnblockWrite(stream, error);
@@ -2224,7 +2224,7 @@
         throw readable[_storedError];
       }
       readableStreamDefaultControllerClose(
-        /** @type {ReadableStreamDefaultController} */ (readable[_controller]),
+        /** @type {ReadableStreamDefaultController} */ readable[_controller],
       );
     }, (r) => {
       transformStreamError(stream, r);
@@ -2278,9 +2278,9 @@
    */
   function transformStreamError(stream, e) {
     readableStreamDefaultControllerError(
-      /** @type {ReadableStreamDefaultController} */ (stream[_readable][
+      /** @type {ReadableStreamDefaultController} */ stream[_readable][
         _controller
-      ]),
+      ],
       e,
     );
     transformStreamErrorWritableAndUnblockWrite(stream, e);
@@ -3858,7 +3858,7 @@
       webidl.assertBranded(this, TransformStreamDefaultController);
       const readableController = this[_stream][_readable][_controller];
       return readableStreamDefaultControllerGetDesiredSize(
-        /** @type {ReadableStreamDefaultController<O>} */ (readableController),
+        /** @type {ReadableStreamDefaultController<O>} */ readableController,
       );
     }
 

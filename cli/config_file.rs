@@ -10,6 +10,7 @@ use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::ModuleSpecifier;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
@@ -399,6 +400,19 @@ impl ConfigFile {
     } else {
       Ok(None)
     }
+  }
+
+  /// If the configuration file contains "extra" modules (like TypeScript
+  /// `"types"`) options, return them as imports to be added to a module graph.
+  pub fn to_maybe_imports(
+    &self,
+  ) -> Option<Vec<(ModuleSpecifier, Vec<String>)>> {
+    let compiler_options_value = self.json.compiler_options.as_ref()?;
+    let compiler_options: CompilerOptions =
+      serde_json::from_value(compiler_options_value.clone()).ok()?;
+    let referrer = ModuleSpecifier::from_file_path(&self.path).ok()?;
+    let types = compiler_options.types?;
+    Some(vec![(referrer, types)])
   }
 
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {

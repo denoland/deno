@@ -52,8 +52,12 @@ unitTest(
   { permissions: { read: true, write: true } },
   function dirChdirError() {
     const path = Deno.makeTempDirSync() + "test";
-    assertThrows(() => {
-      Deno.chdir(path);
-    }, Deno.errors.NotFound);
+    assertThrows(
+      () => {
+        Deno.chdir(path);
+      },
+      Deno.errors.NotFound,
+      `chdir '${path}'`,
+    );
   },
 );
