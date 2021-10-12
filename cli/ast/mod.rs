@@ -252,10 +252,8 @@ pub fn transpile(
       hygiene(),
     );
 
-    let program = deno_ast::swc::common::GLOBALS.set(&globals, || {
-      helpers::HELPERS.set(&helpers::Helpers::new(false), || {
-        program.fold_with(&mut passes)
-      })
+    let program = helpers::HELPERS.set(&helpers::Helpers::new(false), || {
+      program.fold_with(&mut passes)
     });
 
     let mut src_map_buf = vec![];
