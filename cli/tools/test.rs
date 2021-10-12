@@ -566,6 +566,7 @@ fn extract_files_from_source_comments(
     media_type,
     capture_tokens: false,
     maybe_syntax: None,
+    scope_analysis: false,
   })?;
   let comments = parsed_source.comments().get_vec();
   let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;

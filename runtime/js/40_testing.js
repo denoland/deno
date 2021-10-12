@@ -35,15 +35,20 @@
   // ops. Note that "unref" ops are ignored since in nature that are
   // optional.
   function assertOps(fn) {
-    return async function asyncOpSanitizer(...params) {
+    /** @param step {TestStep} */
+    return async function asyncOpSanitizer(step) {
       const pre = metrics();
       try {
-        await fn(...params);
+        await fn(step);
       } finally {
         // Defer until next event loop turn - that way timeouts and intervals
         // cleared can actually be removed from resource table, otherwise
         // false positives may occur (https://github.com/denoland/deno/issues/4591)
         await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      if (step.hasRunningChildren) {
+        return; // test step validation error thrown, don't check ops
       }
 
       const post = metrics();
@@ -101,9 +106,15 @@ finishing test case.`;
   function assertResources(
     fn,
   ) {
-    return async function resourceSanitizer(...params) {
+    /** @param step {TestStep} */
+    return async function resourceSanitizer(step) {
       const pre = core.resources();
-      await fn(...params);
+      await fn(step);
+
+      if (step.hasRunningChildren) {
+        return; // test step validation error thrown, don't check resources
+      }
+
       const post = core.resources();
 
       const preStr = JSONStringify(pre, null, 2);
@@ -195,11 +206,7 @@ finishing test case.`;
 
       function postValidation() {
         // check for any running steps
-        const hasRunningSteps = ArrayPrototypeSome(
-          step.children,
-          (r) => r.status === "pending",
-        );
-        if (hasRunningSteps) {
+        if (step.hasRunningChildren) {
           throw new Error(
             "There were still test steps running after the current scope finished execution. " +
               "Ensure all steps are awaited (ex. `await t.step(...)`).",
@@ -411,7 +418,7 @@ finishing test case.`;
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
     const filtered = ArrayPrototypeFilter(
-      (only.length > 0 ? only : tests),
+      only.length > 0 ? only : tests,
       createTestFilter(filter),
     );
 
@@ -485,6 +492,7 @@ finishing test case.`;
     #reportedResult = false;
     finalized = false;
     elapsed = 0;
+    /** @type "ok" | "ignored" | "pending" | "failed" */
     status = "pending";
     error = undefined;
     /** @type {TestStep[]} */
@@ -519,6 +527,14 @@ finishing test case.`;
       return this.#params.sanitizeResources ||
         this.#params.sanitizeOps ||
         this.#params.sanitizeExit;
+    }
+
+    get hasRunningChildren() {
+      return ArrayPrototypeSome(
+        this.children,
+        /** @param step {TestStep} */
+        (step) => step.status === "pending",
+      );
     }
 
     failedChildStepsCount() {

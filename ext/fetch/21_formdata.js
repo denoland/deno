@@ -266,7 +266,7 @@
     StringPrototypeReplace(
       StringPrototypeReplace(
         StringPrototypeReplace(
-          (isFilename ? str : StringPrototypeReplace(str, /\r?\n|\r/g, "\r\n")),
+          isFilename ? str : StringPrototypeReplace(str, /\r?\n|\r/g, "\r\n"),
           /\n/g,
           "%0A",
         ),

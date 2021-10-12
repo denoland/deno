@@ -225,7 +225,7 @@
       if (idlType === "BufferSource" && idlValue) {
         normalizedAlgorithm[member] = TypedArrayPrototypeSlice(
           new Uint8Array(
-            (ArrayBufferIsView(idlValue) ? idlValue.buffer : idlValue),
+            ArrayBufferIsView(idlValue) ? idlValue.buffer : idlValue,
             idlValue.byteOffset ?? 0,
             idlValue.byteLength,
           ),
