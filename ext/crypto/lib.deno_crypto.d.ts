@@ -129,6 +129,10 @@ interface Pbkdf2Params extends Algorithm {
   salt: BufferSource;
 }
 
+interface AesDerivedKeyParams extends Algorithm {
+  length: number;
+}
+
 interface EcdhKeyDeriveParams extends Algorithm {
   public: CryptoKey;
 }
@@ -235,6 +239,18 @@ interface SubtleCrypto {
     baseKey: CryptoKey,
     length: number,
   ): Promise<ArrayBuffer>;
+  deriveKey(
+    algorithm: AlgorithmIdentifier | HkdfParams | Pbkdf2Params,
+    baseKey: CryptoKey,
+    derivedKeyType:
+      | AlgorithmIdentifier
+      | AesDerivedKeyParams
+      | HmacImportParams
+      | HkdfParams
+      | Pbkdf2Params,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
   wrapKey(
     format: KeyFormat,
     key: CryptoKey,
