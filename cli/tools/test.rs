@@ -218,7 +218,7 @@ impl PrettyTestReporter {
       println!();
     }
     print!(
-      "{}test {} ...",
+      "{}step {} ...",
       "  ".repeat(description.level),
       description.name
     );

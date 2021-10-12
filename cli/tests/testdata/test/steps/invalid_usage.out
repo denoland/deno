@@ -1,13 +1,13 @@
 [WILDCARD]
 running 7 tests from [WILDCARD]/invalid_usage.ts
 test capturing ...
-  test some step ... ok ([WILDCARD])
+  step some step ... ok ([WILDCARD])
 FAILED ([WILDCARD])
 test top level missing await ...
-  test step ... pending ([WILDCARD])
+  step step ... pending ([WILDCARD])
 FAILED ([WILDCARD])
 test inner missing await ...
-  test step ...
+  step step ...
     test inner ... pending ([WILDCARD])
       Error: Parent scope completed before test step finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).
           at postValidation [WILDCARD]
@@ -20,8 +20,8 @@ test inner missing await ...
         at async Object.testStepSanitizer [WILDCARD]
 FAILED ([WILDCARD])
 test parallel steps with sanitizers ...
-  test step 1 ... pending ([WILDCARD])
-  test step 2 ... FAILED ([WILDCARD])
+  step step 1 ... pending ([WILDCARD])
+  step step 2 ... FAILED ([WILDCARD])
     Error: Cannot start test step while another test step with sanitizers is running.
      * parallel steps with sanitizers > step 1
         at preValidation ([WILDCARD])
@@ -30,8 +30,8 @@ test parallel steps with sanitizers ...
         at [WILDCARD]
 FAILED ([WILDCARD])
 test parallel steps when first has sanitizer ...
-  test step 1 ... pending ([WILDCARD])
-  test step 2 ... FAILED ([WILDCARD])
+  step step 1 ... pending ([WILDCARD])
+  step step 2 ... FAILED ([WILDCARD])
     Error: Cannot start test step while another test step with sanitizers is running.
      * parallel steps when first has sanitizer > step 1
         at preValidation ([WILDCARD])
@@ -40,8 +40,8 @@ test parallel steps when first has sanitizer ...
         at [WILDCARD]
 FAILED ([WILDCARD])
 test parallel steps when second has sanitizer ...
-  test step 1 ... ok ([WILDCARD])
-  test step 2 ... FAILED ([WILDCARD])
+  step step 1 ... ok ([WILDCARD])
+  step step 2 ... FAILED ([WILDCARD])
     Error: Cannot start test step with sanitizers while another test step is running.
      * parallel steps when second has sanitizer > step 1
         at preValidation ([WILDCARD])
@@ -50,10 +50,10 @@ test parallel steps when second has sanitizer ...
         at [WILDCARD]
 FAILED ([WILDCARD])
 test parallel steps where only inner tests have sanitizers ...
-  test step 1 ...
+  step step 1 ...
     test step inner ... ok ([WILDCARD])
   ok ([WILDCARD])
-  test step 2 ...
+  step step 2 ...
     test step inner ... FAILED ([WILDCARD])
       Error: Cannot start test step with sanitizers while another test step is running.
        * parallel steps where only inner tests have sanitizers > step 1
