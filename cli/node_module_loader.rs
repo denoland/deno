@@ -8,58 +8,54 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
-use std::path::Path;
 use std::path::PathBuf;
 
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
-// fn node_resolve(
-//   specifier: &str,
-//   referrer: &str,
-//   is_main: bool,
-// ) -> Result<ModuleSpecifier, AnyError> {
-//   // TODO(bartlomieju): shipped "policy" part
+fn node_resolve(
+  specifier: &str,
+  referrer: &str,
+) -> Result<ModuleSpecifier, AnyError> {
+  // TODO(bartlomieju): skipped "policy" part
 
-//   if let Ok(url) = Url::parse(specifier) {
-//     if url.scheme() == "data:" {
-//       return Ok(url);
-//     }
+  if let Ok(url) = Url::parse(specifier) {
+    if url.scheme() == "data:" {
+      return Ok(url);
+    }
 
-//     let protocol = url.scheme();
+    let protocol = url.scheme();
 
-//     if protocol == "node" {
-//       return Ok(url);
-//     }
+    if protocol == "node" {
+      return Ok(url);
+    }
 
-//     if protocol != "file" && protocol != "data" {
-//       return Err(generic_error(format!("Only file and data URLs are supported by the default ESM loader. Received protocol '{}'", protocol)));
-//     }
+    if protocol != "file" && protocol != "data" {
+      return Err(generic_error(format!("Only file and data URLs are supported by the default ESM loader. Received protocol '{}'", protocol)));
+    }
 
-//     // In Deno there's no way to expose internal Node modules anyway,
-//     // so calls to NativeModule.canBeRequiredByUsers would only work for built-in modules.
+    // In Deno there's no way to expose internal Node modules anyway,
+    // so calls to NativeModule.canBeRequiredByUsers would only work for built-in modules.
 
-//     if referrer.starts_with("data:") {
-//       let referrer_url = Url::parse(referrer)?;
-//       return referrer_url.join(specifier).map_err(AnyError::from);
-//     }
+    if referrer.starts_with("data:") {
+      let referrer_url = Url::parse(referrer)?;
+      return referrer_url.join(specifier).map_err(AnyError::from);
+    }
+  }
 
-//     let referrer = if is_main {
-//       // path_to_file_url()
-//       referrer
-//     } else {
-//       referrer
-//     };
+  let is_main = referrer.is_empty();
+  let parent_url = if is_main {
+    let cwd = std::env::current_dir()?;
+    Url::from_directory_path(cwd).unwrap()
+  } else {
+    Url::parse(referrer).expect("referrer was not proper url")
+  };
 
-//     let url = module_resolve(specifier, referrer)?;
+  let url = module_resolve(specifier, &parent_url)?;
 
-//     // TODO: check codes
-
-//     Ok(url)
-//   }
-
-//   // Ok(module_specifier)
-//   todo!()
-// }
+  // TODO(bartlomieju): skipped checking errors for commonJS resolution and
+  // "preserveSymlinksMain"/"preserveSymlinks" options.
+  Ok(url)
+}
 
 fn should_be_treated_as_relative_or_absolute_path(specifier: &str) -> bool {
   if specifier == "" {
