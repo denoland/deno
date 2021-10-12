@@ -2,9 +2,14 @@
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::Map;
+use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
+use std::path::Path;
+use std::path::PathBuf;
 
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
@@ -157,6 +162,83 @@ fn package_imports_resolve(
   todo!()
 }
 
+fn is_conditional_exports_main_sugar(
+  exports: &Value,
+  package_json_url: &Url,
+  base: &ModuleSpecifier,
+) -> Result<bool, AnyError> {
+  if exports.is_string() || exports.is_array() {
+    return Ok(true);
+  }
+
+  if exports.is_null() || !exports.is_object() {
+    return Ok(false);
+  }
+
+  let exports_obj = exports.as_object().unwrap();
+  let mut is_conditional_sugar = false;
+  let mut i = 0;
+  for key in exports_obj.keys() {
+    let cur_is_conditional_sugar = key == "" || !key.starts_with('.');
+    if i == 0 {
+      is_conditional_sugar = cur_is_conditional_sugar;
+      i += 1;
+    } else if is_conditional_sugar != cur_is_conditional_sugar {
+      let msg = format!(
+        "Invalid package config {} while importing {}.
+      \"exports\" cannot contains some keys starting with \'.\' and some not.
+      The exports object must either be an object of package subpath keys
+      or an object of main entry condition name keys only.",
+        package_json_url.to_file_path().unwrap().display(),
+        base.as_str()
+      );
+      return Err(generic_error(msg));
+    }
+  }
+
+  Ok(is_conditional_sugar)
+}
+
+// TODO(bartlomieju): last argument "conditions" was skipped
+fn package_exports_resolve(
+  package_json_url: Url,
+  package_subpath: String,
+  package_config: PackageConfig,
+  base: &ModuleSpecifier,
+) -> Result<ModuleSpecifier, AnyError> {
+  let exports = &package_config.exports;
+
+  let exports_map =
+    if is_conditional_exports_main_sugar(exports, &package_json_url, base) {
+      let mut map = Map::new();
+      map.insert(".".to_string(), exports.to_owned());
+      map
+    } else {
+      exports.as_object().unwrap().to_owned()
+    };
+
+  if exports_map.contains_key(&package_subpath)
+    && package_subpath.find('*').is_none()
+    && !package_subpath.ends_with('/')
+  {
+    let target = exports_map.get(&package_subpath).unwrap();
+    // TODO(bartlomieju): last argument "conditions" was skipped
+    let resolved = resolve_package_target(
+      package_json_url,
+      target,
+      "",
+      package_subpath,
+      base,
+      false,
+      false,
+    )?;
+    // TODO()
+    return Ok(resolved);
+  }
+
+  todo!()
+}
+
 fn package_resolve(
   specifier: &str,
   base: &ModuleSpecifier,
@@ -165,7 +247,24 @@ fn package_resolve(
     parse_package_name(specifier, base)?;
 
   // ResolveSelf
-  // let package_config = get_package_scope_config(base);
+  let package_config = get_package_scope_config(base)?;
+  if package_config.exists {
+    let package_json_url =
+      Url::from_file_path(&package_config.pjsonpath).unwrap();
+    if package_config.name == Some(package_name) {
+      if let Some(exports) = &package_config.exports {
+        if !exports.is_null() {
+          // TODO(bartlomieju): last argument "conditions" was skipped
+          return package_exports_resolve(
+            package_json_url,
+            package_subpath,
+            package_config,
+            base,
+          );
+        }
+      }
+    }
+  }
 
   todo!()
 }
@@ -232,13 +331,167 @@ fn parse_package_name(
 //   CommonJs,
 // }
 
-// struct PackageConfig {
-//   exports: Option<ExportConfig>,
-//   name: Option<String>,
-//   main: Option<String>,
-//   typ: Option<PackageType>
-// }
+#[derive(Clone, Debug)]
+struct PackageConfig {
+  exists: bool,
+  exports: Option<Value>,
+  imports: Option<Map<String, Value>>,
+  main: Option<String>,
+  name: Option<String>,
+  pjsonpath: PathBuf,
+  typ: String,
+}
 
-// fn get_package_scope_config(resolved: &str) {
-//   todo!()
-// }
+fn get_package_config(
+  path: PathBuf,
+  specifier: &ModuleSpecifier,
+  maybe_base: Option<&ModuleSpecifier>,
+) -> Result<PackageConfig, AnyError> {
+  // TODO(bartlomieju):
+  // if let Some(existing) = package_json_cache.get(path) {
+  //   return Ok(existing.clone());
+  // }
+
+  // TODO: maybe shouldn't error be return empty package
+  let source = std::fs::read_to_string(&path)?;
+  if source.is_empty() {
+    let package_config = PackageConfig {
+      pjsonpath: path,
+      exists: false,
+      main: None,
+      name: None,
+      typ: "none".to_string(),
+      exports: None,
+      imports: None,
+    };
+    // TODO(bartlomieju):
+    // package_json_cache.set(package_json_path, package_config.clone());
+    return Ok(package_config);
+  }
+
+  let package_json: Value = serde_json::from_str(&source).map_err(|_err| {
+    let mut msg = format!("Invalid package config {}", path.display());
+
+    if let Some(base) = maybe_base {
+      msg = format!(
+        "{} \"{}\" from {}",
+        msg,
+        specifier.as_str(),
+        base.to_file_path().unwrap().display()
+      );
+    }
+
+    generic_error(msg)
+  })?;
+
+  let imports_val = package_json.get("imports");
+  let main_val = package_json.get("main");
+  let name_val = package_json.get("name");
+  let typ_val = package_json.get("type");
+  let exports = package_json.get("exports").map(|e| e.to_owned());
+
+  // TODO(bartlomieju): refactor
+  let imports = if let Some(imp) = imports_val {
+    if let Some(imp) = imp.as_object() {
+      Some(imp.to_owned())
+    } else {
+      None
+    }
+  } else {
+    None
+  };
+  let main = if let Some(m) = main_val {
+    if let Some(m) = m.as_str() {
+      Some(m.to_string())
+    } else {
+      None
+    }
+  } else {
+    None
+  };
+  let name = if let Some(n) = name_val {
+    if let Some(n) = n.as_str() {
+      Some(n.to_string())
+    } else {
+      None
+    }
+  } else {
+    None
+  };
+
+  // Ignore unknown types for forwards compatibility
+  let typ = if let Some(t) = typ_val {
+    if let Some(t) = t.as_str() {
+      if t != "module" && t != "commonjs" {
+        "none".to_string()
+      } else {
+        t.to_string()
+      }
+    } else {
+      "none".to_string()
+    }
+  } else {
+    "none".to_string()
+  };
+
+  let package_config = PackageConfig {
+    pjsonpath: path,
+    exists: false,
+    main,
+    name,
+    typ,
+    exports,
+    imports,
+  };
+  // TODO(bartlomieju):
+  // package_json_cache.set(package_json_path, package_config.clone());
+  Ok(package_config)
+}
+
+fn get_package_scope_config(
+  resolved: &ModuleSpecifier,
+) -> Result<PackageConfig, AnyError> {
+  let mut package_json_url = resolved.join("./package.json")?;
+
+  loop {
+    let package_json_path = package_json_url.path();
+
+    if package_json_path.ends_with("node_modules/package.json") {
+      break;
+    }
+
+    let package_config = get_package_config(
+      package_json_url.to_file_path().unwrap(),
+      resolved,
+      None,
+    )?;
+    if package_config.exists {
+      return Ok(package_config);
+    }
+
+    let last_package_json_url = package_json_url.clone();
+    package_json_url = package_json_url.join("../package.json")?;
+
+    // Terminates at root where ../package.json equals ../../package.json
+    // (can't just check "/package.json" for Windows support)
+    if package_json_url.path() == last_package_json_url.path() {
+      break;
+    }
+  }
+
+  let package_json_path = package_json_url.to_file_path().unwrap();
+  let package_config = PackageConfig {
+    pjsonpath: package_json_path,
+    exists: false,
+    main: None,
+    name: None,
+    typ: "none".to_string(),
+    exports: None,
+    imports: None,
+  };
+
+  // TODO(bartlomieju):
+  // package_json_cache.set(package_json_path, package_config.clone());
+
+  Ok(package_config)
+}
