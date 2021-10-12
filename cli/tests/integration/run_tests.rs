@@ -1185,6 +1185,13 @@ itest!(error_import_map_unable_to_load {
   exit_code: 1,
 });
 
+// Test that setting `self` in the main thread to some other value doesn't break
+// the world.
+itest!(replace_self {
+  args: "run replace_self.js",
+  output: "replace_self.js.out",
+});
+
 itest!(worker_event_handler_test {
   args: "run --quiet --reload --allow-read worker_event_handler_test.js",
   output: "worker_event_handler_test.js.out",

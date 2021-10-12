@@ -56,6 +56,10 @@ interface JsonWebKey {
   y?: string;
 }
 
+interface AesCbcParams extends Algorithm {
+  iv: BufferSource;
+}
+
 interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
@@ -217,12 +221,12 @@ interface SubtleCrypto {
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   encrypt(
-    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    algorithm: AlgorithmIdentifier | RsaOaepParams | AesCbcParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   decrypt(
-    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    algorithm: AlgorithmIdentifier | RsaOaepParams | AesCbcParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;

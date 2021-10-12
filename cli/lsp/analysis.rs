@@ -5,13 +5,15 @@ use super::tsc;
 
 use crate::ast;
 use crate::ast::Location;
+use crate::config_file::LintConfig;
 use crate::lsp::documents::DocumentData;
-use crate::module_graph::parse_deno_types;
-use crate::module_graph::parse_ts_reference;
-use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
+use crate::tools::lint::get_configured_rules;
 
 use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::comments::Comment;
+use deno_ast::swc::common::BytePos;
+use deno_ast::swc::common::Span;
 use deno_ast::swc::common::DUMMY_SP;
 use deno_ast::swc::visit::Node;
 use deno_ast::swc::visit::Visit;
@@ -28,7 +30,6 @@ use deno_core::serde_json::json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
-use deno_lint::rules;
 use import_map::ImportMap;
 use lspower::lsp;
 use lspower::lsp::Position;
@@ -68,9 +69,70 @@ lazy_static::lazy_static! {
   .collect();
 
   static ref IMPORT_SPECIFIER_RE: Regex = Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap();
+
+  static ref DENO_TYPES_RE: Regex =
+    Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#)
+      .unwrap();
+  static ref TRIPLE_SLASH_REFERENCE_RE: Regex =
+    Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap();
+  static ref PATH_REFERENCE_RE: Regex =
+    Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap();
+  static ref TYPES_REFERENCE_RE: Regex =
+    Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap();
+
 }
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
+
+// TODO(@kitsonk) remove after deno_graph migration
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum TypeScriptReference {
+  Path(String),
+  Types(String),
+}
+
+fn match_to_span(comment: &Comment, m: &regex::Match) -> Span {
+  Span {
+    lo: comment.span.lo + BytePos((m.start() + 1) as u32),
+    hi: comment.span.lo + BytePos((m.end() + 1) as u32),
+    ctxt: comment.span.ctxt,
+  }
+}
+
+// TODO(@kitsonk) remove after deno_graph migration
+fn parse_deno_types(comment: &Comment) -> Option<(String, Span)> {
+  let captures = DENO_TYPES_RE.captures(&comment.text)?;
+  if let Some(m) = captures.get(1) {
+    Some((m.as_str().to_string(), match_to_span(comment, &m)))
+  } else if let Some(m) = captures.get(2) {
+    Some((m.as_str().to_string(), match_to_span(comment, &m)))
+  } else {
+    unreachable!();
+  }
+}
+
+// TODO(@kitsonk) remove after deno_graph migration
+fn parse_ts_reference(
+  comment: &Comment,
+) -> Option<(TypeScriptReference, Span)> {
+  if !TRIPLE_SLASH_REFERENCE_RE.is_match(&comment.text) {
+    None
+  } else if let Some(captures) = PATH_REFERENCE_RE.captures(&comment.text) {
+    let m = captures.get(1).unwrap();
+    Some((
+      TypeScriptReference::Path(m.as_str().to_string()),
+      match_to_span(comment, &m),
+    ))
+  } else {
+    TYPES_REFERENCE_RE.captures(&comment.text).map(|captures| {
+      let m = captures.get(1).unwrap();
+      (
+        TypeScriptReference::Types(m.as_str().to_string()),
+        match_to_span(comment, &m),
+      )
+    })
+  }
+}
 
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
@@ -135,9 +197,11 @@ fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
 
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
+  maybe_lint_config: Option<&LintConfig>,
 ) -> Result<Vec<Reference>, AnyError> {
   let syntax = deno_ast::get_syntax(parsed_source.media_type());
-  let lint_rules = rules::get_recommended_rules();
+  let lint_rules =
+    get_configured_rules(maybe_lint_config, vec![], vec![], vec![])?;
   let linter = create_linter(syntax, lint_rules);
   // TODO(dsherret): do not re-parse here again
   let (_, lint_diagnostics) = linter.lint(
@@ -1289,7 +1353,7 @@ mod tests {
       MediaType::TypeScript,
     )
     .unwrap();
-    let actual = get_lint_references(&parsed_module).unwrap();
+    let actual = get_lint_references(&parsed_module, None).unwrap();
 
     assert_eq!(
       actual,

@@ -1008,7 +1008,7 @@ mod tests {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       let (control, _): (u8, ()) = payload.deserialize().unwrap();
       assert_eq!(control, 42);
-      let resp = (0, serialize_op_result(Ok(43), state));
+      let resp = (0, 1, serialize_op_result(Ok(43), state));
       Op::Async(Box::pin(futures::future::ready(resp)))
     };
 

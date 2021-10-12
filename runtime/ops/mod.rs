@@ -14,7 +14,6 @@ mod utils;
 pub mod web_worker;
 pub mod worker_host;
 
-use crate::metrics::metrics_op;
 use deno_core::error::AnyError;
 use deno_core::op_async;
 use deno_core::op_sync;
@@ -37,7 +36,7 @@ pub fn reg_async<F, A, B, R, RV>(
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: Serialize + 'static,
 {
-  rt.register_op(name, metrics_op(name, op_async(op_fn)));
+  rt.register_op(name, op_async(op_fn));
 }
 
 pub fn reg_sync<F, A, B, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
@@ -47,7 +46,7 @@ where
   B: DeserializeOwned,
   R: Serialize + 'static,
 {
-  rt.register_op(name, metrics_op(name, op_sync(op_fn)));
+  rt.register_op(name, op_sync(op_fn));
 }
 
 /// `UnstableChecker` is a struct so it can be placed inside `GothamState`;
