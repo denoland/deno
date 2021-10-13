@@ -88,6 +88,7 @@
     MathFloor,
     Number,
     NumberPrototypeToString,
+    NumberPrototypeValueOf,
     Proxy,
     ReflectGet,
     ReflectGetOwnPropertyDescriptor,
@@ -891,7 +892,8 @@
 
   function inspectNumberObject(value, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    return cyan(`[Number: ${NumberPrototypeToString(value)}]`); // wrappers are in cyan
+    // Special handling of -0
+    return cyan(`[Number: ${ObjectIs(NumberPrototypeValueOf(value), -0) ? "-0" : NumberPrototypeToString(value)}]`); // wrappers are in cyan
   }
 
   const PromiseState = {

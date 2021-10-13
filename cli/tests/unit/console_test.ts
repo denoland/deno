@@ -259,6 +259,7 @@ unitTest(function consoleTestStringifyCircular() {
   assertEquals(stringify("s"), "s");
   assertEquals(stringify(false), "false");
   assertEquals(stringify(new Number(1)), "[Number: 1]");
+  assertEquals(stringify(new Number(-0)), "[Number: -0]");
   assertEquals(stringify(new Boolean(true)), "[Boolean: true]");
   assertEquals(stringify(new String("deno")), `[String: "deno"]`);
   assertEquals(stringify(/[0-9]*/), "/[0-9]*/");
