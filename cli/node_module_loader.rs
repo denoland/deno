@@ -91,11 +91,11 @@ fn node_resolve(
 }
 
 fn should_be_treated_as_relative_or_absolute_path(specifier: &str) -> bool {
-  if specifier == "" {
+  if specifier.is_empty() {
     return false;
   }
 
-  if specifier.chars().nth(0) == Some('/') {
+  if specifier.starts_with('/') {
     return true;
   }
 
@@ -110,10 +110,10 @@ fn is_relative_specifier(specifier: &str) -> bool {
     if specifier_len == 1 || specifier_chars[1] == '/' {
       return true;
     }
-    if specifier_chars[1] == '.' {
-      if specifier_len == 2 || specifier_chars[2] == '/' {
-        return true;
-      }
+    if specifier_chars[1] == '.'
+      && (specifier_len == 2 || specifier_chars[2] == '/')
+    {
+      return true;
     }
   }
   false
@@ -126,14 +126,12 @@ fn module_resolve(
 ) -> Result<ModuleSpecifier, AnyError> {
   let resolved = if should_be_treated_as_relative_or_absolute_path(specifier) {
     base.join(specifier)?
-  } else if specifier.chars().nth(0) == Some('#') {
+  } else if specifier.starts_with('#') {
     package_imports_resolve(specifier, base)?
+  } else if let Ok(resolved) = Url::parse(specifier) {
+    resolved
   } else {
-    if let Ok(resolved) = Url::parse(specifier) {
-      resolved
-    } else {
-      package_resolve(specifier, base, conditions)?
-    }
+    package_resolve(specifier, base, conditions)?
   };
   finalize_resolution(resolved, base)
 }
@@ -220,7 +218,7 @@ fn is_conditional_exports_main_sugar(
   let mut is_conditional_sugar = false;
   let mut i = 0;
   for key in exports_obj.keys() {
-    let cur_is_conditional_sugar = key == "" || !key.starts_with('.');
+    let cur_is_conditional_sugar = key.is_empty() || !key.starts_with('.');
     if i == 0 {
       is_conditional_sugar = cur_is_conditional_sugar;
       i += 1;
@@ -240,6 +238,7 @@ fn is_conditional_exports_main_sugar(
   Ok(is_conditional_sugar)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn resolve_package_target_string(
   target: String,
   subpath: String,
@@ -250,7 +249,7 @@ fn resolve_package_target_string(
   internal: bool,
   _conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
-  if subpath != "" && !pattern && !target.ends_with('/') {
+  if !subpath.is_empty() && !pattern && !target.ends_with('/') {
     todo!()
   }
 
@@ -278,7 +277,7 @@ fn resolve_package_target_string(
     todo!()
   }
 
-  if subpath == "" {
+  if subpath.is_empty() {
     return Ok(resolved);
   }
 
@@ -296,6 +295,7 @@ fn resolve_package_target_string(
   Ok(resolved.join(&subpath)?)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn resolve_package_target(
   package_json_url: Url,
   target: Value,
@@ -488,14 +488,12 @@ fn parse_package_name(
   let mut is_scoped = false;
   if specifier.is_empty() {
     valid_package_name = false;
-  } else {
-    if specifier.chars().nth(0) == Some('@') {
-      is_scoped = true;
-      if let Some(index) = separator_index {
-        separator_index = specifier[index + 1..].find('/');
-      } else {
-        valid_package_name = false;
-      }
+  } else if specifier.starts_with('@') {
+    is_scoped = true;
+    if let Some(index) = separator_index {
+      separator_index = specifier[index + 1..].find('/');
+    } else {
+      valid_package_name = false;
     }
   }
 
@@ -523,7 +521,6 @@ fn parse_package_name(
 
   let package_subpath = if let Some(index) = separator_index {
     format!(".{}", specifier.chars().skip(index).collect::<String>())
-      .to_string()
   } else {
     ".".to_string()
   };
@@ -593,29 +590,17 @@ fn get_package_config(
 
   // TODO(bartlomieju): refactor
   let imports = if let Some(imp) = imports_val {
-    if let Some(imp) = imp.as_object() {
-      Some(imp.to_owned())
-    } else {
-      None
-    }
+    imp.as_object().map(|imp| imp.to_owned())
   } else {
     None
   };
   let main = if let Some(m) = main_val {
-    if let Some(m) = m.as_str() {
-      Some(m.to_string())
-    } else {
-      None
-    }
+    m.as_str().map(|m| m.to_string())
   } else {
     None
   };
   let name = if let Some(n) = name_val {
-    if let Some(n) = n.as_str() {
-      Some(n.to_string())
-    } else {
-      None
-    }
+    n.as_str().map(|n| n.to_string())
   } else {
     None
   };
