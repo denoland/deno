@@ -758,6 +758,16 @@ mod tests {
   }
 
   #[test]
+  fn deep() {
+    let cwd = testdir("deep");
+    let main = Url::from_file_path(cwd.join("a/b/c/d/main.js")).unwrap();
+    let actual = node_resolve("foo", main.as_str(), &cwd).unwrap();
+    let expected =
+      Url::from_file_path(cwd.join("node_modules/foo/index.js")).unwrap();
+    assert_eq!(actual, expected);
+  }
+
+  #[test]
   fn basic_deps() {
     let cwd = testdir("basic_deps");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
