@@ -33,6 +33,8 @@ impl Resolver for NodeResolver {
   }
 }
 
+static DEFAULT_CONDITIONS: &[&str] = &["node", "import"];
+
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
 fn node_resolve(
@@ -76,7 +78,8 @@ fn node_resolve(
     Url::parse(referrer).expect("referrer was not proper url")
   };
 
-  let url = module_resolve(specifier, &parent_url)?;
+  let conditions = DEFAULT_CONDITIONS;
+  let url = module_resolve(specifier, &parent_url, conditions)?;
 
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
@@ -115,6 +118,7 @@ fn is_relative_specifier(specifier: &str) -> bool {
 fn module_resolve(
   specifier: &str,
   base: &ModuleSpecifier,
+  conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
   // eprintln!("module resolve {} {}", specifier, base.as_str());
   let resolved = if should_be_treated_as_relative_or_absolute_path(specifier) {
@@ -125,7 +129,7 @@ fn module_resolve(
     if let Ok(resolved) = Url::parse(specifier) {
       resolved
     } else {
-      package_resolve(specifier, base)?
+      package_resolve(specifier, base, conditions)?
     }
   };
   finalize_resolution(resolved, base)
@@ -233,7 +237,6 @@ fn is_conditional_exports_main_sugar(
   Ok(is_conditional_sugar)
 }
 
-// TODO(bartlomieju): last argument "conditions" was skipped
 fn resolve_package_target_string(
   target: String,
   subpath: String,
@@ -242,6 +245,7 @@ fn resolve_package_target_string(
   _base: &ModuleSpecifier,
   pattern: bool,
   internal: bool,
+  _conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
   if subpath != "" && !pattern && !target.ends_with('/') {
     todo!()
@@ -289,7 +293,6 @@ fn resolve_package_target_string(
   Ok(resolved.join(&subpath)?)
 }
 
-// TODO(bartlomieju): last argument "conditions" was skipped
 fn resolve_package_target(
   package_json_url: Url,
   target: Value,
@@ -298,6 +301,7 @@ fn resolve_package_target(
   base: &ModuleSpecifier,
   pattern: bool,
   internal: bool,
+  conditions: &[&str],
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   if let Some(target) = target.as_str() {
     return Ok(Some(resolve_package_target_string(
@@ -308,7 +312,7 @@ fn resolve_package_target(
       base,
       pattern,
       internal,
-      // TODO(bartlomieju): last argument "conditions" was skipped
+      conditions,
     )?));
   } else if let Some(target_arr) = target.as_array() {
     if target_arr.is_empty() {
@@ -320,10 +324,7 @@ fn resolve_package_target(
     for key in target_obj.keys() {
       // TODO(bartlomieju): verify that keys are not numeric
 
-      // TODO(bartlomieju): this should be injected as an
-      // argument to the function
-      let conditions = vec!["node".to_string(), "import".to_string()];
-      if key == "default" || conditions.contains(&key) {
+      if key == "default" || conditions.contains(&key.as_str()) {
         let condition_target = target_obj.get(key).unwrap().to_owned();
         let resolved = resolve_package_target(
           package_json_url.clone(),
@@ -333,6 +334,7 @@ fn resolve_package_target(
           base,
           pattern,
           internal,
+          conditions,
         )?;
         if resolved.is_none() {
           continue;
@@ -347,12 +349,12 @@ fn resolve_package_target(
   todo!()
 }
 
-// TODO(bartlomieju): last argument "conditions" was skipped
 fn package_exports_resolve(
   package_json_url: Url,
   package_subpath: String,
   package_config: PackageConfig,
   base: &ModuleSpecifier,
+  conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
   let exports = &package_config.exports.unwrap();
 
@@ -370,7 +372,6 @@ fn package_exports_resolve(
     && !package_subpath.ends_with('/')
   {
     let target = exports_map.get(&package_subpath).unwrap().to_owned();
-    // TODO(bartlomieju): last argument "conditions" was skipped
     let resolved = resolve_package_target(
       package_json_url,
       target,
@@ -379,6 +380,7 @@ fn package_exports_resolve(
       base,
       false,
       false,
+      conditions,
     )?;
     // TODO():
     if resolved.is_none() {
@@ -393,6 +395,7 @@ fn package_exports_resolve(
 fn package_resolve(
   specifier: &str,
   base: &ModuleSpecifier,
+  conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
   // eprintln!("package_resolve {} {}", specifier, base.as_str());
   let (package_name, package_subpath, is_scoped) =
@@ -410,12 +413,12 @@ fn package_resolve(
     if package_config.name.as_ref() == Some(&package_name) {
       if let Some(exports) = &package_config.exports {
         if !exports.is_null() {
-          // TODO(bartlomieju): last argument "conditions" was skipped
           return package_exports_resolve(
             package_json_url,
             package_subpath,
             package_config,
             base,
+            conditions,
           );
         }
       }
@@ -465,6 +468,7 @@ fn package_resolve(
         package_subpath,
         package_config,
         base,
+        conditions,
       );
     }
     if package_subpath == "." {
