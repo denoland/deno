@@ -53,6 +53,7 @@
     SetPrototypeEntries,
     Symbol,
     SymbolPrototypeToString,
+    SymbolPrototypeValueOf,
     SymbolToStringTag,
     SymbolHasInstance,
     SymbolFor,
@@ -903,6 +904,11 @@
     return cyan(`[BigInt: ${BigIntPrototypeToString(value)}n]`); // wrappers are in cyan
   }
 
+  function inspectSymbolObject(value, inspectOptions) {
+    const cyan = maybeColor(colors.green, inspectOptions);
+    return cyan(`[Symbol: ${maybeQuoteSymbol(SymbolPrototypeValueOf(value))}]`); // wrappers are in green
+  }
+
   const PromiseState = {
     Pending: 0,
     Fulfilled: 1,
@@ -1140,6 +1146,8 @@
       return inspectBooleanObject(value, inspectOptions);
     } else if (value instanceof String) {
       return inspectStringObject(value, inspectOptions);
+    } else if (value instanceof Symbol) {
+      return inspectSymbolObject(value, inspectOptions);
     } else if (value instanceof Promise) {
       return inspectPromise(value, level, inspectOptions);
     } else if (value instanceof RegExp) {

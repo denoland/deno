@@ -281,6 +281,7 @@ unitTest(function consoleTestStringifyCircular() {
   assertEquals(stringify(new WeakSet()), "WeakSet { [items unknown] }");
   assertEquals(stringify(new WeakMap()), "WeakMap { [items unknown] }");
   assertEquals(stringify(Symbol(1)), `Symbol("1")`);
+  assertEquals(stringify(Object(Symbol(1))), `[Symbol: Symbol("1")]`);
   assertEquals(stringify(null), "null");
   assertEquals(stringify(undefined), "undefined");
   assertEquals(stringify(new Extended()), "Extended { a: 1, b: 2 }");
