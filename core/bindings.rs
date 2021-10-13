@@ -632,7 +632,7 @@ fn set_wasm_streaming_callback(
     let undefined = v8::undefined(scope);
     let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
     cb_handle
-      .get(scope)
+      .inner(scope)
       .call(scope, undefined.into(), &[arg, rid]);
   });
 }
