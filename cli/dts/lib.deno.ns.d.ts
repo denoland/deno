@@ -2178,6 +2178,7 @@ declare namespace Deno {
 
   export interface FfiPermissionDescriptor {
     name: "ffi";
+    path?: string | URL;
   }
 
   export interface HrtimePermissionDescriptor {

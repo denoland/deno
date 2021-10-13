@@ -28,7 +28,6 @@ pub struct PermissionArgs {
   host: Option<String>,
   variable: Option<String>,
   command: Option<String>,
-  library: Option<String>,
 }
 
 pub fn op_query_permission(
@@ -50,7 +49,7 @@ pub fn op_query_permission(
     ),
     "env" => permissions.env.query(args.variable.as_deref()),
     "run" => permissions.run.query(args.command.as_deref()),
-    "ffi" => permissions.ffi.query(args.library.as_deref()),
+    "ffi" => permissions.ffi.query(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.query(),
     n => {
       return Err(custom_error(
@@ -81,7 +80,7 @@ pub fn op_revoke_permission(
     ),
     "env" => permissions.env.revoke(args.variable.as_deref()),
     "run" => permissions.run.revoke(args.command.as_deref()),
-    "ffi" => permissions.ffi.revoke(args.library.as_deref()),
+    "ffi" => permissions.ffi.revoke(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.revoke(),
     n => {
       return Err(custom_error(
@@ -112,7 +111,7 @@ pub fn op_request_permission(
     ),
     "env" => permissions.env.request(args.variable.as_deref()),
     "run" => permissions.run.request(args.command.as_deref()),
-    "ffi" => permissions.ffi.request(args.library.as_deref()),
+    "ffi" => permissions.ffi.request(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.request(),
     n => {
       return Err(custom_error(

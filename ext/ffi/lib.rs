@@ -20,6 +20,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ffi::c_void;
+use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 pub struct Unstable(pub bool);
@@ -37,7 +39,7 @@ fn check_unstable(state: &OpState, api_name: &str) {
 }
 
 pub trait FfiPermissions {
-  fn check(&mut self, path: &str) -> Result<(), AnyError>;
+  fn check(&mut self, path: &Path) -> Result<(), AnyError>;
 }
 
 #[derive(Clone)]
@@ -366,7 +368,7 @@ where
 
   check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(&path)?;
+  permissions.check(&PathBuf::from(&path))?;
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen::Error::OpeningLibraryError(std::io::Error::new(

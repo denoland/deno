@@ -3,10 +3,10 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { parsePermissions } = window.__bootstrap.worker;
   const { setExitHandler } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { metrics } = core;
+  const { serializePermissions } = window.__bootstrap.permissions;
   const { assert } = window.__bootstrap.util;
   const {
     ArrayPrototypeFilter,
@@ -230,7 +230,7 @@ finishing test case.`;
     function pledgePermissions(permissions) {
       return core.opSync(
         "op_pledge_test_permissions",
-        parsePermissions(permissions),
+        serializePermissions(permissions),
       );
     }
 
@@ -289,7 +289,7 @@ finishing test case.`;
     if (testDef.permissions) {
       testDef.fn = withPermissions(
         testDef.fn,
-        parsePermissions(testDef.permissions),
+        testDef.permissions,
       );
     }
 

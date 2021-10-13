@@ -8,7 +8,6 @@ import {
   assertThrows,
 } from "../../../../test_util/std/testing/asserts.ts";
 import { deferred } from "../../../../test_util/std/async/deferred.ts";
-import { fromFileUrl } from "../../../../test_util/std/path/mod.ts";
 
 Deno.test({
   name: "worker terminate",
@@ -454,7 +453,6 @@ Deno.test("Worker limit children permissions", async function () {
 });
 
 Deno.test("Worker limit children permissions granularly", async function () {
-  const promise = deferred();
   const worker = new Worker(
     new URL("./read_check_granular_worker.js", import.meta.url).href,
     {
@@ -462,53 +460,52 @@ Deno.test("Worker limit children permissions granularly", async function () {
       deno: {
         namespace: true,
         permissions: {
-          read: [
-            new URL("./read_check_worker.js", import.meta.url),
-          ],
+          env: ["foo"],
+          hrtime: true,
+          net: ["foo", "bar:8000"],
+          ffi: [new URL("foo", import.meta.url), "bar"],
+          read: [new URL("foo", import.meta.url), "bar"],
+          run: [new URL("foo", import.meta.url), "bar", "./baz"],
+          write: [new URL("foo", import.meta.url), "bar"],
         },
       },
     },
   );
-
-  //Routes are relative to the spawned worker location
-  const routes = [
-    {
-      permission: false,
-      path: fromFileUrl(
-        new URL("read_check_granular_worker.js", import.meta.url),
-      ),
-    },
-    {
-      permission: true,
-      path: fromFileUrl(new URL("read_check_worker.js", import.meta.url)),
-    },
-  ];
-
-  let checked = 0;
-  worker.onmessage = ({ data }) => {
-    checked++;
-    assertEquals(data.hasPermission, routes[data.index].permission);
-    routes.shift();
-    if (checked === routes.length) {
-      promise.resolve();
-    }
-  };
-
-  routes.forEach(({ path }, index) =>
-    worker.postMessage({
-      index,
-      path,
-    })
-  );
-
-  await promise;
+  const promise = deferred();
+  worker.onmessage = ({ data }) => promise.resolve(data);
+  assertEquals(await promise, {
+    envGlobal: "prompt",
+    envFoo: "granted",
+    envAbsent: "prompt",
+    hrtime: "granted",
+    netGlobal: "prompt",
+    netFoo: "granted",
+    netFoo8000: "granted",
+    netBar: "prompt",
+    netBar8000: "granted",
+    ffiGlobal: "prompt",
+    ffiFoo: "granted",
+    ffiBar: "granted",
+    ffiAbsent: "prompt",
+    readGlobal: "prompt",
+    readFoo: "granted",
+    readBar: "granted",
+    readAbsent: "prompt",
+    runGlobal: "prompt",
+    runFoo: "granted",
+    runBar: "granted",
+    runBaz: "granted",
+    runAbsent: "prompt",
+    writeGlobal: "prompt",
+    writeFoo: "granted",
+    writeBar: "granted",
+    writeAbsent: "prompt",
+  });
   worker.terminate();
 });
 
 Deno.test("Nested worker limit children permissions", async function () {
-  const promise = deferred();
-
-  /** This worker has read permissions but doesn't grant them to its children */
+  /** This worker has permissions but doesn't grant them to its children */
   const worker = new Worker(
     new URL("./parent_read_check_worker.js", import.meta.url).href,
     {
@@ -519,104 +516,65 @@ Deno.test("Nested worker limit children permissions", async function () {
       },
     },
   );
-
-  worker.onmessage = ({ data }) => {
-    assert(data.parentHasPermission);
-    assert(!data.childHasPermission);
-    promise.resolve();
-  };
-
-  worker.postMessage(null);
-
-  await promise;
-  worker.terminate();
-});
-
-Deno.test("Nested worker limit children permissions granularly", async function () {
   const promise = deferred();
-
-  /** This worker has read permissions but doesn't grant them to its children */
-  const worker = new Worker(
-    new URL("./parent_read_check_granular_worker.js", import.meta.url)
-      .href,
-    {
-      type: "module",
-      deno: {
-        namespace: true,
-        permissions: {
-          read: [
-            new URL("./read_check_granular_worker.js", import.meta.url),
-          ],
-        },
-      },
-    },
-  );
-
-  //Routes are relative to the spawned worker location
-  const routes = [
-    {
-      childHasPermission: false,
-      parentHasPermission: true,
-      path: fromFileUrl(
-        new URL("read_check_granular_worker.js", import.meta.url),
-      ),
-    },
-    {
-      childHasPermission: false,
-      parentHasPermission: false,
-      path: fromFileUrl(new URL("read_check_worker.js", import.meta.url)),
-    },
-  ];
-
-  let checked = 0;
-  worker.onmessage = ({ data }) => {
-    checked++;
-    assertEquals(
-      data.childHasPermission,
-      routes[data.index].childHasPermission,
-    );
-    assertEquals(
-      data.parentHasPermission,
-      routes[data.index].parentHasPermission,
-    );
-    if (checked === routes.length) {
-      promise.resolve();
-    }
-  };
-
-  // Index needed cause requests will be handled asynchronously
-  routes.forEach(({ path }, index) =>
-    worker.postMessage({
-      index,
-      path,
-    })
-  );
-
-  await promise;
+  worker.onmessage = ({ data }) => promise.resolve(data);
+  assertEquals(await promise, {
+    envGlobal: "prompt",
+    envFoo: "prompt",
+    envAbsent: "prompt",
+    hrtime: "prompt",
+    netGlobal: "prompt",
+    netFoo: "prompt",
+    netFoo8000: "prompt",
+    netBar: "prompt",
+    netBar8000: "prompt",
+    ffiGlobal: "prompt",
+    ffiFoo: "prompt",
+    ffiBar: "prompt",
+    ffiAbsent: "prompt",
+    readGlobal: "prompt",
+    readFoo: "prompt",
+    readBar: "prompt",
+    readAbsent: "prompt",
+    runGlobal: "prompt",
+    runFoo: "prompt",
+    runBar: "prompt",
+    runBaz: "prompt",
+    runAbsent: "prompt",
+    writeGlobal: "prompt",
+    writeFoo: "prompt",
+    writeBar: "prompt",
+    writeAbsent: "prompt",
+  });
   worker.terminate();
 });
 
 // This test relies on env permissions not being granted on main thread
-Deno.test("Worker initialization throws on worker permissions greater than parent thread permissions", function () {
-  assertThrows(
-    () => {
-      const worker = new Worker(
-        new URL("./deno_worker.ts", import.meta.url).href,
-        {
-          type: "module",
-          deno: {
-            namespace: true,
-            permissions: {
-              env: true,
+Deno.test({
+  name:
+    "Worker initialization throws on worker permissions greater than parent thread permissions",
+  permissions: { env: false },
+  fn: function () {
+    assertThrows(
+      () => {
+        const worker = new Worker(
+          new URL("./deno_worker.ts", import.meta.url).href,
+          {
+            type: "module",
+            deno: {
+              namespace: true,
+              permissions: {
+                env: true,
+              },
             },
           },
-        },
-      );
-      worker.terminate();
-    },
-    Deno.errors.PermissionDenied,
-    "Can't escalate parent thread permissions",
-  );
+        );
+        worker.terminate();
+      },
+      Deno.errors.PermissionDenied,
+      "Can't escalate parent thread permissions",
+    );
+  },
 });
 
 Deno.test("Worker with disabled permissions", async function () {
@@ -641,6 +599,19 @@ Deno.test("Worker with disabled permissions", async function () {
   worker.postMessage(null);
   await promise;
   worker.terminate();
+});
+
+Deno.test("Worker with invalid permission arg", function () {
+  assertThrows(
+    () =>
+      new Worker(`data:,close();`, {
+        type: "module",
+        // @ts-expect-error invalid env value
+        deno: { permissions: { env: "foo" } },
+      }),
+    TypeError,
+    'Error parsing args: (deno.permissions.env) invalid value: string "foo", expected "inherit" or boolean or string[]',
+  );
 });
 
 Deno.test({
