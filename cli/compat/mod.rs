@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+mod errors;
 mod node_module_loader;
 
 use deno_core::url::Url;
@@ -10,10 +11,10 @@ pub use node_module_loader::NodeEsmResolver;
 // each release, a better mechanism is preferable, but it's a quick and dirty
 // solution to avoid printing `X-Deno-Warning` headers when the compat layer is
 // downloaded
-pub(crate) static STD_URL: &str = "https://deno.land/std@0.111.0/";
+pub static STD_URL: &str = "https://deno.land/std@0.111.0/";
 static GLOBAL_MODULE: &str = "global.ts";
 
-pub(crate) static SUPPORTED_MODULES: &[&str] = &[
+pub static SUPPORTED_MODULES: &[&str] = &[
   "assert",
   "assert/strict",
   "async_hooks",

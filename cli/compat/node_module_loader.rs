@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use super::errors;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -73,7 +74,7 @@ fn node_resolve(
     }
 
     if protocol != "file" && protocol != "data" {
-      return Err(generic_error(format!("Only file and data URLs are supported by the default ESM loader. Received protocol '{}'", protocol)));
+      return Err(errors::err_unsupported_esm_url_scheme(&url));
     }
 
     if referrer.starts_with("data:") {
@@ -157,11 +158,11 @@ fn finalize_resolution(
   let encoded_sep_re = Regex::new(r"%2F|%2C").expect("bad regex");
 
   if encoded_sep_re.is_match(resolved.path()) {
-    return Err(generic_error(format!(
-      "{} must not include encoded \"/\" or \"\\\\\" characters {}",
+    return Err(errors::err_invalid_module_specifier(
       resolved.path(),
-      base.to_file_path().unwrap().display()
-    )));
+      "must not include encoded \"/\" or \"\\\\\" characters",
+      Some(base.to_file_path().unwrap().display().to_string()),
+    ));
   }
 
   let path = resolved.to_file_path().unwrap();
@@ -184,18 +185,16 @@ fn finalize_resolution(
     (false, false)
   };
   if is_dir {
-    return Err(
-      generic_error(
-        format!("Directory import {} is not supported resolving ES modules imported from {}",
-          path.display(), base.to_file_path().unwrap().display()
-        )
+    return Err(errors::err_unsupported_dir_import(
+      &path.display().to_string(),
+      &base.to_file_path().unwrap().display().to_string(),
     ));
   } else if !is_file {
-    return Err(generic_error(format!(
-      "Cannot find module {} imported from {}",
-      path.display(),
-      base.to_file_path().unwrap().display()
-    )));
+    return Err(errors::err_module_not_found(
+      &path.display().to_string(),
+      &base.to_file_path().unwrap().display().to_string(),
+      "module",
+    ));
   }
 
   Ok(resolved)
@@ -230,15 +229,13 @@ fn is_conditional_exports_main_sugar(
       is_conditional_sugar = cur_is_conditional_sugar;
       i += 1;
     } else if is_conditional_sugar != cur_is_conditional_sugar {
-      let msg = format!(
-        "Invalid package config {} while importing {}.
-      \"exports\" cannot contains some keys starting with \'.\' and some not.
-      The exports object must either be an object of package subpath keys
-      or an object of main entry condition name keys only.",
-        package_json_url.to_file_path().unwrap().display(),
-        base.as_str()
-      );
-      return Err(generic_error(msg));
+      return Err(errors::err_invalid_package_config(
+        &package_json_url.to_file_path().unwrap().display().to_string(),
+        Some(base.as_str().to_string()),
+        Some("\"exports\" cannot contains some keys starting with \'.\' and some not.
+        The exports object must either be an object of package subpath keys
+        or an object of main entry condition name keys only.".to_string())
+      ));
     }
   }
 
@@ -333,6 +330,11 @@ fn resolve_package_target(
   } else if let Some(target_obj) = target.as_object() {
     for key in target_obj.keys() {
       // TODO(bartlomieju): verify that keys are not numeric
+      // return Err(errors::err_invalid_package_config(
+      //   package_json_url.to_file_path().unwrap().display().unwrap(),
+      //   Some(base.as_str().to_string()),
+      //   Some("\"exports\" cannot contain numeric property keys.".to_string()),
+      // ));
 
       if key == "default" || conditions.contains(&key.as_str()) {
         let condition_target = target_obj.get(key).unwrap().to_owned();
@@ -483,7 +485,17 @@ fn package_resolve(
       .map_err(AnyError::from);
   }
 
-  Err(generic_error(format!("module not found {}", specifier)))
+  Err(errors::err_module_not_found(
+    &package_json_url
+      .join(".")
+      .unwrap()
+      .to_file_path()
+      .unwrap()
+      .display()
+      .to_string(),
+    &base.to_file_path().unwrap().display().to_string(),
+    "package",
+  ))
 }
 
 fn parse_package_name(
@@ -519,11 +531,11 @@ fn parse_package_name(
   }
 
   if !valid_package_name {
-    return Err(generic_error(format!(
-      "{} is not a valid package name {}",
+    return Err(errors::err_invalid_module_specifier(
       specifier,
-      base.to_file_path().unwrap().display()
-    )));
+      "is not a valid package name",
+      Some(base.to_file_path().unwrap().display().to_string()),
+    ));
   }
 
   let package_subpath = if let Some(index) = separator_index {
@@ -574,19 +586,21 @@ fn get_package_config(
     return Ok(package_config);
   }
 
-  let package_json: Value = serde_json::from_str(&source).map_err(|_err| {
-    let mut msg = format!("Invalid package config {}", path.display());
-
-    if let Some(base) = maybe_base {
-      msg = format!(
-        "{} \"{}\" from {}",
-        msg,
+  let package_json: Value = serde_json::from_str(&source).map_err(|err| {
+    let base_msg = if let Some(base) = maybe_base {
+      Some(format!(
+        "\"{}\" from {}",
         specifier,
         base.to_file_path().unwrap().display()
-      );
-    }
-
-    generic_error(msg)
+      ))
+    } else {
+      None
+    };
+    errors::err_invalid_package_config(
+      &path.display().to_string(),
+      base_msg,
+      Some(err.to_string()),
+    )
   })?;
 
   let imports_val = package_json.get("imports");
