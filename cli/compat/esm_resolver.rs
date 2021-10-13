@@ -98,6 +98,16 @@ fn node_resolve(
   Ok(url)
 }
 
+fn to_file_path(url: &Url) -> PathBuf {
+  url
+    .to_file_path()
+    .expect("Provided URL was not file:// URL")
+}
+
+fn to_file_path_string(url: &Url) -> String {
+  to_file_path(url).display().to_string()
+}
+
 fn should_be_treated_as_relative_or_absolute_path(specifier: &str) -> bool {
   if specifier.is_empty() {
     return false;
@@ -161,11 +171,11 @@ fn finalize_resolution(
     return Err(errors::err_invalid_module_specifier(
       resolved.path(),
       "must not include encoded \"/\" or \"\\\\\" characters",
-      Some(base.to_file_path().unwrap().display().to_string()),
+      Some(to_file_path_string(base)),
     ));
   }
 
-  let path = resolved.to_file_path().unwrap();
+  let path = to_file_path(&resolved);
 
   // TODO(bartlomieju): currently not supported
   // if (getOptionValue('--experimental-specifier-resolution') === 'node') {
@@ -187,12 +197,12 @@ fn finalize_resolution(
   if is_dir {
     return Err(errors::err_unsupported_dir_import(
       &path.display().to_string(),
-      &base.to_file_path().unwrap().display().to_string(),
+      &to_file_path_string(base),
     ));
   } else if !is_file {
     return Err(errors::err_module_not_found(
       &path.display().to_string(),
-      &base.to_file_path().unwrap().display().to_string(),
+      &to_file_path_string(base),
       "module",
     ));
   }
@@ -230,7 +240,7 @@ fn is_conditional_exports_main_sugar(
       i += 1;
     } else if is_conditional_sugar != cur_is_conditional_sugar {
       return Err(errors::err_invalid_package_config(
-        &package_json_url.to_file_path().unwrap().display().to_string(),
+        &to_file_path_string(package_json_url),
         Some(base.as_str().to_string()),
         Some("\"exports\" cannot contains some keys starting with \'.\' and some not.
         The exports object must either be an object of package subpath keys
@@ -331,7 +341,7 @@ fn resolve_package_target(
     for key in target_obj.keys() {
       // TODO(bartlomieju): verify that keys are not numeric
       // return Err(errors::err_invalid_package_config(
-      //   package_json_url.to_file_path().unwrap().display().unwrap(),
+      //   to_file_path_string(package_json_url),
       //   Some(base.as_str().to_string()),
       //   Some("\"exports\" cannot contain numeric property keys.".to_string()),
       // ));
@@ -434,7 +444,7 @@ fn package_resolve(
 
   let mut package_json_url =
     base.join(&format!("./node_modules/{}/package.json", package_name))?;
-  let mut package_json_path = package_json_url.to_file_path().unwrap();
+  let mut package_json_path = to_file_path(&package_json_url);
   let mut last_path;
   loop {
     let p_str = package_json_path.to_str().unwrap();
@@ -454,7 +464,7 @@ fn package_resolve(
       };
       package_json_url = package_json_url
         .join(&format!("{}{}/package.json", prefix, package_name))?;
-      package_json_path = package_json_url.to_file_path().unwrap();
+      package_json_path = to_file_path(&package_json_url);
       if package_json_path.to_str().unwrap().len()
         == last_path.to_str().unwrap().len()
       {
@@ -493,7 +503,7 @@ fn package_resolve(
       .unwrap()
       .display()
       .to_string(),
-    &base.to_file_path().unwrap().display().to_string(),
+    &to_file_path_string(base),
     "package",
   ))
 }
@@ -534,7 +544,7 @@ fn parse_package_name(
     return Err(errors::err_invalid_module_specifier(
       specifier,
       "is not a valid package name",
-      Some(base.to_file_path().unwrap().display().to_string()),
+      Some(to_file_path_string(base)),
     ));
   }
 
@@ -588,11 +598,7 @@ fn get_package_config(
 
   let package_json: Value = serde_json::from_str(&source).map_err(|err| {
     let base_msg = maybe_base.map(|base| {
-      format!(
-        "\"{}\" from {}",
-        specifier,
-        base.to_file_path().unwrap().display()
-      )
+      format!("\"{}\" from {}", specifier, to_file_path(base).display())
     });
     errors::err_invalid_package_config(
       &path.display().to_string(),
@@ -666,7 +672,7 @@ fn get_package_scope_config(
     }
 
     let package_config = get_package_config(
-      package_json_url.to_file_path().unwrap(),
+      to_file_path(&package_json_url),
       resolved.as_str(),
       None,
     )?;
@@ -686,7 +692,7 @@ fn get_package_scope_config(
     }
   }
 
-  let package_json_path = package_json_url.to_file_path().unwrap();
+  let package_json_path = to_file_path(&package_json_url);
   let package_config = PackageConfig {
     pjsonpath: package_json_path,
     exists: false,
@@ -704,7 +710,7 @@ fn get_package_scope_config(
 }
 
 fn file_exists(path_url: &Url) -> bool {
-  if let Ok(stats) = std::fs::metadata(path_url.to_file_path().unwrap()) {
+  if let Ok(stats) = std::fs::metadata(to_file_path(path_url)) {
     stats.is_file()
   } else {
     false
