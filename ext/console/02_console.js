@@ -89,6 +89,8 @@
     Number,
     NumberPrototypeToString,
     NumberPrototypeValueOf,
+    BigInt,
+    BigIntPrototypeToString,
     Proxy,
     ReflectGet,
     ReflectGetOwnPropertyDescriptor,
@@ -896,6 +898,11 @@
     return cyan(`[Number: ${ObjectIs(NumberPrototypeValueOf(value), -0) ? "-0" : NumberPrototypeToString(value)}]`); // wrappers are in cyan
   }
 
+  function inspectBigIntObject(value, inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
+    return cyan(`[BigInt: ${BigIntPrototypeToString(value)}n]`); // wrappers are in cyan
+  }
+
   const PromiseState = {
     Pending: 0,
     Fulfilled: 1,
@@ -1127,6 +1134,8 @@
       return inspectArray(value, level, inspectOptions);
     } else if (value instanceof Number) {
       return inspectNumberObject(value, inspectOptions);
+    } else if (value instanceof BigInt) {
+      return inspectBigIntObject(value, inspectOptions);
     } else if (value instanceof Boolean) {
       return inspectBooleanObject(value, inspectOptions);
     } else if (value instanceof String) {
