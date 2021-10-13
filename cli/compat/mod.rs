@@ -1,7 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+mod node_module_loader;
+
 use deno_core::url::Url;
 use std::collections::HashMap;
+
+pub use node_module_loader::NodeEsmResolver;
 
 // TODO(bartlomieju): this needs to be bumped manually for
 // each release, a better mechanism is preferable, but it's a quick and dirty

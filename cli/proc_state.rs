@@ -3,6 +3,7 @@
 use crate::cache;
 use crate::colors;
 use crate::compat;
+use crate::compat::NodeEsmResolver;
 use crate::config_file::ConfigFile;
 use crate::deno_dir;
 use crate::emit;
@@ -13,7 +14,6 @@ use crate::flags;
 use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
-use crate::node_module_loader::NodeEsmResolver;
 use crate::resolver::ImportMapResolver;
 use crate::source_maps::SourceMapGetter;
 use crate::version;

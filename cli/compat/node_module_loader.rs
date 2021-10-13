@@ -12,7 +12,7 @@ use regex::Regex;
 use std::path::PathBuf;
 
 #[derive(Debug, Default)]
-pub(crate) struct NodeEsmResolver;
+pub struct NodeEsmResolver;
 
 impl NodeEsmResolver {
   pub fn as_resolver(&self) -> &dyn Resolver {
@@ -33,7 +33,7 @@ impl Resolver for NodeEsmResolver {
     if referrer.as_str().starts_with("https://deno.land/std") {
       return referrer.join(specifier).map_err(AnyError::from);
     }
-    node_resolve(specifier, referrer.as_str())
+    node_resolve(specifier, referrer.as_str(), &std::env::current_dir()?)
   }
 }
 
@@ -44,6 +44,7 @@ static DEFAULT_CONDITIONS: &[&str] = &["node", "import"];
 fn node_resolve(
   specifier: &str,
   referrer: &str,
+  cwd: &std::path::Path,
 ) -> Result<ModuleSpecifier, AnyError> {
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
@@ -76,7 +77,6 @@ fn node_resolve(
 
   let is_main = referrer.is_empty();
   let parent_url = if is_main {
-    let cwd = std::env::current_dir()?;
     Url::from_directory_path(cwd).unwrap()
   } else {
     Url::parse(referrer).expect("referrer was not proper url")
@@ -736,4 +736,57 @@ fn legacy_main_resolve(
   }
 
   Err(generic_error("not found"))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn testdir(name: &str) -> PathBuf {
+    let c = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    c.join("compat/testdata/").join(name)
+  }
+
+  #[test]
+  fn basic() {
+    let cwd = testdir("basic");
+    let main = Url::from_file_path(cwd.join("main.js")).unwrap();
+    let actual = node_resolve("foo", main.as_str(), &cwd).unwrap();
+    let expected =
+      Url::from_file_path(cwd.join("node_modules/foo/index.js")).unwrap();
+    assert_eq!(actual, expected);
+  }
+
+  #[test]
+  fn basic_deps() {
+    let cwd = testdir("basic_deps");
+    let main = Url::from_file_path(cwd.join("main.js")).unwrap();
+    let actual = node_resolve("foo", main.as_str(), &cwd).unwrap();
+    let foo_js =
+      Url::from_file_path(cwd.join("node_modules/foo/foo.js")).unwrap();
+    assert_eq!(actual, foo_js);
+
+    let actual = node_resolve("bar", foo_js.as_str(), &cwd).unwrap();
+
+    let bar_js =
+      Url::from_file_path(cwd.join("node_modules/bar/bar.js")).unwrap();
+    assert_eq!(actual, bar_js);
+  }
+
+  #[test]
+  fn builtin_http() {
+    let cwd = testdir("basic");
+    let main = Url::from_file_path(cwd.join("main.js")).unwrap();
+    let expected =
+      Url::parse("https://deno.land/std@0.111.0/node/http.ts").unwrap();
+
+    let actual = node_resolve("http", main.as_str(), &cwd).unwrap();
+    println!("actual {}", actual);
+    assert_eq!(actual, expected);
+
+    // TODO(ry)
+    // let actual = node_resolve("node:http", main.as_str(), &cwd).unwrap();
+    // println!("actual {}", actual);
+    // assert_eq!(actual, expected);
+  }
 }
