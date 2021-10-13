@@ -107,7 +107,7 @@ impl WsStreamResource {
     match res {
       Ok(()) => Ok(()),
       Err(Error::ConnectionClosed) => Ok(()),
-      Err(err) => Err(err.into())
+      Err(err) => Err(err.into()),
     }
   }
 
