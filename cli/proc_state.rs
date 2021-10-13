@@ -299,6 +299,15 @@ impl ProcState {
     } else {
       import_map_resolver.as_ref().map(|im| im.as_resolver())
     };
+    // TODO(bartlomieju): this is very make-shift, is there an existing API
+    // that we could include it like with "maybe_imports"?
+    let roots = if self.flags.compat {
+      let mut r = vec![compat::GLOBAL_URL.clone()];
+      r.extend(roots);
+      r
+    } else {
+      roots
+    };
     let graph = deno_graph::create_graph(
       roots,
       is_dynamic,
