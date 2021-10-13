@@ -3,7 +3,6 @@
 mod node_module_loader;
 
 use deno_core::url::Url;
-use std::collections::HashMap;
 
 pub use node_module_loader::NodeEsmResolver;
 
@@ -70,23 +69,11 @@ pub(crate) fn get_node_imports() -> Vec<(Url, Vec<String>)> {
   vec![(COMPAT_IMPORT_URL.clone(), vec![GLOBAL_URL_STR.clone()])]
 }
 
-/// Create a map that can be used to update import map.
-///
-/// Keys are built-in Node modules (and built-ins prefixed with "node:"), while
-/// values are URLs pointing to relevant files in deno.land/std/node/ directory.
-pub fn get_mapped_node_builtins() -> HashMap<String, String> {
-  let mut mappings = HashMap::new();
-
-  for module in SUPPORTED_MODULES {
-    // TODO(bartlomieju): this is unversioned, and should be fixed to use latest stable?
-    let module_url = format!("{}node/{}.ts", STD_URL, module);
-    mappings.insert(module.to_string(), module_url.clone());
-
-    // Support for `node:<module_name>`
-    // https://nodejs.org/api/esm.html#esm_node_imports
-    let node_prefixed = format!("node:{}", module);
-    mappings.insert(node_prefixed, module_url);
+pub(crate) fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
+  if SUPPORTED_MODULES.contains(&specifier) {
+    let module_url = format!("{}node/{}.ts", crate::compat::STD_URL, specifier);
+    Some(Url::parse(&module_url).unwrap())
+  } else {
+    None
   }
-
-  mappings
 }

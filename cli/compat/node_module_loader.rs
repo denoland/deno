@@ -48,10 +48,8 @@ fn node_resolve(
 ) -> Result<ModuleSpecifier, AnyError> {
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-  // TODO(bartlomieju): this remapping should be done in `compat` module
-  if crate::compat::SUPPORTED_MODULES.contains(&specifier) {
-    let module_url = format!("{}node/{}.ts", crate::compat::STD_URL, specifier);
-    return Ok(Url::parse(&module_url).unwrap());
+  if let Some(resolved) = crate::compat::try_resolve_builtin_module(specifier) {
+    return Ok(resolved);
   }
 
   if let Ok(url) = Url::parse(specifier) {
@@ -62,7 +60,16 @@ fn node_resolve(
     let protocol = url.scheme();
 
     if protocol == "node" {
-      return Ok(url);
+      let mut split_specifier = url.as_str().split(':');
+      split_specifier.next();
+      let specifier = split_specifier.collect::<Vec<_>>().join("");
+      if let Some(resolved) =
+        crate::compat::try_resolve_builtin_module(&specifier)
+      {
+        return Ok(resolved);
+      } else {
+        return Err(generic_error(format!("Unknown module {}", specifier)));
+      }
     }
 
     if protocol != "file" && protocol != "data" {
@@ -794,9 +801,8 @@ mod tests {
     println!("actual {}", actual);
     assert_eq!(actual, expected);
 
-    // TODO(ry)
-    // let actual = node_resolve("node:http", main.as_str(), &cwd).unwrap();
-    // println!("actual {}", actual);
-    // assert_eq!(actual, expected);
+    let actual = node_resolve("node:http", main.as_str(), &cwd).unwrap();
+    println!("actual {}", actual);
+    assert_eq!(actual, expected);
   }
 }

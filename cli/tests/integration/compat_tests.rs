@@ -18,12 +18,6 @@ itest!(node_prefix_fs_promises {
   output: "compat/fs_promises.out",
 });
 
-itest!(existing_import_map {
-  args: "run --compat --unstable --import-map compat/existing_import_map.json compat/fs_promises.js",
-  output: "compat/existing_import_map.out",
-  exit_code: 1,
-});
-
 #[test]
 fn globals_in_repl() {
   let (out, _err) = util::run_and_collect_output_with_args(
