@@ -352,6 +352,7 @@ pub fn transpile_module(
         emit_options
       )),
       fixer(Some(&comments)),
+      hygiene(),
     );
 
     let module = helpers::HELPERS.set(&helpers::Helpers::new(false), || {
