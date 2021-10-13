@@ -194,7 +194,11 @@ Deno.test({
     assertEquals(diagnostics.length, 0);
     assert(!ignoredOptions);
     const keys = Object.keys(files).sort();
-    assertEquals(["file:///a.ts.js", "file:///a.ts.js.map", "file:///b.js"]);
+    assertEquals(keys, [
+      "file:///a.ts.js",
+      "file:///a.ts.js.map",
+      "file:///b.js",
+    ]);
   },
 });
 
