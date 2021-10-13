@@ -468,7 +468,7 @@ fn package_resolve(
       );
     }
     if package_subpath == "." {
-      todo!();
+      return legacy_main_resolve(&package_json_url, &package_config, base);
     }
 
     return package_json_url
@@ -714,4 +714,58 @@ fn get_package_scope_config(
   // package_json_cache.set(package_json_path, package_config.clone());
 
   Ok(package_config)
+}
+
+fn file_exists(path_url: &Url) -> bool {
+  if let Ok(stats) = std::fs::metadata(path_url.to_file_path().unwrap()) {
+    stats.is_file()
+  } else {
+    false
+  }
+}
+
+fn legacy_main_resolve(
+  package_json_url: &Url,
+  package_config: &PackageConfig,
+  _base: &ModuleSpecifier,
+) -> Result<ModuleSpecifier, AnyError> {
+  let mut guess;
+
+  if let Some(main) = &package_config.main {
+    guess = package_json_url.join(&format!("./{}", main))?;
+    if file_exists(&guess) {
+      return Ok(guess);
+    }
+
+    let mut found = false;
+    for ext in [
+      ".js",
+      ".json",
+      ".node",
+      "/index.js",
+      "/index.json",
+      "/index.node",
+    ] {
+      guess = package_json_url.join(&format!("./{}{}", main, ext))?;
+      if file_exists(&guess) {
+        found = true;
+        break;
+      }
+    }
+
+    if found {
+      // TODO(bartlomieju): emitLegacyIndexDeprecation()
+      return Ok(guess);
+    }
+  }
+
+  for p in ["./index.js", "./index.json", "./index.node"] {
+    guess = package_json_url.join(p)?;
+    if file_exists(&guess) {
+      // TODO(bartlomieju): emitLegacyIndexDeprecation()
+      return Ok(guess);
+    }
+  }
+
+  Err(generic_error("not found"))
 }
