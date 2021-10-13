@@ -470,25 +470,16 @@ mod tests {
   }
 
   #[test]
-  fn transpile_do_not_rename_identifiers() {
+  fn transpile_handle_code_nested_in_ts_nodes_with_jsx_pass() {
     // from issue 12409
     let specifier = resolve_url_or_path("https://deno.land/x/mod.ts").unwrap();
     let source = r#"
-export function g(alg: string, options?: any) {
+export function g() {
   let algorithm: any
-  let keyUsages: any[]
+  algorithm = {}
 
-  switch (alg) {
-    case 'RSA256':
-      algorithm = {}
-      keyUsages = ['sign', 'verify']
-      break
-    default:
-      throw new Error('error')
-  }
-
-  return <Promise<{ publicKey: CryptoKey; privateKey: CryptoKey}>>(
-    crypto.subtle.generateKey(algorithm, false, keyUsages)
+  return <Promise>(
+    test(algorithm, false, keyUsages)
   )
 }
   "#;
@@ -506,22 +497,11 @@ export function g(alg: string, options?: any) {
       ..Default::default()
     };
     let (code, _) = transpile(&module, &emit_options).unwrap();
-    let expected = r#"export function g(alg, options) {
+    let expected = r#"export function g() {
     let algorithm;
-    let keyUsages;
-    switch(alg){
-        case 'RSA256':
-            algorithm = {
-            };
-            keyUsages = [
-                'sign',
-                'verify'
-            ];
-            break;
-        default:
-            throw new Error('error');
-    }
-    return crypto.subtle.generateKey(algorithm, false, keyUsages);
+    algorithm = {
+    };
+    return test(algorithm, false, keyUsages);
 }"#;
     assert_eq!(&code[..expected.len()], expected);
   }
