@@ -911,8 +911,8 @@
   }
 
   function inspectSymbolObject(value, inspectOptions) {
-    const cyan = maybeColor(colors.green, inspectOptions);
-    return cyan(`[Symbol: ${maybeQuoteSymbol(SymbolPrototypeValueOf(value))}]`); // wrappers are in green
+    const cyan = maybeColor(colors.cyan, inspectOptions);
+    return cyan(`[Symbol: ${maybeQuoteSymbol(SymbolPrototypeValueOf(value))}]`); // wrappers are in cyan
   }
 
   const PromiseState = {
