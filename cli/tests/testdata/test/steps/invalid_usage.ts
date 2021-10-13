@@ -33,15 +33,13 @@ Deno.test({
 Deno.test("parallel steps with sanitizers", async (t) => {
   // not allowed because steps with sanitizers cannot be run in parallel
   const step1Entered = deferred();
-  const step2Finished = deferred();
-  const step1 = t.step("step 1", async () => {
+  const testFinished = deferred();
+  t.step("step 1", async () => {
     step1Entered.resolve();
-    await step2Finished;
+    await testFinished;
   });
   await step1Entered;
   await t.step("step 2", () => {});
-  step2Finished.resolve();
-  await step1;
 });
 
 Deno.test("parallel steps when first has sanitizer", async (t) => {

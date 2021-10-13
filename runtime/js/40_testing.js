@@ -47,8 +47,8 @@
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
 
-      if (step.hasRunningChildren) {
-        return; // test step validation error thrown, don't check ops
+      if (step.shouldSkipSanitizers) {
+        return;
       }
 
       const post = metrics();
@@ -111,8 +111,8 @@ finishing test case.`;
       const pre = core.resources();
       await fn(step);
 
-      if (step.hasRunningChildren) {
-        return; // test step validation error thrown, don't check resources
+      if (step.shouldSkipSanitizers) {
+        return;
       }
 
       const post = core.resources();
@@ -360,6 +360,7 @@ finishing test case.`;
         "failed": formatError(error),
       };
     } finally {
+      step.finalized = true;
       // ensure the children report their result
       for (const child of step.children) {
         child.reportResult();
@@ -527,6 +528,13 @@ finishing test case.`;
       return this.#params.sanitizeResources ||
         this.#params.sanitizeOps ||
         this.#params.sanitizeExit;
+    }
+
+    /** If a test validation error already occurred then don't bother checking
+     * the sanitizers as that will create extra noise.
+     */
+    get shouldSkipSanitizers() {
+      return this.hasRunningChildren || this.parent?.finalized;
     }
 
     get hasRunningChildren() {
