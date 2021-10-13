@@ -13,7 +13,7 @@ use crate::flags;
 use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
-use crate::node_module_loader::NodeResolver;
+use crate::node_module_loader::NodeEsmResolver;
 use crate::resolver::ImportMapResolver;
 use crate::source_maps::SourceMapGetter;
 use crate::version;
@@ -317,7 +317,7 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports();
-    let node_resolver = NodeResolver;
+    let node_resolver = NodeEsmResolver;
     let import_map_resolver =
       self.maybe_import_map.as_ref().map(ImportMapResolver::new);
     let maybe_resolver = if self.flags.compat {

@@ -12,20 +12,24 @@ use regex::Regex;
 use std::path::PathBuf;
 
 #[derive(Debug, Default)]
-pub(crate) struct NodeResolver;
+pub(crate) struct NodeEsmResolver;
 
-impl NodeResolver {
+impl NodeEsmResolver {
   pub fn as_resolver(&self) -> &dyn Resolver {
     self
   }
 }
 
-impl Resolver for NodeResolver {
+impl Resolver for NodeEsmResolver {
   fn resolve(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
+    // TODO(bartlomieju): this is hacky, remove
+    // needed to add it here because `deno_std/node` has
+    // triple-slash references and they should still resolve
+    // the regular way (I think)
     if referrer.as_str().starts_with("https://deno.land/std") {
       return referrer.join(specifier).map_err(AnyError::from);
     }
@@ -41,9 +45,9 @@ fn node_resolve(
   specifier: &str,
   referrer: &str,
 ) -> Result<ModuleSpecifier, AnyError> {
-  // eprintln!("NODE_RESOLVE {} {}", specifier, referrer);
-  // TODO(bartlomieju): skipped "policy" part
+  // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
+  // TODO(bartlomieju): this remapping should be done in `compat` module
   if crate::compat::SUPPORTED_MODULES.contains(&specifier) {
     let module_url = format!("{}node/{}.ts", crate::compat::STD_URL, specifier);
     return Ok(Url::parse(&module_url).unwrap());
@@ -120,7 +124,6 @@ fn module_resolve(
   base: &ModuleSpecifier,
   conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
-  // eprintln!("module resolve {} {}", specifier, base.as_str());
   let resolved = if should_be_treated_as_relative_or_absolute_path(specifier) {
     base.join(specifier)?
   } else if specifier.chars().nth(0) == Some('#') {
@@ -139,7 +142,9 @@ fn finalize_resolution(
   resolved: ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
-  // TODO(bartlomieju): short circuit for remote modules
+  // TODO(bartlomieju): this is not part of Node resolution
+  // (as it doesn't support http/https);
+  // but I had to short circuit for remote modules to avoid errors
   if resolved.scheme().starts_with("http") {
     return Ok(resolved);
   }
@@ -154,7 +159,6 @@ fn finalize_resolution(
     )));
   }
 
-  // eprintln!("resolved {}, base: {}", resolved.as_str(), base.as_str());
   let path = resolved.to_file_path().unwrap();
 
   // TODO(bartlomieju): currently not supported
@@ -169,7 +173,6 @@ fn finalize_resolution(
     p_str.to_string()
   };
 
-  // eprintln!("meta data path: {}", p);
   let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(&p) {
     (stats.is_dir(), stats.is_file())
   } else {
@@ -382,7 +385,7 @@ fn package_exports_resolve(
       false,
       conditions,
     )?;
-    // TODO():
+    // TODO(bartlomieju): return error here
     if resolved.is_none() {
       todo!()
     }
@@ -397,7 +400,6 @@ fn package_resolve(
   base: &ModuleSpecifier,
   conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
-  // eprintln!("package_resolve {} {}", specifier, base.as_str());
   let (package_name, package_subpath, is_scoped) =
     parse_package_name(specifier, base)?;
 
@@ -406,10 +408,6 @@ fn package_resolve(
   if package_config.exists {
     let package_json_url =
       Url::from_file_path(&package_config.pjsonpath).unwrap();
-    // eprintln!(
-    //   "package_config.name {:?} package_name {:?} exports {:#?}",
-    //   package_config.name, package_name, package_config.exports
-    // );
     if package_config.name.as_ref() == Some(&package_name) {
       if let Some(exports) = &package_config.exports {
         if !exports.is_null() {
@@ -458,10 +456,8 @@ fn package_resolve(
     }
 
     // Package match.
-    // eprintln!("got package match!");
     let package_config =
       get_package_config(package_json_path.clone(), specifier, Some(base))?;
-    // eprintln!("got package match {} {} {:#?}", package_json_path.display(), specifier, package_config.exports);
     if package_config.exports.is_some() {
       return package_exports_resolve(
         package_json_url,
@@ -517,7 +513,6 @@ fn parse_package_name(
     }
   }
 
-  // // eprintln!("specifier: {:?}, base: {:?}", specifier, base);
   if !valid_package_name {
     return Err(generic_error(format!(
       "{} is not a valid package name {}",
@@ -535,16 +530,6 @@ fn parse_package_name(
 
   Ok((package_name, package_subpath, is_scoped))
 }
-
-// enum ExportConfig {
-//   Str(String),
-//   StrArray(Vec<String>),
-// }
-
-// enum PackageType {
-//   Module,
-//   CommonJs,
-// }
 
 #[derive(Clone, Debug)]
 struct PackageConfig {
@@ -567,8 +552,6 @@ fn get_package_config(
   //   return Ok(existing.clone());
   // }
 
-  // TODO: maybe shouldn't error be return empty package
-  // eprintln!("get package config: {} {:?}", specifier, path);
   let result = std::fs::read_to_string(&path);
 
   let source = result.unwrap_or_else(|_| "".to_string());
@@ -678,17 +661,12 @@ fn get_package_scope_config(
       break;
     }
 
-    // eprintln!("get package scope config");
     let package_config = get_package_config(
       package_json_url.to_file_path().unwrap(),
       resolved.as_str(),
       None,
     )?;
-    // eprintln!(
-    //   "found package config {}, exists: {}",
-    //   package_json_url.as_str(),
-    //   package_config.exists
-    // );
+
     if package_config.exists {
       return Ok(package_config);
     }
@@ -696,6 +674,7 @@ fn get_package_scope_config(
     let last_package_json_url = package_json_url.clone();
     package_json_url = package_json_url.join("../package.json")?;
 
+    // TODO(bartlomieju): I'm not sure this will work properly
     // Terminates at root where ../package.json equals ../../package.json
     // (can't just check "/package.json" for Windows support)
     if package_json_url.path() == last_package_json_url.path() {
