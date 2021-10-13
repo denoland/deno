@@ -513,6 +513,101 @@ unitTest(async function testHkdfDeriveBits() {
   assertEquals(result.byteLength, 128 / 8);
 });
 
+unitTest(async function testDeriveKey() {
+  // Test deriveKey
+  const rawKey = await crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    rawKey,
+    "PBKDF2",
+    false,
+    ["deriveKey", "deriveBits"],
+  );
+
+  const salt = await crypto.getRandomValues(new Uint8Array(16));
+  const derivedKey = await crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: 1000,
+      hash: "SHA-256",
+    },
+    key,
+    { name: "HMAC", hash: "SHA-256" },
+    true,
+    ["sign"],
+  );
+
+  assert(derivedKey instanceof CryptoKey);
+  assertEquals(derivedKey.type, "secret");
+  assertEquals(derivedKey.extractable, true);
+  assertEquals(derivedKey.usages, ["sign"]);
+
+  const algorithm = derivedKey.algorithm as HmacKeyAlgorithm;
+  assertEquals(algorithm.name, "HMAC");
+  assertEquals(algorithm.hash.name, "SHA-256");
+  assertEquals(algorithm.length, 256);
+});
+
+unitTest(async function testAesCbcEncryptDecrypt() {
+  const key = await crypto.subtle.generateKey(
+    { name: "AES-CBC", length: 128 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+
+  const iv = await crypto.getRandomValues(new Uint8Array(16));
+  const encrypted = await crypto.subtle.encrypt(
+    {
+      name: "AES-CBC",
+      iv,
+    },
+    key as CryptoKey,
+    new Uint8Array([1, 2, 3, 4, 5, 6]),
+  );
+
+  assert(encrypted instanceof ArrayBuffer);
+  assertEquals(encrypted.byteLength, 16);
+
+  const decrypted = await crypto.subtle.decrypt(
+    {
+      name: "AES-CBC",
+      iv,
+    },
+    key as CryptoKey,
+    encrypted,
+  );
+
+  assert(decrypted instanceof ArrayBuffer);
+  assertEquals(decrypted.byteLength, 6);
+  assertEquals(new Uint8Array(decrypted), new Uint8Array([1, 2, 3, 4, 5, 6]));
+});
+
+// TODO(@littledivy): Enable WPT when we have importKey support
+unitTest(async function testECDH() {
+  const namedCurve = "P-256";
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve,
+    },
+    true,
+    ["deriveBits"],
+  );
+
+  const derivedKey = await crypto.subtle.deriveBits(
+    {
+      name: "ECDH",
+      public: keyPair.publicKey,
+    },
+    keyPair.privateKey,
+    256,
+  );
+
+  assert(derivedKey instanceof ArrayBuffer);
+  assertEquals(derivedKey.byteLength, 256 / 8);
+});
+
 unitTest(async function testWrapKey() {
   // Test wrapKey
   const key = await crypto.subtle.generateKey(

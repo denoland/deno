@@ -18,6 +18,17 @@ async function benchAsync(name, n, innerLoop) {
   console.log(benchStats(name, n, t1, t2));
 }
 
+// Parallel version benchAsync
+async function benchAsyncP(name, n, p, innerLoop) {
+  const range = new Array(p).fill(null);
+  const t1 = Date.now();
+  for (let i = 0; i < n / p; i++) {
+    await Promise.all(range.map(() => innerLoop()));
+  }
+  const t2 = Date.now();
+  console.log(benchStats(name, n, t1, t2));
+}
+
 function benchStats(name, n, t1, t2) {
   const dt = (t2 - t1) / 1e3;
   const r = n / dt;
@@ -75,9 +86,25 @@ function benchRequestNew() {
   return benchSync("request_new", 5e5, () => new Request("https://deno.land"));
 }
 
+function benchOpVoidSync() {
+  return benchSync("op_void_sync", 1e7, () => Deno.core.opSync("op_void_sync"));
+}
+
+function benchOpVoidAsync() {
+  return benchAsyncP(
+    "op_void_async",
+    1e6,
+    1e3,
+    () => Deno.core.opAsync("op_void_async"),
+  );
+}
+
 async function main() {
   // v8 builtin that's close to the upper bound non-NOPs
   benchDateNow();
+  // Void ops measure op-overhead
+  benchOpVoidSync();
+  await benchOpVoidAsync();
   // A very lightweight op, that should be highly optimizable
   benchPerfNow();
   // A common "language feature", that should be fast

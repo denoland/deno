@@ -241,6 +241,7 @@ pub async fn run(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: metadata.unstable,
     },
+    extensions: vec![],
     user_agent: version::get_user_agent(),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,

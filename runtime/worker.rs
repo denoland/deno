@@ -2,7 +2,6 @@
 
 use crate::inspector_server::InspectorServer;
 use crate::js;
-use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::BootstrapOptions;
@@ -44,6 +43,7 @@ pub struct MainWorker {
 
 pub struct WorkerOptions {
   pub bootstrap: BootstrapOptions,
+  pub extensions: Vec<Extension>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
@@ -77,7 +77,7 @@ impl MainWorker {
   pub fn from_options(
     main_module: ModuleSpecifier,
     permissions: Permissions,
-    options: WorkerOptions,
+    mut options: WorkerOptions,
   ) -> Self {
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
@@ -92,7 +92,7 @@ impl MainWorker {
       .build();
 
     // Internal modules
-    let extensions: Vec<Extension> = vec![
+    let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
       deno_console::init(),
@@ -121,8 +121,6 @@ impl MainWorker {
       deno_timers::init::<Permissions>(),
       // ffi
       deno_ffi::init::<Permissions>(unstable),
-      // Metrics
-      metrics::init(),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(options.create_web_worker_cb.clone()),
@@ -146,6 +144,7 @@ impl MainWorker {
       // Permissions ext (worker specific state)
       perm_ext,
     ];
+    extensions.extend(std::mem::take(&mut options.extensions));
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -313,6 +312,7 @@ mod tests {
         ts_version: "x".to_string(),
         unstable: false,
       },
+      extensions: vec![],
       user_agent: "x".to_string(),
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,

@@ -6,6 +6,77 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.15.1 / 2021.10.13
+
+- fix: `--no-check` not properly handling code nested in TS expressions (#12416)
+- fix: bundler panic when encountering export specifier with an alias (#12418)
+
+### 1.15.0 / 2021.10.12
+
+- feat: add --compat flag to provide built-in Node modules (#12293)
+- feat: provide ops details for ops sanitizer failures (#12188)
+- feat: Show the URL of streaming WASM modules in stack traces (#12268)
+- feat: Stabilize Deno.kill and Deno.Process.kill (#12375)
+- feat: stabilize Deno.resolveDns (#12368)
+- feat: stabilize URLPattern API (#12256)
+- feat: support serializing `WebAssembly.Module` objects (#12140)
+- feat(cli/uninstall): add uninstall command (#12209)
+- feat(ext/crypto): decode RSAES-OAEP-params with default values (#12292)
+- feat(ext/crypto): export spki for RSA (#12114)
+- feat(ext/crypto): implement AES-CBC encryption & decryption (#12123)
+- feat(ext/crypto): implement deriveBits for ECDH (p256) (#11873)
+- feat(ext/crypto): implement deriveKey (#12117)
+- feat(ext/crypto): implement wrapKey (#12125)
+- feat(ext/crypto): support importing raw ECDSA keys (#11871)
+- feat(ext/crypto): support importing/exporting raw AES keys (#12392)
+- feat(ext/ffi): add support for buffer arguments (#12335)
+- feat(ext/ffi): Non-blocking FFI (#12274)
+- feat(ext/net): relevant errors for resolveDns (#12370)
+- feat(lint): add support for --watch flag (#11983)
+- feat(runtime): allow passing extensions via Worker options (#12362)
+- feat(runtime): improve error messages of runtime fs (#11984)
+- feat(tls): custom in memory CA certificates (#12219)
+- feat(unstable/test): imperative test steps API (#12190)
+- feat(web): Implement `DOMException`'s `stack` property. (#12294)
+- fix: Don't panic when a worker is closed in the reactions to a wasm operation.
+  (#12270)
+- fix: worker environment permissions should accept an array (#12250)
+- fix(core/runtime): sync_ops_cache if nuked Deno ns (#12302)
+- fix(ext/crypto): decode id-RSASSA-PSS with default params (#12147)
+- fix(ext/crypto): key generation based on AES key length (#12146)
+- fix(ext/crypto): missing Aes key typings (#12307)
+- fix(ext/crypto): use NotSupportedError for importKey() (#12289)
+- fix(ext/fetch): avoid panic when header is invalid (#12244)
+- fix(ext/ffi): don't panic in dlopen (#12344)
+- fix(ext/ffi): formatting dlopen errors on Windows (#12301)
+- fix(ext/ffi): missing "buffer" type definitions (#12371)
+- fix(ext/ffi): types for nonblocking FFI (#12345)
+- fix(ext/http): merge identical if/else branches (#12269)
+- fix(ext/net): should not panic when listening to unix abstract address
+  (#12300)
+- fix(ext/web): Format DOMException stack property (#12333)
+- fix(http): don't expose body on GET/HEAD requests (#12260)
+- fix(lsp): lint diagnostics respect config file (#12338)
+- fix(repl): avoid panic when assigned to globalThis (#12273)
+- fix(runtime): Declare `Window.self` and `DedicatedWorkerGlobalScope.name` with
+  `util.writable()` (#12378)
+- fix(runtime): don't equate SIGINT to SIGKILL on Windows (#12356)
+- fix(runtime): Getting `navigator.hardwareConcurrency` on workers shouldn't
+  throw (#12354)
+- fix(runtime/js/workers): throw errors instead of using an op (#12249)
+- fix(runtime/testing): format aggregate errors (#12183)
+- perf(core): use opcall() directly (#12310)
+- perf(fetch): fast path Uint8Array in extractBody() (#12351)
+- perf(fetch): optimize fillHeaders() key iteration (#12287)
+- perf(web): ~400x faster http header trimming (#12277)
+- perf(web): optimize byteLowerCase() (#12282)
+- perf(web/Event): move last class field to constructor (#12265)
+- perf(webidl): fix typo from #12286 (#12336)
+- perf(webidl): inline ResponseInit converter (#12285)
+- perf(webidl): optimize createDictionaryConverter() (#12279)
+- perf(webidl): optimize createRecordConverter() (#12286)
+- perf(webidl/DOMString): don't wrap string primitives (#12266)
+
 ### 1.14.3 / 2021.10.04
 
 - feat(core): implement Deno.core.isProxy() (#12288)

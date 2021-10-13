@@ -48,9 +48,13 @@ unitTest(
     const { uid, gid } = await getUidAndGid();
     const filePath = Deno.makeTempDirSync() + "/chown_test_file.txt";
 
-    assertThrows(() => {
-      Deno.chownSync(filePath, uid, gid);
-    }, Deno.errors.NotFound);
+    assertThrows(
+      () => {
+        Deno.chownSync(filePath, uid, gid);
+      },
+      Deno.errors.NotFound,
+      `chown '${filePath}'`,
+    );
   },
 );
 
@@ -63,9 +67,13 @@ unitTest(
     const { uid, gid } = await getUidAndGid();
     const filePath = (await Deno.makeTempDir()) + "/chown_test_file.txt";
 
-    await assertRejects(async () => {
-      await Deno.chown(filePath, uid, gid);
-    }, Deno.errors.NotFound);
+    await assertRejects(
+      async () => {
+        await Deno.chown(filePath, uid, gid);
+      },
+      Deno.errors.NotFound,
+      `chown '${filePath}'`,
+    );
   },
 );
 
