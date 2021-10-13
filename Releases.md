@@ -6,6 +6,11 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.15.1 / 2021.10.13
+
+- fix: `--no-check` not properly handling code nested in TS expressions (#12416)
+- fix: bundler panic when encountering export specifier with an alias (#12418)
+
 ### 1.15.0 / 2021.10.12
 
 - feat: add --compat flag to provide built-in Node modules (#12293)
