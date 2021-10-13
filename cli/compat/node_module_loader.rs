@@ -587,15 +587,13 @@ fn get_package_config(
   }
 
   let package_json: Value = serde_json::from_str(&source).map_err(|err| {
-    let base_msg = if let Some(base) = maybe_base {
-      Some(format!(
+    let base_msg = maybe_base.map(|base| {
+      format!(
         "\"{}\" from {}",
         specifier,
         base.to_file_path().unwrap().display()
-      ))
-    } else {
-      None
-    };
+      )
+    });
     errors::err_invalid_package_config(
       &path.display().to_string(),
       base_msg,
