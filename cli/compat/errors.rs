@@ -131,7 +131,7 @@ pub(crate) fn err_package_import_not_defined(
   base: &str,
 ) -> AnyError {
   let mut msg = format!(
-    "Package import specifier \"{}\" is not defined in",
+    "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{}\" is not defined in",
     specifier
   );
 
