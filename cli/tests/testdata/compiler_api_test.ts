@@ -181,13 +181,13 @@ Deno.test({
   name: "Deno.emit() - allowSyntheticDefaultImports true by default",
   async fn() {
     const { diagnostics, files, ignoredOptions } = await Deno.emit(
-      "/a.ts",
+      "file:///a.ts",
       {
         sources: {
-          "/a.ts": `import b from "./b.js";\n`,
-          "/b.js":
+          "file:///a.ts": `import b from "./b.js";\n`,
+          "file:///b.js":
             `/// <reference types="./b.d.ts";\n\nconst b = "b";\n\nexport default b;\n`,
-          "/b.d.ts": `declare const b: "b";\nexport = b;\n`,
+          "file:///b.d.ts": `declare const b: "b";\nexport = b;\n`,
         },
       },
     );
