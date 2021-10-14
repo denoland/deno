@@ -73,3 +73,30 @@ pub(crate) fn err_unsupported_esm_url_scheme(url: &Url) -> AnyError {
   msg = format!("{}. Received protocol '{}'", msg, url.scheme());
   generic_error(msg)
 }
+
+pub(crate) fn err_invalid_package_target(
+  pkg_path: String,
+  key: String,
+  target: String,
+  is_import: bool,
+  maybe_base: Option<String>,
+) -> AnyError {
+  let rel_error = !is_import && !target.is_empty() && !target.starts_with("./");
+
+  let mut msg = if key == "." {
+    assert!(!is_import);
+    format!("Invalid \"exports\" main target {} defined in the package config {}package.json", target, pkg_path)
+  } else {
+    let ie = if is_import { "imports" } else { "exports" };
+    format!("Invalid \"{}\" target {} defined for '{}' in the package config {}package.json", ie, target, key, pkg_path)
+  };
+
+  if let Some(base) = maybe_base {
+    msg = format!("{} imported from {}", msg, base);
+  };
+  if rel_error {
+    msg = format!("{}; target must start with \"./\"", msg);
+  }
+
+  generic_error(msg)
+}

@@ -252,34 +252,97 @@ fn is_conditional_exports_main_sugar(
   Ok(is_conditional_sugar)
 }
 
+fn invalid_package_target(
+  subpath: String,
+  target: String,
+  package_json_url: &Url,
+  internal: bool,
+  base: &Url,
+) -> AnyError {
+  errors::err_invalid_package_target(
+    to_file_path_string(&package_json_url.join(".").unwrap()),
+    subpath,
+    target,
+    internal,
+    Some(base.as_str().to_string()),
+  )
+}
+
+fn invalid_subpath(
+  subpath: String,
+  package_json_url: &Url,
+  internal: bool,
+  base: &Url,
+) -> AnyError {
+  let ie = if internal { "imports" } else { "exports" };
+  let reason = format!(
+    "request is not a valid subpath for the \"{}\" resolution of {}",
+    ie,
+    to_file_path_string(package_json_url)
+  );
+  errors::err_invalid_module_specifier(
+    &subpath,
+    &reason,
+    Some(to_file_path_string(base)),
+  )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn resolve_package_target_string(
   target: String,
   subpath: String,
-  _match_: String,
+  match_: String,
   package_json_url: Url,
-  _base: &ModuleSpecifier,
+  base: &ModuleSpecifier,
   pattern: bool,
   internal: bool,
-  _conditions: &[&str],
+  conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
   if !subpath.is_empty() && !pattern && !target.ends_with('/') {
-    todo!()
-  }
-
-  if !target.starts_with("./") {
-    if internal && !target.starts_with("../") && !target.starts_with('/') {
-      todo!()
-    }
-    todo!()
+    return Err(invalid_package_target(
+      match_,
+      target,
+      &package_json_url,
+      internal,
+      base,
+    ));
   }
 
   let invalid_segment_re =
     Regex::new(r"(^|\|/)(..?|node_modules)(\|/|$)").expect("bad regex");
   let pattern_re = Regex::new(r"\*").expect("bad regex");
 
+  if !target.starts_with("./") {
+    if internal && !target.starts_with("../") && !target.starts_with('/') {
+      let is_url = Url::parse(&target).is_ok();
+      if !is_url {
+        let export_target = if pattern {
+          pattern_re
+            .replace(&target, |_caps: &regex::Captures| subpath.clone())
+            .to_string()
+        } else {
+          format!("{}{}", target, subpath)
+        };
+        return package_resolve(&export_target, &package_json_url, conditions);
+      }
+    }
+    return Err(invalid_package_target(
+      match_,
+      target,
+      &package_json_url,
+      internal,
+      base,
+    ));
+  }
+
   if invalid_segment_re.is_match(&target[2..]) {
-    todo!()
+    return Err(invalid_package_target(
+      match_,
+      target,
+      &package_json_url,
+      internal,
+      base,
+    ));
   }
 
   let resolved = package_json_url.join(&target)?;
@@ -288,7 +351,13 @@ fn resolve_package_target_string(
   let package_path = package_url.path();
 
   if !resolved_path.starts_with(package_path) {
-    todo!()
+    return Err(invalid_package_target(
+      match_,
+      target,
+      &package_json_url,
+      internal,
+      base,
+    ));
   }
 
   if subpath.is_empty() {
@@ -296,7 +365,12 @@ fn resolve_package_target_string(
   }
 
   if invalid_segment_re.is_match(&subpath) {
-    todo!()
+    let request = if pattern {
+      match_.replace("*", &subpath)
+    } else {
+      format!("{}{}", match_, subpath)
+    };
+    return Err(invalid_subpath(request, &package_json_url, internal, base));
   }
 
   if pattern {
