@@ -67,16 +67,10 @@ pub fn write_file_2<T: AsRef<[u8]>>(
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
-  let mut canonicalized_path = path.canonicalize()?;
-  if cfg!(windows) {
-    canonicalized_path = PathBuf::from(
-      canonicalized_path
-        .display()
-        .to_string()
-        .trim_start_matches("\\\\?\\"),
-    );
-  }
-  Ok(canonicalized_path)
+  #[cfg(windows)]
+  return dunce::canonicalize(path);
+  #[cfg(not(windows))]
+  return path.canonicalize();
 }
 
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
