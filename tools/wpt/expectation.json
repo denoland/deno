@@ -4971,26 +4971,7 @@
         "Good parameters: 4096 bits (jwk, object(kty, n, e), {hash: SHA-512, name: RSASSA-PKCS1-v1_5}, false, [verify])",
         "Good parameters: 4096 bits (jwk, object(kty, n, e, d, p, q, dp, dq, qi), {hash: SHA-512, name: RSASSA-PKCS1-v1_5}, false, [sign])"
       ],
-      "symmetric_importKey.https.any.html": [
-        "Good parameters: 128 bits (jwk, {alg: A128CTR, k: AQIDBAUGBwgJCgsMDQ4PEA, kty: oct}, {name: AES-CTR}, true, [encrypt])",
-        "Good parameters: 128 bits (jwk, {alg: A128CTR, k: AQIDBAUGBwgJCgsMDQ4PEA, kty: oct}, {name: AES-CTR}, true, [decrypt, encrypt])",
-        "Good parameters: 128 bits (jwk, {alg: A128CTR, k: AQIDBAUGBwgJCgsMDQ4PEA, kty: oct}, {name: AES-CTR}, true, [decrypt])",
-        "Good parameters: 192 bits (jwk, {alg: A192CTR, k: AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcY, kty: oct}, {name: AES-CTR}, true, [encrypt])",
-        "Good parameters: 192 bits (jwk, {alg: A192CTR, k: AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcY, kty: oct}, {name: AES-CTR}, true, [decrypt, encrypt])",
-        "Good parameters: 192 bits (jwk, {alg: A192CTR, k: AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcY, kty: oct}, {name: AES-CTR}, true, [decrypt])",
-        "Good parameters: 256 bits (jwk, {alg: A256CTR, k: AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA, kty: oct}, {name: AES-CTR}, true, [encrypt])",
-        "Good parameters: 256 bits (jwk, {alg: A256CTR, k: AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA, kty: oct}, {name: AES-CTR}, true, [decrypt, encrypt])",
-        "Good parameters: 256 bits (jwk, {alg: A256CTR, k: AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA, kty: oct}, {name: AES-CTR}, true, [decrypt])",
-        "Good parameters: 128 bits (jwk, {alg: A128CBC, k: AQIDBAUGBwgJCgsMDQ4PEA, kty: oct}, {name: AES-CBC}, true, [encrypt])",
-        "Good parameters: 128 bits (jwk, {alg: A128CBC, k: AQIDBAUGBwgJCgsMDQ4PEA, kty: oct}, {name: AES-CBC}, true, [decrypt, encrypt])",
-        "Good parameters: 128 bits (jwk, {alg: A128CBC, k: AQIDBAUGBwgJCgsMDQ4PEA, kty: oct}, {name: AES-CBC}, true, [decrypt])",
-        "Good parameters: 192 bits (jwk, {alg: A192CBC, k: AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcY, kty: oct}, {name: AES-CBC}, true, [encrypt])",
-        "Good parameters: 192 bits (jwk, {alg: A192CBC, k: AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcY, kty: oct}, {name: AES-CBC}, true, [decrypt, encrypt])",
-        "Good parameters: 192 bits (jwk, {alg: A192CBC, k: AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcY, kty: oct}, {name: AES-CBC}, true, [decrypt])",
-        "Good parameters: 256 bits (jwk, {alg: A256CBC, k: AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA, kty: oct}, {name: AES-CBC}, true, [encrypt])",
-        "Good parameters: 256 bits (jwk, {alg: A256CBC, k: AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA, kty: oct}, {name: AES-CBC}, true, [decrypt, encrypt])",
-        "Good parameters: 256 bits (jwk, {alg: A256CBC, k: AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA, kty: oct}, {name: AES-CBC}, true, [decrypt])"
-      ],
+      "symmetric_importKey.https.any.html": true,
       "symmetric_importKey.https.any.worker.html": [
         "Good parameters: 128 bits (jwk, {alg: A128CTR, k: AQIDBAUGBwgJCgsMDQ4PEA, kty: oct}, {name: AES-CTR}, true, [encrypt])",
         "Good parameters: 128 bits (jwk, {alg: A128CTR, k: AQIDBAUGBwgJCgsMDQ4PEA, kty: oct}, {name: AES-CTR}, false, [encrypt])",

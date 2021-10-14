@@ -1505,7 +1505,7 @@
 
           // 4-7.
           const algorithm = {
-            name: "AES-CBC",
+            name: "AES-CTR",
             length: data.byteLength * 8,
           };
 
@@ -1651,7 +1651,7 @@
 
           // 4-7.
           const algorithm = {
-            name: "AES-CTR",
+            name: "AES-CBC",
             length: data.byteLength * 8,
           };
 
