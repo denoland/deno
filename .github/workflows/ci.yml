@@ -456,7 +456,7 @@ jobs:
         if: |
           startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&
           matrix.profile == 'debug' &&
-          github.event_name != 'pull_request' # too slow to run during PRs
+          github.event_name != 'pull_request'
         env:
           DENO_BIN: ./target/debug/deno
         run: |
