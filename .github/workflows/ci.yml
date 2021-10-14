@@ -460,7 +460,9 @@ jobs:
         env:
           DENO_BIN: ./target/debug/deno
         run: |
+          echo GITHUB_EVENT_NAME 
           echo ${{github.event_name}}
+          echo GITHUB_EVENT_NAME_END
           "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
                           --allow-write --unstable                         \
                           ./tools/wpt.ts setup
