@@ -622,8 +622,14 @@ impl SourceMapGetter for ProcState {
         // Do NOT use .lines(): it skips the terminating empty line.
         // (due to internally using .split_terminator() instead of .split())
         let lines: Vec<&str> = out.source.split('\n').collect();
-        assert!(lines.len() > line_number);
-        lines[line_number].to_string()
+        if line_number >= lines.len() {
+          format!(
+            "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
+            crate::colors::yellow("Warning"), line_number + 1,
+          )
+        } else {
+          lines[line_number].to_string()
+        }
       })
     } else {
       None
