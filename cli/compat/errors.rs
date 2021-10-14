@@ -124,3 +124,22 @@ pub(crate) fn err_package_path_not_exported(
 
   generic_error(msg)
 }
+
+pub(crate) fn err_package_import_not_defined(
+  specifier: &str,
+  package_path: Option<String>,
+  base: &str,
+) -> AnyError {
+  let mut msg = format!(
+    "Package import specifier \"{}\" is not defined in",
+    specifier
+  );
+
+  if let Some(package_path) = package_path {
+    msg = format!("{} in package {}package.json", msg, package_path);
+  }
+
+  msg = format!("{} imported from {}", msg, base);
+
+  type_error(msg)
+}

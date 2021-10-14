@@ -145,7 +145,7 @@ fn module_resolve(
   let resolved = if should_be_treated_as_relative_or_absolute_path(specifier) {
     base.join(specifier)?
   } else if specifier.starts_with('#') {
-    package_imports_resolve(specifier, base)?
+    package_imports_resolve(specifier, base, conditions)?
   } else if let Ok(resolved) = Url::parse(specifier) {
     resolved
   } else {
@@ -210,11 +210,140 @@ fn finalize_resolution(
   Ok(resolved)
 }
 
+fn throw_import_not_defined(
+  specifier: &str,
+  package_json_url: Option<Url>,
+  base: &Url,
+) -> AnyError {
+  errors::err_package_import_not_defined(
+    specifier,
+    package_json_url.map(|u| to_file_path_string(&u.join(".").unwrap())),
+    &to_file_path_string(base),
+  )
+}
+
+fn pattern_key_compare(a: &str, b: &str) -> i32 {
+  let a_pattern_index = a.find('*');
+  let b_pattern_index = b.find('*');
+
+  let base_len_a = if let Some(index) = a_pattern_index {
+    index + 1
+  } else {
+    a.len()
+  };
+  let base_len_b = if let Some(index) = b_pattern_index {
+    index + 1
+  } else {
+    b.len()
+  };
+
+  if base_len_a > base_len_b {
+    return -1;
+  }
+
+  if base_len_b > base_len_a {
+    return 1;
+  }
+
+  if a_pattern_index.is_none() {
+    return 1;
+  }
+
+  if b_pattern_index.is_none() {
+    return -1;
+  }
+
+  if a.len() > b.len() {
+    return -1;
+  }
+
+  if b.len() > a.len() {
+    return 1;
+  }
+
+  0
+}
+
 fn package_imports_resolve(
-  _specifier: &str,
-  _base: &ModuleSpecifier,
+  name: &str,
+  base: &ModuleSpecifier,
+  conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
-  todo!()
+  if name == "#" || name.starts_with("#/") || name.ends_with('/') {
+    let reason = "is not a valid internal imports specifier name";
+    return Err(errors::err_invalid_module_specifier(
+      name,
+      reason,
+      Some(to_file_path_string(base)),
+    ));
+  }
+
+  let mut package_json_url = None;
+
+  let package_config = get_package_scope_config(base)?;
+  if package_config.exists {
+    package_json_url =
+      Some(Url::from_file_path(package_config.pjsonpath).unwrap());
+    if let Some(imports) = &package_config.imports {
+      if imports.contains_key(name) && !name.contains('*') {
+        let maybe_resolved = resolve_package_target(
+          package_json_url.clone().unwrap(),
+          imports.get(name).unwrap().to_owned(),
+          "".to_string(),
+          name.to_string(),
+          base,
+          false,
+          true,
+          conditions,
+        )?;
+        if let Some(resolved) = maybe_resolved {
+          return Ok(resolved);
+        }
+      } else {
+        let mut best_match = "";
+        let mut best_match_subpath = None;
+        for key in imports.keys() {
+          let pattern_index = key.find('*');
+          if let Some(pattern_index) = pattern_index {
+            let key_sub = &key[0..=pattern_index];
+            if name.starts_with(key_sub) {
+              let pattern_trailer = &key[pattern_index + 1..];
+              if name.len() > key.len()
+                && name.ends_with(&pattern_trailer)
+                && pattern_key_compare(best_match, key) == 1
+                && key.rfind('*') == Some(pattern_index)
+              {
+                best_match = key;
+                best_match_subpath = Some(
+                  name[pattern_index..=(name.len() - pattern_trailer.len())]
+                    .to_string(),
+                );
+              }
+            }
+          }
+        }
+
+        if !best_match.is_empty() {
+          let target = imports.get(best_match).unwrap().to_owned();
+          let maybe_resolved = resolve_package_target(
+            package_json_url.clone().unwrap(),
+            target,
+            best_match_subpath.unwrap(),
+            best_match.to_string(),
+            base,
+            true,
+            true,
+            conditions,
+          )?;
+          if let Some(resolved) = maybe_resolved {
+            return Ok(resolved);
+          }
+        }
+      }
+    }
+  }
+
+  Err(throw_import_not_defined(name, package_json_url, base))
 }
 
 fn is_conditional_exports_main_sugar(
@@ -542,7 +671,67 @@ fn package_exports_resolve(
     return Ok(resolved.unwrap());
   }
 
-  todo!()
+  let mut best_match = "";
+  let mut best_match_subpath = None;
+  for key in exports_map.keys() {
+    let pattern_index = key.find('*');
+    if let Some(pattern_index) = pattern_index {
+      let key_sub = &key[0..=pattern_index];
+      if package_subpath.starts_with(key_sub) {
+        // When this reaches EOL, this can throw at the top of the whole function:
+        //
+        // if (StringPrototypeEndsWith(packageSubpath, '/'))
+        //   throwInvalidSubpath(packageSubpath)
+        //
+        // To match "imports" and the spec.
+        if package_subpath.ends_with('/') {
+          // emitTrailingSlashPatternDeprecation();
+        }
+        let pattern_trailer = &key[pattern_index + 1..];
+        if package_subpath.len() > key.len()
+          && package_subpath.ends_with(&pattern_trailer)
+          && pattern_key_compare(best_match, key) == 1
+          && key.rfind('*') == Some(pattern_index)
+        {
+          best_match = key;
+          best_match_subpath = Some(
+            package_subpath
+              [pattern_index..=(package_subpath.len() - pattern_trailer.len())]
+              .to_string(),
+          );
+        }
+      }
+    }
+  }
+
+  if !best_match.is_empty() {
+    let target = exports.get(best_match).unwrap().to_owned();
+    let maybe_resolved = resolve_package_target(
+      package_json_url.clone(),
+      target,
+      best_match_subpath.unwrap(),
+      best_match.to_string(),
+      base,
+      true,
+      false,
+      conditions,
+    )?;
+    if let Some(resolved) = maybe_resolved {
+      return Ok(resolved);
+    } else {
+      return Err(throw_exports_not_found(
+        package_subpath,
+        &package_json_url,
+        base,
+      ));
+    }
+  }
+
+  Err(throw_exports_not_found(
+    package_subpath,
+    &package_json_url,
+    base,
+  ))
 }
 
 fn package_resolve(
