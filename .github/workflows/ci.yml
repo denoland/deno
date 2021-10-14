@@ -455,7 +455,8 @@ jobs:
       - name: Run web platform tests (debug)
         if: |
           startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&
-          matrix.profile == 'debug'
+          matrix.profile == 'debug' &&
+          github.event_name != 'pull_request' # too slow to run during PRs
         env:
           DENO_BIN: ./target/debug/deno
         run: |
