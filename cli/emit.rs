@@ -149,6 +149,7 @@ pub(crate) fn get_ts_config(
     ConfigType::Check { tsc_emit, lib } => {
       let mut ts_config = TsConfig::new(json!({
         "allowJs": true,
+        "allowSyntheticDefaultImports": true,
         "experimentalDecorators": true,
         "incremental": true,
         "jsx": "react",
@@ -193,6 +194,7 @@ pub(crate) fn get_ts_config(
     ConfigType::RuntimeEmit { tsc_emit } => {
       let mut ts_config = TsConfig::new(json!({
         "allowJs": true,
+        "allowSyntheticDefaultImports": true,
         "checkJs": false,
         "emitDecoratorMetadata": false,
         "experimentalDecorators": true,
