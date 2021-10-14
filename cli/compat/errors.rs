@@ -82,13 +82,14 @@ pub(crate) fn err_invalid_package_target(
   maybe_base: Option<String>,
 ) -> AnyError {
   let rel_error = !is_import && !target.is_empty() && !target.starts_with("./");
+  let mut msg = "[ERR_INVALID_PACKAGE_TARGET]".to_string();
 
-  let mut msg = if key == "." {
+  if key == "." {
     assert!(!is_import);
-    format!("Invalid \"exports\" main target {} defined in the package config {}package.json", target, pkg_path)
+    msg = format!("{} Invalid \"exports\" main target {} defined in the package config {}package.json", msg, target, pkg_path)
   } else {
     let ie = if is_import { "imports" } else { "exports" };
-    format!("Invalid \"{}\" target {} defined for '{}' in the package config {}package.json", ie, target, key, pkg_path)
+    msg = format!("{} Invalid \"{}\" target {} defined for '{}' in the package config {}package.json", msg, ie, target, key, pkg_path)
   };
 
   if let Some(base) = maybe_base {
@@ -96,6 +97,29 @@ pub(crate) fn err_invalid_package_target(
   };
   if rel_error {
     msg = format!("{}; target must start with \"./\"", msg);
+  }
+
+  generic_error(msg)
+}
+
+pub(crate) fn err_package_path_not_exported(
+  pkg_path: String,
+  subpath: String,
+  maybe_base: Option<String>,
+) -> AnyError {
+  let mut msg = "[ERR_PACKAGE_PATH_NOT_EXPORTED]".to_string();
+
+  if subpath == "." {
+    msg = format!(
+      "{} No \"exports\" main defined in {}package.json",
+      msg, pkg_path
+    );
+  } else {
+    msg = format!("{} Package subpath \'{}\' is not defined by \"exports\" in {}package.json", msg, subpath, pkg_path);
+  };
+
+  if let Some(base) = maybe_base {
+    msg = format!("{} imported from {}", msg, base);
   }
 
   generic_error(msg)

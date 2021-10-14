@@ -252,7 +252,7 @@ fn is_conditional_exports_main_sugar(
   Ok(is_conditional_sugar)
 }
 
-fn invalid_package_target(
+fn throw_invalid_package_target(
   subpath: String,
   target: String,
   package_json_url: &Url,
@@ -268,7 +268,7 @@ fn invalid_package_target(
   )
 }
 
-fn invalid_subpath(
+fn throw_invalid_subpath(
   subpath: String,
   package_json_url: &Url,
   internal: bool,
@@ -299,7 +299,7 @@ fn resolve_package_target_string(
   conditions: &[&str],
 ) -> Result<ModuleSpecifier, AnyError> {
   if !subpath.is_empty() && !pattern && !target.ends_with('/') {
-    return Err(invalid_package_target(
+    return Err(throw_invalid_package_target(
       match_,
       target,
       &package_json_url,
@@ -326,7 +326,7 @@ fn resolve_package_target_string(
         return package_resolve(&export_target, &package_json_url, conditions);
       }
     }
-    return Err(invalid_package_target(
+    return Err(throw_invalid_package_target(
       match_,
       target,
       &package_json_url,
@@ -336,7 +336,7 @@ fn resolve_package_target_string(
   }
 
   if invalid_segment_re.is_match(&target[2..]) {
-    return Err(invalid_package_target(
+    return Err(throw_invalid_package_target(
       match_,
       target,
       &package_json_url,
@@ -351,7 +351,7 @@ fn resolve_package_target_string(
   let package_path = package_url.path();
 
   if !resolved_path.starts_with(package_path) {
-    return Err(invalid_package_target(
+    return Err(throw_invalid_package_target(
       match_,
       target,
       &package_json_url,
@@ -370,7 +370,12 @@ fn resolve_package_target_string(
     } else {
       format!("{}{}", match_, subpath)
     };
-    return Err(invalid_subpath(request, &package_json_url, internal, base));
+    return Err(throw_invalid_subpath(
+      request,
+      &package_json_url,
+      internal,
+      base,
+    ));
   }
 
   if pattern {
@@ -407,10 +412,41 @@ fn resolve_package_target(
     )?));
   } else if let Some(target_arr) = target.as_array() {
     if target_arr.is_empty() {
-      todo!()
+      return Ok(None);
     }
 
-    todo!()
+    let mut last_error = None;
+    for target_item in target_arr {
+      let resolved_result = resolve_package_target(
+        package_json_url.clone(),
+        target_item.to_owned(),
+        subpath.clone(),
+        package_subpath.clone(),
+        base,
+        pattern,
+        internal,
+        conditions,
+      );
+
+      if let Err(e) = resolved_result {
+        let err_string = e.to_string();
+        last_error = Some(e);
+        if err_string.starts_with("[ERR_INVALID_PACKAGE_TARGET]") {
+          continue;
+        }
+        return Err(last_error.unwrap());
+      }
+      let resolved = resolved_result.unwrap();
+      if resolved.is_none() {
+        last_error = None;
+        continue;
+      }
+      return Ok(resolved);
+    }
+    if last_error.is_none() {
+      return Ok(None);
+    }
+    return Err(last_error.unwrap());
   } else if let Some(target_obj) = target.as_object() {
     for key in target_obj.keys() {
       // TODO(bartlomieju): verify that keys are not numeric
@@ -439,10 +475,28 @@ fn resolve_package_target(
       }
     }
   } else if target.is_null() {
-    todo!()
+    return Ok(None);
   }
 
-  todo!()
+  Err(throw_invalid_package_target(
+    package_subpath,
+    target.to_string(),
+    &package_json_url,
+    internal,
+    base,
+  ))
+}
+
+fn throw_exports_not_found(
+  subpath: String,
+  package_json_url: &Url,
+  base: &Url,
+) -> AnyError {
+  errors::err_package_path_not_exported(
+    to_file_path_string(&package_json_url.join(".").unwrap()),
+    subpath,
+    Some(to_file_path_string(base)),
+  )
 }
 
 fn package_exports_resolve(
@@ -469,18 +523,21 @@ fn package_exports_resolve(
   {
     let target = exports_map.get(&package_subpath).unwrap().to_owned();
     let resolved = resolve_package_target(
-      package_json_url,
+      package_json_url.clone(),
       target,
       "".to_string(),
-      package_subpath,
+      package_subpath.to_string(),
       base,
       false,
       false,
       conditions,
     )?;
-    // TODO(bartlomieju): return error here
     if resolved.is_none() {
-      todo!()
+      return Err(throw_exports_not_found(
+        package_subpath,
+        &package_json_url,
+        base,
+      ));
     }
     return Ok(resolved.unwrap());
   }
