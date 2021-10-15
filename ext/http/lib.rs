@@ -397,10 +397,26 @@ struct RespondArgs(
   Vec<(ByteString, ByteString)>,
 );
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum StringOrBuffer {
+  String(String),
+  Buffer(ZeroCopyBuf),
+}
+
+impl StringOrBuffer {
+  fn into_bytes(self) -> Vec<u8> {
+    match self {
+      Self::String(s) => s.into_bytes(),
+      Self::Buffer(b) => Vec::from(&*b),
+    }
+  }
+}
+
 async fn op_http_response(
   state: Rc<RefCell<OpState>>,
   args: RespondArgs,
-  data: Option<ZeroCopyBuf>,
+  data: Option<StringOrBuffer>,
 ) -> Result<Option<ResourceId>, AnyError> {
   let RespondArgs(rid, status, headers) = args;
 
@@ -426,15 +442,13 @@ async fn op_http_response(
     builder = builder.header(key.as_ref(), value.as_ref());
   }
 
-  let res;
-  let maybe_response_body_rid = if let Some(d) = data {
+  let (maybe_response_body_rid, res) = if let Some(d) = data {
     // If a body is passed, we use it, and don't return a body for streaming.
-    res = builder.body(Vec::from(&*d).into())?;
-    None
+    (None, builder.body(d.into_bytes().into())?)
   } else {
     // If no body is passed, we return a writer for streaming the body.
     let (sender, body) = Body::channel();
-    res = builder.body(body)?;
+    let res = builder.body(body)?;
 
     let response_body_rid =
       state.borrow_mut().resource_table.add(ResponseBodyResource {
@@ -442,7 +456,7 @@ async fn op_http_response(
         conn_rid,
       });
 
-    Some(response_body_rid)
+    (Some(response_body_rid), res)
   };
 
   // oneshot::Sender::send(v) returns |v| on error, not an error object.
