@@ -43,6 +43,14 @@
     return typeof chunk === "string" ? core.encode(chunk) : chunk;
   }
 
+  /**
+   * @param {Uint8Array | string} chunk
+   * @returns {string}
+   */
+  function chunkToString(chunk) {
+    return typeof chunk === "string" ? chunk : code.decode(chunk);
+  }
+
   class InnerBody {
     /**
      * @param {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} stream
@@ -316,9 +324,9 @@
         throw new TypeError("Missing content type");
       }
       case "JSON":
-        return JSONParse(core.decode(bytes));
+        return JSONParse(chunkToString(bytes));
       case "text":
-        return core.decode(bytes);
+        return chunkToString(bytes);
     }
   }
 
