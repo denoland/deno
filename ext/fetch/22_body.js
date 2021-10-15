@@ -48,7 +48,7 @@
    * @returns {string}
    */
   function chunkToString(chunk) {
-    return typeof chunk === "string" ? chunk : code.decode(chunk);
+    return typeof chunk === "string" ? chunk : core.decode(chunk);
   }
 
   class InnerBody {
