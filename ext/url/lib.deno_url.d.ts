@@ -225,7 +225,7 @@ declare interface URLPatternResult {
  * ```ts
  * // Specify the pattern as structured data.
  * const pattern = new URLPattern({ pathname: "/users/:user" });
- * const match = pattern.match("/users/joe");
+ * const match = pattern.exec("/users/joe");
  * console.log(match.pathname.groups.user); // joe
  * ```
  *
@@ -277,15 +277,15 @@ declare class URLPattern {
    * const pattern = new URLPattern("https://example.com/books/:id");
    *
    * // Match a url string.
-   * let match = pattern.match("https://example.com/books/123");
+   * let match = pattern.exec("https://example.com/books/123");
    * console.log(match.pathname.groups.id); // 123
    *
    * // Match a relative url with a base.
-   * match = pattern.match("/books/123", "https://example.com");
+   * match = pattern.exec("/books/123", "https://example.com");
    * console.log(match.pathname.groups.id); // 123
    *
    * // Match an object of url components.
-   * match = pattern.match({ pathname: "/books/123" });
+   * match = pattern.exec({ pathname: "/books/123" });
    * console.log(match.pathname.groups.id); // 123
    * ```
    */
