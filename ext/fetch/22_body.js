@@ -309,9 +309,10 @@
                 "Missing boundary parameter in mime type of multipart formdata.",
               );
             }
-            return parseFormData(bytes, boundary);
+            return parseFormData(chunkToU8(bytes), boundary);
           } else if (essence === "application/x-www-form-urlencoded") {
-            const entries = parseUrlEncoded(bytes);
+            // TODO(@AaronO): pass as-is with StringOrBuffer in op-layer
+            const entries = parseUrlEncoded(chunkToU8(bytes));
             return formDataFromEntries(
               ArrayPrototypeMap(
                 entries,
