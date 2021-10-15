@@ -214,6 +214,7 @@
       } else {
         req.body.streamOrStatic.consumed = true;
         reqBody = req.body.streamOrStatic.body;
+        reqBody = typeof reqBody === "string" ? core.encode(reqBody) : reqBody;
       }
     }
 
