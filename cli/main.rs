@@ -1114,10 +1114,49 @@ async fn run_command(
     };
 
   debug!("main_module {}", main_module);
+  let mut use_esm_loader = true;
   if flags.compat {
+    assert_eq!(main_module.scheme(), "file");
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
+    // Decide if we're running with Node ESM loader or CJS loader.
+    let result = worker.js_runtime.execute_script(
+      &located_script_name!(),
+      &format!(
+        r#"(async function checkIfEsm(main) {{
+          const {{ resolveMainPath, shouldUseESMLoader }} = await import("file:///Users/biwanczuk/dev/deno_std/node/module.ts");
+          const resolvedMain = resolveMainPath(main);
+          const useESMLoader = shouldUseESMLoader(resolvedMain);
+          return useESMLoader;
+        }})('{}');"#,
+        main_module.to_file_path().unwrap().display().to_string()
+      ),
+    )?;
+    let use_esm_loader_global = worker.js_runtime.resolve_value(result).await?;
+    use_esm_loader = {
+      let scope = &mut worker.js_runtime.handle_scope();
+      let ues_esm_loader_local = use_esm_loader_global.get(scope);
+      ues_esm_loader_local.boolean_value(scope)
+    };
+    if use_esm_loader {
+      eprintln!("Using compat ESM resolver");
+    } else {
+      eprintln!("Using compat CJS resolver");
+    }
   }
-  worker.execute_main_module(&main_module).await?;
+  if use_esm_loader {
+    worker.execute_main_module(&main_module).await?;
+  } else {
+    worker.execute_script(
+      &located_script_name!(),
+      &format!(
+        r#"(async function loadCjsModule(main) {{ 
+          const Module = await import("file:///Users/biwanczuk/dev/deno_std/node/module.ts");
+          Module.default._load(main, null, true);
+        }})('{}');"#,
+        main_module.to_file_path().unwrap().display().to_string()
+      ),
+    )?;
+  }
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
