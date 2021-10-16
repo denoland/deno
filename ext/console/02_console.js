@@ -901,7 +901,10 @@
     }
 
     return `${value.stack}${
-      ArrayPrototypeMap(causes, (cause) => `\nCaused by ${cause.stack}`)
+      ArrayPrototypeJoin(
+        ArrayPrototypeMap(causes, (cause) => `\nCaused by ${cause.stack}`),
+        "",
+      )
     }`;
   }
 
