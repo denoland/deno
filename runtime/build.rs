@@ -83,7 +83,10 @@ mod not_docs {
   }
 
   impl deno_ffi::FfiPermissions for Permissions {
-    fn check(&mut self, _path: &str) -> Result<(), deno_core::error::AnyError> {
+    fn check(
+      &mut self,
+      _path: &Path,
+    ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
   }

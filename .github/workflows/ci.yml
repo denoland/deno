@@ -336,7 +336,7 @@ jobs:
           (matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'debug' && !matrix.use_sysroot
         run: cargo build --locked --all-targets
-    
+
       - name: Build fastci
         if: (matrix.job == 'test' && matrix.profile == 'fastci')
         run: cargo build --locked --all-targets
@@ -455,7 +455,8 @@ jobs:
       - name: Run web platform tests (debug)
         if: |
           startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&
-          matrix.profile == 'debug'
+          matrix.profile == 'debug' &&
+          github.ref == 'refs/heads/main'
         env:
           DENO_BIN: ./target/debug/deno
         run: |

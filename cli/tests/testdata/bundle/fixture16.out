@@ -1,0 +1,6 @@
+[WILDCARD]
+const a = "a";
+export { a as test1 };
+export { a as test2 };
+console.log(a);
+

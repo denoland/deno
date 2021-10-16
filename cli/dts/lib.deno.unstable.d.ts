@@ -910,10 +910,12 @@ declare namespace Deno {
        * If set to `"inherit"`, the current `ffi` permission will be inherited.
        * If set to `true`, the global `ffi` permission will be requested.
        * If set to `false`, the global `ffi` permission will be revoked.
+       * If set to `Array<string | URL>`, the `ffi` permission will be requested with the
+       * specified file paths.
        *
        * Defaults to "inherit".
        */
-      ffi?: "inherit" | boolean;
+      ffi?: "inherit" | boolean | Array<string | URL>;
 
       /** Specifies if the `read` permission should be requested or revoked.
        * If set to `"inherit"`, the current `read` permission will be inherited.
@@ -1237,7 +1239,7 @@ declare interface WorkerOptions {
        * For example: `["https://deno.land", "localhost:8080"]`.
        */
       net?: "inherit" | boolean | string[];
-      ffi?: "inherit" | boolean;
+      ffi?: "inherit" | boolean | Array<string | URL>;
       read?: "inherit" | boolean | Array<string | URL>;
       run?: "inherit" | boolean | Array<string | URL>;
       write?: "inherit" | boolean | Array<string | URL>;

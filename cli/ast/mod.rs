@@ -24,7 +24,7 @@ use deno_ast::swc::transforms::hygiene;
 use deno_ast::swc::transforms::pass::Optional;
 use deno_ast::swc::transforms::proposals;
 use deno_ast::swc::transforms::react;
-use deno_ast::swc::transforms::resolver_with_mark;
+use deno_ast::swc::transforms::resolver::ts_resolver;
 use deno_ast::swc::transforms::typescript;
 use deno_ast::swc::visit::FoldWith;
 use deno_ast::Diagnostic;
@@ -220,7 +220,7 @@ pub fn transpile(
   deno_ast::swc::common::GLOBALS.set(&globals, || {
     let top_level_mark = Mark::fresh(Mark::root());
     let jsx_pass = chain!(
-      resolver_with_mark(top_level_mark),
+      ts_resolver(top_level_mark),
       react::react(
         source_map.clone(),
         Some(&comments),
@@ -326,7 +326,7 @@ pub fn transpile_module(
   deno_ast::swc::common::GLOBALS.set(globals, || {
     let top_level_mark = Mark::fresh(Mark::root());
     let jsx_pass = chain!(
-      resolver_with_mark(top_level_mark),
+      ts_resolver(top_level_mark),
       react::react(
         cm,
         Some(&comments),
@@ -352,6 +352,7 @@ pub fn transpile_module(
         emit_options
       )),
       fixer(Some(&comments)),
+      hygiene(),
     );
 
     let module = helpers::HELPERS.set(&helpers::Helpers::new(false), || {
@@ -467,5 +468,42 @@ mod tests {
     let (code, _) = transpile(&module, &EmitOptions::default())
       .expect("could not strip types");
     assert!(code.contains("_applyDecoratedDescriptor("));
+  }
+
+  #[test]
+  fn transpile_handle_code_nested_in_ts_nodes_with_jsx_pass() {
+    // from issue 12409
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"
+export function g() {
+  let algorithm: any
+  algorithm = {}
+
+  return <Promise>(
+    test(algorithm, false, keyUsages)
+  )
+}
+  "#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      source: SourceTextInfo::from_string(source.to_string()),
+      media_type: deno_ast::MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let emit_options = EmitOptions {
+      transform_jsx: true,
+      ..Default::default()
+    };
+    let (code, _) = transpile(&module, &emit_options).unwrap();
+    let expected = r#"export function g() {
+    let algorithm;
+    algorithm = {
+    };
+    return test(algorithm, false, keyUsages);
+}"#;
+    assert_eq!(&code[..expected.len()], expected);
   }
 }

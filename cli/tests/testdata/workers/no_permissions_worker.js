@@ -6,12 +6,12 @@ self.onmessage = async () => {
   const run = await Deno.permissions.query({ name: "run" });
   const write = await Deno.permissions.query({ name: "write" });
   self.postMessage(
-    hrtime.state === "denied" &&
-      net.state === "denied" &&
-      ffi.state === "denied" &&
-      read.state === "denied" &&
-      run.state === "denied" &&
-      write.state === "denied",
+    hrtime.state === "prompt" &&
+      net.state === "prompt" &&
+      ffi.state === "prompt" &&
+      read.state === "prompt" &&
+      run.state === "prompt" &&
+      write.state === "prompt",
   );
   self.close();
 };

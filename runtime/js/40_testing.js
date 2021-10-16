@@ -3,10 +3,10 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { parsePermissions } = window.__bootstrap.worker;
   const { setExitHandler } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { metrics } = core;
+  const { serializePermissions } = window.__bootstrap.permissions;
   const { assert } = window.__bootstrap.util;
   const {
     ArrayPrototypeFilter,
@@ -47,8 +47,8 @@
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
 
-      if (step.hasRunningChildren) {
-        return; // test step validation error thrown, don't check ops
+      if (step.shouldSkipSanitizers) {
+        return;
       }
 
       const post = metrics();
@@ -111,8 +111,8 @@ finishing test case.`;
       const pre = core.resources();
       await fn(step);
 
-      if (step.hasRunningChildren) {
-        return; // test step validation error thrown, don't check resources
+      if (step.shouldSkipSanitizers) {
+        return;
       }
 
       const post = core.resources();
@@ -230,7 +230,7 @@ finishing test case.`;
     function pledgePermissions(permissions) {
       return core.opSync(
         "op_pledge_test_permissions",
-        parsePermissions(permissions),
+        serializePermissions(permissions),
       );
     }
 
@@ -289,7 +289,7 @@ finishing test case.`;
     if (testDef.permissions) {
       testDef.fn = withPermissions(
         testDef.fn,
-        parsePermissions(testDef.permissions),
+        testDef.permissions,
       );
     }
 
@@ -360,6 +360,7 @@ finishing test case.`;
         "failed": formatError(error),
       };
     } finally {
+      step.finalized = true;
       // ensure the children report their result
       for (const child of step.children) {
         child.reportResult();
@@ -527,6 +528,13 @@ finishing test case.`;
       return this.#params.sanitizeResources ||
         this.#params.sanitizeOps ||
         this.#params.sanitizeExit;
+    }
+
+    /** If a test validation error already occurred then don't bother checking
+     * the sanitizers as that will create extra noise.
+     */
+    get shouldSkipSanitizers() {
+      return this.hasRunningChildren || this.parent?.finalized;
     }
 
     get hasRunningChildren() {
