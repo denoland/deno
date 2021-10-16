@@ -883,6 +883,28 @@
     return red(RegExpPrototypeToString(value)); // RegExps are red
   }
 
+  function inspectError(value) {
+    const causes = [];
+
+    let err = value;
+    while (true) {
+      // Circular check
+      if (
+        err.cause instanceof Error && err.cause !== value &&
+        !ArrayPrototypeIncludes(causes, err.cause)
+      ) {
+        ArrayPrototypePush(causes, err.cause);
+        err = err.cause;
+      } else {
+        break;
+      }
+    }
+
+    return `${value.stack}${
+      ArrayPrototypeMap(causes, (cause) => `\nCaused by ${cause.stack}`)
+    }`;
+  }
+
   function inspectStringObject(value, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
     return cyan(`[String: "${StringPrototypeToString(value)}"]`); // wrappers are in cyan
@@ -1141,7 +1163,7 @@
       return String(value[privateCustomInspect](inspect));
     }
     if (value instanceof Error) {
-      return String(value.stack);
+      return inspectError(value);
     } else if (ArrayIsArray(value)) {
       return inspectArray(value, level, inspectOptions);
     } else if (value instanceof Number) {
