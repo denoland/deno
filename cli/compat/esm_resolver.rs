@@ -27,13 +27,6 @@ impl Resolver for NodeEsmResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    // TODO(bartlomieju): this is hacky, remove
-    // needed to add it here because `deno_std/node` has
-    // triple-slash references and they should still resolve
-    // the regular way (I think)
-    if referrer.as_str().starts_with("https://deno.land/std") {
-      return referrer.join(specifier).map_err(AnyError::from);
-    }
     node_resolve(specifier, referrer.as_str(), &std::env::current_dir()?)
   }
 }
@@ -158,9 +151,12 @@ fn finalize_resolution(
   resolved: ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
-  // TODO(bartlomieju): this is not part of Node resolution
-  // (as it doesn't support http/https);
-  // but I had to short circuit for remote modules to avoid errors
+  // TODO(bartlomieju): this is not part of Node resolution algorithm
+  // (as it doesn't support http/https); but I had to short circuit here
+  // for remote modules because they are mainly used to polyfill `node` built
+  // in modules. Another option would be to leave the resolved URLs
+  // as `node:<module_name>` and do the actual remapping to std's polyfill
+  // in module loader. I'm not sure which approach is better.
   if resolved.scheme().starts_with("http") {
     return Ok(resolved);
   }
