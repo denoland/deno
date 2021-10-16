@@ -14,7 +14,7 @@ pub use esm_resolver::NodeEsmResolver;
 // each release, a better mechanism is preferable, but it's a quick and dirty
 // solution to avoid printing `X-Deno-Warning` headers when the compat layer is
 // downloaded
-static STD_URL: &str = "file:///Users/biwanczuk/dev/deno_std/";
+static STD_URL: &str = "https://raw.githubusercontent.com/denoland/deno_std/acd70dced5629ed4e20ac464bdb7d498f3c51d83/";
 static GLOBAL_MODULE: &str = "global.ts";
 
 static SUPPORTED_MODULES: &[&str] = &[
