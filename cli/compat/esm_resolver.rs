@@ -31,7 +31,7 @@ impl Resolver for NodeEsmResolver {
   }
 }
 
-static DEFAULT_CONDITIONS: &[&str] = &["node", "import"];
+static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
