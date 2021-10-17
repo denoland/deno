@@ -145,7 +145,7 @@ struct AsyncOpIterator<'a, 'b, 'c> {
 }
 
 impl Iterator for AsyncOpIterator<'_, '_, '_> {
-  type Item = (PromiseId, OpId, OpResult,);
+  type Item = (PromiseId, OpId, OpResult);
 
   #[inline]
   fn next(&mut self) -> Option<Self::Item> {
