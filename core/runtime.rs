@@ -1517,25 +1517,30 @@ impl JsRuntime {
     // This batch is received in JS via the special `arguments` variable
     // and then each tuple is used to resolve or reject promises
     let mut args: Vec<v8::Local<v8::Value>> = vec![];
-    let op_state = state.op_state.clone();
-    let tracker = &mut op_state.borrow_mut().tracker;
-    let ops = AsyncOpIterator {
-      ops: &mut state.pending_ops,
-      cx,
-    };
-    for (promise_id, op_id, resp) in ops {
-      tracker.track_async_completed(op_id);
-      args.push(v8::Integer::new(scope, promise_id as i32).into());
-      args.push(resp.to_v8(scope).unwrap());
-    }
-    let ops = AsyncOpIterator {
-      ops: &mut state.pending_unref_ops,
-      cx,
-    };
-    for (promise_id, op_id, resp) in ops {
-      tracker.track_unref_completed(op_id);
-      args.push(v8::Integer::new(scope, promise_id as i32).into());
-      args.push(resp.to_v8(scope).unwrap());
+
+    // Scoped so we drop op_state borrows before calling back into JS
+    // to avoid double borrow errors
+    {
+      let op_state = state.op_state.clone();
+      let tracker = &mut op_state.borrow_mut().tracker;
+      let ops = AsyncOpIterator {
+        ops: &mut state.pending_ops,
+        cx,
+      };
+      for (promise_id, op_id, resp) in ops {
+        tracker.track_async_completed(op_id);
+        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(resp.to_v8(scope).unwrap());
+      }
+      let ops = AsyncOpIterator {
+        ops: &mut state.pending_unref_ops,
+        cx,
+      };
+      for (promise_id, op_id, resp) in ops {
+        tracker.track_unref_completed(op_id);
+        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(resp.to_v8(scope).unwrap());
+      }
     }
     if args.is_empty() {
       return Ok(());
