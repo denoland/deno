@@ -1126,6 +1126,12 @@ async fn run_command(
 
     // Set up Node globals
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
+    // And `module` module that we'll use for checking which
+    // loader to use and potentially load CJS module with.
+    // This allows to skip permission check for `--allow-net`
+    // which would otherwise be requested by dynamically importing
+    // this file.
+    worker.execute_side_module(&compat::MODULE_URL).await?;
 
     let use_esm_loader = compat::check_if_should_use_esm_loader(
       &mut worker.js_runtime,

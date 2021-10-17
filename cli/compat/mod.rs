@@ -14,8 +14,9 @@ pub use esm_resolver::NodeEsmResolver;
 // each release, a better mechanism is preferable, but it's a quick and dirty
 // solution to avoid printing `X-Deno-Warning` headers when the compat layer is
 // downloaded
-static STD_URL: &str = "https://raw.githubusercontent.com/denoland/deno_std/acd70dced5629ed4e20ac464bdb7d498f3c51d83/";
+static STD_URL_STR: &str = "https://raw.githubusercontent.com/denoland/deno_std/acd70dced5629ed4e20ac464bdb7d498f3c51d83/";
 static GLOBAL_MODULE: &str = "global.ts";
+static MODULE_MODULE: &str = "module.ts";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -63,8 +64,10 @@ static SUPPORTED_MODULES: &[&str] = &[
 ];
 
 lazy_static::lazy_static! {
-  static ref GLOBAL_URL_STR: String = format!("{}node/{}", STD_URL, GLOBAL_MODULE);
+  static ref GLOBAL_URL_STR: String = format!("{}node/{}", STD_URL_STR, GLOBAL_MODULE);
   pub(crate) static ref GLOBAL_URL: Url = Url::parse(&GLOBAL_URL_STR).unwrap();
+  static ref MODULE_URL_STR: String = format!("{}node/{}", STD_URL_STR, MODULE_MODULE);
+  pub(crate) static ref MODULE_URL: Url = Url::parse(&MODULE_URL_STR).unwrap();
   static ref COMPAT_IMPORT_URL: Url = Url::parse("flags:compat").unwrap();
 }
 
@@ -75,7 +78,7 @@ pub(crate) fn get_node_imports() -> Vec<(Url, Vec<String>)> {
 
 pub(crate) fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   if SUPPORTED_MODULES.contains(&specifier) {
-    let module_url = format!("{}node/{}.ts", crate::compat::STD_URL, specifier);
+    let module_url = format!("{}node/{}.ts", STD_URL_STR, specifier);
     Some(Url::parse(&module_url).unwrap())
   } else {
     None
@@ -89,12 +92,13 @@ pub(crate) async fn check_if_should_use_esm_loader(
   // Decide if we're running with Node ESM loader or CJS loader.
   let source_code = &format!(
     r#"(async function checkIfEsm(main) {{
-      const {{ resolveMainPath, shouldUseESMLoader }} = await import("{}node/module.ts");
+      const {{ resolveMainPath, shouldUseESMLoader }} = await import("{}");
       const resolvedMain = resolveMainPath(main);
       const useESMLoader = shouldUseESMLoader(resolvedMain);
       return useESMLoader;
     }})('{}');"#,
-    STD_URL, main_module
+    MODULE_URL_STR.as_str(),
+    main_module
   );
   let result =
     js_runtime.execute_script(&located_script_name!(), source_code)?;
@@ -114,10 +118,11 @@ pub(crate) fn load_cjs_module(
 ) -> Result<(), AnyError> {
   let source_code = &format!(
     r#"(async function loadCjsModule(main) {{ 
-      const Module = await import("{}node/module.ts");
+      const Module = await import("{}");
       Module.default._load(main, null, true);
     }})('{}');"#,
-    STD_URL, main_module,
+    MODULE_URL_STR.as_str(),
+    main_module,
   );
 
   js_runtime.execute_script(&located_script_name!(), source_code)?;
