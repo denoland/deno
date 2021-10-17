@@ -145,7 +145,7 @@ struct AsyncOpIterator<'a, 'b, 'c> {
 }
 
 impl Iterator for AsyncOpIterator<'_, '_, '_> {
-  type Item = (PromiseId, OpResult);
+  type Item = (PromiseId, OpId, OpResult,);
 
   #[inline]
   fn next(&mut self) -> Option<Self::Item> {
@@ -1517,11 +1517,14 @@ impl JsRuntime {
     // This batch is received in JS via the special `arguments` variable
     // and then each tuple is used to resolve or reject promises
     let mut args: Vec<v8::Local<v8::Value>> = vec![];
+    let op_state = state.op_state.clone();
+    let tracker = &mut op_state.borrow_mut().tracker;
     let ops = AsyncOpIterator {
       ops: &mut state.pending_ops,
       cx,
     };
-    for (promise_id, resp) in ops {
+    for (promise_id, op_id, resp) in ops {
+      tracker.track_async_completed(op_id);
       args.push(v8::Integer::new(scope, promise_id as i32).into());
       args.push(resp.to_v8(scope).unwrap());
     }
@@ -1529,7 +1532,8 @@ impl JsRuntime {
       ops: &mut state.pending_unref_ops,
       cx,
     };
-    for (promise_id, resp) in ops {
+    for (promise_id, op_id, resp) in ops {
+      tracker.track_unref_completed(op_id);
       args.push(v8::Integer::new(scope, promise_id as i32).into());
       args.push(resp.to_v8(scope).unwrap());
     }
