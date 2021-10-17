@@ -887,17 +887,12 @@
     const causes = [];
 
     let err = value;
-    while (true) {
-      // Circular check
-      if (
-        err.cause instanceof Error && err.cause !== value &&
-        !ArrayPrototypeIncludes(causes, err.cause)
-      ) {
-        ArrayPrototypePush(causes, err.cause);
-        err = err.cause;
-      } else {
-        break;
-      }
+    while (
+      err.cause instanceof Error && err.cause !== value &&
+      !ArrayPrototypeIncludes(causes, err.cause) // circular check
+    ) {
+      ArrayPrototypePush(causes, err.cause);
+      err = err.cause;
     }
 
     return `${value.stack}${
