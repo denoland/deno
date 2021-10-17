@@ -1139,4 +1139,24 @@ mod tests {
     println!("actual {}", actual);
     assert_eq!(actual, expected);
   }
+
+  #[test]
+  fn conditional_exports() {
+    // check that `exports` mapping works correctly
+    let cwd = testdir("conditions");
+    let main = Url::from_file_path(cwd.join("main.js")).unwrap();
+    let actual = node_resolve("imports_exports", main.as_str(), &cwd).unwrap();
+    let expected = Url::from_file_path(
+      cwd.join("node_modules/imports_exports/import_export.js"),
+    )
+    .unwrap();
+    assert_eq!(actual, expected);
+
+    // check that `imports` mapping works correctly
+    let cwd = testdir("conditions/node_modules/imports_exports");
+    let main = Url::from_file_path(cwd.join("import_export.js")).unwrap();
+    let actual = node_resolve("#dep", main.as_str(), &cwd).unwrap();
+    let expected = Url::from_file_path(cwd.join("import_polyfill.js")).unwrap();
+    assert_eq!(actual, expected);
+  }
 }
