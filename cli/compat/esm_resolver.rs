@@ -47,16 +47,15 @@ fn node_resolve(
   }
 
   if let Ok(url) = Url::parse(specifier) {
-    if url.scheme() == "data:" {
+    if url.scheme() == "data" {
       return Ok(url);
     }
 
     let protocol = url.scheme();
 
     if protocol == "node" {
-      let mut split_specifier = url.as_str().split(':');
-      split_specifier.next();
-      let specifier = split_specifier.collect::<Vec<_>>().join("");
+      let split_specifier = url.as_str().split(':');
+      let specifier = split_specifier.skip(1).collect::<Vec<_>>().join("");
       if let Some(resolved) =
         crate::compat::try_resolve_builtin_module(&specifier)
       {
@@ -91,13 +90,13 @@ fn node_resolve(
   Ok(url)
 }
 
-fn to_file_path(url: &Url) -> PathBuf {
+fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
   url
     .to_file_path()
-    .expect("Provided URL was not file:// URL")
+    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {}", url))
 }
 
-fn to_file_path_string(url: &Url) -> String {
+fn to_file_path_string(url: &ModuleSpecifier) -> String {
   to_file_path(url).display().to_string()
 }
 
@@ -209,8 +208,8 @@ fn finalize_resolution(
 
 fn throw_import_not_defined(
   specifier: &str,
-  package_json_url: Option<Url>,
-  base: &Url,
+  package_json_url: Option<ModuleSpecifier>,
+  base: &ModuleSpecifier,
 ) -> AnyError {
   errors::err_package_import_not_defined(
     specifier,
@@ -345,7 +344,7 @@ fn package_imports_resolve(
 
 fn is_conditional_exports_main_sugar(
   exports: &Value,
-  package_json_url: &Url,
+  package_json_url: &ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> Result<bool, AnyError> {
   if exports.is_string() || exports.is_array() {
@@ -381,9 +380,9 @@ fn is_conditional_exports_main_sugar(
 fn throw_invalid_package_target(
   subpath: String,
   target: String,
-  package_json_url: &Url,
+  package_json_url: &ModuleSpecifier,
   internal: bool,
-  base: &Url,
+  base: &ModuleSpecifier,
 ) -> AnyError {
   errors::err_invalid_package_target(
     to_file_path_string(&package_json_url.join(".").unwrap()),
@@ -396,9 +395,9 @@ fn throw_invalid_package_target(
 
 fn throw_invalid_subpath(
   subpath: String,
-  package_json_url: &Url,
+  package_json_url: &ModuleSpecifier,
   internal: bool,
-  base: &Url,
+  base: &ModuleSpecifier,
 ) -> AnyError {
   let ie = if internal { "imports" } else { "exports" };
   let reason = format!(
@@ -418,7 +417,7 @@ fn resolve_package_target_string(
   target: String,
   subpath: String,
   match_: String,
-  package_json_url: Url,
+  package_json_url: ModuleSpecifier,
   base: &ModuleSpecifier,
   pattern: bool,
   internal: bool,
@@ -516,7 +515,7 @@ fn resolve_package_target_string(
 
 #[allow(clippy::too_many_arguments)]
 fn resolve_package_target(
-  package_json_url: Url,
+  package_json_url: ModuleSpecifier,
   target: Value,
   subpath: String,
   package_subpath: String,
@@ -615,8 +614,8 @@ fn resolve_package_target(
 
 fn throw_exports_not_found(
   subpath: String,
-  package_json_url: &Url,
-  base: &Url,
+  package_json_url: &ModuleSpecifier,
+  base: &ModuleSpecifier,
 ) -> AnyError {
   errors::err_package_path_not_exported(
     to_file_path_string(&package_json_url.join(".").unwrap()),
@@ -626,7 +625,7 @@ fn throw_exports_not_found(
 }
 
 fn package_exports_resolve(
-  package_json_url: Url,
+  package_json_url: ModuleSpecifier,
   package_subpath: String,
   package_config: PackageConfig,
   base: &ModuleSpecifier,
@@ -682,6 +681,7 @@ fn package_exports_resolve(
         //
         // To match "imports" and the spec.
         if package_subpath.ends_with('/') {
+          // TODO(bartlomieju):
           // emitTrailingSlashPatternDeprecation();
         }
         let pattern_trailer = &key[pattern_index + 1..];
@@ -765,7 +765,8 @@ fn package_resolve(
   let mut last_path;
   loop {
     let p_str = package_json_path.to_str().unwrap();
-    let p = p_str[0..=p_str.len() - 13].to_string();
+    let package_str_len = "/package.json".len();
+    let p = p_str[0..=p_str.len() - package_str_len].to_string();
     let is_dir = if let Ok(stats) = std::fs::metadata(&p) {
       stats.is_dir()
     } else {
@@ -930,7 +931,6 @@ fn get_package_config(
   let typ_val = package_json.get("type");
   let exports = package_json.get("exports").map(|e| e.to_owned());
 
-  // TODO(bartlomieju): refactor
   let imports = if let Some(imp) = imports_val {
     imp.as_object().map(|imp| imp.to_owned())
   } else {
@@ -1026,7 +1026,7 @@ fn get_package_scope_config(
   Ok(package_config)
 }
 
-fn file_exists(path_url: &Url) -> bool {
+fn file_exists(path_url: &ModuleSpecifier) -> bool {
   if let Ok(stats) = std::fs::metadata(to_file_path(path_url)) {
     stats.is_file()
   } else {
@@ -1035,7 +1035,7 @@ fn file_exists(path_url: &Url) -> bool {
 }
 
 fn legacy_main_resolve(
-  package_json_url: &Url,
+  package_json_url: &ModuleSpecifier,
   package_config: &PackageConfig,
   _base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
@@ -1097,6 +1097,19 @@ mod tests {
     let expected =
       Url::from_file_path(cwd.join("node_modules/foo/index.js")).unwrap();
     assert_eq!(actual, expected);
+
+    let actual = node_resolve(
+      "data:application/javascript,console.log(\"Hello%20Deno\");",
+      main.as_str(),
+      &cwd,
+    )
+    .unwrap();
+    eprintln!("actual {}", actual);
+    assert_eq!(
+      actual,
+      Url::parse("data:application/javascript,console.log(\"Hello%20Deno\");")
+        .unwrap()
+    );
   }
 
   #[test]
