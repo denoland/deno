@@ -445,6 +445,15 @@ jobs:
                su -l "$(whoami)" \
                   -c "cargo test --release --locked"
 
+      # Since all tests are skipped when we're building a tagged commit
+      # this is a minimal check to ensure that binary is not corrupted
+      - name: Check Deno Binary
+        if: matrix.profile == 'release'
+        shell: bash
+        run: target/release/deno eval "console.log(1+2)" | grep 3
+        env:
+          NO_COLOR: 1
+
       # TODO(ry): Because CI is so slow on for OSX and Windows, we currently
       #           run the Web Platform tests only on Linux.
       - name: Configure hosts file for WPT
