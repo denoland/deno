@@ -3,6 +3,7 @@
 use crate::cache;
 use crate::colors;
 use crate::compat;
+use crate::compat::NodeEsmResolver;
 use crate::config_file::ConfigFile;
 use crate::deno_dir;
 use crate::emit;
@@ -195,7 +196,7 @@ impl ProcState {
         None
       };
 
-    let mut maybe_import_map: Option<ImportMap> =
+    let maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
         Some(import_map_url) => {
@@ -216,32 +217,6 @@ impl ProcState {
           Some(import_map)
         }
       };
-
-    if flags.compat {
-      let mut import_map = match maybe_import_map {
-        Some(import_map) => import_map,
-        None => {
-          // INFO: we're creating an empty import map, with its specifier pointing
-          // to `CWD/node_import_map.json` to make sure the map still works as expected.
-          let import_map_specifier =
-            std::env::current_dir()?.join("node_import_map.json");
-          ImportMap::from_json(import_map_specifier.to_str().unwrap(), "{}")
-            .unwrap()
-        }
-      };
-      let node_builtins = compat::get_mapped_node_builtins();
-      let diagnostics = import_map.update_imports(node_builtins)?;
-
-      if !diagnostics.is_empty() {
-        log::info!("Some Node built-ins were not added to the import map:");
-        for diagnostic in diagnostics {
-          log::info!("  - {}", diagnostic);
-        }
-        log::info!("If you want to use Node built-ins provided by Deno remove listed specifiers from \"imports\" mapping in the import map file.");
-      }
-
-      maybe_import_map = Some(import_map);
-    }
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
     let maybe_inspector_server = maybe_inspect_host.map(|host| {
@@ -316,14 +291,29 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports();
-    let maybe_resolver =
+    let node_resolver = NodeEsmResolver;
+    let import_map_resolver =
       self.maybe_import_map.as_ref().map(ImportMapResolver::new);
+    let maybe_resolver = if self.flags.compat {
+      Some(node_resolver.as_resolver())
+    } else {
+      import_map_resolver.as_ref().map(|im| im.as_resolver())
+    };
+    // TODO(bartlomieju): this is very make-shift, is there an existing API
+    // that we could include it like with "maybe_imports"?
+    let roots = if self.flags.compat {
+      let mut r = vec![compat::GLOBAL_URL.clone()];
+      r.extend(roots);
+      r
+    } else {
+      roots
+    };
     let graph = deno_graph::create_graph(
       roots,
       is_dynamic,
       maybe_imports,
       &mut cache,
-      maybe_resolver.as_ref().map(|im| im.as_resolver()),
+      maybe_resolver,
       maybe_locker,
       None,
     )
@@ -622,8 +612,14 @@ impl SourceMapGetter for ProcState {
         // Do NOT use .lines(): it skips the terminating empty line.
         // (due to internally using .split_terminator() instead of .split())
         let lines: Vec<&str> = out.source.split('\n').collect();
-        assert!(lines.len() > line_number);
-        lines[line_number].to_string()
+        if line_number >= lines.len() {
+          format!(
+            "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
+            crate::colors::yellow("Warning"), line_number + 1,
+          )
+        } else {
+          lines[line_number].to_string()
+        }
       })
     } else {
       None
