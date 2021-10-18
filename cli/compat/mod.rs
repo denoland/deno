@@ -96,7 +96,7 @@ pub async fn check_if_should_use_esm_loader(
       return useESMLoader;
     }})('{}');"#,
     MODULE_URL_STR.as_str(),
-    main_module
+    escape_for_single_quote_string(main_module),
   );
   let result =
     js_runtime.execute_script(&located_script_name!(), source_code)?;
@@ -114,15 +114,20 @@ pub fn load_cjs_module(
   js_runtime: &mut JsRuntime,
   main_module: &str,
 ) -> Result<(), AnyError> {
+  println!("{}", main_module);
   let source_code = &format!(
     r#"(async function loadCjsModule(main) {{
       const Module = await import("{}");
       Module.default._load(main, null, true);
     }})('{}');"#,
     MODULE_URL_STR.as_str(),
-    main_module.replace(r"\", r"\\").replace("'", r"\'"),
+    escape_for_single_quote_string(main_module),
   );
 
   js_runtime.execute_script(&located_script_name!(), source_code)?;
   Ok(())
+}
+
+fn escape_for_single_quote_string(text: &str) -> String {
+  text.replace(r"\", r"\\").replace("'", r"\'")
 }
