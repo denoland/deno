@@ -68,6 +68,7 @@ pub use crate::normalize_path::normalize_path;
 pub use crate::ops::serialize_op_result;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
+pub use crate::ops::OpCall;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
 pub use crate::ops::OpPayload;

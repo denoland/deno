@@ -192,7 +192,7 @@ declare interface URLPatternComponentResult {
   groups: Record<string, string>;
 }
 
-/** `URLPatternResult` is the object returned from `URLPattern.match`. */
+/** `URLPatternResult` is the object returned from `URLPattern.exec`. */
 declare interface URLPatternResult {
   /** The inputs provided when matching. */
   inputs: [URLPatternInit] | [URLPatternInit, string];

@@ -39,7 +39,7 @@ async function getTwoEvents(
 unitTest(
   { permissions: { read: true, write: true } },
   async function watchFsBasic() {
-    const testDir = await Deno.makeTempDir();
+    const testDir = Deno.makeTempDirSync();
     const iter = Deno.watchFs(testDir);
 
     // Asynchornously capture two fs events.
@@ -66,7 +66,7 @@ unitTest(
 unitTest(
   { permissions: { read: true, write: true } },
   async function watchFsReturn() {
-    const testDir = await Deno.makeTempDir();
+    const testDir = Deno.makeTempDirSync();
     const iter = Deno.watchFs(testDir);
 
     // Asynchronously loop events.
@@ -84,7 +84,7 @@ unitTest(
 unitTest(
   { permissions: { read: true, write: true } },
   async function watchFsClose() {
-    const testDir = await Deno.makeTempDir();
+    const testDir = Deno.makeTempDirSync();
     const iter = Deno.watchFs(testDir);
 
     // Asynchronously loop events.
