@@ -1059,7 +1059,7 @@ fn doc_typecheck_supports_lf_crlf_test() {
     .unwrap();
 
   // Check that the type error did not go undetected
-  assert!(output_crlf.stderr.len() > 0);
+  assert!(!output_crlf.stderr.is_empty());
   // Because a typechecking error is expected here, the exit code should be > 0
   assert!(!output_crlf.status.success());
 
@@ -1076,7 +1076,7 @@ fn doc_typecheck_supports_lf_crlf_test() {
 
   println!("{:?}", output_lf.stderr);
 
-  assert!(output_lf.stderr.len() > 0);
+  assert!(!output_lf.stderr.is_empty());
   assert!(!output_lf.status.success());
 }
 
