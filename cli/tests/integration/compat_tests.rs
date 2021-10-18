@@ -9,12 +9,12 @@ itest!(globals {
 });
 
 itest!(fs_promises {
-  args: "run --compat --unstable -A compat/fs_promises.js",
+  args: "run --compat --unstable -A compat/fs_promises.mjs",
   output: "compat/fs_promises.out",
 });
 
 itest!(node_prefix_fs_promises {
-  args: "run --compat --unstable -A compat/node_fs_promises.js",
+  args: "run --compat --unstable -A compat/node_fs_promises.mjs",
   output: "compat/fs_promises.out",
 });
 
