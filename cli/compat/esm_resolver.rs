@@ -113,6 +113,7 @@ fn should_be_treated_as_relative_or_absolute_path(specifier: &str) -> bool {
   is_relative_specifier(specifier)
 }
 
+// TODO(ry) We very likely have this utility function elsewhere in Deno.
 fn is_relative_specifier(specifier: &str) -> bool {
   let specifier_len = specifier.len();
   let specifier_chars: Vec<_> = specifier.chars().collect();
@@ -1158,5 +1159,11 @@ mod tests {
     let actual = node_resolve("#dep", main.as_str(), &cwd).unwrap();
     let expected = Url::from_file_path(cwd.join("import_polyfill.js")).unwrap();
     assert_eq!(actual, expected);
+  }
+
+  #[test]
+  fn test_is_relative_specifier() {
+    assert!(is_relative_specifier("./foo.js"));
+    assert!(!is_relative_specifier("https://deno.land/std/node/http.ts"));
   }
 }
