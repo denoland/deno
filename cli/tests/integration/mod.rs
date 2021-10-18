@@ -1044,7 +1044,7 @@ fn typecheck_declarations_unstable() {
 // This runs `deno test --doc` on two markdown files which both contain
 // a typechecking error on purpose, and tests if it's detected when using either LF or CRLF line-endings
 #[test]
-fn doc_typecheck_supports_lf_crlf_test() {
+fn cross_platform_doc_check_test() {
   let output_crlf = util::deno_cmd()
     .arg("test")
     .arg("--doc")
