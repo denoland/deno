@@ -33,6 +33,7 @@ const IGNORED_COMMIT_PREFIX = [
   "chore",
   "ci",
   "docs",
+  "refactor",
   "test",
 ];
 
