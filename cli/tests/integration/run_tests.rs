@@ -856,9 +856,16 @@ itest!(wasm_async {
 });
 
 itest!(wasm_unreachable {
-  args: "run wasm_unreachable.js",
+  args: "run --allow-read wasm_unreachable.js",
   output: "wasm_unreachable.out",
   exit_code: 1,
+});
+
+itest!(wasm_url {
+  args: "run --quiet --allow-net=localhost:4545 wasm_url.js",
+  output: "wasm_url.out",
+  exit_code: 1,
+  http_server: true,
 });
 
 itest!(weakref {
@@ -1176,6 +1183,13 @@ itest!(error_import_map_unable_to_load {
   args: "run --import-map=import_maps/does_not_exist.json import_maps/test.ts",
   output: "error_import_map_unable_to_load.out",
   exit_code: 1,
+});
+
+// Test that setting `self` in the main thread to some other value doesn't break
+// the world.
+itest!(replace_self {
+  args: "run replace_self.js",
+  output: "replace_self.js.out",
 });
 
 itest!(worker_event_handler_test {

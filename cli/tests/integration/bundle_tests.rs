@@ -373,3 +373,8 @@ itest!(ts_decorators_bundle {
   args: "bundle ts_decorators_bundle.ts",
   output: "ts_decorators_bundle.out",
 });
+
+itest!(bundle_export_specifier_with_alias {
+  args: "bundle bundle/file_tests-fixture16.ts",
+  output: "bundle/fixture16.out",
+});

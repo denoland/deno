@@ -4,8 +4,8 @@ use deno_core::error::AnyError;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_runtime::ops::worker_host::create_worker_permissions;
-use deno_runtime::ops::worker_host::PermissionsArg;
+use deno_runtime::permissions::create_child_permissions;
+use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::Permissions;
 use std::sync::mpsc::Sender;
 use uuid::Uuid;
@@ -26,15 +26,15 @@ struct PermissionsHolder(Uuid, Permissions);
 
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
-  args: PermissionsArg,
+  args: ChildPermissionsArg,
   _: (),
 ) -> Result<Uuid, AnyError> {
   deno_runtime::ops::check_unstable(state, "Deno.test.permissions");
 
   let token = Uuid::new_v4();
-  let parent_permissions = state.borrow::<Permissions>().clone();
-  let worker_permissions =
-    create_worker_permissions(parent_permissions.clone(), args)?;
+  let parent_permissions = state.borrow_mut::<Permissions>();
+  let worker_permissions = create_child_permissions(parent_permissions, args)?;
+  let parent_permissions = parent_permissions.clone();
 
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 

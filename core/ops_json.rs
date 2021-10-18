@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
+use crate::ops::OpCall;
 use crate::serialize_op_result;
 use crate::Op;
 use crate::OpFn;
@@ -32,9 +33,10 @@ pub fn void_op_async() -> Box<OpFn> {
   // to deserialize to the unit type instead of failing with `ExpectedNull`
   // op_async(|_, _: (), _: ()| futures::future::ok(()))
   Box::new(move |state, payload| -> Op {
+    let op_id = payload.op_id;
     let pid = payload.promise_id;
     let op_result = serialize_op_result(Ok(()), state);
-    Op::Async(Box::pin(futures::future::ready((pid, op_result))))
+    Op::Async(OpCall::ready((pid, op_id, op_result)))
   })
 }
 
@@ -112,6 +114,7 @@ where
   RV: Serialize + 'static,
 {
   Box::new(move |state, payload| -> Op {
+    let op_id = payload.op_id;
     let pid = payload.promise_id;
     // Deserialize args, sync error on failure
     let args = match payload.deserialize() {
@@ -124,8 +127,8 @@ where
 
     use crate::futures::FutureExt;
     let fut = op_fn(state.clone(), a, b)
-      .map(move |result| (pid, serialize_op_result(result, state)));
-    Op::Async(Box::pin(fut))
+      .map(move |result| (pid, op_id, serialize_op_result(result, state)));
+    Op::Async(OpCall::eager(fut))
   })
 }
 
@@ -143,6 +146,7 @@ where
   RV: Serialize + 'static,
 {
   Box::new(move |state, payload| -> Op {
+    let op_id = payload.op_id;
     let pid = payload.promise_id;
     // Deserialize args, sync error on failure
     let args = match payload.deserialize() {
@@ -155,8 +159,8 @@ where
 
     use crate::futures::FutureExt;
     let fut = op_fn(state.clone(), a, b)
-      .map(move |result| (pid, serialize_op_result(result, state)));
-    Op::AsyncUnref(Box::pin(fut))
+      .map(move |result| (pid, op_id, serialize_op_result(result, state)));
+    Op::AsyncUnref(OpCall::eager(fut))
   })
 }
 

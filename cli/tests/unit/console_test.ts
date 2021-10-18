@@ -259,6 +259,8 @@ unitTest(function consoleTestStringifyCircular() {
   assertEquals(stringify("s"), "s");
   assertEquals(stringify(false), "false");
   assertEquals(stringify(new Number(1)), "[Number: 1]");
+  assertEquals(stringify(new Number(-0)), "[Number: -0]");
+  assertEquals(stringify(Object(1n)), "[BigInt: 1n]");
   assertEquals(stringify(new Boolean(true)), "[Boolean: true]");
   assertEquals(stringify(new String("deno")), `[String: "deno"]`);
   assertEquals(stringify(/[0-9]*/), "/[0-9]*/");
@@ -279,6 +281,7 @@ unitTest(function consoleTestStringifyCircular() {
   assertEquals(stringify(new WeakSet()), "WeakSet { [items unknown] }");
   assertEquals(stringify(new WeakMap()), "WeakMap { [items unknown] }");
   assertEquals(stringify(Symbol(1)), `Symbol("1")`);
+  assertEquals(stringify(Object(Symbol(1))), `[Symbol: Symbol("1")]`);
   assertEquals(stringify(null), "null");
   assertEquals(stringify(undefined), "undefined");
   assertEquals(stringify(new Extended()), "Extended { a: 1, b: 2 }");

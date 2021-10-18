@@ -121,7 +121,6 @@ unitTest(
       cmd: [
         Deno.execPath(),
         "eval",
-        "--unstable",
         "Deno.kill(Deno.pid, 'SIGKILL')",
       ],
     });

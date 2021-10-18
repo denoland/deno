@@ -178,6 +178,31 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Deno.emit() - allowSyntheticDefaultImports true by default",
+  async fn() {
+    const { diagnostics, files, ignoredOptions } = await Deno.emit(
+      "file:///a.ts",
+      {
+        sources: {
+          "file:///a.ts": `import b from "./b.js";\n`,
+          "file:///b.js":
+            `/// <reference types="./b.d.ts";\n\nconst b = "b";\n\nexport default b;\n`,
+          "file:///b.d.ts": `declare const b: "b";\nexport = b;\n`,
+        },
+      },
+    );
+    assertEquals(diagnostics.length, 0);
+    assert(!ignoredOptions);
+    const keys = Object.keys(files).sort();
+    assertEquals(keys, [
+      "file:///a.ts.js",
+      "file:///a.ts.js.map",
+      "file:///b.js",
+    ]);
+  },
+});
+
+Deno.test({
   name: "Deno.emit() - no check",
   async fn() {
     const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(
@@ -313,10 +338,9 @@ Deno.test({
 Deno.test({
   name: "Deno.emit() - invalid syntax does not panic",
   async fn() {
-    await assertThrowsAsync(async () => {
-      await Deno.emit("/main.js", {
-        sources: {
-          "/main.js": `
+    const { diagnostics } = await Deno.emit("/main.js", {
+      sources: {
+        "/main.js": `
             export class Foo {
               constructor() {
                 console.log("foo");
@@ -325,9 +349,14 @@ Deno.test({
                 console.log("bar");
               }
             }`,
-        },
-      });
+      },
     });
+    assertEquals(diagnostics.length, 1);
+    assert(
+      diagnostics[0].messageText!.startsWith(
+        "The module's source code could not be parsed: Unexpected token `get`. Expected * for generator, private key, identifier or async at file:",
+      ),
+    );
   },
 });
 
@@ -356,12 +385,10 @@ Deno.test({
 Deno.test({
   name: "Deno.emit() - Unknown media type does not panic",
   async fn() {
-    await assertThrowsAsync(async () => {
-      await Deno.emit("https://example.com/foo", {
-        sources: {
-          "https://example.com/foo": `let foo: string = "foo";`,
-        },
-      });
+    await Deno.emit("https://example.com/foo", {
+      sources: {
+        "https://example.com/foo": `let foo: string = "foo";`,
+      },
     });
   },
 });
@@ -487,7 +514,7 @@ Deno.test({
         code: 900001,
         start: null,
         end: null,
-        messageText: "Unable to find specifier in sources: file:///b.ts",
+        messageText: 'Cannot load module "file:///b.ts".',
         messageChain: null,
         source: null,
         sourceLine: null,
@@ -497,7 +524,7 @@ Deno.test({
     ]);
     assert(
       Deno.formatDiagnostics(diagnostics).includes(
-        "Unable to find specifier in sources: file:///b.ts",
+        'Cannot load module "file:///b.ts".',
       ),
     );
   },
