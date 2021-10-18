@@ -1922,3 +1922,8 @@ itest!(eval_context_throw_with_conflicting_source {
   output: "eval_context_throw_with_conflicting_source.ts.out",
   exit_code: 1,
 });
+
+itest!(eval_context_throw_dom_exception {
+  args: "run eval_context_throw_dom_exception.js",
+  output: "eval_context_throw_dom_exception.js.out",
+});
