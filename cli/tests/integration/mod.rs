@@ -1048,9 +1048,9 @@ fn doc_typecheck_supports_lf_crlf_test() {
   let output_crlf = util::deno_cmd()
     .arg("test")
     .arg("--doc")
-    .arg(util::root_path().join(
-      "cli/tests/testdata/test/typecheck_test_crlf.md"
-    ))
+    .arg(
+      util::root_path().join("cli/tests/testdata/test/typecheck_test_crlf.md"),
+    )
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -1064,17 +1064,15 @@ fn doc_typecheck_supports_lf_crlf_test() {
   assert!(!output_crlf.status.success());
 
   let output_lf = util::deno_cmd()
-  .arg("test")
-  .arg("--doc")
-  .arg(util::root_path().join(
-    "cli/tests/testdata/test/typecheck_test_lf.md"
-  ))
-  .stdout(std::process::Stdio::piped())
-  .stderr(std::process::Stdio::piped())
-  .spawn()
-  .unwrap()
-  .wait_with_output()
-  .unwrap();
+    .arg("test")
+    .arg("--doc")
+    .arg(util::root_path().join("cli/tests/testdata/test/typecheck_test_lf.md"))
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
 
   println!("{:?}", output_lf.stderr);
 
