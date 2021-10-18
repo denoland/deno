@@ -1956,10 +1956,10 @@ pub mod tests {
         ..Default::default()
       });
       runtime.execute_script("a.js", "a = 1 + 2").unwrap();
-      runtime.snapshot()
+      Vec::from(&*runtime.snapshot()).into_boxed_slice()
     };
 
-    let snapshot = Snapshot::JustCreated(snapshot);
+    let snapshot = Snapshot::Boxed(snapshot);
     let mut runtime2 = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(snapshot),
       ..Default::default()
