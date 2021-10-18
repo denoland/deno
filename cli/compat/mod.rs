@@ -114,7 +114,6 @@ pub fn load_cjs_module(
   js_runtime: &mut JsRuntime,
   main_module: &str,
 ) -> Result<(), AnyError> {
-  println!("{}", main_module);
   let source_code = &format!(
     r#"(async function loadCjsModule(main) {{
       const Module = await import("{}");
