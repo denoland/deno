@@ -120,7 +120,7 @@ pub fn load_cjs_module(
       Module.default._load(main, null, true);
     }})('{}');"#,
     MODULE_URL_STR.as_str(),
-    main_module,
+    main_module.replace(r"\", r"\\").replace("'", r"\'"),
   );
 
   js_runtime.execute_script(&located_script_name!(), source_code)?;
