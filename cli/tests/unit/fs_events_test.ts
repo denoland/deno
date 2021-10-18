@@ -39,7 +39,12 @@ async function getTwoEvents(
 unitTest(
   { permissions: { read: true, write: true } },
   async function watchFsBasic() {
-    const testDir = Deno.makeTempDirSync();
+    const testDir = await Deno.makeTempDir();
+    // On OS X, the watcher sometimes witnesses the creation of it's own root
+    // directory. Delay a bit.
+    if (Deno.build.os == "darwin") {
+      await new Promise((r) => setTimeout(r, 100));
+    }
     const iter = Deno.watchFs(testDir);
 
     // Asynchornously capture two fs events.
