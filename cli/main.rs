@@ -1092,6 +1092,11 @@ async fn run_command(
     return run_with_watch(flags, run_flags.script).await;
   }
 
+  // TODO(bartlomieju): it should not be resolved here if we're in compat mode
+  // because it might be a bare specifier
+  // TODO(bartlomieju): actually I think it will also fail if there's an import
+  // map specified and bare specifier is used on the command line - this should
+  // probably call `ProcState::resolve` instead
   let main_module = resolve_url_or_path(&run_flags.script)?;
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
@@ -1114,10 +1119,41 @@ async fn run_command(
     };
 
   debug!("main_module {}", main_module);
+
   if flags.compat {
+    // TODO(bartlomieju): fix me
+    assert_eq!(main_module.scheme(), "file");
+
+    // Set up Node globals
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
+    // And `module` module that we'll use for checking which
+    // loader to use and potentially load CJS module with.
+    // This allows to skip permission check for `--allow-net`
+    // which would otherwise be requested by dynamically importing
+    // this file.
+    worker.execute_side_module(&compat::MODULE_URL).await?;
+
+    let use_esm_loader = compat::check_if_should_use_esm_loader(
+      &mut worker.js_runtime,
+      &main_module.to_file_path().unwrap().display().to_string(),
+    )
+    .await?;
+
+    if use_esm_loader {
+      // ES module execution in Node compatiblity mode
+      worker.execute_main_module(&main_module).await?;
+    } else {
+      // CJS module execution in Node compatiblity mode
+      compat::load_cjs_module(
+        &mut worker.js_runtime,
+        &main_module.to_file_path().unwrap().display().to_string(),
+      )?;
+    }
+  } else {
+    // Regular ES module execution
+    worker.execute_main_module(&main_module).await?;
   }
-  worker.execute_main_module(&main_module).await?;
+
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
