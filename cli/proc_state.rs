@@ -73,10 +73,10 @@ pub struct Inner {
   // resolution map so that those errors can be surfaced at the appropriate time
   resolution_map:
     Arc<Mutex<HashMap<ModuleSpecifier, HashMap<String, deno_graph::Resolved>>>>,
-  // in some cases we want to provide the span where the resolution error
+  // in some cases we want to provide the range where the resolution error
   // occurred but need to surface it on load, but on load we don't know who the
-  // referrer and span was, so we need to cache those
-  resolved_map: Arc<Mutex<HashMap<ModuleSpecifier, deno_graph::Span>>>,
+  // referrer and range was, so we need to cache those
+  resolved_map: Arc<Mutex<HashMap<ModuleSpecifier, deno_graph::Range>>>,
   pub root_cert_store: Option<RootCertStore>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
@@ -460,7 +460,7 @@ impl ProcState {
           Some(Err(err)) => {
             return Err(custom_error(
               "TypeError",
-              format!("{}\n", err.to_string_with_span()),
+              format!("{}\n", err.to_string_with_range()),
             ))
           }
           _ => (),
