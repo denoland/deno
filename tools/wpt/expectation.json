@@ -7819,9 +7819,7 @@
           "CORS invalid integrity",
           "Empty string integrity for opaque response",
           "SHA-* integrity for opaque response"
-        ],
-        "request-upload.h2.any.html": false,
-        "request-upload.h2.any.worker.html": false
+        ]
       },
       "response": {
         "json.any.html": true,
@@ -7983,21 +7981,7 @@
         "redirect-schemes.any.html": true,
         "redirect-schemes.any.worker.html": true,
         "redirect-to-dataurl.any.html": true,
-        "redirect-to-dataurl.any.worker.html": true,
-        "redirect-upload.h2.any.html": [
-          "Fetch upload streaming should be accepted on 303",
-          "Fetch upload streaming should fail on 301",
-          "Fetch upload streaming should fail on 302",
-          "Fetch upload streaming should fail on 307",
-          "Fetch upload streaming should fail on 308"
-        ],
-        "redirect-upload.h2.any.worker.html": [
-          "Fetch upload streaming should be accepted on 303",
-          "Fetch upload streaming should fail on 301",
-          "Fetch upload streaming should fail on 302",
-          "Fetch upload streaming should fail on 307",
-          "Fetch upload streaming should fail on 308"
-        ]
+        "redirect-to-dataurl.any.worker.html": true
       },
       "idlharness.any.html": [
         "Request interface: attribute destination",

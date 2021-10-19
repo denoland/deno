@@ -1916,3 +1916,9 @@ itest!(long_data_url_formatting {
   output: "long_data_url_formatting.ts.out",
   exit_code: 1,
 });
+
+itest!(eval_context_throw_with_conflicting_source {
+  args: "run eval_context_throw_with_conflicting_source.ts",
+  output: "eval_context_throw_with_conflicting_source.ts.out",
+  exit_code: 1,
+});

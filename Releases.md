@@ -6,6 +6,19 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.15.2 / 2021.10.18
+
+- feat(unstable): Node CJS and ESM resolvers for compat mode (#12424)
+- fix(cli): re-enable allowSyntheticDefaultImports for tsc (#12435)
+- fix(cli/fmt_errors): don't panic on source line formatting errors (#12449)
+- fix(cli/tests): move worker test assertions out of message handlers (#12439)
+- fix(console): fix display of primitive wrapper objects (#12425)
+- fix(core): avoid polling future after cancellation (#12385)
+- fix(core): poll async ops eagerly (#12385)
+- fix(fmt): keep parens for JS doc type assertions (#12475)
+- fix(fmt): should not remove parens around sequence expressions (#12461)
+- fix(runtime/ops/worker_host): move permission arg parsing to Rust (#12297)
+
 ### 1.15.1 / 2021.10.13
 
 - fix: `--no-check` not properly handling code nested in TS expressions (#12416)

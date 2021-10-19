@@ -3,7 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { BadResource } = core;
+  const { BadResource, Interrupted } = core;
   const {
     PromiseResolve,
     SymbolAsyncIterator,
@@ -124,7 +124,7 @@
       try {
         conn = await this.accept();
       } catch (error) {
-        if (error instanceof BadResource) {
+        if (error instanceof BadResource || error instanceof Interrupted) {
           return { value: undefined, done: true };
         }
         throw error;
@@ -191,7 +191,7 @@
         try {
           yield await this.receive();
         } catch (err) {
-          if (err instanceof BadResource) {
+          if (err instanceof BadResource || err instanceof Interrupted) {
             break;
           }
           throw err;
