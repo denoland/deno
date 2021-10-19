@@ -1967,6 +1967,12 @@ declare namespace Deno {
     close(): void;
 
     /** Send a signal to process.
+     *
+     * ```ts
+     * const p = Deno.run({ cmd: [ "sleep", "20" ]});
+     * p.kill("SIGTERM");
+     * p.close();
+     * ```
      */
     kill(signo: Signal): void;
   }
