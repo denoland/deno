@@ -516,7 +516,6 @@ impl ProcState {
         }
       } else {
         if maybe_referrer.is_some() && !is_dynamic {
-          let graph_stuff = self.graph_stuff.lock();
           if let Some(span) = graph_stuff.resolved_map.get(&specifier) {
             return Err(custom_error(
               "NotFound",
