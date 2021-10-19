@@ -974,11 +974,12 @@ dependencies = [
  "deno_core",
  "lazy_static",
  "reqwest",
- "rustls 0.19.1",
+ "rustls 0.20.0",
  "rustls-native-certs",
+ "rustls-pemfile",
  "serde",
- "webpki 0.21.4",
- "webpki-roots",
+ "webpki 0.22.0",
+ "webpki-roots 0.22.1",
 ]
 
 [[package]]
@@ -2992,7 +2993,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "webpki-roots",
+ "webpki-roots 0.21.1",
  "winreg 0.7.0",
 ]
 
@@ -4222,7 +4223,7 @@ dependencies = [
  "tokio-rustls 0.22.0",
  "tungstenite 0.13.0",
  "webpki 0.21.4",
- "webpki-roots",
+ "webpki-roots 0.21.1",
 ]
 
 [[package]]
@@ -4415,7 +4416,7 @@ dependencies = [
  "url",
  "utf-8",
  "webpki 0.21.4",
- "webpki-roots",
+ "webpki-roots 0.21.1",
 ]
 
 [[package]]
@@ -4762,6 +4763,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aabe153544e473b775453675851ecc86863d2a81d786d741f6b76778f2a48940"
 dependencies = [
  "webpki 0.21.4",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c475786c6f47219345717a043a37ec04cb4bc185e28853adcc4fa0a947eba630"
+dependencies = [
+ "webpki 0.22.0",
 ]
 
 [[package]]
