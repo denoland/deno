@@ -771,7 +771,7 @@ dependencies = [
  "rusty_v8",
  "serde",
  "serde_json",
- "serde_v8",
+ "serde_v8 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio",
  "url",
 ]
@@ -3324,6 +3324,16 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "serde_v8"
+version = "0.15.0"
+dependencies = [
+ "bencher",
+ "rusty_v8",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
