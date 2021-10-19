@@ -53,7 +53,7 @@ use std::sync::Arc;
 pub struct ProcState(Arc<Inner>);
 
 #[derive(Default)]
-struct GraphStuff {
+struct GraphData {
   modules: HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>,
   // because the graph detects resolution issues early, but is build and dropped
   // during the `prepare_module_load` method, we need to extract out the module
@@ -76,11 +76,11 @@ pub struct Inner {
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
+  graph_data: Arc<Mutex<GraphData>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_config_file: Option<ConfigFile>,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
-  graph_stuff: Arc<Mutex<GraphStuff>>,
   pub root_cert_store: Option<RootCertStore>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
@@ -237,7 +237,7 @@ impl ProcState {
       coverage_dir,
       flags,
       file_fetcher,
-      graph_stuff: Default::default(),
+      graph_data: Default::default(),
       lockfile,
       maybe_config_file,
       maybe_import_map,
@@ -253,7 +253,7 @@ impl ProcState {
   pub(crate) fn take_graph_error(
     &self,
   ) -> Option<deno_graph::ModuleGraphError> {
-    self.graph_stuff.lock().maybe_graph_error.take()
+    self.graph_data.lock().maybe_graph_error.take()
   }
 
   /// Return any imports that should be brought into the scope of the module
@@ -332,8 +332,8 @@ impl ProcState {
     // Determine any modules that have already been emitted this session and
     // should be skipped.
     let reload_exclusions: HashSet<ModuleSpecifier> = {
-      let graph_stuff = self.graph_stuff.lock();
-      graph_stuff.modules.keys().cloned().collect()
+      let graph_data = self.graph_data.lock();
+      graph_data.modules.keys().cloned().collect()
     };
 
     let config_type = if self.flags.no_check {
@@ -417,11 +417,11 @@ impl ProcState {
     }
 
     {
-      let mut graph_stuff = self.graph_stuff.lock();
+      let mut graph_data = self.graph_data.lock();
       // we iterate over the graph, looking for any modules that were emitted, or
       // should be loaded as their un-emitted source and add them to the in memory
       // cache of modules for loading by deno_core.
-      graph_stuff
+      graph_data
         .modules
         .extend(emit::to_module_sources(graph.as_ref(), &cache));
 
@@ -430,9 +430,9 @@ impl ProcState {
       // the graph needs to not be thread safe (due to wasmbind_gen constraints),
       // we have no choice but to extract out other meta data from the graph to
       // provide the correct loading behaviors for CLI
-      graph_stuff.resolution_map.extend(graph.resolution_map());
+      graph_data.resolution_map.extend(graph.resolution_map());
 
-      graph_stuff.maybe_graph_error = maybe_graph_error;
+      graph_data.maybe_graph_error = maybe_graph_error;
     }
 
     // any updates to the lockfile should be updated now
@@ -451,8 +451,8 @@ impl ProcState {
   ) -> Result<ModuleSpecifier, AnyError> {
     if let Ok(s) = deno_core::resolve_url_or_path(referrer) {
       let maybe_resolved = {
-        let graph_stuff = self.graph_stuff.lock();
-        let resolved_specifier = graph_stuff
+        let graph_data = self.graph_data.lock();
+        let resolved_specifier = graph_data
           .resolution_map
           .get(&s)
           .and_then(|map| map.get(specifier));
@@ -462,8 +462,8 @@ impl ProcState {
       if let Some(resolved) = maybe_resolved {
         match resolved {
           Some(Ok((specifier, span))) => {
-            let mut graph_stuff = self.graph_stuff.lock();
-            graph_stuff.resolved_map.insert(specifier.clone(), span);
+            let mut graph_data = self.graph_data.lock();
+            graph_data.resolved_map.insert(specifier.clone(), span);
             return Ok(specifier);
           }
           Some(Err(err)) => {
@@ -509,14 +509,14 @@ impl ProcState {
     );
 
     {
-      let graph_stuff = self.graph_stuff.lock();
-      if let Some(module_result) = graph_stuff.modules.get(&specifier) {
+      let graph_data = self.graph_data.lock();
+      if let Some(module_result) = graph_data.modules.get(&specifier) {
         if let Ok(module_source) = module_result {
           return Ok(module_source.clone());
         }
       } else {
         if maybe_referrer.is_some() && !is_dynamic {
-          if let Some(span) = graph_stuff.resolved_map.get(&specifier) {
+          if let Some(span) = graph_data.resolved_map.get(&specifier) {
             return Err(custom_error(
               "NotFound",
               format!("Cannot load module \"{}\".\n    at {}", specifier, span),
@@ -531,8 +531,8 @@ impl ProcState {
     }
 
     // If we're this far it means that there was an error for this module load.
-    let mut graph_stuff = self.graph_stuff.lock();
-    let err = graph_stuff
+    let mut graph_data = self.graph_data.lock();
+    let err = graph_data
       .modules
       .get(&specifier)
       .unwrap()
@@ -546,7 +546,7 @@ impl ProcState {
         // JavaScript, we will load a blank module instead.  This is
         // usually caused by people exporting type only exports and not
         // type checking.
-        if let Some(span) = graph_stuff.resolved_map.get(&specifier) {
+        if let Some(span) = graph_data.resolved_map.get(&specifier) {
           log::warn!("{}: Cannot load module \"{}\".\n    at {}\n  If the source module contains only types, use `import type` and `export type` to import it instead.", colors::yellow("warning"), specifier, span);
           return Ok(ModuleSource {
             code: "".to_string(),
@@ -561,9 +561,9 @@ impl ProcState {
     };
     // if there is a pending graph error though we haven't returned, we
     // will return that one
-    if let Some(graph_error) = graph_stuff.maybe_graph_error.take() {
+    if let Some(graph_error) = graph_data.maybe_graph_error.take() {
       log::debug!("returning cached graph error");
-      if let Some(span) = graph_stuff.resolved_map.get(&specifier) {
+      if let Some(span) = graph_data.resolved_map.get(&specifier) {
         if !span.specifier.as_str().contains("$deno") {
           return Err(custom_error(
             get_module_graph_error_class(&graph_error),
