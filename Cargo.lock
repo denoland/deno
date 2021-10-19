@@ -1035,8 +1035,8 @@ dependencies = [
  "hyper",
  "serde",
  "tokio",
- "tokio-rustls 0.22.0",
- "tokio-tungstenite 0.14.0",
+ "tokio-rustls 0.23.0",
+ "tokio-tungstenite 0.15.0 (git+https://github.com/dnaka91/tokio-tungstenite?branch=rustls-0.20)",
 ]
 
 [[package]]
@@ -1893,15 +1893,6 @@ name = "inplace_it"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90953f308a79fe6d62a4643e51f848fbfddcd05975a38e69fdf4ab86a7baf7ca"
-
-[[package]]
-name = "input_buffer"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f97967975f448f1a7ddb12b0bc41069d09ed6a1c161a92687e057325db35d413"
-dependencies = [
- "bytes",
-]
 
 [[package]]
 name = "instant"
@@ -4071,7 +4062,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-rustls 0.23.0",
- "tokio-tungstenite 0.15.0",
+ "tokio-tungstenite 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.3.9",
 ]
 
@@ -4211,23 +4202,6 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e96bb520beab540ab664bd5a9cfeaa1fcd846fa68c830b42e2c8963071251d2"
-dependencies = [
- "futures-util",
- "log",
- "pin-project",
- "rustls 0.19.1",
- "tokio",
- "tokio-rustls 0.22.0",
- "tungstenite 0.13.0",
- "webpki 0.21.4",
- "webpki-roots 0.21.1",
-]
-
-[[package]]
-name = "tokio-tungstenite"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "511de3f85caf1c98983545490c3d09685fa8eb634e57eec22bb4db271f46cbd8"
@@ -4237,6 +4211,21 @@ dependencies = [
  "pin-project",
  "tokio",
  "tungstenite 0.14.0",
+]
+
+[[package]]
+name = "tokio-tungstenite"
+version = "0.15.0"
+source = "git+https://github.com/dnaka91/tokio-tungstenite?branch=rustls-0.20#49d4e0b1a0392ab89f47784d6b15eec5f1633cf8"
+dependencies = [
+ "futures-util",
+ "log",
+ "rustls 0.20.0",
+ "tokio",
+ "tokio-rustls 0.23.0",
+ "tungstenite 0.15.0",
+ "webpki 0.22.0",
+ "webpki-roots 0.22.1",
 ]
 
 [[package]]
@@ -4398,29 +4387,6 @@ checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
 
 [[package]]
 name = "tungstenite"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fe8dada8c1a3aeca77d6b51a4f1314e0f4b8e438b7b1b71e3ddaca8080e4093"
-dependencies = [
- "base64 0.13.0",
- "byteorder",
- "bytes",
- "http",
- "httparse",
- "input_buffer",
- "log",
- "rand 0.8.4",
- "rustls 0.19.1",
- "sha-1",
- "thiserror",
- "url",
- "utf-8",
- "webpki 0.21.4",
- "webpki-roots 0.21.1",
-]
-
-[[package]]
-name = "tungstenite"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0b2d8558abd2e276b0a8df5c05a2ec762609344191e5fd23e292c910e9165b5"
@@ -4436,6 +4402,26 @@ dependencies = [
  "thiserror",
  "url",
  "utf-8",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.15.0"
+source = "git+https://github.com/dnaka91/tungstenite-rs.git?rev=f4bb653aa03665a83bd98068432602f07cd5634b#f4bb653aa03665a83bd98068432602f07cd5634b"
+dependencies = [
+ "base64 0.13.0",
+ "byteorder",
+ "bytes",
+ "http",
+ "httparse",
+ "log",
+ "rand 0.8.4",
+ "rustls 0.20.0",
+ "sha-1",
+ "thiserror",
+ "url",
+ "utf-8",
+ "webpki 0.22.0",
 ]
 
 [[package]]
