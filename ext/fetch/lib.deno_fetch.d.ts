@@ -41,8 +41,6 @@ interface FormData {
 
 declare var FormData: {
   prototype: FormData;
-  // TODO(ry) FormData constructor is non-standard.
-  // new(form?: HTMLFormElement): FormData;
   new (): FormData;
 };
 
