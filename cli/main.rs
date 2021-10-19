@@ -548,7 +548,7 @@ async fn cache_command(
       Permissions::allow_all(),
     )
     .await?;
-    if let Some(graph_error) = ps.maybe_graph_error.lock().take() {
+    if let Some(graph_error) = ps.take_graph_error() {
       return Err(graph_error.into());
     }
   }
