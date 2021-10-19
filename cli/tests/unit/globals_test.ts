@@ -124,6 +124,7 @@ unitTest(async function windowQueueMicrotask() {
 });
 
 unitTest(function webApiGlobalThis() {
+  assert(globalThis.FormData !== null);
   assert(globalThis.TextEncoder !== null);
   assert(globalThis.TextEncoderStream !== null);
   assert(globalThis.TextDecoder !== null);
