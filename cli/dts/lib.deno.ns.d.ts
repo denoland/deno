@@ -426,8 +426,8 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use `copy` from https://deno.land/std/io/util.ts instead.
-   * `Deno.copy` will be removed in Deno 2.0.
+   * @deprecated Use `copy` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.copy` will be removed in Deno 2.0.
    *
    * Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
    * an error occurs. It resolves to the number of bytes copied or rejects with
@@ -453,7 +453,9 @@ declare namespace Deno {
   ): Promise<number>;
 
   /**
-   * @deprecated Use iter from https://deno.land/std/io/util.ts instead. Deno.iter will be removed in Deno 2.0.
+   * @deprecated Use `iterateReader` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iter` will be
+   * removed in Deno 2.0.
    *
    * Turns a Reader, `r`, into an async iterator.
    *
@@ -492,7 +494,9 @@ declare namespace Deno {
   ): AsyncIterableIterator<Uint8Array>;
 
   /**
-   * @deprecated Use iterSync from https://deno.land/std/io/util.ts instead. Deno.iterSync will be removed in Deno 2.0.
+   * @deprecated Use `iterateReaderSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iterSync` will
+   * be removed in Deno 2.0.
    *
    * Turns a ReaderSync, `r`, into an iterator.
    *
@@ -978,7 +982,8 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use readAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
+   * @deprecated Use `readAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.readAll` will be removed in Deno 2.0.
    *
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
@@ -1002,7 +1007,9 @@ declare namespace Deno {
   export function readAll(r: Reader): Promise<Uint8Array>;
 
   /**
-   * @deprecated Use readAllSync from https://deno.land/std/io/util.ts instead. Deno.readAllSync will be removed in Deno 2.0.
+   * @deprecated Use `readAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.readAllSync`
+   * will be removed in Deno 2.0.
    *
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
@@ -1026,7 +1033,8 @@ declare namespace Deno {
   export function readAllSync(r: ReaderSync): Uint8Array;
 
   /**
-   * @deprecated Use writeAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
+   * @deprecated Use `writeAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.writeAll` will be removed in Deno 2.0.
    *
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
@@ -1055,7 +1063,9 @@ declare namespace Deno {
   export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
 
   /**
-   * @deprecated Use writeAllSync from https://deno.land/std/io/util.ts instead. Deno.writeAllSync will be removed in Deno 2.0.
+   * @deprecated Use `writeAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.writeAllSync`
+   * will be removed in Deno 2.0.
    *
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
