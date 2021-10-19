@@ -1,5 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+  unitTest,
+} from "./test_util.ts";
 
 unitTest(
   { permissions: { read: true, write: true } },
@@ -50,9 +56,13 @@ unitTest(
     // newname is already created.
     Deno.writeFileSync(newName, new TextEncoder().encode("newName"));
 
-    assertThrows(() => {
-      Deno.linkSync(oldName, newName);
-    }, Deno.errors.AlreadyExists);
+    assertThrows(
+      () => {
+        Deno.linkSync(oldName, newName);
+      },
+      Deno.errors.AlreadyExists,
+      `link '${oldName}' -> '${newName}'`,
+    );
   },
 );
 
@@ -63,9 +73,13 @@ unitTest(
     const oldName = testDir + "/oldname";
     const newName = testDir + "/newname";
 
-    assertThrows(() => {
-      Deno.linkSync(oldName, newName);
-    }, Deno.errors.NotFound);
+    assertThrows(
+      () => {
+        Deno.linkSync(oldName, newName);
+      },
+      Deno.errors.NotFound,
+      `link '${oldName}' -> '${newName}'`,
+    );
   },
 );
 
@@ -123,5 +137,60 @@ unitTest(
       newData3,
       new TextDecoder().decode(Deno.readFileSync(newName)),
     );
+  },
+);
+
+unitTest(
+  { permissions: { read: true, write: true } },
+  async function linkExists() {
+    const testDir = Deno.makeTempDirSync();
+    const oldName = testDir + "/oldname";
+    const newName = testDir + "/newname";
+    Deno.writeFileSync(oldName, new TextEncoder().encode("oldName"));
+    // newname is already created.
+    Deno.writeFileSync(newName, new TextEncoder().encode("newName"));
+
+    await assertRejects(
+      async () => {
+        await Deno.link(oldName, newName);
+      },
+      Deno.errors.AlreadyExists,
+      `link '${oldName}' -> '${newName}'`,
+    );
+  },
+);
+
+unitTest(
+  { permissions: { read: true, write: true } },
+  async function linkNotFound() {
+    const testDir = Deno.makeTempDirSync();
+    const oldName = testDir + "/oldname";
+    const newName = testDir + "/newname";
+
+    await assertRejects(
+      async () => {
+        await Deno.link(oldName, newName);
+      },
+      Deno.errors.NotFound,
+      `link '${oldName}' -> '${newName}'`,
+    );
+  },
+);
+
+unitTest(
+  { permissions: { read: false, write: true } },
+  async function linkReadPerm() {
+    await assertRejects(async () => {
+      await Deno.link("oldbaddir", "newbaddir");
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
+  { permissions: { read: true, write: false } },
+  async function linkWritePerm() {
+    await assertRejects(async () => {
+      await Deno.link("oldbaddir", "newbaddir");
+    }, Deno.errors.PermissionDenied);
   },
 );

@@ -180,6 +180,7 @@ pub fn set_func(
   let key = v8::String::new(scope, name).unwrap();
   let tmpl = v8::FunctionTemplate::new(scope, callback);
   let val = tmpl.get_function(scope).unwrap();
+  val.set_name(key);
   obj.set(scope, key.into(), val.into());
 }
 
@@ -314,7 +315,7 @@ fn opcall_sync<'s>(
   mut rv: v8::ReturnValue,
 ) {
   let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
+  let state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
     .map(|l| l.value() as OpId)
@@ -343,11 +344,13 @@ fn opcall_sync<'s>(
     scope,
     a,
     b,
+    op_id,
     promise_id: 0,
   };
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {
     Op::Sync(result) => {
+      state.op_state.borrow_mut().tracker.track_sync(op_id);
       rv.set(result.to_v8(scope).unwrap());
     }
     Op::NotFound => {
@@ -404,6 +407,7 @@ fn opcall_async<'s>(
     scope,
     a,
     b,
+    op_id,
     promise_id,
   };
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
@@ -416,10 +420,12 @@ fn opcall_async<'s>(
       OpResult::Err(_) => rv.set(result.to_v8(scope).unwrap()),
     },
     Op::Async(fut) => {
+      state.op_state.borrow_mut().tracker.track_async(op_id);
       state.pending_ops.push(fut);
       state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {
+      state.op_state.borrow_mut().tracker.track_unref(op_id);
       state.pending_unref_ops.push(fut);
       state.have_unpolled_ops = true;
     }

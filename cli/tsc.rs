@@ -2,17 +2,14 @@
 
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
-use crate::module_graph::Graph;
-use crate::module_graph::Stats;
+use crate::emit;
 
 use deno_ast::MediaType;
 use deno_core::error::anyhow;
-use deno_core::error::bail;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::located_script_name;
 use deno_core::op_sync;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -25,6 +22,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
+use deno_graph::ModuleGraph;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -93,7 +91,7 @@ pub fn get_asset(asset: &str) -> Option<&'static str> {
 }
 
 fn get_maybe_hash(
-  maybe_source: &Option<String>,
+  maybe_source: Option<&String>,
   hash_data: &[Vec<u8>],
 ) -> Option<String> {
   if let Some(source) = maybe_source {
@@ -105,30 +103,15 @@ fn get_maybe_hash(
   }
 }
 
-fn hash_data_url(
-  specifier: &ModuleSpecifier,
-  media_type: &MediaType,
-) -> String {
-  assert_eq!(
-    specifier.scheme(),
-    "data",
-    "Specifier must be a data: specifier."
-  );
+/// Hash the URL so it can be sent to `tsc` in a supportable way
+fn hash_url(specifier: &ModuleSpecifier, media_type: &MediaType) -> String {
   let hash = crate::checksum::gen(&[specifier.path().as_bytes()]);
-  format!("data:///{}{}", hash, media_type.as_ts_extension())
-}
-
-fn hash_blob_url(
-  specifier: &ModuleSpecifier,
-  media_type: &MediaType,
-) -> String {
-  assert_eq!(
+  format!(
+    "{}:///{}{}",
     specifier.scheme(),
-    "blob",
-    "Specifier must be a blob: specifier."
-  );
-  let hash = crate::checksum::gen(&[specifier.path().as_bytes()]);
-  format!("blob:///{}{}", hash, media_type.as_ts_extension())
+    hash,
+    media_type.as_ts_extension()
+  )
 }
 
 /// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.js`, or `.jsx` as root modules
@@ -180,7 +163,7 @@ pub struct Request {
   pub config: TsConfig,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
-  pub graph: Arc<Mutex<Graph>>,
+  pub graph: Arc<ModuleGraph>,
   pub hash_data: Vec<Vec<u8>>,
   pub maybe_config_specifier: Option<ModuleSpecifier>,
   pub maybe_tsbuildinfo: Option<String>,
@@ -190,7 +173,7 @@ pub struct Request {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Response {
+pub(crate) struct Response {
   /// Any diagnostics that have been returned from the checker.
   pub diagnostics: Diagnostics,
   /// Any files that were emitted during the check.
@@ -198,7 +181,7 @@ pub struct Response {
   /// If there was any build info associated with the exec request.
   pub maybe_tsbuildinfo: Option<String>,
   /// Statistics from the check.
-  pub stats: Stats,
+  pub stats: emit::Stats,
 }
 
 #[derive(Debug)]
@@ -206,7 +189,7 @@ struct State {
   data_url_map: HashMap<String, ModuleSpecifier>,
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
-  graph: Arc<Mutex<Graph>>,
+  graph: Arc<ModuleGraph>,
   maybe_config_specifier: Option<ModuleSpecifier>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
@@ -215,7 +198,7 @@ struct State {
 
 impl State {
   pub fn new(
-    graph: Arc<Mutex<Graph>>,
+    graph: Arc<ModuleGraph>,
     hash_data: Vec<Vec<u8>>,
     maybe_config_specifier: Option<ModuleSpecifier>,
     maybe_tsbuildinfo: Option<String>,
@@ -334,8 +317,7 @@ fn op_exists(state: &mut State, args: ExistsArgs) -> Result<bool, AnyError> {
     if specifier.scheme() == "asset" || specifier.scheme() == "data" {
       Ok(true)
     } else {
-      let graph = state.graph.lock();
-      Ok(graph.contains(&specifier))
+      Ok(state.graph.contains(&specifier))
     }
   } else {
     Ok(false)
@@ -366,11 +348,10 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   } else if v.specifier.starts_with("asset:///") {
     let name = v.specifier.replace("asset:///", "");
     let maybe_source = get_asset(&name).map(String::from);
-    hash = get_maybe_hash(&maybe_source, &state.hash_data);
+    hash = get_maybe_hash(maybe_source.as_ref(), &state.hash_data);
     media_type = MediaType::from(&v.specifier);
     maybe_source
   } else {
-    let graph = state.graph.lock();
     let specifier = if let Some(data_specifier) =
       state.data_url_map.get(&v.specifier)
     {
@@ -380,13 +361,14 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     } else {
       specifier
     };
-    let maybe_source = graph.get_source(&specifier).map(|t| t.to_string());
-    media_type = if let Some(media_type) = graph.get_media_type(&specifier) {
-      media_type
+    let maybe_source = if let Some(module) = state.graph.get(&specifier) {
+      media_type = module.media_type;
+      Some(module.source.as_str().to_string())
     } else {
-      MediaType::Unknown
+      media_type = MediaType::Unknown;
+      None
     };
-    hash = get_maybe_hash(&maybe_source, &state.hash_data);
+    hash = get_maybe_hash(maybe_source.as_ref(), &state.hash_data);
     maybe_source
   };
 
@@ -425,48 +407,31 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         MediaType::from(specifier).as_ts_extension().to_string(),
       ));
     } else {
-      let graph = state.graph.lock();
-      match graph.resolve(specifier, &referrer, true) {
-        Ok(resolved_specifier) => {
-          let media_type = if let Some(media_type) =
-            graph.get_media_type(&resolved_specifier)
-          {
-            media_type
-          } else {
-            bail!(
-              "Unable to resolve media type for specifier: \"{}\"",
-              resolved_specifier
-            )
-          };
-          let resolved_specifier_str = match resolved_specifier.scheme() {
-            "data" | "blob" => {
-              let specifier_str = if resolved_specifier.scheme() == "data" {
-                hash_data_url(&resolved_specifier, &media_type)
-              } else {
-                hash_blob_url(&resolved_specifier, &media_type)
-              };
-              state
-                .data_url_map
-                .insert(specifier_str.clone(), resolved_specifier);
-              specifier_str
-            }
-            _ => resolved_specifier.to_string(),
-          };
-          resolved.push((
-            resolved_specifier_str,
-            media_type.as_ts_extension().into(),
-          ));
-        }
-        // in certain situations, like certain dynamic imports, we won't have
-        // the source file in the graph, so we will return a fake module to
-        // make tsc happy.
-        Err(_) => {
-          resolved.push((
+      let resolved_dependency =
+        match state.graph.resolve_dependency(specifier, &referrer, true) {
+          Some(resolved_specifier) => {
+            let media_type = state
+              .graph
+              .get(resolved_specifier)
+              .map_or(&MediaType::Unknown, |m| &m.media_type);
+            let resolved_specifier_str = match resolved_specifier.scheme() {
+              "data" | "blob" => {
+                let specifier_str = hash_url(resolved_specifier, media_type);
+                state
+                  .data_url_map
+                  .insert(specifier_str.clone(), resolved_specifier.clone());
+                specifier_str
+              }
+              _ => resolved_specifier.to_string(),
+            };
+            (resolved_specifier_str, media_type.as_ts_extension().into())
+          }
+          None => (
             "deno:///missing_dependency.d.ts".to_string(),
             ".d.ts".to_string(),
-          ));
-        }
-      }
+          ),
+        };
+      resolved.push(resolved_dependency);
     }
   }
 
@@ -476,7 +441,7 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 struct RespondArgs {
   pub diagnostics: Diagnostics,
-  pub stats: Stats,
+  pub stats: emit::Stats,
 }
 
 fn op_respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
@@ -489,7 +454,7 @@ fn op_respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-pub fn exec(request: Request) -> Result<Response, AnyError> {
+pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
     ..Default::default()
@@ -505,11 +470,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .iter()
     .map(|(s, mt)| match s.scheme() {
       "data" | "blob" => {
-        let specifier_str = if s.scheme() == "data" {
-          hash_data_url(s, mt)
-        } else {
-          hash_blob_url(s, mt)
-        };
+        let specifier_str = hash_url(s, mt);
         data_url_map.insert(specifier_str.clone(), s.clone());
         specifier_str
       }
@@ -530,7 +491,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     op_state.put(State::new(
-      request.graph.clone(),
+      request.graph,
       request.hash_data.clone(),
       request.maybe_config_specifier.clone(),
       request.maybe_tsbuildinfo.clone(),
@@ -589,9 +550,39 @@ mod tests {
   use crate::config_file::TsConfig;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
-  use crate::module_graph::tests::MockSpecifierHandler;
-  use crate::module_graph::GraphBuilder;
-  use deno_core::parking_lot::Mutex;
+  use crate::emit::Stats;
+  use deno_core::futures::future;
+  use std::fs;
+
+  #[derive(Debug, Default)]
+  pub(crate) struct MockLoader {
+    pub fixtures: PathBuf,
+  }
+
+  impl deno_graph::source::Loader for MockLoader {
+    fn load(
+      &mut self,
+      specifier: &ModuleSpecifier,
+      _is_dynamic: bool,
+    ) -> deno_graph::source::LoadFuture {
+      let specifier_text = specifier
+        .to_string()
+        .replace(":///", "_")
+        .replace("://", "_")
+        .replace("/", "-");
+      let source_path = self.fixtures.join(specifier_text);
+      let response = fs::read_to_string(&source_path)
+        .map(|c| {
+          Some(deno_graph::source::LoadResponse {
+            specifier: specifier.clone(),
+            maybe_headers: None,
+            content: Arc::new(c),
+          })
+        })
+        .map_err(|err| err.into());
+      Box::pin(future::ready((specifier.clone(), response)))
+    }
+  }
 
   async fn setup(
     maybe_specifier: Option<ModuleSpecifier>,
@@ -602,16 +593,19 @@ mod tests {
       .unwrap_or_else(|| resolve_url_or_path("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
     let fixtures = test_util::testdata_path().join("tsc2");
-    let handler = Arc::new(Mutex::new(MockSpecifierHandler {
-      fixtures,
-      ..MockSpecifierHandler::default()
-    }));
-    let mut builder = GraphBuilder::new(handler.clone(), None, None);
-    builder
-      .add(&specifier, false)
-      .await
-      .expect("module not inserted");
-    let graph = Arc::new(Mutex::new(builder.get_graph()));
+    let mut loader = MockLoader { fixtures };
+    let graph = Arc::new(
+      deno_graph::create_graph(
+        vec![specifier],
+        false,
+        None,
+        &mut loader,
+        None,
+        None,
+        None,
+      )
+      .await,
+    );
     State::new(
       graph,
       hash_data,
@@ -627,13 +621,19 @@ mod tests {
   ) -> Result<Response, AnyError> {
     let hash_data = vec![b"something".to_vec()];
     let fixtures = test_util::testdata_path().join("tsc2");
-    let handler = Arc::new(Mutex::new(MockSpecifierHandler {
-      fixtures,
-      ..Default::default()
-    }));
-    let mut builder = GraphBuilder::new(handler.clone(), None, None);
-    builder.add(specifier, false).await?;
-    let graph = Arc::new(Mutex::new(builder.get_graph()));
+    let mut loader = MockLoader { fixtures };
+    let graph = Arc::new(
+      deno_graph::create_graph(
+        vec![specifier.clone()],
+        false,
+        None,
+        &mut loader,
+        None,
+        None,
+        None,
+      )
+      .await,
+    );
     let config = TsConfig::new(json!({
       "allowJs": true,
       "checkJs": false,
@@ -695,12 +695,12 @@ mod tests {
   }
 
   #[test]
-  fn test_hash_data_url() {
+  fn test_hash_url() {
     let specifier = deno_core::resolve_url(
       "data:application/javascript,console.log(\"Hello%20Deno\");",
     )
     .unwrap();
-    assert_eq!(hash_data_url(&specifier, &MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
+    assert_eq!(hash_url(&specifier, &MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
   }
 
   #[test]

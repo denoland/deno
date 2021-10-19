@@ -10,8 +10,21 @@ const [libPrefix, libSuffix] = {
 const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 
 const resourcesPre = Deno.resources();
+
+// dlopen shouldn't panic
+try {
+  Deno.dlopen("cli/src/main.rs", {});
+} catch (_) {
+  console.log("dlopen doesn't panic");
+}
+
 const dylib = Deno.dlopen(libPath, {
   "print_something": { parameters: [], result: "void" },
+  "print_buffer": { parameters: ["buffer", "usize"], result: "void" },
+  "print_buffer2": {
+    parameters: ["buffer", "usize", "buffer", "usize"],
+    result: "void",
+  },
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "add_i32": { parameters: ["i32", "i32"], result: "i32" },
   "add_u64": { parameters: ["u64", "u64"], result: "u64" },
@@ -21,9 +34,18 @@ const dylib = Deno.dlopen(libPath, {
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
   "sleep_blocking": { parameters: ["u64"], result: "void", nonblocking: true },
+  "nonblocking_buffer": {
+    parameters: ["buffer", "usize"],
+    result: "void",
+    nonblocking: true,
+  },
 });
 
 dylib.symbols.print_something();
+const buffer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+const buffer2 = new Uint8Array([9, 10]);
+dylib.symbols.print_buffer(buffer, buffer.length);
+dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
 console.log(dylib.symbols.add_u32(123, 456));
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(123, 456));
@@ -34,6 +56,30 @@ console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
 
 // Test non blocking calls
+
+function deferred() {
+  let methods;
+  const promise = new Promise((resolve, reject) => {
+    methods = {
+      async resolve(value) {
+        await value;
+        resolve(value);
+      },
+      reject(reason) {
+        reject(reason);
+      },
+    };
+  });
+  return Object.assign(promise, methods);
+}
+
+const promise = deferred();
+const buffer3 = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+dylib.symbols.nonblocking_buffer(buffer3, buffer3.length).then(() => {
+  promise.resolve();
+});
+await promise;
+
 const start = performance.now();
 dylib.symbols.sleep_blocking(100).then(() => {
   console.log("After");

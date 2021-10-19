@@ -198,7 +198,7 @@ pub struct Flags {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
-  pub allow_ffi: Option<Vec<String>>,
+  pub allow_ffi: Option<Vec<PathBuf>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
@@ -324,7 +324,7 @@ impl Flags {
         args.push("--allow-ffi".to_string());
       }
       Some(ffi_allowlist) => {
-        let s = format!("--allow-ffi={}", ffi_allowlist.join(","));
+        let s = format!("--allow-ffi={}", join_paths(ffi_allowlist, ","));
         args.push(s);
       }
       _ => {}
@@ -1140,6 +1140,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .multiple(true)
         .required(false),
     )
+    .arg(watch_arg())
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1626,7 +1627,8 @@ fn seed_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn compat_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("compat")
     .long("compat")
-    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs'.")
+    .requires("unstable")
+    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs' and globals like 'process'.")
 }
 
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -1683,10 +1685,10 @@ fn config_arg<'a, 'b>() -> Arg<'a, 'b> {
     .long_help(
       "Load configuration file.
 Before 1.14 Deno only supported loading tsconfig.json that allowed
-to customise TypeScript compiler settings. 
+to customise TypeScript compiler settings.
 
-Starting with 1.14 configuration file can be used to configure different 
-subcommands like `deno lint` or `deno fmt`. 
+Starting with 1.14 configuration file can be used to configure different
+subcommands like `deno lint` or `deno fmt`.
 
 It's recommended to use `deno.json` or `deno.jsonc` as a filename.",
     )
@@ -1964,6 +1966,7 @@ fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
+  flags.watch = matches.is_present("watch");
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -2199,7 +2202,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 
   if let Some(ffi_wl) = matches.values_of("allow-ffi") {
-    let ffi_allowlist: Vec<String> = ffi_wl.map(ToString::to_string).collect();
+    let ffi_allowlist: Vec<PathBuf> = ffi_wl.map(PathBuf::from).collect();
     flags.allow_ffi = Some(ffi_allowlist);
     debug!("ffi allowlist: {:#?}", &flags.allow_ffi);
   }
@@ -4451,7 +4454,8 @@ mod tests {
 
   #[test]
   fn compat() {
-    let r = flags_from_vec(svec!["deno", "run", "--compat", "foo.js"]);
+    let r =
+      flags_from_vec(svec!["deno", "run", "--compat", "--unstable", "foo.js"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4459,6 +4463,7 @@ mod tests {
           script: "foo.js".to_string(),
         }),
         compat: true,
+        unstable: true,
         ..Flags::default()
       }
     );

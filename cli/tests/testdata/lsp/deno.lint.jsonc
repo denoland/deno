@@ -1,0 +1,8 @@
+{
+  "lint": {
+    "rules": {
+      "exclude": ["camelcase"],
+      "include": ["ban-untagged-todo"]
+    }
+  }
+}

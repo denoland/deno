@@ -28,7 +28,6 @@ use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
-use futures::Future;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -36,7 +35,6 @@ use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::mem::forget;
 use std::option::Option;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -44,7 +42,7 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResult)>>>;
+type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -1477,7 +1475,9 @@ impl JsRuntime {
       match pending_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some((promise_id, resp))) => {
+        Poll::Ready(Some((promise_id, op_id, resp))) => {
+          let tracker = &mut state.op_state.borrow_mut().tracker;
+          tracker.track_async_completed(op_id);
           async_responses.push((promise_id, resp));
         }
       };
@@ -1488,7 +1488,9 @@ impl JsRuntime {
       match unref_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some((promise_id, resp))) => {
+        Poll::Ready(Some((promise_id, op_id, resp))) => {
+          let tracker = &mut state.op_state.borrow_mut().tracker;
+          tracker.track_unref_completed(op_id);
           async_responses.push((promise_id, resp));
         }
       };
@@ -1608,6 +1610,7 @@ pub mod tests {
   use crate::ZeroCopyBuf;
   use futures::future::lazy;
   use std::ops::FnOnce;
+  use std::pin::Pin;
   use std::rc::Rc;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
@@ -1639,17 +1642,16 @@ pub mod tests {
     match test_state.mode {
       Mode::Async => {
         assert_eq!(control, 42);
-        let resp = (0, serialize_op_result(Ok(43), rc_op_state));
-        Op::Async(Box::pin(futures::future::ready(resp)))
+        let resp = (0, 1, serialize_op_result(Ok(43), rc_op_state));
+        Op::Async(OpCall::ready(resp))
       }
       Mode::AsyncZeroCopy(has_buffer) => {
         assert_eq!(buf.is_some(), has_buffer);
         if let Some(buf) = buf {
           assert_eq!(buf.len(), 1);
         }
-
-        let resp = serialize_op_result(Ok(43), rc_op_state);
-        Op::Async(Box::pin(futures::future::ready((0, resp))))
+        let resp = (0, 1, serialize_op_result(Ok(43), rc_op_state));
+        Op::Async(OpCall::ready(resp))
       }
     }
   }
@@ -1919,11 +1921,7 @@ pub mod tests {
 
   #[test]
   fn test_error_builder() {
-    fn op_err(
-      _: &mut OpState,
-      _: (),
-      _: Option<ZeroCopyBuf>,
-    ) -> Result<(), AnyError> {
+    fn op_err(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
       Err(custom_error("DOMExceptionOperationError", "abc"))
     }
 
@@ -2301,6 +2299,20 @@ assertEquals(1, notify_return_value);
         return isProxy(p) && !isProxy(o) && !isProxy(42);
       })()
     "#,
+      )
+      .unwrap();
+    let mut scope = runtime.handle_scope();
+    let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
+    assert!(all_true.is_true());
+  }
+
+  #[test]
+  fn test_binding_names() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let all_true: v8::Global<v8::Value> = runtime
+      .execute_script(
+        "binding_names.js",
+        "Deno.core.encode.toString() === 'function encode() { [native code] }'",
       )
       .unwrap();
     let mut scope = runtime.handle_scope();

@@ -93,7 +93,12 @@
       let body = null;
       if (typeof requestRid === "number") {
         SetPrototypeAdd(this.managedResources, requestRid);
-        body = createRequestBodyStream(this, requestRid);
+        // There might be a body, but we don't expose it for GET/HEAD requests.
+        // It will be closed automatically once the request has been handled and
+        // the response has been sent.
+        if (method !== "GET" && method !== "HEAD") {
+          body = createRequestBodyStream(this, requestRid);
+        }
       }
 
       const innerRequest = newInnerRequest(

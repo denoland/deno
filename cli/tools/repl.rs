@@ -655,6 +655,7 @@ impl ReplSession {
       media_type: deno_ast::MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
+      scope_analysis: false,
     })?;
 
     let transpiled_src = transpile(

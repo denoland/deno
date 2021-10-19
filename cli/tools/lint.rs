@@ -6,12 +6,13 @@
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
-use crate::colors;
 use crate::config_file::LintConfig;
+use crate::file_watcher::ResolutionResult;
+use crate::flags::LintFlags;
 use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext};
 use crate::tools::fmt::run_parallelized;
-use deno_ast::swc::parser::Syntax;
+use crate::{colors, file_watcher};
 use deno_ast::MediaType;
 use deno_core::error::{anyhow, generic_error, AnyError, JsStackFrame};
 use deno_core::serde_json;
@@ -31,6 +32,7 @@ use std::sync::{Arc, Mutex};
 
 static STDIN_FILE_NAME: &str = "_stdin.ts";
 
+#[derive(Clone, Debug)]
 pub enum LintReporterKind {
   Pretty,
   Json,
@@ -43,21 +45,26 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   }
 }
 
-pub async fn lint_files(
+pub async fn lint(
   maybe_lint_config: Option<LintConfig>,
-  rules_tags: Vec<String>,
-  rules_include: Vec<String>,
-  rules_exclude: Vec<String>,
-  args: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
-  json: bool,
+  lint_flags: LintFlags,
+  watch: bool,
 ) -> Result<(), AnyError> {
+  let LintFlags {
+    rules_tags,
+    rules_include,
+    rules_exclude,
+    files: args,
+    ignore,
+    json,
+    ..
+  } = lint_flags;
   // First, prepare final configuration.
   // Collect included and ignored files. CLI flags take precendence
   // over config file, ie. if there's `files.ignore` in config file
   // and `--ignore` CLI flag, only the flag value is taken into account.
   let mut include_files = args.clone();
-  let mut exclude_files = ignore;
+  let mut exclude_files = ignore.clone();
 
   if let Some(lint_config) = maybe_lint_config.as_ref() {
     if include_files.is_empty() {
@@ -79,6 +86,13 @@ pub async fn lint_files(
     }
   }
 
+  let reporter_kind = if json {
+    LintReporterKind::Json
+  } else {
+    LintReporterKind::Pretty
+  };
+
+  let has_error = Arc::new(AtomicBool::new(false));
   // Try to get configured rules. CLI flags take precendence
   // over config file, ie. if there's `rules.include` in config file
   // and `--rules-include` CLI flag, only the flag value is taken into account.
@@ -89,27 +103,82 @@ pub async fn lint_files(
     rules_exclude,
   )?;
 
-  let has_error = Arc::new(AtomicBool::new(false));
-
-  let reporter_kind = if json {
-    LintReporterKind::Json
-  } else {
-    LintReporterKind::Pretty
+  let resolver = |changed: Option<Vec<PathBuf>>| {
+    let files_changed = changed.is_some();
+    let result = collect_files(
+      &*include_files.clone(),
+      &*exclude_files.clone(),
+      is_supported_ext,
+    )
+    .map(|files| {
+      if let Some(paths) = changed {
+        files
+          .into_iter()
+          .filter(|path| paths.contains(path))
+          .collect::<Vec<_>>()
+      } else {
+        files
+      }
+    });
+    let paths_to_watch = args.clone();
+    async move {
+      if (files_changed || !watch)
+        && matches!(result, Ok(ref files) if files.is_empty())
+      {
+        ResolutionResult::Ignore
+      } else {
+        ResolutionResult::Restart {
+          paths_to_watch,
+          result,
+        }
+      }
+    }
   };
-  let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
 
-  let no_of_files_linted =
+  let operation = |paths: Vec<PathBuf>| async {
+    let target_files_len = paths.len();
+    let reporter_kind = reporter_kind.clone();
+    let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
+    run_parallelized(paths, {
+      let has_error = has_error.clone();
+      let lint_rules = lint_rules.clone();
+      let reporter_lock = reporter_lock.clone();
+      move |file_path| {
+        let r = lint_file(file_path.clone(), lint_rules.clone());
+        handle_lint_result(
+          &file_path.to_string_lossy(),
+          r,
+          reporter_lock.clone(),
+          has_error,
+        );
+
+        Ok(())
+      }
+    })
+    .await?;
+    reporter_lock.lock().unwrap().close(target_files_len);
+
+    Ok(())
+  };
+  if watch {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
+      return Err(generic_error(
+        "Lint watch on standard input is not supported.",
+      ));
+    }
+    file_watcher::watch_func(resolver, operation, "Lint").await?;
+  } else {
+    if args.len() == 1 && args[0].to_string_lossy() == "-" {
+      let reporter_lock =
+        Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
       let r = lint_stdin(lint_rules);
-
       handle_lint_result(
         STDIN_FILE_NAME,
         r,
         reporter_lock.clone(),
         has_error.clone(),
       );
-
-      1
+      reporter_lock.lock().unwrap().close(1);
     } else {
       let target_files =
         collect_files(&include_files, &exclude_files, is_supported_ext)
@@ -121,32 +190,12 @@ pub async fn lint_files(
             }
           })?;
       debug!("Found {} files", target_files.len());
-      let target_files_len = target_files.len();
-
-      run_parallelized(target_files, {
-        let reporter_lock = reporter_lock.clone();
-        let has_error = has_error.clone();
-        move |file_path| {
-          let r = lint_file(file_path.clone(), lint_rules.clone());
-          handle_lint_result(
-            &file_path.to_string_lossy(),
-            r,
-            reporter_lock,
-            has_error,
-          );
-          Ok(())
-        }
-      })
-      .await?;
-
-      target_files_len
+      operation(target_files).await?;
     };
-
-  reporter_lock.lock().unwrap().close(no_of_files_linted);
-  let has_error = has_error.load(Ordering::Relaxed);
-
-  if has_error {
-    std::process::exit(1);
+    let has_error = has_error.load(Ordering::Relaxed);
+    if has_error {
+      std::process::exit(1);
+    }
   }
 
   Ok(())
@@ -181,27 +230,26 @@ pub fn print_rules_list(json: bool) {
 }
 
 pub fn create_linter(
-  syntax: Syntax,
-  rules: Arc<Vec<Box<dyn LintRule>>>,
+  media_type: MediaType,
+  rules: Vec<Arc<dyn LintRule>>,
 ) -> Linter {
   LinterBuilder::default()
     .ignore_file_directive("deno-lint-ignore-file")
     .ignore_diagnostic_directive("deno-lint-ignore")
-    .syntax(syntax)
+    .media_type(media_type)
     .rules(rules)
     .build()
 }
 
 fn lint_file(
   file_path: PathBuf,
-  lint_rules: Arc<Vec<Box<dyn LintRule>>>,
+  lint_rules: Vec<Arc<dyn LintRule>>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
   let media_type = MediaType::from(&file_path);
-  let syntax = deno_ast::get_syntax(media_type);
 
-  let linter = create_linter(syntax, lint_rules);
+  let linter = create_linter(media_type, lint_rules);
 
   let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
 
@@ -212,15 +260,14 @@ fn lint_file(
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
 fn lint_stdin(
-  lint_rules: Arc<Vec<Box<dyn LintRule>>>,
+  lint_rules: Vec<Arc<dyn LintRule>>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
     return Err(generic_error("Failed to read from stdin"));
   }
 
-  let syntax = deno_ast::get_syntax(MediaType::TypeScript);
-  let linter = create_linter(syntax, lint_rules);
+  let linter = create_linter(MediaType::TypeScript, lint_rules);
 
   let (_, file_diagnostics) =
     linter.lint(STDIN_FILE_NAME.to_string(), source_code.clone())?;
@@ -434,12 +481,12 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
   });
 }
 
-fn get_configured_rules(
+pub(crate) fn get_configured_rules(
   maybe_lint_config: Option<&LintConfig>,
   rules_tags: Vec<String>,
   rules_include: Vec<String>,
   rules_exclude: Vec<String>,
-) -> Result<Arc<Vec<Box<dyn LintRule>>>, AnyError> {
+) -> Result<Vec<Arc<dyn LintRule>>, AnyError> {
   if maybe_lint_config.is_none()
     && rules_tags.is_empty()
     && rules_include.is_empty()

@@ -2,7 +2,6 @@
 
 use crate::ops_tls as tls;
 use deno_core::error::not_supported;
-use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::op_async;
 use deno_core::AsyncMutFuture;
@@ -166,16 +165,15 @@ impl Resource for UnixStreamResource {
 async fn op_read_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: Option<ZeroCopyBuf>,
+  mut buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
-  let buf = &mut buf.ok_or_else(null_opbuf)?;
   let resource = state.borrow().resource_table.get_any(rid)?;
   let nread = if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.read(buf).await?
+    s.read(&mut buf).await?
   } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.read(buf).await?
+    s.read(&mut buf).await?
   } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.read(buf).await?
+    s.read(&mut buf).await?
   } else {
     return Err(not_supported());
   };
@@ -185,16 +183,15 @@ async fn op_read_async(
 async fn op_write_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: Option<ZeroCopyBuf>,
+  buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
-  let buf = &buf.ok_or_else(null_opbuf)?;
   let resource = state.borrow().resource_table.get_any(rid)?;
   let nwritten = if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.write(buf).await?
+    s.write(&buf).await?
   } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.write(buf).await?
+    s.write(&buf).await?
   } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.write(buf).await?
+    s.write(&buf).await?
   } else {
     return Err(not_supported());
   };

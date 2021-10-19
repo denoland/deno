@@ -260,7 +260,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: j-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: l-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -276,7 +276,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            j-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            l-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -292,7 +292,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            j-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            l-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
@@ -336,7 +336,7 @@ jobs:
           (matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'debug' && !matrix.use_sysroot
         run: cargo build --locked --all-targets
-    
+
       - name: Build fastci
         if: (matrix.job == 'test' && matrix.profile == 'fastci')
         run: cargo build --locked --all-targets
@@ -455,7 +455,8 @@ jobs:
       - name: Run web platform tests (debug)
         if: |
           startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&
-          matrix.profile == 'debug'
+          matrix.profile == 'debug' &&
+          github.ref == 'refs/heads/main'
         env:
           DENO_BIN: ./target/debug/deno
         run: |

@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
-use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
@@ -30,6 +29,7 @@ use hyper::http;
 use hyper::server::conn::Http;
 use hyper::service::Service as HyperService;
 use hyper::Body;
+use hyper::Method;
 use hyper::Request;
 use hyper::Response;
 use serde::Deserialize;
@@ -244,13 +244,11 @@ fn prepare_next_request(
   let url = req_url(&req, scheme, addr)?;
 
   let is_websocket = is_websocket_request(&req);
-  let has_body = if let Some(exact_size) = req.size_hint().exact() {
-    exact_size > 0
-  } else {
-    true
-  };
+  let can_have_body = !matches!(*req.method(), Method::GET | Method::HEAD);
+  let has_body =
+    is_websocket || (can_have_body && req.size_hint().exact() != Some(0));
 
-  let maybe_request_rid = if is_websocket || has_body {
+  let maybe_request_rid = if has_body {
     let request_rid = state.resource_table.add(RequestResource {
       conn_rid,
       inner: AsyncRefCell::new(RequestOrStreamReader::Request(Some(req))),
@@ -302,7 +300,7 @@ fn req_headers(
 ) -> Vec<(ByteString, ByteString)> {
   // We treat cookies specially, because we don't want them to get them
   // mangled by the `Headers` object in JS. What we do is take all cookie
-  // headers and concat them into a single cookie header, seperated by
+  // headers and concat them into a single cookie header, separated by
   // semicolons.
   let cookie_sep = "; ".as_bytes();
   let mut cookies = vec![];
@@ -513,10 +511,8 @@ async fn op_http_response_close(
 async fn op_http_request_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: Option<ZeroCopyBuf>,
+  mut data: ZeroCopyBuf,
 ) -> Result<usize, AnyError> {
-  let mut data = data.ok_or_else(null_opbuf)?;
-
   let resource = state
     .borrow()
     .resource_table
@@ -565,9 +561,8 @@ async fn op_http_request_read(
 async fn op_http_response_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: Option<ZeroCopyBuf>,
+  data: ZeroCopyBuf,
 ) -> Result<(), AnyError> {
-  let buf = data.ok_or_else(null_opbuf)?;
   let resource = state
     .borrow()
     .resource_table
@@ -580,7 +575,7 @@ async fn op_http_response_write(
 
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
 
-  let mut send_data_fut = body.send_data(Vec::from(&*buf).into()).boxed_local();
+  let mut send_data_fut = body.send_data(data.to_vec().into()).boxed_local();
 
   poll_fn(|cx| {
     let r = send_data_fut.poll_unpin(cx).map_err(AnyError::from);
