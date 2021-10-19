@@ -20,6 +20,7 @@ use deno_ast::swc::parser::lexer::Lexer;
 use deno_ast::swc::parser::StringInput;
 use deno_ast::swc::transforms::fixer;
 use deno_ast::swc::transforms::helpers;
+use deno_ast::swc::transforms::hygiene;
 use deno_ast::swc::transforms::pass::Optional;
 use deno_ast::swc::transforms::proposals;
 use deno_ast::swc::transforms::react;
@@ -360,6 +361,7 @@ fn fold_program(
     ),
     Optional::new(jsx_pass, options.transform_jsx),
     fixer(Some(comments)),
+    hygiene(),
   );
 
   helpers::HELPERS.set(&helpers::Helpers::new(false), || {
