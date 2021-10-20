@@ -25,7 +25,7 @@
     "cli/tests/testdata/badly_formatted.json",
     "cli/tests/testdata/byte_order_mark.ts",
     "cli/tests/testdata/fmt/*",
-    "cli/tests/testdata/test/typecheck_test_crlf.md",
+    "cli/tests/testdata/test/doc_only/typecheck_test_crlf.md",
     "cli/tsc/*typescript.js",
     "test_util/std",
     "test_util/wpt",
