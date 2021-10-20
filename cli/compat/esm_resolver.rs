@@ -198,7 +198,7 @@ fn finalize_resolution(
   } else if !is_file {
     return Err(errors::err_module_not_found(
       &path.display().to_string(),
-      &to_file_path_string(base),
+      base.as_str(),
       "module",
     ));
   }
