@@ -14,4 +14,4 @@
 /cli/dts/* linguist-vendored
 
 # Keep Windows line endings in cross-platform doc check test file
-/cli/tests/testdata/test/doc_only/typecheck_test_crlf.md eol=crlf
+/cli/tests/testdata/test/typecheck_test_crlf.md eol=crlf
