@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
+use crate::ops::OpCall;
 use crate::serialize_op_result;
 use crate::Op;
 use crate::OpFn;
@@ -35,7 +36,7 @@ pub fn void_op_async() -> Box<OpFn> {
     let op_id = payload.op_id;
     let pid = payload.promise_id;
     let op_result = serialize_op_result(Ok(()), state);
-    Op::Async(Box::pin(futures::future::ready((pid, op_id, op_result))))
+    Op::Async(OpCall::ready((pid, op_id, op_result)))
   })
 }
 
@@ -127,7 +128,7 @@ where
     use crate::futures::FutureExt;
     let fut = op_fn(state.clone(), a, b)
       .map(move |result| (pid, op_id, serialize_op_result(result, state)));
-    Op::Async(Box::pin(fut))
+    Op::Async(OpCall::eager(fut))
   })
 }
 
@@ -159,7 +160,7 @@ where
     use crate::futures::FutureExt;
     let fut = op_fn(state.clone(), a, b)
       .map(move |result| (pid, op_id, serialize_op_result(result, state)));
-    Op::AsyncUnref(Box::pin(fut))
+    Op::AsyncUnref(OpCall::eager(fut))
   })
 }
 

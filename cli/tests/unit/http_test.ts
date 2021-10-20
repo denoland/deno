@@ -892,15 +892,13 @@ unitTest(
       respondPromise,
     ]);
 
+    httpConn.close();
     listener.close();
 
     assert(errors.length >= 1);
     for (const error of errors) {
       assertEquals(error.name, "Http");
-      assertEquals(
-        error.message,
-        "connection closed before message completed",
-      );
+      assert(error.message.includes("connection"));
     }
   },
 );
@@ -975,44 +973,29 @@ unitTest(
 unitTest(
   { permissions: { net: true } },
   async function droppedConnSenderNoPanic() {
-    async function server(listener: Deno.Listener) {
+    async function server() {
+      const listener = Deno.listen({ port: 8000 });
       const conn = await listener.accept();
       const http = Deno.serveHttp(conn);
-
-      for (;;) {
-        const req = await http.nextRequest();
-        if (req == null) break;
-
-        nextloop()
-          .then(() => {
-            http.close();
-            return req.respondWith(new Response("boom"));
-          })
-          .catch(() => {});
-      }
-
+      const evt = await http.nextRequest();
+      http.close();
       try {
-        http.close();
+        await evt!.respondWith(new Response("boom"));
       } catch {
-        "nop";
+        // Ignore error.
       }
-
       listener.close();
     }
 
     async function client() {
-      const resp = await fetch("http://127.0.0.1:8000/");
-      await resp.body?.cancel();
+      try {
+        const resp = await fetch("http://127.0.0.1:8000/");
+        await resp.body?.cancel();
+      } catch {
+        // Ignore error
+      }
     }
 
-    function nextloop() {
-      return new Promise((resolve) => setTimeout(resolve, 0));
-    }
-
-    async function main() {
-      const listener = Deno.listen({ port: 8000 });
-      await Promise.all([server(listener), client()]);
-    }
-    await main();
+    await Promise.all([server(), client()]);
   },
 );
