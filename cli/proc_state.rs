@@ -3,6 +3,7 @@
 use crate::cache;
 use crate::colors;
 use crate::compat;
+use crate::compat::NodeEsmResolver;
 use crate::config_file::ConfigFile;
 use crate::deno_dir;
 use crate::emit;
@@ -51,31 +52,35 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct ProcState(Arc<Inner>);
 
+#[derive(Default)]
+struct GraphData {
+  modules: HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>,
+  // because the graph detects resolution issues early, but is build and dropped
+  // during the `prepare_module_load` method, we need to extract out the module
+  // resolution map so that those errors can be surfaced at the appropriate time
+  resolution_map:
+    HashMap<ModuleSpecifier, HashMap<String, deno_graph::Resolved>>,
+  // in some cases we want to provide the span where the resolution error
+  // occurred but need to surface it on load, but on load we don't know who the
+  // referrer and span was, so we need to cache those
+  resolved_map: HashMap<ModuleSpecifier, deno_graph::Span>,
+  // deno_graph detects all sorts of issues at build time (prepare_module_load)
+  // but if they are errors at that stage, the don't cause the correct behaviors
+  // so we cache the error and then surface it when appropriate (e.g. load)
+  maybe_graph_error: Option<deno_graph::ModuleGraphError>,
+}
+
 pub struct Inner {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
-  modules: Arc<Mutex<HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>>>,
+  graph_data: Arc<Mutex<GraphData>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_config_file: Option<ConfigFile>,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
-  // deno_graph detects all sorts of issues at build time (prepare_module_load)
-  // but if they are errors at that stage, the don't cause the correct behaviors
-  // so we cache the error and then surface it when appropriate (e.g. load)
-  pub(crate) maybe_graph_error:
-    Arc<Mutex<Option<deno_graph::ModuleGraphError>>>,
-  // because the graph detects resolution issues early, but is build and dropped
-  // during the `prepare_module_load` method, we need to extract out the module
-  // resolution map so that those errors can be surfaced at the appropriate time
-  resolution_map:
-    Arc<Mutex<HashMap<ModuleSpecifier, HashMap<String, deno_graph::Resolved>>>>,
-  // in some cases we want to provide the span where the resolution error
-  // occurred but need to surface it on load, but on load we don't know who the
-  // referrer and span was, so we need to cache those
-  resolved_map: Arc<Mutex<HashMap<ModuleSpecifier, deno_graph::Span>>>,
   pub root_cert_store: Option<RootCertStore>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
@@ -195,7 +200,7 @@ impl ProcState {
         None
       };
 
-    let mut maybe_import_map: Option<ImportMap> =
+    let maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
         Some(import_map_url) => {
@@ -217,32 +222,6 @@ impl ProcState {
         }
       };
 
-    if flags.compat {
-      let mut import_map = match maybe_import_map {
-        Some(import_map) => import_map,
-        None => {
-          // INFO: we're creating an empty import map, with its specifier pointing
-          // to `CWD/node_import_map.json` to make sure the map still works as expected.
-          let import_map_specifier =
-            std::env::current_dir()?.join("node_import_map.json");
-          ImportMap::from_json(import_map_specifier.to_str().unwrap(), "{}")
-            .unwrap()
-        }
-      };
-      let node_builtins = compat::get_mapped_node_builtins();
-      let diagnostics = import_map.update_imports(node_builtins)?;
-
-      if !diagnostics.is_empty() {
-        log::info!("Some Node built-ins were not added to the import map:");
-        for diagnostic in diagnostics {
-          log::info!("  - {}", diagnostic);
-        }
-        log::info!("If you want to use Node built-ins provided by Deno remove listed specifiers from \"imports\" mapping in the import map file.");
-      }
-
-      maybe_import_map = Some(import_map);
-    }
-
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
     let maybe_inspector_server = maybe_inspect_host.map(|host| {
       Arc::new(InspectorServer::new(host, version::get_user_agent()))
@@ -258,20 +237,23 @@ impl ProcState {
       coverage_dir,
       flags,
       file_fetcher,
-      modules: Default::default(),
+      graph_data: Default::default(),
       lockfile,
       maybe_config_file,
       maybe_import_map,
       maybe_inspector_server,
-      maybe_graph_error: Default::default(),
-      resolution_map: Default::default(),
-      resolved_map: Default::default(),
       root_cert_store: Some(root_cert_store.clone()),
       blob_store,
       broadcast_channel,
       shared_array_buffer_store,
       compiled_wasm_module_store,
     })))
+  }
+
+  pub(crate) fn take_graph_error(
+    &self,
+  ) -> Option<deno_graph::ModuleGraphError> {
+    self.graph_data.lock().maybe_graph_error.take()
   }
 
   /// Return any imports that should be brought into the scope of the module
@@ -316,14 +298,29 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports();
-    let maybe_resolver =
+    let node_resolver = NodeEsmResolver;
+    let import_map_resolver =
       self.maybe_import_map.as_ref().map(ImportMapResolver::new);
+    let maybe_resolver = if self.flags.compat {
+      Some(node_resolver.as_resolver())
+    } else {
+      import_map_resolver.as_ref().map(|im| im.as_resolver())
+    };
+    // TODO(bartlomieju): this is very make-shift, is there an existing API
+    // that we could include it like with "maybe_imports"?
+    let roots = if self.flags.compat {
+      let mut r = vec![compat::GLOBAL_URL.clone()];
+      r.extend(roots);
+      r
+    } else {
+      roots
+    };
     let graph = deno_graph::create_graph(
       roots,
       is_dynamic,
       maybe_imports,
       &mut cache,
-      maybe_resolver.as_ref().map(|im| im.as_resolver()),
+      maybe_resolver,
       maybe_locker,
       None,
     )
@@ -335,8 +332,8 @@ impl ProcState {
     // Determine any modules that have already been emitted this session and
     // should be skipped.
     let reload_exclusions: HashSet<ModuleSpecifier> = {
-      let modules = self.modules.lock();
-      modules.keys().cloned().collect()
+      let graph_data = self.graph_data.lock();
+      graph_data.modules.keys().cloned().collect()
     };
 
     let config_type = if self.flags.no_check {
@@ -419,26 +416,23 @@ impl ProcState {
       }
     }
 
-    // we iterate over the graph, looking for any modules that were emitted, or
-    // should be loaded as their un-emitted source and add them to the in memory
-    // cache of modules for loading by deno_core.
     {
-      let mut modules = self.modules.lock();
-      modules.extend(emit::to_module_sources(graph.as_ref(), &cache));
-    }
+      let mut graph_data = self.graph_data.lock();
+      // we iterate over the graph, looking for any modules that were emitted, or
+      // should be loaded as their un-emitted source and add them to the in memory
+      // cache of modules for loading by deno_core.
+      graph_data
+        .modules
+        .extend(emit::to_module_sources(graph.as_ref(), &cache));
 
-    // since we can't store the graph in proc state, because proc state needs to
-    // be thread safe because of the need to provide source map resolution and
-    // the graph needs to not be thread safe (due to wasmbind_gen constraints),
-    // we have no choice but to extract out other meta data from the graph to
-    // provide the correct loading behaviors for CLI
-    {
-      let mut resolution_map = self.resolution_map.lock();
-      resolution_map.extend(graph.resolution_map());
-    }
-    {
-      let mut self_maybe_graph_error = self.maybe_graph_error.lock();
-      *self_maybe_graph_error = maybe_graph_error;
+      // since we can't store the graph in proc state, because proc state needs to
+      // be thread safe because of the need to provide source map resolution and
+      // the graph needs to not be thread safe (due to wasmbind_gen constraints),
+      // we have no choice but to extract out other meta data from the graph to
+      // provide the correct loading behaviors for CLI
+      graph_data.resolution_map.extend(graph.resolution_map());
+
+      graph_data.maybe_graph_error = maybe_graph_error;
     }
 
     // any updates to the lockfile should be updated now
@@ -455,17 +449,22 @@ impl ProcState {
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
-    let resolution_map = self.resolution_map.lock();
-    if let Some((_, Some(map))) = deno_core::resolve_url_or_path(referrer)
-      .ok()
-      .map(|s| (s.clone(), resolution_map.get(&s)))
-    {
-      if let Some(resolved) = map.get(specifier) {
+    if let Ok(s) = deno_core::resolve_url_or_path(referrer) {
+      let maybe_resolved = {
+        let graph_data = self.graph_data.lock();
+        let resolved_specifier = graph_data
+          .resolution_map
+          .get(&s)
+          .and_then(|map| map.get(specifier));
+        resolved_specifier.cloned()
+      };
+
+      if let Some(resolved) = maybe_resolved {
         match resolved {
           Some(Ok((specifier, span))) => {
-            let mut resolved_map = self.resolved_map.lock();
-            resolved_map.insert(specifier.clone(), span.clone());
-            return Ok(specifier.clone());
+            let mut graph_data = self.graph_data.lock();
+            graph_data.resolved_map.insert(specifier.clone(), span);
+            return Ok(specifier);
           }
           Some(Err(err)) => {
             return Err(custom_error(
@@ -477,6 +476,7 @@ impl ProcState {
         }
       }
     }
+
     // FIXME(bartlomieju): hacky way to provide compatibility with repl
     let referrer = if referrer.is_empty() && self.flags.repl {
       deno_core::DUMMY_SPECIFIER
@@ -507,60 +507,74 @@ impl ProcState {
         .unwrap_or_else(|| "<none>".to_string()),
       is_dynamic
     );
-    let modules = self.modules.lock();
-    modules
-      .get(&specifier)
-      .map(|r| match r {
-        Ok(module_source) => Ok(module_source.clone()),
-        Err(err) => {
-          // this is the "pending" error we will return
-          let err = if let Some(error_class) = get_custom_error_class(err) {
-            if error_class == "NotFound" && maybe_referrer.is_some() && !is_dynamic {
-              let resolved_map = self.resolved_map.lock();
-              // in situations where we were to try to load a module that wasn't
-              // emitted and we can't run the original source code (it isn't)
-              // JavaScript, we will load a blank module instead.  This is
-              // usually caused by people exporting type only exports and not
-              // type checking.
-              if let Some(span) = resolved_map.get(&specifier) {
-                log::warn!("{}: Cannot load module \"{}\".\n    at {}\n  If the source module contains only types, use `import type` and `export type` to import it instead.", colors::yellow("warning"), specifier, span);
-                return Ok(ModuleSource {
-                  code: "".to_string(),
-                  module_url_found: specifier.to_string(),
-                  module_url_specified: specifier.to_string(),
-                });
-              }
-            }
-            custom_error(error_class, err.to_string())
-          } else {
-            anyhow!(err.to_string())
-          };
-          // if there is a pending graph error though we haven't returned, we
-          // will return that one
-          let mut maybe_graph_error = self.maybe_graph_error.lock();
-          if let Some(graph_error) = maybe_graph_error.take() {
-            log::debug!("returning cached graph error");
-            let resolved_map = self.resolved_map.lock();
-            if let Some(span) = resolved_map.get(&specifier) {
-              if !span.specifier.as_str().contains("$deno") {
-                return Err(custom_error(get_module_graph_error_class(&graph_error), format!("{}\n    at {}", graph_error, span)));
-              }
-            }
-            Err(graph_error.into())
-          } else {
-            Err(err)
-          }
+
+    {
+      let graph_data = self.graph_data.lock();
+      if let Some(module_result) = graph_data.modules.get(&specifier) {
+        if let Ok(module_source) = module_result {
+          return Ok(module_source.clone());
         }
-      })
-      .unwrap_or_else(|| {
+      } else {
         if maybe_referrer.is_some() && !is_dynamic {
-          let resolved_map = self.resolved_map.lock();
-          if let Some(span) = resolved_map.get(&specifier) {
-            return Err(custom_error("NotFound", format!("Cannot load module \"{}\".\n    at {}", specifier, span)));
+          if let Some(span) = graph_data.resolved_map.get(&specifier) {
+            return Err(custom_error(
+              "NotFound",
+              format!("Cannot load module \"{}\".\n    at {}", specifier, span),
+            ));
           }
         }
-        Err(custom_error("NotFound", format!("Cannot load module \"{}\".", specifier)))
-      })
+        return Err(custom_error(
+          "NotFound",
+          format!("Cannot load module \"{}\".", specifier),
+        ));
+      }
+    }
+
+    // If we're this far it means that there was an error for this module load.
+    let mut graph_data = self.graph_data.lock();
+    let err = graph_data
+      .modules
+      .get(&specifier)
+      .unwrap()
+      .as_ref()
+      .unwrap_err();
+    // this is the "pending" error we will return
+    let err = if let Some(error_class) = get_custom_error_class(err) {
+      if error_class == "NotFound" && maybe_referrer.is_some() && !is_dynamic {
+        // in situations where we were to try to load a module that wasn't
+        // emitted and we can't run the original source code (it isn't)
+        // JavaScript, we will load a blank module instead.  This is
+        // usually caused by people exporting type only exports and not
+        // type checking.
+        if let Some(span) = graph_data.resolved_map.get(&specifier) {
+          log::warn!("{}: Cannot load module \"{}\".\n    at {}\n  If the source module contains only types, use `import type` and `export type` to import it instead.", colors::yellow("warning"), specifier, span);
+          return Ok(ModuleSource {
+            code: "".to_string(),
+            module_url_found: specifier.to_string(),
+            module_url_specified: specifier.to_string(),
+          });
+        }
+      }
+      custom_error(error_class, err.to_string())
+    } else {
+      anyhow!(err.to_string())
+    };
+    // if there is a pending graph error though we haven't returned, we
+    // will return that one
+    if let Some(graph_error) = graph_data.maybe_graph_error.take() {
+      log::debug!("returning cached graph error");
+      if let Some(span) = graph_data.resolved_map.get(&specifier) {
+        if !span.specifier.as_str().contains("$deno") {
+          return Err(custom_error(
+            get_module_graph_error_class(&graph_error),
+            format!("{}\n    at {}", graph_error, span),
+          ));
+        }
+      }
+      Err(graph_error.into())
+    } else {
+      Err(err)
+    }
   }
 
   // TODO(@kitsonk) this should be refactored to get it from the module graph
@@ -622,8 +636,14 @@ impl SourceMapGetter for ProcState {
         // Do NOT use .lines(): it skips the terminating empty line.
         // (due to internally using .split_terminator() instead of .split())
         let lines: Vec<&str> = out.source.split('\n').collect();
-        assert!(lines.len() > line_number);
-        lines[line_number].to_string()
+        if line_number >= lines.len() {
+          format!(
+            "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
+            crate::colors::yellow("Warning"), line_number + 1,
+          )
+        } else {
+          lines[line_number].to_string()
+        }
       })
     } else {
       None

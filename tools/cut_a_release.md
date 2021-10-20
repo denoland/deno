@@ -65,8 +65,7 @@ cut.**
 9. If you are doing a patch release, answer `y` to the _Increment patch?_
    prompt.
 
-10. Use the output of the above command to update `Releases.md` (removing
-    `refactor`, `test` and `doc` commits)
+10. Use the output of the above command to update `Releases.md`
 
 11. Create a PR for these changes.
 
