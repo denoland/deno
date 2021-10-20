@@ -29,3 +29,20 @@ fn globals_in_repl() {
   );
   assert!(out.contains("true"));
 }
+
+#[test]
+#[should_panic]
+fn node_compat_url() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--compat", "--unstable", "--quiet"],
+    None,
+    Some(vec![(
+      "NODE_COMPAT_URL".to_string(),
+      "file:///non_existent/".to_string(),
+    )]),
+    false,
+  );
+  assert!(out.is_empty());
+  assert!(!err.is_empty());
+}
