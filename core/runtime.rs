@@ -139,6 +139,14 @@ pub type SharedArrayBufferStore =
 
 pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
+pub(crate) struct SerializationCallbacks {
+  pub(crate) serialize: Option<v8::Global<v8::Function>>,
+  pub(crate) deserialize: Option<v8::Global<v8::Function>>,
+  // TODO(andreubotella): `transfer` and `transfer_recv`
+}
+
+type InterfaceMap = HashMap<String, SerializationCallbacks>;
+
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
@@ -161,6 +169,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub(crate) interface_map: InterfaceMap,
   waker: AtomicWaker,
 }
 
@@ -357,6 +366,7 @@ impl JsRuntime {
       pending_unref_ops: FuturesUnordered::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
+      interface_map: HashMap::new(),
       op_state: op_state.clone(),
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),

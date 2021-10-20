@@ -52,6 +52,7 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
     .js(include_js_files!(
       prefix "deno:ext/web",
       "00_infra.js",
+      "00_interfaces.js",
       "01_dom_exception.js",
       "01_mimesniff.js",
       "02_event.js",

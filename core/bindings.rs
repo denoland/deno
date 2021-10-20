@@ -4,6 +4,7 @@ use crate::error::is_instance_of_error;
 use crate::error::AnyError;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
+use crate::runtime::SerializationCallbacks;
 use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
@@ -79,6 +80,9 @@ lazy_static::lazy_static! {
       },
       v8::ExternalReference {
         function: set_wasm_streaming_callback.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: register_interface.map_fn_to()
       }
     ]);
 }
@@ -165,6 +169,7 @@ pub fn initialize_context<'s>(
     "setWasmStreamingCallback",
     set_wasm_streaming_callback,
   );
+  set_func(scope, core_val, "registerInterface", register_interface);
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
@@ -750,15 +755,67 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     object: v8::Local<'s, v8::Object>,
     value_serializer: &mut dyn v8::ValueSerializerHelper,
   ) -> Option<bool> {
+    // Serializable host objects are encoded as a string value (the interface
+    // name) followed by a value (given by the interface's callback).
+    // Transferable host objects are encoded as a null value followed by a u32
+    // (the index into `self.host_objects`).
+    // TODO(andreubotella): This will have to be reworked when we implement
+    // transfer using serialization callbacks.
+
+    // Is it transferable?
     if let Some(host_objects) = self.host_objects {
       for i in 0..host_objects.length() {
         let value = host_objects.get_index(scope, i).unwrap();
         if value == object {
+          value_serializer
+            .write_value(scope.get_current_context(), v8::null(scope).into())
+            .unwrap();
           value_serializer.write_uint32(i);
           return Some(true);
         }
       }
     }
+
+    // Is it serializable?
+    let interface_name = object.get_internal_field(scope, 0).unwrap();
+    if let Ok(interface_name) =
+      serde_v8::from_v8::<String>(scope, interface_name)
+    {
+      let state_rc = JsRuntime::state(scope);
+      let state = state_rc.borrow();
+      if let Some(serialize_cb) = state
+        .interface_map
+        .get(&interface_name)
+        .and_then(|callbacks| callbacks.serialize.as_ref())
+      {
+        value_serializer
+          .write_value(
+            scope.get_current_context(),
+            v8::String::new(scope, &interface_name).unwrap().into(),
+          )
+          .unwrap();
+
+        let scope = &mut v8::TryCatch::new(scope);
+        let this = v8::undefined(scope);
+        // Question mark operator in case the callback throws an exception.
+        let result =
+          serialize_cb
+            .get(scope)
+            .call(scope, this.into(), &[object.into()])?;
+
+        // If the callback threw any exception, we swallow it and throw a
+        // DataCloneError with the same message.
+        if let Some(message) = scope.message() {
+          let string_message = message.get(scope);
+          self.throw_data_clone_error(scope, string_message);
+          return None;
+        } else {
+          return value_serializer
+            .write_value(scope.get_current_context(), result);
+        }
+      }
+    }
+
     let message = v8::String::new(scope, "Unsupported object type").unwrap();
     self.throw_data_clone_error(scope, message);
     None
@@ -804,14 +861,58 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
     scope: &mut v8::HandleScope<'s>,
     value_deserializer: &mut dyn v8::ValueDeserializerHelper,
   ) -> Option<v8::Local<'s, v8::Object>> {
-    if let Some(host_objects) = self.host_objects {
-      let mut i = 0;
-      if !value_deserializer.read_uint32(&mut i) {
+    let interface = match value_deserializer
+      .read_value(scope.get_current_context())
+    {
+      Some(s) => s,
+      None => {
+        let message =
+          v8::String::new(scope, "Failed to deserialize host object").unwrap();
+        let error = v8::Exception::error(scope, message);
+        scope.throw_exception(error);
         return None;
       }
-      let maybe_value = host_objects.get_index(scope, i);
-      if let Some(value) = maybe_value {
-        return value.to_object(scope);
+    };
+
+    if interface.is_null() {
+      // Transferable.
+      if let Some(host_objects) = self.host_objects {
+        let mut i = 0;
+        if !value_deserializer.read_uint32(&mut i) {
+          return None;
+        }
+        let maybe_value = host_objects.get_index(scope, i);
+        if let Some(value) = maybe_value {
+          return value.to_object(scope);
+        }
+      }
+    } else if let Ok(interface) = serde_v8::from_v8::<String>(scope, interface)
+    {
+      // Serializable.
+      let state_rc = JsRuntime::state(scope);
+      let state = state_rc.borrow();
+      if let Some(deserialize_cb) = state
+        .interface_map
+        .get(&interface)
+        .and_then(|c| c.deserialize.as_ref())
+      {
+        let value = value_deserializer.read_value(scope.get_current_context());
+        if let Some(value) = value {
+          let scope = &mut v8::TryCatch::new(scope);
+          let this: v8::Local<v8::Value> = v8::undefined(scope).into();
+          let result = deserialize_cb.get(scope).call(scope, this, &[value]);
+          // If the callback threw, get the message and use it for the DataCloneError.
+          if scope.has_caught() {
+            let message = scope.message().unwrap().get(scope);
+            let error = v8::Exception::error(scope, message);
+            scope.throw_exception(error);
+            return None;
+          } else if let Ok(result) =
+            v8::Local::<v8::Object>::try_from(result.unwrap())
+          {
+            return Some(result);
+          }
+        }
       }
     }
 
@@ -1052,14 +1153,108 @@ fn queue_microtask(
 
 fn create_host_object(
   scope: &mut v8::HandleScope,
-  _args: v8::FunctionCallbackArguments,
+  args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
+  let interface_name: String = match serde_v8::from_v8(scope, args.get(0)) {
+    Ok(s) => s,
+    Err(_) => {
+      throw_type_error(scope, "Invalid argument");
+      return;
+    }
+  };
+
+  // Make sure the interface name is registered
+  {
+    let state_rc = JsRuntime::state(scope);
+    if !state_rc
+      .borrow()
+      .interface_map
+      .contains_key(&interface_name)
+    {
+      throw_type_error(scope, "Unknown interface");
+      return;
+    }
+  }
+
   let template = v8::ObjectTemplate::new(scope);
   template.set_internal_field_count(1);
   if let Some(obj) = template.new_instance(scope) {
+    let field = v8::String::new(scope, &interface_name).unwrap();
+    obj.set_internal_field(0, field.into());
     rv.set(obj.into());
   };
+}
+
+fn register_interface(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  struct Callback<'s>(pub v8::Local<'s, v8::Function>);
+  impl Callback<'_> {
+    pub fn global(&self, scope: &mut v8::Isolate) -> v8::Global<v8::Function> {
+      v8::Global::new(scope, self.0)
+    }
+  }
+  impl<'de> Deserialize<'de> for Callback<'_> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+      D: serde::Deserializer<'de>,
+    {
+      let value = serde_v8::Value::deserialize(deserializer)?.v8_value;
+      match v8::Local::<v8::Function>::try_from(value) {
+        Ok(function) => Ok(Callback(function)),
+        Err(_) => {
+          Err(serde::de::Error::custom("Expected function".to_string()))
+        }
+      }
+    }
+  }
+
+  #[derive(Deserialize)]
+  struct InterfaceDictionary<'s> {
+    name: String,
+    serialize: Option<Callback<'s>>,
+    deserialize: Option<Callback<'s>>,
+    // TODO(andreubotella): `transfer` and `transfer_recv`
+  }
+  impl InterfaceDictionary<'_> {
+    pub fn to_serialization_callbacks(
+      &self,
+      scope: &mut v8::Isolate,
+    ) -> SerializationCallbacks {
+      SerializationCallbacks {
+        serialize: self.serialize.as_ref().map(|cb| cb.global(scope)),
+        deserialize: self.deserialize.as_ref().map(|cb| cb.global(scope)),
+      }
+    }
+  }
+
+  let interface =
+    match serde_v8::from_v8::<InterfaceDictionary>(scope, args.get(0)) {
+      Ok(s) => s,
+      Err(_) => {
+        throw_type_error(scope, "Invalid argument");
+        return;
+      }
+    };
+
+  let state_rc = JsRuntime::state(scope);
+  if state_rc
+    .borrow()
+    .interface_map
+    .contains_key(&interface.name)
+  {
+    throw_type_error(scope, "Interface is already registered");
+    return;
+  }
+
+  let callbacks = interface.to_serialization_callbacks(scope);
+  state_rc
+    .borrow_mut()
+    .interface_map
+    .insert(interface.name, callbacks);
 }
 
 /// Called by V8 during `JsRuntime::instantiate_module`.

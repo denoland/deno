@@ -24,6 +24,7 @@ delete Object.prototype.__proto__;
     PromisePrototypeThen,
     TypeError,
   } = window.__bootstrap.primordials;
+  const interfaces = window.__bootstrap.interfaces;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
@@ -227,6 +228,7 @@ delete Object.prototype.__proto__;
     );
     // deno-lint-ignore prefer-primordials
     Error.prepareStackTrace = prepareStackTrace;
+    interfaces.initInterfaces();
   }
 
   function registerErrors() {

@@ -10,6 +10,7 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const {
     ArrayPrototypeSlice,
     Error,
@@ -17,8 +18,10 @@
     ObjectDefineProperty,
     ObjectEntries,
     ObjectSetPrototypeOf,
+    Symbol,
     SymbolFor,
   } = window.__bootstrap.primordials;
+  const { registerInterface } = window.__bootstrap.interfaces;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
 
@@ -78,27 +81,35 @@
     DataCloneError: DATA_CLONE_ERR,
   };
 
+  const _message = Symbol("message");
+  const _name = Symbol("name");
+  const _code = Symbol("code");
+
   // Defined in WebIDL 4.3.
   // https://heycam.github.io/webidl/#idl-DOMException
   class DOMException {
-    #message = "";
-    #name = "";
-    #code = 0;
+    [_message] = "";
+    [_name] = "";
+    [_code] = 0;
 
     constructor(message = "", name = "Error") {
-      this.#message = webidl.converters.DOMString(message, {
+      const self = core.createHostObject("DOMException");
+      ObjectSetPrototypeOf(self, DOMException.prototype);
+      self[webidl.brand] = webidl.brand;
+
+      self[_message] = webidl.converters.DOMString(message, {
         prefix: "Failed to construct 'DOMException'",
         context: "Argument 1",
       });
-      this.#name = webidl.converters.DOMString(name, {
+      self[_name] = webidl.converters.DOMString(name, {
         prefix: "Failed to construct 'DOMException'",
         context: "Argument 2",
       });
-      this.#code = nameToCodeMapping[this.#name] ?? 0;
+      self[_code] = nameToCodeMapping[self[_name]] ?? 0;
 
-      const error = new Error(this.#message);
+      const error = new Error(self[_message]);
       error.name = "DOMException";
-      ObjectDefineProperty(this, "stack", {
+      ObjectDefineProperty(self, "stack", {
         value: error.stack,
         writable: true,
         configurable: true,
@@ -107,27 +118,32 @@
       // `DOMException` isn't a native error, so `Error.prepareStackTrace()` is
       // not called when accessing `.stack`, meaning our structured stack trace
       // hack doesn't apply. This patches it in.
-      ObjectDefineProperty(this, "__callSiteEvals", {
+      ObjectDefineProperty(self, "__callSiteEvals", {
         value: ArrayPrototypeSlice(error.__callSiteEvals, 1),
         configurable: true,
       });
+
+      return self;
     }
 
     get message() {
-      return this.#message;
+      webidl.assertBranded(this, DOMException);
+      return this[_message];
     }
 
     get name() {
-      return this.#name;
+      webidl.assertBranded(this, DOMException);
+      return this[_name];
     }
 
     get code() {
-      return this.#code;
+      webidl.assertBranded(this, DOMException);
+      return this[_code];
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
       if (this instanceof DOMException) {
-        return `DOMException: ${this.#message}`;
+        return `DOMException: ${this[_message]}`;
       } else {
         return inspect(consoleInternal.createFilteredInspectProxy({
           object: this,
@@ -179,6 +195,37 @@
     ObjectDefineProperty(DOMException, key, desc);
     ObjectDefineProperty(DOMException.prototype, key, desc);
   }
+
+  registerInterface({
+    name: "DOMException",
+    serialize(self) {
+      return {
+        message: self[_message],
+        name: self[_name],
+        code: self[_code],
+        stack: self.stack,
+        callSiteEvals: self.__callSiteEvals,
+      };
+    },
+    deserialize(data) {
+      const ret = core.createHostObject("DOMException");
+      ObjectSetPrototypeOf(ret, DOMException.prototype);
+      ret[webidl.brand] = webidl.brand;
+      ret[_message] = data.message;
+      ret[_name] = data.name;
+      ret[_code] = data.code;
+      ObjectDefineProperty(ret, "stack", {
+        value: data.stack,
+        writable: true,
+        configurable: true,
+      });
+      ObjectDefineProperty(ret, "__callSiteEvals", {
+        value: ArrayPrototypeSlice(data.__callSiteEvals, 1),
+        configurable: true,
+      });
+      return ret;
+    },
+  });
 
   window.__bootstrap.domException = { DOMException };
 })(this);

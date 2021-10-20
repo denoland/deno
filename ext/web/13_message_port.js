@@ -12,6 +12,7 @@
   const core = window.Deno.core;
   const { Interrupted } = core;
   const webidl = window.__bootstrap.webidl;
+  const { registerInterface } = window.__bootstrap.interfaces;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { defineEventHandler } = window.__bootstrap.event;
   const { DOMException } = window.__bootstrap.domException;
@@ -71,7 +72,7 @@
    * @returns {MessagePort}
    */
   function createMessagePort(id) {
-    const port = core.createHostObject();
+    const port = core.createHostObject("MessagePort");
     ObjectSetPrototypeOf(port, MessagePort.prototype);
     port[webidl.brand] = webidl.brand;
     setEventTargetData(port);
@@ -184,6 +185,8 @@
   defineEventHandler(MessagePort.prototype, "messageerror");
 
   webidl.configurePrototype(MessagePort);
+
+  registerInterface({ name: "MessagePort" });
 
   /**
    * @returns {[number, number]}
