@@ -168,6 +168,22 @@ fn de_map() {
   })
 }
 
+#[test]
+fn de_string_or_buffer() {
+  dedo("'hello'", |scope, v| {
+    let sob: serde_v8::StringOrBuffer = serde_v8::from_v8(scope, v).unwrap();
+    assert_eq!(sob.as_slice(), &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
+  });
+
+  dedo(
+    "(Uint8Array.from([0x68, 0x65, 0x6C, 0x6C, 0x6F]))",
+    |scope, v| {
+      let sob: serde_v8::StringOrBuffer = serde_v8::from_v8(scope, v).unwrap();
+      assert_eq!(sob.as_slice(), &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
+    },
+  );
+}
+
 ////
 // JSON tests: serde_json::Value compatibility
 ////
