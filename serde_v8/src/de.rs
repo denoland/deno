@@ -132,6 +132,16 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       ValueType::String => self.deserialize_string(visitor),
       ValueType::Array => self.deserialize_seq(visitor),
       ValueType::Object => self.deserialize_map(visitor),
+      // Map to Vec<u8> when deserialized via deserialize_any
+      // e.g: for untagged enums or StringOrBuffer
+      ValueType::ArrayBufferView => {
+        v8::Local::<v8::ArrayBufferView>::try_from(self.input)
+          .and_then(|view| {
+            magic::zero_copy_buf::ZeroCopyBuf::try_new(self.scope, view)
+          })
+          .map_err(|_| Error::ExpectedInteger)
+          .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
+      }
     }
   }
 
