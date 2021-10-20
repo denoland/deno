@@ -31,10 +31,9 @@ fn globals_in_repl() {
 }
 
 #[test]
-#[should_panic]
 fn node_compat_url() {
   let (out, err) = util::run_and_collect_output_with_args(
-    true,
+    false,
     vec!["repl", "--compat", "--unstable", "--quiet"],
     None,
     Some(vec![(
@@ -45,4 +44,5 @@ fn node_compat_url() {
   );
   assert!(out.is_empty());
   assert!(!err.is_empty());
+  assert!(err.contains("file:///non_existent/node/global.ts"));
 }
