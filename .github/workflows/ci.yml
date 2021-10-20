@@ -448,7 +448,7 @@ jobs:
       # Since all tests are skipped when we're building a tagged commit
       # this is a minimal check to ensure that binary is not corrupted
       - name: Check Deno Binary
-        if: matrix.profile == 'release'
+        if: matrix.profile == 'release' && startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: target/release/deno eval "console.log(1+2)" | grep 3
         env:
