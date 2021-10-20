@@ -19,6 +19,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use hyper::body::HttpBody;
 use hyper::header::CONNECTION;
@@ -396,22 +397,6 @@ struct RespondArgs(
   // headers:
   Vec<(ByteString, ByteString)>,
 );
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum StringOrBuffer {
-  String(String),
-  Buffer(ZeroCopyBuf),
-}
-
-impl StringOrBuffer {
-  fn into_bytes(self) -> Vec<u8> {
-    match self {
-      Self::String(s) => s.into_bytes(),
-      Self::Buffer(b) => Vec::from(&*b),
-    }
-  }
-}
 
 async fn op_http_response(
   state: Rc<RefCell<OpState>>,
