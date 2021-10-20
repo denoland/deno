@@ -129,7 +129,8 @@ fn fmt_ignore_unexplicit_files() {
 }
 
 itest!(fmt_check_tests_dir {
-  args: "fmt --check ./ --ignore=.test_coverage,fmt/fmt_with_config/,test/doc_only/",
+  args:
+    "fmt --check ./ --ignore=.test_coverage,fmt/fmt_with_config/,test/doc_only/",
   output: "fmt/expected_fmt_check_tests_dir.out",
   exit_code: 1,
 });
