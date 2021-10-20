@@ -38,7 +38,7 @@ fn node_compat_url() {
     vec!["repl", "--compat", "--unstable", "--quiet"],
     None,
     Some(vec![(
-      "NODE_COMPAT_URL".to_string(),
+      "DENO_NODE_COMPAT_URL".to_string(),
       "file:///non_existent/".to_string(),
     )]),
     false,

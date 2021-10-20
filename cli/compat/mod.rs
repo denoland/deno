@@ -62,7 +62,7 @@ static SUPPORTED_MODULES: &[&str] = &[
 ];
 
 lazy_static::lazy_static! {
-  static ref NODE_COMPAT_URL: String = std::env::var("NODE_COMPAT_URL").map(String::into).ok()
+  static ref NODE_COMPAT_URL: String = std::env::var("DENO_NODE_COMPAT_URL").map(String::into).ok()
     .unwrap_or_else(|| STD_URL_STR.to_string());
   static ref GLOBAL_URL_STR: String = format!("{}node/global.ts", NODE_COMPAT_URL.as_str());
   pub(crate) static ref GLOBAL_URL: Url = Url::parse(&GLOBAL_URL_STR).unwrap();
