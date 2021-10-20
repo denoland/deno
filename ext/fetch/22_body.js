@@ -287,7 +287,7 @@
 
   /**
    * https://fetch.spec.whatwg.org/#concept-body-package-data
-   * @param {Uint8Array} bytes
+   * @param {Uint8Array | string} bytes
    * @param {"ArrayBuffer" | "Blob" | "FormData" | "JSON" | "text"} type
    * @param {MimeType | null} [mimeType]
    */
