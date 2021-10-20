@@ -3,14 +3,10 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { build } = window.__bootstrap.build;
   const { errors } = window.__bootstrap.errors;
   const {
-    Error,
-    Promise,
-    PromisePrototypeThen,
-    PromiseResolve,
-    SymbolAsyncIterator,
+    Set,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   function bindSignal(signo) {
@@ -25,77 +21,72 @@
     core.opSync("op_signal_unbind", rid);
   }
 
-  function signal(signo) {
-    if (build.os === "windows") {
-      throw new Error("Signal API is not implemented for Windows");
-    }
-    return new SignalStream(signo);
+  // Stores signal handlers, has type of
+  // `Record<string, { rid: number | undefined, handlers: Set<() => void> }`
+  const handlers = {};
+
+  /** Gets the signal handlers and resource data of the given signal */
+  function getSignalData(signo) {
+    return handlers[signo] ??
+      (handlers[signo] = { rid: undefined, handlers: new Set() });
   }
 
-  class SignalStream {
-    #disposed = false;
-    #pollingPromise = PromiseResolve(false);
-    #rid = 0;
-
-    constructor(signo) {
-      this.#rid = bindSignal(signo);
-      this.#loop();
+  function addSignalListener(signo, handler) {
+    if (typeof handler !== "function") {
+      throw new TypeError(
+        `Signal listener must be a function. "${typeof handler}" is given.`,
+      );
     }
 
-    #pollSignal = async () => {
-      let done;
-      try {
-        done = await pollSignal(this.#rid);
-      } catch (error) {
-        if (error instanceof errors.BadResource) {
-          return true;
+    const sigData = getSignalData(signo);
+    sigData.handlers.add(handler);
+
+    if (!sigData.rid) {
+      // If signal resource doesn't exist, create it.
+      // The program starts listening to this signal
+      sigData.rid = bindSignal(signo);
+      loop(sigData);
+    }
+  }
+
+  function removeSignalListener(signo, handler) {
+    if (typeof handler !== "function") {
+      throw new TypeError(
+        `Signal listener must be a function. "${typeof handler}" is given.`,
+      );
+    }
+
+    const sigData = getSignalData(signo);
+    sigData.handlers.delete(handler);
+
+    if (sigData.handlers.size === 0 && sigData.rid) {
+      unbindSignal(sigData.rid);
+      sigData.rid = undefined;
+    }
+  }
+
+  async function loop(sigData) {
+    try {
+      while (sigData.rid) {
+        if (await pollSignal(sigData.rid)) {
+          return;
         }
-        throw error;
+        sigData.handlers.forEach((handler) => {
+          handler?.();
+        });
       }
-      return done;
-    };
-
-    #loop = async () => {
-      do {
-        this.#pollingPromise = this.#pollSignal();
-      } while (!(await this.#pollingPromise) && !this.#disposed);
-    };
-
-    then(
-      f,
-      g,
-    ) {
-      const p = PromisePrototypeThen(this.#pollingPromise, (done) => {
-        if (done) {
-          // If pollingPromise returns true, then
-          // this signal stream is finished and the promise API
-          // should never be resolved.
-          return new Promise(() => {});
-        }
+    } catch (e) {
+      if (e instanceof errors.BadResource) {
+        // listener resource is already released
         return;
-      });
-      return PromisePrototypeThen(p, f, g);
-    }
-
-    async next() {
-      return { done: await this.#pollingPromise, value: undefined };
-    }
-
-    [SymbolAsyncIterator]() {
-      return this;
-    }
-
-    dispose() {
-      if (this.#disposed) {
-        throw new Error("The stream has already been disposed.");
       }
-      this.#disposed = true;
-      unbindSignal(this.#rid);
+      // Unknown error, shouldn't happen
+      throw e;
     }
   }
 
   window.__bootstrap.signals = {
-    signal,
-    SignalStream,
+    addSignalListener,
+    removeSignalListener,
   };
 })(this);
