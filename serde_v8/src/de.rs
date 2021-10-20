@@ -218,11 +218,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    if self.input.is_null_or_undefined() {
-      visitor.visit_unit()
-    } else {
-      Err(Error::ExpectedNull)
-    }
+    visitor.visit_unit()
   }
 
   fn deserialize_unit_struct<V>(
