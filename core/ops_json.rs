@@ -16,28 +16,14 @@ use std::rc::Rc;
 ///
 /// It's mainly intended for embedders who want to disable ops, see ./examples/disable_ops.rs
 pub fn void_op_sync() -> Box<OpFn> {
-  // TODO(@AaronO): use this simpler implementation after changing serde_v8 to allow all values
-  // to deserialize to the unit type instead of failing with `ExpectedNull`
-  // op_sync(|_, _: (), _: ()| Ok(()))
-  Box::new(move |state, _| -> Op {
-    let op_result = serialize_op_result(Ok(()), state);
-    Op::Sync(op_result)
-  })
+  op_sync(|_, _: (), _: ()| Ok(()))
 }
 
 /// A helper function that returns an async NOP OpFn
 ///
 /// It's mainly intended for embedders who want to disable ops, see ./examples/disable_ops.rs
 pub fn void_op_async() -> Box<OpFn> {
-  // TODO(@AaronO): use this simpler implementation after changing serde_v8 to allow all values
-  // to deserialize to the unit type instead of failing with `ExpectedNull`
-  // op_async(|_, _: (), _: ()| futures::future::ok(()))
-  Box::new(move |state, payload| -> Op {
-    let op_id = payload.op_id;
-    let pid = payload.promise_id;
-    let op_result = serialize_op_result(Ok(()), state);
-    Op::Async(OpCall::ready((pid, op_id, op_result)))
-  })
+  op_async(|_, _: (), _: ()| futures::future::ok(()))
 }
 
 /// Creates an op that passes data synchronously using JSON.

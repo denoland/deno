@@ -62,9 +62,11 @@ static SUPPORTED_MODULES: &[&str] = &[
 ];
 
 lazy_static::lazy_static! {
-  static ref GLOBAL_URL_STR: String = format!("{}node/global.ts", STD_URL_STR);
+  static ref NODE_COMPAT_URL: String = std::env::var("DENO_NODE_COMPAT_URL").map(String::into).ok()
+    .unwrap_or_else(|| STD_URL_STR.to_string());
+  static ref GLOBAL_URL_STR: String = format!("{}node/global.ts", NODE_COMPAT_URL.as_str());
   pub(crate) static ref GLOBAL_URL: Url = Url::parse(&GLOBAL_URL_STR).unwrap();
-  static ref MODULE_URL_STR: String = format!("{}node/module.ts", STD_URL_STR);
+  static ref MODULE_URL_STR: String = format!("{}node/module.ts", NODE_COMPAT_URL.as_str());
   pub(crate) static ref MODULE_URL: Url = Url::parse(&MODULE_URL_STR).unwrap();
   static ref COMPAT_IMPORT_URL: Url = Url::parse("flags:compat").unwrap();
 }
@@ -76,7 +78,8 @@ pub(crate) fn get_node_imports() -> Vec<(Url, Vec<String>)> {
 
 fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   if SUPPORTED_MODULES.contains(&specifier) {
-    let module_url = format!("{}node/{}.ts", STD_URL_STR, specifier);
+    let module_url =
+      format!("{}node/{}.ts", NODE_COMPAT_URL.as_str(), specifier);
     Some(Url::parse(&module_url).unwrap())
   } else {
     None
