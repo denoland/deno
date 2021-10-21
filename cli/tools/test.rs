@@ -18,7 +18,6 @@ use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
-use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
@@ -33,6 +32,7 @@ use deno_core::serde_json::json;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::tokio_util::run_basic;
 use log::Level;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
@@ -782,7 +782,7 @@ async fn test_specifiers(
             sender,
           );
 
-          tokio_util::run_basic(future)
+          run_basic(future)
         });
 
         join_handle.join().unwrap()
