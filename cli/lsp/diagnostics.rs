@@ -7,7 +7,6 @@ use super::sources::Sources;
 use super::tsc;
 
 use crate::diagnostics;
-use crate::tokio_util::create_basic_runtime;
 
 use analysis::ResolvedDependency;
 use deno_core::error::anyhow;
@@ -15,6 +14,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
 use lspower::lsp;
 use std::collections::HashMap;

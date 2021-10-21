@@ -18,7 +18,6 @@ use super::text::LineIndex;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::TsConfig;
-use crate::tokio_util::create_basic_runtime;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 
@@ -40,6 +39,7 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
+use deno_runtime::tokio_util::create_basic_runtime;
 use log::warn;
 use lspower::lsp;
 use regex::Captures;

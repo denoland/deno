@@ -30,7 +30,6 @@ mod resolver;
 mod source_maps;
 mod standalone;
 mod text_encoding;
-mod tokio_util;
 mod tools;
 mod tsc;
 mod unix_util;
@@ -77,6 +76,7 @@ use deno_core::ModuleSpecifier;
 use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::tokio_util::run_basic;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -1371,7 +1371,7 @@ pub fn main() {
   let args: Vec<String> = env::args().collect();
   let standalone_res = match standalone::extract_standalone(args.clone()) {
     Ok(Some((metadata, bundle))) => {
-      tokio_util::run_basic(standalone::run(bundle, metadata))
+      run_basic(standalone::run(bundle, metadata))
     }
     Ok(None) => Ok(()),
     Err(err) => Err(err),
@@ -1399,5 +1399,5 @@ pub fn main() {
 
   logger::init(flags.log_level);
 
-  unwrap_or_exit(tokio_util::run_basic(get_subcommand(flags)));
+  unwrap_or_exit(run_basic(get_subcommand(flags)));
 }
