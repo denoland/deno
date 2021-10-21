@@ -21,45 +21,45 @@
     core.opSync("op_signal_unbind", rid);
   }
 
-  // Stores signal handlers, has type of
-  // `Record<string, { rid: number | undefined, handlers: Set<() => void> }`
-  const handlers = {};
+  // Stores signal listeners and resource data. This has type of
+  // `Record<string, { rid: number | undefined, listeners: Set<() => void> }`
+  const signalData = {};
 
   /** Gets the signal handlers and resource data of the given signal */
   function getSignalData(signo) {
-    return handlers[signo] ??
-      (handlers[signo] = { rid: undefined, handlers: new Set() });
+    return signalData[signo] ??
+      (signalData[signo] = { rid: undefined, listeners: new Set() });
   }
 
-  function addSignalListener(signo, handler) {
-    if (typeof handler !== "function") {
+  function checkSignalListenerType(listener) {
+    if (typeof listener !== "function") {
       throw new TypeError(
-        `Signal listener must be a function. "${typeof handler}" is given.`,
+        `Signal listener must be a function. "${typeof listener}" is given.`,
       );
     }
+  }
+
+  function addSignalListener(signo, listener) {
+    checkSignalListenerType(listener);
 
     const sigData = getSignalData(signo);
-    sigData.handlers.add(handler);
+    sigData.listeners.add(listener);
 
     if (!sigData.rid) {
       // If signal resource doesn't exist, create it.
-      // The program starts listening to this signal
+      // The program starts listening to the signal
       sigData.rid = bindSignal(signo);
       loop(sigData);
     }
   }
 
-  function removeSignalListener(signo, handler) {
-    if (typeof handler !== "function") {
-      throw new TypeError(
-        `Signal listener must be a function. "${typeof handler}" is given.`,
-      );
-    }
+  function removeSignalListener(signo, listener) {
+    checkSignalListenerType(listener);
 
     const sigData = getSignalData(signo);
-    sigData.handlers.delete(handler);
+    sigData.listeners.delete(listener);
 
-    if (sigData.handlers.size === 0 && sigData.rid) {
+    if (sigData.listeners.size === 0 && sigData.rid) {
       unbindSignal(sigData.rid);
       sigData.rid = undefined;
     }
@@ -71,16 +71,16 @@
         if (await pollSignal(sigData.rid)) {
           return;
         }
-        sigData.handlers.forEach((handler) => {
-          handler?.();
-        });
+        for (const listener of sigData.listeners) {
+          listener();
+        }
       }
     } catch (e) {
       if (e instanceof errors.BadResource) {
         // listener resource is already released
         return;
       }
-      // Unknown error, shouldn't happen
+      // Unknown error. This shouldn't happen
       throw e;
     }
   }
