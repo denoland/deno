@@ -198,7 +198,7 @@ unitTest(
     ignore: Deno.build.os === "windows",
     permissions: { run: true },
   },
-  async function signalInvalidHandlerTest() {
+  function signalInvalidHandlerTest() {
     assertThrows(() => {
       // deno-lint-ignore no-explicit-any
       Deno.addSignalListener("SIGINT", "handler" as any);
