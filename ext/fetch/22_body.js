@@ -294,7 +294,7 @@
   function packageData(bytes, type, mimeType) {
     switch (type) {
       case "ArrayBuffer":
-        return bytes.buffer;
+        return chunkToU8(bytes).buffer;
       case "Blob":
         return new Blob([bytes], {
           type: mimeType !== null ? mimesniff.serializeMimeType(mimeType) : "",
