@@ -93,6 +93,10 @@ cut.**
     must match the CLI tag; you don't need to create dedicated commit for that
     purpose, it's enough to tag the latest commit in that repo.
 
+21. For minor releases: make sure https://github.com/mdn/browser-compat-data has
+    been updated to reflect Web API changes in this release. Usually done ahead
+    of time by @lucacasonato.
+
 ## Updating `deno_docker`
 
 1. Open a PR on the `deno_docker` repo that bumps the Deno version in all
