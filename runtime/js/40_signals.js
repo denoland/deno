@@ -3,7 +3,6 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { errors } = window.__bootstrap.errors;
   const {
     Set,
     TypeError,
@@ -66,22 +65,13 @@
   }
 
   async function loop(sigData) {
-    try {
-      while (sigData.rid) {
-        if (await pollSignal(sigData.rid)) {
-          return;
-        }
-        for (const listener of sigData.listeners) {
-          listener();
-        }
-      }
-    } catch (e) {
-      if (e instanceof errors.BadResource) {
-        // listener resource is already released
+    while (sigData.rid) {
+      if (await pollSignal(sigData.rid)) {
         return;
       }
-      // Unknown error. This shouldn't happen
-      throw e;
+      for (const listener of sigData.listeners) {
+        listener();
+      }
     }
   }
 
