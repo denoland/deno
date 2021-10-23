@@ -417,6 +417,7 @@
             });
             break;
           }
+          case "closed":
           case "close": {
             this[_readyState] = CLOSED;
 

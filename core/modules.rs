@@ -722,6 +722,7 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::ops::OpCall;
   use crate::serialize_op_result;
   use crate::JsRuntime;
   use crate::Op;
@@ -1009,7 +1010,7 @@ mod tests {
       let (control, _): (u8, ()) = payload.deserialize().unwrap();
       assert_eq!(control, 42);
       let resp = (0, 1, serialize_op_result(Ok(43), state));
-      Op::Async(Box::pin(futures::future::ready(resp)))
+      Op::Async(OpCall::ready(resp))
     };
 
     let mut runtime = JsRuntime::new(RuntimeOptions {

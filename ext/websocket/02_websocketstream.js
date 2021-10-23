@@ -261,6 +261,7 @@
                       });
                       break;
                     }
+                    case "closed":
                     case "close": {
                       if (this[_closing]) {
                         this[_closed].resolve(value);

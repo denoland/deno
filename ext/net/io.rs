@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops_tls as tls;
+use crate::ops_tls::TlsStreamResource;
 use deno_core::error::not_supported;
 use deno_core::error::AnyError;
 use deno_core::op_async;
@@ -107,18 +107,6 @@ pub type TcpStreamResource =
 impl Resource for TcpStreamResource {
   fn name(&self) -> Cow<str> {
     "tcpStream".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel_read_ops();
-  }
-}
-
-pub type TlsStreamResource = FullDuplexResource<tls::ReadHalf, tls::WriteHalf>;
-
-impl Resource for TlsStreamResource {
-  fn name(&self) -> Cow<str> {
-    "tlsStream".into()
   }
 
   fn close(self: Rc<Self>) {

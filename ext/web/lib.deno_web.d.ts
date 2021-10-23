@@ -186,26 +186,29 @@ declare interface TextDecodeOptions {
   stream?: boolean;
 }
 
-declare class TextDecoder {
-  constructor(label?: string, options?: TextDecoderOptions);
-
+interface TextDecoder {
   /** Returns encoding's name, lowercased. */
   readonly encoding: string;
   /** Returns `true` if error mode is "fatal", and `false` otherwise. */
   readonly fatal: boolean;
   /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-  readonly ignoreBOM = false;
+  readonly ignoreBOM: boolean;
 
   /** Returns the result of running encoding's decoder. */
   decode(input?: BufferSource, options?: TextDecodeOptions): string;
 }
+
+declare var TextDecoder: {
+  prototype: TextDecoder;
+  new (label?: string, options?: TextDecoderOptions): TextDecoder;
+};
 
 declare interface TextEncoderEncodeIntoResult {
   read: number;
   written: number;
 }
 
-declare class TextEncoder {
+interface TextEncoder {
   /** Returns "utf-8". */
   readonly encoding: "utf-8";
   /** Returns the result of running UTF-8's encoder. */
@@ -213,26 +216,40 @@ declare class TextEncoder {
   encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
 }
 
-declare class TextDecoderStream {
+declare var TextEncoder: {
+  prototype: TextEncoder;
+  new (): TextEncoder;
+};
+
+interface TextDecoderStream {
   /** Returns encoding's name, lowercased. */
   readonly encoding: string;
   /** Returns `true` if error mode is "fatal", and `false` otherwise. */
   readonly fatal: boolean;
   /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-  readonly ignoreBOM = false;
-  constructor(label?: string, options?: TextDecoderOptions);
+  readonly ignoreBOM: boolean;
   readonly readable: ReadableStream<string>;
   readonly writable: WritableStream<BufferSource>;
   readonly [Symbol.toStringTag]: string;
 }
 
-declare class TextEncoderStream {
+declare var TextDecoderStream: {
+  prototype: TextDecoderStream;
+  new (label?: string, options?: TextDecoderOptions): TextDecoderStream;
+};
+
+interface TextEncoderStream {
   /** Returns "utf-8". */
   readonly encoding: "utf-8";
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<string>;
   readonly [Symbol.toStringTag]: string;
 }
+
+declare var TextEncoderStream: {
+  prototype: TextEncoderStream;
+  new (): TextEncoderStream;
+};
 
 /** A controller object that allows you to abort one or more DOM requests as and
  * when desired. */
@@ -493,18 +510,25 @@ interface QueuingStrategy<T = any> {
 
 /** This Streams API interface provides a built-in byte length queuing strategy
  * that can be used when constructing streams. */
-declare class CountQueuingStrategy implements QueuingStrategy {
-  constructor(options: { highWaterMark: number });
+interface CountQueuingStrategy extends QueuingStrategy {
   highWaterMark: number;
   size(chunk: any): 1;
 }
 
-declare class ByteLengthQueuingStrategy
-  implements QueuingStrategy<ArrayBufferView> {
-  constructor(options: { highWaterMark: number });
+declare var CountQueuingStrategy: {
+  prototype: CountQueuingStrategy;
+  new (options: { highWaterMark: number }): CountQueuingStrategy;
+};
+
+interface ByteLengthQueuingStrategy extends QueuingStrategy<ArrayBufferView> {
   highWaterMark: number;
   size(chunk: ArrayBufferView): number;
 }
+
+declare var ByteLengthQueuingStrategy: {
+  prototype: ByteLengthQueuingStrategy;
+  new (options: { highWaterMark: number }): ByteLengthQueuingStrategy;
+};
 
 /** This Streams API interface represents a readable stream of byte data. The
  * Fetch API offers a concrete instance of a ReadableStream through the body
@@ -590,6 +614,8 @@ interface WritableStreamDefaultController {
   error(error?: any): void;
 }
 
+declare var WritableStreamDefaultController: WritableStreamDefaultController;
+
 /** This Streams API interface is the object returned by
  * WritableStream.getWriter() and once created locks the < writer to the
  * WritableStream ensuring that no other streams can write to the underlying
@@ -629,6 +655,8 @@ interface TransformStreamDefaultController<O = any> {
   error(reason?: any): void;
   terminate(): void;
 }
+
+declare var TransformStreamDefaultController: TransformStreamDefaultController;
 
 interface Transformer<I = any, O = any> {
   flush?: TransformStreamDefaultControllerCallback<O>;

@@ -117,10 +117,10 @@ unitTest(
     const listener = Deno.listen({ port: 4501 });
     const p = listener.accept();
     listener.close();
+    // TODO(piscisaureus): the error type should be `Interrupted` here, which
+    // gets thrown, but then ext/net catches it and rethrows `BadResource`.
     await assertRejects(
-      async () => {
-        await p;
-      },
+      () => p,
       Deno.errors.BadResource,
       "Listener has been closed",
     );
@@ -141,11 +141,8 @@ unitTest(
     const p = listener.accept();
     listener.close();
     await assertRejects(
-      async () => {
-        await p;
-      },
-      Deno.errors.BadResource,
-      "Listener has been closed",
+      () => p,
+      Deno.errors.Interrupted,
     );
   },
 );
@@ -173,27 +170,29 @@ unitTest(
   },
 );
 
-// TODO(jsouto): Enable when tokio updates mio to v0.7!
 unitTest(
-  { ignore: true, permissions: { read: true, write: true } },
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
   async function netUnixConcurrentAccept() {
     const filePath = await Deno.makeTempFile();
     const listener = Deno.listen({ transport: "unix", path: filePath });
     let acceptErrCount = 0;
     const checkErr = (e: Error) => {
-      if (e.message === "Listener has been closed") {
+      if (e instanceof Deno.errors.Interrupted) { // "operation canceled"
         assertEquals(acceptErrCount, 1);
-      } else if (e.message === "Another accept task is ongoing") {
+      } else if (e instanceof Deno.errors.Busy) { // "Listener already in use"
         acceptErrCount++;
       } else {
-        throw new Error("Unexpected error message");
+        throw e;
       }
     };
     const p = listener.accept().catch(checkErr);
     const p1 = listener.accept().catch(checkErr);
     await Promise.race([p, p1]);
     listener.close();
-    await [p, p1];
+    await Promise.all([p, p1]);
     assertEquals(acceptErrCount, 1);
   },
 );
@@ -500,11 +499,7 @@ unitTest(
 );
 
 unitTest(
-  {
-    // FIXME(bartlomieju)
-    ignore: true,
-    permissions: { net: true },
-  },
+  { permissions: { net: true } },
   async function netListenAsyncIterator() {
     const addr = { hostname: "127.0.0.1", port: 3500 };
     const listener = Deno.listen(addr);
@@ -590,8 +585,8 @@ unitTest(
           await conn.write(new Uint8Array([1, 2, 3]));
         }
       } catch (err) {
-        assert(!!err);
-        assert(err instanceof Deno.errors.BadResource);
+        assert(err);
+        assert(err instanceof Deno.errors.Interrupted);
       }
     }
 
