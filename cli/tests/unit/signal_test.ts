@@ -172,12 +172,13 @@ unitTest(
   },
 );
 
+// This tests that pending op_signal_poll doesn't block the runtime from exiting the process.
 unitTest(
   {
     ignore: Deno.build.os === "windows",
     permissions: { run: true, read: true },
   },
-  async function signalStreamExitTest() {
+  async function canExitWhileListeningToSignal() {
     const p = Deno.run({
       cmd: [
         Deno.execPath(),
@@ -192,7 +193,6 @@ unitTest(
   },
 );
 
-// This tests that pending op_signal_poll doesn't block the runtime from exiting the process.
 unitTest(
   {
     ignore: Deno.build.os === "windows",
