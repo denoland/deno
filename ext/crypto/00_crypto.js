@@ -143,6 +143,11 @@
   };
 
   const aesJwkAlg = {
+    "AES-CTR": {
+      128: "A128CTR",
+      192: "A192CTR",
+      256: "A256CTR",
+    },
     "AES-CBC": {
       128: "A128CBC",
       192: "A192CBC",
@@ -1728,194 +1733,11 @@
               throw new DOMException("Not implemented", "NotSupportedError");
           }
         }
-        case "AES-CTR": {
-          switch (format) {
-            // 2.
-            case "raw": {
-              // 1.
-              const data = innerKey.data;
-              // 2.
-              return data.buffer;
-            }
-            case "jwk": {
-              // 1-3.
-              const jwk = {
-                kty: "oct",
-                k: unpaddedBase64(innerKey.data),
-              };
-
-              // 4.
-              const algorithm = key[_algorithm];
-              switch (algorithm.length) {
-                case 128:
-                  jwk.alg = "A128CTR";
-                  break;
-                case 192:
-                  jwk.alg = "A192CTR";
-                  break;
-                case 256:
-                  jwk.alg = "A256CTR";
-                  break;
-                default:
-                  throw new DOMException(
-                    "Invalid key length",
-                    "NotSupportedError",
-                  );
-              }
-
-              // 5.
-              jwk.key_ops = key[_usages];
-              // 6.
-              jwk.ext = key[_extractable];
-              // 7.
-              return jwk;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-          // TODO(@littledivy): Redundant break but deno_lint complains without it
-          break;
-        }
-        case "AES-CBC": {
-          switch (format) {
-            // 2.
-            case "raw": {
-              // 1.
-              const data = innerKey.data;
-              // 2.
-              return data.buffer;
-            }
-            case "jwk": {
-              // 1-3.
-              const jwk = {
-                kty: "oct",
-                k: unpaddedBase64(innerKey.data),
-              };
-
-              // 4.
-              const algorithm = key[_algorithm];
-              switch (algorithm.length) {
-                case 128:
-                  jwk.alg = "A128CBC";
-                  break;
-                case 192:
-                  jwk.alg = "A192CBC";
-                  break;
-                case 256:
-                  jwk.alg = "A256CBC";
-                  break;
-                default:
-                  break;
-              }
-
-              // 5.
-              jwk.key_ops = key[_usages];
-              // 6.
-              jwk.ext = key[_extractable];
-              // 7.
-              return jwk;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-          // TODO(@littledivy): Redundant break but deno_lint complains without it
-          break;
-        }
-        case "AES-GCM": {
-          switch (format) {
-            // 2.
-            case "raw": {
-              // 1.
-              const data = innerKey.data;
-              // 2.
-              return data.buffer;
-            }
-            case "jwk": {
-              // 1-3.
-              const jwk = {
-                kty: "oct",
-                k: unpaddedBase64(innerKey.data),
-              };
-
-              // 4.
-              const algorithm = key[_algorithm];
-              switch (algorithm.length) {
-                case 128:
-                  jwk.alg = "A128GCM";
-                  break;
-                case 192:
-                  jwk.alg = "A192GCM";
-                  break;
-                case 256:
-                  jwk.alg = "A256GCM";
-                  break;
-                default:
-                  throw new DOMException(
-                    "Invalid key length",
-                    "NotSupportedError",
-                  );
-              }
-
-              // 5.
-              jwk.key_ops = key[_usages];
-              // 6.
-              jwk.ext = key[_extractable];
-              // 7.
-              return jwk;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-          // TODO(@littledivy): Redundant break but deno_lint complains without it
-          break;
-        }
+        case "AES-CTR":
+        case "AES-CBC":
+        case "AES-GCM":
         case "AES-KW": {
-          switch (format) {
-            // 2.
-            case "raw": {
-              // 1.
-              const data = innerKey.data;
-              // 2.
-              return data.buffer;
-            }
-            case "jwk": {
-              // 1-3.
-              const jwk = {
-                kty: "oct",
-                k: unpaddedBase64(innerKey.data),
-              };
-
-              // 4.
-              const algorithm = key[_algorithm];
-              switch (algorithm.length) {
-                case 128:
-                  jwk.alg = "A128KW";
-                  break;
-                case 192:
-                  jwk.alg = "A192KW";
-                  break;
-                case 256:
-                  jwk.alg = "A256KW";
-                  break;
-                default:
-                  throw new DOMException(
-                    "Invalid key length",
-                    "NotSupportedError",
-                  );
-              }
-
-              // 5.
-              jwk.key_ops = key[_usages];
-              // 6.
-              jwk.ext = key[_extractable];
-              // 7.
-              return jwk;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-          // TODO(@littledivy): Redundant break but deno_lint complains without it
-          break;
+          return exportKeyAES(format, key, innerKey);
         }
         // TODO(@littledivy): ECDSA
         default:
@@ -2670,7 +2492,58 @@
     }
   }
 
-  async function importKeyAES(
+  function exportKeyAES(
+    format,
+    key,
+    innerKey,
+  ) {
+    switch (format) {
+      // 2.
+      case "raw": {
+        // 1.
+        const data = innerKey.data;
+        // 2.
+        return data.buffer;
+      }
+      case "jwk": {
+        // 1-3.
+        const jwk = {
+          kty: "oct",
+          k: unpaddedBase64(innerKey.data),
+        };
+
+        // 4.
+        const algorithm = key[_algorithm];
+        switch (algorithm.length) {
+          case 128:
+            jwk.alg = aesJwkAlg[algorithm.name][128];
+            break;
+          case 192:
+            jwk.alg = aesJwkAlg[algorithm.name][192];
+            break;
+          case 256:
+            jwk.alg = aesJwkAlg[algorithm.name][256];
+            break;
+          default:
+            throw new DOMException(
+              "Invalid key length",
+              "NotSupportedError",
+            );
+        }
+
+        // 5.
+        jwk.key_ops = key[_usages];
+        // 6.
+        jwk.ext = key[_extractable];
+        // 7.
+        return jwk;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+  }
+
+  function importKeyAES(
     format,
     normalizedAlgorithm,
     keyData,
