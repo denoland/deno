@@ -142,6 +142,24 @@
     },
   };
 
+  const aesJwkAlg = {
+    "AES-CBC": {
+      128: "A128CBC",
+      192: "A192CBC",
+      256: "A256CBC",
+    },
+    "AES-GCM": {
+      128: "A128GCM",
+      192: "A192GCM",
+      256: "A256GCM",
+    },
+    "AES-KW": {
+      128: "A128KW",
+      192: "A192KW",
+      256: "A256KW",
+    },
+  };
+
   // Decodes the unpadded base64 to the octet sequence containing key value `k` defined in RFC7518 Section 6.4
   function decodeSymmetricKey(key) {
     // Decode from base64url without `=` padding.
@@ -1391,134 +1409,13 @@
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
 
-          // 2.
-          let data = keyData;
-          switch (format) {
-            case "raw": {
-              // 2.
-              if (
-                !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
-              ) {
-                throw new DOMException("Invalid key length", "Datarror");
-              }
-
-              break;
-            }
-            case "jwk": {
-              // 1.
-              const jwk = keyData;
-              // 2.
-              if (jwk.kty !== "oct") {
-                throw new DOMException(
-                  "`kty` member of JsonWebKey must be `oct`",
-                  "DataError",
-                );
-              }
-
-              // Section 6.4.1 of RFC7518
-              if (jwk.k === undefined) {
-                throw new DOMException(
-                  "`k` member of JsonWebKey must be present",
-                  "DataError",
-                );
-              }
-
-              // 4.
-              data = decodeSymmetricKey(jwk.k);
-
-              // 5.
-              switch (data.byteLength * 8) {
-                case 128:
-                  if (jwk.alg !== undefined && jwk.alg !== "A128CTR") {
-                    throw new DOMException("Invalid algorithm", "DataError");
-                  }
-                  break;
-                case 192:
-                  if (jwk.alg !== undefined && jwk.alg !== "A192CTR") {
-                    throw new DOMException("Invalid algorithm", "DataError");
-                  }
-                  break;
-                case 256:
-                  if (jwk.alg !== undefined && jwk.alg !== "A256CTR") {
-                    throw new DOMException("Invalid algorithm", "DataError");
-                  }
-                  break;
-                default:
-                  throw new DOMException(
-                    "Invalid key length",
-                    "DataError",
-                  );
-              }
-
-              // 6.
-              if (keyUsages.length > 0 && jwk.use && jwk.use !== "enc") {
-                throw new DOMException("Invalid key usages", "DataError");
-              }
-
-              // 7.
-              // Section 4.3 of RFC7517
-              if (jwk.key_ops) {
-                if (
-                  ArrayPrototypeFind(
-                    jwk.key_ops,
-                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-                  ) !== undefined
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
-
-                if (
-                  !ArrayPrototypeEvery(
-                    jwk.key_ops,
-                    (u) => ArrayPrototypeIncludes(keyUsages, u),
-                  )
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
-              }
-
-              // 8.
-              if (jwk.ext === false && extractable == true) {
-                throw new DOMException(
-                  "`ext` member of JsonWebKey is invalid",
-                  "DataError",
-                );
-              }
-
-              break;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-
-          const handle = {};
-          WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "raw",
-            data,
-          });
-
-          // 4-7.
-          const algorithm = {
-            name: "AES-CTR",
-            length: data.byteLength * 8,
-          };
-
-          const key = constructKey(
-            "secret",
+          return importKeyAES(
+            format,
+            normalizedAlgorithm,
+            keyData,
             extractable,
-            usageIntersection(keyUsages, recognisedUsages),
-            algorithm,
-            handle,
+            keyUsages,
           );
-
-          // 8.
-          return key;
         }
         case "AES-CBC": {
           // 1.
@@ -1536,135 +1433,13 @@
           ) {
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
-
-          // 2.
-          let data = keyData;
-          switch (format) {
-            case "raw": {
-              // 2.
-              if (
-                !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
-              ) {
-                throw new DOMException("Invalid key length", "Datarror");
-              }
-
-              break;
-            }
-            case "jwk": {
-              // 1.
-              const jwk = keyData;
-              // 2.
-              if (jwk.kty !== "oct") {
-                throw new DOMException(
-                  "`kty` member of JsonWebKey must be `oct`",
-                  "DataError",
-                );
-              }
-
-              // Section 6.4.1 of RFC7518
-              if (jwk.k === undefined) {
-                throw new DOMException(
-                  "`k` member of JsonWebKey must be present",
-                  "DataError",
-                );
-              }
-
-              // 4.
-              data = decodeSymmetricKey(jwk.k);
-
-              // 5.
-              switch (data.byteLength * 8) {
-                case 128:
-                  if (jwk.alg !== undefined && jwk.alg !== "A128CBC") {
-                    throw new DOMException("Invalid algorithm", "DataError");
-                  }
-                  break;
-                case 192:
-                  if (jwk.alg !== undefined && jwk.alg !== "A192CBC") {
-                    throw new DOMException("Invalid algorithm", "DataError");
-                  }
-                  break;
-                case 256:
-                  if (jwk.alg !== undefined && jwk.alg !== "A256CBC") {
-                    throw new DOMException("Invalid algorithm", "DataError");
-                  }
-                  break;
-                default:
-                  throw new DOMException(
-                    "Invalid key length",
-                    "DataError",
-                  );
-              }
-
-              // 6.
-              if (keyUsages.length > 0 && jwk.use && jwk.use !== "enc") {
-                throw new DOMException("Invalid key usages", "DataError");
-              }
-
-              // 7.
-              // Section 4.3 of RFC7517
-              if (jwk.key_ops) {
-                if (
-                  ArrayPrototypeFind(
-                    jwk.key_ops,
-                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-                  ) !== undefined
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
-
-                if (
-                  !ArrayPrototypeEvery(
-                    jwk.key_ops,
-                    (u) => ArrayPrototypeIncludes(keyUsages, u),
-                  )
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
-              }
-
-              // 8.
-              if (jwk.ext === false && extractable == true) {
-                throw new DOMException(
-                  "`ext` member of JsonWebKey is invalid",
-                  "DataError",
-                );
-              }
-
-              break;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-
-          const handle = {};
-          WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "raw",
-            data,
-          });
-
-          // 4-7.
-          const algorithm = {
-            name: "AES-CBC",
-            length: data.byteLength * 8,
-          };
-
-          const key = constructKey(
-            "secret",
+          return importKeyAES(
+            format,
+            normalizedAlgorithm,
+            keyData,
             extractable,
-            usageIntersection(keyUsages, recognisedUsages),
-            algorithm,
-            handle,
+            keyUsages,
           );
-
-          // 8.
-          return key;
         }
         case "AES-GCM": {
           // 1.
@@ -1683,134 +1458,13 @@
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
 
-          // 2.
-          let data = keyData;
-          switch (format) {
-            case "raw": {
-              // 2.
-              if (
-                !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
-              ) {
-                throw new DOMException("Invalid key length", "Datarror");
-              }
-
-              break;
-            }
-            case "jwk": {
-              // 1.
-              const jwk = keyData;
-              // 2.
-              if (jwk.kty !== "oct") {
-                throw new DOMException(
-                  "`kty` member of JsonWebKey must be `oct`",
-                  "DataError",
-                );
-              }
-
-              // Section 6.4.1 of RFC7518
-              if (jwk.k === undefined) {
-                throw new DOMException(
-                  "`k` member of JsonWebKey must be present",
-                  "DataError",
-                );
-              }
-
-              // 4.
-              data = decodeSymmetricKey(jwk.k);
-
-              // 5.
-              switch (data.byteLength * 8) {
-                case 128:
-                  if (jwk.alg !== undefined && jwk.alg !== "A128GCM") {
-                    throw new DOMException("Invalid algorithm", "DataError");
-                  }
-                  break;
-                case 192:
-                  if (jwk.alg !== undefined && jwk.alg !== "A192GCM") {
-                    throw new DOMException("Invalid algorithm", "DataError");
-                  }
-                  break;
-                case 256:
-                  if (jwk.alg !== undefined && jwk.alg !== "A256GCM") {
-                    throw new DOMException("Invalid algorithm", "DataError");
-                  }
-                  break;
-                default:
-                  throw new DOMException(
-                    "Invalid key length",
-                    "DataError",
-                  );
-              }
-
-              // 6.
-              if (keyUsages.length > 0 && jwk.use && jwk.use !== "enc") {
-                throw new DOMException("Invalid key usages", "DataError");
-              }
-
-              // 7.
-              // Section 4.3 of RFC7517
-              if (jwk.key_ops) {
-                if (
-                  ArrayPrototypeFind(
-                    jwk.key_ops,
-                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-                  ) !== undefined
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
-
-                if (
-                  !ArrayPrototypeEvery(
-                    jwk.key_ops,
-                    (u) => ArrayPrototypeIncludes(keyUsages, u),
-                  )
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
-              }
-
-              // 8.
-              if (jwk.ext === false && extractable == true) {
-                throw new DOMException(
-                  "`ext` member of JsonWebKey is invalid",
-                  "DataError",
-                );
-              }
-
-              break;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-
-          const handle = {};
-          WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "raw",
-            data,
-          });
-
-          // 4-7.
-          const algorithm = {
-            name: "AES-GCM",
-            length: data.byteLength * 8,
-          };
-
-          const key = constructKey(
-            "secret",
+          return importKeyAES(
+            format,
+            normalizedAlgorithm,
+            keyData,
             extractable,
-            usageIntersection(keyUsages, recognisedUsages),
-            algorithm,
-            handle,
+            keyUsages,
           );
-
-          // 8.
-          return key;
         }
         case "AES-KW": {
           // 1.
@@ -1827,134 +1481,13 @@
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
 
-          // 2.
-          let data = keyData;
-          switch (format) {
-            case "raw": {
-              // 2.
-              if (
-                !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
-              ) {
-                throw new DOMException("Invalid key length", "DataError");
-              }
-
-              break;
-            }
-            case "jwk": {
-              // 1.
-              const jwk = keyData;
-              // 2.
-              if (jwk.kty !== "oct") {
-                throw new DOMException(
-                  "`kty` member of JsonWebKey must be `oct`",
-                  "DataError",
-                );
-              }
-
-              // Section 6.4.1 of RFC7518
-              if (jwk.k === undefined) {
-                throw new DOMException(
-                  "`k` member of JsonWebKey must be present",
-                  "DataError",
-                );
-              }
-
-              // 4.
-              data = decodeSymmetricKey(jwk.k);
-
-              // 5.
-              switch (data.byteLength * 8) {
-                case 128:
-                  if (jwk.alg !== undefined && jwk.alg !== "A128KW") {
-                    throw new DOMException("Invalid algorithm", "DataError");
-                  }
-                  break;
-                case 192:
-                  if (jwk.alg !== undefined && jwk.alg !== "A192KW") {
-                    throw new DOMException("Invalid algorithm", "DataError");
-                  }
-                  break;
-                case 256:
-                  if (jwk.alg !== undefined && jwk.alg !== "A256KW") {
-                    throw new DOMException("Invalid algorithm", "DataError");
-                  }
-                  break;
-                default:
-                  throw new DOMException(
-                    "Invalid key length",
-                    "DataError",
-                  );
-              }
-
-              // 6.
-              if (keyUsages.length > 0 && jwk.use && jwk.use !== "enc") {
-                throw new DOMException("Invalid key usages", "DataError");
-              }
-
-              // 7.
-              // Section 4.3 of RFC7517
-              if (jwk.key_ops) {
-                if (
-                  ArrayPrototypeFind(
-                    jwk.key_ops,
-                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-                  ) !== undefined
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
-
-                if (
-                  !ArrayPrototypeEvery(
-                    jwk.key_ops,
-                    (u) => ArrayPrototypeIncludes(keyUsages, u),
-                  )
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
-              }
-
-              // 8.
-              if (jwk.ext === false && extractable == true) {
-                throw new DOMException(
-                  "`ext` member of JsonWebKey is invalid",
-                  "DataError",
-                );
-              }
-
-              break;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-
-          const handle = {};
-          WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "raw",
-            data,
-          });
-
-          // 4-7.
-          const algorithm = {
-            name: "AES-KW",
-            length: data.byteLength * 8,
-          };
-
-          const key = constructKey(
-            "secret",
+          return importKeyAES(
+            format,
+            normalizedAlgorithm,
+            keyData,
             extractable,
-            usageIntersection(keyUsages, recognisedUsages),
-            algorithm,
-            handle,
+            keyUsages,
           );
-
-          // 8.
-          return key;
         }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
@@ -3137,6 +2670,151 @@
     }
   }
 
+  async function importKeyAES(
+    format,
+    normalizedAlgorithm,
+    keyData,
+    extractable,
+    keyUsages,
+  ) {
+    // 2.
+    let data = keyData;
+    switch (format) {
+      case "raw": {
+        // 2.
+        if (
+          !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
+        ) {
+          throw new DOMException("Invalid key length", "Datarror");
+        }
+
+        break;
+      }
+      case "jwk": {
+        // 1.
+        const jwk = keyData;
+        // 2.
+        if (jwk.kty !== "oct") {
+          throw new DOMException(
+            "`kty` member of JsonWebKey must be `oct`",
+            "DataError",
+          );
+        }
+
+        // Section 6.4.1 of RFC7518
+        if (jwk.k === undefined) {
+          throw new DOMException(
+            "`k` member of JsonWebKey must be present",
+            "DataError",
+          );
+        }
+
+        // 4.
+        data = decodeSymmetricKey(jwk.k);
+
+        // 5.
+        switch (data.byteLength * 8) {
+          case 128:
+            if (
+              jwk.alg !== undefined &&
+              jwk.alg !== aesJwkAlg[normalizedAlgorithm.name][128]
+            ) {
+              throw new DOMException("Invalid algorithm", "DataError");
+            }
+            break;
+          case 192:
+            if (
+              jwk.alg !== undefined &&
+              jwk.alg !== aesJwkAlg[normalizedAlgorithm.name][192]
+            ) {
+              throw new DOMException("Invalid algorithm", "DataError");
+            }
+            break;
+          case 256:
+            if (
+              jwk.alg !== undefined &&
+              jwk.alg !== aesJwkAlg[normalizedAlgorithm.name][256]
+            ) {
+              throw new DOMException("Invalid algorithm", "DataError");
+            }
+            break;
+          default:
+            throw new DOMException(
+              "Invalid key length",
+              "DataError",
+            );
+        }
+
+        // 6.
+        if (keyUsages.length > 0 && jwk.use && jwk.use !== "enc") {
+          throw new DOMException("Invalid key usages", "DataError");
+        }
+
+        // 7.
+        // Section 4.3 of RFC7517
+        if (jwk.key_ops) {
+          if (
+            ArrayPrototypeFind(
+              jwk.key_ops,
+              (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+            ) !== undefined
+          ) {
+            throw new DOMException(
+              "`key_ops` member of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+
+          if (
+            !ArrayPrototypeEvery(
+              jwk.key_ops,
+              (u) => ArrayPrototypeIncludes(keyUsages, u),
+            )
+          ) {
+            throw new DOMException(
+              "`key_ops` member of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+        }
+
+        // 8.
+        if (jwk.ext === false && extractable == true) {
+          throw new DOMException(
+            "`ext` member of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+
+        break;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+
+    const handle = {};
+    WeakMapPrototypeSet(KEY_STORE, handle, {
+      type: "raw",
+      data,
+    });
+
+    // 4-7.
+    const algorithm = {
+      name: normalizedAlgorithm.name,
+      length: data.byteLength * 8,
+    };
+
+    const key = constructKey(
+      "secret",
+      extractable,
+      usageIntersection(keyUsages, recognisedUsages),
+      algorithm,
+      handle,
+    );
+
+    // 8.
+    return key;
+  }
   async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
     // 2.
     if (!ArrayPrototypeIncludes([128, 192, 256], normalizedAlgorithm.length)) {
