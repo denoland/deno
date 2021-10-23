@@ -1416,7 +1416,7 @@
               }
 
               // Section 6.4.1 of RFC7518
-              if (!jwk.k) {
+              if (jwk.k === undefined) {
                 throw new DOMException(
                   "`k` member of JsonWebKey must be present",
                   "DataError",
@@ -1562,7 +1562,7 @@
               }
 
               // Section 6.4.1 of RFC7518
-              if (!jwk.k) {
+              if (jwk.k === undefined) {
                 throw new DOMException(
                   "`k` member of JsonWebKey must be present",
                   "DataError",
@@ -1708,7 +1708,7 @@
               }
 
               // Section 6.4.1 of RFC7518
-              if (!jwk.k) {
+              if (jwk.k === undefined) {
                 throw new DOMException(
                   "`k` member of JsonWebKey must be present",
                   "DataError",
@@ -1852,7 +1852,7 @@
               }
 
               // Section 6.4.1 of RFC7518
-              if (!jwk.k) {
+              if (jwk.k === undefined) {
                 throw new DOMException(
                   "`k` member of JsonWebKey must be present",
                   "DataError",
