@@ -166,7 +166,7 @@ pub fn op_metrics(
   _: (),
   _: (),
 ) -> Result<(OpMetrics, Vec<OpMetrics>), AnyError> {
-  let aggregate = state.tracker.borrow().aggregate();
-  let per_op = state.tracker.borrow().per_op();
+  let aggregate = state.tracker.aggregate();
+  let per_op = state.tracker.per_op();
   Ok((aggregate, per_op))
 }

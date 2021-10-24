@@ -1476,9 +1476,7 @@ impl JsRuntime {
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some((promise_id, op_id, resp))) => {
-          let op_state = state.op_state.borrow();
-          let tracker = &mut op_state.tracker.borrow_mut();
-          tracker.track_async_completed(op_id);
+          state.op_state.borrow().tracker.track_async_completed(op_id);
           async_responses.push((promise_id, resp));
         }
       };
@@ -1490,9 +1488,7 @@ impl JsRuntime {
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some((promise_id, op_id, resp))) => {
-          let op_state = state.op_state.borrow();
-          let tracker = &mut op_state.tracker.borrow_mut();
-          tracker.track_unref_completed(op_id);
+          state.op_state.borrow().tracker.track_unref_completed(op_id);
           async_responses.push((promise_id, resp));
         }
       };

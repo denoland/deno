@@ -351,12 +351,7 @@ fn opcall_sync<'s>(
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {
     Op::Sync(result) => {
-      state
-        .op_state
-        .borrow()
-        .tracker
-        .borrow_mut()
-        .track_sync(op_id);
+      state.op_state.borrow().tracker.track_sync(op_id);
       rv.set(result.to_v8(scope).unwrap());
     }
     Op::NotFound => {
@@ -426,22 +421,12 @@ fn opcall_async<'s>(
       OpResult::Err(_) => rv.set(result.to_v8(scope).unwrap()),
     },
     Op::Async(fut) => {
-      state
-        .op_state
-        .borrow()
-        .tracker
-        .borrow_mut()
-        .track_async(op_id);
+      state.op_state.borrow().tracker.track_async(op_id);
       state.pending_ops.push(fut);
       state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {
-      state
-        .op_state
-        .borrow()
-        .tracker
-        .borrow_mut()
-        .track_unref(op_id);
+      state.op_state.borrow().tracker.track_unref(op_id);
       state.pending_unref_ops.push(fut);
       state.have_unpolled_ops = true;
     }

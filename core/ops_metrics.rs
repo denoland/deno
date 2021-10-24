@@ -65,7 +65,7 @@ impl OpsTracker {
     RefMut::map(self.ops.borrow_mut(), |ops| ops.get_mut(id).unwrap())
   }
 
-  pub fn track_sync(&mut self, id: OpId) {
+  pub fn track_sync(&self, id: OpId) {
     let metrics = &mut self.metrics_mut(id);
     metrics.ops_dispatched += 1;
     metrics.ops_completed += 1;
@@ -73,25 +73,25 @@ impl OpsTracker {
     metrics.ops_completed_sync += 1;
   }
 
-  pub fn track_async(&mut self, id: OpId) {
+  pub fn track_async(&self, id: OpId) {
     let metrics = &mut self.metrics_mut(id);
     metrics.ops_dispatched += 1;
     metrics.ops_dispatched_async += 1;
   }
 
-  pub fn track_async_completed(&mut self, id: OpId) {
+  pub fn track_async_completed(&self, id: OpId) {
     let metrics = &mut self.metrics_mut(id);
     metrics.ops_completed += 1;
     metrics.ops_completed_async += 1;
   }
 
-  pub fn track_unref(&mut self, id: OpId) {
+  pub fn track_unref(&self, id: OpId) {
     let metrics = &mut self.metrics_mut(id);
     metrics.ops_dispatched += 1;
     metrics.ops_dispatched_async_unref += 1;
   }
 
-  pub fn track_unref_completed(&mut self, id: OpId) {
+  pub fn track_unref_completed(&self, id: OpId) {
     let metrics = &mut self.metrics_mut(id);
     metrics.ops_completed += 1;
     metrics.ops_completed_async_unref += 1;
