@@ -161,7 +161,7 @@ pub struct OpState {
   pub resource_table: ResourceTable,
   pub op_table: OpTable,
   pub get_error_class_fn: GetErrorClassFn,
-  pub(crate) tracker: OpsTracker,
+  pub(crate) tracker: RefCell<OpsTracker>,
   gotham_state: GothamState,
 }
 
@@ -171,9 +171,9 @@ impl OpState {
       resource_table: Default::default(),
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
-      tracker: OpsTracker {
+      tracker: RefCell::new(OpsTracker {
         ops: Vec::with_capacity(256),
-      },
+      }),
       gotham_state: Default::default(),
     }
   }
