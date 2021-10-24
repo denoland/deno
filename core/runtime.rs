@@ -1505,10 +1505,6 @@ impl JsRuntime {
     let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
     let scope = &mut self.handle_scope();
 
-    // Now handle actual ops.
-    let mut state = state_rc.borrow_mut();
-    state.have_unpolled_ops = false;
-
     // We return async responses to JS in unbounded batches (may change),
     // each batch is a flat vector of tuples:
     // `[promise_id1, op_result1, promise_id2, op_result2, ...]`
@@ -1518,25 +1514,32 @@ impl JsRuntime {
     // and then each tuple is used to resolve or reject promises
     let mut args: Vec<v8::Local<v8::Value>> = vec![];
 
-    let op_state = state.op_state.clone();
-    let ops = AsyncOpIterator {
-      ops: &mut state.pending_ops,
-      cx,
-    };
-    for (promise_id, op_id, resp) in ops {
-      op_state.borrow().tracker.track_async_completed(op_id);
-      args.push(v8::Integer::new(scope, promise_id as i32).into());
-      args.push(resp.to_v8(scope).unwrap());
+    // Now handle actual ops.
+    {
+      let mut state = state_rc.borrow_mut();
+      state.have_unpolled_ops = false;
+
+      let op_state = state.op_state.clone();
+      let ops = AsyncOpIterator {
+        ops: &mut state.pending_ops,
+        cx,
+      };
+      for (promise_id, op_id, resp) in ops {
+        op_state.borrow().tracker.track_async_completed(op_id);
+        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(resp.to_v8(scope).unwrap());
+      }
+      let ops = AsyncOpIterator {
+        ops: &mut state.pending_unref_ops,
+        cx,
+      };
+      for (promise_id, op_id, resp) in ops {
+        op_state.borrow().tracker.track_unref_completed(op_id);
+        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(resp.to_v8(scope).unwrap());
+      }
     }
-    let ops = AsyncOpIterator {
-      ops: &mut state.pending_unref_ops,
-      cx,
-    };
-    for (promise_id, op_id, resp) in ops {
-      op_state.borrow().tracker.track_unref_completed(op_id);
-      args.push(v8::Integer::new(scope, promise_id as i32).into());
-      args.push(resp.to_v8(scope).unwrap());
-    }
+
     if args.is_empty() {
       return Ok(());
     }
