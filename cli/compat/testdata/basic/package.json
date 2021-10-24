@@ -1,0 +1,7 @@
+{
+  "name": "bar",
+  "type": "module",
+  "dependencies": {
+    "foo": "1.0.0"
+  }
+}

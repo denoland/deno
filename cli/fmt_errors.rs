@@ -177,12 +177,23 @@ fn format_maybe_source_line(
   if source_line.is_empty() || source_line.len() > SOURCE_ABBREV_THRESHOLD {
     return "".to_string();
   }
+  if source_line.contains("Couldn't format source line: ") {
+    return format!("\n{}", source_line);
+  }
 
   assert!(start_column.is_some());
   assert!(end_column.is_some());
   let mut s = String::new();
   let start_column = start_column.unwrap();
   let end_column = end_column.unwrap();
+
+  if start_column as usize >= source_line.len() {
+    return format!(
+      "\n{} Couldn't format source line: Column {} is out of bounds (source may have changed at runtime)",
+      crate::colors::yellow("Warning"), start_column + 1,
+    );
+  }
+
   // TypeScript uses `~` always, but V8 would utilise `^` always, even when
   // doing ranges, so here, if we only have one marker (very common with V8
   // errors) we will use `^` instead.

@@ -7,7 +7,7 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_net::io::TcpStreamResource;
-use deno_net::io::TlsStreamResource;
+use deno_net::ops_tls::TlsStreamResource;
 
 pub fn init() -> Extension {
   Extension::builder()

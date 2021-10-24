@@ -297,7 +297,7 @@ pub(crate) fn attach_handle_to_error(
 /// of `instanceof`. `Value::is_native_error()` also checks for static class
 /// inheritance rather than just scanning the prototype chain, which doesn't
 /// work with our WebIDL implementation of `DOMException`.
-fn is_instance_of_error<'s>(
+pub(crate) fn is_instance_of_error<'s>(
   scope: &mut v8::HandleScope<'s>,
   value: v8::Local<v8::Value>,
 ) -> bool {
