@@ -1476,8 +1476,7 @@ impl JsRuntime {
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some((promise_id, op_id, resp))) => {
-          let tracker = &mut state.op_state.borrow_mut().tracker;
-          tracker.track_async_completed(op_id);
+          state.op_state.borrow().tracker.track_async_completed(op_id);
           async_responses.push((promise_id, resp));
         }
       };
@@ -1489,8 +1488,7 @@ impl JsRuntime {
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some((promise_id, op_id, resp))) => {
-          let tracker = &mut state.op_state.borrow_mut().tracker;
-          tracker.track_unref_completed(op_id);
+          state.op_state.borrow().tracker.track_unref_completed(op_id);
           async_responses.push((promise_id, resp));
         }
       };
@@ -1606,6 +1604,7 @@ pub mod tests {
   use super::*;
   use crate::error::custom_error;
   use crate::modules::ModuleSourceFuture;
+  use crate::op_async;
   use crate::op_sync;
   use crate::ZeroCopyBuf;
   use futures::future::lazy;
@@ -2318,5 +2317,46 @@ assertEquals(1, notify_return_value);
     let mut scope = runtime.handle_scope();
     let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
     assert!(all_true.is_true());
+  }
+
+  #[tokio::test]
+  async fn test_async_opstate_borrow() {
+    struct InnerState(u64);
+
+    async fn op_async_borrow(
+      op_state: Rc<RefCell<OpState>>,
+      _: (),
+      _: (),
+    ) -> Result<(), AnyError> {
+      let op_state = op_state.borrow();
+      let inner_state = op_state.borrow::<InnerState>();
+      // Future must be Poll::Pending on first call
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+      if inner_state.0 != 42 {
+        unreachable!();
+      }
+      Ok(())
+    }
+
+    let extension = Extension::builder()
+      .ops(vec![("op_async_borrow", op_async(op_async_borrow))])
+      .state(|state| {
+        state.put(InnerState(42));
+        Ok(())
+      })
+      .build();
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "op_async_borrow.js",
+        "Deno.core.opAsync('op_async_borrow')",
+      )
+      .unwrap();
+    runtime.run_event_loop(false).await.unwrap();
   }
 }
