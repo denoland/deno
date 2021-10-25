@@ -35,6 +35,7 @@ mod tools;
 mod tsc;
 mod unix_util;
 mod version;
+mod windows_util;
 
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
@@ -1364,9 +1365,11 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 
 pub fn main() {
   setup_exit_process_panic_hook();
+
+  unix_util::raise_fd_limit();
+  windows_util::ensure_stdio_open();
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
-  unix_util::raise_fd_limit();
 
   let args: Vec<String> = env::args().collect();
   let standalone_res = match standalone::extract_standalone(args.clone()) {
