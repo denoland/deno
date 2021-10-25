@@ -220,7 +220,7 @@ Deno.test({
     const keys = Object.keys(files).sort();
     assert(keys[0].endsWith("/foo.ts.js"));
     assert(keys[1].endsWith("/foo.ts.js.map"));
-    assert(files[keys[0]].startsWith("export var Foo;"));
+    assert(files[keys[0]].startsWith("var Foo1;"));
   },
 });
 
@@ -268,7 +268,7 @@ Deno.test({
       Object.keys(files).sort(),
       ["deno:///bundle.js", "deno:///bundle.js.map"].sort(),
     );
-    assert(files["deno:///bundle.js"].includes(`const bar1 = "bar"`));
+    assert(files["deno:///bundle.js"].includes(`const bar = "bar"`));
   },
 });
 
@@ -312,7 +312,7 @@ Deno.test({
       Object.keys(files).sort(),
       ["deno:///bundle.js.map", "deno:///bundle.js"].sort(),
     );
-    assert(files["deno:///bundle.js"].includes(`const bar1 = "bar"`));
+    assert(files["deno:///bundle.js"].includes(`const bar = "bar"`));
   },
 });
 
