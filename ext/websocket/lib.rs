@@ -250,6 +250,7 @@ where
         vec![],
         unsafely_ignore_certificate_errors,
       )?;
+      tls_config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
       let tls_connector = TlsConnector::from(Arc::new(tls_config));
       let dnsname = DNSNameRef::try_from_ascii_str(domain)
         .map_err(|_| invalid_hostname(domain))?;
