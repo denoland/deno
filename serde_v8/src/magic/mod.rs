@@ -2,6 +2,7 @@
 pub mod buffer;
 pub mod bytestring;
 mod field;
+pub mod string_or_buffer;
 mod value;
 pub mod zero_copy_buf;
 

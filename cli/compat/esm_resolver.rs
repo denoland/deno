@@ -198,7 +198,7 @@ fn finalize_resolution(
   } else if !is_file {
     return Err(errors::err_module_not_found(
       &path.display().to_string(),
-      &to_file_path_string(base),
+      base.as_str(),
       "module",
     ));
   }
@@ -1143,7 +1143,7 @@ mod tests {
     let cwd = testdir("basic");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
     let expected =
-      Url::parse("https://deno.land/std@0.112.0/node/http.ts").unwrap();
+      Url::parse("https://deno.land/std@0.113.0/node/http.ts").unwrap();
 
     let actual = node_resolve("http", main.as_str(), &cwd).unwrap();
     println!("actual {}", actual);

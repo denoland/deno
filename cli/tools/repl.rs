@@ -540,7 +540,7 @@ impl ReplSession {
           Some(diagnostic) => Ok(EvaluationOutput::Error(format!(
             "{}: {} at {}:{}",
             colors::red("parse error"),
-            diagnostic.message,
+            diagnostic.message(),
             diagnostic.display_position.line_number,
             diagnostic.display_position.column_number,
           ))),
