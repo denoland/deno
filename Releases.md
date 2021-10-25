@@ -8,7 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.15.3 / 2021.10.25
 
-- feat(compat): add DENO_NODE_COMPAT_URL env variable (#12508)
 - feat(serde_v8): StringOrBuffer (#12503)
 - feat(serde_v8): allow all values to deserialize to unit type (#12504)
 - fix(cli/dts): update std links for deprecations (#12496)
