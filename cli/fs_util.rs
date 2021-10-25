@@ -83,10 +83,10 @@ fn strip_unc_prefix(path: PathBuf) -> PathBuf {
   match components.next() {
     Some(Component::Prefix(prefix)) => {
       match prefix.kind() {
-        // \\?\share_name\path
-        Prefix::Verbatim(share_name) => {
+        // \\?\device
+        Prefix::Verbatim(device) => {
           let mut path = PathBuf::new();
-          path.push(format!(r"\\{}\", share_name.to_string_lossy()));
+          path.push(format!(r"\\{}\", device.to_string_lossy()));
           path.extend(components.filter(|c| !matches!(c, Component::RootDir)));
           path
         }
@@ -97,7 +97,7 @@ fn strip_unc_prefix(path: PathBuf) -> PathBuf {
           path.extend(components);
           path
         }
-        // \\?\UNC\share_name\path
+        // \\?\UNC\hostname\share_name\path
         Prefix::VerbatimUNC(hostname, share_name) => {
           let mut path = PathBuf::new();
           path.push(format!(
