@@ -70,10 +70,7 @@ struct DenoTestCollector {
 }
 
 impl DenoTestCollector {
-  pub fn new(
-    specifier: ModuleSpecifier,
-    parsed_source: ParsedSource,
-  ) -> Self {
+  pub fn new(specifier: ModuleSpecifier, parsed_source: ParsedSource) -> Self {
     Self {
       code_lenses: Vec::new(),
       parsed_source,

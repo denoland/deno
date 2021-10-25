@@ -699,8 +699,7 @@ impl Inner {
   fn parsed_source(
     &mut self,
     specifier: &ModuleSpecifier,
-  ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>>
-  {
+  ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
     self
       .get(specifier)
       .map(|doc| {
@@ -1005,8 +1004,7 @@ impl Documents {
   pub fn parsed_source(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>>
-  {
+  ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
     self.0.lock().parsed_source(specifier)
   }
 
