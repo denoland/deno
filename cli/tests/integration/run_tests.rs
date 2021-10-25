@@ -1396,6 +1396,38 @@ fn rust_log() {
   assert!(!output.stderr.is_empty());
 }
 
+#[test]
+fn dont_cache_on_check_fail() {
+  let deno_dir = util::new_deno_dir();
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--reload")
+    .arg("error_003_typescript.ts")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert!(!output.stderr.is_empty());
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("error_003_typescript.ts")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert!(!output.stderr.is_empty());
+}
+
 mod permissions {
   use test_util as util;
 
