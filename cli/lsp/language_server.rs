@@ -62,7 +62,7 @@ use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
 use crate::logger;
 use crate::tools::fmt::format_file;
-use crate::tools::fmt::format_parsed_module;
+use crate::tools::fmt::format_parsed_source;
 
 pub const REGISTRIES_PATH: &str = "registries";
 const SOURCES_PATH: &str = "deps";
@@ -1086,7 +1086,7 @@ impl Inner {
     let text_edits = tokio::task::spawn_blocking(move || {
       let format_result = match source.module() {
         Some(Ok(parsed_module)) => {
-          Ok(format_parsed_module(parsed_module, fmt_options))
+          format_parsed_source(parsed_module, fmt_options)
         }
         Some(Err(err)) => Err(err.to_string()),
         None => {

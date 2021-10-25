@@ -417,7 +417,7 @@ jobs:
       - name: Test debug
         if: |
           matrix.job == 'test' && matrix.profile == 'debug' &&
-          !matrix.use_sysroot
+          !matrix.use_sysroot && !startsWith(github.ref, 'refs/tags/')
         run: |
           cargo test --locked --doc
           cargo test --locked
@@ -433,17 +433,26 @@ jobs:
           matrix.job == 'test' && matrix.profile == 'release' &&
           !matrix.use_sysroot &&
           github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         run: cargo test --release --locked
 
       - name: Test release (in sysroot)
         if: |
           matrix.job == 'test' && matrix.profile == 'release' &&
-          matrix.use_sysroot
+          matrix.use_sysroot && !startsWith(github.ref, 'refs/tags/')
         run: |
           sudo chroot /sysroot   \
                su -l "$(whoami)" \
                   -c "cargo test --release --locked"
+
+      # Since all tests are skipped when we're building a tagged commit
+      # this is a minimal check to ensure that binary is not corrupted
+      - name: Check Deno Binary
+        if: matrix.profile == 'release' && startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: target/release/deno eval "console.log(1+2)" | grep 3
+        env:
+          NO_COLOR: 1
 
       # TODO(ry): Because CI is so slow on for OSX and Windows, we currently
       #           run the Web Platform tests only on Linux.
@@ -455,7 +464,7 @@ jobs:
       - name: Run web platform tests (debug)
         if: |
           startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&
-          matrix.profile == 'debug' &&
+          matrix.profile == 'debug' && 
           github.ref == 'refs/heads/main'
         env:
           DENO_BIN: ./target/debug/deno
@@ -470,7 +479,7 @@ jobs:
       - name: Run web platform tests (release)
         if: |
           startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&
-          matrix.profile == 'release'
+          matrix.profile == 'release' && !startsWith(github.ref, 'refs/tags/')
         env:
           DENO_BIN: ./target/release/deno
         run: |
@@ -490,7 +499,7 @@ jobs:
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main'
+          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         run: |
           gzip ./wptreport.json
           gsutil cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
@@ -504,7 +513,7 @@ jobs:
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main'
+          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         env:
           WPT_FYI_USER: ${{ secrets.WPT_FYI_USER }}
           WPT_FYI_PW: ${{ secrets.WPT_FYI_PW }}
@@ -514,7 +523,7 @@ jobs:
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
 
       - name: Run benchmarks
-        if: matrix.job == 'bench' && !matrix.use_sysroot
+        if: matrix.job == 'bench' && !matrix.use_sysroot && !startsWith(github.ref, 'refs/tags/')
         run: cargo bench --locked
 
       - name: Run benchmarks (in sysroot)
@@ -528,7 +537,7 @@ jobs:
         if: |
           matrix.job == 'bench' &&
           github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main'
+          github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         env:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |

@@ -122,3 +122,13 @@ unitTest(async function windowQueueMicrotask() {
   await p1;
   await p2;
 });
+
+unitTest(function webApiGlobalThis() {
+  assert(globalThis.FormData !== null);
+  assert(globalThis.TextEncoder !== null);
+  assert(globalThis.TextEncoderStream !== null);
+  assert(globalThis.TextDecoder !== null);
+  assert(globalThis.TextDecoderStream !== null);
+  assert(globalThis.CountQueuingStrategy !== null);
+  assert(globalThis.ByteLengthQueuingStrategy !== null);
+});
