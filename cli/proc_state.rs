@@ -389,7 +389,7 @@ impl ProcState {
           .map(|cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
         let options = emit::CheckOptions {
           debug: self.flags.log_level == Some(log::Level::Debug),
-          emit_with_diagnostics: true,
+          emit_with_diagnostics: false,
           maybe_config_specifier,
           ts_config,
         };
