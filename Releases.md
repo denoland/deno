@@ -14,10 +14,12 @@ https://github.com/denoland/deno_install
 - fix(cli/dts): update std links for deprecations (#12496)
 - fix(cli/tests): flaky Deno.watchFs() tests (#12485)
 - fix(core): avoid op_state.borrow_mut() for OpsTracker (#12525)
-- fix(core/bindings): use is_instance_of_error() instead of is_native_error() (#12479)
+- fix(core/bindings): use is_instance_of_error() instead of is_native_error()
+  (#12479)
 - fix(ext/net): fix TLS bugs and add 'op_tls_handshake' (#12501)
 - fix(ext/websocket): prevent 'closed normally' panic (#12437)
-- fix(lsp): formatting should error on certain additional swc diagnostics (#12491)
+- fix(lsp): formatting should error on certain additional swc diagnostics
+  (#12491)
 - fix: declare web types as global (#12497)
 
 ### 1.15.2 / 2021.10.18
