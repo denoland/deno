@@ -10,7 +10,10 @@
   } = window;
   const { pathFromURL } = window.__bootstrap.util;
   const {
+    ArrayIsArray,
     ArrayPrototypeIncludes,
+    ArrayPrototypeMap,
+    ArrayPrototypeSlice,
     Map,
     MapPrototypeGet,
     MapPrototypeHas,
@@ -162,7 +165,9 @@
         );
       }
 
-      if (desc.name === "read" || desc.name === "write") {
+      if (
+        desc.name === "read" || desc.name === "write" || desc.name === "ffi"
+      ) {
         desc.path = pathFromURL(desc.path);
       } else if (desc.name === "run") {
         desc.command = pathFromURL(desc.command);
@@ -213,7 +218,34 @@
 
   const permissions = new Permissions(illegalConstructorKey);
 
+  /** Converts all file URLs in FS allowlists to paths. */
+  function serializePermissions(permissions) {
+    if (typeof permissions == "object" && permissions != null) {
+      const serializedPermissions = {};
+      for (const key of ["read", "write", "run", "ffi"]) {
+        if (ArrayIsArray(permissions[key])) {
+          serializedPermissions[key] = ArrayPrototypeMap(
+            permissions[key],
+            (path) => pathFromURL(path),
+          );
+        } else {
+          serializedPermissions[key] = permissions[key];
+        }
+      }
+      for (const key of ["env", "hrtime", "net"]) {
+        if (ArrayIsArray(permissions[key])) {
+          serializedPermissions[key] = ArrayPrototypeSlice(permissions[key]);
+        } else {
+          serializedPermissions[key] = permissions[key];
+        }
+      }
+      return serializedPermissions;
+    }
+    return permissions;
+  }
+
   window.__bootstrap.permissions = {
+    serializePermissions,
     permissions,
     Permissions,
     PermissionStatus,

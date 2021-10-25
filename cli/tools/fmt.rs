@@ -220,24 +220,15 @@ pub fn format_file(
   }
 }
 
-pub fn format_parsed_module(
+pub fn format_parsed_source(
   parsed_source: &ParsedSource,
   fmt_options: FmtOptionsConfig,
-) -> String {
-  dprint_plugin_typescript::format_parsed_file(
-    &dprint_plugin_typescript::SourceFileInfo {
-      is_jsx: matches!(
-        parsed_source.media_type(),
-        deno_ast::MediaType::Jsx | deno_ast::MediaType::Tsx
-      ),
-      info: parsed_source.source(),
-      leading_comments: parsed_source.comments().leading_map(),
-      trailing_comments: parsed_source.comments().trailing_map(),
-      module: parsed_source.module(),
-      tokens: parsed_source.tokens(),
-    },
+) -> Result<String, String> {
+  dprint_plugin_typescript::format_parsed_source(
+    parsed_source,
     &get_resolved_typescript_config(&fmt_options),
   )
+  .map_err(|e| e.to_string())
 }
 
 async fn check_source_files(

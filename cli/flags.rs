@@ -198,7 +198,7 @@ pub struct Flags {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
-  pub allow_ffi: Option<Vec<String>>,
+  pub allow_ffi: Option<Vec<PathBuf>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
@@ -324,7 +324,7 @@ impl Flags {
         args.push("--allow-ffi".to_string());
       }
       Some(ffi_allowlist) => {
-        let s = format!("--allow-ffi={}", ffi_allowlist.join(","));
+        let s = format!("--allow-ffi={}", join_paths(ffi_allowlist, ","));
         args.push(s);
       }
       _ => {}
@@ -1685,10 +1685,10 @@ fn config_arg<'a, 'b>() -> Arg<'a, 'b> {
     .long_help(
       "Load configuration file.
 Before 1.14 Deno only supported loading tsconfig.json that allowed
-to customise TypeScript compiler settings. 
+to customise TypeScript compiler settings.
 
-Starting with 1.14 configuration file can be used to configure different 
-subcommands like `deno lint` or `deno fmt`. 
+Starting with 1.14 configuration file can be used to configure different
+subcommands like `deno lint` or `deno fmt`.
 
 It's recommended to use `deno.json` or `deno.jsonc` as a filename.",
     )
@@ -2202,7 +2202,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 
   if let Some(ffi_wl) = matches.values_of("allow-ffi") {
-    let ffi_allowlist: Vec<String> = ffi_wl.map(ToString::to_string).collect();
+    let ffi_allowlist: Vec<PathBuf> = ffi_wl.map(PathBuf::from).collect();
     flags.allow_ffi = Some(ffi_allowlist);
     debug!("ffi allowlist: {:#?}", &flags.allow_ffi);
   }

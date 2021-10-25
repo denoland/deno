@@ -53,6 +53,7 @@
     SetPrototypeEntries,
     Symbol,
     SymbolPrototypeToString,
+    SymbolPrototypeValueOf,
     SymbolToStringTag,
     SymbolHasInstance,
     SymbolFor,
@@ -88,6 +89,9 @@
     MathFloor,
     Number,
     NumberPrototypeToString,
+    NumberPrototypeValueOf,
+    BigInt,
+    BigIntPrototypeToString,
     Proxy,
     ReflectGet,
     ReflectGetOwnPropertyDescriptor,
@@ -891,7 +895,24 @@
 
   function inspectNumberObject(value, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    return cyan(`[Number: ${NumberPrototypeToString(value)}]`); // wrappers are in cyan
+    // Special handling of -0
+    return cyan(
+      `[Number: ${
+        ObjectIs(NumberPrototypeValueOf(value), -0)
+          ? "-0"
+          : NumberPrototypeToString(value)
+      }]`,
+    ); // wrappers are in cyan
+  }
+
+  function inspectBigIntObject(value, inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
+    return cyan(`[BigInt: ${BigIntPrototypeToString(value)}n]`); // wrappers are in cyan
+  }
+
+  function inspectSymbolObject(value, inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
+    return cyan(`[Symbol: ${maybeQuoteSymbol(SymbolPrototypeValueOf(value))}]`); // wrappers are in cyan
   }
 
   const PromiseState = {
@@ -1125,10 +1146,14 @@
       return inspectArray(value, level, inspectOptions);
     } else if (value instanceof Number) {
       return inspectNumberObject(value, inspectOptions);
+    } else if (value instanceof BigInt) {
+      return inspectBigIntObject(value, inspectOptions);
     } else if (value instanceof Boolean) {
       return inspectBooleanObject(value, inspectOptions);
     } else if (value instanceof String) {
       return inspectStringObject(value, inspectOptions);
+    } else if (value instanceof Symbol) {
+      return inspectSymbolObject(value, inspectOptions);
     } else if (value instanceof Promise) {
       return inspectPromise(value, level, inspectOptions);
     } else if (value instanceof RegExp) {
