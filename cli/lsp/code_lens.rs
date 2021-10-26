@@ -531,81 +531,88 @@ async fn collect_tsc(
 
 #[cfg(test)]
 mod tests {
-  // use deno_ast::MediaType;
-  // use deno_ast::SourceTextInfo;
+  use deno_ast::MediaType;
+  use deno_ast::SourceTextInfo;
 
-  // use super::*;
+  use super::*;
 
-  // #[test]
-  // fn test_deno_test_collector() {
-  //   let specifier = resolve_url("https://deno.land/x/mod.ts").unwrap();
-  //   let source = r#"
-  //     Deno.test({
-  //       name: "test a",
-  //       fn() {}
-  //     });
+  #[test]
+  fn test_deno_test_collector() {
+    let specifier = resolve_url("https://deno.land/x/mod.ts").unwrap();
+    let source = Arc::new(
+      r#"
+      Deno.test({
+        name: "test a",
+        fn() {}
+      });
 
-  //     Deno.test("test b", function anotherTest() {});
-  //   "#;
-  //   let parsed_module = crate::lsp::analysis::parse_module(
-  //     &specifier,
-  //     SourceTextInfo::from_string(source.to_string()),
-  //     MediaType::TypeScript,
-  //   )
-  //   .unwrap();
-  //   let mut collector = DenoTestCollector::new(specifier, Arc::new(parsed_module.clone()));
-  //   parsed_module.module().visit_with(
-  //     &ast::Invalid {
-  //       span: deno_ast::swc::common::DUMMY_SP,
-  //     },
-  //     &mut collector,
-  //   );
-  //   assert_eq!(
-  //     collector.take(),
-  //     vec![
-  //       lsp::CodeLens {
-  //         range: lsp::Range {
-  //           start: lsp::Position {
-  //             line: 1,
-  //             character: 11
-  //           },
-  //           end: lsp::Position {
-  //             line: 1,
-  //             character: 15
-  //           }
-  //         },
-  //         command: Some(lsp::Command {
-  //           title: "▶\u{fe0e} Run Test".to_string(),
-  //           command: "deno.test".to_string(),
-  //           arguments: Some(vec![
-  //             json!("https://deno.land/x/mod.ts"),
-  //             json!("test a"),
-  //           ])
-  //         }),
-  //         data: None,
-  //       },
-  //       lsp::CodeLens {
-  //         range: lsp::Range {
-  //           start: lsp::Position {
-  //             line: 6,
-  //             character: 11
-  //           },
-  //           end: lsp::Position {
-  //             line: 6,
-  //             character: 15
-  //           }
-  //         },
-  //         command: Some(lsp::Command {
-  //           title: "▶\u{fe0e} Run Test".to_string(),
-  //           command: "deno.test".to_string(),
-  //           arguments: Some(vec![
-  //             json!("https://deno.land/x/mod.ts"),
-  //             json!("test b"),
-  //           ])
-  //         }),
-  //         data: None,
-  //       }
-  //     ]
-  //   );
-  // }
+      Deno.test("test b", function anotherTest() {});
+    "#
+      .to_string(),
+    );
+    let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: specifier.to_string(),
+      source: SourceTextInfo::new(source),
+      media_type: MediaType::TypeScript,
+      capture_tokens: true,
+      scope_analysis: true,
+      maybe_syntax: None,
+    })
+    .unwrap();
+    let mut collector =
+      DenoTestCollector::new(specifier, parsed_module.clone());
+    parsed_module.module().visit_with(
+      &ast::Invalid {
+        span: deno_ast::swc::common::DUMMY_SP,
+      },
+      &mut collector,
+    );
+    assert_eq!(
+      collector.take(),
+      vec![
+        lsp::CodeLens {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 1,
+              character: 11
+            },
+            end: lsp::Position {
+              line: 1,
+              character: 15
+            }
+          },
+          command: Some(lsp::Command {
+            title: "▶\u{fe0e} Run Test".to_string(),
+            command: "deno.test".to_string(),
+            arguments: Some(vec![
+              json!("https://deno.land/x/mod.ts"),
+              json!("test a"),
+            ])
+          }),
+          data: None,
+        },
+        lsp::CodeLens {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 6,
+              character: 11
+            },
+            end: lsp::Position {
+              line: 6,
+              character: 15
+            }
+          },
+          command: Some(lsp::Command {
+            title: "▶\u{fe0e} Run Test".to_string(),
+            command: "deno.test".to_string(),
+            arguments: Some(vec![
+              json!("https://deno.land/x/mod.ts"),
+              json!("test b"),
+            ])
+          }),
+          data: None,
+        }
+      ]
+    );
+  }
 }
