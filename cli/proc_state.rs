@@ -298,7 +298,9 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports();
-    let node_resolver = NodeEsmResolver;
+    let node_resolver = NodeEsmResolver::new(
+      self.maybe_import_map.as_ref().map(ImportMapResolver::new),
+    );
     let import_map_resolver =
       self.maybe_import_map.as_ref().map(ImportMapResolver::new);
     let maybe_resolver = if self.flags.compat {
