@@ -181,7 +181,7 @@ impl Assets {
     specifier: &ModuleSpecifier,
   ) -> Option<Arc<NavigationTree>> {
     let doc = self.0.get(specifier).map(|v| v.as_ref()).flatten()?;
-    doc.maybe_navigation_tree.as_ref().map(|nt| nt.clone())
+    doc.maybe_navigation_tree.as_ref().cloned()
   }
 
   pub fn set_navigation_tree(

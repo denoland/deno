@@ -675,7 +675,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_generate_lint_diagnostics() {
-    let (snapshot, collection, _) = setup(&vec![(
+    let (snapshot, collection, _) = setup(&[(
       "file:///a.ts",
       r#"import * as b from "./b.ts";
       
@@ -686,6 +686,10 @@ console.log(a);
       LanguageId::TypeScript,
     )]);
     let result = generate_lint_diagnostics(&snapshot, collection).await;
-    println!("{:?}", result);
+    assert!(result.is_ok());
+    let diagnostics = result.unwrap();
+    assert_eq!(diagnostics.len(), 1);
+    let (_, _, diagnostics) = &diagnostics[0];
+    assert_eq!(diagnostics.len(), 2);
   }
 }
