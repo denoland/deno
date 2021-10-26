@@ -41,7 +41,7 @@ winres = "0.1.11"
 [dependencies]
 deno_ast = { version = "0.4.1", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core = { version = "0.105.0", path = "../core" }
-deno_doc = { git = "https://github.com/kitsonk/deno_doc", branch = "reaf_lsp" }
+deno_doc = "0.18.0"
 deno_graph = "0.9.0"
 deno_lint = { version = "0.18.1", features = ["docs"] }
 deno_runtime = { version = "0.31.0", path = "../runtime" }
