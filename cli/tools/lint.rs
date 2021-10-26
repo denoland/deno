@@ -86,6 +86,10 @@ pub async fn lint(
     }
   }
 
+  if include_files.is_empty() {
+    include_files = [std::env::current_dir()?].to_vec();
+  }
+
   let reporter_kind = if json {
     LintReporterKind::Json
   } else {
