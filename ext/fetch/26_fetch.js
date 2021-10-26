@@ -214,6 +214,8 @@
       } else {
         req.body.streamOrStatic.consumed = true;
         reqBody = req.body.streamOrStatic.body;
+        // TODO(@AaronO): plumb support for StringOrBuffer all the way
+        reqBody = typeof reqBody === "string" ? core.encode(reqBody) : reqBody;
       }
     }
 
