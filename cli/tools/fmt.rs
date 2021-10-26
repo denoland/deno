@@ -81,24 +81,29 @@ pub async fn format(
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
-    let result =
-      collect_files(&include_files, &exclude_files, is_supported_ext_fmt).map(
-        |files| {
-          let collected_files = if let Some(paths) = changed {
-            files
-              .into_iter()
-              .filter(|path| paths.contains(path))
-              .collect::<Vec<_>>()
-          } else {
-            files
-          };
-          (collected_files, fmt_options.clone())
-        },
-      );
+
+    let collect_files =
+      collect_files(&include_files, &exclude_files, is_supported_ext_fmt);
+    let (result, refmt_files) = match collect_files {
+      Ok(value) => {
+        if let Some(paths) = changed {
+          let refmt_files = value
+            .clone()
+            .into_iter()
+            .filter(|path| paths.contains(path))
+            .collect::<Vec<_>>();
+          (Ok((value, fmt_options.clone())), Some(refmt_files))
+        } else {
+          (Ok((value, fmt_options.clone())), Some([].to_vec()))
+        }
+      }
+      Err(e) => (Err(e), None),
+    };
+
     let paths_to_watch = include_files.clone();
     async move {
       if (files_changed || !watch)
-        && matches!(result, Ok((ref files, _)) if files.is_empty())
+        && matches!(refmt_files, Some(files) if files.is_empty())
       {
         ResolutionResult::Ignore
       } else {
