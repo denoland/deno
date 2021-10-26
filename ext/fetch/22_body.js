@@ -385,6 +385,9 @@
       stream = { body: source, consumed: false };
       length = source.byteLength;
     } else if (typeof source === "string") {
+      // WARNING: this deviates from spec (expects length to be set)
+      // https://fetch.spec.whatwg.org/#bodyinit > 7.
+      // no observable side-effect for users so far, but could change
       stream = { body: source, consumed: false };
       length = null; // NOTE: string length != byte length
     }
