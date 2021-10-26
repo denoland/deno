@@ -268,7 +268,6 @@ fn fmt_all_files_on_each_change_test() {
 
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted_1).unwrap();
-  std::fs::copy(&badly_formatted_original, &badly_formatted_2).unwrap();
 
   std::thread::sleep(std::time::Duration::from_secs(1));
 
