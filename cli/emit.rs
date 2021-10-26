@@ -160,8 +160,6 @@ pub(crate) fn get_ts_config(
         "target": "esnext",
         "tsBuildInfoFile": "deno:///.tsbuildinfo",
         "useDefineForClassFields": true,
-        // TODO(@kitsonk) remove for Deno 2.0
-        "useUnknownInCatchVariables": false,
       }));
       if tsc_emit {
         ts_config.merge(&json!({
@@ -214,8 +212,6 @@ pub(crate) fn get_ts_config(
         "target": "esnext",
         "tsBuildInfoFile": "deno:///.tsbuildinfo",
         "useDefineForClassFields": true,
-        // TODO(@kitsonk) remove for Deno 2.0
-        "useUnknownInCatchVariables": false,
       }));
       if tsc_emit {
         ts_config.merge(&json!({
