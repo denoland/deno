@@ -102,8 +102,7 @@ pub async fn format(
 
     let paths_to_watch = include_files.clone();
     async move {
-      if (files_changed || !watch)
-        && matches!(refmt_files, Some(files) if files.is_empty())
+      if files_changed && matches!(refmt_files, Some(files) if files.is_empty())
       {
         ResolutionResult::Ignore
       } else {
@@ -126,13 +125,16 @@ pub async fn format(
   if watch {
     file_watcher::watch_func(resolver, operation, "Fmt").await?;
   } else {
-    let (files, fmt_options) =
-      if let ResolutionResult::Restart { result, .. } = resolver(None).await {
-        result?
-      } else {
-        return Err(generic_error("No target files found."));
-      };
-    operation((files, fmt_options)).await?;
+    let files =
+      collect_files(&include_files, &exclude_files, is_supported_ext_fmt)
+        .and_then(|files| {
+          if files.is_empty() {
+            Err(generic_error("No target files found."))
+          } else {
+            Ok(files)
+          }
+        })?;
+    operation((files, fmt_options.clone())).await?;
   }
 
   Ok(())

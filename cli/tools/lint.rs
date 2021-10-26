@@ -127,7 +127,7 @@ pub async fn lint(
     };
 
     async move {
-      if (files_changed || !watch)
+      if files_changed
         && matches!(relint_files, Some(ref files) if files.is_empty())
       {
         ResolutionResult::Ignore
