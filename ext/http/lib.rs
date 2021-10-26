@@ -332,7 +332,9 @@ fn is_websocket_request(req: &hyper::Request<hyper::Body>) -> bool {
     && req.method() == hyper::Method::GET
     && req.headers().contains_key(&SEC_WEBSOCKET_KEY)
     && header(req.headers(), &SEC_WEBSOCKET_VERSION) == b"13"
-    && header(req.headers(), &UPGRADE).eq_ignore_ascii_case(b"websocket")
+    && header(req.headers(), &UPGRADE)
+      .split(|c| *c == b' ' || *c == b',')
+      .any(|token| token.eq_ignore_ascii_case(b"websocket"))
     && header(req.headers(), &CONNECTION)
       .split(|c| *c == b' ' || *c == b',')
       .any(|token| token.eq_ignore_ascii_case(b"upgrade"))

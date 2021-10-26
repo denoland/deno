@@ -726,18 +726,6 @@ unitTest(function httpUpgradeWebSocket() {
   );
 });
 
-unitTest(function httpUpgradeWebSocketLowercaseUpgradeHeader() {
-  const request = new Request("https://deno.land/", {
-    headers: {
-      connection: "upgrade",
-      upgrade: "websocket",
-      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
-    },
-  });
-  const { response } = Deno.upgradeWebSocket(request);
-  assertEquals(response.status, 101);
-});
-
 unitTest(function httpUpgradeWebSocketMultipleConnectionOptions() {
   const request = new Request("https://deno.land/", {
     headers: {
@@ -750,11 +738,23 @@ unitTest(function httpUpgradeWebSocketMultipleConnectionOptions() {
   assertEquals(response.status, 101);
 });
 
+unitTest(function httpUpgradeWebSocketMultipleUpgradeOptions() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "upgrade",
+      upgrade: "websocket, foo",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+});
+
 unitTest(function httpUpgradeWebSocketCaseInsensitiveUpgradeHeader() {
   const request = new Request("https://deno.land/", {
     headers: {
       connection: "upgrade",
-      upgrade: "websocket",
+      upgrade: "Websocket",
       "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
     },
   });
@@ -775,7 +775,7 @@ unitTest(function httpUpgradeWebSocketInvalidUpgradeHeader() {
       Deno.upgradeWebSocket(request);
     },
     TypeError,
-    "Invalid Header: 'upgrade' header must be 'websocket'",
+    "Invalid Header: 'upgrade' header must contain 'websocket'",
   );
 });
 
@@ -791,7 +791,7 @@ unitTest(function httpUpgradeWebSocketWithoutUpgradeHeader() {
       Deno.upgradeWebSocket(request);
     },
     TypeError,
-    "Invalid Header: 'upgrade' header must be 'websocket'",
+    "Invalid Header: 'upgrade' header must contain 'websocket'",
   );
 });
 

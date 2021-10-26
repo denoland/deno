@@ -349,9 +349,14 @@
 
   function upgradeWebSocket(request, options = {}) {
     const upgrade = request.headers.get("upgrade");
-    if (!upgrade || StringPrototypeToLowerCase(upgrade) !== "websocket") {
+    const upgradeHasWebSocketOption = upgrade !== null &&
+      ArrayPrototypeSome(
+        StringPrototypeSplit(upgrade, /\s*,\s*/),
+        (option) => StringPrototypeToLowerCase(option) === "websocket",
+      );
+    if (!upgradeHasWebSocketOption) {
       throw new TypeError(
-        "Invalid Header: 'upgrade' header must be 'websocket'",
+        "Invalid Header: 'upgrade' header must contain 'websocket'",
       );
     }
 
@@ -363,7 +368,7 @@
       );
     if (!connectionHasUpgradeOption) {
       throw new TypeError(
-        "Invalid Header: 'connection' header must be 'Upgrade'",
+        "Invalid Header: 'connection' header must contain 'Upgrade'",
       );
     }
 
