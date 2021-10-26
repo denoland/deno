@@ -131,7 +131,8 @@
         return true;
       },
       has(target, p) {
-        return (typeof target.getItem(p)) === "string";
+        return p === SymbolFor("Deno.customInspect") ||
+          (typeof target.getItem(p)) === "string";
       },
       ownKeys() {
         return core.opSync("op_webstorage_iterate_keys", persistent);

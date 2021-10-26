@@ -204,7 +204,7 @@ pub fn create_main_worker(
 
   let create_web_worker_cb = create_web_worker_callback(ps.clone());
 
-  let maybe_storage_origin = if let Some(location) = &ps.flags.location {
+  let maybe_storage_key = if let Some(location) = &ps.flags.location {
     // if a location is set, then the ascii serialization of the location is
     // used, unless the origin is opaque, and then no storage origin is set, as
     // we can't expect the origin to be reproducible
@@ -222,11 +222,12 @@ pub fn create_main_worker(
     Some(main_module.to_string())
   };
 
-  let origin_storage_dir = maybe_storage_origin.map(|so| {
+  let origin_storage_dir = maybe_storage_key.map(|key| {
     ps.dir
       .root
+      // TODO(@crowlKats): change to origin_data for 2.0
       .join("location_data")
-      .join(checksum::gen(&[so.as_bytes()]))
+      .join(checksum::gen(&[key.as_bytes()]))
   });
 
   let options = WorkerOptions {
