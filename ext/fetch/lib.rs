@@ -167,6 +167,36 @@ where
   // Check scheme before asking for net permission
   let scheme = url.scheme();
   let (request_rid, request_body_rid, cancel_handle_rid) = match scheme {
+    "file" => {
+      let permissions = state.borrow_mut::<FP>();
+      let path = url
+        .to_file_path()
+        .map_err(|_| type_error(format!("Invalid file URL: {}", url)))?;
+      permissions.check_read(&path)?;
+      if method != Method::GET {
+        return Err(type_error(format!(
+          "Fetching files only supports the GET method. Received {}.",
+          method
+        )));
+      }
+      if !path.is_file() {
+        return Err(type_error(format!("Unable to fetch \"{}\".", url)));
+      }
+
+      let body = std::fs::read(&path)?;
+
+      let response = http::Response::builder()
+        .status(http::StatusCode::OK)
+        .body(reqwest::Body::from(body))?;
+
+      let fut = async move { Ok(Ok(Response::from(response))) };
+
+      let request_rid = state
+        .resource_table
+        .add(FetchRequestResource(Box::pin(fut)));
+
+      (request_rid, None, None)
+    }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url)?;
