@@ -18,7 +18,7 @@ macro_rules! assert_contains {
 // Helper function to skip watcher output that contains "Restarting"
 // phrase.
 fn skip_restarting_line(
-  stderr_lines: &mut impl Iterator<Item = String>,
+  mut stderr_lines: impl Iterator<Item = String>,
 ) -> String {
   loop {
     let msg = stderr_lines.next().unwrap();
@@ -55,6 +55,14 @@ fn wait_for(s: &str, lines: &mut impl Iterator<Item = String>) {
   }
 }
 
+fn read_checked_line(lines: &mut impl Iterator<Item = String>) -> String {
+  loop {
+    let msg = lines.next().unwrap();
+    if msg.contains("Checked") {
+      return msg;
+    }
+  }
+}
 fn check_alive_then_kill(mut child: std::process::Child) {
   assert!(child.try_wait().unwrap().is_none());
   child.kill().unwrap();
@@ -142,21 +150,12 @@ fn lint_watch_test() {
 #[test]
 fn lint_all_files_on_each_change_test() {
   let t = TempDir::new().expect("tempdir fail");
-
   let badly_linted_fixed0 =
     util::testdata_path().join("lint/watch/badly_linted.js");
-  let badly_linted_fixed0_output =
-    util::testdata_path().join("lint/watch/badly_linted.js.out");
-
   let badly_linted_fixed1 =
     util::testdata_path().join("lint/watch/badly_linted_fixed1.js");
-  let badly_linted_fixed1_output =
-    util::testdata_path().join("lint/watch/badly_linted_fixed1.js.out");
-
   let badly_linted_fixed2 =
     util::testdata_path().join("lint/watch/badly_linted_fixed2.js");
-  let badly_linted_fixed2_output =
-    util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
 
   let badly_linted_1 = t.path().join("badly_linted_1.js");
   let badly_linted_2 = t.path().join("badly_linted_2.js");
@@ -182,28 +181,20 @@ fn lint_all_files_on_each_change_test() {
 
   std::thread::sleep(std::time::Duration::from_secs(1));
 
-  let mut output = read_all_lints(&mut stderr_lines);
-  let expected_fixed0 =
-    std::fs::read_to_string(badly_linted_fixed0_output).unwrap();
-  let expected_fixed1 =
-    std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
-
-  let expected_1 = format!("{}{}", expected_fixed0, expected_fixed1);
-  let expected_2 = format!("{}{}", expected_fixed1, expected_fixed0);
-
-  assert!(output.eq(&expected_1) || output.eq(&expected_2));
+  let checked_line = read_checked_line(&mut stderr_lines);
+  assert_contains!(checked_line, "Checked 2 files");
 
   std::fs::copy(&badly_linted_fixed2, &badly_linted_2)
     .expect("Failed to copy file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
 
-  output = read_all_lints(&mut stderr_lines);
-  let expected_fixed2 =
-    std::fs::read_to_string(badly_linted_fixed2_output).unwrap();
+  let checked_line = read_checked_line(&mut stderr_lines);
+  assert_contains!(checked_line, "Checked 2 files");
 
-  let expected_1 = format!("{}{}", expected_fixed0, expected_fixed2);
-  let expected_2 = format!("{}{}", expected_fixed2, expected_fixed0);
+  assert!(child.try_wait().unwrap().is_none());
 
-  assert!(output.eq(&expected_1) || output.eq(&expected_2));
+  child.kill().unwrap();
+  drop(t);
 }
 
 #[test]
@@ -225,14 +216,12 @@ fn fmt_watch_test() {
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
-  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  let (_stdout_lines, stderr_lines) = child_lines(&mut child);
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
 
-  assert!(
-    skip_restarting_line(&mut stderr_lines).contains("badly_formatted.js")
-  );
+  assert!(skip_restarting_line(stderr_lines).contains("badly_formatted.js"));
 
   let expected = std::fs::read_to_string(fixed.clone()).unwrap();
   let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
@@ -252,7 +241,6 @@ fn fmt_watch_test() {
 #[test]
 fn fmt_all_files_on_each_change_test() {
   let t = TempDir::new().unwrap();
-  let fixed = util::testdata_path().join("badly_formatted_fixed.js");
   let badly_formatted_original =
     util::testdata_path().join("badly_formatted.mjs");
   let badly_formatted_1 = t.path().join("badly_formatted_1.js");
@@ -272,27 +260,11 @@ fn fmt_all_files_on_each_change_test() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
+  let checked_line = read_checked_line(&mut stderr_lines);
+  assert_contains!(checked_line, "Checked 2 files");
+
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
-
-  let msg1 = skip_restarting_line(&mut stderr_lines);
-  let msg2 = stderr_lines.next().unwrap();
-  assert!(
-    msg1.contains("badly_formatted_1.js")
-      || msg1.contains("badly_formatted_2.js")
-  );
-
-  assert!(
-    msg2.contains("badly_formatted_1.js")
-      || msg2.contains("badly_formatted_2.js")
-  );
-
-  let expected = std::fs::read_to_string(fixed.clone()).unwrap();
-  let actual_1 = std::fs::read_to_string(badly_formatted_1.clone()).unwrap();
-  let actual_2 = std::fs::read_to_string(badly_formatted_2.clone()).unwrap();
-
-  assert_eq!(expected, actual_1);
-  assert_eq!(expected, actual_2);
 
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted_1).unwrap();
@@ -300,13 +272,8 @@ fn fmt_all_files_on_each_change_test() {
 
   std::thread::sleep(std::time::Duration::from_secs(1));
 
-  // Check if file has been automatically formatted by watcher
-  let expected = std::fs::read_to_string(fixed).unwrap();
-  let actual_1 = std::fs::read_to_string(badly_formatted_1).unwrap();
-  let actual_2 = std::fs::read_to_string(badly_formatted_2).unwrap();
-
-  assert_eq!(expected, actual_1);
-  assert_eq!(expected, actual_2);
+  let checked_line = read_checked_line(&mut stderr_lines);
+  assert_contains!(checked_line, "Checked 2 files");
 
   check_alive_then_kill(child);
 }
@@ -834,6 +801,6 @@ fn test_watch_doc() {
 
   // We only need to scan for a Check file://.../foo.ts$3-6 line that
   // corresponds to the documentation block being type-checked.
-  assert_contains!(skip_restarting_line(&mut stderr_lines), "foo.ts$3-6");
+  assert_contains!(skip_restarting_line(stderr_lines), "foo.ts$3-6");
   check_alive_then_kill(child);
 }
