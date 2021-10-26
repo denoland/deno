@@ -91,8 +91,6 @@
   }
 
   function createStorage(persistent) {
-    if (persistent) window.location;
-
     const storage = webidl.createBranded(Storage);
     storage[_persistent] = persistent;
 
