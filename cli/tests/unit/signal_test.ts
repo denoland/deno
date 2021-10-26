@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
-  assert,
   assertEquals,
   assertThrows,
   deferred,
@@ -13,84 +12,84 @@ unitTest(
   function signalsNotImplemented() {
     assertThrows(
       () => {
-        Deno.signal("SIGINT");
+        Deno.addSignalListener("SIGINT", () => {});
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signal("SIGALRM");
+        Deno.addSignalListener("SIGALRM", () => {});
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signal("SIGCHLD");
+        Deno.addSignalListener("SIGCHLD", () => {});
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signal("SIGHUP");
+        Deno.addSignalListener("SIGHUP", () => {});
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signal("SIGINT");
+        Deno.addSignalListener("SIGINT", () => {});
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signal("SIGIO");
+        Deno.addSignalListener("SIGIO", () => {});
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signal("SIGPIPE");
+        Deno.addSignalListener("SIGPIPE", () => {});
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signal("SIGQUIT");
+        Deno.addSignalListener("SIGQUIT", () => {});
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signal("SIGTERM");
+        Deno.addSignalListener("SIGTERM", () => {});
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signal("SIGUSR1");
+        Deno.addSignalListener("SIGUSR1", () => {});
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signal("SIGUSR2");
+        Deno.addSignalListener("SIGUSR2", () => {});
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signal("SIGWINCH");
+        Deno.addSignalListener("SIGWINCH", () => {});
       },
       Error,
       "not implemented",
@@ -101,34 +100,75 @@ unitTest(
 unitTest(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { run: true, net: true },
+    permissions: { run: true },
   },
-  async function signalStreamTest() {
+  async function signalListenerTest() {
     const resolvable = deferred();
-    // This prevents the program from exiting.
-    const t = setInterval(() => {}, 1000);
-
     let c = 0;
-    const sig = Deno.signal("SIGUSR1");
+    const listener = () => {
+      c += 1;
+    };
+    Deno.addSignalListener("SIGUSR1", listener);
     setTimeout(async () => {
-      await delay(20);
+      // Sends SIGUSR1 3 times.
       for (const _ of Array(3)) {
-        // Sends SIGUSR1 3 times.
-        Deno.kill(Deno.pid, "SIGUSR1");
         await delay(20);
+        Deno.kill(Deno.pid, "SIGUSR1");
       }
-      sig.dispose();
+      await delay(20);
+      Deno.removeSignalListener("SIGUSR1", listener);
       resolvable.resolve();
     });
 
-    for await (const _ of sig) {
-      c += 1;
-    }
-
-    assertEquals(c, 3);
-
-    clearInterval(t);
     await resolvable;
+    assertEquals(c, 3);
+  },
+);
+
+unitTest(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: true },
+  },
+  async function multipleSignalListenerTest() {
+    const resolvable = deferred();
+    let c = "";
+    const listener0 = () => {
+      c += "0";
+    };
+    const listener1 = () => {
+      c += "1";
+    };
+    Deno.addSignalListener("SIGUSR2", listener0);
+    Deno.addSignalListener("SIGUSR2", listener1);
+    setTimeout(async () => {
+      // Sends SIGUSR2 3 times.
+      for (const _ of Array(3)) {
+        await delay(20);
+        Deno.kill(Deno.pid, "SIGUSR2");
+      }
+      await delay(20);
+      Deno.removeSignalListener("SIGUSR2", listener1);
+      // Sends SIGUSR2 3 times.
+      for (const _ of Array(3)) {
+        await delay(20);
+        Deno.kill(Deno.pid, "SIGUSR2");
+      }
+      await delay(20);
+      // Sends SIGUSR1 (irrelevant signal) 3 times.
+      for (const _ of Array(3)) {
+        await delay(20);
+        Deno.kill(Deno.pid, "SIGUSR1");
+      }
+      await delay(20);
+      Deno.removeSignalListener("SIGUSR2", listener0);
+      resolvable.resolve();
+    });
+
+    await resolvable;
+    // The first 3 events are handled by both handlers
+    // The last 3 events are handled only by handler0
+    assertEquals(c, "010101000");
   },
 );
 
@@ -138,13 +178,13 @@ unitTest(
     ignore: Deno.build.os === "windows",
     permissions: { run: true, read: true },
   },
-  async function signalStreamExitTest() {
+  async function canExitWhileListeningToSignal() {
     const p = Deno.run({
       cmd: [
         Deno.execPath(),
         "eval",
         "--unstable",
-        "(async () => { for await (const _ of Deno.signal('SIGIO')) {} })()",
+        "Deno.addSignalListener('SIGIO', () => {})",
       ],
     });
     const res = await p.status();
@@ -154,90 +194,18 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "windows", permissions: { run: true } },
-  async function signalPromiseTest() {
-    const resolvable = deferred();
-    // This prevents the program from exiting.
-    const t = setInterval(() => {}, 1000);
-
-    const sig = Deno.signal("SIGUSR1");
-    setTimeout(() => {
-      Deno.kill(Deno.pid, "SIGUSR1");
-      resolvable.resolve();
-    }, 20);
-    await sig;
-    sig.dispose();
-
-    clearInterval(t);
-    await resolvable;
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: true },
   },
-);
-
-// https://github.com/denoland/deno/issues/9806
-unitTest(
-  { ignore: Deno.build.os === "windows", permissions: { run: true } },
-  async function signalPromiseTest2() {
-    const resolvable = deferred();
-    // This prevents the program from exiting.
-    const t = setInterval(() => {}, 1000);
-
-    let called = false;
-    const sig = Deno.signal("SIGUSR1");
-    sig.then(() => {
-      called = true;
+  function signalInvalidHandlerTest() {
+    assertThrows(() => {
+      // deno-lint-ignore no-explicit-any
+      Deno.addSignalListener("SIGINT", "handler" as any);
     });
-    setTimeout(() => {
-      sig.dispose();
-      setTimeout(() => {
-        resolvable.resolve();
-      }, 10);
-    }, 10);
-
-    clearInterval(t);
-    await resolvable;
-
-    // Promise callback is not called because it didn't get
-    // the corresponding signal.
-    assert(!called);
-  },
-);
-
-unitTest(
-  { ignore: Deno.build.os === "windows", permissions: { run: true } },
-  function signalShorthandsTest() {
-    let s: Deno.SignalStream;
-    s = Deno.signal("SIGALRM");
-    assert(s instanceof Deno.SignalStream);
-    s.dispose();
-    s = Deno.signal("SIGCHLD");
-    assert(s instanceof Deno.SignalStream);
-    s.dispose();
-    s = Deno.signal("SIGHUP");
-    assert(s instanceof Deno.SignalStream);
-    s.dispose();
-    s = Deno.signal("SIGINT");
-    assert(s instanceof Deno.SignalStream);
-    s.dispose();
-    s = Deno.signal("SIGIO");
-    assert(s instanceof Deno.SignalStream);
-    s.dispose();
-    s = Deno.signal("SIGPIPE");
-    assert(s instanceof Deno.SignalStream);
-    s.dispose();
-    s = Deno.signal("SIGQUIT");
-    assert(s instanceof Deno.SignalStream);
-    s.dispose();
-    s = Deno.signal("SIGTERM");
-    assert(s instanceof Deno.SignalStream);
-    s.dispose();
-    s = Deno.signal("SIGUSR1");
-    assert(s instanceof Deno.SignalStream);
-    s.dispose();
-    s = Deno.signal("SIGUSR2");
-    assert(s instanceof Deno.SignalStream);
-    s.dispose();
-    s = Deno.signal("SIGWINCH");
-    assert(s instanceof Deno.SignalStream);
-    s.dispose();
+    assertThrows(() => {
+      // deno-lint-ignore no-explicit-any
+      Deno.removeSignalListener("SIGINT", "handler" as any);
+    });
   },
 );

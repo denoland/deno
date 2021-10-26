@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.53.0"
+version = "0.54.0"
 authors = ["the Deno authors"]
 edition = "2018"
 license = "MIT"
@@ -16,7 +16,7 @@ path = "lib.rs"
 [dependencies]
 async-trait = "0.1.51"
 base64 = "0.13.0"
-deno_core = { version = "0.104.0", path = "../../core" }
+deno_core = { version = "0.105.0", path = "../../core" }
 encoding_rs = "0.8.28"
 serde = "1.0.129"
 tokio = { version = "1.10.1", features = ["full"] }
