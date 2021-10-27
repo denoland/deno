@@ -432,7 +432,7 @@ mod tests {
     .expect("could not parse module");
     let (code, maybe_map) = transpile(&module, &EmitOptions::default())
       .expect("could not strip types");
-    assert!(code.starts_with("var D1;\n(function(D) {\n"));
+    assert!(code.starts_with("var D;\n(function(D) {\n"));
     assert!(
       code.contains("\n//# sourceMappingURL=data:application/json;base64,")
     );
