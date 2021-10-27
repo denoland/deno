@@ -13,7 +13,6 @@ use crate::OpTable;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use log::debug;
-use rusty_v8 as v8;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
@@ -633,7 +632,7 @@ fn set_wasm_streaming_callback(
     let undefined = v8::undefined(scope);
     let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
     cb_handle
-      .get(scope)
+      .open(scope)
       .call(scope, undefined.into(), &[arg, rid]);
   });
 }
