@@ -629,8 +629,6 @@ impl Inner {
       "strict": true,
       "target": "esnext",
       "useDefineForClassFields": true,
-      // TODO(@kitsonk) remove for Deno 1.15
-      "useUnknownInCatchVariables": false,
     }));
     let config = &self.config;
     let workspace_settings = config.get_workspace_settings();
