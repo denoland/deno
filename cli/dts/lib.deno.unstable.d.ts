@@ -566,56 +566,37 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Represents the stream of signals, implements both `AsyncIterator` and
-   * `PromiseLike`. */
-  export class SignalStream
-    implements AsyncIterableIterator<void>, PromiseLike<void> {
-    constructor(signal: Signal);
-    then<T, S>(
-      f: (v: void) => T | Promise<T>,
-      g?: (v: void) => S | Promise<S>,
-    ): Promise<T | S>;
-    next(): Promise<IteratorResult<void>>;
-    [Symbol.asyncIterator](): AsyncIterableIterator<void>;
-    dispose(): void;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Returns the stream of the given signal number. You can use it as an async
-   * iterator.
+   * Registers the given function as a listener of the given signal event.
    *
    * ```ts
-   * for await (const _ of Deno.signal("SIGTERM")) {
-   *   console.log("got SIGTERM!");
-   * }
-   * ```
-   *
-   * You can also use it as a promise. In this case you can only receive the
-   * first one.
-   *
-   * ```ts
-   * await Deno.signal("SIGTERM");
-   * console.log("SIGTERM received!")
-   * ```
-   *
-   * If you want to stop receiving the signals, you can use `.dispose()` method
-   * of the signal stream object.
-   *
-   * ```ts
-   * const sig = Deno.signal("SIGTERM");
-   * setTimeout(() => { sig.dispose(); }, 5000);
-   * for await (const _ of sig) {
+   * Deno.addSignalListener("SIGTERM", () => {
    *   console.log("SIGTERM!")
-   * }
+   * });
    * ```
-   *
-   * The above for-await loop exits after 5 seconds when `sig.dispose()` is
-   * called.
    *
    * NOTE: This functionality is not yet implemented on Windows.
    */
-  export function signal(sig: Signal): SignalStream;
+  export function addSignalListener(signal: Signal, handler: () => void): void;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Removes the given signal listener that has been registered with
+   * Deno.addSignalListener.
+   *
+   * ```ts
+   * const listener = () => {
+   *   console.log("SIGTERM!")
+   * };
+   * Deno.addSignalListener("SIGTERM", listener);
+   * Deno.removeSignalListener("SIGTERM", listener);
+   * ```
+   *
+   * NOTE: This functionality is not yet implemented on Windows.
+   */
+  export function removeSignalListener(
+    signal: Signal,
+    handler: () => void,
+  ): void;
 
   export type SetRawOptions = {
     cbreak: boolean;
@@ -1110,7 +1091,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
-  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+  export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
 
   export interface StartTlsOptions {
     /** A literal IP address or host name that can be resolved to an IP address.
@@ -1149,7 +1130,7 @@ declare namespace Deno {
   export function startTls(
     conn: Conn,
     options?: StartTlsOptions,
-  ): Promise<Conn>;
+  ): Promise<TlsConn>;
 
   export interface ListenTlsOptions {
     /** **UNSTABLE**: new API, yet to be vetted.

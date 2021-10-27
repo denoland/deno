@@ -109,9 +109,8 @@
   };
 
   __bootstrap.denoNsUnstable = {
-    signal: __bootstrap.signals.signal,
-    Signal: __bootstrap.signals.Signal,
-    SignalStream: __bootstrap.signals.SignalStream,
+    addSignalListener: __bootstrap.signals.addSignalListener,
+    removeSignalListener: __bootstrap.signals.removeSignalListener,
     emit: __bootstrap.compilerApi.emit,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,

@@ -20,6 +20,7 @@ use deno_net::io::UnixStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::fs::File as StdFile;
 use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
@@ -33,8 +34,19 @@ use tokio::process;
 use std::os::unix::io::FromRawFd;
 
 #[cfg(windows)]
-use std::os::windows::io::FromRawHandle;
+use {
+  std::os::windows::io::FromRawHandle,
+  winapi::um::{processenv::GetStdHandle, winbase},
+};
 
+#[cfg(unix)]
+lazy_static::lazy_static! {
+  static ref STDIN_HANDLE: StdFile = unsafe { StdFile::from_raw_fd(0) };
+  static ref STDOUT_HANDLE: StdFile = unsafe { StdFile::from_raw_fd(1) };
+  static ref STDERR_HANDLE: StdFile = unsafe { StdFile::from_raw_fd(2) };
+}
+
+#[cfg(windows)]
 lazy_static::lazy_static! {
   /// Due to portability issues on Windows handle to stdout is created from raw
   /// file descriptor.  The caveat of that approach is fact that when this
@@ -44,50 +56,14 @@ lazy_static::lazy_static! {
   /// resource table is dropped storing reference to that handle, the handle
   /// itself won't be closed (so Deno.core.print) will still work.
   // TODO(ry) It should be possible to close stdout.
-  static ref STDIN_HANDLE: Option<std::fs::File> = {
-    #[cfg(not(windows))]
-    let stdin = unsafe { Some(std::fs::File::from_raw_fd(0)) };
-    #[cfg(windows)]
-    let stdin = unsafe {
-      let handle = winapi::um::processenv::GetStdHandle(
-        winapi::um::winbase::STD_INPUT_HANDLE,
-      );
-      if handle.is_null() {
-        return None;
-      }
-      Some(std::fs::File::from_raw_handle(handle))
-    };
-    stdin
+  static ref STDIN_HANDLE: StdFile = unsafe {
+    StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE))
   };
-  static ref STDOUT_HANDLE: Option<std::fs::File> = {
-    #[cfg(not(windows))]
-    let stdout = unsafe { Some(std::fs::File::from_raw_fd(1)) };
-    #[cfg(windows)]
-    let stdout = unsafe {
-      let handle = winapi::um::processenv::GetStdHandle(
-        winapi::um::winbase::STD_OUTPUT_HANDLE,
-      );
-      if handle.is_null() {
-        return None;
-      }
-      Some(std::fs::File::from_raw_handle(handle))
-    };
-    stdout
+  static ref STDOUT_HANDLE: StdFile = unsafe {
+    StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE))
   };
-  static ref STDERR_HANDLE: Option<std::fs::File> = {
-    #[cfg(not(windows))]
-    let stderr = unsafe { Some(std::fs::File::from_raw_fd(2)) };
-    #[cfg(windows)]
-    let stderr = unsafe {
-      let handle = winapi::um::processenv::GetStdHandle(
-        winapi::um::winbase::STD_ERROR_HANDLE,
-      );
-      if handle.is_null() {
-        return None;
-      }
-      Some(std::fs::File::from_raw_handle(handle))
-    };
-    stderr
+  static ref STDERR_HANDLE: StdFile = unsafe {
+    StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE))
   };
 }
 
@@ -107,47 +83,12 @@ pub fn init_stdio() -> Extension {
   Extension::builder()
     .state(|state| {
       let t = &mut state.resource_table;
-      let (stdin, stdout, stderr) = get_stdio();
-      if let Some(stream) = stdin {
-        t.add(stream);
-      }
-      if let Some(stream) = stdout {
-        t.add(stream);
-      }
-      if let Some(stream) = stderr {
-        t.add(stream);
-      }
+      t.add(StdFileResource::stdio(&STDIN_HANDLE, "stdin"));
+      t.add(StdFileResource::stdio(&STDOUT_HANDLE, "stdout"));
+      t.add(StdFileResource::stdio(&STDERR_HANDLE, "stderr"));
       Ok(())
     })
     .build()
-}
-
-pub fn get_stdio() -> (
-  Option<StdFileResource>,
-  Option<StdFileResource>,
-  Option<StdFileResource>,
-) {
-  let stdin = get_stdio_stream(&STDIN_HANDLE, "stdin");
-  let stdout = get_stdio_stream(&STDOUT_HANDLE, "stdout");
-  let stderr = get_stdio_stream(&STDERR_HANDLE, "stderr");
-
-  (stdin, stdout, stderr)
-}
-
-fn get_stdio_stream(
-  handle: &Option<std::fs::File>,
-  name: &str,
-) -> Option<StdFileResource> {
-  match handle {
-    None => None,
-    Some(file_handle) => match file_handle.try_clone() {
-      Ok(clone) => {
-        let tokio_file = tokio::fs::File::from_std(clone);
-        Some(StdFileResource::stdio(tokio_file, name))
-      }
-      Err(_e) => None,
-    },
-  }
 }
 
 #[cfg(unix)]
@@ -277,10 +218,10 @@ pub struct StdFileResource {
 }
 
 impl StdFileResource {
-  pub fn stdio(fs_file: tokio::fs::File, name: &str) -> Self {
+  pub fn stdio(std_file: &StdFile, name: &str) -> Self {
     Self {
       fs_file: Some(AsyncRefCell::new((
-        Some(fs_file),
+        std_file.try_clone().map(tokio::fs::File::from_std).ok(),
         Some(FileMetadata::default()),
       ))),
       name: name.to_string(),
