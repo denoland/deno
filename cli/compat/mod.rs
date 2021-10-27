@@ -86,32 +86,7 @@ fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   }
 }
 
-pub async fn check_if_should_use_esm_loader(
-  js_runtime: &mut JsRuntime,
-  main_module: &str,
-) -> Result<bool, AnyError> {
-  // Decide if we're running with Node ESM loader or CJS loader.
-  let source_code = &format!(
-    r#"(async function checkIfEsm(main) {{
-      const {{ resolveMainPath, shouldUseESMLoader }} = await import("{}");
-      const resolvedMain = resolveMainPath(main);
-      const useESMLoader = shouldUseESMLoader(resolvedMain);
-      return useESMLoader;
-    }})('{}');"#,
-    MODULE_URL_STR.as_str(),
-    escape_for_single_quote_string(main_module),
-  );
-  let result =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  let use_esm_loader_global = js_runtime.resolve_value(result).await?;
-  let use_esm_loader = {
-    let scope = &mut js_runtime.handle_scope();
-    let use_esm_loader_local = use_esm_loader_global.get(scope);
-    use_esm_loader_local.boolean_value(scope)
-  };
-
-  Ok(use_esm_loader)
-}
+pub use esm_resolver::check_if_should_use_esm_loader;
 
 pub fn load_cjs_module(
   js_runtime: &mut JsRuntime,
