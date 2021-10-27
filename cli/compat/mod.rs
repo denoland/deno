@@ -106,7 +106,7 @@ pub async fn check_if_should_use_esm_loader(
   let use_esm_loader_global = js_runtime.resolve_value(result).await?;
   let use_esm_loader = {
     let scope = &mut js_runtime.handle_scope();
-    let use_esm_loader_local = use_esm_loader_global.get(scope);
+    let use_esm_loader_local = use_esm_loader_global.open(scope);
     use_esm_loader_local.boolean_value(scope)
   };
 

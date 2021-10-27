@@ -22,7 +22,6 @@ use crate::futures::task::Poll;
 use crate::serde_json;
 use crate::serde_json::json;
 use crate::serde_json::Value;
-use crate::v8;
 use parking_lot::Mutex;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
