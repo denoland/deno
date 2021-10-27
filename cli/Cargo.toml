@@ -68,7 +68,6 @@ lspower = "1.1.0"
 notify = "5.0.0-pre.12"
 num_cpus = "1.13.0"
 once_cell = "1.8.0"
-parking_lot_core = "=0.8.0"
 percent-encoding = "2.1.0"
 pin-project = "1.0.8"
 rand = { version = "0.8.4", features = ["small_rng"] }

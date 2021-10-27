@@ -669,7 +669,6 @@ dependencies = [
  "num_cpus",
  "once_cell",
  "os_pipe",
- "parking_lot_core",
  "percent-encoding",
  "pin-project",
  "pretty_assertions",
