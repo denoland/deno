@@ -157,6 +157,9 @@ impl Document {
       .map(|h| h.get("x-deno-warning").cloned())
       .flatten();
     let parser = SourceParser::default();
+    // we only ever do `Document::new` on on disk resources that are supposed to
+    // be diagnosable, unlike `Document::open`, so it is safe to unconditionally
+    // parse the module.
     let maybe_module = Some(deno_graph::parse_module(
       &specifier,
       maybe_headers,

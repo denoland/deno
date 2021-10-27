@@ -363,7 +363,6 @@ impl Inner {
         LspError::internal_error()
       })?,
       documents: self.documents.clone(),
-      // documents: self.documents.clone(),
       maybe_lint_config: self.maybe_lint_config.clone(),
       maybe_fmt_config: self.maybe_fmt_config.clone(),
       maybe_config_uri: self.maybe_config_uri.clone(),
