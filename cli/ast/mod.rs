@@ -203,6 +203,27 @@ fn strip_config_from_emit_options(
   }
 }
 
+/// Implements a configuration trait for source maps that reflects the logic
+/// to embed sources in the source map or not.
+#[derive(Debug)]
+pub(crate) struct SourceMapConfig {
+  pub inline_sources: bool,
+}
+
+impl deno_ast::swc::common::source_map::SourceMapGenConfig for SourceMapConfig {
+  fn file_name_to_source(&self, f: &FileName) -> String {
+    f.to_string()
+  }
+
+  fn inline_sources_content(&self, f: &FileName) -> bool {
+    match f {
+      FileName::Real(..) | FileName::Custom(..) => false,
+      FileName::Url(..) => self.inline_sources,
+      _ => true,
+    }
+  }
+}
+
 /// Transform a TypeScript file into a JavaScript file, based on the supplied
 /// options.
 ///
@@ -213,6 +234,9 @@ pub fn transpile(
 ) -> Result<(String, Option<String>), AnyError> {
   let program: Program = (*parsed_source.program()).clone();
   let source_map = Rc::new(SourceMap::default());
+  let source_map_config = SourceMapConfig {
+    inline_sources: options.inline_sources,
+  };
   let specifier = resolve_url_or_path(parsed_source.specifier())?;
   let file_name = FileName::Url(specifier);
   source_map
@@ -252,7 +276,7 @@ pub fn transpile(
     {
       let mut buf = Vec::new();
       source_map
-        .build_source_map_from(&mut src_map_buf, None)
+        .build_source_map_with_config(&mut src_map_buf, None, source_map_config)
         .to_writer(&mut buf)?;
 
       if options.inline_source_map {
