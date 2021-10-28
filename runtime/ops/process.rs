@@ -261,7 +261,6 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   let signo = super::signal::signal_str_to_int(signal)?;
   use nix::sys::signal::{kill as unix_kill, Signal};
   use nix::unistd::Pid;
-  use std::convert::TryFrom;
   let sig = Signal::try_from(signo)?;
   unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(AnyError::from)
 }

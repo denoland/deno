@@ -10,7 +10,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
-use std::convert::TryFrom;
 use std::env;
 use std::io::Error;
 use std::net::SocketAddr;

@@ -2,7 +2,6 @@
 use bencher::{benchmark_group, benchmark_main, Bencher};
 
 use rusty_v8 as v8;
-use std::convert::TryFrom;
 
 use serde::Deserialize;
 

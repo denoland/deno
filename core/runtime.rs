@@ -31,7 +31,6 @@ use futures::task::AtomicWaker;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::mem::forget;
 use std::option::Option;

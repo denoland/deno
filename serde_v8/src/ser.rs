@@ -4,7 +4,6 @@ use serde::ser;
 use serde::ser::Serialize;
 
 use std::cell::RefCell;
-use std::convert::TryInto;
 
 use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;
