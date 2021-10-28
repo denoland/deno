@@ -261,7 +261,7 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, u64>> {
 
   let v8_size = rlib_size(target_dir, "libv8");
   println!("v8 {} bytes", v8_size);
-  sizes.insert("v8_rlib".to_string(), v8_size);
+  sizes.insert("rusty_v8_rlib".to_string(), v8_size);
 
   // Because cargo's OUT_DIR is not predictable, search the build tree for
   // snapshot related files.
