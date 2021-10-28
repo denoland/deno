@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::errors;
+use crate::resolver::ImportMapResolver;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -13,21 +14,60 @@ use regex::Regex;
 use std::path::PathBuf;
 
 #[derive(Debug, Default)]
-pub struct NodeEsmResolver;
+pub(crate) struct NodeEsmResolver<'a> {
+  maybe_import_map_resolver: Option<ImportMapResolver<'a>>,
+}
 
-impl NodeEsmResolver {
+impl<'a> NodeEsmResolver<'a> {
+  pub fn new(maybe_import_map_resolver: Option<ImportMapResolver<'a>>) -> Self {
+    Self {
+      maybe_import_map_resolver,
+    }
+  }
+
   pub fn as_resolver(&self) -> &dyn Resolver {
     self
   }
 }
 
-impl Resolver for NodeEsmResolver {
+impl Resolver for NodeEsmResolver<'_> {
   fn resolve(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    node_resolve(specifier, referrer.as_str(), &std::env::current_dir()?)
+    // First try to resolve using import map, ignoring any errors
+    if !specifier.starts_with("node:") {
+      if let Some(import_map_resolver) = &self.maybe_import_map_resolver {
+        if let Ok(specifier) = import_map_resolver.resolve(specifier, referrer)
+        {
+          return Ok(specifier);
+        }
+      }
+    }
+
+    let node_resolution =
+      node_resolve(specifier, referrer.as_str(), &std::env::current_dir()?);
+
+    match node_resolution {
+      Ok(specifier) => {
+        // If node resolution succeeded, return the specifier
+        Ok(specifier)
+      }
+      Err(err) => {
+        // If node resolution failed, check if it's because of unsupported
+        // URL scheme, and if so try to resolve using regular resolution algorithm
+        if err
+          .to_string()
+          .starts_with("[ERR_UNSUPPORTED_ESM_URL_SCHEME]")
+        {
+          return deno_core::resolve_import(specifier, referrer.as_str())
+            .map_err(|err| err.into());
+        }
+
+        Err(err)
+      }
+    }
   }
 }
 
