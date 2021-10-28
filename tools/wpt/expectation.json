@@ -5908,7 +5908,6 @@
     "api-surrogates-utf8.any.html": true,
     "api-surrogates-utf8.any.worker.html": true,
     "encodeInto.any.html": [
-      "encodeInto() and a detached output buffer",
       "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 0, filler 0",
       "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 4, filler 0",
       "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 0, filler 128",
@@ -5953,7 +5952,6 @@
       "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 4, filler random"
     ],
     "encodeInto.any.worker.html": [
-      "encodeInto() and a detached output buffer",
       "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 0, filler 0",
       "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 4, filler 0",
       "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 0, filler 128",
@@ -6028,14 +6026,8 @@
       "decode-non-utf8.any.worker.html": true,
       "decode-split-character.any.html": true,
       "decode-split-character.any.worker.html": true,
-      "decode-utf8.any.html": [
-        "decoding a transferred Uint8Array chunk should give no output",
-        "decoding a transferred ArrayBuffer chunk should give no output"
-      ],
-      "decode-utf8.any.worker.html": [
-        "decoding a transferred Uint8Array chunk should give no output",
-        "decoding a transferred ArrayBuffer chunk should give no output"
-      ],
+      "decode-utf8.any.html": true,
+      "decode-utf8.any.worker.html": true,
       "encode-bad-chunks.any.html": true,
       "encode-bad-chunks.any.worker.html": true,
       "encode-utf8.any.html": true,
