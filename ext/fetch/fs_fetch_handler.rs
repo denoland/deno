@@ -9,7 +9,11 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
+use deno_core::CancelFuture;
+use reqwest::StatusCode;
+use std::io;
 use std::rc::Rc;
+use tokio_util::io::ReaderStream;
 
 /// An implementation which tries to read file URLs from the file system via
 /// tokio::fs
@@ -25,25 +29,25 @@ impl FetchHandler for FsFetchHandler {
     Option<FetchRequestBodyResource>,
     Option<Rc<CancelHandle>>,
   ) {
-    let path = url.to_file_path().unwrap();
+    let cancel_handle = CancelHandle::new_rc();
+
     let response_fut = async move {
-      let response = {
-        match tokio::fs::read(&path).await {
-          Ok(body) => match http::Response::builder()
-            .status(http::StatusCode::OK)
-            .body(reqwest::Body::from(body))
-          {
-            Ok(response) => Ok(reqwest::Response::from(response)),
-            Err(err) => Err(err.into()),
-          },
-          Err(err) => Err(err.into()),
-        }
-      };
-      Ok(response)
+      let path = url
+        .to_file_path()
+        .map_err(|()| io::Error::from(io::ErrorKind::NotFound))?;
+      let file = tokio::fs::File::open(path).await?;
+      let stream = ReaderStream::new(file);
+      let body = reqwest::Body::wrap_stream(stream);
+      let response = http::Response::builder()
+        .status(StatusCode::OK)
+        .body(body)?
+        .into();
+      Ok::<_, AnyError>(response)
     }
+    .or_cancel(&cancel_handle)
     .boxed_local();
 
-    (response_fut, None, None)
+    (response_fut, None, Some(cancel_handle))
   }
 
   fn validate_url(&mut self, url: &Url) -> Result<(), AnyError> {
