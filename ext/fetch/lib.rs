@@ -4,6 +4,7 @@ use data_url::DataUrl;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::Future;
+use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
@@ -59,6 +60,7 @@ pub fn init<P: FetchPermissions + 'static>(
   request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
   client_cert_chain_and_key: Option<(String, String)>,
+  enable_file_fetch: bool,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -103,6 +105,7 @@ pub fn init<P: FetchPermissions + 'static>(
           .clone(),
         client_cert_chain_and_key: client_cert_chain_and_key.clone(),
       });
+      state.put::<FetchFeatures>(FetchFeatures { enable_file_fetch });
       Ok(())
     })
     .build()
@@ -115,6 +118,10 @@ pub struct HttpClientDefaults {
   pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
+}
+
+struct FetchFeatures {
+  enable_file_fetch: bool,
 }
 
 pub trait FetchPermissions {
@@ -160,6 +167,7 @@ where
     let client = state.borrow::<reqwest::Client>();
     client.clone()
   };
+  let features = state.borrow::<FetchFeatures>();
 
   let method = Method::from_bytes(&args.method)?;
   let url = Url::parse(&args.url)?;
@@ -167,7 +175,7 @@ where
   // Check scheme before asking for net permission
   let scheme = url.scheme();
   let (request_rid, request_body_rid, cancel_handle_rid) = match scheme {
-    "file" => {
+    "file" if features.enable_file_fetch => {
       let permissions = state.borrow_mut::<FP>();
       let path = url
         .to_file_path()
@@ -183,17 +191,25 @@ where
         return Err(type_error(format!("Unable to fetch \"{}\".", url)));
       }
 
-      let body = std::fs::read(&path)?;
+      let fut = async move {
+        let response = {
+          match tokio::fs::read(&path).await {
+            Ok(body) => match http::Response::builder()
+              .status(http::StatusCode::OK)
+              .body(reqwest::Body::from(body))
+            {
+              Ok(response) => Ok(Response::from(response)),
+              Err(err) => Err(err.into()),
+            },
+            Err(err) => Err(err.into()),
+          }
+        };
 
-      let response = http::Response::builder()
-        .status(http::StatusCode::OK)
-        .body(reqwest::Body::from(body))?;
+        Ok(response)
+      }
+      .boxed_local();
 
-      let fut = async move { Ok(Ok(Response::from(response))) };
-
-      let request_rid = state
-        .resource_table
-        .add(FetchRequestResource(Box::pin(fut)));
+      let request_rid = state.resource_table.add(FetchRequestResource(fut));
 
       (request_rid, None, None)
     }

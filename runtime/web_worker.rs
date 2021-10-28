@@ -324,6 +324,7 @@ impl WebWorker {
         None,
         options.unsafely_ignore_certificate_errors.clone(),
         None,
+        true, // enable_file_fetch
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),

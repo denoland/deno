@@ -128,6 +128,7 @@ mod not_docs {
         None,
         None,
         None,
+        false, // No enable_file_fetch
       ),
       deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),
