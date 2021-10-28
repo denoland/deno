@@ -781,9 +781,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.17.1"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96b60f0447a17ed4fc413bd7abad29e7d31e76f13422813f2e7978b0c4bdca7a"
+checksum = "81744eb79bda23580020b2df68a150197312b54c47e11160a65add0534c03ec5"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
@@ -826,9 +826,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.8.2"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3d7197f490abd2a1e7d1edc3a1c4db1f4e294d7067dbbf65c4714932c7c3c70"
+checksum = "d7513c22ec28dd1a4eeb82a99fc543c92d7ee2f1a146a0dd6bea7427020eb863"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -836,7 +836,7 @@ dependencies = [
  "deno_ast",
  "futures",
  "lazy_static",
- "parking_lot_core",
+ "parking_lot",
  "regex",
  "ring",
  "serde",
@@ -1887,6 +1887,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "716d3d89f35ac6a34fd0eed635395f4c3b76fa889338a4632e5231a8684216bd"
 dependencies = [
  "cfg-if 1.0.0",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
