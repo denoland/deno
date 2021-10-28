@@ -1,10 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+mod fs_fetch_handler;
+
 use data_url::DataUrl;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::Future;
-use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
@@ -53,15 +54,21 @@ use tokio_util::io::StreamReader;
 pub use data_url;
 pub use reqwest;
 
-pub fn init<P: FetchPermissions + 'static>(
+pub use fs_fetch_handler::FsFetchHandler;
+
+pub fn init<FP, FH>(
   user_agent: String,
   root_cert_store: Option<RootCertStore>,
   proxy: Option<Proxy>,
   request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
   client_cert_chain_and_key: Option<(String, String)>,
-  enable_file_fetch: bool,
-) -> Extension {
+  file_fetch_handler: FH,
+) -> Extension
+where
+  FP: FetchPermissions + 'static,
+  FH: FetchHandler + 'static,
+{
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/fetch",
@@ -75,13 +82,13 @@ pub fn init<P: FetchPermissions + 'static>(
       "26_fetch.js",
     ))
     .ops(vec![
-      ("op_fetch", op_sync(op_fetch::<P>)),
+      ("op_fetch", op_sync(op_fetch::<FP, FH>)),
       ("op_fetch_send", op_async(op_fetch_send)),
       ("op_fetch_request_write", op_async(op_fetch_request_write)),
       ("op_fetch_response_read", op_async(op_fetch_response_read)),
       (
         "op_fetch_custom_client",
-        op_sync(op_fetch_custom_client::<P>),
+        op_sync(op_fetch_custom_client::<FP>),
       ),
     ])
     .state(move |state| {
@@ -105,7 +112,7 @@ pub fn init<P: FetchPermissions + 'static>(
           .clone(),
         client_cert_chain_and_key: client_cert_chain_and_key.clone(),
       });
-      state.put::<FetchFeatures>(FetchFeatures { enable_file_fetch });
+      state.put::<FH>(file_fetch_handler.clone());
       Ok(())
     })
     .build()
@@ -120,9 +127,39 @@ pub struct HttpClientDefaults {
   pub client_cert_chain_and_key: Option<(String, String)>,
 }
 
-struct FetchFeatures {
-  enable_file_fetch: bool,
+pub type CancelableResponseFuture =
+  Pin<Box<dyn Future<Output = CancelableResponseResult>>>;
+
+pub trait FetchHandler: Clone {
+  // Return the result of the fetch request consisting of a tuple of the
+  // cancelable response result, the optional fetch body resource and the
+  // optional cancel handle.
+  fn fetch_url(
+    &mut self,
+    url: Url,
+  ) -> (
+    CancelableResponseFuture,
+    Option<FetchRequestBodyResource>,
+    Option<Rc<CancelHandle>>,
+  ) {
+    let fut = async move {
+      Ok(Err(type_error(format!("Unable to fetch \"{}\".", url))))
+    };
+    (Box::pin(fut), None, None)
+  }
+
+  // Determine if a given URL is valid, returning an early error to the client
+  fn validate_url(&mut self, url: &Url) -> Result<(), AnyError> {
+    Err(type_error(format!("Unable to fetch \"{}\".", url)))
+  }
 }
+
+/// A default implementation which leverages the trait's default method
+/// implementations.
+#[derive(Clone)]
+pub struct DefaultFileFetchHandler;
+
+impl FetchHandler for DefaultFileFetchHandler {}
 
 pub trait FetchPermissions {
   fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
@@ -152,13 +189,14 @@ pub struct FetchReturn {
   cancel_handle_rid: Option<ResourceId>,
 }
 
-pub fn op_fetch<FP>(
+pub fn op_fetch<FP, FH>(
   state: &mut OpState,
   args: FetchArgs,
   data: Option<ZeroCopyBuf>,
 ) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,
+  FH: FetchHandler + 'static,
 {
   let client = if let Some(rid) = args.client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
@@ -167,7 +205,6 @@ where
     let client = state.borrow::<reqwest::Client>();
     client.clone()
   };
-  let features = state.borrow::<FetchFeatures>();
 
   let method = Method::from_bytes(&args.method)?;
   let url = Url::parse(&args.url)?;
@@ -175,43 +212,32 @@ where
   // Check scheme before asking for net permission
   let scheme = url.scheme();
   let (request_rid, request_body_rid, cancel_handle_rid) = match scheme {
-    "file" if features.enable_file_fetch => {
-      let permissions = state.borrow_mut::<FP>();
+    "file" => {
       let path = url
         .to_file_path()
         .map_err(|_| type_error(format!("Invalid file URL: {}", url)))?;
+      let permissions = state.borrow_mut::<FP>();
       permissions.check_read(&path)?;
+
       if method != Method::GET {
         return Err(type_error(format!(
           "Fetching files only supports the GET method. Received {}.",
           method
         )));
       }
-      if !path.is_file() {
-        return Err(type_error(format!("Unable to fetch \"{}\".", url)));
-      }
 
-      let fut = async move {
-        let response = {
-          match tokio::fs::read(&path).await {
-            Ok(body) => match http::Response::builder()
-              .status(http::StatusCode::OK)
-              .body(reqwest::Body::from(body))
-            {
-              Ok(response) => Ok(Response::from(response)),
-              Err(err) => Err(err.into()),
-            },
-            Err(err) => Err(err.into()),
-          }
-        };
+      let file_fetch_handler = state.borrow_mut::<FH>();
+      file_fetch_handler.validate_url(&url)?;
 
-        Ok(response)
-      }
-      .boxed_local();
+      let (request, maybe_request_body, maybe_cancel_handle) =
+        file_fetch_handler.fetch_url(url);
+      let request_rid = state.resource_table.add(FetchRequestResource(request));
+      let maybe_request_body_rid =
+        maybe_request_body.map(|r| state.resource_table.add(r));
+      let maybe_cancel_handle_rid = maybe_cancel_handle
+        .map(|ch| state.resource_table.add(FetchCancelHandle(ch)));
 
-      let request_rid = state.resource_table.add(FetchRequestResource(fut));
-
-      (request_rid, None, None)
+      (request_rid, maybe_request_body_rid, maybe_cancel_handle_rid)
     }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
@@ -446,7 +472,7 @@ impl Resource for FetchCancelHandle {
   }
 }
 
-struct FetchRequestBodyResource {
+pub struct FetchRequestBodyResource {
   body: AsyncRefCell<mpsc::Sender<std::io::Result<Vec<u8>>>>,
   cancel: CancelHandle,
 }

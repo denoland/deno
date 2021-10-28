@@ -101,14 +101,14 @@ impl MainWorker {
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
-      deno_fetch::init::<Permissions>(
+      deno_fetch::init::<Permissions, deno_fetch::FsFetchHandler>(
         options.user_agent.clone(),
         options.root_cert_store.clone(),
         None,
         None,
         options.unsafely_ignore_certificate_errors.clone(),
         None,
-        true, // enabled_file_fetch
+        deno_fetch::FsFetchHandler,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
