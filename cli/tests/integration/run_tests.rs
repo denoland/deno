@@ -1946,8 +1946,7 @@ fn navigator_languages_unix() {
     "run navigator_languages.ts",
     None,
     Some(vec![
-      ("LANG".to_owned(), "en-US".to_owned()),
-      ("LANGUAGE".to_owned(), "en_US:en".to_owned()),
+      ("LC_ALL".to_owned(), "en_US.UTF-8:en".to_owned()),
       ("NO_COLOR".to_owned(), "1".to_owned()),
     ]),
     false,
