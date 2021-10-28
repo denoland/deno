@@ -177,7 +177,7 @@ declare namespace Deno {
     caCerts?: string[];
   }
 
-  /**Start TLS handshake from an existing connection using an optional list of
+  /** Start TLS handshake from an existing connection using an optional list of
    * CA certificates, and hostname (default is "127.0.0.1"). Specifying CA certs
    * is optional. By default the configured root certificates are used. Using
    * this function requires that the other end of the connection is prepared for
