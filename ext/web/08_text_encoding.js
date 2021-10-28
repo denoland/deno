@@ -114,7 +114,14 @@
         } else {
           input = new Uint8Array(input);
         }
-        return core.opSync("op_encoding_decode", new Uint8Array(input), {
+        if (input.buffer instanceof SharedArrayBuffer) {
+          // We clone the data into a non-shared ArrayBuffer so we can pass it
+          // to Rust.
+          // `input` is now a Uint8Array, and calling the TypedArray constructor
+          // with a TypedArray argument copies the data.
+          input = new Uint8Array(input);
+        }
+        return core.opSync("op_encoding_decode", input, {
           rid: this.#rid,
           stream: options.stream,
         });
