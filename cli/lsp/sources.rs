@@ -6,18 +6,12 @@ use super::text::LineIndex;
 use super::tsc;
 use super::urls::INVALID_SPECIFIER;
 
-use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
-use crate::flags::Flags;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
-use crate::module_graph::GraphBuilder;
-use crate::proc_state::ProcState;
-use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
-use import_map::ImportMap;
 
 use deno_ast::MediaType;
 use deno_core::error::anyhow;
@@ -25,7 +19,7 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
-use deno_runtime::permissions::Permissions;
+use import_map::ImportMap;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -33,27 +27,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tsc::NavigationTree;
-
-pub async fn cache(
-  specifier: &ModuleSpecifier,
-  maybe_import_map: &Option<ImportMap>,
-  maybe_config_file: &Option<ConfigFile>,
-  maybe_cache_path: &Option<PathBuf>,
-) -> Result<(), AnyError> {
-  let ps = ProcState::build(Flags {
-    cache_path: maybe_cache_path.clone(),
-    ..Default::default()
-  })
-  .await?;
-  let handler = Arc::new(Mutex::new(FetchHandler::new(
-    &ps,
-    Permissions::allow_all(),
-    Permissions::allow_all(),
-  )?));
-  let mut builder = GraphBuilder::new(handler, maybe_import_map.clone(), None);
-  builder.analyze_config_file(maybe_config_file).await?;
-  builder.add(specifier, false).await
-}
 
 fn get_remote_headers(
   cache_filename: &Path,

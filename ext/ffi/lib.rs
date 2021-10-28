@@ -20,6 +20,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ffi::c_void;
+use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 pub struct Unstable(pub bool);
@@ -37,7 +39,7 @@ fn check_unstable(state: &OpState, api_name: &str) {
 }
 
 pub trait FfiPermissions {
-  fn check(&mut self, path: &str) -> Result<(), AnyError>;
+  fn check(&mut self, path: &Path) -> Result<(), AnyError>;
 }
 
 #[derive(Clone)]
@@ -294,7 +296,6 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
       use std::ffi::OsStr;
       use std::os::windows::ffi::OsStrExt;
       use winapi::shared::minwindef::DWORD;
-      use winapi::shared::ntdef::WCHAR;
       use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
       use winapi::um::errhandlingapi::GetLastError;
       use winapi::um::winbase::FormatMessageW;
@@ -314,7 +315,7 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
       let lang_id =
         MAKELANGID(LANG_SYSTEM_DEFAULT, SUBLANG_SYS_DEFAULT) as DWORD;
 
-      let mut buf = vec![0 as WCHAR; 500];
+      let mut buf = vec![0; 500];
 
       let path = OsStr::new(&path)
         .encode_wide()
@@ -367,7 +368,7 @@ where
 
   check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(&path)?;
+  permissions.check(&PathBuf::from(&path))?;
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen::Error::OpeningLibraryError(std::io::Error::new(

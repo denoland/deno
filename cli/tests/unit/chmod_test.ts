@@ -82,10 +82,14 @@ unitTest(
 );
 
 unitTest({ permissions: { write: true } }, function chmodSyncFailure() {
-  assertThrows(() => {
-    const filename = "/badfile.txt";
-    Deno.chmodSync(filename, 0o777);
-  }, Deno.errors.NotFound);
+  const filename = "/badfile.txt";
+  assertThrows(
+    () => {
+      Deno.chmodSync(filename, 0o777);
+    },
+    Deno.errors.NotFound,
+    `chmod '${filename}'`,
+  );
 });
 
 unitTest({ permissions: { write: false } }, function chmodSyncPerm() {
@@ -170,10 +174,14 @@ unitTest(
 );
 
 unitTest({ permissions: { write: true } }, async function chmodFailure() {
-  await assertRejects(async () => {
-    const filename = "/badfile.txt";
-    await Deno.chmod(filename, 0o777);
-  }, Deno.errors.NotFound);
+  const filename = "/badfile.txt";
+  await assertRejects(
+    async () => {
+      await Deno.chmod(filename, 0o777);
+    },
+    Deno.errors.NotFound,
+    `chmod '${filename}'`,
+  );
 });
 
 unitTest({ permissions: { write: false } }, async function chmodPerm() {

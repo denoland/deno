@@ -2,7 +2,6 @@
 
 use crate::inspector_server::InspectorServer;
 use crate::js;
-use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::BootstrapOptions;
@@ -122,8 +121,6 @@ impl MainWorker {
       deno_timers::init::<Permissions>(),
       // ffi
       deno_ffi::init::<Permissions>(unstable),
-      // Metrics
-      metrics::init(),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(options.create_web_worker_cb.clone()),

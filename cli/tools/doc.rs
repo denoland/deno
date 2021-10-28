@@ -106,7 +106,9 @@ pub async fn print_docs(
     let source_file_specifier =
       ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
     let graph = create_graph(
-      source_file_specifier.clone(),
+      vec![source_file_specifier.clone()],
+      false,
+      None,
       &mut loader,
       None,
       None,
@@ -142,7 +144,9 @@ pub async fn print_docs(
       import_map: ps.maybe_import_map.clone(),
     };
     let graph = create_graph(
-      root_specifier.clone(),
+      vec![root_specifier.clone()],
+      false,
+      None,
       &mut loader,
       Some(&resolver),
       None,

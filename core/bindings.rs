@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::error::is_instance_of_error;
 use crate::error::AnyError;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
@@ -12,7 +13,6 @@ use crate::OpTable;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use log::debug;
-use rusty_v8 as v8;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
@@ -238,7 +238,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
                  args: v8::FunctionCallbackArguments,
                  _rv: v8::ReturnValue| {
     let arg = args.get(0);
-    if arg.is_native_error() {
+    if is_instance_of_error(scope, arg) {
       let message = v8::Exception::create_message(scope, arg);
       if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
         let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
@@ -315,7 +315,7 @@ fn opcall_sync<'s>(
   mut rv: v8::ReturnValue,
 ) {
   let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
+  let state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
     .map(|l| l.value() as OpId)
@@ -344,11 +344,13 @@ fn opcall_sync<'s>(
     scope,
     a,
     b,
+    op_id,
     promise_id: 0,
   };
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {
     Op::Sync(result) => {
+      state.op_state.borrow().tracker.track_sync(op_id);
       rv.set(result.to_v8(scope).unwrap());
     }
     Op::NotFound => {
@@ -405,6 +407,7 @@ fn opcall_async<'s>(
     scope,
     a,
     b,
+    op_id,
     promise_id,
   };
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
@@ -417,10 +420,12 @@ fn opcall_async<'s>(
       OpResult::Err(_) => rv.set(result.to_v8(scope).unwrap()),
     },
     Op::Async(fut) => {
+      state.op_state.borrow().tracker.track_async(op_id);
       state.pending_ops.push(fut);
       state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {
+      state.op_state.borrow().tracker.track_unref(op_id);
       state.pending_unref_ops.push(fut);
       state.have_unpolled_ops = true;
     }
@@ -507,7 +512,7 @@ fn eval_context(
       None,
       Some(ErrInfo {
         thrown: exception.into(),
-        is_native_error: exception.is_native_error(),
+        is_native_error: is_instance_of_error(tc_scope, exception),
         is_compile_error: true,
       }),
     );
@@ -524,7 +529,7 @@ fn eval_context(
       None,
       Some(ErrInfo {
         thrown: exception.into(),
-        is_native_error: exception.is_native_error(),
+        is_native_error: is_instance_of_error(tc_scope, exception),
         is_compile_error: false,
       }),
     );
@@ -627,7 +632,7 @@ fn set_wasm_streaming_callback(
     let undefined = v8::undefined(scope);
     let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
     cb_handle
-      .get(scope)
+      .open(scope)
       .call(scope, undefined.into(), &[arg, rid]);
   });
 }

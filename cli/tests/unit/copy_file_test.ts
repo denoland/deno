@@ -72,9 +72,13 @@ unitTest(
     const fromFilename = tempDir + "/from.txt";
     const toFilename = tempDir + "/to.txt";
     // We skip initial writing here, from.txt does not exist
-    assertThrows(() => {
-      Deno.copyFileSync(fromFilename, toFilename);
-    }, Deno.errors.NotFound);
+    assertThrows(
+      () => {
+        Deno.copyFileSync(fromFilename, toFilename);
+      },
+      Deno.errors.NotFound,
+      `copy '${fromFilename}' -> '${toFilename}'`,
+    );
 
     Deno.removeSync(tempDir, { recursive: true });
   },
@@ -162,9 +166,13 @@ unitTest(
     const fromFilename = tempDir + "/from.txt";
     const toFilename = tempDir + "/to.txt";
     // We skip initial writing here, from.txt does not exist
-    await assertRejects(async () => {
-      await Deno.copyFile(fromFilename, toFilename);
-    }, Deno.errors.NotFound);
+    await assertRejects(
+      async () => {
+        await Deno.copyFile(fromFilename, toFilename);
+      },
+      Deno.errors.NotFound,
+      `copy '${fromFilename}' -> '${toFilename}'`,
+    );
 
     Deno.removeSync(tempDir, { recursive: true });
   },

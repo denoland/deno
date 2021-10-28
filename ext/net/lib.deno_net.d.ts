@@ -33,6 +33,13 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
   }
 
+  /** Specialized listener that accepts TLS connections. */
+  export interface TlsListener extends Listener, AsyncIterable<TlsConn> {
+    /** Waits for a TLS client to connect and accepts the connection. */
+    accept(): Promise<TlsConn>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<TlsConn>;
+  }
+
   export interface Conn extends Reader, Writer, Closer {
     /** The local address of the connection. */
     readonly localAddr: Addr;
@@ -43,6 +50,13 @@ declare namespace Deno {
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
+  }
+
+  export interface TlsConn extends Conn {
+    /** Runs the client or server handshake protocol to completion if that has
+     * not happened yet. Calling this method is optional; the TLS handshake
+     * will be completed automatically as soon as data is sent or received. */
+    handshake(): Promise<void>;
   }
 
   export interface ListenOptions {
@@ -90,7 +104,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission. */
-  export function listenTls(options: ListenTlsOptions): Listener;
+  export function listenTls(options: ListenTlsOptions): TlsListener;
 
   export interface ConnectOptions {
     /** The port to connect to. */
@@ -150,7 +164,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
-  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+  export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
 
   /** Shutdown socket send operations.
    *

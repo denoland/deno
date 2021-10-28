@@ -2,10 +2,11 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const __bootstrap = window.__bootstrap;
   __bootstrap.denoNs = {
+    metrics: core.metrics,
     test: __bootstrap.testing.test,
-    metrics: __bootstrap.metrics.metrics,
     Process: __bootstrap.process.Process,
     run: __bootstrap.process.run,
     isatty: __bootstrap.tty.isatty,
@@ -108,9 +109,8 @@
   };
 
   __bootstrap.denoNsUnstable = {
-    signal: __bootstrap.signals.signal,
-    Signal: __bootstrap.signals.Signal,
-    SignalStream: __bootstrap.signals.SignalStream,
+    addSignalListener: __bootstrap.signals.addSignalListener,
+    removeSignalListener: __bootstrap.signals.removeSignalListener,
     emit: __bootstrap.compilerApi.emit,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,

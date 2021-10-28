@@ -13,19 +13,21 @@ mod normalize_path;
 mod ops;
 mod ops_builtin;
 mod ops_json;
+mod ops_metrics;
 mod resources;
 mod runtime;
 
 // Re-exports
 pub use futures;
 pub use parking_lot;
-pub use rusty_v8 as v8;
 pub use serde;
 pub use serde_json;
 pub use serde_v8;
 pub use serde_v8::Buffer as ZeroCopyBuf;
 pub use serde_v8::ByteString;
+pub use serde_v8::StringOrBuffer;
 pub use url;
+pub use v8;
 
 pub use crate::async_cancel::CancelFuture;
 pub use crate::async_cancel::CancelHandle;
@@ -67,6 +69,7 @@ pub use crate::normalize_path::normalize_path;
 pub use crate::ops::serialize_op_result;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
+pub use crate::ops::OpCall;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
 pub use crate::ops::OpPayload;

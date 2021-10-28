@@ -123,6 +123,8 @@ declare namespace Deno {
   export interface ForeignFunction {
     parameters: (NativeType | "buffer")[];
     result: NativeType;
+    /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
+    nonblocking?: boolean;
   }
 
   /** A dynamic library resource */
@@ -564,56 +566,37 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Represents the stream of signals, implements both `AsyncIterator` and
-   * `PromiseLike`. */
-  export class SignalStream
-    implements AsyncIterableIterator<void>, PromiseLike<void> {
-    constructor(signal: Signal);
-    then<T, S>(
-      f: (v: void) => T | Promise<T>,
-      g?: (v: void) => S | Promise<S>,
-    ): Promise<T | S>;
-    next(): Promise<IteratorResult<void>>;
-    [Symbol.asyncIterator](): AsyncIterableIterator<void>;
-    dispose(): void;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Returns the stream of the given signal number. You can use it as an async
-   * iterator.
+   * Registers the given function as a listener of the given signal event.
    *
    * ```ts
-   * for await (const _ of Deno.signal("SIGTERM")) {
-   *   console.log("got SIGTERM!");
-   * }
-   * ```
-   *
-   * You can also use it as a promise. In this case you can only receive the
-   * first one.
-   *
-   * ```ts
-   * await Deno.signal("SIGTERM");
-   * console.log("SIGTERM received!")
-   * ```
-   *
-   * If you want to stop receiving the signals, you can use `.dispose()` method
-   * of the signal stream object.
-   *
-   * ```ts
-   * const sig = Deno.signal("SIGTERM");
-   * setTimeout(() => { sig.dispose(); }, 5000);
-   * for await (const _ of sig) {
+   * Deno.addSignalListener("SIGTERM", () => {
    *   console.log("SIGTERM!")
-   * }
+   * });
    * ```
-   *
-   * The above for-await loop exits after 5 seconds when `sig.dispose()` is
-   * called.
    *
    * NOTE: This functionality is not yet implemented on Windows.
    */
-  export function signal(sig: Signal): SignalStream;
+  export function addSignalListener(signal: Signal, handler: () => void): void;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Removes the given signal listener that has been registered with
+   * Deno.addSignalListener.
+   *
+   * ```ts
+   * const listener = () => {
+   *   console.log("SIGTERM!")
+   * };
+   * Deno.addSignalListener("SIGTERM", listener);
+   * Deno.removeSignalListener("SIGTERM", listener);
+   * ```
+   *
+   * NOTE: This functionality is not yet implemented on Windows.
+   */
+  export function removeSignalListener(
+    signal: Signal,
+    handler: () => void,
+  ): void;
 
   export type SetRawOptions = {
     cbreak: boolean;
@@ -804,24 +787,6 @@ declare namespace Deno {
    */
   export function sleepSync(millis: number): void;
 
-  export interface Metrics extends OpMetrics {
-    ops: Record<string, OpMetrics>;
-  }
-
-  export interface OpMetrics {
-    opsDispatched: number;
-    opsDispatchedSync: number;
-    opsDispatchedAsync: number;
-    opsDispatchedAsyncUnref: number;
-    opsCompleted: number;
-    opsCompletedSync: number;
-    opsCompletedAsync: number;
-    opsCompletedAsyncUnref: number;
-    bytesSentControl: number;
-    bytesSentData: number;
-    bytesReceived: number;
-  }
-
   /** **UNSTABLE**: New option, yet to be vetted. */
   export interface TestDefinition {
     /** Specifies the permissions that should be used to run the test.
@@ -926,10 +891,12 @@ declare namespace Deno {
        * If set to `"inherit"`, the current `ffi` permission will be inherited.
        * If set to `true`, the global `ffi` permission will be requested.
        * If set to `false`, the global `ffi` permission will be revoked.
+       * If set to `Array<string | URL>`, the `ffi` permission will be requested with the
+       * specified file paths.
        *
        * Defaults to "inherit".
        */
-      ffi?: "inherit" | boolean;
+      ffi?: "inherit" | boolean | Array<string | URL>;
 
       /** Specifies if the `read` permission should be requested or revoked.
        * If set to `"inherit"`, the current `read` permission will be inherited.
@@ -962,6 +929,43 @@ declare namespace Deno {
        */
       write?: "inherit" | boolean | Array<string | URL>;
     };
+  }
+
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestContext {
+    /** Run a sub step of the parent test with a given name. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored, the promise returns `false`.
+     */
+    step(t: TestStepDefinition): Promise<boolean>;
+
+    /** Run a sub step of the parent test with a given name. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored, the promise returns `false`.
+     */
+    step(
+      name: string,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): Promise<boolean>;
+  }
+
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestStepDefinition {
+    fn: (t: TestContext) => void | Promise<void>;
+    name: string;
+    ignore?: boolean;
+    /** Check that the number of async completed ops after the test is the same
+     * as number of dispatched ops. Defaults to true. */
+    sanitizeOps?: boolean;
+    /** Ensure the test case does not "leak" resources - ie. the resource table
+     * after the test has exactly the same contents as before the test. Defaults
+     * to true. */
+    sanitizeResources?: boolean;
+    /** Ensure the test case does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to true. */
+    sanitizeExit?: boolean;
   }
 
   /** **UNSTABLE**: new API, yet to be vetted.
@@ -1087,7 +1091,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
-  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+  export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
 
   export interface StartTlsOptions {
     /** A literal IP address or host name that can be resolved to an IP address.
@@ -1126,7 +1130,7 @@ declare namespace Deno {
   export function startTls(
     conn: Conn,
     options?: StartTlsOptions,
-  ): Promise<Conn>;
+  ): Promise<TlsConn>;
 
   export interface ListenTlsOptions {
     /** **UNSTABLE**: new API, yet to be vetted.
@@ -1216,7 +1220,7 @@ declare interface WorkerOptions {
        * For example: `["https://deno.land", "localhost:8080"]`.
        */
       net?: "inherit" | boolean | string[];
-      ffi?: "inherit" | boolean;
+      ffi?: "inherit" | boolean | Array<string | URL>;
       read?: "inherit" | boolean | Array<string | URL>;
       run?: "inherit" | boolean | Array<string | URL>;
       write?: "inherit" | boolean | Array<string | URL>;

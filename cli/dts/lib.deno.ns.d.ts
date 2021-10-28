@@ -113,8 +113,12 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestContext {
+  }
+
   export interface TestDefinition {
-    fn: () => void | Promise<void>;
+    fn: (t: TestContext) => void | Promise<void>;
     name: string;
     ignore?: boolean;
     /** If at least one test has `only` set to true, only run tests that have
@@ -127,7 +131,6 @@ declare namespace Deno {
      * after the test has exactly the same contents as before the test. Defaults
      * to true. */
     sanitizeResources?: boolean;
-
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
@@ -184,7 +187,10 @@ declare namespace Deno {
    * });
    * ```
    */
-  export function test(name: string, fn: () => void | Promise<void>): void;
+  export function test(
+    name: string,
+    fn: (t: TestContext) => void | Promise<void>,
+  ): void;
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
@@ -420,8 +426,8 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use `copy` from https://deno.land/std/io/util.ts instead.
-   * `Deno.copy` will be removed in Deno 2.0.
+   * @deprecated Use `copy` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.copy` will be removed in Deno 2.0.
    *
    * Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
    * an error occurs. It resolves to the number of bytes copied or rejects with
@@ -447,7 +453,9 @@ declare namespace Deno {
   ): Promise<number>;
 
   /**
-   * @deprecated Use iter from https://deno.land/std/io/util.ts instead. Deno.iter will be removed in Deno 2.0.
+   * @deprecated Use `iterateReader` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iter` will be
+   * removed in Deno 2.0.
    *
    * Turns a Reader, `r`, into an async iterator.
    *
@@ -486,7 +494,9 @@ declare namespace Deno {
   ): AsyncIterableIterator<Uint8Array>;
 
   /**
-   * @deprecated Use iterSync from https://deno.land/std/io/util.ts instead. Deno.iterSync will be removed in Deno 2.0.
+   * @deprecated Use `iterateReaderSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iterSync` will
+   * be removed in Deno 2.0.
    *
    * Turns a ReaderSync, `r`, into an iterator.
    *
@@ -972,7 +982,8 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use readAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
+   * @deprecated Use `readAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.readAll` will be removed in Deno 2.0.
    *
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
@@ -996,7 +1007,9 @@ declare namespace Deno {
   export function readAll(r: Reader): Promise<Uint8Array>;
 
   /**
-   * @deprecated Use readAllSync from https://deno.land/std/io/util.ts instead. Deno.readAllSync will be removed in Deno 2.0.
+   * @deprecated Use `readAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.readAllSync`
+   * will be removed in Deno 2.0.
    *
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
@@ -1020,7 +1033,8 @@ declare namespace Deno {
   export function readAllSync(r: ReaderSync): Uint8Array;
 
   /**
-   * @deprecated Use writeAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
+   * @deprecated Use `writeAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.writeAll` will be removed in Deno 2.0.
    *
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
@@ -1049,7 +1063,9 @@ declare namespace Deno {
   export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
 
   /**
-   * @deprecated Use writeAllSync from https://deno.land/std/io/util.ts instead. Deno.writeAllSync will be removed in Deno 2.0.
+   * @deprecated Use `writeAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.writeAllSync`
+   * will be removed in Deno 2.0.
    *
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
@@ -1792,7 +1808,7 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  export interface Metrics {
+  export interface OpMetrics {
     opsDispatched: number;
     opsDispatchedSync: number;
     opsDispatchedAsync: number;
@@ -1804,6 +1820,10 @@ declare namespace Deno {
     bytesSentControl: number;
     bytesSentData: number;
     bytesReceived: number;
+  }
+
+  export interface Metrics extends OpMetrics {
+    ops: Record<string, OpMetrics>;
   }
 
   /** Receive metrics from the privileged side of Deno. This is primarily used
@@ -1957,6 +1977,12 @@ declare namespace Deno {
     close(): void;
 
     /** Send a signal to process.
+     *
+     * ```ts
+     * const p = Deno.run({ cmd: [ "sleep", "20" ]});
+     * p.kill("SIGTERM");
+     * p.close();
+     * ```
      */
     kill(signo: Signal): void;
   }
@@ -2168,6 +2194,7 @@ declare namespace Deno {
 
   export interface FfiPermissionDescriptor {
     name: "ffi";
+    path?: string | URL;
   }
 
   export interface HrtimePermissionDescriptor {
