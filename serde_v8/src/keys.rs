@@ -1,6 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use rusty_v8 as v8;
-
 use std::collections::HashMap;
 
 // KeyCache stores a pool struct keys mapped to v8,

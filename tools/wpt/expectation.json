@@ -6709,33 +6709,15 @@
         "toString.any.html": true,
         "toString.any.worker.html": true
       },
-      "prototypes.any.html": false,
-      "prototypes.any.worker.html": false,
+      "prototypes.any.html": true,
+      "prototypes.any.worker.html": true,
       "table": {
-        "constructor.any.html": [
-          "initialize externref table with default value"
-        ],
-        "constructor.any.worker.html": [
-          "initialize externref table with default value"
-        ],
-        "get-set.any.html": [
-          "Arguments for anyfunc table set",
-          "Arguments for externref table set"
-        ],
-        "get-set.any.worker.html": [
-          "Arguments for anyfunc table set",
-          "Arguments for externref table set"
-        ],
-        "grow.any.html": [
-          "Grow with exported-function argument",
-          "Grow with non-function argument",
-          "Grow with JS-function argument"
-        ],
-        "grow.any.worker.html": [
-          "Grow with exported-function argument",
-          "Grow with non-function argument",
-          "Grow with JS-function argument"
-        ],
+        "constructor.any.html": true,
+        "constructor.any.worker.html": true,
+        "get-set.any.html": true,
+        "get-set.any.worker.html": true,
+        "grow.any.html": true,
+        "grow.any.worker.html": true,
         "length.any.html": true,
         "length.any.worker.html": true,
         "toString.any.html": true,
@@ -6746,18 +6728,8 @@
         "type.tentative.any.worker.html": false
       },
       "exception": {
-        "basic.tentative.any.html": [
-          "Wasm function throws argument",
-          "Wasm function throws null",
-          "Imported JS function throws",
-          "Imported JS function throws, Wasm catches and rethrows"
-        ],
-        "basic.tentative.any.worker.html": [
-          "Wasm function throws argument",
-          "Wasm function throws null",
-          "Imported JS function throws",
-          "Imported JS function throws, Wasm catches and rethrows"
-        ],
+        "basic.tentative.any.html": true,
+        "basic.tentative.any.worker.html": true,
         "constructor.tentative.any.html": true,
         "constructor.tentative.any.worker.html": true,
         "getArg.tentative.any.html": true,
@@ -9070,9 +9042,7 @@
           ],
           "catch.sub.any.worker.html": [
             "Cross-origin syntax error",
-            "Cross-origin throw",
-            "Redirect-to-cross-origin syntax error",
-            "Redirect-to-Cross-origin throw"
+            "Cross-origin throw"
           ],
           "report-error-cross-origin.sub.any.worker.html": false,
           "report-error-redirect-to-cross-origin.sub.any.worker.html": false,

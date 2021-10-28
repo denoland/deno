@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use rusty_v8 as v8;
-
 use crate::bindings;
 use crate::error::generic_error;
 use crate::error::AnyError;

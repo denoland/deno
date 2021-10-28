@@ -5,6 +5,8 @@ function foo(): never {
 try {
   foo();
 } catch (error) {
-  console.log(error.stack);
+  if (error instanceof Error) {
+    console.log(error.stack);
+  }
   throw error;
 }

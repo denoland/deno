@@ -13,7 +13,6 @@ use futures::ready;
 use futures::task::noop_waker;
 use futures::Future;
 use indexmap::IndexMap;
-use rusty_v8 as v8;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::RefCell;
