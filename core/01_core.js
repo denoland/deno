@@ -60,15 +60,11 @@
     // Check if out of ring bounds, fallback to map
     const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
     if (outOfBounds) {
-      const promise = MapPrototypeGet(promiseMap, promiseId);
-      MapPrototypeDelete(promiseMap, promiseId);
-      return promise;
+      return MapPrototypeDelete(promiseMap, promiseId);
     }
     // Otherwise take from ring
     const idx = promiseId % RING_SIZE;
-    const promise = promiseRing[idx];
-    promiseRing[idx] = NO_PROMISE;
-    return promise;
+    return promiseRing[idx] = NO_PROMISE;
   }
 
   function newPromise() {
