@@ -29,8 +29,6 @@ pub fn op_pledge_test_permissions(
   args: ChildPermissionsArg,
   _: (),
 ) -> Result<Uuid, AnyError> {
-  deno_runtime::ops::check_unstable(state, "Deno.test.permissions");
-
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<Permissions>();
   let worker_permissions = create_child_permissions(parent_permissions, args)?;
@@ -49,8 +47,6 @@ pub fn op_restore_test_permissions(
   token: Uuid,
   _: (),
 ) -> Result<(), AnyError> {
-  deno_runtime::ops::check_unstable(state, "Deno.test.permissions");
-
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
     if token != permissions_holder.0 {
       panic!("restore test permissions token does not match the stored token");
