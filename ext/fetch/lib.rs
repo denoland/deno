@@ -151,7 +151,7 @@ pub struct DefaultFileFetchHandler;
 impl FetchHandler for DefaultFileFetchHandler {
   fn fetch_file(
     &mut self,
-    url: Url,
+    _url: Url,
   ) -> (
     CancelableResponseFuture,
     Option<FetchRequestBodyResource>,
