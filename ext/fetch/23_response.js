@@ -12,6 +12,7 @@
 "use strict";
 
 ((window) => {
+  const { isProxy } = Deno.core;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
   const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
@@ -249,7 +250,7 @@
         prefix,
         context: "Argument 1",
       });
-      init = webidl.converters["ResponseInit"](init, {
+      init = webidl.converters["ResponseInit_fast"](init, {
         prefix,
         context: "Argument 2",
       });
@@ -260,7 +261,10 @@
         );
       }
 
-      if (!RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)) {
+      if (
+        init.statusText &&
+        !RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)
+      ) {
         throw new TypeError("Status text is not valid.");
       }
 
@@ -270,7 +274,7 @@
       this[_response] = response;
       /** @type {Headers} */
       this[_headers] = headersFromHeaderList(response.headerList, "response");
-      if (init.headers !== undefined) {
+      if (init.headers) {
         fillHeaders(this[_headers], init.headers);
       }
       if (body !== null) {
@@ -407,6 +411,27 @@
       converter: webidl.converters["HeadersInit"],
     }],
   );
+  webidl.converters["ResponseInit_fast"] = function (init, opts) {
+    if (init === undefined || init === null) {
+      return { status: 200, statusText: "", headers: undefined };
+    }
+    // Fast path, if not a proxy
+    if (typeof init === "object" && !isProxy(init)) {
+      // Not a proxy fast path
+      const status = init.status !== undefined
+        ? webidl.converters["unsigned short"](init.status)
+        : 200;
+      const statusText = init.statusText !== undefined
+        ? webidl.converters["ByteString"](init.statusText)
+        : "";
+      const headers = init.headers !== undefined
+        ? webidl.converters["HeadersInit"](init.headers)
+        : undefined;
+      return { status, statusText, headers };
+    }
+    // Slow default path
+    return webidl.converters["ResponseInit"](init, opts);
+  };
 
   /**
    * @param {Response} response

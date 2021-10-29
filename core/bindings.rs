@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::error::is_instance_of_error;
 use crate::error::AnyError;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
@@ -7,11 +8,11 @@ use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
 use crate::OpPayload;
+use crate::OpResult;
 use crate::OpTable;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use log::debug;
-use rusty_v8 as v8;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
@@ -31,7 +32,10 @@ lazy_static::lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
     v8::ExternalReferences::new(&[
       v8::ExternalReference {
-        function: opcall.map_fn_to()
+        function: opcall_async.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: opcall_sync.map_fn_to()
       },
       v8::ExternalReference {
         function: set_macrotask_callback.map_fn_to()
@@ -62,6 +66,9 @@ lazy_static::lazy_static! {
       },
       v8::ExternalReference {
         function: get_proxy_details.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: is_proxy.map_fn_to()
       },
       v8::ExternalReference {
         function: memory_usage.map_fn_to(),
@@ -132,7 +139,8 @@ pub fn initialize_context<'s>(
   deno_val.set(scope, core_key.into(), core_val.into());
 
   // Bind functions to Deno.core.*
-  set_func(scope, core_val, "opcall", opcall);
+  set_func(scope, core_val, "opcallSync", opcall_sync);
+  set_func(scope, core_val, "opcallAsync", opcall_async);
   set_func(
     scope,
     core_val,
@@ -146,6 +154,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "deserialize", deserialize);
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
+  set_func(scope, core_val, "isProxy", is_proxy);
   set_func(scope, core_val, "memoryUsage", memory_usage);
   set_func(scope, core_val, "callConsole", call_console);
   set_func(scope, core_val, "createHostObject", create_host_object);
@@ -171,6 +180,7 @@ pub fn set_func(
   let key = v8::String::new(scope, name).unwrap();
   let tmpl = v8::FunctionTemplate::new(scope, callback);
   let val = tmpl.get_function(scope).unwrap();
+  val.set_name(key);
   obj.set(scope, key.into(), val.into());
 }
 
@@ -228,7 +238,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
                  args: v8::FunctionCallbackArguments,
                  _rv: v8::ReturnValue| {
     let arg = args.get(0);
-    if arg.is_native_error() {
+    if is_instance_of_error(scope, arg) {
       let message = v8::Exception::create_message(scope, arg);
       if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
         let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
@@ -299,13 +309,13 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   };
 }
 
-fn opcall<'s>(
+fn opcall_sync<'s>(
   scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
   let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
     .map(|l| l.value() as OpId)
@@ -326,17 +336,61 @@ fn opcall<'s>(
     return;
   }
 
+  // Deserializable args (may be structured args or ZeroCopyBuf)
+  let a = args.get(1);
+  let b = args.get(2);
+
+  let payload = OpPayload {
+    scope,
+    a,
+    b,
+    op_id,
+    promise_id: 0,
+  };
+  let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
+  match op {
+    Op::Sync(result) => {
+      state.op_state.borrow().tracker.track_sync(op_id);
+      rv.set(result.to_v8(scope).unwrap());
+    }
+    Op::NotFound => {
+      throw_type_error(scope, format!("Unknown op id: {}", op_id));
+    }
+    // Async ops (ref or unref)
+    _ => {
+      throw_type_error(
+        scope,
+        format!("Can not call an async op [{}] with opSync()", op_id),
+      );
+    }
+  }
+}
+
+fn opcall_async<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map(|l| l.value() as OpId)
+    .map_err(AnyError::from)
+  {
+    Ok(op_id) => op_id,
+    Err(err) => {
+      throw_type_error(scope, format!("invalid op id: {}", err));
+      return;
+    }
+  };
+
   // PromiseId
   let arg1 = args.get(1);
-  let promise_id = if arg1.is_null_or_undefined() {
-    Ok(0) // Accept null or undefined as 0
-  } else {
-    // Otherwise expect int
-    v8::Local::<v8::Integer>::try_from(arg1)
-      .map(|l| l.value() as PromiseId)
-      .map_err(AnyError::from)
-  };
-  // Fail if promise id invalid (not null/undefined or int)
+  let promise_id = v8::Local::<v8::Integer>::try_from(arg1)
+    .map(|l| l.value() as PromiseId)
+    .map_err(AnyError::from);
+  // Fail if promise id invalid (not an int)
   let promise_id: PromiseId = match promise_id {
     Ok(promise_id) => promise_id,
     Err(err) => {
@@ -353,18 +407,25 @@ fn opcall<'s>(
     scope,
     a,
     b,
+    op_id,
     promise_id,
   };
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {
-    Op::Sync(result) => {
-      rv.set(result.to_v8(scope).unwrap());
-    }
+    Op::Sync(result) => match result {
+      OpResult::Ok(_) => throw_type_error(
+        scope,
+        format!("Can not call a sync op [{}] with opAsync()", op_id),
+      ),
+      OpResult::Err(_) => rv.set(result.to_v8(scope).unwrap()),
+    },
     Op::Async(fut) => {
+      state.op_state.borrow().tracker.track_async(op_id);
       state.pending_ops.push(fut);
       state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {
+      state.op_state.borrow().tracker.track_unref(op_id);
       state.pending_unref_ops.push(fut);
       state.have_unpolled_ops = true;
     }
@@ -451,7 +512,7 @@ fn eval_context(
       None,
       Some(ErrInfo {
         thrown: exception.into(),
-        is_native_error: exception.is_native_error(),
+        is_native_error: is_instance_of_error(tc_scope, exception),
         is_compile_error: true,
       }),
     );
@@ -468,7 +529,7 @@ fn eval_context(
       None,
       Some(ErrInfo {
         thrown: exception.into(),
-        is_native_error: exception.is_native_error(),
+        is_native_error: is_instance_of_error(tc_scope, exception),
         is_compile_error: false,
       }),
     );
@@ -571,7 +632,7 @@ fn set_wasm_streaming_callback(
     let undefined = v8::undefined(scope);
     let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
     cb_handle
-      .get(scope)
+      .open(scope)
       .call(scope, undefined.into(), &[arg, rid]);
   });
 }
@@ -1117,6 +1178,14 @@ fn get_proxy_details(
   let handler = proxy.get_handler(scope);
   let p: (serde_v8::Value, serde_v8::Value) = (target.into(), handler.into());
   rv.set(to_v8(scope, p).unwrap());
+}
+
+fn is_proxy(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  rv.set(v8::Boolean::new(scope, args.get(0).is_proxy()).into())
 }
 
 fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {

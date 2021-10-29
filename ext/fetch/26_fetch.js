@@ -214,6 +214,8 @@
       } else {
         req.body.streamOrStatic.consumed = true;
         reqBody = req.body.streamOrStatic.body;
+        // TODO(@AaronO): plumb support for StringOrBuffer all the way
+        reqBody = typeof reqBody === "string" ? core.encode(reqBody) : reqBody;
       }
     }
 
@@ -525,6 +527,9 @@
         if (!res.ok) {
           throw new TypeError(`HTTP status code ${res.status}`);
         }
+
+        // Pass the resolved URL to v8.
+        core.opSync("op_wasm_streaming_set_url", rid, res.url);
 
         // 2.6.
         // Rather than consuming the body as an ArrayBuffer, this passes each

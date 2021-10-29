@@ -22,6 +22,7 @@ Following ops are provided:
 - "op_connect_tls"
 - "op_listen_tls"
 - "op_accept_tls"
+- "op_tls_handshake"
 - "op_http_start"
 - "op_http_request_next"
 - "op_http_request_read"

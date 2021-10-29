@@ -3,7 +3,6 @@
 pub use anyhow::anyhow;
 pub use anyhow::bail;
 pub use anyhow::Context;
-use rusty_v8 as v8;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::convert::TryInto;
@@ -65,10 +64,6 @@ pub fn resource_unavailable() -> AnyError {
     "Busy",
     "Resource is unavailable because it is in use by a promise",
   )
-}
-
-pub fn null_opbuf() -> AnyError {
-  type_error("expected non-null op buffer arg")
 }
 
 /// A simple error type that lets the creator specify both the error message and
@@ -301,7 +296,7 @@ pub(crate) fn attach_handle_to_error(
 /// of `instanceof`. `Value::is_native_error()` also checks for static class
 /// inheritance rather than just scanning the prototype chain, which doesn't
 /// work with our WebIDL implementation of `DOMException`.
-fn is_instance_of_error<'s>(
+pub(crate) fn is_instance_of_error<'s>(
   scope: &mut v8::HandleScope<'s>,
   value: v8::Local<v8::Value>,
 ) -> bool {

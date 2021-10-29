@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
-use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
@@ -20,6 +19,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use hyper::body::HttpBody;
 use hyper::header::CONNECTION;
@@ -30,6 +30,7 @@ use hyper::http;
 use hyper::server::conn::Http;
 use hyper::service::Service as HyperService;
 use hyper::Body;
+use hyper::Method;
 use hyper::Request;
 use hyper::Response;
 use serde::Deserialize;
@@ -244,13 +245,11 @@ fn prepare_next_request(
   let url = req_url(&req, scheme, addr)?;
 
   let is_websocket = is_websocket_request(&req);
-  let has_body = if let Some(exact_size) = req.size_hint().exact() {
-    exact_size > 0
-  } else {
-    true
-  };
+  let can_have_body = !matches!(*req.method(), Method::GET | Method::HEAD);
+  let has_body =
+    is_websocket || (can_have_body && req.size_hint().exact() != Some(0));
 
-  let maybe_request_rid = if is_websocket || has_body {
+  let maybe_request_rid = if has_body {
     let request_rid = state.resource_table.add(RequestResource {
       conn_rid,
       inner: AsyncRefCell::new(RequestOrStreamReader::Request(Some(req))),
@@ -302,7 +301,7 @@ fn req_headers(
 ) -> Vec<(ByteString, ByteString)> {
   // We treat cookies specially, because we don't want them to get them
   // mangled by the `Headers` object in JS. What we do is take all cookie
-  // headers and concat them into a single cookie header, seperated by
+  // headers and concat them into a single cookie header, separated by
   // semicolons.
   let cookie_sep = "; ".as_bytes();
   let mut cookies = vec![];
@@ -333,7 +332,9 @@ fn is_websocket_request(req: &hyper::Request<hyper::Body>) -> bool {
     && req.method() == hyper::Method::GET
     && req.headers().contains_key(&SEC_WEBSOCKET_KEY)
     && header(req.headers(), &SEC_WEBSOCKET_VERSION) == b"13"
-    && header(req.headers(), &UPGRADE).eq_ignore_ascii_case(b"websocket")
+    && header(req.headers(), &UPGRADE)
+      .split(|c| *c == b' ' || *c == b',')
+      .any(|token| token.eq_ignore_ascii_case(b"websocket"))
     && header(req.headers(), &CONNECTION)
       .split(|c| *c == b' ' || *c == b',')
       .any(|token| token.eq_ignore_ascii_case(b"upgrade"))
@@ -402,7 +403,7 @@ struct RespondArgs(
 async fn op_http_response(
   state: Rc<RefCell<OpState>>,
   args: RespondArgs,
-  data: Option<ZeroCopyBuf>,
+  data: Option<StringOrBuffer>,
 ) -> Result<Option<ResourceId>, AnyError> {
   let RespondArgs(rid, status, headers) = args;
 
@@ -428,15 +429,13 @@ async fn op_http_response(
     builder = builder.header(key.as_ref(), value.as_ref());
   }
 
-  let res;
-  let maybe_response_body_rid = if let Some(d) = data {
+  let (maybe_response_body_rid, res) = if let Some(d) = data {
     // If a body is passed, we use it, and don't return a body for streaming.
-    res = builder.body(Vec::from(&*d).into())?;
-    None
+    (None, builder.body(d.into_bytes().into())?)
   } else {
     // If no body is passed, we return a writer for streaming the body.
     let (sender, body) = Body::channel();
-    res = builder.body(body)?;
+    let res = builder.body(body)?;
 
     let response_body_rid =
       state.borrow_mut().resource_table.add(ResponseBodyResource {
@@ -444,7 +443,7 @@ async fn op_http_response(
         conn_rid,
       });
 
-    Some(response_body_rid)
+    (Some(response_body_rid), res)
   };
 
   // oneshot::Sender::send(v) returns |v| on error, not an error object.
@@ -513,10 +512,8 @@ async fn op_http_response_close(
 async fn op_http_request_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: Option<ZeroCopyBuf>,
+  mut data: ZeroCopyBuf,
 ) -> Result<usize, AnyError> {
-  let mut data = data.ok_or_else(null_opbuf)?;
-
   let resource = state
     .borrow()
     .resource_table
@@ -565,9 +562,8 @@ async fn op_http_request_read(
 async fn op_http_response_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: Option<ZeroCopyBuf>,
+  data: ZeroCopyBuf,
 ) -> Result<(), AnyError> {
-  let buf = data.ok_or_else(null_opbuf)?;
   let resource = state
     .borrow()
     .resource_table
@@ -580,7 +576,7 @@ async fn op_http_response_write(
 
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
 
-  let mut send_data_fut = body.send_data(Vec::from(&*buf).into()).boxed_local();
+  let mut send_data_fut = body.send_data(data.to_vec().into()).boxed_local();
 
   poll_fn(|cx| {
     let r = send_data_fut.poll_unpin(cx).map_err(AnyError::from);

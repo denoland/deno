@@ -7,7 +7,6 @@ use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
-use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
@@ -29,11 +28,7 @@ pub fn init() -> Extension {
     .build()
 }
 
-fn op_exec_path(
-  state: &mut OpState,
-  _args: (),
-  _: (),
-) -> Result<String, AnyError> {
+fn op_exec_path(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
   state
     .borrow_mut::<Permissions>()
@@ -47,31 +42,24 @@ fn op_exec_path(
   into_string(path.into_os_string())
 }
 
-#[derive(Deserialize)]
-pub struct SetEnv {
-  key: String,
-  value: String,
-}
-
 fn op_set_env(
   state: &mut OpState,
-  args: SetEnv,
-  _: (),
+  key: String,
+  value: String,
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<Permissions>().env.check(&args.key)?;
-  let invalid_key =
-    args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]);
-  let invalid_value = args.value.contains('\0');
+  state.borrow_mut::<Permissions>().env.check(&key)?;
+  let invalid_key = key.is_empty() || key.contains(&['=', '\0'] as &[char]);
+  let invalid_value = value.contains('\0');
   if invalid_key || invalid_value {
     return Err(type_error("Key or value contains invalid characters."));
   }
-  env::set_var(args.key, args.value);
+  env::set_var(key, value);
   Ok(())
 }
 
 fn op_env(
   state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<HashMap<String, String>, AnyError> {
   state.borrow_mut::<Permissions>().env.check_all()?;
@@ -113,7 +101,7 @@ fn op_exit(_state: &mut OpState, code: i32, _: ()) -> Result<(), AnyError> {
 
 fn op_loadavg(
   state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(f64, f64, f64), AnyError> {
   super::check_unstable(state, "Deno.loadavg");
@@ -124,11 +112,7 @@ fn op_loadavg(
   }
 }
 
-fn op_hostname(
-  state: &mut OpState,
-  _args: (),
-  _: (),
-) -> Result<String, AnyError> {
+fn op_hostname(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.hostname");
   state.borrow_mut::<Permissions>().env.check_all()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
@@ -137,7 +121,7 @@ fn op_hostname(
 
 fn op_os_release(
   state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.osRelease");
@@ -161,7 +145,7 @@ struct MemInfo {
 
 fn op_system_memory_info(
   state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<Option<MemInfo>, AnyError> {
   super::check_unstable(state, "Deno.systemMemoryInfo");

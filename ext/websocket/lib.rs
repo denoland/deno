@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::invalid_hostname;
-use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
@@ -59,15 +58,6 @@ pub trait WebSocketPermissions {
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 
-/// For use with `op_websocket_*` when the user does not want permissions.
-pub struct NoWebSocketPermissions;
-
-impl WebSocketPermissions for NoWebSocketPermissions {
-  fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError> {
-    Ok(())
-  }
-}
-
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 pub enum WebSocketStreamType {
   Client {
@@ -92,7 +82,8 @@ pub struct WsStreamResource {
 
 impl WsStreamResource {
   async fn send(self: &Rc<Self>, message: Message) -> Result<(), AnyError> {
-    match self.stream {
+    use tokio_tungstenite::tungstenite::Error;
+    let res = match self.stream {
       WebSocketStreamType::Client { .. } => {
         let mut tx = RcRef::map(self, |r| match &r.stream {
           WebSocketStreamType::Client { tx, .. } => tx,
@@ -100,7 +91,7 @@ impl WsStreamResource {
         })
         .borrow_mut()
         .await;
-        tx.send(message).await?;
+        tx.send(message).await
       }
       WebSocketStreamType::Server { .. } => {
         let mut tx = RcRef::map(self, |r| match &r.stream {
@@ -109,11 +100,15 @@ impl WsStreamResource {
         })
         .borrow_mut()
         .await;
-        tx.send(message).await?;
+        tx.send(message).await
       }
-    }
+    };
 
-    Ok(())
+    match res {
+      Ok(()) => Ok(()),
+      Err(Error::ConnectionClosed) => Ok(()),
+      Err(err) => Err(err.into()),
+    }
   }
 
   async fn next_message(
@@ -318,29 +313,28 @@ where
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SendArgs {
-  rid: ResourceId,
-  kind: String,
-  text: Option<String>,
+#[serde(tag = "kind", content = "value", rename_all = "camelCase")]
+pub enum SendValue {
+  Text(String),
+  Binary(ZeroCopyBuf),
+  Pong,
 }
 
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
-  args: SendArgs,
-  buf: Option<ZeroCopyBuf>,
+  rid: ResourceId,
+  value: SendValue,
 ) -> Result<(), AnyError> {
-  let msg = match args.kind.as_str() {
-    "text" => Message::Text(args.text.unwrap()),
-    "binary" => Message::Binary(buf.ok_or_else(null_opbuf)?.to_vec()),
-    "pong" => Message::Pong(vec![]),
-    _ => unreachable!(),
+  let msg = match value {
+    SendValue::Text(text) => Message::Text(text),
+    SendValue::Binary(buf) => Message::Binary(buf.to_vec()),
+    SendValue::Pong => Message::Pong(vec![]),
   };
 
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(args.rid)?;
+    .get::<WsStreamResource>(rid)?;
   resource.send(msg).await?;
   Ok(())
 }

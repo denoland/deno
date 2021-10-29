@@ -160,9 +160,13 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
 
-    assertThrows(() => {
-      Deno.utimeSync("/baddir", atime, mtime);
-    }, Deno.errors.NotFound);
+    assertThrows(
+      () => {
+        Deno.utimeSync("/baddir", atime, mtime);
+      },
+      Deno.errors.NotFound,
+      "utime '/baddir'",
+    );
   },
 );
 
@@ -271,9 +275,13 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
 
-    await assertRejects(async () => {
-      await Deno.utime("/baddir", atime, mtime);
-    }, Deno.errors.NotFound);
+    await assertRejects(
+      async () => {
+        await Deno.utime("/baddir", atime, mtime);
+      },
+      Deno.errors.NotFound,
+      "utime '/baddir'",
+    );
   },
 );
 

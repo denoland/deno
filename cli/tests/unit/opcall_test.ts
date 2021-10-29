@@ -1,4 +1,9 @@
-import { assertStringIncludes, unitTest, unreachable } from "./test_util.ts";
+import {
+  assert,
+  assertStringIncludes,
+  unitTest,
+  unreachable,
+} from "./test_util.ts";
 
 unitTest(async function sendAsyncStackTrace() {
   const buf = new Uint8Array(10);
@@ -7,10 +12,16 @@ unitTest(async function sendAsyncStackTrace() {
     await Deno.read(rid, buf);
     unreachable();
   } catch (error) {
-    const s = error.stack.toString();
+    assert(error instanceof Error);
+    const s = error.stack?.toString();
+    assert(s);
     console.log(s);
     assertStringIncludes(s, "opcall_test.ts");
     assertStringIncludes(s, "read");
+    assert(
+      !s.includes("deno:core"),
+      "opcall stack traces should NOT include deno:core internals such as unwrapOpResult",
+    );
   }
 });
 

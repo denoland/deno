@@ -93,7 +93,12 @@
       let body = null;
       if (typeof requestRid === "number") {
         SetPrototypeAdd(this.managedResources, requestRid);
-        body = createRequestBodyStream(this, requestRid);
+        // There might be a body, but we don't expose it for GET/HEAD requests.
+        // It will be closed automatically once the request has been handled and
+        // the response has been sent.
+        if (method !== "GET" && method !== "HEAD") {
+          body = createRequestBodyStream(this, requestRid);
+        }
       }
 
       const innerRequest = newInnerRequest(
@@ -194,11 +199,17 @@
       SetPrototypeDelete(httpConn.managedResources, responseSenderRid);
       let responseBodyRid;
       try {
-        responseBodyRid = await core.opAsync("op_http_response", [
-          responseSenderRid,
-          innerResp.status ?? 200,
-          innerResp.headerList,
-        ], respBody instanceof Uint8Array ? respBody : null);
+        responseBodyRid = await core.opAsync(
+          "op_http_response",
+          [
+            responseSenderRid,
+            innerResp.status ?? 200,
+            innerResp.headerList,
+          ],
+          (respBody instanceof Uint8Array || typeof respBody === "string")
+            ? respBody
+            : null,
+        );
       } catch (error) {
         const connError = httpConn[connErrorSymbol];
         if (error instanceof BadResource && connError != null) {
@@ -338,9 +349,14 @@
 
   function upgradeWebSocket(request, options = {}) {
     const upgrade = request.headers.get("upgrade");
-    if (!upgrade || StringPrototypeToLowerCase(upgrade) !== "websocket") {
+    const upgradeHasWebSocketOption = upgrade !== null &&
+      ArrayPrototypeSome(
+        StringPrototypeSplit(upgrade, /\s*,\s*/),
+        (option) => StringPrototypeToLowerCase(option) === "websocket",
+      );
+    if (!upgradeHasWebSocketOption) {
       throw new TypeError(
-        "Invalid Header: 'upgrade' header must be 'websocket'",
+        "Invalid Header: 'upgrade' header must contain 'websocket'",
       );
     }
 
@@ -352,7 +368,7 @@
       );
     if (!connectionHasUpgradeOption) {
       throw new TypeError(
-        "Invalid Header: 'connection' header must be 'Upgrade'",
+        "Invalid Header: 'connection' header must contain 'Upgrade'",
       );
     }
 

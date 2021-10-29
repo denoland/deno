@@ -1,0 +1,1 @@
+{ thrown: DOMException: foo, isNativeError: true, isCompileError: false }

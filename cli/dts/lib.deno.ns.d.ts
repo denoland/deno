@@ -113,8 +113,12 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestContext {
+  }
+
   export interface TestDefinition {
-    fn: () => void | Promise<void>;
+    fn: (t: TestContext) => void | Promise<void>;
     name: string;
     ignore?: boolean;
     /** If at least one test has `only` set to true, only run tests that have
@@ -127,7 +131,6 @@ declare namespace Deno {
      * after the test has exactly the same contents as before the test. Defaults
      * to true. */
     sanitizeResources?: boolean;
-
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
@@ -323,7 +326,10 @@ declare namespace Deno {
    * });
    * ```
    */
-  export function test(name: string, fn: () => void | Promise<void>): void;
+  export function test(
+    name: string,
+    fn: (t: TestContext) => void | Promise<void>,
+  ): void;
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
@@ -559,8 +565,8 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use `copy` from https://deno.land/std/io/util.ts instead.
-   * `Deno.copy` will be removed in Deno 2.0.
+   * @deprecated Use `copy` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.copy` will be removed in Deno 2.0.
    *
    * Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
    * an error occurs. It resolves to the number of bytes copied or rejects with
@@ -586,7 +592,9 @@ declare namespace Deno {
   ): Promise<number>;
 
   /**
-   * @deprecated Use iter from https://deno.land/std/io/util.ts instead. Deno.iter will be removed in Deno 2.0.
+   * @deprecated Use `iterateReader` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iter` will be
+   * removed in Deno 2.0.
    *
    * Turns a Reader, `r`, into an async iterator.
    *
@@ -625,7 +633,9 @@ declare namespace Deno {
   ): AsyncIterableIterator<Uint8Array>;
 
   /**
-   * @deprecated Use iterSync from https://deno.land/std/io/util.ts instead. Deno.iterSync will be removed in Deno 2.0.
+   * @deprecated Use `iterateReaderSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iterSync` will
+   * be removed in Deno 2.0.
    *
    * Turns a ReaderSync, `r`, into an iterator.
    *
@@ -1111,7 +1121,8 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use readAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
+   * @deprecated Use `readAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.readAll` will be removed in Deno 2.0.
    *
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
@@ -1135,7 +1146,9 @@ declare namespace Deno {
   export function readAll(r: Reader): Promise<Uint8Array>;
 
   /**
-   * @deprecated Use readAllSync from https://deno.land/std/io/util.ts instead. Deno.readAllSync will be removed in Deno 2.0.
+   * @deprecated Use `readAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.readAllSync`
+   * will be removed in Deno 2.0.
    *
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
@@ -1159,7 +1172,8 @@ declare namespace Deno {
   export function readAllSync(r: ReaderSync): Uint8Array;
 
   /**
-   * @deprecated Use writeAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
+   * @deprecated Use `writeAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.writeAll` will be removed in Deno 2.0.
    *
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
@@ -1188,7 +1202,9 @@ declare namespace Deno {
   export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
 
   /**
-   * @deprecated Use writeAllSync from https://deno.land/std/io/util.ts instead. Deno.writeAllSync will be removed in Deno 2.0.
+   * @deprecated Use `writeAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.writeAllSync`
+   * will be removed in Deno 2.0.
    *
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
@@ -1931,7 +1947,7 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  export interface Metrics {
+  export interface OpMetrics {
     opsDispatched: number;
     opsDispatchedSync: number;
     opsDispatchedAsync: number;
@@ -1943,6 +1959,10 @@ declare namespace Deno {
     bytesSentControl: number;
     bytesSentData: number;
     bytesReceived: number;
+  }
+
+  export interface Metrics extends OpMetrics {
+    ops: Record<string, OpMetrics>;
   }
 
   /** Receive metrics from the privileged side of Deno. This is primarily used
@@ -2095,13 +2115,51 @@ declare namespace Deno {
     stderrOutput(): Promise<Uint8Array>;
     close(): void;
 
-    /** **UNSTABLE**
+    /** Send a signal to process.
      *
-     * Send a signal to process. This functionality currently only works on
-     * Linux and Mac OS.
+     * ```ts
+     * const p = Deno.run({ cmd: [ "sleep", "20" ]});
+     * p.kill("SIGTERM");
+     * p.close();
+     * ```
      */
-    kill(signo: string): void; // TODO(ry): Use Signal type here once made stable.
+    kill(signo: Signal): void;
   }
+
+  export type Signal =
+    | "SIGABRT"
+    | "SIGALRM"
+    | "SIGBUS"
+    | "SIGCHLD"
+    | "SIGCONT"
+    | "SIGEMT"
+    | "SIGFPE"
+    | "SIGHUP"
+    | "SIGILL"
+    | "SIGINFO"
+    | "SIGINT"
+    | "SIGIO"
+    | "SIGKILL"
+    | "SIGPIPE"
+    | "SIGPROF"
+    | "SIGPWR"
+    | "SIGQUIT"
+    | "SIGSEGV"
+    | "SIGSTKFLT"
+    | "SIGSTOP"
+    | "SIGSYS"
+    | "SIGTERM"
+    | "SIGTRAP"
+    | "SIGTSTP"
+    | "SIGTTIN"
+    | "SIGTTOU"
+    | "SIGURG"
+    | "SIGUSR1"
+    | "SIGUSR2"
+    | "SIGVTALRM"
+    | "SIGWINCH"
+    | "SIGXCPU"
+    | "SIGXFSZ";
 
   export type ProcessStatus =
     | {
@@ -2275,6 +2333,7 @@ declare namespace Deno {
 
   export interface FfiPermissionDescriptor {
     name: "ffi";
+    path?: string | URL;
   }
 
   export interface HrtimePermissionDescriptor {
@@ -2619,4 +2678,103 @@ declare namespace Deno {
     request: Request,
     options?: UpgradeWebSocketOptions,
   ): WebSocketUpgrade;
+
+  /** Send a signal to process under given `pid`.
+   *
+   * If `pid` is negative, the signal will be sent to the process group
+   * identified by `pid`.
+   *
+   *      const p = Deno.run({
+   *        cmd: ["sleep", "10000"]
+   *      });
+   *
+   *      Deno.kill(p.pid, "SIGINT");
+   *
+   * Requires `allow-run` permission. */
+  export function kill(pid: number, signo: Signal): void;
+
+  /** The type of the resource record.
+   * Only the listed types are supported currently. */
+  export type RecordType =
+    | "A"
+    | "AAAA"
+    | "ANAME"
+    | "CNAME"
+    | "MX"
+    | "PTR"
+    | "SRV"
+    | "TXT";
+
+  export interface ResolveDnsOptions {
+    /** The name server to be used for lookups.
+     * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
+    nameServer?: {
+      /** The IP address of the name server */
+      ipAddr: string;
+      /** The port number the query will be sent to.
+       * If not specified, defaults to 53. */
+      port?: number;
+    };
+  }
+
+  /** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
+  export interface MXRecord {
+    preference: number;
+    exchange: string;
+  }
+
+  /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
+  export interface SRVRecord {
+    priority: number;
+    weight: number;
+    port: number;
+    target: string;
+  }
+
+  export function resolveDns(
+    query: string,
+    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
+    options?: ResolveDnsOptions,
+  ): Promise<string[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "MX",
+    options?: ResolveDnsOptions,
+  ): Promise<MXRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "SRV",
+    options?: ResolveDnsOptions,
+  ): Promise<SRVRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "TXT",
+    options?: ResolveDnsOptions,
+  ): Promise<string[][]>;
+
+  /**
+   * Performs DNS resolution against the given query, returning resolved records.
+   * Fails in the cases such as:
+   * - the query is in invalid format
+   * - the options have an invalid parameter, e.g. `nameServer.port` is beyond the range of 16-bit unsigned integer
+   * - timed out
+   *
+   * ```ts
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   */
+  export function resolveDns(
+    query: string,
+    recordType: RecordType,
+    options?: ResolveDnsOptions,
+  ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
 }

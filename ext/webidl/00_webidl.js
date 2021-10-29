@@ -9,6 +9,7 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const {
     ArrayBuffer,
     ArrayBufferIsView,
@@ -48,6 +49,7 @@
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertyDescriptors,
     ObjectGetPrototypeOf,
+    ObjectPrototypeHasOwnProperty,
     ObjectIs,
     PromisePrototypeThen,
     PromiseReject,
@@ -439,15 +441,6 @@
     return V instanceof SharedArrayBuffer;
   }
 
-  function isArrayBufferDetached(V) {
-    try {
-      new Uint8Array(V);
-      return false;
-    } catch {
-      return true;
-    }
-  }
-
   converters.ArrayBuffer = (V, opts = {}) => {
     if (!isNonSharedArrayBuffer(V)) {
       if (opts.allowShared && !isSharedArrayBuffer(V)) {
@@ -458,9 +451,6 @@
         );
       }
       throw makeException(TypeError, "is not an ArrayBuffer", opts);
-    }
-    if (isArrayBufferDetached(V)) {
-      throw makeException(TypeError, "is a detached ArrayBuffer", opts);
     }
 
     return V;
@@ -475,13 +465,6 @@
       throw makeException(
         TypeError,
         "is backed by a SharedArrayBuffer, which is not allowed",
-        opts,
-      );
-    }
-    if (isArrayBufferDetached(V.buffer)) {
-      throw makeException(
-        TypeError,
-        "is backed by a detached ArrayBuffer",
         opts,
       );
     }
@@ -527,13 +510,6 @@
             opts,
           );
         }
-        if (isArrayBufferDetached(V.buffer)) {
-          throw makeException(
-            TypeError,
-            "is a view on a detached ArrayBuffer",
-            opts,
-          );
-        }
 
         return V;
       };
@@ -559,13 +535,6 @@
       );
     }
 
-    if (isArrayBufferDetached(V.buffer)) {
-      throw makeException(
-        TypeError,
-        "is a view on a detached ArrayBuffer",
-        opts,
-      );
-    }
     return V;
   };
 
@@ -579,13 +548,6 @@
         );
       }
 
-      if (isArrayBufferDetached(V.buffer)) {
-        throw makeException(
-          TypeError,
-          "is a view on a detached ArrayBuffer",
-          opts,
-        );
-      }
       return V;
     }
 
@@ -606,9 +568,6 @@
         "is not an ArrayBuffer, SharedArrayBuffer, or a view on one",
         opts,
       );
-    }
-    if (isArrayBufferDetached(V)) {
-      throw makeException(TypeError, "is a detached ArrayBuffer", opts);
     }
 
     return V;
@@ -844,8 +803,22 @@
           opts,
         );
       }
-      const keys = ReflectOwnKeys(V);
       const result = {};
+      // Fast path for common case (not a Proxy)
+      if (!core.isProxy(V)) {
+        for (const key in V) {
+          if (!ObjectPrototypeHasOwnProperty(V, key)) {
+            continue;
+          }
+          const typedKey = keyConverter(key, opts);
+          const value = V[key];
+          const typedValue = valueConverter(value, opts);
+          result[typedKey] = typedValue;
+        }
+        return result;
+      }
+      // Slow path if Proxy (e.g: in WPT tests)
+      const keys = ReflectOwnKeys(V);
       for (const key of keys) {
         const desc = ObjectGetOwnPropertyDescriptor(V, key);
         if (desc !== undefined && desc.enumerable === true) {

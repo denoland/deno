@@ -431,7 +431,7 @@ fn lsp_hover_asset() {
       "deno/virtualTextDocument",
       json!({
         "textDocument": {
-          "uri": "deno:/asset//lib.deno.shared_globals.d.ts"
+          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -442,7 +442,7 @@ fn lsp_hover_asset() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": "deno:/asset//lib.es2015.symbol.wellknown.d.ts"
+          "uri": "deno:asset/lib.es2015.symbol.wellknown.d.ts"
         },
         "position": {
           "line": 109,
@@ -919,11 +919,11 @@ fn lsp_hover_dependency() {
       "range": {
         "start": {
           "line": 0,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 0,
-          "character": 61
+          "character": 62
         }
       }
     }))
@@ -953,11 +953,11 @@ fn lsp_hover_dependency() {
       "range": {
         "start": {
           "line": 3,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 3,
-          "character": 66
+          "character": 67
         }
       }
     }))
@@ -987,11 +987,11 @@ fn lsp_hover_dependency() {
       "range": {
         "start": {
           "line": 4,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 4,
-          "character": 56
+          "character": 57
         }
       }
     }))
@@ -1021,11 +1021,11 @@ fn lsp_hover_dependency() {
       "range": {
         "start": {
           "line": 5,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 5,
-          "character": 131
+          "character": 132
         }
       }
     }))
@@ -1055,11 +1055,11 @@ fn lsp_hover_dependency() {
       "range": {
         "start": {
           "line": 6,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 6,
-          "character": 32
+          "character": 33
         }
       }
     }))
@@ -1771,7 +1771,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "deno/virtualTextDocument",
       json!({
         "textDocument": {
-          "uri": "deno:/asset//lib.deno.shared_globals.d.ts"
+          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -1783,7 +1783,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "textDocument/codeLens",
       json!({
         "textDocument": {
-          "uri": "deno:/asset//lib.deno.shared_globals.d.ts"
+          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -2714,11 +2714,11 @@ fn lsp_cache_location() {
       "range": {
         "start": {
           "line": 0,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 0,
-          "character": 61
+          "character": 62
         }
       }
     }))
@@ -2761,7 +2761,6 @@ fn lsp_diagnostics_warn() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-
   let (method, _) = client.read_notification::<Value>().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
   let (method, _) = client.read_notification::<Value>().unwrap();
@@ -3559,5 +3558,41 @@ console.log(snake_case);
     maybe_res,
     Some(load_fixture("code_action_update_ignore_lint_response.json"))
   );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_lint_with_config() {
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let deno_lint_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.lint.jsonc")).unwrap();
+  fs::write(temp_dir.path().join("deno.lint.jsonc"), deno_lint_jsonc).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./deno.lint.jsonc"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  let diagnostics = did_open(&mut client, load_fixture("did_open_lint.json"));
+  let diagnostics = diagnostics
+    .into_iter()
+    .flat_map(|x| x.diagnostics)
+    .collect::<Vec<_>>();
+  assert_eq!(diagnostics.len(), 3);
+  for diagnostic in diagnostics {
+    assert_eq!(
+      diagnostic.code,
+      Some(lsp::NumberOrString::String("ban-untagged-todo".to_string()))
+    );
+  }
   shutdown(&mut client);
 }
