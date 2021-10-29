@@ -61,7 +61,6 @@
     const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
     if (outOfBounds) {
       return MapPrototypeGet(promiseMap, promiseId);
-      MapPrototypeDelete(promiseMap, promiseId);
     }
     // Otherwise take from ring
     const idx = promiseId % RING_SIZE;
