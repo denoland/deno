@@ -142,6 +142,18 @@
     return ObjectFromEntries(opSync("op_resources"));
   }
 
+  function read(rid, buf) {
+    return opAsync("op_read", rid, buf);
+  }
+
+  function write(rid, buf) {
+    return opAsync("op_write", rid, buf);
+  }
+
+  function shutdown(rid) {
+    return opAsync("op_shutdown", rid);
+  }
+
   function close(rid) {
     opSync("op_close", rid);
   }
@@ -187,6 +199,9 @@
     ops,
     close,
     tryClose,
+    read,
+    write,
+    shutdown,
     print,
     resources,
     metrics,
