@@ -283,9 +283,10 @@ impl FileFetcher {
       map_content_type(specifier, maybe_content_type);
     let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
     let maybe_types = match media_type {
-      MediaType::JavaScript | MediaType::Jsx => {
-        headers.get("x-typescript-types").cloned()
-      }
+      MediaType::JavaScript
+      | MediaType::Cjs
+      | MediaType::Mjs
+      | MediaType::Jsx => headers.get("x-typescript-types").cloned(),
       _ => None,
     };
 
@@ -745,6 +746,8 @@ mod tests {
       // Extension only
       (file_url!("/foo/bar.ts"), None, MediaType::TypeScript, None),
       (file_url!("/foo/bar.tsx"), None, MediaType::Tsx, None),
+      (file_url!("/foo/bar.d.cts"), None, MediaType::Dcts, None),
+      (file_url!("/foo/bar.d.mts"), None, MediaType::Dmts, None),
       (file_url!("/foo/bar.d.ts"), None, MediaType::Dts, None),
       (file_url!("/foo/bar.js"), None, MediaType::JavaScript, None),
       (file_url!("/foo/bar.jsx"), None, MediaType::Jsx, None),
@@ -752,6 +755,8 @@ mod tests {
       (file_url!("/foo/bar.wasm"), None, MediaType::Wasm, None),
       (file_url!("/foo/bar.cjs"), None, MediaType::Cjs, None),
       (file_url!("/foo/bar.mjs"), None, MediaType::Mjs, None),
+      (file_url!("/foo/bar.cts"), None, MediaType::Cts, None),
+      (file_url!("/foo/bar.mts"), None, MediaType::Mts, None),
       (file_url!("/foo/bar"), None, MediaType::Unknown, None),
       // Media type no extension
       (

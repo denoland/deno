@@ -251,10 +251,16 @@ impl Document {
     matches!(
       self.media_type(),
       MediaType::JavaScript
+        | MediaType::Cjs
+        | MediaType::Mjs
         | MediaType::Jsx
         | MediaType::TypeScript
+        | MediaType::Mts
+        | MediaType::Cts
         | MediaType::Tsx
         | MediaType::Dts
+        | MediaType::Dcts
+        | MediaType::Dmts
     )
   }
 

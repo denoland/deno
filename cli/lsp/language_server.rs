@@ -328,10 +328,16 @@ impl Inner {
       matches!(
         MediaType::from(specifier),
         MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
           | MediaType::Jsx
           | MediaType::TypeScript
+          | MediaType::Mts
+          | MediaType::Cts
           | MediaType::Tsx
           | MediaType::Dts
+          | MediaType::Dmts
+          | MediaType::Dcts
       )
     } else {
       self.documents.is_diagnosable(specifier)
