@@ -35,8 +35,7 @@ declare global {
 unitTest(async function opsAsyncBadResource() {
   try {
     const nonExistingRid = 9999;
-    await Deno.core.opAsync(
-      "op_read_async",
+    await Deno.core.read(
       nonExistingRid,
       new Uint8Array(0),
     );
