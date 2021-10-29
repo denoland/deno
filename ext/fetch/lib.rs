@@ -147,11 +147,6 @@ pub trait FetchHandler: Clone {
     };
     (Box::pin(fut), None, None)
   }
-
-  // Determine if a given URL is valid, returning an early error to the client
-  fn validate_url(&mut self, url: &Url) -> Result<(), AnyError> {
-    Err(type_error(format!("Unable to fetch \"{}\".", url)))
-  }
 }
 
 /// A default implementation which leverages the trait's default method
@@ -227,8 +222,6 @@ where
       }
 
       let file_fetch_handler = state.borrow_mut::<FH>();
-      file_fetch_handler.validate_url(&url)?;
-
       let (request, maybe_request_body, maybe_cancel_handle) =
         file_fetch_handler.fetch_url(url);
       let request_rid = state.resource_table.add(FetchRequestResource(request));

@@ -6,12 +6,11 @@ use crate::FetchHandler;
 use crate::FetchRequestBodyResource;
 
 use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
+use deno_core::futures::TryFutureExt;
 use deno_core::url::Url;
 use deno_core::CancelFuture;
 use reqwest::StatusCode;
-use std::io;
 use std::rc::Rc;
 use tokio_util::io::ReaderStream;
 
@@ -30,36 +29,24 @@ impl FetchHandler for FsFetchHandler {
     Option<Rc<CancelHandle>>,
   ) {
     let cancel_handle = CancelHandle::new_rc();
+    let url_ = url.clone();
 
     let response_fut = async move {
-      let path = url
-        .to_file_path()
-        .map_err(|()| io::Error::from(io::ErrorKind::NotFound))?;
-      let file = tokio::fs::File::open(path).await?;
+      let path = url_.to_file_path()?;
+      let file = tokio::fs::File::open(path).map_err(|_| ()).await?;
       let stream = ReaderStream::new(file);
       let body = reqwest::Body::wrap_stream(stream);
       let response = http::Response::builder()
         .status(StatusCode::OK)
-        .body(body)?
+        .body(body)
+        .map_err(|_| ())?
         .into();
-      Ok::<_, AnyError>(response)
+      Ok::<_, ()>(response)
     }
+    .map_err(move |_| type_error(format!("Unable to fetch \"{}\".", url)))
     .or_cancel(&cancel_handle)
     .boxed_local();
 
     (response_fut, None, Some(cancel_handle))
-  }
-
-  fn validate_url(&mut self, url: &Url) -> Result<(), AnyError> {
-    // Error messages are kept intentionally generic in order to discourage
-    // probing, and attempting to discern something from the environment.
-    let path = url
-      .to_file_path()
-      .map_err(|_| type_error(format!("Unable to fetch \"{}\".", url)))?;
-    if !path.is_file() {
-      Err(type_error(format!("Unable to fetch \"{}\".", url)))
-    } else {
-      Ok(())
-    }
   }
 }
