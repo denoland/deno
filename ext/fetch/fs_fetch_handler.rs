@@ -15,7 +15,7 @@ use std::rc::Rc;
 use tokio_util::io::ReaderStream;
 
 /// An implementation which tries to read file URLs from the file system via
-/// tokio::fs
+/// tokio::fs.
 #[derive(Clone)]
 pub struct FsFetchHandler;
 
