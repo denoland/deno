@@ -750,8 +750,8 @@ mod tests {
       (file_url!("/foo/bar.jsx"), None, MediaType::Jsx, None),
       (file_url!("/foo/bar.json"), None, MediaType::Json, None),
       (file_url!("/foo/bar.wasm"), None, MediaType::Wasm, None),
-      (file_url!("/foo/bar.cjs"), None, MediaType::JavaScript, None),
-      (file_url!("/foo/bar.mjs"), None, MediaType::JavaScript, None),
+      (file_url!("/foo/bar.cjs"), None, MediaType::Cjs, None),
+      (file_url!("/foo/bar.mjs"), None, MediaType::Mjs, None),
       (file_url!("/foo/bar"), None, MediaType::Unknown, None),
       // Media type no extension
       (
@@ -884,7 +884,7 @@ mod tests {
       (
         "https://deno.land/x/mod.d.ts",
         Some("application/javascript".to_string()),
-        MediaType::JavaScript,
+        MediaType::Dts,
         None,
       ),
       (
