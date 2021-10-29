@@ -20,7 +20,7 @@ use tokio_util::io::ReaderStream;
 pub struct FsFetchHandler;
 
 impl FetchHandler for FsFetchHandler {
-  fn fetch_url(
+  fn fetch_file(
     &mut self,
     url: Url,
   ) -> (
@@ -43,7 +43,9 @@ impl FetchHandler for FsFetchHandler {
         .into();
       Ok::<_, ()>(response)
     }
-    .map_err(move |_| type_error(format!("Unable to fetch \"{}\".", url)))
+    .map_err(move |_| {
+      type_error("NetworkError when attempting to fetch resource.")
+    })
     .or_cancel(&cancel_handle)
     .boxed_local();
 

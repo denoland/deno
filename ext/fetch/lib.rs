@@ -134,7 +134,22 @@ pub trait FetchHandler: Clone {
   // Return the result of the fetch request consisting of a tuple of the
   // cancelable response result, the optional fetch body resource and the
   // optional cancel handle.
-  fn fetch_url(
+  fn fetch_file(
+    &mut self,
+    url: Url,
+  ) -> (
+    CancelableResponseFuture,
+    Option<FetchRequestBodyResource>,
+    Option<Rc<CancelHandle>>,
+  );
+}
+
+/// A default implementation which will error for every request.
+#[derive(Clone)]
+pub struct DefaultFileFetchHandler;
+
+impl FetchHandler for DefaultFileFetchHandler {
+  fn fetch_file(
     &mut self,
     url: Url,
   ) -> (
@@ -143,18 +158,13 @@ pub trait FetchHandler: Clone {
     Option<Rc<CancelHandle>>,
   ) {
     let fut = async move {
-      Ok(Err(type_error(format!("Unable to fetch \"{}\".", url))))
+      Ok(Err(type_error(
+        "NetworkError when attempting to fetch resource.",
+      )))
     };
     (Box::pin(fut), None, None)
   }
 }
-
-/// A default implementation which leverages the trait's default method
-/// implementations.
-#[derive(Clone)]
-pub struct DefaultFileFetchHandler;
-
-impl FetchHandler for DefaultFileFetchHandler {}
 
 pub trait FetchPermissions {
   fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
@@ -208,9 +218,9 @@ where
   let scheme = url.scheme();
   let (request_rid, request_body_rid, cancel_handle_rid) = match scheme {
     "file" => {
-      let path = url
-        .to_file_path()
-        .map_err(|_| type_error(format!("Invalid file URL: {}", url)))?;
+      let path = url.to_file_path().map_err(|_| {
+        type_error("NetworkError when attempting to fetch resource.")
+      })?;
       let permissions = state.borrow_mut::<FP>();
       permissions.check_read(&path)?;
 
@@ -223,7 +233,7 @@ where
 
       let file_fetch_handler = state.borrow_mut::<FH>();
       let (request, maybe_request_body, maybe_cancel_handle) =
-        file_fetch_handler.fetch_url(url);
+        file_fetch_handler.fetch_file(url);
       let request_rid = state.resource_table.add(FetchRequestResource(request));
       let maybe_request_body_rid =
         maybe_request_body.map(|r| state.resource_table.add(r));
