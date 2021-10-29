@@ -21,10 +21,6 @@ use tokio::net::tcp;
 #[cfg(unix)]
 use tokio::net::unix;
 
-pub fn init() -> Vec<OpPair> {
-  vec![]
-}
-
 /// A full duplex resource has a read and write ends that are completely
 /// independent, like TCP/Unix sockets and TLS streams.
 #[derive(Debug)]
