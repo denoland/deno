@@ -10,6 +10,7 @@
     constructor(msg) {
       super(msg);
       this.name = "NotFound";
+      this.code = "ENOTFOUND";
     }
   }
 
@@ -17,6 +18,7 @@
     constructor(msg) {
       super(msg);
       this.name = "PermissionDenied";
+      this.code = "EACCES";
     }
   }
 
@@ -24,6 +26,7 @@
     constructor(msg) {
       super(msg);
       this.name = "ConnectionRefused";
+      this.code = "ECONNREFUSED";
     }
   }
 
@@ -31,6 +34,7 @@
     constructor(msg) {
       super(msg);
       this.name = "ConnectionReset";
+      this.code = "ECONNRESET";
     }
   }
 
@@ -38,6 +42,7 @@
     constructor(msg) {
       super(msg);
       this.name = "ConnectionAborted";
+      this.code = "ECONNABORTED";
     }
   }
 
@@ -45,6 +50,7 @@
     constructor(msg) {
       super(msg);
       this.name = "NotConnected";
+      this.code = "ENOTCONN";
     }
   }
 
@@ -52,6 +58,7 @@
     constructor(msg) {
       super(msg);
       this.name = "AddrInUse";
+      this.code = "EADDRINUSE";
     }
   }
 
@@ -59,6 +66,7 @@
     constructor(msg) {
       super(msg);
       this.name = "AddrNotAvailable";
+      this.code = "EADDRNOTAVAIL";
     }
   }
 
@@ -66,6 +74,7 @@
     constructor(msg) {
       super(msg);
       this.name = "BrokenPipe";
+      this.code = "EPIPE";
     }
   }
 
@@ -73,6 +82,7 @@
     constructor(msg) {
       super(msg);
       this.name = "AlreadyExists";
+      this.code = "EEXIST";
     }
   }
 
@@ -80,6 +90,7 @@
     constructor(msg) {
       super(msg);
       this.name = "InvalidData";
+      this.code = "EINVAL";
     }
   }
 
@@ -87,6 +98,7 @@
     constructor(msg) {
       super(msg);
       this.name = "TimedOut";
+      this.code = "ETIMEDOUT";
     }
   }
 
@@ -115,6 +127,7 @@
     constructor(msg) {
       super(msg);
       this.name = "Busy";
+      this.code = "EBUSY";
     }
   }
 
