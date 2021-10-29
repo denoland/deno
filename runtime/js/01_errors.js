@@ -10,7 +10,7 @@
     constructor(msg) {
       super(msg);
       this.name = "NotFound";
-      this.code = "ENOTFOUND";
+      this.code = "ENOENT";
     }
   }
 
