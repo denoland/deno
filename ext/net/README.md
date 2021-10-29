@@ -9,9 +9,6 @@ This crate depends on following extensions:
 
 Following ops are provided:
 
-- "op_net_read_async"
-- "op_net_write_async"
-- "op_net_shutdown"
 - "op_accept"
 - "op_connect"
 - "op_listen"

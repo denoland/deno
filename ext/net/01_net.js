@@ -27,7 +27,7 @@
   }
 
   function shutdown(rid) {
-    return core.opAsync("op_net_shutdown", rid);
+    return core.shutdown(rid);
   }
 
   function opAccept(rid, transport) {
