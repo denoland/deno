@@ -31,27 +31,27 @@
   }
 
   function opAccept(rid, transport) {
-    return core.opAsync("op_accept", { rid, transport });
+    return core.opAsync("op_net_accept", { rid, transport });
   }
 
   function opListen(args) {
-    return core.opSync("op_listen", args);
+    return core.opSync("op_net_listen", args);
   }
 
   function opConnect(args) {
-    return core.opAsync("op_connect", args);
+    return core.opAsync("op_net_connect", args);
   }
 
   function opReceive(rid, transport, zeroCopy) {
     return core.opAsync(
-      "op_datagram_receive",
+      "op_dgram_recv",
       { rid, transport },
       zeroCopy,
     );
   }
 
   function opSend(args, zeroCopy) {
-    return core.opAsync("op_datagram_send", args, zeroCopy);
+    return core.opAsync("op_dgram_send", args, zeroCopy);
   }
 
   function resolveDns(query, recordType, options) {

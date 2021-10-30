@@ -684,10 +684,10 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
 
 pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
   vec![
-    ("op_start_tls", op_async(op_start_tls::<P>)),
-    ("op_connect_tls", op_async(op_connect_tls::<P>)),
-    ("op_listen_tls", op_sync(op_listen_tls::<P>)),
-    ("op_accept_tls", op_async(op_accept_tls)),
+    ("op_tls_start", op_async(op_tls_start::<P>)),
+    ("op_tls_connect", op_async(op_tls_connect::<P>)),
+    ("op_tls_listen", op_sync(op_tls_listen::<P>)),
+    ("op_tls_accept", op_async(op_tls_accept)),
     ("op_tls_handshake", op_async(op_tls_handshake)),
   ]
 }
@@ -780,7 +780,7 @@ struct StartTlsArgs {
   hostname: String,
 }
 
-async fn op_start_tls<NP>(
+async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
   _: (),
@@ -862,7 +862,7 @@ where
   })
 }
 
-pub async fn op_connect_tls<NP>(
+pub async fn op_tls_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
   _: (),
@@ -1013,7 +1013,7 @@ pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-fn op_listen_tls<NP>(
+fn op_tls_listen<NP>(
   state: &mut OpState,
   args: ListenTlsArgs,
   _: (),
@@ -1073,7 +1073,7 @@ where
   })
 }
 
-async fn op_accept_tls(
+async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),
