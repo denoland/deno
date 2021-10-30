@@ -240,7 +240,7 @@ declare namespace Deno {
        *
        * Defaults to "inherit".
        */
-       ffi?: "inherit" | boolean | Array<string | URL>;
+      ffi?: "inherit" | boolean | Array<string | URL>;
 
       /** Specifies if the `read` permission should be requested or revoked.
        * If set to `"inherit"`, the current `read` permission will be inherited.
