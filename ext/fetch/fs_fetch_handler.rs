@@ -29,10 +29,8 @@ impl FetchHandler for FsFetchHandler {
     Option<Rc<CancelHandle>>,
   ) {
     let cancel_handle = CancelHandle::new_rc();
-    let url_ = url.clone();
-
     let response_fut = async move {
-      let path = url_.to_file_path()?;
+      let path = url.to_file_path()?;
       let file = tokio::fs::File::open(path).map_err(|_| ()).await?;
       let stream = ReaderStream::new(file);
       let body = reqwest::Body::wrap_stream(stream);
