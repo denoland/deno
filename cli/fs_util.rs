@@ -252,7 +252,7 @@ where
         _ => None,
       })
     {
-      target_files.push(entry.into_path().canonicalize()?)
+      target_files.push(canonicalize_path(entry.path())?)
     }
   }
 
