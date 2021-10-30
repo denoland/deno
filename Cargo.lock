@@ -694,27 +694,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno-libffi"
-version = "0.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8c576e40bd48d120b433ee248e221a89f6c2556d580e409aeede79c5c899c86"
-dependencies = [
- "abort_on_panic",
- "deno-libffi-sys",
- "libc",
-]
-
-[[package]]
-name = "deno-libffi-sys"
-version = "0.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d17b3e8597c2424b077029461fae4f24e1c01b2073cf91ae2a13412d676181b8"
-dependencies = [
- "cc",
- "make-cmd",
-]
-
-[[package]]
 name = "deno_ast"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -768,12 +747,12 @@ dependencies = [
  "log",
  "parking_lot",
  "pin-project",
- "rusty_v8",
  "serde",
  "serde_json",
  "serde_v8",
  "tokio",
  "url",
+ "v8",
 ]
 
 [[package]]
@@ -802,9 +781,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.17.1"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96b60f0447a17ed4fc413bd7abad29e7d31e76f13422813f2e7978b0c4bdca7a"
+checksum = "81744eb79bda23580020b2df68a150197312b54c47e11160a65add0534c03ec5"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
@@ -837,9 +816,9 @@ dependencies = [
 name = "deno_ffi"
 version = "0.10.0"
 dependencies = [
- "deno-libffi",
  "deno_core",
  "dlopen",
+ "libffi",
  "serde",
  "tokio",
  "winapi 0.3.9",
@@ -847,9 +826,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.8.2"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3d7197f490abd2a1e7d1edc3a1c4db1f4e294d7067dbbf65c4714932c7c3c70"
+checksum = "d7513c22ec28dd1a4eeb82a99fc543c92d7ee2f1a146a0dd6bea7427020eb863"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -857,7 +836,7 @@ dependencies = [
  "deno_ast",
  "futures",
  "lazy_static",
- "parking_lot_core",
+ "parking_lot",
  "regex",
  "ring",
  "serde",
@@ -1214,9 +1193,9 @@ dependencies = [
 
 [[package]]
 name = "encoding_rs"
-version = "0.8.28"
+version = "0.8.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80df024fbc5ac80f87dfef0d9f5209a252f2a497f7f42944cff24d8253cac065"
+checksum = "a74ea89a0a1b98f6332de42c95baff457ada66d1cb4030f9ff151b2041a1c746"
 dependencies = [
  "cfg-if 1.0.0",
 ]
@@ -1908,6 +1887,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "716d3d89f35ac6a34fd0eed635395f4c3b76fa889338a4632e5231a8684216bd"
 dependencies = [
  "cfg-if 1.0.0",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -2044,6 +2026,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd8f7255a17a627354f321ef0055d63b898c6fb27eff628af4d1b66b7331edf6"
 
 [[package]]
+name = "libffi"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a1a541960580e84812cac19ec26926e883520bda211397a1f8c223993be6f20"
+dependencies = [
+ "abort_on_panic",
+ "libc",
+ "libffi-sys",
+]
+
+[[package]]
+name = "libffi-sys"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78a343392242972b1b7ac640de99f9abcb10ca42adcd996f6016514071cdbcc6"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "libloading"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2153,12 +2155,6 @@ dependencies = [
  "quote 1.0.10",
  "syn 1.0.65",
 ]
-
-[[package]]
-name = "make-cmd"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8ca8afbe8af1785e09636acb5a41e08a765f5f0340568716c18a8700ba3c0d3"
 
 [[package]]
 name = "malloc_buf"
@@ -3122,19 +3118,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusty_v8"
-version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2b311db3661f6b7631f94ad431133ff0f299c423e6bcc35b748ad0d57d6e604"
-dependencies = [
- "bitflags",
- "fslock",
- "lazy_static",
- "libc",
- "which",
-]
-
-[[package]]
 name = "rustyline"
 version = "9.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3330,9 +3313,9 @@ name = "serde_v8"
 version = "0.16.0"
 dependencies = [
  "bencher",
- "rusty_v8",
  "serde",
  "serde_json",
+ "v8",
 ]
 
 [[package]]
@@ -4542,6 +4525,19 @@ checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
  "getrandom 0.2.3",
  "serde",
+]
+
+[[package]]
+name = "v8"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b3adb16fd1af3e28d6fda8348a6d96b5363a128dc5a0216b137b64ecbae6641"
+dependencies = [
+ "bitflags",
+ "fslock",
+ "lazy_static",
+ "libc",
+ "which",
 ]
 
 [[package]]

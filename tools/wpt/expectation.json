@@ -5908,7 +5908,6 @@
     "api-surrogates-utf8.any.html": true,
     "api-surrogates-utf8.any.worker.html": true,
     "encodeInto.any.html": [
-      "encodeInto() and a detached output buffer",
       "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 0, filler 0",
       "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 4, filler 0",
       "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 0, filler 128",
@@ -5953,7 +5952,6 @@
       "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 4, filler random"
     ],
     "encodeInto.any.worker.html": [
-      "encodeInto() and a detached output buffer",
       "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 0, filler 0",
       "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 4, filler 0",
       "encodeInto() into SharedArrayBuffer with Hi and destination length 0, offset 0, filler 128",
@@ -6028,14 +6026,8 @@
       "decode-non-utf8.any.worker.html": true,
       "decode-split-character.any.html": true,
       "decode-split-character.any.worker.html": true,
-      "decode-utf8.any.html": [
-        "decoding a transferred Uint8Array chunk should give no output",
-        "decoding a transferred ArrayBuffer chunk should give no output"
-      ],
-      "decode-utf8.any.worker.html": [
-        "decoding a transferred Uint8Array chunk should give no output",
-        "decoding a transferred ArrayBuffer chunk should give no output"
-      ],
+      "decode-utf8.any.html": true,
+      "decode-utf8.any.worker.html": true,
       "encode-bad-chunks.any.html": true,
       "encode-bad-chunks.any.worker.html": true,
       "encode-utf8.any.html": true,
@@ -6071,28 +6063,8 @@
     "textdecoder-fatal.any.worker.html": true,
     "textdecoder-ignorebom.any.html": true,
     "textdecoder-ignorebom.any.worker.html": true,
-    "textdecoder-labels.any.html": [
-      "unicode11utf8 => UTF-8",
-      "unicode20utf8 => UTF-8",
-      "x-unicode20utf8 => UTF-8",
-      "unicodefffe => UTF-16BE",
-      "csunicode => UTF-16LE",
-      "iso-10646-ucs-2 => UTF-16LE",
-      "ucs-2 => UTF-16LE",
-      "unicode => UTF-16LE",
-      "unicodefeff => UTF-16LE"
-    ],
-    "textdecoder-labels.any.worker.html": [
-      "unicode11utf8 => UTF-8",
-      "unicode20utf8 => UTF-8",
-      "x-unicode20utf8 => UTF-8",
-      "unicodefffe => UTF-16BE",
-      "csunicode => UTF-16LE",
-      "iso-10646-ucs-2 => UTF-16LE",
-      "ucs-2 => UTF-16LE",
-      "unicode => UTF-16LE",
-      "unicodefeff => UTF-16LE"
-    ],
+    "textdecoder-labels.any.html": true,
+    "textdecoder-labels.any.worker.html": true,
     "textdecoder-streaming.any.html": true,
     "textdecoder-streaming.any.worker.html": true,
     "textdecoder-utf16-surrogates.any.html": true,
@@ -6709,33 +6681,15 @@
         "toString.any.html": true,
         "toString.any.worker.html": true
       },
-      "prototypes.any.html": false,
-      "prototypes.any.worker.html": false,
+      "prototypes.any.html": true,
+      "prototypes.any.worker.html": true,
       "table": {
-        "constructor.any.html": [
-          "initialize externref table with default value"
-        ],
-        "constructor.any.worker.html": [
-          "initialize externref table with default value"
-        ],
-        "get-set.any.html": [
-          "Arguments for anyfunc table set",
-          "Arguments for externref table set"
-        ],
-        "get-set.any.worker.html": [
-          "Arguments for anyfunc table set",
-          "Arguments for externref table set"
-        ],
-        "grow.any.html": [
-          "Grow with exported-function argument",
-          "Grow with non-function argument",
-          "Grow with JS-function argument"
-        ],
-        "grow.any.worker.html": [
-          "Grow with exported-function argument",
-          "Grow with non-function argument",
-          "Grow with JS-function argument"
-        ],
+        "constructor.any.html": true,
+        "constructor.any.worker.html": true,
+        "get-set.any.html": true,
+        "get-set.any.worker.html": true,
+        "grow.any.html": true,
+        "grow.any.worker.html": true,
         "length.any.html": true,
         "length.any.worker.html": true,
         "toString.any.html": true,
@@ -6746,18 +6700,8 @@
         "type.tentative.any.worker.html": false
       },
       "exception": {
-        "basic.tentative.any.html": [
-          "Wasm function throws argument",
-          "Wasm function throws null",
-          "Imported JS function throws",
-          "Imported JS function throws, Wasm catches and rethrows"
-        ],
-        "basic.tentative.any.worker.html": [
-          "Wasm function throws argument",
-          "Wasm function throws null",
-          "Imported JS function throws",
-          "Imported JS function throws, Wasm catches and rethrows"
-        ],
+        "basic.tentative.any.html": true,
+        "basic.tentative.any.worker.html": true,
         "constructor.tentative.any.html": true,
         "constructor.tentative.any.worker.html": true,
         "getArg.tentative.any.html": true,
@@ -9070,9 +9014,7 @@
           ],
           "catch.sub.any.worker.html": [
             "Cross-origin syntax error",
-            "Cross-origin throw",
-            "Redirect-to-cross-origin syntax error",
-            "Redirect-to-Cross-origin throw"
+            "Cross-origin throw"
           ],
           "report-error-cross-origin.sub.any.worker.html": false,
           "report-error-redirect-to-cross-origin.sub.any.worker.html": false,

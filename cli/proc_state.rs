@@ -298,7 +298,9 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports();
-    let node_resolver = NodeEsmResolver;
+    let node_resolver = NodeEsmResolver::new(
+      self.maybe_import_map.as_ref().map(ImportMapResolver::new),
+    );
     let import_map_resolver =
       self.maybe_import_map.as_ref().map(ImportMapResolver::new);
     let maybe_resolver = if self.flags.compat {
@@ -389,7 +391,7 @@ impl ProcState {
           .map(|cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
         let options = emit::CheckOptions {
           debug: self.flags.log_level == Some(log::Level::Debug),
-          emit_with_diagnostics: true,
+          emit_with_diagnostics: false,
           maybe_config_specifier,
           ts_config,
         };

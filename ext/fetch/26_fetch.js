@@ -214,6 +214,8 @@
       } else {
         req.body.streamOrStatic.consumed = true;
         reqBody = req.body.streamOrStatic.body;
+        // TODO(@AaronO): plumb support for StringOrBuffer all the way
+        reqBody = typeof reqBody === "string" ? core.encode(reqBody) : reqBody;
       }
     }
 
@@ -409,7 +411,7 @@
    */
   function fetch(input, init = {}) {
     // 1.
-    const p = new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const prefix = "Failed to call 'fetch'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // 2.
@@ -470,7 +472,6 @@
         },
       );
     });
-    return p;
   }
 
   function abortFetch(request, responseObject) {

@@ -8,7 +8,7 @@ use deno_core::located_script_name;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
 
-pub use esm_resolver::NodeEsmResolver;
+pub(crate) use esm_resolver::NodeEsmResolver;
 
 // TODO(bartlomieju): this needs to be bumped manually for
 // each release, a better mechanism is preferable, but it's a quick and dirty
@@ -86,7 +86,7 @@ fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   }
 }
 
-pub async fn check_if_should_use_esm_loader(
+pub(crate) async fn check_if_should_use_esm_loader(
   js_runtime: &mut JsRuntime,
   main_module: &str,
 ) -> Result<bool, AnyError> {
@@ -106,14 +106,14 @@ pub async fn check_if_should_use_esm_loader(
   let use_esm_loader_global = js_runtime.resolve_value(result).await?;
   let use_esm_loader = {
     let scope = &mut js_runtime.handle_scope();
-    let use_esm_loader_local = use_esm_loader_global.get(scope);
+    let use_esm_loader_local = use_esm_loader_global.open(scope);
     use_esm_loader_local.boolean_value(scope)
   };
 
   Ok(use_esm_loader)
 }
 
-pub fn load_cjs_module(
+pub(crate) fn load_cjs_module(
   js_runtime: &mut JsRuntime,
   main_module: &str,
 ) -> Result<(), AnyError> {

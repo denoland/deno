@@ -160,8 +160,6 @@ pub(crate) fn get_ts_config(
         "target": "esnext",
         "tsBuildInfoFile": "deno:///.tsbuildinfo",
         "useDefineForClassFields": true,
-        // TODO(@kitsonk) remove for Deno 2.0
-        "useUnknownInCatchVariables": false,
       }));
       if tsc_emit {
         ts_config.merge(&json!({
@@ -184,7 +182,6 @@ pub(crate) fn get_ts_config(
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
-      // TODO(@kitsonk) make this actually work when https://github.com/swc-project/swc/issues/2218 addressed.
       "inlineSources": true,
       "sourceMap": false,
       "jsx": "react",
@@ -214,8 +211,6 @@ pub(crate) fn get_ts_config(
         "target": "esnext",
         "tsBuildInfoFile": "deno:///.tsbuildinfo",
         "useDefineForClassFields": true,
-        // TODO(@kitsonk) remove for Deno 2.0
-        "useUnknownInCatchVariables": false,
       }));
       if tsc_emit {
         ts_config.merge(&json!({
@@ -519,6 +514,9 @@ pub(crate) fn bundle(
   let globals = swc::common::Globals::new();
   deno_ast::swc::common::GLOBALS.set(&globals, || {
     let emit_options: ast::EmitOptions = options.ts_config.into();
+    let source_map_config = ast::SourceMapConfig {
+      inline_sources: emit_options.inline_sources,
+    };
 
     let cm = Rc::new(swc::common::SourceMap::new(
       swc::common::FilePathMapping::empty(),
@@ -577,7 +575,7 @@ pub(crate) fn bundle(
     let mut maybe_map: Option<String> = None;
     {
       let mut buf = Vec::new();
-      cm.build_source_map_from(&mut srcmap, None)
+      cm.build_source_map_with_config(&mut srcmap, None, source_map_config)
         .to_writer(&mut buf)?;
       if emit_options.inline_source_map {
         let encoded_map = format!(
