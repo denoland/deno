@@ -160,8 +160,6 @@ pub(crate) fn get_ts_config(
         "target": "esnext",
         "tsBuildInfoFile": "deno:///.tsbuildinfo",
         "useDefineForClassFields": true,
-        // TODO(@kitsonk) remove for Deno 2.0
-        "useUnknownInCatchVariables": false,
       }));
       if tsc_emit {
         ts_config.merge(&json!({
@@ -184,7 +182,6 @@ pub(crate) fn get_ts_config(
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
-      // TODO(@kitsonk) make this actually work when https://github.com/swc-project/swc/issues/2218 addressed.
       "inlineSources": true,
       "sourceMap": false,
       "jsx": "react",
@@ -214,8 +211,6 @@ pub(crate) fn get_ts_config(
         "target": "esnext",
         "tsBuildInfoFile": "deno:///.tsbuildinfo",
         "useDefineForClassFields": true,
-        // TODO(@kitsonk) remove for Deno 2.0
-        "useUnknownInCatchVariables": false,
       }));
       if tsc_emit {
         ts_config.merge(&json!({
@@ -439,7 +434,6 @@ pub(crate) struct BundleOptions {
 struct BundleLoader<'a> {
   cm: Rc<swc::common::SourceMap>,
   emit_options: &'a ast::EmitOptions,
-  globals: &'a deno_ast::swc::common::Globals,
   graph: &'a ModuleGraph,
 }
 
@@ -456,7 +450,6 @@ impl swc::bundler::Load for BundleLoader<'_> {
             &m.source,
             m.media_type,
             self.emit_options,
-            self.globals,
             self.cm.clone(),
           )?;
           Ok(swc::bundler::ModuleData {
@@ -518,81 +511,85 @@ pub(crate) fn bundle(
   graph: &ModuleGraph,
   options: BundleOptions,
 ) -> Result<(String, Option<String>), AnyError> {
-  let emit_options: ast::EmitOptions = options.ts_config.into();
-
-  let cm = Rc::new(swc::common::SourceMap::new(
-    swc::common::FilePathMapping::empty(),
-  ));
   let globals = swc::common::Globals::new();
-  let loader = BundleLoader {
-    graph,
-    emit_options: &emit_options,
-    globals: &globals,
-    cm: cm.clone(),
-  };
-  let resolver = BundleResolver(graph);
-  let config = swc::bundler::Config {
-    module: options.bundle_type.into(),
-    ..Default::default()
-  };
-  // This hook will rewrite the `import.meta` when bundling to give a consistent
-  // behavior between bundled and unbundled code.
-  let hook = Box::new(ast::BundleHook);
-  let bundler = swc::bundler::Bundler::new(
-    &globals,
-    cm.clone(),
-    loader,
-    resolver,
-    config,
-    hook,
-  );
-  let mut entries = HashMap::new();
-  entries.insert(
-    "bundle".to_string(),
-    swc::common::FileName::Url(graph.roots[0].clone()),
-  );
-  let output = bundler
-    .bundle(entries)
-    .context("Unable to output during bundling.")?;
-  let mut buf = Vec::new();
-  let mut srcmap = Vec::new();
-  {
-    let cfg = swc::codegen::Config { minify: false };
-    let wr = Box::new(swc::codegen::text_writer::JsWriter::new(
-      cm.clone(),
-      "\n",
-      &mut buf,
-      Some(&mut srcmap),
-    ));
-    let mut emitter = swc::codegen::Emitter {
-      cfg,
-      cm: cm.clone(),
-      comments: None,
-      wr,
+  deno_ast::swc::common::GLOBALS.set(&globals, || {
+    let emit_options: ast::EmitOptions = options.ts_config.into();
+    let source_map_config = ast::SourceMapConfig {
+      inline_sources: emit_options.inline_sources,
     };
-    emitter
-      .emit_module(&output[0].module)
-      .context("Unable to emit during bundling.")?;
-  }
-  let mut code =
-    String::from_utf8(buf).context("Emitted code is an invalid string.")?;
-  let mut maybe_map: Option<String> = None;
-  {
-    let mut buf = Vec::new();
-    cm.build_source_map_from(&mut srcmap, None)
-      .to_writer(&mut buf)?;
-    if emit_options.inline_source_map {
-      let encoded_map = format!(
-        "//# sourceMappingURL=data:application/json;base64,{}\n",
-        base64::encode(buf)
-      );
-      code.push_str(&encoded_map);
-    } else if emit_options.source_map {
-      maybe_map = Some(String::from_utf8(buf)?);
-    }
-  }
 
-  Ok((code, maybe_map))
+    let cm = Rc::new(swc::common::SourceMap::new(
+      swc::common::FilePathMapping::empty(),
+    ));
+    let loader = BundleLoader {
+      graph,
+      emit_options: &emit_options,
+      cm: cm.clone(),
+    };
+    let resolver = BundleResolver(graph);
+    let config = swc::bundler::Config {
+      module: options.bundle_type.into(),
+      ..Default::default()
+    };
+    // This hook will rewrite the `import.meta` when bundling to give a consistent
+    // behavior between bundled and unbundled code.
+    let hook = Box::new(ast::BundleHook);
+    let mut bundler = swc::bundler::Bundler::new(
+      &globals,
+      cm.clone(),
+      loader,
+      resolver,
+      config,
+      hook,
+    );
+    let mut entries = HashMap::new();
+    entries.insert(
+      "bundle".to_string(),
+      swc::common::FileName::Url(graph.roots[0].clone()),
+    );
+    let output = bundler
+      .bundle(entries)
+      .context("Unable to output during bundling.")?;
+    let mut buf = Vec::new();
+    let mut srcmap = Vec::new();
+    {
+      let cfg = swc::codegen::Config { minify: false };
+      let wr = Box::new(swc::codegen::text_writer::JsWriter::new(
+        cm.clone(),
+        "\n",
+        &mut buf,
+        Some(&mut srcmap),
+      ));
+      let mut emitter = swc::codegen::Emitter {
+        cfg,
+        cm: cm.clone(),
+        comments: None,
+        wr,
+      };
+      emitter
+        .emit_module(&output[0].module)
+        .context("Unable to emit during bundling.")?;
+    }
+    let mut code =
+      String::from_utf8(buf).context("Emitted code is an invalid string.")?;
+    let mut maybe_map: Option<String> = None;
+    {
+      let mut buf = Vec::new();
+      cm.build_source_map_with_config(&mut srcmap, None, source_map_config)
+        .to_writer(&mut buf)?;
+      if emit_options.inline_source_map {
+        let encoded_map = format!(
+          "//# sourceMappingURL=data:application/json;base64,{}\n",
+          base64::encode(buf)
+        );
+        code.push_str(&encoded_map);
+      } else if emit_options.source_map {
+        maybe_map = Some(String::from_utf8(buf)?);
+      }
+    }
+
+    Ok((code, maybe_map))
+  })
 }
 
 pub(crate) struct EmitOptions {
@@ -735,7 +732,7 @@ impl fmt::Display for GraphError {
           ResolutionError::InvalidDowngrade(_, _)
             | ResolutionError::InvalidLocalImport(_, _)
         ) {
-          write!(f, "{}", err.to_string_with_span())
+          write!(f, "{}", err.to_string_with_range())
         } else {
           self.0.fmt(f)
         }

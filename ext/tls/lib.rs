@@ -238,6 +238,8 @@ pub fn create_http_client(
       .expect("invalid client key or certificate");
   }
 
+  tls_config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
+
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());
   let mut builder = Client::builder()

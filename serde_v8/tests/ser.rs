@@ -1,6 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use rusty_v8 as v8;
-
 use serde::Serialize;
 use serde_json::json;
 use serde_v8::utils::{js_exec, v8_do};

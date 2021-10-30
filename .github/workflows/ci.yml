@@ -84,7 +84,7 @@ jobs:
       - name: Install Rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.55.0
+          rust-version: 1.56.0
 
       - name: Install clippy and rustfmt
         if: matrix.job == 'lint'
@@ -184,15 +184,20 @@ jobs:
           sudo ln --force --target /sysroot/etc \
                   /etc/passwd /etc/shadow /etc/group /etc/gshadow
 
-          # Install clang-12 and lld-12 into the chroot environment.
-          echo "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-12 main" |
-            sudo dd of=/sysroot/etc/apt/sources.list.d/llvm-toolchain-bionic-12.list
+          # Install clang-13 and lld-13 into the chroot environment.
+          echo "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-13 main" |
+            sudo dd of=/sysroot/etc/apt/sources.list.d/llvm-toolchain-bionic-13.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
             sudo dd of=/sysroot/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo chroot /sysroot apt update -y
           sudo chroot /sysroot apt install --no-install-recommends -y \
-                                           clang-12 lld-12
+                                           clang-13 lld-13
+
+          # Redirect ld invocations to ld.lld-13 inside the chroot environment.
+          # Setting the 'LD' environment variable doesn't always work.
+          sudo chroot /sysroot bash -c \
+                                    'ln -f "$(which ld.lld-13)" "$(which ld)"'
 
           # Make rust available inside the chroot environment.
           sudo mkdir -p /sysroot/usr/share/rust
@@ -221,8 +226,8 @@ jobs:
             export CARGO_PROFILE_RELEASE_LTO=false
             export RUSTFLAGS="
               -C linker-plugin-lto=true
-              -C linker=clang-12
-              -C link-arg=-fuse-ld=lld-12
+              -C linker=clang-13
+              -C link-arg=-fuse-ld=lld-13
               -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
               -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
               -D warnings
@@ -231,8 +236,9 @@ jobs:
             unset RUSTC_FORCE_INCREMENTAL
 
             # C build configuration.
-            export CC=clang-12        # Compile c source files with clang.
+            export CC=clang-13        # Compile c source files with clang.
             export CFLAGS=-flto=thin  # Tell clang to produce llvm bitcode.
+            export LD=ld.lld-13       # Use the lld linker.
 
             # Miscellaneous flags.
             export CARGO_TERM_COLOR=always
@@ -260,7 +266,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: l-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 0-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -276,7 +282,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            l-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            0-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -292,7 +298,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            l-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            0-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)

@@ -87,11 +87,15 @@ cut.**
 18. Publish the release on Github
 
 19. Update the Deno version on the website by updating
-    https://github.com/denoland/deno_website2/blob/main/versions.json.
+    https://github.com/denoland/dotland/blob/main/versions.json.
 
 20. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
     must match the CLI tag; you don't need to create dedicated commit for that
     purpose, it's enough to tag the latest commit in that repo.
+
+21. For minor releases: make sure https://github.com/mdn/browser-compat-data has
+    been updated to reflect Web API changes in this release. Usually done ahead
+    of time by @lucacasonato.
 
 ## Updating `deno_docker`
 

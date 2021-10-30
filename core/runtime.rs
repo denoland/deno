@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use rusty_v8 as v8;
-
 use crate::bindings;
 use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
@@ -138,6 +136,23 @@ pub type SharedArrayBufferStore =
   CrossIsolateStore<v8::SharedRef<v8::BackingStore>>;
 
 pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
+
+struct AsyncOpIterator<'a, 'b, 'c> {
+  ops: &'b mut FuturesUnordered<PendingOpFuture>,
+  cx: &'a mut Context<'c>,
+}
+
+impl Iterator for AsyncOpIterator<'_, '_, '_> {
+  type Item = (PromiseId, OpId, OpResult);
+
+  #[inline]
+  fn next(&mut self) -> Option<Self::Item> {
+    match self.ops.poll_next_unpin(self.cx) {
+      Poll::Ready(Some(item)) => Some(item),
+      _ => None,
+    }
+  }
+}
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
@@ -512,7 +527,7 @@ impl JsRuntime {
     let scope = &mut self.handle_scope();
     let state_rc = JsRuntime::state(scope);
     let js_sync_cb_handle = state_rc.borrow().js_sync_cb.clone().unwrap();
-    let js_sync_cb = js_sync_cb_handle.get(scope);
+    let js_sync_cb = js_sync_cb_handle.open(scope);
     let this = v8::undefined(scope).into();
     js_sync_cb.call(scope, this, &[]);
   }
@@ -759,8 +774,7 @@ impl JsRuntime {
 
     // Ops
     {
-      let async_responses = self.poll_pending_ops(cx);
-      self.async_op_response(async_responses)?;
+      self.resolve_async_ops(cx)?;
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
     }
@@ -979,7 +993,7 @@ impl JsRuntime {
 
     let status = {
       let scope = &mut self.handle_scope();
-      let module = module_handle.get(scope);
+      let module = module_handle.open(scope);
       module.get_status()
     };
 
@@ -1126,7 +1140,7 @@ impl JsRuntime {
       .dynamic_import_map
       .remove(&id)
       .expect("Invalid dynamic import id");
-    let resolver = resolver_handle.get(scope);
+    let resolver = resolver_handle.open(scope);
 
     let exception = err
       .downcast_ref::<ErrWithV8Handle>()
@@ -1155,7 +1169,7 @@ impl JsRuntime {
       .dynamic_import_map
       .remove(&id)
       .expect("Invalid dynamic import id");
-    let resolver = resolver_handle.get(scope);
+    let resolver = resolver_handle.open(scope);
 
     let module = {
       module_map_rc
@@ -1312,7 +1326,7 @@ impl JsRuntime {
     let module_evaluation = maybe_module_evaluation.unwrap();
     let scope = &mut self.handle_scope();
 
-    let promise = module_evaluation.promise.get(scope);
+    let promise = module_evaluation.promise.open(scope);
     let promise_state = promise.state();
 
     match promise_state {
@@ -1348,8 +1362,8 @@ impl JsRuntime {
         let scope = &mut self.handle_scope();
 
         let module_id = pending_dyn_evaluate.module_id;
-        let promise = pending_dyn_evaluate.promise.get(scope);
-        let _module = pending_dyn_evaluate.module.get(scope);
+        let promise = pending_dyn_evaluate.promise.open(scope);
+        let _module = pending_dyn_evaluate.module.open(scope);
         let promise_state = promise.state();
 
         match promise_state {
@@ -1458,47 +1472,6 @@ impl JsRuntime {
     Ok(root_id)
   }
 
-  fn poll_pending_ops(
-    &mut self,
-    cx: &mut Context,
-  ) -> Vec<(PromiseId, OpResult)> {
-    let state_rc = Self::state(self.v8_isolate());
-    let mut async_responses: Vec<(PromiseId, OpResult)> = Vec::new();
-
-    let mut state = state_rc.borrow_mut();
-
-    // Now handle actual ops.
-    state.have_unpolled_ops = false;
-
-    loop {
-      let pending_r = state.pending_ops.poll_next_unpin(cx);
-      match pending_r {
-        Poll::Ready(None) => break,
-        Poll::Pending => break,
-        Poll::Ready(Some((promise_id, op_id, resp))) => {
-          let tracker = &mut state.op_state.borrow_mut().tracker;
-          tracker.track_async_completed(op_id);
-          async_responses.push((promise_id, resp));
-        }
-      };
-    }
-
-    loop {
-      let unref_r = state.pending_unref_ops.poll_next_unpin(cx);
-      match unref_r {
-        Poll::Ready(None) => break,
-        Poll::Pending => break,
-        Poll::Ready(Some((promise_id, op_id, resp))) => {
-          let tracker = &mut state.op_state.borrow_mut().tracker;
-          tracker.track_unref_completed(op_id);
-          async_responses.push((promise_id, resp));
-        }
-      };
-    }
-
-    async_responses
-  }
-
   fn check_promise_exceptions(&mut self) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
@@ -1524,19 +1497,10 @@ impl JsRuntime {
   }
 
   // Send finished responses to JS
-  fn async_op_response(
-    &mut self,
-    async_responses: Vec<(PromiseId, OpResult)>,
-  ) -> Result<(), AnyError> {
+  fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
 
-    let async_responses_size = async_responses.len();
-    if async_responses_size == 0 {
-      return Ok(());
-    }
-
     let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
-
     let scope = &mut self.handle_scope();
 
     // We return async responses to JS in unbounded batches (may change),
@@ -1546,16 +1510,40 @@ impl JsRuntime {
     // which contains a value OR an error, encoded as a tuple.
     // This batch is received in JS via the special `arguments` variable
     // and then each tuple is used to resolve or reject promises
-    let mut args: Vec<v8::Local<v8::Value>> =
-      Vec::with_capacity(2 * async_responses_size);
-    for overflown_response in async_responses {
-      let (promise_id, resp) = overflown_response;
-      args.push(v8::Integer::new(scope, promise_id as i32).into());
-      args.push(resp.to_v8(scope).unwrap());
+    let mut args: Vec<v8::Local<v8::Value>> = vec![];
+
+    // Now handle actual ops.
+    {
+      let mut state = state_rc.borrow_mut();
+      state.have_unpolled_ops = false;
+
+      let op_state = state.op_state.clone();
+      let ops = AsyncOpIterator {
+        ops: &mut state.pending_ops,
+        cx,
+      };
+      for (promise_id, op_id, resp) in ops {
+        op_state.borrow().tracker.track_async_completed(op_id);
+        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(resp.to_v8(scope).unwrap());
+      }
+      let ops = AsyncOpIterator {
+        ops: &mut state.pending_unref_ops,
+        cx,
+      };
+      for (promise_id, op_id, resp) in ops {
+        op_state.borrow().tracker.track_unref_completed(op_id);
+        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(resp.to_v8(scope).unwrap());
+      }
+    }
+
+    if args.is_empty() {
+      return Ok(());
     }
 
     let tc_scope = &mut v8::TryCatch::new(scope);
-    let js_recv_cb = js_recv_cb_handle.get(tc_scope);
+    let js_recv_cb = js_recv_cb_handle.open(tc_scope);
     let this = v8::undefined(tc_scope).into();
     js_recv_cb.call(tc_scope, this, args.as_slice());
 
@@ -1573,7 +1561,7 @@ impl JsRuntime {
       };
 
     let scope = &mut self.handle_scope();
-    let js_macrotask_cb = js_macrotask_cb_handle.get(scope);
+    let js_macrotask_cb = js_macrotask_cb_handle.open(scope);
 
     // Repeatedly invoke macrotask callback until it returns true (done),
     // such that ready microtasks would be automatically run before
@@ -1606,6 +1594,7 @@ pub mod tests {
   use super::*;
   use crate::error::custom_error;
   use crate::modules::ModuleSourceFuture;
+  use crate::op_async;
   use crate::op_sync;
   use crate::ZeroCopyBuf;
   use futures::future::lazy;
@@ -1738,13 +1727,13 @@ pub mod tests {
     let value_global = runtime.execute_script("a.js", "a = 1 + 2").unwrap();
     {
       let scope = &mut runtime.handle_scope();
-      let value = value_global.get(scope);
+      let value = value_global.open(scope);
       assert_eq!(value.integer_value(scope).unwrap(), 3);
     }
     let value_global = runtime.execute_script("b.js", "b = 'foobar'").unwrap();
     {
       let scope = &mut runtime.handle_scope();
-      let value = value_global.get(scope);
+      let value = value_global.open(scope);
       assert!(value.is_string());
       assert_eq!(
         value.to_string(scope).unwrap().to_rust_string_lossy(scope),
@@ -1762,7 +1751,7 @@ pub mod tests {
     let result_global = runtime.resolve_value(value_global).await.unwrap();
     {
       let scope = &mut runtime.handle_scope();
-      let value = result_global.get(scope);
+      let value = result_global.open(scope);
       assert_eq!(value.integer_value(scope).unwrap(), 3);
     }
 
@@ -1775,7 +1764,7 @@ pub mod tests {
     let result_global = runtime.resolve_value(value_global).await.unwrap();
     {
       let scope = &mut runtime.handle_scope();
-      let value = result_global.get(scope);
+      let value = result_global.open(scope);
       assert_eq!(value.integer_value(scope).unwrap(), 4);
     }
 
@@ -2318,5 +2307,46 @@ assertEquals(1, notify_return_value);
     let mut scope = runtime.handle_scope();
     let all_true = v8::Local::<v8::Value>::new(&mut scope, &all_true);
     assert!(all_true.is_true());
+  }
+
+  #[tokio::test]
+  async fn test_async_opstate_borrow() {
+    struct InnerState(u64);
+
+    async fn op_async_borrow(
+      op_state: Rc<RefCell<OpState>>,
+      _: (),
+      _: (),
+    ) -> Result<(), AnyError> {
+      let op_state = op_state.borrow();
+      let inner_state = op_state.borrow::<InnerState>();
+      // Future must be Poll::Pending on first call
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+      if inner_state.0 != 42 {
+        unreachable!();
+      }
+      Ok(())
+    }
+
+    let extension = Extension::builder()
+      .ops(vec![("op_async_borrow", op_async(op_async_borrow))])
+      .state(|state| {
+        state.put(InnerState(42));
+        Ok(())
+      })
+      .build();
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "op_async_borrow.js",
+        "Deno.core.opAsync('op_async_borrow')",
+      )
+      .unwrap();
+    runtime.run_event_loop(false).await.unwrap();
   }
 }

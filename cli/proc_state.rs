@@ -60,10 +60,10 @@ struct GraphData {
   // resolution map so that those errors can be surfaced at the appropriate time
   resolution_map:
     HashMap<ModuleSpecifier, HashMap<String, deno_graph::Resolved>>,
-  // in some cases we want to provide the span where the resolution error
+  // in some cases we want to provide the range where the resolution error
   // occurred but need to surface it on load, but on load we don't know who the
   // referrer and span was, so we need to cache those
-  resolved_map: HashMap<ModuleSpecifier, deno_graph::Span>,
+  resolved_map: HashMap<ModuleSpecifier, deno_graph::Range>,
   // deno_graph detects all sorts of issues at build time (prepare_module_load)
   // but if they are errors at that stage, the don't cause the correct behaviors
   // so we cache the error and then surface it when appropriate (e.g. load)
@@ -298,7 +298,9 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports();
-    let node_resolver = NodeEsmResolver;
+    let node_resolver = NodeEsmResolver::new(
+      self.maybe_import_map.as_ref().map(ImportMapResolver::new),
+    );
     let import_map_resolver =
       self.maybe_import_map.as_ref().map(ImportMapResolver::new);
     let maybe_resolver = if self.flags.compat {
@@ -389,7 +391,7 @@ impl ProcState {
           .map(|cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
         let options = emit::CheckOptions {
           debug: self.flags.log_level == Some(log::Level::Debug),
-          emit_with_diagnostics: true,
+          emit_with_diagnostics: false,
           maybe_config_specifier,
           ts_config,
         };
@@ -469,7 +471,7 @@ impl ProcState {
           Some(Err(err)) => {
             return Err(custom_error(
               "TypeError",
-              format!("{}\n", err.to_string_with_span()),
+              format!("{}\n", err.to_string_with_range()),
             ))
           }
           _ => (),

@@ -23,6 +23,16 @@
     return core.opAsync("op_start_tls", args);
   }
 
+  function opTlsHandshake(rid) {
+    return core.opAsync("op_tls_handshake", rid);
+  }
+
+  class TlsConn extends Conn {
+    handshake() {
+      return opTlsHandshake(this.rid);
+    }
+  }
+
   async function connectTls({
     port,
     hostname = "127.0.0.1",
@@ -41,13 +51,13 @@
       certChain,
       privateKey,
     });
-    return new Conn(res.rid, res.remoteAddr, res.localAddr);
+    return new TlsConn(res.rid, res.remoteAddr, res.localAddr);
   }
 
-  class TLSListener extends Listener {
+  class TlsListener extends Listener {
     async accept() {
       const res = await opAcceptTLS(this.rid);
-      return new Conn(res.rid, res.remoteAddr, res.localAddr);
+      return new TlsConn(res.rid, res.remoteAddr, res.localAddr);
     }
   }
 
@@ -67,7 +77,7 @@
       transport,
       alpnProtocols,
     });
-    return new TLSListener(res.rid, res.localAddr);
+    return new TlsListener(res.rid, res.localAddr);
   }
 
   async function startTls(
@@ -80,13 +90,14 @@
       certFile,
       caCerts,
     });
-    return new Conn(res.rid, res.remoteAddr, res.localAddr);
+    return new TlsConn(res.rid, res.remoteAddr, res.localAddr);
   }
 
   window.__bootstrap.tls = {
     startTls,
     listenTls,
     connectTls,
-    TLSListener,
+    TlsConn,
+    TlsListener,
   };
 })(this);

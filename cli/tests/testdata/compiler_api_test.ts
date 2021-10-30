@@ -529,3 +529,31 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "Deno.emit() - no check respects inlineSources compiler option",
+  async fn() {
+    const { files } = await Deno.emit(
+      "file:///a.ts",
+      {
+        check: false,
+        compilerOptions: {
+          types: ["file:///b.d.ts"],
+          inlineSources: true,
+        },
+        sources: {
+          "file:///a.ts": `const b = new B();
+          console.log(b.b);`,
+          "file:///b.d.ts": `declare class B {
+            b: string;
+          }`,
+        },
+      },
+    );
+    const sourceMap: { sourcesContent?: string[] } = JSON.parse(
+      files["file:///a.ts.js.map"],
+    );
+    assert(sourceMap.sourcesContent);
+    assertEquals(sourceMap.sourcesContent.length, 1);
+  },
+});

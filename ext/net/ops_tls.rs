@@ -776,7 +776,6 @@ pub struct ConnectTlsArgs {
 #[serde(rename_all = "camelCase")]
 struct StartTlsArgs {
   rid: ResourceId,
-  cert_file: Option<String>,
   ca_certs: Vec<String>,
   hostname: String,
 }
@@ -794,28 +793,18 @@ where
     "" => "localhost",
     n => n,
   };
-  let cert_file = args.cert_file.as_deref();
+
   {
-    super::check_unstable2(&state, "Deno.startTls");
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
     permissions.check_net(&(hostname, Some(0)))?;
-    if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path))?;
-    }
   }
 
-  let mut ca_certs = args
+  let ca_certs = args
     .ca_certs
     .into_iter()
     .map(|s| s.into_bytes())
     .collect::<Vec<_>>();
-
-  if let Some(path) = cert_file {
-    let mut buf = Vec::new();
-    File::open(path)?.read_to_end(&mut buf)?;
-    ca_certs.push(buf);
-  };
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
     .map_err(|_| invalid_hostname(hostname))?;

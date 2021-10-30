@@ -10,6 +10,12 @@ impl Deref for StringOrBuffer {
   }
 }
 
+impl StringOrBuffer {
+  pub fn into_bytes(self) -> Vec<u8> {
+    self.0
+  }
+}
+
 impl<'de> serde::Deserialize<'de> for StringOrBuffer {
   fn deserialize<D>(deserializer: D) -> Result<StringOrBuffer, D::Error>
   where
