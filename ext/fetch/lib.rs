@@ -11,6 +11,7 @@ use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -75,8 +76,6 @@ pub fn init<P: FetchPermissions + 'static>(
     .ops(vec![
       ("op_fetch", op_sync(op_fetch::<P>)),
       ("op_fetch_send", op_async(op_fetch_send)),
-      ("op_fetch_request_write", op_async(op_fetch_request_write)),
-      ("op_fetch_response_read", op_async(op_fetch_response_read)),
       ("op_create_http_client", op_sync(op_create_http_client::<P>)),
     ])
     .state(move |state| {
@@ -337,42 +336,6 @@ pub async fn op_fetch_send(
   })
 }
 
-pub async fn op_fetch_request_write(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  data: ZeroCopyBuf,
-) -> Result<(), AnyError> {
-  let buf = data.to_vec();
-
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<FetchRequestBodyResource>(rid)?;
-  let body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
-  let cancel = RcRef::map(resource, |r| &r.cancel);
-  body.send(Ok(buf)).or_cancel(cancel).await?.map_err(|_| {
-    type_error("request body receiver not connected (request closed)")
-  })?;
-
-  Ok(())
-}
-
-pub async fn op_fetch_response_read(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  data: ZeroCopyBuf,
-) -> Result<usize, AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<FetchResponseBodyResource>(rid)?;
-  let mut reader = RcRef::map(&resource, |r| &r.reader).borrow_mut().await;
-  let cancel = RcRef::map(resource, |r| &r.cancel);
-  let mut buf = data.clone();
-  let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
-  Ok(read)
-}
-
 type CancelableResponseResult = Result<Result<Response, AnyError>, Canceled>;
 
 struct FetchRequestResource(
@@ -407,6 +370,20 @@ impl Resource for FetchRequestBodyResource {
     "fetchRequestBody".into()
   }
 
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
+    Some(Box::pin(async move {
+      let data = buf.to_vec();
+      let len = data.len();
+      let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      body.send(Ok(data)).or_cancel(cancel).await?.map_err(|_| {
+        type_error("request body receiver not connected (request closed)")
+      })?;
+
+      Ok(len)
+    }))
+  }
+
   fn close(self: Rc<Self>) {
     self.cancel.cancel()
   }
@@ -423,6 +400,15 @@ struct FetchResponseBodyResource {
 impl Resource for FetchResponseBodyResource {
   fn name(&self) -> Cow<str> {
     "fetchResponseBody".into()
+  }
+
+  fn read(self: Rc<Self>, mut buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
+    Some(Box::pin(async move {
+      let mut reader = RcRef::map(&self, |r| &r.reader).borrow_mut().await;
+      let cancel = RcRef::map(self, |r| &r.cancel);
+      let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
+      Ok(read)
+    }))
   }
 
   fn close(self: Rc<Self>) {
