@@ -55,9 +55,8 @@ fn wait_for(s: &str, lines: &mut impl Iterator<Item = String>) {
   }
 }
 
-//
 fn read_line(s: &str, lines: &mut impl Iterator<Item = String>) -> String {
-  return lines.filter(|m| m.contains(s)).next().unwrap();
+  lines.find(|m| m.contains(s)).unwrap()
 }
 
 fn check_alive_then_kill(mut child: std::process::Child) {

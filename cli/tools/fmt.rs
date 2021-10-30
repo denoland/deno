@@ -94,7 +94,7 @@ pub async fn format(
             .filter(|path| paths.contains(path))
             .collect::<Vec<_>>();
 
-          let should_refmt = refmt_files.is_empty();
+          let should_refmt = !refmt_files.is_empty();
 
           if check {
             (Ok((value, fmt_options.clone())), Some(should_refmt))
@@ -110,7 +110,7 @@ pub async fn format(
 
     let paths_to_watch = include_files.clone();
     async move {
-      if files_changed && matches!(should_refmt, Some(true)) {
+      if files_changed && matches!(should_refmt, Some(false)) {
         ResolutionResult::Ignore
       } else {
         ResolutionResult::Restart {

@@ -113,12 +113,10 @@ pub async fn lint(
     let (result, should_relint) = match collect_files {
       Ok(value) => {
         if let Some(paths) = changed {
-          let relint_files = value
-            .clone()
-            .into_iter()
-            .filter(|path| paths.contains(path))
-            .collect::<Vec<_>>();
-          (Ok(value), Some(relint_files.is_empty()))
+          (
+            Ok(value.clone()),
+            Some(value.iter().any(|path| paths.contains(path))),
+          )
         } else {
           (Ok(value), None)
         }
@@ -127,7 +125,7 @@ pub async fn lint(
     };
 
     async move {
-      if files_changed && matches!(should_relint, Some(true)) {
+      if files_changed && matches!(should_relint, Some(false)) {
         ResolutionResult::Ignore
       } else {
         ResolutionResult::Restart {
