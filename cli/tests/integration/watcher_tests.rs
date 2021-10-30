@@ -55,14 +55,11 @@ fn wait_for(s: &str, lines: &mut impl Iterator<Item = String>) {
   }
 }
 
-fn read_checked_line(lines: &mut impl Iterator<Item = String>) -> String {
-  loop {
-    let msg = lines.next().unwrap();
-    if msg.contains("Checked") {
-      return msg;
-    }
-  }
+//
+fn read_line(s: &str, lines: &mut impl Iterator<Item = String>) -> String {
+  return lines.filter(|m| m.contains(s)).next().unwrap();
 }
+
 fn check_alive_then_kill(mut child: std::process::Child) {
   assert!(child.try_wait().unwrap().is_none());
   child.kill().unwrap();
@@ -181,15 +178,13 @@ fn lint_all_files_on_each_change_test() {
 
   std::thread::sleep(std::time::Duration::from_secs(1));
 
-  let checked_line = read_checked_line(&mut stderr_lines);
-  assert_contains!(checked_line, "Checked 2 files");
+  assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 2 files");
 
   std::fs::copy(&badly_linted_fixed2, &badly_linted_2)
     .expect("Failed to copy file");
   std::thread::sleep(std::time::Duration::from_secs(1));
 
-  let checked_line = read_checked_line(&mut stderr_lines);
-  assert_contains!(checked_line, "Checked 2 files");
+  assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 2 files");
 
   assert!(child.try_wait().unwrap().is_none());
 
@@ -239,7 +234,7 @@ fn fmt_watch_test() {
 }
 
 #[test]
-fn fmt_all_files_on_each_change_test() {
+fn fmt_check_all_files_on_each_change_test() {
   let t = TempDir::new().unwrap();
   let badly_formatted_original =
     util::testdata_path().join("badly_formatted.mjs");
@@ -253,6 +248,7 @@ fn fmt_all_files_on_each_change_test() {
     .arg("fmt")
     .arg(&t.path())
     .arg("--watch")
+    .arg("--check")
     .arg("--unstable")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
@@ -260,19 +256,23 @@ fn fmt_all_files_on_each_change_test() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  let checked_line = read_checked_line(&mut stderr_lines);
-  assert_contains!(checked_line, "Checked 2 files");
-
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert_contains!(
+    read_line("error", &mut stderr_lines),
+    "Found 2 not formatted files in 2 files"
+  );
 
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted_1).unwrap();
 
   std::thread::sleep(std::time::Duration::from_secs(1));
 
-  let checked_line = read_checked_line(&mut stderr_lines);
-  assert_contains!(checked_line, "Checked 2 files");
+  assert_contains!(
+    read_line("error", &mut stderr_lines),
+    "Found 2 not formatted files in 2 files"
+  );
 
   check_alive_then_kill(child);
 }
