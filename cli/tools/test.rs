@@ -1218,3 +1218,19 @@ pub async fn run_tests_with_watch(
 
   Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_human_elapsed() {
+    assert_eq!(human_elapsed(1), "(1ms)");
+    assert_eq!(human_elapsed(256), "(256ms)");
+    assert_eq!(human_elapsed(1000), "(1s)");
+    assert_eq!(human_elapsed(1001), "(1s)");
+    assert_eq!(human_elapsed(1020), "(1s)");
+    assert_eq!(human_elapsed(70 * 1000), "(1m10s)");
+    assert_eq!(human_elapsed(86 * 1000 + 100), "(1m26s)");
+  }
+}
