@@ -249,7 +249,7 @@ impl PrettyTestReporter {
     println!(
       "{} {}",
       status,
-      colors::gray(format!("({}ms)", elapsed)).to_string()
+      colors::gray(human_elapsed(elapsed)).to_string()
     );
 
     if let Some(error_text) = result.error() {
@@ -258,6 +258,22 @@ impl PrettyTestReporter {
       }
     }
   }
+}
+
+/// A function that converts a milisecond elapsed time to a string that
+/// represents a human readable version of that time.
+fn human_elapsed(elapsed: u64) -> String {
+  if elapsed < 1_000 {
+    return format!("{}ms", elapsed);
+  }
+  if elapsed < 1_000 * 60 {
+    return format!("{}s", (elapsed / 1000).floor());
+  }
+
+  let seconds = (elapsed / 1_000).floor();
+  let minutes = (seconds / 60).floor();
+  let seconds_reminder = seconds - (minutes * 60);
+  format!("{}m{}s", minutes, seconds_reminder)
 }
 
 impl TestReporter for PrettyTestReporter {
