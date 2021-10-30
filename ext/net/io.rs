@@ -133,7 +133,10 @@ impl UnixStreamResource {
   ) -> Result<usize, AnyError> {
     unreachable!()
   }
-  pub async fn write(self: Rc<Self>, _buf: ZeroCopyBuf) -> Result<usize, AnyError> {
+  pub async fn write(
+    self: Rc<Self>,
+    _buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
     unreachable!()
   }
   pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
