@@ -181,7 +181,7 @@ fn lint_all_files_on_each_change_test() {
 
   std::thread::sleep(std::time::Duration::from_secs(1));
 
-  assert_contains!(read_line(     "Checked", &mut stderr_lines), "Checked 2 files");
+  assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 2 files");
 
   std::fs::copy(&badly_linted_fixed2, &badly_linted_2)
     .expect("Failed to copy file");
