@@ -345,14 +345,9 @@ fn fmt_watch_without_args_test() {
   let expected = std::fs::read_to_string(fixed.clone()).unwrap();
   let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
   assert_eq!(expected, actual);
-  assert_contains!(stderr_lines.next().unwrap(), "Checked 1 file");
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting on file change");
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
-  let next_line = stderr_lines.next().unwrap();
-  assert_contains!(&next_line, CLEAR_SCREEN);
-  assert_contains!(&next_line, "Restarting");
 
   // Check if file has been automatically formatted by watcher
   let expected = std::fs::read_to_string(fixed).unwrap();
