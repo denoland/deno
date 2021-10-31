@@ -27,6 +27,7 @@ use tokio::time::sleep;
 use tokio::time::Instant;
 use tokio::time::Sleep;
 
+const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
 
 #[pin_project(project = DebounceProjection)]
@@ -106,7 +107,7 @@ where
         result,
       } => {
         // Clear screen first
-        eprint!("\x1B[2J\x1B[1;1H");
+        eprint!("{}", CLEAR_SCREEN);
         info!(
           "{} File change detected! Restarting!",
           colors::intense_blue("Watcher"),
@@ -175,7 +176,7 @@ where
   };
 
   // Clear screen first
-  eprint!("\x1B[2J\x1B[1;1H");
+  eprint!("{}", CLEAR_SCREEN);
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
   loop {

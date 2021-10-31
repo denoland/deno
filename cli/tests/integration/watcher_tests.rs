@@ -6,7 +6,7 @@ use std::io::BufRead;
 use tempfile::TempDir;
 use test_util as util;
 
-static CLEAR_SCREEN: &str = "[2J";
+const CLEAR_SCREEN: &str = r#"[2J"#;
 
 macro_rules! assert_contains {
   ($string:expr, $($test:expr),+) => {
