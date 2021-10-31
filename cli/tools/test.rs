@@ -272,8 +272,8 @@ fn human_elapsed(elapsed: u128) -> String {
 
   let seconds = elapsed / 1_000;
   let minutes = seconds / 60;
-  let seconds_reminder = seconds % 60;
-  format!("({}m{}s)", minutes, seconds_reminder)
+  let seconds_remainder = seconds % 60;
+  format!("({}m{}s)", minutes, seconds_remainder)
 }
 
 impl TestReporter for PrettyTestReporter {
