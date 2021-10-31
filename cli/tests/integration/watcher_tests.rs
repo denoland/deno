@@ -183,7 +183,9 @@ fn lint_watch_without_args_test() {
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
-
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
   assert_eq!(expected, output);
@@ -329,20 +331,28 @@ fn fmt_watch_without_args_test() {
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
-  let (_stdout_lines, stderr_lines) = child_lines(&mut child);
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
-
-  assert!(skip_restarting_line(stderr_lines).contains("badly_formatted.js"));
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Fmt started");
+  assert!(
+    skip_restarting_line(&mut stderr_lines).contains("badly_formatted.js")
+  );
 
   let expected = std::fs::read_to_string(fixed.clone()).unwrap();
   let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
   assert_eq!(expected, actual);
-
+  assert_contains!(stderr_lines.next().unwrap(), "Checked 1 file");
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting on file change");
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Restarting");
 
   // Check if file has been automatically formatted by watcher
   let expected = std::fs::read_to_string(fixed).unwrap();
