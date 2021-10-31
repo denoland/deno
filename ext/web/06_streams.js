@@ -4380,6 +4380,8 @@
     }
   }
 
+  webidl.configurePrototype(ReadableStreamDefaultReader);
+
   /** @template R */
   class ReadableStreamBYOBReader {
     /** @type {Deferred<void>} */
@@ -4505,6 +4507,8 @@
     }
   }
 
+  webidl.configurePrototype(ReadableStreamBYOBReader);
+
   class ReadableStreamBYOBRequest {
     /** @type {ReadableByteStreamController} */
     [_controller];
@@ -4563,7 +4567,7 @@
     }
   }
 
-  webidl.configurePrototype(ReadableStreamDefaultReader);
+  webidl.configurePrototype(ReadableStreamBYOBRequest);
 
   class ReadableByteStreamController {
     /** @type {number | undefined} */
