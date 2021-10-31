@@ -416,6 +416,33 @@ interface ReadableStreamDefaultReader<R = any> {
   releaseLock(): void;
 }
 
+interface ReadableStreamBYOBReadDoneResult {
+  done: true;
+  value?: ArrayBufferView;
+}
+
+interface ReadableStreamBYOBReadValueResult {
+  done: false;
+  value: ArrayBufferView;
+}
+
+type ReadableStreamBYOBReadResult =
+  | ReadableStreamBYOBReadDoneResult
+  | ReadableStreamBYOBReadValueResult;
+
+interface ReadableStreamBYOBReader {
+  readonly closed: Promise<void>;
+  cancel(reason?: any): Promise<void>;
+  read(view: ArrayBufferView): Promise<ReadableStreamBYOBReadResult>;
+  releaseLock(): void;
+}
+
+interface ReadableStreamBYOBRequest {
+  readonly view: ArrayBufferView | null;
+  respond(bytesWritten: number): void;
+  respondWithNewView(view: ArrayBufferView): void;
+}
+
 declare var ReadableStreamDefaultReader: {
   prototype: ReadableStreamDefaultReader;
   new <R>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
@@ -480,7 +507,7 @@ declare var ReadableStreamDefaultController: {
 };
 
 interface ReadableByteStreamController {
-  readonly byobRequest: undefined;
+  readonly byobRequest: ReadableStreamBYOBRequest | null;
   readonly desiredSize: number | null;
   close(): void;
   enqueue(chunk: ArrayBufferView): void;
