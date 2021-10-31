@@ -11,6 +11,7 @@
   const webidl = window.__bootstrap.webidl;
   // TODO(lucacasonato): get AbortSignal from __bootstrap.
   const {
+    ArrayBuffer,
     ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeShift,
@@ -688,10 +689,19 @@
     if (stream[_state] !== "readable") {
       return;
     }
-    // 3. Perform ! ReadableByteStreamControllerClearPendingPullIntos(controller).
+    readableByteStreamControllerClearPendingPullIntos(controller);
     resetQueue(controller);
     readableByteStreamControllerClearAlgorithms(controller);
     readableStreamError(stream, e);
+  }
+
+  /**
+   * @param {ReadableByteStreamController} controller
+   * @returns {void}
+   */
+  function readableByteStreamControllerClearPendingPullIntos(controller) {
+    readableByteStreamControllerInvalidateBYOBRequest(controller);
+    controller[_pendingPullIntos] = [];
   }
 
   /**
@@ -708,7 +718,14 @@
       controller[_closeRequested] = true;
       return;
     }
-    // 3.13.6.4 If controller.[[pendingPullIntos]] is not empty, (BYOB Support)
+    if (controller[_pendingPullIntos].length !== 0) {
+      const firstPendingPullInto = controller[_pendingPullIntos][0];
+      if (firstPendingPullInto.bytesFilled > 0) {
+        const e = new TypeError(); // TODO
+        readableByteStreamControllerError(controller, e);
+        throw e;
+      }
+    }
     readableByteStreamControllerClearAlgorithms(controller);
     readableStreamClose(stream);
   }
@@ -729,6 +746,15 @@
 
     const { buffer, byteOffset, byteLength } = chunk;
     const transferredBuffer = transferArrayBuffer(buffer);
+    if (controller[_pendingPullIntos].length !== 0) {
+      const firstPendingPullInto = controller[_pendingPullIntos][0];
+      if (isDetachedBuffer(firstPendingPullInto.buffer)) {
+        throw new TypeError(); // TODO
+      }
+      firstPendingPullInto.buffer = transferArrayBuffer(
+        firstPendingPullInto.buffer,
+      );
+    }
     if (readableStreamHasDefaultReader(stream)) {
       if (readableStreamGetNumReadRequests(stream) === 0) {
         readableByteStreamControllerEnqueueChunkToQueue(
@@ -746,7 +772,16 @@
         );
         readableStreamFulfillReadRequest(stream, transferredView, false);
       }
-      // 8 Otherwise, if ! ReadableStreamHasBYOBReader(stream) is true,
+    } else if (readableStreamHasBYOBReader(stream)) {
+      readableByteStreamControllerEnqueueChunkToQueue(
+        controller,
+        transferredBuffer,
+        byteOffset,
+        byteLength,
+      );
+      readableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(
+        controller,
+      );
     } else {
       assert(isReadableStreamLocked(stream) === false);
       readableByteStreamControllerEnqueueChunkToQueue(
@@ -859,8 +894,12 @@
     ) {
       return true;
     }
-    // 3.13.25.6 If ! ReadableStreamHasBYOBReader(stream) is true and !
-    //            ReadableStreamGetNumReadIntoRequests(stream) > 0, return true.
+    if (
+      readableStreamHasBYOBReader(stream) &&
+      readableStreamGetNumReadIntoRequests(stream) > 0
+    ) {
+      return true;
+    }
     const desiredSize = readableByteStreamControllerGetDesiredSize(controller);
     assert(desiredSize !== null);
     return desiredSize > 0;
@@ -1606,8 +1645,13 @@
         readRequest.errorSteps(e);
       }
       reader[_readRequests] = [];
+    } else {
+      assert(isReadableStreamBYOBReader(reader));
+      for (const readIntoRequest of reader[_readIntoRequests]) {
+        readIntoRequest.errorSteps(e);
+      }
+      reader[_readIntoRequests] = [];
     }
-    // 3.5.6.8 Otherwise, support BYOB Reader
   }
 
   /**
@@ -2510,7 +2554,6 @@
     controller[_cancelAlgorithm] = cancelAlgorithm;
     controller[_autoAllocateChunkSize] = autoAllocateChunkSize;
     controller[_pendingPullIntos] = [];
-    // 12. Set controller.[[pendingPullIntos]] to a new empty list.
     stream[_controller] = controller;
     const startResult = startAlgorithm();
     const startPromise = resolvePromiseWith(startResult);
@@ -2590,9 +2633,10 @@
           },
         );
     }
-    // 3.13.27.6 Let autoAllocateChunkSize be ? GetV(underlyingByteSource, "autoAllocateChunkSize").
-    /** @type {undefined} */
-    const autoAllocateChunkSize = undefined;
+    const autoAllocateChunkSize = underlyingSourceDict["autoAllocateChunkSize"];
+    if (autoAllocateChunkSize === 0) {
+      throw new TypeError(); // TODO
+    }
     setUpReadableByteStreamController(
       stream,
       controller,
@@ -4644,7 +4688,7 @@
      * @returns {Promise<void>}
      */
     [_cancelSteps](reason) {
-      // 4.7.4. CancelStep 1. If this.[[pendingPullIntos]] is not empty,
+      readableByteStreamControllerClearPendingPullIntos(this);
       resetQueue(this);
       const result = this[_cancelAlgorithm](reason);
       readableByteStreamControllerClearAlgorithms(this);
@@ -4672,8 +4716,28 @@
         readRequest.chunkSteps(view);
         return;
       }
-      // 4. Let autoAllocateChunkSize be this.[[autoAllocateChunkSize]].
-      // 5. If autoAllocateChunkSize is not undefined,
+      const autoAllocateChunkSize = this[_autoAllocateChunkSize];
+      if (autoAllocateChunkSize !== undefined) {
+        let buffer;
+        try {
+          buffer = new ArrayBuffer(autoAllocateChunkSize);
+        } catch (e) {
+          readRequest.errorSteps(e);
+          return;
+        }
+        /** @type {PullIntoDescriptor} */
+        let pullIntoDescriptor = {
+          buffer,
+          bufferByteLength: autoAllocateChunkSize,
+          byteOffset: 0,
+          byteLength: autoAllocateChunkSize,
+          bytesFilled: 0,
+          elementSize: 1,
+          viewConstructor: Uint8Array,
+          readerType: "default",
+        };
+        ArrayPrototypePush(this[_pendingPullIntos], pullIntoDescriptor);
+      }
       readableStreamAddReadRequest(stream, readRequest);
       readableByteStreamControllerCallPullIfNeeded(this);
     }
