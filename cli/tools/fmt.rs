@@ -73,6 +73,10 @@ pub async fn format(
     }
   }
 
+  if include_files.is_empty() {
+    include_files = [std::env::current_dir()?].to_vec();
+  }
+
   // Now do the same for options
   let fmt_options = resolve_fmt_options(
     &fmt_flags,

@@ -249,7 +249,7 @@ impl PrettyTestReporter {
     println!(
       "{} {}",
       status,
-      colors::gray(format!("({}ms)", elapsed)).to_string()
+      colors::gray(human_elapsed(elapsed.into())).to_string()
     );
 
     if let Some(error_text) = result.error() {
@@ -258,6 +258,22 @@ impl PrettyTestReporter {
       }
     }
   }
+}
+
+/// A function that converts a milisecond elapsed time to a string that
+/// represents a human readable version of that time.
+fn human_elapsed(elapsed: u128) -> String {
+  if elapsed < 1_000 {
+    return format!("({}ms)", elapsed);
+  }
+  if elapsed < 1_000 * 60 {
+    return format!("({}s)", elapsed / 1000);
+  }
+
+  let seconds = elapsed / 1_000;
+  let minutes = seconds / 60;
+  let seconds_reminder = seconds % 60;
+  format!("({}m{}s)", minutes, seconds_reminder)
 }
 
 impl TestReporter for PrettyTestReporter {
@@ -323,7 +339,7 @@ impl TestReporter for PrettyTestReporter {
     println!(
       "{} {}",
       status,
-      colors::gray(format!("({}ms)", elapsed)).to_string()
+      colors::gray(human_elapsed(elapsed.into())).to_string()
     );
   }
 
@@ -389,7 +405,7 @@ impl TestReporter for PrettyTestReporter {
       summary.ignored,
       summary.measured,
       summary.filtered_out,
-      colors::gray(format!("({}ms)", elapsed.as_millis())),
+      colors::gray(human_elapsed(elapsed.as_millis())),
     );
   }
 }
@@ -1201,4 +1217,20 @@ pub async fn run_tests_with_watch(
   file_watcher::watch_func(resolver, operation, "Test").await?;
 
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_human_elapsed() {
+    assert_eq!(human_elapsed(1), "(1ms)");
+    assert_eq!(human_elapsed(256), "(256ms)");
+    assert_eq!(human_elapsed(1000), "(1s)");
+    assert_eq!(human_elapsed(1001), "(1s)");
+    assert_eq!(human_elapsed(1020), "(1s)");
+    assert_eq!(human_elapsed(70 * 1000), "(1m10s)");
+    assert_eq!(human_elapsed(86 * 1000 + 100), "(1m26s)");
+  }
 }
