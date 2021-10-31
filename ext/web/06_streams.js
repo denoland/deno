@@ -1186,7 +1186,7 @@
     /** @type {PullIntoDescriptor} */
     const pullIntoDescriptor = {
       buffer: bufferResult,
-      bufferByteLength: bufferResult.buffer.byteLength,
+      bufferByteLength: bufferResult.byteLength,
       byteOffset,
       byteLength,
       bytesFilled: 0,
@@ -2728,7 +2728,7 @@
     if (isReadableStreamLocked(stream)) {
       throw new TypeError("ReadableStream is locked.");
     }
-    if (stream[_controller] instanceof ReadableByteStreamController) {
+    if (!stream[_controller] instanceof ReadableByteStreamController) {
       throw new TypeError(); // TODO
     }
     readableStreamReaderGenericInitialize(reader, stream);
@@ -4413,7 +4413,7 @@
 
     /** @returns {void} */
     releaseLock() {
-      webidl.assertBranded(this, ReadableStreamDefaultReader);
+      webidl.assertBranded(this, ReadableStreamBYOBReader);
       if (this[_stream] === undefined) {
         return;
       }
@@ -4427,7 +4427,7 @@
 
     get closed() {
       try {
-        webidl.assertBranded(this, ReadableStreamDefaultReader);
+        webidl.assertBranded(this, ReadableStreamBYOBReader);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -4440,7 +4440,7 @@
      */
     cancel(reason = undefined) {
       try {
-        webidl.assertBranded(this, ReadableStreamDefaultReader);
+        webidl.assertBranded(this, ReadableStreamBYOBReader);
         if (reason !== undefined) {
           reason = webidl.converters.any(reason);
         }
@@ -5495,6 +5495,8 @@
     WritableStreamDefaultWriter,
     WritableStreamDefaultController,
     ReadableByteStreamController,
+    ReadableStreamBYOBReader,
+    ReadableStreamBYOBRequest,
     ReadableStreamDefaultController,
     TransformStreamDefaultController,
   };
