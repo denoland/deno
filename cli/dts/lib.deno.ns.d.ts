@@ -134,6 +134,145 @@ declare namespace Deno {
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
+
+    /** Specifies the permissions that should be used to run the test.
+     * Set this to "inherit" to keep the calling thread's permissions.
+     * Set this to "none" to revoke all permissions.
+     *
+     * Defaults to "inherit".
+     */
+    permissions?: "inherit" | "none" | {
+      /** Specifies if the `net` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `env` permission will be inherited.
+       * If set to `true`, the global `net` permission will be requested.
+       * If set to `false`, the global `net` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      env?: "inherit" | boolean | string[];
+
+      /** Specifies if the `hrtime` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `hrtime` permission will be inherited.
+       * If set to `true`, the global `hrtime` permission will be requested.
+       * If set to `false`, the global `hrtime` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      hrtime?: "inherit" | boolean;
+
+      /** Specifies if the `net` permission should be requested or revoked.
+       * if set to `"inherit"`, the current `net` permission will be inherited.
+       * if set to `true`, the global `net` permission will be requested.
+       * if set to `false`, the global `net` permission will be revoked.
+       * if set to `string[]`, the `net` permission will be requested with the
+       * specified host strings with the format `"<host>[:<port>]`.
+       *
+       * Defaults to "inherit".
+       *
+       * Examples:
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "inherit",
+       *   permissions: {
+       *     net: "inherit",
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" })
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "true",
+       *   permissions: {
+       *     net: true,
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" });
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "false",
+       *   permissions: {
+       *     net: false,
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" });
+       *     assertEquals(status.state, "denied");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "localhost:8080",
+       *   permissions: {
+       *     net: ["localhost:8080"],
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       */
+      net?: "inherit" | boolean | string[];
+
+      /** Specifies if the `ffi` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `ffi` permission will be inherited.
+       * If set to `true`, the global `ffi` permission will be requested.
+       * If set to `false`, the global `ffi` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      ffi?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `read` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `read` permission will be inherited.
+       * If set to `true`, the global `read` permission will be requested.
+       * If set to `false`, the global `read` permission will be revoked.
+       * If set to `Array<string | URL>`, the `read` permission will be requested with the
+       * specified file paths.
+       *
+       * Defaults to "inherit".
+       */
+      read?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `run` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `run` permission will be inherited.
+       * If set to `true`, the global `run` permission will be requested.
+       * If set to `false`, the global `run` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      run?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `write` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `write` permission will be inherited.
+       * If set to `true`, the global `write` permission will be requested.
+       * If set to `false`, the global `write` permission will be revoked.
+       * If set to `Array<string | URL>`, the `write` permission will be requested with the
+       * specified file paths.
+       *
+       * Defaults to "inherit".
+       */
+      write?: "inherit" | boolean | Array<string | URL>;
+    };
   }
 
   /** Register a test which will be run when `deno test` is used on the command

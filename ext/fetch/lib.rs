@@ -76,7 +76,10 @@ pub fn init<P: FetchPermissions + 'static>(
     .ops(vec![
       ("op_fetch", op_sync(op_fetch::<P>)),
       ("op_fetch_send", op_async(op_fetch_send)),
-      ("op_create_http_client", op_sync(op_create_http_client::<P>)),
+      (
+        "op_fetch_custom_client",
+        op_sync(op_fetch_custom_client::<P>),
+      ),
     ])
     .state(move |state| {
       state.put::<reqwest::Client>({
@@ -441,7 +444,7 @@ pub struct CreateHttpClientOptions {
   private_key: Option<String>,
 }
 
-pub fn op_create_http_client<FP>(
+pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   args: CreateHttpClientOptions,
   _: (),
