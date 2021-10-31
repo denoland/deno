@@ -6,6 +6,8 @@ use std::io::BufRead;
 use tempfile::TempDir;
 use test_util as util;
 
+static CLEAR_SCREEN: &str = "[2J";
+
 macro_rules! assert_contains {
   ($string:expr, $($test:expr),+) => {
     let string = $string; // This might be a function call or something
@@ -18,7 +20,7 @@ macro_rules! assert_contains {
 // Helper function to skip watcher output that contains "Restarting"
 // phrase.
 fn skip_restarting_line(
-  mut stderr_lines: impl Iterator<Item = String>,
+  stderr_lines: &mut impl Iterator<Item = String>,
 ) -> String {
   loop {
     let msg = stderr_lines.next().unwrap();
@@ -113,7 +115,9 @@ fn lint_watch_test() {
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
-
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
   assert_eq!(expected, output);
@@ -210,20 +214,29 @@ fn fmt_watch_test() {
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
-  let (_stdout_lines, stderr_lines) = child_lines(&mut child);
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
   std::thread::sleep(std::time::Duration::from_secs(1));
-
-  assert!(skip_restarting_line(stderr_lines).contains("badly_formatted.js"));
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Fmt started");
+  assert!(
+    skip_restarting_line(&mut stderr_lines).contains("badly_formatted.js")
+  );
 
   let expected = std::fs::read_to_string(fixed.clone()).unwrap();
   let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
   assert_eq!(expected, actual);
-
+  assert_contains!(stderr_lines.next().unwrap(), "Checked 1 file");
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting on file change");
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
+
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Restarting");
 
   // Check if file has been automatically formatted by watcher
   let expected = std::fs::read_to_string(fixed).unwrap();
@@ -303,6 +316,9 @@ fn bundle_js_watch() {
 
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert_contains!(stderr_lines.next().unwrap(), "Check");
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
   assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
   let file = PathBuf::from(&bundle);
@@ -312,7 +328,9 @@ fn bundle_js_watch() {
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert_contains!(stderr_lines.next().unwrap(), "Check");
-  assert_contains!(stderr_lines.next().unwrap(), "File change detected!");
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "File change detected!");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
   assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
   let file = PathBuf::from(&bundle);
@@ -351,6 +369,9 @@ fn bundle_watch_not_exit() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
   std::thread::sleep(std::time::Duration::from_secs(1));
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   assert_contains!(stderr_lines.next().unwrap(), "Bundle failed");
   // the target file hasn't been created yet
@@ -360,7 +381,9 @@ fn bundle_watch_not_exit() {
   write(&file_to_watch, "console.log(42);").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
   assert_contains!(stderr_lines.next().unwrap(), "Check");
-  assert_contains!(stderr_lines.next().unwrap(), "File change detected!");
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "File change detected!");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
   assert_contains!(stderr_lines.next().unwrap(), "target.js");
   wait_for("Bundle finished", &mut stderr_lines);
@@ -511,6 +534,9 @@ fn run_watch_load_unload_events() {
   std::thread::sleep(std::time::Duration::from_secs(1));
 
   // Wait for the restart
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
 
   // Confirm that the unload event was dispatched from the first run
@@ -545,13 +571,18 @@ fn run_watch_not_exit() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   std::thread::sleep(std::time::Duration::from_secs(1));
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   assert_contains!(stderr_lines.next().unwrap(), "Process failed");
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
   write(&file_to_watch, "console.log(42);").unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Restarting");
   assert_contains!(stdout_lines.next().unwrap(), "42");
   wait_for("Process finished", &mut stderr_lines);
   check_alive_then_kill(child);
@@ -599,7 +630,9 @@ fn run_watch_with_import_map_and_relative_paths() {
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
-
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "Process finished");
   assert_contains!(stdout_lines.next().unwrap(), "Hello world");
 
@@ -799,6 +832,6 @@ fn test_watch_doc() {
 
   // We only need to scan for a Check file://.../foo.ts$3-6 line that
   // corresponds to the documentation block being type-checked.
-  assert_contains!(skip_restarting_line(stderr_lines), "foo.ts$3-6");
+  assert_contains!(skip_restarting_line(&mut stderr_lines), "foo.ts$3-6");
   check_alive_then_kill(child);
 }
