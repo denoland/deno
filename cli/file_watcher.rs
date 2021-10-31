@@ -105,6 +105,8 @@ where
         paths_to_watch,
         result,
       } => {
+        // Clear screen first
+        eprint!("\x1B[2J\x1B[1;1H");
         info!(
           "{} File change detected! Restarting!",
           colors::intense_blue("Watcher"),
@@ -171,6 +173,10 @@ where
       resolution_result = result;
     }
   };
+
+  // Clear screen first
+  eprint!("\x1B[2J\x1B[1;1H");
+  info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
   loop {
     let watcher = new_watcher(&paths_to_watch, &debounce)?;
