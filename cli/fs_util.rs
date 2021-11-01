@@ -236,9 +236,6 @@ where
     .filter_map(|i| i.canonicalize().ok())
     .collect();
 
-  let cur_dir = [std::env::current_dir()?];
-  let files = if files.is_empty() { &cur_dir } else { files };
-
   for file in files {
     for entry in WalkDir::new(file)
       .into_iter()
