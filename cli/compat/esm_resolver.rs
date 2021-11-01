@@ -926,6 +926,20 @@ struct PackageConfig {
   typ: String,
 }
 
+pub fn check_if_should_use_esm_loader(
+  main_module: &ModuleSpecifier,
+) -> Result<bool, AnyError> {
+  let s = main_module.as_str();
+  if s.ends_with(".mjs") {
+    return Ok(true);
+  }
+  if s.ends_with(".cjs") {
+    return Ok(false);
+  }
+  let package_config = get_package_scope_config(main_module)?;
+  Ok(package_config.typ == "module")
+}
+
 fn get_package_config(
   path: PathBuf,
   specifier: &str,
@@ -1218,5 +1232,19 @@ mod tests {
   fn test_is_relative_specifier() {
     assert!(is_relative_specifier("./foo.js"));
     assert!(!is_relative_specifier("https://deno.land/std/node/http.ts"));
+  }
+
+  #[test]
+  fn test_check_if_should_use_esm_loader() {
+    let basic = testdir("basic");
+    let main = Url::from_file_path(basic.join("main.js")).unwrap();
+    assert!(check_if_should_use_esm_loader(&main).unwrap());
+
+    let cjs = Url::from_file_path(basic.join("main.cjs")).unwrap();
+    assert!(!check_if_should_use_esm_loader(&cjs).unwrap());
+
+    let not_esm = testdir("not_esm");
+    let main = Url::from_file_path(not_esm.join("main.js")).unwrap();
+    assert!(!check_if_should_use_esm_loader(&main).unwrap());
   }
 }
