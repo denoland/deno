@@ -32,6 +32,7 @@
     ObjectSetPrototypeOf,
     Promise,
     PromiseAll,
+    PromisePrototypeCatch,
     PromisePrototypeThen,
     PromiseReject,
     PromiseResolve,
@@ -2315,7 +2316,7 @@
      * @param {ReadableStreamBYOBReader} thisReader
      */
     function forwardReaderError(thisReader) {
-      thisReader[_closedPromise].promise.catch((e) => {
+      PromisePrototypeCatch(thisReader[_closedPromise].promise, (e) => {
         if (thisReader !== reader) { // TODO: check
           return;
         }
@@ -2339,8 +2340,8 @@
       const readRequest = {
         chunkSteps(chunk) {
           queueMicrotask(() => {
-            let readAgainForBranch1 = false;
-            let readAgainForBranch2 = false;
+            readAgainForBranch1 = false;
+            readAgainForBranch2 = false;
             let chunk1 = chunk;
             let chunk2 = chunk;
             if (!canceled1 && !canceled2) {
@@ -2396,7 +2397,7 @@
       if (isReadableStreamDefaultReader(reader)) {
         assert(reader[_readRequests].length === 0);
         readableStreamReaderGenericRelease(reader);
-        acquireReadableStreamBYOBReader(stream);
+        reader = acquireReadableStreamBYOBReader(stream);
         forwardReaderError(reader);
       }
       const byobBranch = forBranch2 ? branch2 : branch1;
