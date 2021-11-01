@@ -1631,7 +1631,7 @@
       buffer,
       pullIntoDescriptor.byteOffset,
       bytesFilled / elementSize,
-    ); // TODO: check bytesFilled ÷ elementSize
+    );
   }
 
   /**
@@ -2523,7 +2523,7 @@
         const cancelResult = readableStreamCancel(stream, compositeReason);
         cancelPromise.resolve(cancelResult); // TODO: check
       }
-      return cancelPromise;
+      return cancelPromise.promise;
     }
 
     function cancel2Algorithm(reason) {
@@ -2807,7 +2807,7 @@
       throw new TypeError("ReadableStream is locked.");
     }
     if (!(stream[_controller] instanceof ReadableByteStreamController)) {
-      throw new TypeError(); // TODO
+      throw new TypeError("Cannot use a BYOB reader with a non-byte stream");
     }
     readableStreamReaderGenericInitialize(reader, stream);
     reader[_readIntoRequests] = [];
