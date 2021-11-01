@@ -15,8 +15,13 @@
     ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeShift,
+    BigInt64Array,
+    BigUint64Array,
     DataView,
     Error,
+    Int8Array,
+    Int16Array,
+    Int32Array,
     NumberIsInteger,
     NumberIsNaN,
     MathMin,
@@ -32,11 +37,15 @@
     PromiseResolve,
     queueMicrotask,
     RangeError,
+    SharedArrayBuffer,
     Symbol,
     SymbolAsyncIterator,
     SymbolFor,
     TypeError,
     Uint8Array,
+    Uint16Array,
+    Uint32Array,
+    Uint8ClampedArray,
     WeakMap,
     WeakMapPrototypeGet,
     WeakMapPrototypeHas,
@@ -203,7 +212,7 @@
    */
   function canTransferArrayBuffer(O) {
     assert(typeof O === "object");
-    // TODO: 2. Assert: O has an [[ArrayBufferData]] internal slot.
+    assert(O instanceof ArrayBuffer || O instanceof SharedArrayBuffer);
     if (isDetachedBuffer(O)) {
       return false;
     }
@@ -233,7 +242,7 @@
    */
   function cloneAsUint8Array(O) {
     assert(typeof O === "object");
-    // TODO: 2. Assert: O has an [[ViewedArrayBuffer]] internal slot.
+    assert(ArrayBuffer.isView(O));
     assert(!isDetachedBuffer(O.buffer));
     const buffer = O.buffer.slice(O.byteOffset, O.byteOffset + O.byteLength);
     return new Uint8Array(buffer);
@@ -919,13 +928,13 @@
 
   /**
    * @param {ReadableStream} stream
-   * @param {ReadIntoRequest} readIntoRequest
+   * @param {ReadIntoRequest} readRequest
    * @returns {void}
    */
-  function readableStreamAddReadIntoRequest(stream, readIntoRequest) {
+  function readableStreamAddReadIntoRequest(stream, readRequest) {
     assert(isReadableStreamBYOBReader(stream[_reader]));
     assert(stream[_state] === "readable" || stream[_state] === "closed");
-    ArrayPrototypePush(stream[_reader][_readIntoRequests], readIntoRequest);
+    ArrayPrototypePush(stream[_reader][_readIntoRequests], readRequest);
   }
 
   /**
@@ -943,6 +952,13 @@
       return PromiseReject(stream[_storedError]);
     }
     readableStreamClose(stream);
+    const reader = stream[_reader];
+    if (reader !== undefined && isReadableStreamBYOBReader(reader)) {
+      for (const readIntoRequest of reader[_readIntoRequests]) {
+        readIntoRequest.closeSteps(undefined);
+      }
+      reader[_readIntoRequests] = [];
+    }
     /** @type {Promise<void>} */
     const sourceCancelPromise = stream[_controller][_cancelSteps](reason);
     return PromisePrototypeThen(sourceCancelPromise, () => undefined);
@@ -1205,7 +1221,15 @@
     let ctor = DataView;
 
     if (
-      /*TODO: 4. If view has a [[TypedArrayName]] internal slot (i.e., it is not a DataView) */ true
+      view instanceof Int8Array ||
+      view instanceof Uint8Array ||
+      view instanceof Uint8ClampedArray ||
+      view instanceof Int16Array ||
+      view instanceof Uint16Array ||
+      view instanceof Int32Array ||
+      view instanceof Uint32Array ||
+      view instanceof BigInt64Array ||
+      view instanceof BigUint64Array
     ) {
       elementSize = view.constructor.BYTES_PER_ELEMENT;
       ctor = view.constructor;
@@ -4040,7 +4064,7 @@
     [_detached];
     /** @type {boolean} */
     [_disturbed];
-    /** @type {ReadableStreamDefaultReader | undefined} */
+    /** @type {ReadableStreamDefaultReader | ReadableStreamBYOBReader} */
     [_reader];
     /** @type {"readable" | "closed" | "errored"} */
     [_state];
