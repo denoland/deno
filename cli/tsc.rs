@@ -114,9 +114,9 @@ fn hash_url(specifier: &ModuleSpecifier, media_type: &MediaType) -> String {
   )
 }
 
-/// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.d.cts`, `.d.mts`, `.js`,
-/// `.cjs`, `.mjs` or `.jsx` as root modules and so we have to detect
-/// the apparent media type based on extensions it supports.
+/// tsc only supports `.ts`, `.tsx`, `.d.ts`, `.js`, or `.jsx` as root modules
+/// and so we have to detect the apparent media type based on extensions it
+/// supports.
 fn get_tsc_media_type(specifier: &ModuleSpecifier) -> MediaType {
   let path = if specifier.scheme() == "file" {
     if let Ok(path) = specifier.to_file_path() {
@@ -144,26 +144,31 @@ fn get_tsc_media_type(specifier: &ModuleSpecifier) -> MediaType {
         if let Some(os_str) = path.file_stem() {
           if let Some(file_name) = os_str.to_str() {
             if file_name.ends_with(".d") {
-              return MediaType::Dmts;
+              // todo(#12410): Use Dmts for TS 4.5
+              return MediaType::Dts;
             }
           }
         }
-        MediaType::Mts
+        // todo(#12410): Use Mts for TS 4.5
+        MediaType::TypeScript
       }
       Some("cts") => {
         if let Some(os_str) = path.file_stem() {
           if let Some(file_name) = os_str.to_str() {
             if file_name.ends_with(".d") {
-              return MediaType::Dcts;
+              // todo(#12410): Use Dcts for TS 4.5
+              return MediaType::Dts;
             }
           }
         }
-        MediaType::Cts
+        // todo(#12410): Use Cts for TS 4.5
+        MediaType::TypeScript
       }
       Some("tsx") => MediaType::Tsx,
       Some("js") => MediaType::JavaScript,
-      Some("mjs") => MediaType::Mjs,
-      Some("cjs") => MediaType::Cjs,
+      // todo(#12410): Use correct media type for TS 4.5
+      Some("mjs") => MediaType::JavaScript,
+      Some("cjs") => MediaType::JavaScript,
       Some("jsx") => MediaType::Jsx,
       _ => MediaType::Unknown,
     },
@@ -729,16 +734,16 @@ mod tests {
   fn test_get_tsc_media_type() {
     let fixtures = vec![
       ("file:///a.ts", MediaType::TypeScript),
-      ("file:///a.cts", MediaType::Cts),
-      ("file:///a.mts", MediaType::Mts),
+      ("file:///a.cts", MediaType::TypeScript),
+      ("file:///a.mts", MediaType::TypeScript),
       ("file:///a.tsx", MediaType::Tsx),
       ("file:///a.d.ts", MediaType::Dts),
-      ("file:///a.d.cts", MediaType::Dcts),
-      ("file:///a.d.mts", MediaType::Dmts),
+      ("file:///a.d.cts", MediaType::Dts),
+      ("file:///a.d.mts", MediaType::Dts),
       ("file:///a.js", MediaType::JavaScript),
       ("file:///a.jsx", MediaType::Jsx),
-      ("file:///a.cjs", MediaType::Cjs),
-      ("file:///a.mjs", MediaType::Mjs),
+      ("file:///a.cjs", MediaType::JavaScript),
+      ("file:///a.mjs", MediaType::JavaScript),
       ("file:///a.json", MediaType::Unknown),
       ("file:///a.wasm", MediaType::Unknown),
       ("file:///a.js.map", MediaType::Unknown),

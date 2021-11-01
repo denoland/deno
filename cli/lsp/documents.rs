@@ -250,17 +250,12 @@ impl Document {
   fn is_diagnosable(&self) -> bool {
     matches!(
       self.media_type(),
+      // todo(#12410): Update with new media types for TS 4.5
       MediaType::JavaScript
-        | MediaType::Cjs
-        | MediaType::Mjs
         | MediaType::Jsx
         | MediaType::TypeScript
-        | MediaType::Mts
-        | MediaType::Cts
         | MediaType::Tsx
         | MediaType::Dts
-        | MediaType::Dcts
-        | MediaType::Dmts
     )
   }
 

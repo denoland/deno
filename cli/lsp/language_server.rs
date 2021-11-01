@@ -327,17 +327,12 @@ impl Inner {
     if specifier.scheme() == "asset" {
       matches!(
         MediaType::from(specifier),
+        // todo(#12410): Update with new media types for TS 4.5
         MediaType::JavaScript
-          | MediaType::Mjs
-          | MediaType::Cjs
           | MediaType::Jsx
           | MediaType::TypeScript
-          | MediaType::Mts
-          | MediaType::Cts
           | MediaType::Tsx
           | MediaType::Dts
-          | MediaType::Dmts
-          | MediaType::Dcts
       )
     } else {
       self.documents.is_diagnosable(specifier)
