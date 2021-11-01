@@ -465,6 +465,32 @@
   }
 
   /**
+   * @param {() => void} startAlgorithm
+   * @param {() => Promise<void>} pullAlgorithm
+   * @param {(reason: any) => Promise<void>} cancelAlgorithm
+   * @returns {ReadableStream}
+   */
+  function createReadableByteStream(
+    startAlgorithm,
+    pullAlgorithm,
+    cancelAlgorithm,
+  ) {
+    const stream = webidl.createBranded(ReadableStream);
+    initializeReadableStream(stream);
+    const controller = webidl.createBranded(ReadableByteStreamController);
+    setUpReadableByteStreamController(
+      stream,
+      controller,
+      startAlgorithm,
+      pullAlgorithm,
+      cancelAlgorithm,
+      0,
+      undefined,
+    );
+    return stream;
+  }
+
+  /**
    * @param {ReadableStream} stream
    * @returns {void}
    */
@@ -2541,12 +2567,12 @@
       return undefined;
     }
 
-    branch1 = createReadableStream(
+    branch1 = createReadableByteStream(
       startAlgorithm,
       pull1Algorithm,
       cancel1Algorithm,
     );
-    branch2 = createReadableStream(
+    branch2 = createReadableByteStream(
       startAlgorithm,
       pull2Algorithm,
       cancel2Algorithm,
@@ -4572,7 +4598,9 @@
       });
 
       if (this[_controller] === undefined) {
-        throw new TypeError("Cannot respond to an invalidated ReadableStreamBYOBRequest");
+        throw new TypeError(
+          "Cannot respond to an invalidated ReadableStreamBYOBRequest",
+        );
       }
       if (isDetachedBuffer(this[_view].buffer)) {
         throw new TypeError(); // TODO
@@ -4593,7 +4621,9 @@
       });
 
       if (this[_controller] === undefined) {
-        throw new TypeError("Cannot respond to an invalidated ReadableStreamBYOBRequest");
+        throw new TypeError(
+          "Cannot respond to an invalidated ReadableStreamBYOBRequest",
+        );
       }
       if (isDetachedBuffer(view.buffer)) {
         throw new TypeError(); // TODO
