@@ -217,7 +217,7 @@
     if (isDetachedBuffer(O)) {
       return false;
     }
-    // TODO: 4. If SameValue(O.[[ArrayBufferDetachKey]], undefined) is false, return false.
+    // TODO(@crowlKats): 4. If SameValue(O.[[ArrayBufferDetachKey]], undefined) is false, return false.
     return true;
   }
 
@@ -2342,7 +2342,7 @@
           queueMicrotask(() => {
             readAgainForBranch1 = false;
             readAgainForBranch2 = false;
-            let chunk1 = chunk;
+            const chunk1 = chunk;
             let chunk2 = chunk;
             if (!canceled1 && !canceled2) {
               try {
@@ -4572,7 +4572,7 @@
       });
 
       if (this[_controller] === undefined) {
-        throw new TypeError(); // TODO
+        throw new TypeError("Cannot respond to an invalidated ReadableStreamBYOBRequest");
       }
       if (isDetachedBuffer(this[_view].buffer)) {
         throw new TypeError(); // TODO
@@ -4593,7 +4593,7 @@
       });
 
       if (this[_controller] === undefined) {
-        throw new TypeError(); // TODO
+        throw new TypeError("Cannot respond to an invalidated ReadableStreamBYOBRequest");
       }
       if (isDetachedBuffer(view.buffer)) {
         throw new TypeError(); // TODO
@@ -4765,7 +4765,7 @@
           return;
         }
         /** @type {PullIntoDescriptor} */
-        let pullIntoDescriptor = {
+        const pullIntoDescriptor = {
           buffer,
           bufferByteLength: autoAllocateChunkSize,
           byteOffset: 0,
