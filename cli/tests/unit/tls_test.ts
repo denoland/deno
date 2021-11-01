@@ -1107,23 +1107,6 @@ unitTest(
 
 unitTest(
   { permissions: { read: true, net: true } },
-  async function startTLSCertFile() {
-    const plainConn = await Deno.connect({
-      hostname: "localhost",
-      port: 4557,
-    });
-    const conn = await Deno.startTls(plainConn, {
-      hostname: "localhost",
-      certFile: "cli/tests/testdata/tls/RootCA.pem",
-    });
-    const result = decoder.decode(await readAll(conn));
-    assertEquals(result, "PASS");
-    conn.close();
-  },
-);
-
-unitTest(
-  { permissions: { read: true, net: true } },
   async function tlsHandshakeSuccess() {
     const hostname = "localhost";
     const port = getPort();
@@ -1235,7 +1218,7 @@ unitTest(
       const tcpConn = await Deno.connect({ hostname, port });
       const tlsConn = await Deno.startTls(tcpConn, {
         hostname: "foo.land",
-        certFile: "cli/tests/testdata/tls/RootCA.crt",
+        caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
       });
       // Handshake fails because hostname doesn't match the certificate.
       await assertRejects(

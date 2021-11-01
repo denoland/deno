@@ -55,6 +55,10 @@ fn wait_for(s: &str, lines: &mut impl Iterator<Item = String>) {
   }
 }
 
+fn read_line(s: &str, lines: &mut impl Iterator<Item = String>) -> String {
+  lines.find(|m| m.contains(s)).unwrap()
+}
+
 fn check_alive_then_kill(mut child: std::process::Child) {
   assert!(child.try_wait().unwrap().is_none());
   child.kill().unwrap();
@@ -77,6 +81,8 @@ fn lint_watch_test() {
   let t = TempDir::new().expect("tempdir fail");
   let badly_linted_original =
     util::testdata_path().join("lint/watch/badly_linted.js");
+  let badly_linted_output =
+    util::testdata_path().join("lint/watch/badly_linted.js.out");
   let badly_linted_fixed1 =
     util::testdata_path().join("lint/watch/badly_linted_fixed1.js");
   let badly_linted_fixed1_output =
@@ -86,8 +92,6 @@ fn lint_watch_test() {
   let badly_linted_fixed2_output =
     util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
   let badly_linted = t.path().join("badly_linted.js");
-  let badly_linted_output =
-    util::testdata_path().join("lint/watch/badly_linted.js.out");
 
   std::fs::copy(&badly_linted_original, &badly_linted)
     .expect("Failed to copy file");
@@ -140,6 +144,120 @@ fn lint_watch_test() {
 }
 
 #[test]
+fn lint_watch_without_args_test() {
+  let t = TempDir::new().expect("tempdir fail");
+  let badly_linted_original =
+    util::testdata_path().join("lint/watch/badly_linted.js");
+  let badly_linted_output =
+    util::testdata_path().join("lint/watch/badly_linted.js.out");
+  let badly_linted_fixed1 =
+    util::testdata_path().join("lint/watch/badly_linted_fixed1.js");
+  let badly_linted_fixed1_output =
+    util::testdata_path().join("lint/watch/badly_linted_fixed1.js.out");
+  let badly_linted_fixed2 =
+    util::testdata_path().join("lint/watch/badly_linted_fixed2.js");
+  let badly_linted_fixed2_output =
+    util::testdata_path().join("lint/watch/badly_linted_fixed2.js.out");
+  let badly_linted = t.path().join("badly_linted.js");
+
+  std::fs::copy(&badly_linted_original, &badly_linted)
+    .expect("Failed to copy file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("lint")
+    .arg("--watch")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("Failed to spawn script");
+  let mut stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines = std::io::BufReader::new(&mut stderr)
+    .lines()
+    .map(|r| r.unwrap());
+
+  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  let mut output = read_all_lints(&mut stderr_lines);
+  let expected = std::fs::read_to_string(badly_linted_output).unwrap();
+  assert_eq!(expected, output);
+
+  // Change content of the file again to be badly-linted1
+  std::fs::copy(&badly_linted_fixed1, &badly_linted)
+    .expect("Failed to copy file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  output = read_all_lints(&mut stderr_lines);
+  let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
+  assert_eq!(expected, output);
+
+  // Change content of the file again to be badly-linted1
+  std::fs::copy(&badly_linted_fixed2, &badly_linted)
+    .expect("Failed to copy file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  output = read_all_lints(&mut stderr_lines);
+  let expected = std::fs::read_to_string(badly_linted_fixed2_output).unwrap();
+  assert_eq!(expected, output);
+
+  // the watcher process is still alive
+  assert!(child.try_wait().unwrap().is_none());
+
+  child.kill().unwrap();
+  drop(t);
+}
+
+#[test]
+fn lint_all_files_on_each_change_test() {
+  let t = TempDir::new().expect("tempdir fail");
+  let badly_linted_fixed0 =
+    util::testdata_path().join("lint/watch/badly_linted.js");
+  let badly_linted_fixed1 =
+    util::testdata_path().join("lint/watch/badly_linted_fixed1.js");
+  let badly_linted_fixed2 =
+    util::testdata_path().join("lint/watch/badly_linted_fixed2.js");
+
+  let badly_linted_1 = t.path().join("badly_linted_1.js");
+  let badly_linted_2 = t.path().join("badly_linted_2.js");
+  std::fs::copy(&badly_linted_fixed0, &badly_linted_1)
+    .expect("Failed to copy file");
+  std::fs::copy(&badly_linted_fixed1, &badly_linted_2)
+    .expect("Failed to copy file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("lint")
+    .arg(&t.path())
+    .arg("--watch")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("Failed to spawn script");
+  let mut stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines = std::io::BufReader::new(&mut stderr)
+    .lines()
+    .map(|r| r.unwrap());
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 2 files");
+
+  std::fs::copy(&badly_linted_fixed2, &badly_linted_2)
+    .expect("Failed to copy file");
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 2 files");
+
+  assert!(child.try_wait().unwrap().is_none());
+
+  child.kill().unwrap();
+  drop(t);
+}
+
+#[test]
 fn fmt_watch_test() {
   let t = TempDir::new().unwrap();
   let fixed = util::testdata_path().join("badly_formatted_fixed.js");
@@ -177,6 +295,90 @@ fn fmt_watch_test() {
   let expected = std::fs::read_to_string(fixed).unwrap();
   let actual = std::fs::read_to_string(badly_formatted).unwrap();
   assert_eq!(expected, actual);
+  check_alive_then_kill(child);
+}
+
+#[test]
+fn fmt_watch_without_args_test() {
+  let t = TempDir::new().unwrap();
+  let fixed = util::testdata_path().join("badly_formatted_fixed.js");
+  let badly_formatted_original =
+    util::testdata_path().join("badly_formatted.mjs");
+  let badly_formatted = t.path().join("badly_formatted.js");
+  std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("fmt")
+    .arg("--watch")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, stderr_lines) = child_lines(&mut child);
+
+  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert!(skip_restarting_line(stderr_lines).contains("badly_formatted.js"));
+
+  let expected = std::fs::read_to_string(fixed.clone()).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
+  assert_eq!(expected, actual);
+
+  // Change content of the file again to be badly formatted
+  std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  // Check if file has been automatically formatted by watcher
+  let expected = std::fs::read_to_string(fixed).unwrap();
+  let actual = std::fs::read_to_string(badly_formatted).unwrap();
+  assert_eq!(expected, actual);
+  check_alive_then_kill(child);
+}
+
+#[test]
+fn fmt_check_all_files_on_each_change_test() {
+  let t = TempDir::new().unwrap();
+  let badly_formatted_original =
+    util::testdata_path().join("badly_formatted.mjs");
+  let badly_formatted_1 = t.path().join("badly_formatted_1.js");
+  let badly_formatted_2 = t.path().join("badly_formatted_2.js");
+  std::fs::copy(&badly_formatted_original, &badly_formatted_1).unwrap();
+  std::fs::copy(&badly_formatted_original, &badly_formatted_2).unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("fmt")
+    .arg(&t.path())
+    .arg("--watch")
+    .arg("--check")
+    .arg("--unstable")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert_contains!(
+    read_line("error", &mut stderr_lines),
+    "Found 2 not formatted files in 2 files"
+  );
+
+  // Change content of the file again to be badly formatted
+  std::fs::copy(&badly_formatted_original, &badly_formatted_1).unwrap();
+
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert_contains!(
+    read_line("error", &mut stderr_lines),
+    "Found 2 not formatted files in 2 files"
+  );
+
   check_alive_then_kill(child);
 }
 
