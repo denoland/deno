@@ -6154,26 +6154,10 @@
       "construct-byob-request.any.html": true,
       "construct-byob-request.any.worker.html": true,
       "general.any.html": [
-        "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()",
-        "ReadableStream with byte source: cancel() with partially filled pending pull() request",
-        "ReadableStream with byte source: read(view) with Uint32Array, then fill it by multiple enqueue() calls",
-        "pull() resolving should not make releaseLock() possible",
-        "ReadableStream with byte source: default reader + autoAllocateChunkSize + byobRequest interaction",
-        "ReadableStream with byte source: respondWithNewView() with a smaller view",
-        "ReadableStream with byte source: respondWithNewView() with a zero-length view (in the closed state)",
-        "ReadableStream with byte source: respondWithNewView() with a transferred non-zero-length view (in the readable state)",
-        "ReadableStream with byte source: respondWithNewView() with a transferred zero-length view (in the closed state)"
+        "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()"
       ],
       "general.any.worker.html": [
-        "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()",
-        "ReadableStream with byte source: cancel() with partially filled pending pull() request",
-        "ReadableStream with byte source: read(view) with Uint32Array, then fill it by multiple enqueue() calls",
-        "pull() resolving should not make releaseLock() possible",
-        "ReadableStream with byte source: default reader + autoAllocateChunkSize + byobRequest interaction",
-        "ReadableStream with byte source: respondWithNewView() with a smaller view",
-        "ReadableStream with byte source: respondWithNewView() with a zero-length view (in the closed state)",
-        "ReadableStream with byte source: respondWithNewView() with a transferred non-zero-length view (in the readable state)",
-        "ReadableStream with byte source: respondWithNewView() with a transferred zero-length view (in the closed state)"
+        "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()"
       ],
       "non-transferable-buffers.any.html": false,
       "non-transferable-buffers.any.worker.html": false,

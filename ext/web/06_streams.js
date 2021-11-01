@@ -754,6 +754,9 @@
     }
 
     const { buffer, byteOffset, byteLength } = chunk;
+    if (isDetachedBuffer(buffer)) {
+      throw new TypeError(); // TODO
+    }
     const transferredBuffer = transferArrayBuffer(buffer);
     if (controller[_pendingPullIntos].length !== 0) {
       const firstPendingPullInto = controller[_pendingPullIntos][0];
@@ -764,6 +767,7 @@
         firstPendingPullInto.buffer,
       );
     }
+    readableByteStreamControllerInvalidateBYOBRequest(controller);
     if (readableStreamHasDefaultReader(stream)) {
       if (readableStreamGetNumReadRequests(stream) === 0) {
         readableByteStreamControllerEnqueueChunkToQueue(
@@ -774,6 +778,10 @@
         );
       } else {
         assert(controller[_queue].length === 0);
+        if (controller[_pendingPullIntos].length !== 0) {
+          assert(controller[_pendingPullIntos][0].readerType === "default");
+          readableByteStreamControllerShiftPendingPullInto(controller);
+        }
         const transferredView = new Uint8Array(
           transferredBuffer,
           byteOffset,
