@@ -8,6 +8,7 @@ use deno_core::located_script_name;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
 
+pub use esm_resolver::check_if_should_use_esm_loader;
 pub use esm_resolver::NodeEsmResolver;
 
 // TODO(bartlomieju): this needs to be bumped manually for
@@ -85,8 +86,6 @@ fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
     None
   }
 }
-
-pub use esm_resolver::check_if_should_use_esm_loader;
 
 pub fn load_cjs_module(
   js_runtime: &mut JsRuntime,
