@@ -1171,19 +1171,20 @@
     assert(!controller[_closeRequested]);
     while (controller[_pendingPullIntos].length !== 0) {
       if (controller[_queueTotalSize] === 0) {
-        const pullIntoDescriptor = controller[_pendingPullIntos][0];
-        if (
-          readableByteStreamControllerFillPullIntoDescriptorFromQueue(
-            controller,
-            pullIntoDescriptor,
-          )
-        ) {
-          readableByteStreamControllerShiftPendingPullInto(controller);
-          readableByteStreamControllerCommitPullIntoDescriptor(
-            controller[_stream],
-            pullIntoDescriptor,
-          );
-        }
+        return;
+      }
+      const pullIntoDescriptor = controller[_pendingPullIntos][0];
+      if (
+        readableByteStreamControllerFillPullIntoDescriptorFromQueue(
+          controller,
+          pullIntoDescriptor,
+        )
+      ) {
+        readableByteStreamControllerShiftPendingPullInto(controller);
+        readableByteStreamControllerCommitPullIntoDescriptor(
+          controller[_stream],
+          pullIntoDescriptor,
+        );
       }
     }
   }
@@ -1450,7 +1451,7 @@
    * @param {ArrayBufferView} view
    */
   function readableByteStreamControllerRespondWithNewView(controller, view) {
-    assert(controller[_pendingPullIntos].length === 0);
+    assert(controller[_pendingPullIntos].length !== 0);
     assert(!isDetachedBuffer(view.buffer));
     const firstDescriptor = controller[_pendingPullIntos][0];
     const state = controller[_stream][_state];
@@ -4149,6 +4150,7 @@
       if (options.mode === undefined) {
         return acquireReadableStreamDefaultReader(this);
       } else {
+        assert(options.mode === "byob");
         return acquireReadableStreamBYOBReader(this);
       }
     }
@@ -4410,15 +4412,15 @@
     read(view) {
       try {
         webidl.assertBranded(this, ReadableStreamBYOBReader);
+        const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
+        view = webidl.converters.ArrayBufferView(view, {
+          prefix,
+          context: "Argument 1",
+        });
       } catch (err) {
         return PromiseReject(err);
       }
 
-      const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
-      view = webidl.converters.ArrayBufferView(view, {
-        prefix,
-        context: "Argument 1",
-      });
       if (view.byteLength === 0) {
         return PromiseReject(
           new TypeError(), // TODO
