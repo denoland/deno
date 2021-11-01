@@ -2797,7 +2797,7 @@
     if (isReadableStreamLocked(stream)) {
       throw new TypeError("ReadableStream is locked.");
     }
-    if (!stream[_controller] instanceof ReadableByteStreamController) {
+    if (!(stream[_controller] instanceof ReadableByteStreamController)) {
       throw new TypeError(); // TODO
     }
     readableStreamReaderGenericInitialize(reader, stream);
