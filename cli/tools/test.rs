@@ -515,8 +515,12 @@ fn extract_files_from_regex_blocks(
 
         match attributes.get(0) {
           Some(&"js") => MediaType::JavaScript,
+          Some(&"mjs") => MediaType::Mjs,
+          Some(&"cjs") => MediaType::Cjs,
           Some(&"jsx") => MediaType::Jsx,
           Some(&"ts") => MediaType::TypeScript,
+          Some(&"mts") => MediaType::Mts,
+          Some(&"cts") => MediaType::Cts,
           Some(&"tsx") => MediaType::Tsx,
           Some(&"") => media_type,
           _ => MediaType::Unknown,

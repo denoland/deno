@@ -327,6 +327,7 @@ impl Inner {
     if specifier.scheme() == "asset" {
       matches!(
         MediaType::from(specifier),
+        // todo(#12410): Update with new media types for TS 4.5
         MediaType::JavaScript
           | MediaType::Jsx
           | MediaType::TypeScript
