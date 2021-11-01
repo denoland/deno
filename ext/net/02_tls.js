@@ -8,19 +8,19 @@
   function opConnectTls(
     args,
   ) {
-    return core.opAsync("op_connect_tls", args);
+    return core.opAsync("op_tls_connect", args);
   }
 
   function opAcceptTLS(rid) {
-    return core.opAsync("op_accept_tls", rid);
+    return core.opAsync("op_tls_accept", rid);
   }
 
   function opListenTls(args) {
-    return core.opSync("op_listen_tls", args);
+    return core.opSync("op_tls_listen", args);
   }
 
   function opStartTls(args) {
-    return core.opAsync("op_start_tls", args);
+    return core.opAsync("op_tls_start", args);
   }
 
   function opTlsHandshake(rid) {

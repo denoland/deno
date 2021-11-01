@@ -9,7 +9,7 @@ use deno_core::url::Url;
 use deno_core::JsRuntime;
 
 pub use esm_resolver::check_if_should_use_esm_loader;
-pub use esm_resolver::NodeEsmResolver;
+pub(crate) use esm_resolver::NodeEsmResolver;
 
 // TODO(bartlomieju): this needs to be bumped manually for
 // each release, a better mechanism is preferable, but it's a quick and dirty
@@ -87,7 +87,7 @@ fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   }
 }
 
-pub fn load_cjs_module(
+pub(crate) fn load_cjs_module(
   js_runtime: &mut JsRuntime,
   main_module: &str,
 ) -> Result<(), AnyError> {

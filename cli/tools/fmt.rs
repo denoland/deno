@@ -73,6 +73,10 @@ pub async fn format(
     }
   }
 
+  if include_files.is_empty() {
+    include_files = [std::env::current_dir()?].to_vec();
+  }
+
   // Now do the same for options
   let fmt_options = resolve_fmt_options(
     &fmt_flags,
@@ -81,25 +85,36 @@ pub async fn format(
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
-    let result =
-      collect_files(&include_files, &exclude_files, is_supported_ext_fmt).map(
-        |files| {
-          let collected_files = if let Some(paths) = changed {
-            files
-              .into_iter()
-              .filter(|path| paths.contains(path))
-              .collect::<Vec<_>>()
+
+    let collect_files =
+      collect_files(&include_files, &exclude_files, is_supported_ext_fmt);
+
+    let (result, should_refmt) = match collect_files {
+      Ok(value) => {
+        if let Some(paths) = changed {
+          let refmt_files = value
+            .clone()
+            .into_iter()
+            .filter(|path| paths.contains(path))
+            .collect::<Vec<_>>();
+
+          let should_refmt = !refmt_files.is_empty();
+
+          if check {
+            (Ok((value, fmt_options.clone())), Some(should_refmt))
           } else {
-            files
-          };
-          (collected_files, fmt_options.clone())
-        },
-      );
+            (Ok((refmt_files, fmt_options.clone())), Some(should_refmt))
+          }
+        } else {
+          (Ok((value, fmt_options.clone())), None)
+        }
+      }
+      Err(e) => (Err(e), None),
+    };
+
     let paths_to_watch = include_files.clone();
     async move {
-      if (files_changed || !watch)
-        && matches!(result, Ok((ref files, _)) if files.is_empty())
-      {
+      if files_changed && matches!(should_refmt, Some(false)) {
         ResolutionResult::Ignore
       } else {
         ResolutionResult::Restart {
@@ -121,13 +136,16 @@ pub async fn format(
   if watch {
     file_watcher::watch_func(resolver, operation, "Fmt").await?;
   } else {
-    let (files, fmt_options) =
-      if let ResolutionResult::Restart { result, .. } = resolver(None).await {
-        result?
-      } else {
-        return Err(generic_error("No target files found."));
-      };
-    operation((files, fmt_options)).await?;
+    let files =
+      collect_files(&include_files, &exclude_files, is_supported_ext_fmt)
+        .and_then(|files| {
+          if files.is_empty() {
+            Err(generic_error("No target files found."))
+          } else {
+            Ok(files)
+          }
+        })?;
+    operation((files, fmt_options.clone())).await?;
   }
 
   Ok(())
