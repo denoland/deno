@@ -1823,6 +1823,48 @@ unitTest(function inspectProxy() {
   );
 });
 
+unitTest(function inspectError() {
+  const error1 = new Error("This is an error");
+  const error2 = new Error("This is an error", {
+    cause: new Error("This is a cause error"),
+  });
+
+  assertStringIncludes(
+    stripColor(Deno.inspect(error1)),
+    "Error: This is an error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "Error: This is an error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "Caused by Error: This is a cause error",
+  );
+});
+
+unitTest(function inspectErrorCircular() {
+  const error1 = new Error("This is an error");
+  const error2 = new Error("This is an error", {
+    cause: new Error("This is a cause error"),
+  });
+  error1.cause = error1;
+  error2.cause.cause = error2;
+
+  assertStringIncludes(
+    stripColor(Deno.inspect(error1)),
+    "Error: This is an error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "Error: This is an error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "Caused by Error: This is a cause error",
+  );
+});
+
 unitTest(function inspectColors() {
   assertEquals(Deno.inspect(1), "1");
   assertStringIncludes(Deno.inspect(1, { colors: true }), "\x1b[");

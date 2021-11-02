@@ -204,6 +204,32 @@ pub fn create_main_worker(
 
   let create_web_worker_cb = create_web_worker_callback(ps.clone());
 
+  let maybe_storage_key = if let Some(location) = &ps.flags.location {
+    // if a location is set, then the ascii serialization of the location is
+    // used, unless the origin is opaque, and then no storage origin is set, as
+    // we can't expect the origin to be reproducible
+    let storage_origin = location.origin().ascii_serialization();
+    if storage_origin == "null" {
+      None
+    } else {
+      Some(storage_origin)
+    }
+  } else if let Some(config_file) = &ps.maybe_config_file {
+    // otherwise we will use the path to the config file
+    config_file.path.to_str().map(|s| s.to_string())
+  } else {
+    // otherwise we will use the path to the main module
+    Some(main_module.to_string())
+  };
+
+  let origin_storage_dir = maybe_storage_key.map(|key| {
+    ps.dir
+      .root
+      // TODO(@crowlKats): change to origin_data for 2.0
+      .join("location_data")
+      .join(checksum::gen(&[key.as_bytes()]))
+  });
+
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
       apply_source_maps: true,
@@ -231,14 +257,7 @@ pub fn create_main_worker(
     should_break_on_first_statement,
     module_loader,
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
-    origin_storage_dir: ps.flags.location.clone().map(|loc| {
-      ps.dir
-        .root
-        .clone()
-        // TODO(@crowlKats): change to origin_data for 2.0
-        .join("location_data")
-        .join(checksum::gen(&[loc.to_string().as_bytes()]))
-    }),
+    origin_storage_dir,
     blob_store: ps.blob_store.clone(),
     broadcast_channel: ps.broadcast_channel.clone(),
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
@@ -1134,11 +1153,7 @@ async fn run_command(
     // this file.
     worker.execute_side_module(&compat::MODULE_URL).await?;
 
-    let use_esm_loader = compat::check_if_should_use_esm_loader(
-      &mut worker.js_runtime,
-      &main_module.to_file_path().unwrap().display().to_string(),
-    )
-    .await?;
+    let use_esm_loader = compat::check_if_should_use_esm_loader(&main_module)?;
 
     if use_esm_loader {
       // ES module execution in Node compatiblity mode

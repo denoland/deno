@@ -3,7 +3,6 @@
 pub use anyhow::anyhow;
 pub use anyhow::bail;
 pub use anyhow::Context;
-use rusty_v8 as v8;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::convert::TryInto;

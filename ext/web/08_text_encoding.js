@@ -105,16 +105,28 @@
       }
 
       try {
-        if (ArrayBufferIsView(input)) {
-          input = new Uint8Array(
-            input.buffer,
-            input.byteOffset,
-            input.byteLength,
-          );
-        } else {
+        try {
+          if (ArrayBufferIsView(input)) {
+            input = new Uint8Array(
+              input.buffer,
+              input.byteOffset,
+              input.byteLength,
+            );
+          } else {
+            input = new Uint8Array(input);
+          }
+        } catch {
+          // If the buffer is detached, just create a new empty Uint8Array.
+          input = new Uint8Array();
+        }
+        if (input.buffer instanceof SharedArrayBuffer) {
+          // We clone the data into a non-shared ArrayBuffer so we can pass it
+          // to Rust.
+          // `input` is now a Uint8Array, and calling the TypedArray constructor
+          // with a TypedArray argument copies the data.
           input = new Uint8Array(input);
         }
-        return core.opSync("op_encoding_decode", new Uint8Array(input), {
+        return core.opSync("op_encoding_decode", input, {
           rid: this.#rid,
           stream: options.stream,
         });

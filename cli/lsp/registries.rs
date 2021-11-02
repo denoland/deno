@@ -424,7 +424,7 @@ impl ModuleRegistry {
 
   /// For a string specifier from the client, provide a set of completions, if
   /// any, for the specifier.
-  pub async fn get_completions(
+  pub(crate) async fn get_completions(
     &self,
     current_specifier: &str,
     offset: usize,
@@ -520,8 +520,8 @@ impl ModuleRegistry {
                           ));
                           let command = if key.name == last_key_name
                             && !state_snapshot
-                              .sources
-                              .contains_key(&item_specifier)
+                              .documents
+                              .contains_specifier(&item_specifier)
                           {
                             Some(lsp::Command {
                               title: "".to_string(),
@@ -610,8 +610,8 @@ impl ModuleRegistry {
                             );
                             let command = if k.name == last_key_name
                               && !state_snapshot
-                                .sources
-                                .contains_key(&item_specifier)
+                                .documents
+                                .contains_specifier(&item_specifier)
                             {
                               Some(lsp::Command {
                                 title: "".to_string(),
@@ -761,16 +761,14 @@ impl ModuleRegistry {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::lsp::documents::DocumentCache;
-  use crate::lsp::sources::Sources;
+  use crate::lsp::documents::Documents;
   use tempfile::TempDir;
 
   fn mock_state_snapshot(
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> language_server::StateSnapshot {
-    let documents = DocumentCache::default();
-    let sources = Sources::new(location);
+    let documents = Documents::new(location);
     let http_cache = HttpCache::new(location);
     for (specifier, source) in source_fixtures {
       let specifier =
@@ -779,13 +777,12 @@ mod tests {
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
       assert!(
-        sources.get_source(&specifier).is_some(),
+        documents.content(&specifier).is_some(),
         "source could not be setup"
       );
     }
     language_server::StateSnapshot {
       documents,
-      sources,
       ..Default::default()
     }
   }

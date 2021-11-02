@@ -237,10 +237,192 @@ itest!(_071_location_unset {
 });
 
 itest!(_072_location_relative_fetch {
-    args: "run --location http://127.0.0.1:4545/ --allow-net 072_location_relative_fetch.ts",
-    output: "072_location_relative_fetch.ts.out",
-    http_server: true,
-  });
+  args: "run --location http://127.0.0.1:4545/ --allow-net 072_location_relative_fetch.ts",
+  output: "072_location_relative_fetch.ts.out",
+  http_server: true,
+});
+
+// tests the serialization of webstorage (both localStorage and sessionStorage)
+itest!(webstorage_serialization {
+  args: "run webstorage/serialization.ts",
+  output: "webstorage/serialization.ts.out",
+});
+
+// tests to ensure that when `--location` is set, all code shares the same
+// localStorage cache based on the origin of the location URL.
+#[test]
+fn webstorage_location_shares_origin() {
+  let deno_dir = util::new_deno_dir();
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--location")
+    .arg("https://example.com/a.ts")
+    .arg("webstorage/fixture.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--location")
+    .arg("https://example.com/b.ts")
+    .arg("webstorage/logger.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+}
+
+// test to ensure that when a --config file is set, but no --location, that
+// storage persists against unique configuration files.
+#[test]
+fn webstorage_config_file() {
+  let deno_dir = util::new_deno_dir();
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--config")
+    .arg("webstorage/config_a.jsonc")
+    .arg("webstorage/fixture.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--config")
+    .arg("webstorage/config_b.jsonc")
+    .arg("webstorage/logger.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--config")
+    .arg("webstorage/config_a.jsonc")
+    .arg("webstorage/logger.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+}
+
+// tests to ensure `--config` does not effect persisted storage when a
+// `--location` is provided.
+#[test]
+fn webstorage_location_precedes_config() {
+  let deno_dir = util::new_deno_dir();
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--location")
+    .arg("https://example.com/a.ts")
+    .arg("--config")
+    .arg("webstorage/config_a.jsonc")
+    .arg("webstorage/fixture.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--location")
+    .arg("https://example.com/b.ts")
+    .arg("--config")
+    .arg("webstorage/config_b.jsonc")
+    .arg("webstorage/logger.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+}
+
+// test to ensure that when there isn't a configuration or location, that the
+// main module is used to determine how to persist storage data.
+#[test]
+fn webstorage_main_module() {
+  let deno_dir = util::new_deno_dir();
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("webstorage/fixture.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("webstorage/logger.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("webstorage/fixture.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+}
 
 itest!(_075_import_local_query_hash {
   args: "run 075_import_local_query_hash.ts",
@@ -1182,6 +1364,13 @@ itest!(inline_js_source_map_with_contents_from_graph {
 itest!(error_import_map_unable_to_load {
   args: "run --import-map=import_maps/does_not_exist.json import_maps/test.ts",
   output: "error_import_map_unable_to_load.out",
+  exit_code: 1,
+});
+
+// This test ensure that useUnknownInCatchVariables is enabled by default.
+itest!(use_unknown_in_catch_variables {
+  args: "run useUnknownInCatchVariables.ts",
+  output: "useUnknownInCatchVariables.ts.out",
   exit_code: 1,
 });
 

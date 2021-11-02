@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
+  assert,
   assertEquals,
   assertRejects,
   assertThrows,
@@ -251,6 +252,7 @@ unitTest(
     try {
       await Deno.writeFile(filename, data, { signal: ac.signal });
     } catch (e) {
+      assert(e instanceof Error);
       assertEquals(e.name, "AbortError");
     }
     const stat = Deno.statSync(filename);
@@ -269,6 +271,7 @@ unitTest(
     try {
       await Deno.writeFile(filename, data, { signal: ac.signal });
     } catch (e) {
+      assert(e instanceof Error);
       assertEquals(e.name, "AbortError");
     }
     const stat = Deno.statSync(filename);

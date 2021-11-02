@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use rusty_v8 as v8;
-
 use crate::bindings;
 use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
@@ -539,7 +537,7 @@ impl JsRuntime {
     let scope = &mut self.handle_scope();
     let state_rc = JsRuntime::state(scope);
     let js_sync_cb_handle = state_rc.borrow().js_sync_cb.clone().unwrap();
-    let js_sync_cb = js_sync_cb_handle.get(scope);
+    let js_sync_cb = js_sync_cb_handle.open(scope);
     let this = v8::undefined(scope).into();
     js_sync_cb.call(scope, this, &[]);
   }
@@ -1005,7 +1003,7 @@ impl JsRuntime {
 
     let status = {
       let scope = &mut self.handle_scope();
-      let module = module_handle.get(scope);
+      let module = module_handle.open(scope);
       module.get_status()
     };
 
@@ -1152,7 +1150,7 @@ impl JsRuntime {
       .dynamic_import_map
       .remove(&id)
       .expect("Invalid dynamic import id");
-    let resolver = resolver_handle.get(scope);
+    let resolver = resolver_handle.open(scope);
 
     let exception = err
       .downcast_ref::<ErrWithV8Handle>()
@@ -1181,7 +1179,7 @@ impl JsRuntime {
       .dynamic_import_map
       .remove(&id)
       .expect("Invalid dynamic import id");
-    let resolver = resolver_handle.get(scope);
+    let resolver = resolver_handle.open(scope);
 
     let module = {
       module_map_rc
@@ -1338,7 +1336,7 @@ impl JsRuntime {
     let module_evaluation = maybe_module_evaluation.unwrap();
     let scope = &mut self.handle_scope();
 
-    let promise = module_evaluation.promise.get(scope);
+    let promise = module_evaluation.promise.open(scope);
     let promise_state = promise.state();
 
     match promise_state {
@@ -1374,8 +1372,8 @@ impl JsRuntime {
         let scope = &mut self.handle_scope();
 
         let module_id = pending_dyn_evaluate.module_id;
-        let promise = pending_dyn_evaluate.promise.get(scope);
-        let _module = pending_dyn_evaluate.module.get(scope);
+        let promise = pending_dyn_evaluate.promise.open(scope);
+        let _module = pending_dyn_evaluate.module.open(scope);
         let promise_state = promise.state();
 
         match promise_state {
@@ -1555,7 +1553,7 @@ impl JsRuntime {
     }
 
     let tc_scope = &mut v8::TryCatch::new(scope);
-    let js_recv_cb = js_recv_cb_handle.get(tc_scope);
+    let js_recv_cb = js_recv_cb_handle.open(tc_scope);
     let this = v8::undefined(tc_scope).into();
     js_recv_cb.call(tc_scope, this, args.as_slice());
 
@@ -1573,7 +1571,7 @@ impl JsRuntime {
       };
 
     let scope = &mut self.handle_scope();
-    let js_macrotask_cb = js_macrotask_cb_handle.get(scope);
+    let js_macrotask_cb = js_macrotask_cb_handle.open(scope);
 
     // Repeatedly invoke macrotask callback until it returns true (done),
     // such that ready microtasks would be automatically run before
@@ -1739,13 +1737,13 @@ pub mod tests {
     let value_global = runtime.execute_script("a.js", "a = 1 + 2").unwrap();
     {
       let scope = &mut runtime.handle_scope();
-      let value = value_global.get(scope);
+      let value = value_global.open(scope);
       assert_eq!(value.integer_value(scope).unwrap(), 3);
     }
     let value_global = runtime.execute_script("b.js", "b = 'foobar'").unwrap();
     {
       let scope = &mut runtime.handle_scope();
-      let value = value_global.get(scope);
+      let value = value_global.open(scope);
       assert!(value.is_string());
       assert_eq!(
         value.to_string(scope).unwrap().to_rust_string_lossy(scope),
@@ -1763,7 +1761,7 @@ pub mod tests {
     let result_global = runtime.resolve_value(value_global).await.unwrap();
     {
       let scope = &mut runtime.handle_scope();
-      let value = result_global.get(scope);
+      let value = result_global.open(scope);
       assert_eq!(value.integer_value(scope).unwrap(), 3);
     }
 
@@ -1776,7 +1774,7 @@ pub mod tests {
     let result_global = runtime.resolve_value(value_global).await.unwrap();
     {
       let scope = &mut runtime.handle_scope();
-      let value = result_global.get(scope);
+      let value = result_global.open(scope);
       assert_eq!(value.integer_value(scope).unwrap(), 4);
     }
 

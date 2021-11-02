@@ -199,11 +199,17 @@
       SetPrototypeDelete(httpConn.managedResources, responseSenderRid);
       let responseBodyRid;
       try {
-        responseBodyRid = await core.opAsync("op_http_response", [
-          responseSenderRid,
-          innerResp.status ?? 200,
-          innerResp.headerList,
-        ], respBody instanceof Uint8Array ? respBody : null);
+        responseBodyRid = await core.opAsync(
+          "op_http_response",
+          [
+            responseSenderRid,
+            innerResp.status ?? 200,
+            innerResp.headerList,
+          ],
+          (respBody instanceof Uint8Array || typeof respBody === "string")
+            ? respBody
+            : null,
+        );
       } catch (error) {
         const connError = httpConn[connErrorSymbol];
         if (error instanceof BadResource && connError != null) {
@@ -343,9 +349,14 @@
 
   function upgradeWebSocket(request, options = {}) {
     const upgrade = request.headers.get("upgrade");
-    if (!upgrade || StringPrototypeToLowerCase(upgrade) !== "websocket") {
+    const upgradeHasWebSocketOption = upgrade !== null &&
+      ArrayPrototypeSome(
+        StringPrototypeSplit(upgrade, /\s*,\s*/),
+        (option) => StringPrototypeToLowerCase(option) === "websocket",
+      );
+    if (!upgradeHasWebSocketOption) {
       throw new TypeError(
-        "Invalid Header: 'upgrade' header must be 'websocket'",
+        "Invalid Header: 'upgrade' header must contain 'websocket'",
       );
     }
 
@@ -357,7 +368,7 @@
       );
     if (!connectionHasUpgradeOption) {
       throw new TypeError(
-        "Invalid Header: 'connection' header must be 'Upgrade'",
+        "Invalid Header: 'connection' header must contain 'Upgrade'",
       );
     }
 
