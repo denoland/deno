@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use serde_v8::utils::{js_exec, v8_do};
 use serde_v8::Result;
-use std::convert::TryFrom;
 
 #[derive(Deserialize)]
 struct MagicOp<'s> {

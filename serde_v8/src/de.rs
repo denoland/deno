@@ -2,8 +2,6 @@
 use serde::de::{self, Visitor};
 use serde::Deserialize;
 
-use std::convert::TryFrom;
-
 use crate::error::{Error, Result};
 use crate::keys::{v8_struct_key, KeyCache};
 use crate::payload::ValueType;
