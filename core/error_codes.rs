@@ -113,7 +113,6 @@ fn get_os_error_code(errno: i32) -> &'static str {
   match errno {
     998 => "EACCES",            // ERROR_NOACCESS
     10013 => "EACCES",          // WSAEACCES
-    undefined => "EACCES",      // ERROR_ELEVATION_REQUIRED
     1920 => "EACCES",           // ERROR_CANT_ACCESS_FILE
     1227 => "EADDRINUSE",       // ERROR_ADDRESS_ALREADY_ASSOCIATED
     10048 => "EADDRINUSE",      // WSAEADDRINUSE

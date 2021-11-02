@@ -54,9 +54,10 @@ function codegenWin(winPairs, winCodes) {
 fn get_os_error_code(errno: i32) -> &'static str {
   match errno {
     ${
-    winPairs.map((p) => `${winCodes[p[0]]} => "${p[1]}", // ${p[0]}`).join(
-      "\n    ",
-    )
+    winPairs
+      .filter((p) => winCodes[p[0]])
+      .map((p) => `${winCodes[p[0]]} => "${p[1]}", // ${p[0]}`)
+      .join("\n    ")
   }
     _ => "",
   }
