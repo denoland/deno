@@ -313,7 +313,9 @@
    * @returns {ReadableStreamBYOBReader<R>}
    */
   function acquireReadableStreamBYOBReader(stream) {
-    return new ReadableStreamBYOBReader(stream);
+    const reader = webidl.createBranded(ReadableStreamBYOBReader);
+    setUpReadableStreamBYOBReader(reader, stream);
+    return reader;
   }
 
   /**
@@ -797,6 +799,7 @@
     readableByteStreamControllerInvalidateBYOBRequest(controller);
     if (readableStreamHasDefaultReader(stream)) {
       if (readableStreamGetNumReadRequests(stream) === 0) {
+        assert(controller[_pendingPullIntos].length === 0);
         readableByteStreamControllerEnqueueChunkToQueue(
           controller,
           transferredBuffer,
@@ -1205,7 +1208,7 @@
     if (stream[_state] === "errored") {
       readIntoRequest.errorSteps(stream[_storedError]);
     } else {
-      ReadableByteStreamControllerPullInto(
+      readableByteStreamControllerPullInto(
         stream[_controller],
         view,
         readIntoRequest,
@@ -1246,7 +1249,7 @@
    * @param {ReadIntoRequest} readIntoRequest
    * @returns {void}
    */
-  function ReadableByteStreamControllerPullInto(
+  function readableByteStreamControllerPullInto(
     controller,
     view,
     readIntoRequest,
@@ -1273,10 +1276,10 @@
     const byteLength = view.byteLength;
 
     /** @type {ArrayBufferLike} */
-    let bufferResult;
+    let buffer;
 
     try {
-      bufferResult = transferArrayBuffer(view.buffer);
+      buffer = transferArrayBuffer(view.buffer);
     } catch (e) {
       readIntoRequest.errorSteps(e);
       return;
@@ -1284,8 +1287,8 @@
 
     /** @type {PullIntoDescriptor} */
     const pullIntoDescriptor = {
-      buffer: bufferResult,
-      bufferByteLength: bufferResult.byteLength,
+      buffer,
+      bufferByteLength: buffer.byteLength,
       byteOffset,
       byteLength,
       bytesFilled: 0,
@@ -1393,6 +1396,7 @@
     if (remainderSize > 0) {
       const end = pullIntoDescriptor.byteOffset +
         pullIntoDescriptor.bytesFilled;
+      // We dont have access to CloneArrayBuffer, so we use .slice(). End is non-inclusive, as the spec says.
       const remainder = pullIntoDescriptor.buffer.slice(
         end - remainderSize,
         end,
@@ -1635,7 +1639,7 @@
   ) {
     assert(
       controller[_pendingPullIntos].length === 0 ||
-        controller[_pendingPullIntos][0] === pullIntoDescriptor, // TODO: check
+        controller[_pendingPullIntos][0] === pullIntoDescriptor,
     );
     assert(controller[_byobRequest] === null);
     pullIntoDescriptor.bytesFilled += size;
@@ -4524,9 +4528,9 @@
       if (this[_stream] === undefined) {
         return;
       }
-      if (this[_readIntoRequests].length) {
+      if (this[_readIntoRequests].length !== 0) {
         throw new TypeError(
-          "There are pending read requests, so the reader cannot be release.",
+          "There are pending read requests, so the reader cannot be released.",
         );
       }
       readableStreamReaderGenericRelease(this);
