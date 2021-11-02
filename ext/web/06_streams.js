@@ -1833,12 +1833,10 @@
     assert(signal === undefined || signal instanceof AbortSignal);
     assert(!isReadableStreamLocked(source));
     assert(!isWritableStreamLocked(dest));
-    let reader;
-    if (source[_controller] instanceof ReadableByteStreamController) {
-      reader = acquireReadableStreamBYOBReader(source);
-    } else {
-      reader = acquireReadableStreamDefaultReader(source);
-    }
+    // We use acquireReadableStreamDefaultReader even in case of ReadableByteStreamController
+    // as the spec allows us, and the only reason to use BYOBReader is to do some smart things
+    // with it, but the spec does not specify what things, so to simplify we stick to DefaultReader.
+    let reader = acquireReadableStreamDefaultReader(source);
     const writer = acquireWritableStreamDefaultWriter(dest);
     source[_disturbed] = true;
     let shuttingDown = false;
