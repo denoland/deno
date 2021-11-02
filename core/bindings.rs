@@ -797,10 +797,11 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
         let scope = &mut v8::TryCatch::new(scope);
         let this = v8::undefined(scope);
         // Question mark operator in case the callback throws an exception.
-        let result =
-          serialize_cb
-            .open(scope)
-            .call(scope, this.into(), &[object.into()])?;
+        let result = serialize_cb.open(scope).call(
+          scope,
+          this.into(),
+          &[object.into()],
+        )?;
 
         // If the callback threw any exception, we swallow it and throw a
         // DataCloneError with the same message.
