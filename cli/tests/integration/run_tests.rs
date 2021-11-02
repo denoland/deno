@@ -2151,6 +2151,7 @@ itest!(eval_context_throw_dom_exception {
 
 #[test]
 fn issue12453() {
+  let _g = util::http_server();
   let deno_dir = util::new_deno_dir();
   let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
   let status = deno_cmd
