@@ -62,7 +62,7 @@ http = "0.2.4"
 import_map = "0.3.3"
 jsonc-parser = { version = "0.17.0", features = ["serde"] }
 lazy_static = "1.4.0"
-libc = "0.2.101"
+libc = "0.2.106"
 log = { version = "0.4.14", features = ["serde"] }
 lspower = "1.1.0"
 notify = "5.0.0-pre.12"
