@@ -799,7 +799,7 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
         // Question mark operator in case the callback throws an exception.
         let result =
           serialize_cb
-            .get(scope)
+            .open(scope)
             .call(scope, this.into(), &[object.into()])?;
 
         // If the callback threw any exception, we swallow it and throw a
@@ -899,7 +899,7 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
         if let Some(value) = value {
           let scope = &mut v8::TryCatch::new(scope);
           let this: v8::Local<v8::Value> = v8::undefined(scope).into();
-          let result = deserialize_cb.get(scope).call(scope, this, &[value]);
+          let result = deserialize_cb.open(scope).call(scope, this, &[value]);
           // If the callback threw, get the message and use it for the DataCloneError.
           if scope.has_caught() {
             let message = scope.message().unwrap().get(scope);
