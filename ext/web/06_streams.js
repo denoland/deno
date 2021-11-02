@@ -2404,10 +2404,10 @@
           if (!canceled2) {
             readableByteStreamControllerClose(branch2[_controller]);
           }
-          if (branch1[_controller][_readIntoRequests].length !== 0) {
+          if (branch1[_controller][_pendingPullIntos].length !== 0) {
             readableByteStreamControllerRespond(branch1[_controller], 0);
           }
-          if (branch2[_controller][_readIntoRequests].length !== 0) {
+          if (branch2[_controller][_pendingPullIntos].length !== 0) {
             readableByteStreamControllerRespond(branch2[_controller], 0);
           }
           if (!canceled1 || !canceled2) {
@@ -2562,7 +2562,7 @@
         const cancelResult = readableStreamCancel(stream, compositeReason);
         cancelPromise.resolve(cancelResult); // TODO: check
       }
-      return cancelPromise;
+      return cancelPromise.promise;
     }
 
     function startAlgorithm() {
