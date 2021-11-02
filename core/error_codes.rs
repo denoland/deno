@@ -125,7 +125,7 @@ fn get_os_error_code(errno: i32) -> &'static str {
     libc::EHOSTDOWN => "EHOSTDOWN",
     libc::EREMOTE => "EREMOTE", // Changed from EREMOTEIO
     libc::ENOTTY => "ENOTTY",
-    libc::EFTYPE => "EFTYPE",
+    // libc::EFTYPE => "EFTYPE",
     libc::EILSEQ => "EILSEQ",
     libc::EOVERFLOW => "EOVERFLOW",
     libc::ESOCKTNOSUPPORT => "ESOCKTNOSUPPORT",
