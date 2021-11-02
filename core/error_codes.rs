@@ -60,6 +60,7 @@ fn get_io_error_code(err: &std::io::Error) -> &'static str {
 
 /// Maps OS errno codes to string names
 /// derived from libuv: https://github.com/libuv/libuv/blob/26b2e5dbb6301756644d6e4cf6ca9c49c00513d3/include/uv/errno.h
+/// generated with tools/codegen_error_codes.js
 #[cfg(unix)]
 fn get_os_error_code(errno: i32) -> &'static str {
   match errno {
@@ -73,15 +74,12 @@ fn get_os_error_code(errno: i32) -> &'static str {
     libc::EBADF => "EBADF",
     libc::EBUSY => "EBUSY",
     libc::ECANCELED => "ECANCELED",
-    // libc::ECHARSET => "ECHARSET",
     libc::ECONNABORTED => "ECONNABORTED",
     libc::ECONNREFUSED => "ECONNREFUSED",
     libc::ECONNRESET => "ECONNRESET",
-    libc::EDESTADDRREQ => "EDESTADDRREQ",
     libc::EEXIST => "EEXIST",
     libc::EFAULT => "EFAULT",
     libc::EHOSTUNREACH => "EHOSTUNREACH",
-    libc::EINTR => "EINTR",
     libc::EINVAL => "EINVAL",
     libc::EIO => "EIO",
     libc::EISCONN => "EISCONN",
@@ -90,45 +88,126 @@ fn get_os_error_code(errno: i32) -> &'static str {
     libc::EMFILE => "EMFILE",
     libc::EMSGSIZE => "EMSGSIZE",
     libc::ENAMETOOLONG => "ENAMETOOLONG",
-    libc::ENETDOWN => "ENETDOWN",
     libc::ENETUNREACH => "ENETUNREACH",
-    libc::ENFILE => "ENFILE",
     libc::ENOBUFS => "ENOBUFS",
-    libc::ENODEV => "ENODEV",
     libc::ENOENT => "ENOENT",
     libc::ENOMEM => "ENOMEM",
-    // libc::ENONET => "ENONET",
     libc::ENOSPC => "ENOSPC",
-    libc::ENOSYS => "ENOSYS",
     libc::ENOTCONN => "ENOTCONN",
-    libc::ENOTDIR => "ENOTDIR",
     libc::ENOTEMPTY => "ENOTEMPTY",
     libc::ENOTSOCK => "ENOTSOCK",
     libc::ENOTSUP => "ENOTSUP",
     libc::EPERM => "EPERM",
     libc::EPIPE => "EPIPE",
-    libc::EPROTO => "EPROTO",
     libc::EPROTONOSUPPORT => "EPROTONOSUPPORT",
-    libc::EPROTOTYPE => "EPROTOTYPE",
     libc::EROFS => "EROFS",
-    libc::ESHUTDOWN => "ESHUTDOWN",
-    libc::ESPIPE => "ESPIPE",
-    libc::ESRCH => "ESRCH",
     libc::ETIMEDOUT => "ETIMEDOUT",
-    libc::ETXTBSY => "ETXTBSY",
     libc::EXDEV => "EXDEV",
-    libc::EFBIG => "EFBIG",
-    libc::ENOPROTOOPT => "ENOPROTOOPT",
-    libc::ERANGE => "ERANGE",
-    libc::ENXIO => "ENXIO",
-    libc::EMLINK => "EMLINK",
-    libc::EHOSTDOWN => "EHOSTDOWN",
-    libc::EREMOTE => "EREMOTE", // Changed from EREMOTEIO
-    libc::ENOTTY => "ENOTTY",
-    // libc::EFTYPE => "EFTYPE",
-    libc::EILSEQ => "EILSEQ",
-    libc::EOVERFLOW => "EOVERFLOW",
     libc::ESOCKTNOSUPPORT => "ESOCKTNOSUPPORT",
+    _ => "",
+  }
+}
+
+#[cfg(windows)]
+fn get_os_error_code(errno: i32) -> &'static str {
+  match errno {
+    998 => "EACCES",            // ERROR_NOACCESS
+    10013 => "EACCES",          // WSAEACCES
+    undefined => "EACCES",      // ERROR_ELEVATION_REQUIRED
+    1920 => "EACCES",           // ERROR_CANT_ACCESS_FILE
+    1227 => "EADDRINUSE",       // ERROR_ADDRESS_ALREADY_ASSOCIATED
+    10048 => "EADDRINUSE",      // WSAEADDRINUSE
+    10049 => "EADDRNOTAVAIL",   // WSAEADDRNOTAVAIL
+    10047 => "EAFNOSUPPORT",    // WSAEAFNOSUPPORT
+    10035 => "EAGAIN",          // WSAEWOULDBLOCK
+    10037 => "EALREADY",        // WSAEALREADY
+    1004 => "EBADF",            // ERROR_INVALID_FLAGS
+    6 => "EBADF",               // ERROR_INVALID_HANDLE
+    33 => "EBUSY",              // ERROR_LOCK_VIOLATION
+    231 => "EBUSY",             // ERROR_PIPE_BUSY
+    32 => "EBUSY",              // ERROR_SHARING_VIOLATION
+    995 => "ECANCELED",         // ERROR_OPERATION_ABORTED
+    10004 => "ECANCELED",       // WSAEINTR
+    1236 => "ECONNABORTED",     // ERROR_CONNECTION_ABORTED
+    10053 => "ECONNABORTED",    // WSAECONNABORTED
+    1225 => "ECONNREFUSED",     // ERROR_CONNECTION_REFUSED
+    10061 => "ECONNREFUSED",    // WSAECONNREFUSED
+    64 => "ECONNRESET",         // ERROR_NETNAME_DELETED
+    10054 => "ECONNRESET",      // WSAECONNRESET
+    183 => "EEXIST",            // ERROR_ALREADY_EXISTS
+    80 => "EEXIST",             // ERROR_FILE_EXISTS
+    111 => "EFAULT",            // ERROR_BUFFER_OVERFLOW
+    10014 => "EFAULT",          // WSAEFAULT
+    1232 => "EHOSTUNREACH",     // ERROR_HOST_UNREACHABLE
+    10065 => "EHOSTUNREACH",    // WSAEHOSTUNREACH
+    122 => "EINVAL",            // ERROR_INSUFFICIENT_BUFFER
+    13 => "EINVAL",             // ERROR_INVALID_DATA
+    87 => "EINVAL",             // ERROR_INVALID_PARAMETER
+    1464 => "EINVAL",           // ERROR_SYMLINK_NOT_SUPPORTED
+    10022 => "EINVAL",          // WSAEINVAL
+    10046 => "EINVAL",          // WSAEPFNOSUPPORT
+    1102 => "EIO",              // ERROR_BEGINNING_OF_MEDIA
+    1111 => "EIO",              // ERROR_BUS_RESET
+    23 => "EIO",                // ERROR_CRC
+    1166 => "EIO",              // ERROR_DEVICE_DOOR_OPEN
+    1165 => "EIO",              // ERROR_DEVICE_REQUIRES_CLEANING
+    1393 => "EIO",              // ERROR_DISK_CORRUPT
+    1129 => "EIO",              // ERROR_EOM_OVERFLOW
+    1101 => "EIO",              // ERROR_FILEMARK_DETECTED
+    31 => "EIO",                // ERROR_GEN_FAILURE
+    1106 => "EIO",              // ERROR_INVALID_BLOCK_LENGTH
+    1117 => "EIO",              // ERROR_IO_DEVICE
+    1104 => "EIO",              // ERROR_NO_DATA_DETECTED
+    205 => "EIO",               // ERROR_NO_SIGNAL_SENT
+    110 => "EIO",               // ERROR_OPEN_FAILED
+    1103 => "EIO",              // ERROR_SETMARK_DETECTED
+    156 => "EIO",               // ERROR_SIGNAL_REFUSED
+    10056 => "EISCONN",         // WSAEISCONN
+    1921 => "ELOOP",            // ERROR_CANT_RESOLVE_FILENAME
+    4 => "EMFILE",              // ERROR_TOO_MANY_OPEN_FILES
+    10024 => "EMFILE",          // WSAEMFILE
+    10040 => "EMSGSIZE",        // WSAEMSGSIZE
+    206 => "ENAMETOOLONG",      // ERROR_FILENAME_EXCED_RANGE
+    1231 => "ENETUNREACH",      // ERROR_NETWORK_UNREACHABLE
+    10051 => "ENETUNREACH",     // WSAENETUNREACH
+    10055 => "ENOBUFS",         // WSAENOBUFS
+    161 => "ENOENT",            // ERROR_BAD_PATHNAME
+    267 => "ENOENT",            // ERROR_DIRECTORY
+    203 => "ENOENT",            // ERROR_ENVVAR_NOT_FOUND
+    2 => "ENOENT",              // ERROR_FILE_NOT_FOUND
+    123 => "ENOENT",            // ERROR_INVALID_NAME
+    15 => "ENOENT",             // ERROR_INVALID_DRIVE
+    4392 => "ENOENT",           // ERROR_INVALID_REPARSE_DATA
+    126 => "ENOENT",            // ERROR_MOD_NOT_FOUND
+    3 => "ENOENT",              // ERROR_PATH_NOT_FOUND
+    11001 => "ENOENT",          // WSAHOST_NOT_FOUND
+    11004 => "ENOENT",          // WSANO_DATA
+    8 => "ENOMEM",              // ERROR_NOT_ENOUGH_MEMORY
+    14 => "ENOMEM",             // ERROR_OUTOFMEMORY
+    82 => "ENOSPC",             // ERROR_CANNOT_MAKE
+    112 => "ENOSPC",            // ERROR_DISK_FULL
+    277 => "ENOSPC",            // ERROR_EA_TABLE_FULL
+    1100 => "ENOSPC",           // ERROR_END_OF_MEDIA
+    39 => "ENOSPC",             // ERROR_HANDLE_DISK_FULL
+    2250 => "ENOTCONN",         // ERROR_NOT_CONNECTED
+    10057 => "ENOTCONN",        // WSAENOTCONN
+    145 => "ENOTEMPTY",         // ERROR_DIR_NOT_EMPTY
+    10038 => "ENOTSOCK",        // WSAENOTSOCK
+    50 => "ENOTSUP",            // ERROR_NOT_SUPPORTED
+    5 => "EPERM",               // ERROR_ACCESS_DENIED
+    1314 => "EPERM",            // ERROR_PRIVILEGE_NOT_HELD
+    230 => "EPIPE",             // ERROR_BAD_PIPE
+    232 => "EPIPE",             // ERROR_NO_DATA
+    233 => "EPIPE",             // ERROR_PIPE_NOT_CONNECTED
+    10058 => "EPIPE",           // WSAESHUTDOWN
+    10043 => "EPROTONOSUPPORT", // WSAEPROTONOSUPPORT
+    19 => "EROFS",              // ERROR_WRITE_PROTECT
+    121 => "ETIMEDOUT",         // ERROR_SEM_TIMEOUT
+    10060 => "ETIMEDOUT",       // WSAETIMEDOUT
+    17 => "EXDEV",              // ERROR_NOT_SAME_DEVICE
+    1 => "EISDIR",              // ERROR_INVALID_FUNCTION
+    208 => "E2BIG",             // ERROR_META_EXPANSION_TOO_LONG
+    10044 => "ESOCKTNOSUPPORT", // WSAESOCKTNOSUPPORT
     _ => "",
   }
 }
