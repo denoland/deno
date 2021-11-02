@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+#![warn(clippy::await_holding_refcell_ref)]
+
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
 
 use deno_core::error::AnyError;

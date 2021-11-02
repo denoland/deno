@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+#![warn(clippy::await_holding_refcell_ref)]
+
 //! This module helps deno implement timers.
 //!
 //! As an optimization, we want to avoid an expensive calls into rust for every
