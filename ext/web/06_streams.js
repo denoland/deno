@@ -12,6 +12,7 @@
   // TODO(lucacasonato): get AbortSignal from __bootstrap.
   const {
     ArrayBuffer,
+    ArrayBufferIsView,
     ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeShift,
@@ -243,7 +244,7 @@
    */
   function cloneAsUint8Array(O) {
     assert(typeof O === "object");
-    assert(ArrayBuffer.isView(O));
+    assert(ArrayBufferIsView(O));
     assert(!isDetachedBuffer(O.buffer));
     const buffer = O.buffer.slice(O.byteOffset, O.byteOffset + O.byteLength);
     return new Uint8Array(buffer);
@@ -759,7 +760,9 @@
     if (controller[_pendingPullIntos].length !== 0) {
       const firstPendingPullInto = controller[_pendingPullIntos][0];
       if (firstPendingPullInto.bytesFilled > 0) {
-        const e = new TypeError(); // TODO
+        const e = new TypeError(
+          "Insufficient bytes to fill elements in the given buffer",
+        );
         readableByteStreamControllerError(controller, e);
         throw e;
       }
@@ -784,13 +787,17 @@
 
     const { buffer, byteOffset, byteLength } = chunk;
     if (isDetachedBuffer(buffer)) {
-      throw new TypeError(); // TODO
+      throw new TypeError(
+        "chunk's buffer is detached and so cannot be enqueued",
+      );
     }
     const transferredBuffer = transferArrayBuffer(buffer);
     if (controller[_pendingPullIntos].length !== 0) {
       const firstPendingPullInto = controller[_pendingPullIntos][0];
       if (isDetachedBuffer(firstPendingPullInto.buffer)) {
-        throw new TypeError(); // TODO
+        throw new TypeError(
+          "The BYOB request's buffer has been detached and so cannot be filled with an enqueued chunk",
+        );
       }
       firstPendingPullInto.buffer = transferArrayBuffer(
         firstPendingPullInto.buffer,
@@ -1327,7 +1334,9 @@
         return;
       }
       if (controller[_closeRequested]) {
-        const e = new TypeError(); // TODO
+        const e = new TypeError(
+          "Insufficient bytes to fill elements in the given buffer",
+        );
         readableByteStreamControllerError(controller, e);
         readIntoRequest.errorSteps(e);
         return;
@@ -1349,18 +1358,22 @@
     const state = controller[_stream][_state];
     if (state === "closed") {
       if (bytesWritten !== 0) {
-        throw new TypeError(); // TODO
+        throw new TypeError(
+          "bytesWritten must be 0 when calling respond() on a closed stream",
+        );
       }
     } else {
       assert(state === "readable");
       if (bytesWritten === 0) {
-        throw new TypeError(); // TODO
+        throw new TypeError(
+          "bytesWritten must be greater than 0 when calling respond() on a readable stream",
+        );
       }
       if (
         (firstDescriptor.bytesFilled + bytesWritten) >
           firstDescriptor.byteLength
       ) {
-        throw new RangeError(); // TODO
+        throw new RangeError("bytesWritten out of range");
       }
     }
     firstDescriptor.buffer = transferArrayBuffer(firstDescriptor.buffer);
@@ -1520,28 +1533,38 @@
     const state = controller[_stream][_state];
     if (state === "closed") {
       if (view.byteLength !== 0) {
-        throw new TypeError(); // TODO
+        throw new TypeError(
+          "The view's length must be 0 when calling respondWithNewView() on a closed stream",
+        );
       }
     } else {
       assert(state === "readable");
       if (view.byteLength === 0) {
-        throw new TypeError(); // TODO
+        throw new TypeError(
+          "The view's length must be greater than 0 when calling respondWithNewView() on a readable stream",
+        );
       }
     }
     if (
       (firstDescriptor.byteOffset + firstDescriptor.bytesFilled) !==
         view.byteOffset
     ) {
-      throw new RangeError(); // TODO
+      throw new RangeError(
+        "The region specified by view does not match byobRequest",
+      );
     }
     if (firstDescriptor.bufferByteLength !== view.buffer.byteLength) {
-      throw new RangeError(); // TODO
+      throw new RangeError(
+        "The buffer of view has different capacity than byobRequest",
+      );
     }
     if (
       (firstDescriptor.bytesFilled + view.byteLength) >
         firstDescriptor.byteLength
     ) {
-      throw new RangeError(); // TODO
+      throw new RangeError(
+        "The region specified by view is larger than byobRequest",
+      );
     }
     const viewByteLength = view.byteLength;
     firstDescriptor.buffer = transferArrayBuffer(view.buffer);
@@ -1836,7 +1859,7 @@
     // We use acquireReadableStreamDefaultReader even in case of ReadableByteStreamController
     // as the spec allows us, and the only reason to use BYOBReader is to do some smart things
     // with it, but the spec does not specify what things, so to simplify we stick to DefaultReader.
-    let reader = acquireReadableStreamDefaultReader(source);
+    const reader = acquireReadableStreamDefaultReader(source);
     const writer = acquireWritableStreamDefaultWriter(dest);
     source[_disturbed] = true;
     let shuttingDown = false;
@@ -2345,7 +2368,7 @@
      */
     function forwardReaderError(thisReader) {
       PromisePrototypeCatch(thisReader[_closedPromise].promise, (e) => {
-        if (thisReader !== reader) { // TODO: check
+        if (thisReader !== reader) {
           return;
         }
         readableByteStreamControllerError(branch1[_controller], e);
@@ -2378,7 +2401,7 @@
               } catch (e) {
                 readableByteStreamControllerError(branch1[_controller], e);
                 readableByteStreamControllerError(branch2[_controller], e);
-                cancelPromise.resolve(readableStreamCancel(stream, e)); // TODO: check
+                cancelPromise.resolve(readableStreamCancel(stream, e));
                 return;
               }
             }
@@ -2446,7 +2469,7 @@
               } catch (e) {
                 readableByteStreamControllerError(byobBranch[_controller], e);
                 readableByteStreamControllerError(otherBranch[_controller], e);
-                cancelPromise.resolve(readableStreamCancel(stream, e)); // TODO: check
+                cancelPromise.resolve(readableStreamCancel(stream, e));
                 return;
               }
               if (!byobCanceled) {
@@ -2549,7 +2572,7 @@
       if (canceled2) {
         const compositeReason = [reason1, reason2];
         const cancelResult = readableStreamCancel(stream, compositeReason);
-        cancelPromise.resolve(cancelResult); // TODO: check
+        cancelPromise.resolve(cancelResult);
       }
       return cancelPromise.promise;
     }
@@ -2560,7 +2583,7 @@
       if (canceled1) {
         const compositeReason = [reason1, reason2];
         const cancelResult = readableStreamCancel(stream, compositeReason);
-        cancelPromise.resolve(cancelResult); // TODO: check
+        cancelPromise.resolve(cancelResult);
       }
       return cancelPromise.promise;
     }
@@ -2697,7 +2720,7 @@
     }
     const autoAllocateChunkSize = underlyingSourceDict["autoAllocateChunkSize"];
     if (autoAllocateChunkSize === 0) {
-      throw new TypeError(); // TODO
+      throw new TypeError("autoAllocateChunkSize must be greater than 0");
     }
     setUpReadableByteStreamController(
       stream,
@@ -4484,17 +4507,17 @@
 
       if (view.byteLength === 0) {
         return PromiseReject(
-          new TypeError(), // TODO
+          new TypeError("view must have non-zero byteLength"),
         );
       }
       if (view.buffer.byteLength === 0) {
         return PromiseReject(
-          new TypeError(), // TODO
+          new TypeError("view's buffer must have non-zero byteLength"),
         );
       }
       if (isDetachedBuffer(view.buffer)) {
         return PromiseReject(
-          new TypeError(), // TODO
+          new TypeError("view's buffer has been detached"),
         );
       }
       if (this[_stream] === undefined) {
@@ -4600,12 +4623,12 @@
       });
 
       if (this[_controller] === undefined) {
-        throw new TypeError(
-          "Cannot respond to an invalidated ReadableStreamBYOBRequest",
-        );
+        throw new TypeError("This BYOB request has been invalidated");
       }
       if (isDetachedBuffer(this[_view].buffer)) {
-        throw new TypeError(); // TODO
+        throw new TypeError(
+          "The BYOB request's buffer has been detached and so cannot be used as a response",
+        );
       }
       assert(this[_view].byteLength > 0);
       assert(this[_view].buffer.byteLength > 0);
@@ -4623,12 +4646,12 @@
       });
 
       if (this[_controller] === undefined) {
-        throw new TypeError(
-          "Cannot respond to an invalidated ReadableStreamBYOBRequest",
-        );
+        throw new TypeError("This BYOB request has been invalidated");
       }
       if (isDetachedBuffer(view.buffer)) {
-        throw new TypeError(); // TODO
+        throw new TypeError(
+          "The given view's buffer has been detached and so cannot be used as a response",
+        );
       }
       readableByteStreamControllerRespondWithNewView(this[_controller], view);
     }
