@@ -1370,7 +1370,8 @@ fn op_symlink_sync(
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
-  state.borrow_mut::<Permissions>().write.check(&newpath)?;
+  state.borrow_mut::<Permissions>().write.check_all()?;
+  state.borrow_mut::<Permissions>().read.check_all()?;
 
   debug!(
     "op_symlink_sync {} {}",
@@ -1432,7 +1433,8 @@ async fn op_symlink_async(
 
   {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<Permissions>().write.check(&newpath)?;
+    state.borrow_mut::<Permissions>().write.check_all()?;
+    state.borrow_mut::<Permissions>().read.check_all()?;
   }
 
   tokio::task::spawn_blocking(move || {

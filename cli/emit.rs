@@ -280,8 +280,12 @@ fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
 /// Determine if a given media type is emittable or not.
 fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
   match &media_type {
-    MediaType::TypeScript | MediaType::Tsx | MediaType::Jsx => true,
-    MediaType::JavaScript => include_js,
+    MediaType::TypeScript
+    | MediaType::Mts
+    | MediaType::Cts
+    | MediaType::Tsx
+    | MediaType::Jsx => true,
+    MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => include_js,
     _ => false,
   }
 }
@@ -375,12 +379,17 @@ pub(crate) fn check_and_maybe_emit(
         // Sometimes if `tsc` sees a CommonJS file it will _helpfully_ output it
         // to ESM, which we don't really want to do unless someone has enabled
         // check_js.
-        if !check_js && *media_type == MediaType::JavaScript {
+        if !check_js
+          && matches!(
+            media_type,
+            MediaType::JavaScript | MediaType::Cjs | MediaType::Mjs
+          )
+        {
           log::debug!("skipping emit for {}", specifier);
           continue;
         }
         match emit.media_type {
-          MediaType::JavaScript => {
+          MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
             let version = get_version(source.as_bytes(), &config_bytes);
             cache.set(CacheType::Version, &specifier, version)?;
             cache.set(CacheType::Emit, &specifier, emit.data)?;
@@ -390,7 +399,7 @@ pub(crate) fn check_and_maybe_emit(
           }
           // this only occurs with the runtime emit, but we are using the same
           // code paths, so we handle it here.
-          MediaType::Dts => {
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
             cache.set(CacheType::Declaration, &specifier, emit.data)?;
           }
           _ => unreachable!(),
@@ -677,10 +686,12 @@ pub(crate) fn valid_emit(
     .specifiers()
     .iter()
     .filter(|(_, r)| match r {
-      Ok((_, MediaType::TypeScript))
+      Ok((_, MediaType::TypeScript | MediaType::Mts | MediaType::Cts))
       | Ok((_, MediaType::Tsx))
       | Ok((_, MediaType::Jsx)) => true,
-      Ok((_, MediaType::JavaScript)) => emit_js,
+      Ok((_, MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs)) => {
+        emit_js
+      }
       _ => false,
     })
     .all(|(_, r)| {
@@ -756,9 +767,13 @@ pub(crate) fn to_file_map(
         if let Some(map) = cache.get(CacheType::SourceMap, &specifier) {
           files.insert(format!("{}.js.map", specifier), map);
         }
-      } else if media_type == MediaType::JavaScript
-        || media_type == MediaType::Unknown
-      {
+      } else if matches!(
+        media_type,
+        MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
+          | MediaType::Unknown
+      ) {
         if let Some(module) = graph.get(&specifier) {
           files.insert(specifier.to_string(), module.source.to_string());
         }
@@ -795,9 +810,13 @@ pub(crate) fn to_module_sources(
           )
         // Then if the file is JavaScript (or unknown) and wasn't emitted, we
         // will load the original source code in the module.
-        } else if media_type == MediaType::JavaScript
-          || media_type == MediaType::Unknown
-        {
+        } else if matches!(
+          media_type,
+          MediaType::JavaScript
+            | MediaType::Unknown
+            | MediaType::Cjs
+            | MediaType::Mjs
+        ) {
           if let Some(module) = graph.get(&found_specifier) {
             (
               requested_specifier.clone(),
@@ -840,8 +859,12 @@ mod tests {
   fn test_is_emittable() {
     assert!(is_emittable(&MediaType::TypeScript, false));
     assert!(!is_emittable(&MediaType::Dts, false));
+    assert!(!is_emittable(&MediaType::Dcts, false));
+    assert!(!is_emittable(&MediaType::Dmts, false));
     assert!(is_emittable(&MediaType::Tsx, false));
     assert!(!is_emittable(&MediaType::JavaScript, false));
+    assert!(!is_emittable(&MediaType::Cjs, false));
+    assert!(!is_emittable(&MediaType::Mjs, false));
     assert!(is_emittable(&MediaType::JavaScript, true));
     assert!(is_emittable(&MediaType::Jsx, false));
     assert!(!is_emittable(&MediaType::Json, false));

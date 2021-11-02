@@ -1153,11 +1153,7 @@ async fn run_command(
     // this file.
     worker.execute_side_module(&compat::MODULE_URL).await?;
 
-    let use_esm_loader = compat::check_if_should_use_esm_loader(
-      &mut worker.js_runtime,
-      &main_module.to_file_path().unwrap().display().to_string(),
-    )
-    .await?;
+    let use_esm_loader = compat::check_if_should_use_esm_loader(&main_module)?;
 
     if use_esm_loader {
       // ES module execution in Node compatiblity mode

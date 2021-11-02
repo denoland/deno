@@ -695,9 +695,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e23902664e99dc1e0f7186ddd26dbf31fc2ab934ef86593700d43052f5ad43bf"
+checksum = "2ee37af956e0efce7863828eb055208965be06f47959b73c47466e0b5f9a1a9e"
 dependencies = [
  "data-url",
  "dprint-swc-ecma-ast-view",
@@ -781,9 +781,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.17.1"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96b60f0447a17ed4fc413bd7abad29e7d31e76f13422813f2e7978b0c4bdca7a"
+checksum = "08abadd9f3ede74c5ba6e3d9a688ecfe160cf7fb2988ae133ef4e3d591d091e7"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
@@ -826,9 +826,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.8.2"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3d7197f490abd2a1e7d1edc3a1c4db1f4e294d7067dbbf65c4714932c7c3c70"
+checksum = "6df7e1b135780d9424ce4fb9a8927983d27d2c094922cb84b5fd5d72a4c85b82"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -836,7 +836,7 @@ dependencies = [
  "deno_ast",
  "futures",
  "lazy_static",
- "parking_lot_core",
+ "parking_lot",
  "regex",
  "ring",
  "serde",
@@ -862,9 +862,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.18.1"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dce18a8ca950791a5aa75f6dbd64d3a49a9cb7339877c557ca2df7eb9dba0c5e"
+checksum = "7c031711a48a3c5ea4ca6103c6d6df456ba3b0bb048fb551f07da4f704e1d844"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -1097,9 +1097,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-core"
-version = "0.46.4"
+version = "0.47.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df98b7d98583d9d57311b9df81f571f35a6ca3e8675d0128333b2e923dc85bcd"
+checksum = "75ed0f351c65487deac1ad113edffa75492209dc538e4f85c8d3362088176f3c"
 dependencies = [
  "bumpalo",
  "rustc-hash",
@@ -1108,9 +1108,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a32a4eef2c639055370f16a359f0278025058e63193f0ad2340f30bf7ca8361"
+checksum = "c7e5184c59b6863c21dfd6f8491f895c7f935c41e62ce6464eea57fcb5cb9e60"
 dependencies = [
  "dprint-core",
  "jsonc-parser",
@@ -1119,9 +1119,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.10.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48b364aed2db4ccf8747dc1d9c7eb52a5e981a705c7aadfddd297fc4c3310772"
+checksum = "f3d76c5b041062f73b843fd8d4b2adf48aaaf1e0613bbdbb9b42c5b8cf8d586e"
 dependencies = [
  "dprint-core",
  "pulldown-cmark",
@@ -1131,9 +1131,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.58.1"
+version = "0.59.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5749ee5f8d448912fdab331a1535ac29364fc0f94e5c540532a6fa60178ba06"
+checksum = "a72ba2164e96a10905e57c0ddcf1ec4d7b66bc26226dba413b86016439f0e35f"
 dependencies = [
  "deno_ast",
  "dprint-core",
@@ -1193,9 +1193,9 @@ dependencies = [
 
 [[package]]
 name = "encoding_rs"
-version = "0.8.28"
+version = "0.8.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80df024fbc5ac80f87dfef0d9f5209a252f2a497f7f42944cff24d8253cac065"
+checksum = "a74ea89a0a1b98f6332de42c95baff457ada66d1cb4030f9ff151b2041a1c746"
 dependencies = [
  "cfg-if 1.0.0",
 ]
@@ -1887,6 +1887,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "716d3d89f35ac6a34fd0eed635395f4c3b76fa889338a4632e5231a8684216bd"
 dependencies = [
  "cfg-if 1.0.0",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

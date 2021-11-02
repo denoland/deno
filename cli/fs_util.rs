@@ -233,17 +233,14 @@ where
   // retain only the paths which exist and ignore the rest
   let canonicalized_ignore: Vec<PathBuf> = ignore
     .iter()
-    .filter_map(|i| i.canonicalize().ok())
+    .filter_map(|i| canonicalize_path(i).ok())
     .collect();
-
-  let cur_dir = [std::env::current_dir()?];
-  let files = if files.is_empty() { &cur_dir } else { files };
 
   for file in files {
     for entry in WalkDir::new(file)
       .into_iter()
       .filter_entry(|e| {
-        e.path().canonicalize().map_or(false, |c| {
+        canonicalize_path(e.path()).map_or(false, |c| {
           !canonicalized_ignore.iter().any(|i| c.starts_with(i))
         })
       })
@@ -252,7 +249,7 @@ where
         _ => None,
       })
     {
-      target_files.push(entry.into_path().canonicalize()?)
+      target_files.push(canonicalize_path(entry.path())?)
     }
   }
 

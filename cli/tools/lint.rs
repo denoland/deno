@@ -86,6 +86,10 @@ pub async fn lint(
     }
   }
 
+  if include_files.is_empty() {
+    include_files = [std::env::current_dir()?].to_vec();
+  }
+
   let reporter_kind = if json {
     LintReporterKind::Json
   } else {
@@ -105,26 +109,27 @@ pub async fn lint(
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
-    let result = collect_files(
-      &*include_files.clone(),
-      &*exclude_files.clone(),
-      is_supported_ext,
-    )
-    .map(|files| {
-      if let Some(paths) = changed {
-        files
-          .into_iter()
-          .filter(|path| paths.contains(path))
-          .collect::<Vec<_>>()
-      } else {
-        files
+    let collect_files =
+      collect_files(&include_files, &exclude_files, is_supported_ext);
+
+    let paths_to_watch = include_files.clone();
+
+    let (result, should_relint) = match collect_files {
+      Ok(value) => {
+        if let Some(paths) = changed {
+          (
+            Ok(value.clone()),
+            Some(value.iter().any(|path| paths.contains(path))),
+          )
+        } else {
+          (Ok(value), None)
+        }
       }
-    });
-    let paths_to_watch = args.clone();
+      Err(e) => (Err(e), None),
+    };
+
     async move {
-      if (files_changed || !watch)
-        && matches!(result, Ok(ref files) if files.is_empty())
-      {
+      if files_changed && matches!(should_relint, Some(false)) {
         ResolutionResult::Ignore
       } else {
         ResolutionResult::Restart {
