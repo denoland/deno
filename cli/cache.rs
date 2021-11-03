@@ -116,9 +116,8 @@ async fn load_jsx_import_source(
   if let Ok(None) = result {
     for add in SEARCH_PATHS {
       let next_specifier = append_path(specifier, *add);
-      let result = to_load_result(
-        file_fetcher.fetch(&next_specifier, permissions).await,
-      );
+      let result =
+        to_load_result(file_fetcher.fetch(&next_specifier, permissions).await);
       match result {
         Ok(None) => (),
         _ => {
@@ -256,7 +255,26 @@ impl Loader for FetchCacher {
         )
         .await
       } else {
-        to_load_result(file_fetcher.fetch(&specifier, &mut permissions).await)
+        file_fetcher
+          .fetch(&specifier, &mut permissions)
+          .await
+          .map_or_else(
+            |err| {
+              if let Some(err) = err.downcast_ref::<std::io::Error>() {
+                if err.kind() == std::io::ErrorKind::NotFound {
+                  return Ok(None);
+                }
+              }
+              Err(err)
+            },
+            |file| {
+              Ok(Some(LoadResponse {
+                specifier: file.specifier,
+                maybe_headers: file.maybe_headers,
+                content: file.source,
+              }))
+            },
+          )
       };
 
       (specifier, load_result)

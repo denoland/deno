@@ -670,7 +670,6 @@ mod tests {
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
-      "jsxImportSource": "https://esm.sh/preact",
       "lib": ["deno.window"],
       "module": "esnext",
       "noEmit": true,
