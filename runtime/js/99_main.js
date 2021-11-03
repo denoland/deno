@@ -411,6 +411,12 @@ delete Object.prototype.__proto__;
     ReadableByteStreamController: util.nonEnumerable(
       streams.ReadableByteStreamController,
     ),
+    ReadableStreamBYOBReader: util.nonEnumerable(
+      streams.ReadableStreamBYOBReader,
+    ),
+    ReadableStreamBYOBRequest: util.nonEnumerable(
+      streams.ReadableStreamBYOBRequest,
+    ),
     ReadableStreamDefaultController: util.nonEnumerable(
       streams.ReadableStreamDefaultController,
     ),
