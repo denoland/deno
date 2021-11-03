@@ -653,16 +653,19 @@ function discoverTestsToRun(
           ) {
             continue;
           }
-          // These tests require an HTTP2 compatible server.
+
           if (url.pathname.includes(".h2.")) {
-            continue;
+            url.protocol = "https";
+            url.port = "9000";
+          } else if (url.pathname.includes(".https.")) {
+            url.protocol = "https";
+            url.port = "8443";
           }
-          // Streaming fetch requests need a server that supports chunked
-          // encoding, which the WPT test server does not. Unfortunately this
-          // also disables some useful fetch tests.
-          if (url.pathname.includes("request-upload")) {
-            continue;
+
+          if (url.pathname.includes(".www.")) {
+            url.hostname = "www.web-platform.test";
           }
+
           const finalPath = url.pathname + url.search;
 
           const split = finalPath.split("/");

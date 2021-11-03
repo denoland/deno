@@ -3,6 +3,8 @@ import { delay, join, readLines, ROOT_PATH, toFileUrl } from "../util.js";
 import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
 
+const CERT_PATH = join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`);
+
 export async function runWithTestUtil<T>(
   verbose: boolean,
   f: () => Promise<T>,
@@ -98,7 +100,7 @@ export async function runSingleTest(
         "--location",
         url.toString(),
         "--cert",
-        join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`),
+        CERT_PATH,
         tempFile,
         "[]",
       ],
@@ -144,8 +146,23 @@ export async function runSingleTest(
   }
 }
 
+let wptHttpClient: Deno.HttpClient | undefined;
+
+async function wptFetch(url: URL): Promise<Response> {
+  let reqInit;
+  if (url.hostname.endsWith("web-platform.test") && url.protocol === "https:") {
+    if (!wptHttpClient) {
+      const caData = await Deno.readTextFile(CERT_PATH);
+      wptHttpClient = Deno.createHttpClient({ caCerts: [caData] });
+    }
+    reqInit = { client: wptHttpClient };
+  }
+
+  return await fetch(url, reqInit);
+}
+
 async function generateBundle(location: URL): Promise<string> {
-  const res = await fetch(location);
+  const res = await wptFetch(location);
   const body = await res.text();
   const doc = new DOMParser().parseFromString(body, "text/html");
   assert(doc, "document should have been parsed");
@@ -162,7 +179,7 @@ async function generateBundle(location: URL): Promise<string> {
       scriptContents.push([url.href, contents]);
     } else if (src) {
       const url = new URL(src, location);
-      const res = await fetch(url);
+      const res = await wptFetch(url);
       if (res.ok) {
         const contents = await res.text();
         scriptContents.push([url.href, contents]);

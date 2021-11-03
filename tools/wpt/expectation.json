@@ -7438,6 +7438,8 @@
           "Fetch with POST with ReadableStream containing Blob",
           "Fetch with POST with text body on 421 response should be retried once on new connection."
         ],
+        "request-upload.h2.any.html": true,
+        "request-upload.h2.any.worker.html": true,
         "response-url.sub.any.html": true,
         "response-url.sub.any.worker.html": true,
         "scheme-about.any.html": true,
@@ -7645,7 +7647,9 @@
         "redirect-schemes.any.html": true,
         "redirect-schemes.any.worker.html": true,
         "redirect-to-dataurl.any.html": true,
-        "redirect-to-dataurl.any.worker.html": true
+        "redirect-to-dataurl.any.worker.html": true,
+        "redirect-upload.h2.any.html": true,
+        "redirect-upload.h2.any.worker.html": true
       },
       "idlharness.any.html": [
         "Request interface: attribute destination",
