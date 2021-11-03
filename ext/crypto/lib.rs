@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#![warn(clippy::await_holding_refcell_ref)]
-
 use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::type_error;
@@ -16,8 +14,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use std::cell::RefCell;
-use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 

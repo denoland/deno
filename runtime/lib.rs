@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#![warn(clippy::await_holding_refcell_ref)]
-
 pub use deno_broadcast_channel;
 pub use deno_console;
 pub use deno_crypto;

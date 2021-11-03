@@ -1,7 +1,5 @@
 // Copyright 2021 the Deno authors. All rights reserved. MIT license.
 
-#![warn(clippy::await_holding_refcell_ref)]
-
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
@@ -20,7 +18,6 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::path::Path;
 use std::path::PathBuf;

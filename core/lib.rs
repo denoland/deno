@@ -1,7 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
-#![warn(clippy::await_holding_refcell_ref)]
-
 mod async_cancel;
 mod async_cell;
 mod bindings;
