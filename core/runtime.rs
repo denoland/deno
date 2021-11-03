@@ -561,7 +561,14 @@ impl JsRuntime {
     source_code: &str,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     let scope = &mut self.handle_scope();
+    Self::execute_script_with_scope(scope, name, source_code)
+  }
 
+  fn execute_script_with_scope(
+    scope: &mut v8::HandleScope,
+    name: &str,
+    source_code: &str,
+  ) -> Result<v8::Global<v8::Value>, AnyError> {
     let source = v8::String::new(scope, source_code).unwrap();
     let name = v8::String::new(scope, name).unwrap();
     let origin = bindings::script_origin(scope, name);
@@ -1133,9 +1140,7 @@ impl JsRuntime {
   fn dynamic_import_reject(&mut self, id: ModuleLoadId, err: AnyError) {
     let module_map_rc = Self::module_map(self.v8_isolate());
     let get_error_class_fn = self.op_state().borrow().get_error_class_fn;
-    let err_class = get_error_class_fn(&err);
-    let err_class = self.execute_script("<anonymous>", err_class).ok();
-    let mut scope = &mut self.handle_scope();
+    let scope = &mut self.handle_scope();
 
     let resolver_handle = module_map_rc
       .borrow_mut()
@@ -1144,22 +1149,24 @@ impl JsRuntime {
       .expect("Invalid dynamic import id");
     let resolver = resolver_handle.open(scope);
 
-    let exception: v8::Local<v8::Value> = err
+    let exception = err
       .downcast_ref::<ErrWithV8Handle>()
       .map(|err| err.get_handle(scope))
       .unwrap_or_else(|| {
         let message = err.to_string();
         let message = v8::String::new(scope, &message).unwrap();
-        let err_class =
-          v8::Local::<v8::Value>::new(&mut scope, err_class.unwrap());
-        let maybe_err_class =
-          v8::Local::<v8::Function>::try_from(err_class).ok();
-        if let Some(err_class) = maybe_err_class {
-          let err = err_class.new_instance(scope, &[message.into()]).unwrap();
-          err.into()
-        } else {
-          v8::Exception::type_error(scope, message)
+        if let Ok(err_class) = Self::execute_script_with_scope(
+          scope,
+          "<anonymous>",
+          get_error_class_fn(&err),
+        ) {
+          if let Ok(err_class) = v8::Local::<v8::Function>::try_from(
+            v8::Local::<v8::Value>::new(scope, err_class),
+          ) {
+            return err_class.new_instance(scope, &[message.into()]).unwrap().into();
+          }
         }
+        v8::Exception::type_error(scope, message)
       });
 
     // IMPORTANT: No borrows to `ModuleMap` can be held at this point because

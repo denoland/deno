@@ -517,24 +517,19 @@ impl ProcState {
           return Ok(module_source.clone());
         }
       } else {
+        let error_class = if self.flags.compat {
+          "Deno.compat.errors.ERR_MODULE_NOT_FOUND"
+        } else {
+          "TypeError"
+        };
         if maybe_referrer.is_some() && !is_dynamic {
           if let Some(span) = graph_data.resolved_map.get(&specifier) {
-            let error_class = if self.flags.compat {
-              "Deno.compat.errors.ERR_MODULE_NOT_FOUND"
-            } else {
-              "TypeError"
-            };
             return Err(custom_error(
               error_class,
               format!("Cannot load module \"{}\".\n    at {}", specifier, span),
             ));
           }
         }
-        let error_class = if self.flags.compat {
-          "Deno.compat.errors.ERR_MODULE_NOT_FOUND"
-        } else {
-          "TypeError"
-        };
         return Err(custom_error(
           error_class,
           format!("Cannot load module \"{}\".", specifier),
