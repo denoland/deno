@@ -1,8 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use bencher::{benchmark_group, benchmark_main, Bencher};
 
-use std::convert::TryFrom;
-
 use serde::Deserialize;
 
 use serde_v8::utils::{js_exec, v8_do};

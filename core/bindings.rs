@@ -17,8 +17,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
 use std::cell::RefCell;
-use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::option::Option;
 use url::Url;
 use v8::HandleScope;

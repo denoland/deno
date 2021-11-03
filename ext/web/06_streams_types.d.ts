@@ -17,6 +17,25 @@ interface ReadRequest<R = any> {
   errorSteps: (error: any) => void;
 }
 
+interface ReadIntoRequest {
+  chunkSteps: (chunk: ArrayBufferView) => void;
+  closeSteps: (chunk?: ArrayBufferView) => void;
+  // deno-lint-ignore no-explicit-any
+  errorSteps: (error: any) => void;
+}
+
+interface PullIntoDescriptor {
+  buffer: ArrayBuffer;
+  bufferByteLength: number;
+  byteOffset: number;
+  byteLength: number;
+  bytesFilled: number;
+  elementSize: number;
+  // deno-lint-ignore no-explicit-any
+  viewConstructor: any;
+  readerType: "default" | "byob";
+}
+
 interface ReadableByteStreamQueueEntry {
   buffer: ArrayBufferLike;
   byteOffset: number;
