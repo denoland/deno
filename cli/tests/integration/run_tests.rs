@@ -2148,3 +2148,21 @@ itest!(eval_context_throw_dom_exception {
   args: "run eval_context_throw_dom_exception.js",
   output: "eval_context_throw_dom_exception.js.out",
 });
+
+#[test]
+fn issue12453() {
+  let _g = util::http_server();
+  let deno_dir = util::new_deno_dir();
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("issue12453.js")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
