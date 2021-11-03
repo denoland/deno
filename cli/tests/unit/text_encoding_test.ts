@@ -98,7 +98,6 @@ unitTest(function textDecoderErrorEncoding() {
     new TextDecoder("Foo");
   } catch (e) {
     didThrow = true;
-    assert(e instanceof Error);
     assertEquals(e.message, "The encoding label provided ('Foo') is invalid.");
   }
   assert(didThrow);

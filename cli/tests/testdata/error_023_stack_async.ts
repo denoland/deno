@@ -7,8 +7,6 @@ const p = (async () => {
 try {
   await p;
 } catch (error) {
-  if (error instanceof Error) {
-    console.log(error.stack);
-  }
+  console.log(error.stack);
   throw error;
 }

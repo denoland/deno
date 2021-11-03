@@ -4,7 +4,5 @@ console.log(location);
 try {
   location.hostname = "bar";
 } catch (error) {
-  if (error instanceof Error) {
-    console.log(error.toString());
-  }
+  console.log(error.toString());
 }

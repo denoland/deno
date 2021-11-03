@@ -12,9 +12,7 @@ unitTest(async function sendAsyncStackTrace() {
     await Deno.read(rid, buf);
     unreachable();
   } catch (error) {
-    assert(error instanceof Error);
-    const s = error.stack?.toString();
-    assert(s);
+    const s = error.stack.toString();
     console.log(s);
     assertStringIncludes(s, "opcall_test.ts");
     assertStringIncludes(s, "read");
