@@ -46,6 +46,8 @@ impl CacheServer {
           ps.file_fetcher.clone(),
           Permissions::allow_all(),
           Permissions::allow_all(),
+          // TODO(@kitsonk) make work properly
+          Some("jsx-runtime".to_string()),
         );
 
         while let Some((roots, tx)) = rx.recv().await {

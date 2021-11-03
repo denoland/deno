@@ -1,6 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::emit;
 use crate::fs_util::canonicalize_path;
+
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
@@ -38,6 +40,8 @@ pub struct EmitConfigOptions {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompilerOptions {
+  pub jsx: Option<String>,
+  pub jsx_import_source: Option<String>,
   pub types: Option<Vec<String>>,
 }
 
@@ -407,12 +411,47 @@ impl ConfigFile {
   pub fn to_maybe_imports(
     &self,
   ) -> Option<Vec<(ModuleSpecifier, Vec<String>)>> {
+    let mut imports = Vec::new();
     let compiler_options_value = self.json.compiler_options.as_ref()?;
     let compiler_options: CompilerOptions =
       serde_json::from_value(compiler_options_value.clone()).ok()?;
     let referrer = ModuleSpecifier::from_file_path(&self.path).ok()?;
-    let types = compiler_options.types?;
-    Some(vec![(referrer, types)])
+    if let Some(types) = compiler_options.types {
+      imports.extend(types);
+    }
+    if compiler_options.jsx == Some("react-jsx".to_string()) {
+      imports.push(format!(
+        "{}/jsx-runtime",
+        compiler_options
+          .jsx_import_source
+          .unwrap_or_else(|| emit::DEFAULT_JSX_IMPORT_SOURCE.to_string())
+      ));
+    } else if compiler_options.jsx == Some("react-jsxdev".to_string()) {
+      imports.push(format!(
+        "{}/jsx-dev-runtime",
+        compiler_options
+          .jsx_import_source
+          .unwrap_or_else(|| emit::DEFAULT_JSX_IMPORT_SOURCE.to_string())
+      ));
+    }
+    if !imports.is_empty() {
+      Some(vec![(referrer, imports)])
+    } else {
+      None
+    }
+  }
+
+  /// Based on the compiler options in the configuration file, return the
+  /// implied JSX import source module.
+  pub fn to_maybe_jsx_import_source_module(&self) -> Option<String> {
+    let compiler_options_value = self.json.compiler_options.as_ref()?;
+    let compiler_options: CompilerOptions =
+      serde_json::from_value(compiler_options_value.clone()).ok()?;
+    match compiler_options.jsx.as_deref() {
+      Some("react-jsx") => Some("jsx-runtime".to_string()),
+      Some("react-jsx-dev") => Some("jsx-dev-runtime".to_string()),
+      _ => None,
+    }
   }
 
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {

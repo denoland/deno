@@ -1215,6 +1215,62 @@ itest!(jsx_import_from_ts {
   output: "jsx_import_from_ts.ts.out",
 });
 
+itest!(jsx_import_source_pragma {
+  args: "run --reload jsx_import_source_pragma.tsx",
+  output: "jsx_import_source_base.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_with_config {
+  args: "run --reload --config jsx/deno-js.jsonc jsx_import_source_pragma.tsx",
+  output: "jsx_import_source_base.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_no_check {
+  args: "run --reload --no-check jsx_import_source_pragma.tsx",
+  output: "jsx_import_source_base.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_base {
+  args: "run --reload --config jsx/deno-js-base.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_base.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_base_dev {
+  args: "run --reload --config jsx/deno-js-base-dev.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_base_dev.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_ts_flat {
+  args: "run --reload --config jsx/deno-ts-flat.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_ts_flat.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_js_flat {
+  args: "run --reload --config jsx/deno-js-flat.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_js_flat.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_ts {
+  args:
+    "run --reload --config jsx/deno-ts.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_ts.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_js {
+  args:
+    "run --reload --config jsx/deno-js.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_js.out",
+  http_server: true,
+});
+
 // TODO(#11128): Flaky. Re-enable later.
 // itest!(single_compile_with_reload {
 //   args: "run --reload --allow-read single_compile_with_reload.ts",

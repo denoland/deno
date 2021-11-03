@@ -783,8 +783,7 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08abadd9f3ede74c5ba6e3d9a688ecfe160cf7fb2988ae133ef4e3d591d091e7"
+source = "git+https://github.com/kitsonk/deno_doc?branch=feat_jsx_import_source#0e62c0740778c286f64fe63e238c3e62c9e5f4f2"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
@@ -828,8 +827,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6df7e1b135780d9424ce4fb9a8927983d27d2c094922cb84b5fd5d72a4c85b82"
+source = "git+https://github.com/denoland/deno_graph?branch=main#9ce1792360aa1ef1fa9a2f35fd444ad24f7d84ce"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",

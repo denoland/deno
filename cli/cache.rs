@@ -1,8 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::disk_cache::DiskCache;
+use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 
+use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::FutureExt;
@@ -17,6 +19,10 @@ use deno_graph::source::Loader;
 use deno_runtime::permissions::Permissions;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Used to determine how to extend the module specifier to search for
+/// additional modules.
+const SEARCH_PATHS: &[&str] = &[".ts", ".js", "/index.ts", "/index.js"];
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct EmitMetadata {
@@ -58,12 +64,90 @@ pub(crate) trait CacherLoader: Cacher + Loader {
   fn as_mut_cacher(&mut self) -> &mut dyn Cacher;
 }
 
+/// Convert a file fetcher result to a Loader load result
+fn to_load_result(
+  result: Result<File, AnyError>,
+) -> Result<Option<LoadResponse>, AnyError> {
+  result.map_or_else(
+    |err| {
+      if let Some(err) = err.downcast_ref::<std::io::Error>() {
+        if err.kind() == std::io::ErrorKind::NotFound {
+          return Ok(None);
+        }
+      }
+      if get_custom_error_class(&err) == Some("NotFound") {
+        return Ok(None);
+      }
+      Err(err)
+    },
+    |file| {
+      Ok(Some(LoadResponse {
+        specifier: file.specifier,
+        maybe_headers: file.maybe_headers,
+        content: file.source,
+      }))
+    },
+  )
+}
+
+/// Append the add value to the path of a specifier, returning the modified
+/// specifier
+fn append_path(specifier: &ModuleSpecifier, add: &str) -> ModuleSpecifier {
+  let mut specifier = specifier.clone();
+  let path = format!("{}{}", specifier.path(), add);
+  specifier.set_path(&path);
+  specifier
+}
+
+/// Determine if the specifier is a remote specifier or not
+fn is_remote(specifier: &ModuleSpecifier) -> bool {
+  matches!(specifier.scheme(), "http" | "https")
+}
+
+/// Attempt to load the JSX import source module, by attempting to load the base
+/// specifier, and if not found, trying to search for additional paths where it
+/// might belong.
+async fn load_jsx_import_source(
+  specifier: &ModuleSpecifier,
+  file_fetcher: &FileFetcher,
+  permissions: &mut Permissions,
+) -> Result<Option<LoadResponse>, AnyError> {
+  let result = to_load_result(file_fetcher.fetch(specifier, permissions).await);
+  if let Ok(None) = result {
+    for add in SEARCH_PATHS {
+      let next_specifier = append_path(specifier, *add);
+      let result = to_load_result(
+        file_fetcher.fetch(&next_specifier, permissions).await,
+      );
+      match result {
+        Ok(None) => (),
+        _ => {
+          return {
+            // we have a "hit" on a remote specifier, so to avoid re-running the
+            // resolution logic, we are going to cache a synthetic redirect,
+            // which should avoid attempt to re-resolve the module again.
+            if is_remote(specifier) {
+              let mut headers = HashMap::new();
+              headers
+                .insert("location".to_string(), next_specifier.to_string());
+              file_fetcher.http_cache.set(specifier, headers, &[])?;
+            }
+            result
+          };
+        }
+      }
+    }
+  }
+  result
+}
+
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub(crate) struct FetchCacher {
   disk_cache: DiskCache,
   dynamic_permissions: Permissions,
   file_fetcher: Arc<FileFetcher>,
+  maybe_jsx_import_source_module: Option<String>,
   root_permissions: Permissions,
 }
 
@@ -73,6 +157,7 @@ impl FetchCacher {
     file_fetcher: FileFetcher,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
+    maybe_jsx_import_source_module: Option<String>,
   ) -> Self {
     let file_fetcher = Arc::new(file_fetcher);
 
@@ -80,6 +165,7 @@ impl FetchCacher {
       disk_cache,
       dynamic_permissions,
       file_fetcher,
+      maybe_jsx_import_source_module,
       root_permissions,
     }
   }
@@ -93,6 +179,19 @@ impl FetchCacher {
       .get_cache_filename_with_extension(specifier, "meta")?;
     let bytes = self.disk_cache.get(&filename).ok()?;
     serde_json::from_slice(&bytes).ok()
+  }
+
+  /// Determine if the module specifier looks like a JSX import source module
+  /// and therefore needs additional load logic to ensure we can try to load the
+  /// module.
+  fn is_jsx_import_source(&self, specifier: &ModuleSpecifier) -> bool {
+    if let Some(jsx_import_source_module) =
+      self.maybe_jsx_import_source_module.as_deref()
+    {
+      specifier.path().ends_with(jsx_import_source_module)
+    } else {
+      false
+    }
   }
 
   fn set_emit_metadata(
@@ -146,28 +245,19 @@ impl Loader for FetchCacher {
       self.root_permissions.clone()
     };
     let file_fetcher = self.file_fetcher.clone();
+    let is_jsx_import_source = self.is_jsx_import_source(&specifier);
 
     async move {
-      let load_result = file_fetcher
-        .fetch(&specifier, &mut permissions)
+      let load_result = if is_jsx_import_source {
+        load_jsx_import_source(
+          &specifier,
+          file_fetcher.as_ref(),
+          &mut permissions,
+        )
         .await
-        .map_or_else(
-          |err| {
-            if let Some(err) = err.downcast_ref::<std::io::Error>() {
-              if err.kind() == std::io::ErrorKind::NotFound {
-                return Ok(None);
-              }
-            }
-            Err(err)
-          },
-          |file| {
-            Ok(Some(LoadResponse {
-              specifier: file.specifier,
-              maybe_headers: file.maybe_headers,
-              content: file.source,
-            }))
-          },
-        );
+      } else {
+        to_load_result(file_fetcher.fetch(&specifier, &mut permissions).await)
+      };
 
       (specifier, load_result)
     }

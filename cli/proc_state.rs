@@ -15,6 +15,7 @@ use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::resolver::ImportMapResolver;
+use crate::resolver::JsxResolver;
 use crate::source_maps::SourceMapGetter;
 use crate::version;
 
@@ -275,6 +276,14 @@ impl ProcState {
     }
   }
 
+  pub(crate) fn maybe_jsx_import_source_module(&self) -> Option<String> {
+    self
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| cf.to_maybe_jsx_import_source_module())
+      .flatten()
+  }
+
   /// This method is called when a module requested by the `JsRuntime` is not
   /// available, or in other sub-commands that need to "load" a module graph.
   /// The method will collect all the dependencies of the provided specifier,
@@ -290,23 +299,31 @@ impl ProcState {
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
   ) -> Result<(), AnyError> {
+    let maybe_jsx_import_source_module = self.maybe_jsx_import_source_module();
     let mut cache = cache::FetchCacher::new(
       self.dir.gen_cache.clone(),
       self.file_fetcher.clone(),
       root_permissions.clone(),
       dynamic_permissions.clone(),
+      maybe_jsx_import_source_module.clone(),
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports();
     let node_resolver = NodeEsmResolver::new(
       self.maybe_import_map.as_ref().map(ImportMapResolver::new),
     );
-    let import_map_resolver =
+    let maybe_import_map_resolver =
       self.maybe_import_map.as_ref().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = maybe_jsx_import_source_module
+      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.as_ref()));
     let maybe_resolver = if self.flags.compat {
       Some(node_resolver.as_resolver())
+    } else if maybe_jsx_resolver.is_some() {
+      maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
     } else {
-      import_map_resolver.as_ref().map(|im| im.as_resolver())
+      maybe_import_map_resolver
+        .as_ref()
+        .map(|im| im.as_resolver())
     };
     // TODO(bartlomieju): this is very make-shift, is there an existing API
     // that we could include it like with "maybe_imports"?

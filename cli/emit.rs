@@ -40,6 +40,8 @@ use std::result;
 use std::sync::Arc;
 use std::time::Instant;
 
+pub(crate) static DEFAULT_JSX_IMPORT_SOURCE: &str = "https://esm.sh/preact";
+
 /// Represents the "default" type library that should be used when type
 /// checking the code in the module graph.  Note that a user provided config
 /// of `"lib"` would override this value.
@@ -145,6 +147,7 @@ pub(crate) fn get_ts_config(
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
+      "jsxImportSource": DEFAULT_JSX_IMPORT_SOURCE,
     })),
     ConfigType::Check { tsc_emit, lib } => {
       let mut ts_config = TsConfig::new(json!({
@@ -189,6 +192,7 @@ pub(crate) fn get_ts_config(
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
+      "jsxImportSource": DEFAULT_JSX_IMPORT_SOURCE,
     })),
     ConfigType::RuntimeEmit { tsc_emit } => {
       let mut ts_config = TsConfig::new(json!({
@@ -203,6 +207,7 @@ pub(crate) fn get_ts_config(
         "jsx": "react",
         "jsxFactory": "React.createElement",
         "jsxFragmentFactory": "React.Fragment",
+        "jsxImportSource": DEFAULT_JSX_IMPORT_SOURCE,
         "lib": TypeLib::DenoWindow,
         "module": "esnext",
         "removeComments": true,
