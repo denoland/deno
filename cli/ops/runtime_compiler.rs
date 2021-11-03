@@ -101,13 +101,11 @@ async fn op_emit(
     if let Some(sources) = &args.sources {
       Box::new(cache::MemoryCacher::new(sources.clone()))
     } else {
-      let maybe_jsx_import_source_module = ps.maybe_jsx_import_source_module();
       Box::new(cache::FetchCacher::new(
         ps.dir.gen_cache.clone(),
         ps.file_fetcher.clone(),
         runtime_permissions.clone(),
         runtime_permissions.clone(),
-        maybe_jsx_import_source_module,
       ))
     };
   let maybe_import_map = if let Some(import_map_str) = args.import_map_path {

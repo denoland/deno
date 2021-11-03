@@ -1,4 +1,4 @@
-/** @jsxImportSource http://localhost:4545/jsx */
+/** @jsxImportSource jsx */
 
 function A() {
   return "hello";

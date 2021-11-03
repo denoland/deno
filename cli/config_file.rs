@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::emit;
+use crate::colors;
 use crate::fs_util::canonicalize_path;
 
 use deno_core::error::anyhow;
@@ -424,14 +424,20 @@ impl ConfigFile {
         "{}/jsx-runtime",
         compiler_options
           .jsx_import_source
-          .unwrap_or_else(|| emit::DEFAULT_JSX_IMPORT_SOURCE.to_string())
+          .unwrap_or_else(|| {
+            log::warn!("{}: Compiler option 'jsx' set to 'react-jsx', but no 'jsxImportSource' defined, defaulting to 'react'.", colors::yellow("warning"));
+            "react".to_string()
+          })
       ));
     } else if compiler_options.jsx == Some("react-jsxdev".to_string()) {
       imports.push(format!(
         "{}/jsx-dev-runtime",
         compiler_options
           .jsx_import_source
-          .unwrap_or_else(|| emit::DEFAULT_JSX_IMPORT_SOURCE.to_string())
+          .unwrap_or_else(|| {
+            log::warn!("{}: Compiler option 'jsx' set to 'react-jsxdev', but no 'jsxImportSource' defined, defaulting to 'react'.", colors::yellow("warning"));
+            "react".to_string()
+          })
       ));
     }
     if !imports.is_empty() {

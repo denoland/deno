@@ -1043,13 +1043,11 @@ pub async fn run_tests_with_watch(
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
-    let maybe_jsx_import_source_module = ps.maybe_jsx_import_source_module();
     let mut cache = cache::FetchCacher::new(
       ps.dir.gen_cache.clone(),
       ps.file_fetcher.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
-      maybe_jsx_import_source_module,
     );
 
     let paths_to_watch = paths_to_watch.clone();

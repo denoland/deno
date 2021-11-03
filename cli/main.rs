@@ -461,13 +461,11 @@ async fn info_command(
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
-    let maybe_jsx_import_source_module = ps.maybe_jsx_import_source_module();
     let mut cache = cache::FetchCacher::new(
       ps.dir.gen_cache.clone(),
       ps.file_fetcher.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
-      maybe_jsx_import_source_module,
     );
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_resolver =
@@ -632,13 +630,11 @@ async fn create_graph_and_maybe_check(
   ps: &ProcState,
   debug: bool,
 ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
-  let maybe_jsx_import_source_module = ps.maybe_jsx_import_source_module();
   let mut cache = cache::FetchCacher::new(
     ps.dir.gen_cache.clone(),
     ps.file_fetcher.clone(),
     Permissions::allow_all(),
     Permissions::allow_all(),
-    maybe_jsx_import_source_module,
   );
   let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
   let maybe_imports = ps
@@ -962,13 +958,11 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     async move {
       let main_module = resolve_url_or_path(&script1)?;
       let ps = ProcState::build(flags).await?;
-      let maybe_jsx_import_source_module = ps.maybe_jsx_import_source_module();
       let mut cache = cache::FetchCacher::new(
         ps.dir.gen_cache.clone(),
         ps.file_fetcher.clone(),
         Permissions::allow_all(),
         Permissions::allow_all(),
-        maybe_jsx_import_source_module,
       );
       let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
       let maybe_imports = ps

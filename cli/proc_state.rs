@@ -276,14 +276,6 @@ impl ProcState {
     }
   }
 
-  pub(crate) fn maybe_jsx_import_source_module(&self) -> Option<String> {
-    self
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.to_maybe_jsx_import_source_module())
-      .flatten()
-  }
-
   /// This method is called when a module requested by the `JsRuntime` is not
   /// available, or in other sub-commands that need to "load" a module graph.
   /// The method will collect all the dependencies of the provided specifier,
@@ -299,13 +291,11 @@ impl ProcState {
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
   ) -> Result<(), AnyError> {
-    let maybe_jsx_import_source_module = self.maybe_jsx_import_source_module();
     let mut cache = cache::FetchCacher::new(
       self.dir.gen_cache.clone(),
       self.file_fetcher.clone(),
       root_permissions.clone(),
       dynamic_permissions.clone(),
-      maybe_jsx_import_source_module.clone(),
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports();
@@ -314,8 +304,14 @@ impl ProcState {
     );
     let maybe_import_map_resolver =
       self.maybe_import_map.as_ref().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = maybe_jsx_import_source_module
-      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.as_ref()));
+    let maybe_jsx_resolver = self
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.as_ref()))
+      })
+      .flatten();
     let maybe_resolver = if self.flags.compat {
       Some(node_resolver.as_resolver())
     } else if maybe_jsx_resolver.is_some() {

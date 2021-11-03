@@ -40,8 +40,6 @@ use std::result;
 use std::sync::Arc;
 use std::time::Instant;
 
-pub(crate) static DEFAULT_JSX_IMPORT_SOURCE: &str = "https://esm.sh/preact";
-
 /// Represents the "default" type library that should be used when type
 /// checking the code in the module graph.  Note that a user provided config
 /// of `"lib"` would override this value.

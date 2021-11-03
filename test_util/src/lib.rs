@@ -851,7 +851,7 @@ async fn main_server(
       let version = format!("{:?}", req.version());
       Ok(Response::new(version.into()))
     }
-    (_, "/jsx/jsx_base/jsx-runtime") | (_, "/jsx/jsx_base/jsx-dev-runtime") => {
+    (_, "/jsx/jsx-runtime") | (_, "/jsx/jsx-dev-runtime") => {
       let mut res = Response::new(Body::from(
         r#"export function jsx(
           _type,
