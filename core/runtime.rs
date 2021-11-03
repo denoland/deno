@@ -1163,7 +1163,10 @@ impl JsRuntime {
           if let Ok(err_class) = v8::Local::<v8::Function>::try_from(
             v8::Local::<v8::Value>::new(scope, err_class),
           ) {
-            return err_class.new_instance(scope, &[message.into()]).unwrap().into();
+            return err_class
+              .new_instance(scope, &[message.into()])
+              .unwrap()
+              .into();
           }
         }
         v8::Exception::type_error(scope, message)
