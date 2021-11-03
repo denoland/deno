@@ -1953,11 +1953,15 @@ impl SignatureHelpItem {
       .collect::<Vec<String>>()
       .join(", ");
     let suffix_text = display_parts_to_string(&self.suffix_display_parts);
+    let documentation = display_parts_to_string(&self.documentation);
     lsp::SignatureInformation {
       label: format!("{}{}{}", prefix_text, params_text, suffix_text),
-      documentation: Some(lsp::Documentation::String(display_parts_to_string(
-        &self.documentation,
-      ))),
+      documentation: Some(lsp::Documentation::MarkupContent(
+        lsp::MarkupContent {
+          kind: lsp::MarkupKind::Markdown,
+          value: documentation,
+        },
+      )),
       parameters: Some(
         self
           .parameters
@@ -1981,13 +1985,17 @@ pub struct SignatureHelpParameter {
 
 impl SignatureHelpParameter {
   pub fn into_parameter_information(self) -> lsp::ParameterInformation {
+    let documentation = display_parts_to_string(&self.documentation);
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
       )),
-      documentation: Some(lsp::Documentation::String(display_parts_to_string(
-        &self.documentation,
-      ))),
+      documentation: Some(lsp::Documentation::MarkupContent(
+        lsp::MarkupContent {
+          kind: lsp::MarkupKind::Markdown,
+          value: documentation,
+        },
+      )),
     }
   }
 }
