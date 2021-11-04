@@ -4212,15 +4212,6 @@
     }
 
     /**
-     * @deprecated TODO(@kitsonk): Remove in Deno 1.8
-     * @param {ReadableStreamIteratorOptions=} options
-     * @returns {AsyncIterableIterator<R>}
-     */
-    getIterator(options = {}) {
-      return this[SymbolAsyncIterator](options);
-    }
-
-    /**
      * @param {ReadableStreamGetReaderOptions=} options
      * @returns {ReadableStreamDefaultReader<R> | ReadableStreamBYOBReader}
      */
