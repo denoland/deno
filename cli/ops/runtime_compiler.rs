@@ -88,9 +88,15 @@ async fn op_emit(
 ) -> Result<EmitResult, AnyError> {
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
   let root_specifier = args.root_specifier;
-  let state = state.borrow();
-  let ps = state.borrow::<ProcState>();
-  let mut runtime_permissions = { state.borrow::<Permissions>().clone() };
+  let ps = {
+    let state = state.borrow();
+    state.borrow::<ProcState>().clone()
+  };
+  let mut runtime_permissions = {
+    let state = state.borrow();
+    state.borrow::<Permissions>().clone()
+  };
+
   let mut cache: Box<dyn cache::CacherLoader> =
     if let Some(sources) = &args.sources {
       Box::new(cache::MemoryCacher::new(sources.clone()))

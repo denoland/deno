@@ -67,16 +67,52 @@ pub fn write_file_2<T: AsRef<[u8]>>(
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
-  let mut canonicalized_path = path.canonicalize()?;
-  if cfg!(windows) {
-    canonicalized_path = PathBuf::from(
-      canonicalized_path
-        .display()
-        .to_string()
-        .trim_start_matches("\\\\?\\"),
-    );
+  let path = path.canonicalize()?;
+  #[cfg(windows)]
+  return Ok(strip_unc_prefix(path));
+  #[cfg(not(windows))]
+  return Ok(path);
+}
+
+#[cfg(windows)]
+fn strip_unc_prefix(path: PathBuf) -> PathBuf {
+  use std::path::Component;
+  use std::path::Prefix;
+
+  let mut components = path.components();
+  match components.next() {
+    Some(Component::Prefix(prefix)) => {
+      match prefix.kind() {
+        // \\?\device
+        Prefix::Verbatim(device) => {
+          let mut path = PathBuf::new();
+          path.push(format!(r"\\{}\", device.to_string_lossy()));
+          path.extend(components.filter(|c| !matches!(c, Component::RootDir)));
+          path
+        }
+        // \\?\c:\path
+        Prefix::VerbatimDisk(_) => {
+          let mut path = PathBuf::new();
+          path.push(prefix.as_os_str().to_string_lossy().replace(r"\\?\", ""));
+          path.extend(components);
+          path
+        }
+        // \\?\UNC\hostname\share_name\path
+        Prefix::VerbatimUNC(hostname, share_name) => {
+          let mut path = PathBuf::new();
+          path.push(format!(
+            r"\\{}\{}\",
+            hostname.to_string_lossy(),
+            share_name.to_string_lossy()
+          ));
+          path.extend(components.filter(|c| !matches!(c, Component::RootDir)));
+          path
+        }
+        _ => path,
+      }
+    }
+    _ => path,
   }
-  Ok(canonicalized_path)
 }
 
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
@@ -197,17 +233,14 @@ where
   // retain only the paths which exist and ignore the rest
   let canonicalized_ignore: Vec<PathBuf> = ignore
     .iter()
-    .filter_map(|i| i.canonicalize().ok())
+    .filter_map(|i| canonicalize_path(i).ok())
     .collect();
-
-  let cur_dir = [std::env::current_dir()?];
-  let files = if files.is_empty() { &cur_dir } else { files };
 
   for file in files {
     for entry in WalkDir::new(file)
       .into_iter()
       .filter_entry(|e| {
-        e.path().canonicalize().map_or(false, |c| {
+        canonicalize_path(e.path()).map_or(false, |c| {
           !canonicalized_ignore.iter().any(|i| c.starts_with(i))
         })
       })
@@ -216,7 +249,7 @@ where
         _ => None,
       })
     {
-      target_files.push(entry.into_path().canonicalize()?)
+      target_files.push(canonicalize_path(entry.path())?)
     }
   }
 
@@ -559,5 +592,40 @@ mod tests {
     .collect::<Vec<ModuleSpecifier>>();
 
     assert_eq!(result, expected);
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn test_strip_unc_prefix() {
+    run_test(r"C:\", r"C:\");
+    run_test(r"C:\test\file.txt", r"C:\test\file.txt");
+
+    run_test(r"\\?\C:\", r"C:\");
+    run_test(r"\\?\C:\test\file.txt", r"C:\test\file.txt");
+
+    run_test(r"\\.\C:\", r"\\.\C:\");
+    run_test(r"\\.\C:\Test\file.txt", r"\\.\C:\Test\file.txt");
+
+    run_test(r"\\?\UNC\localhost\", r"\\localhost");
+    run_test(r"\\?\UNC\localhost\c$\", r"\\localhost\c$");
+    run_test(
+      r"\\?\UNC\localhost\c$\Windows\file.txt",
+      r"\\localhost\c$\Windows\file.txt",
+    );
+    run_test(r"\\?\UNC\wsl$\deno.json", r"\\wsl$\deno.json");
+
+    run_test(r"\\?\server1", r"\\server1");
+    run_test(r"\\?\server1\e$\", r"\\server1\e$\");
+    run_test(
+      r"\\?\server1\e$\test\file.txt",
+      r"\\server1\e$\test\file.txt",
+    );
+
+    fn run_test(input: &str, expected: &str) {
+      assert_eq!(
+        strip_unc_prefix(PathBuf::from(input)),
+        PathBuf::from(expected)
+      );
+    }
   }
 }

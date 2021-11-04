@@ -82,7 +82,8 @@ pub struct WsStreamResource {
 
 impl WsStreamResource {
   async fn send(self: &Rc<Self>, message: Message) -> Result<(), AnyError> {
-    match self.stream {
+    use tokio_tungstenite::tungstenite::Error;
+    let res = match self.stream {
       WebSocketStreamType::Client { .. } => {
         let mut tx = RcRef::map(self, |r| match &r.stream {
           WebSocketStreamType::Client { tx, .. } => tx,
@@ -90,7 +91,7 @@ impl WsStreamResource {
         })
         .borrow_mut()
         .await;
-        tx.send(message).await?;
+        tx.send(message).await
       }
       WebSocketStreamType::Server { .. } => {
         let mut tx = RcRef::map(self, |r| match &r.stream {
@@ -99,11 +100,15 @@ impl WsStreamResource {
         })
         .borrow_mut()
         .await;
-        tx.send(message).await?;
+        tx.send(message).await
       }
-    }
+    };
 
-    Ok(())
+    match res {
+      Ok(()) => Ok(()),
+      Err(Error::ConnectionClosed) => Ok(()),
+      Err(err) => Err(err.into()),
+    }
   }
 
   async fn next_message(

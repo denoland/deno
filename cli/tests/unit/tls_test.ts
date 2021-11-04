@@ -1107,17 +1107,128 @@ unitTest(
 
 unitTest(
   { permissions: { read: true, net: true } },
-  async function startTLSCertFile() {
-    const plainConn = await Deno.connect({
-      hostname: "localhost",
-      port: 4557,
+  async function tlsHandshakeSuccess() {
+    const hostname = "localhost";
+    const port = getPort();
+
+    const listener = Deno.listenTls({
+      hostname,
+      port,
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     });
-    const conn = await Deno.startTls(plainConn, {
-      hostname: "localhost",
-      certFile: "cli/tests/testdata/tls/RootCA.pem",
+    const acceptPromise = listener.accept();
+    const connectPromise = Deno.connectTls({
+      hostname,
+      port,
+      certFile: "cli/tests/testdata/tls/RootCA.crt",
     });
-    const result = decoder.decode(await readAll(conn));
-    assertEquals(result, "PASS");
-    conn.close();
+    const [conn1, conn2] = await Promise.all([acceptPromise, connectPromise]);
+    listener.close();
+
+    await Promise.all([conn1.handshake(), conn2.handshake()]);
+
+    // Begin sending a 10mb blob over the TLS connection.
+    const whole = new Uint8Array(10 << 20); // 10mb.
+    whole.fill(42);
+    const sendPromise = conn1.write(whole);
+
+    // Set up the other end to receive half of the large blob.
+    const half = new Uint8Array(whole.byteLength / 2);
+    const receivePromise = readFull(conn2, half);
+
+    await conn1.handshake();
+    await conn2.handshake();
+
+    // Finish receiving the first 5mb.
+    assertEquals(await receivePromise, half.length);
+
+    // See that we can call `handshake()` in the middle of large reads and writes.
+    await conn1.handshake();
+    await conn2.handshake();
+
+    // Receive second half of large blob. Wait for the send promise and check it.
+    assertEquals(await readFull(conn2, half), half.length);
+    assertEquals(await sendPromise, whole.length);
+
+    await conn1.handshake();
+    await conn2.handshake();
+
+    await conn1.closeWrite();
+    await conn2.closeWrite();
+
+    await conn1.handshake();
+    await conn2.handshake();
+
+    conn1.close();
+    conn2.close();
+
+    async function readFull(conn: Deno.Conn, buf: Uint8Array) {
+      let offset, n;
+      for (offset = 0; offset < buf.length; offset += n) {
+        n = await conn.read(buf.subarray(offset, buf.length));
+        assert(n != null && n > 0);
+      }
+      return offset;
+    }
+  },
+);
+
+unitTest(
+  { permissions: { read: true, net: true } },
+  async function tlsHandshakeFailure() {
+    const hostname = "localhost";
+    const port = getPort();
+
+    async function server() {
+      const listener = Deno.listenTls({
+        hostname,
+        port,
+        certFile: "cli/tests/testdata/tls/localhost.crt",
+        keyFile: "cli/tests/testdata/tls/localhost.key",
+      });
+      for await (const conn of listener) {
+        for (let i = 0; i < 10; i++) {
+          // Handshake fails because the client rejects the server certificate.
+          await assertRejects(
+            () => conn.handshake(),
+            Deno.errors.InvalidData,
+            "BadCertificate",
+          );
+        }
+        conn.close();
+        break;
+      }
+    }
+
+    async function connectTlsClient() {
+      const conn = await Deno.connectTls({ hostname, port });
+      // Handshake fails because the server presents a self-signed certificate.
+      await assertRejects(
+        () => conn.handshake(),
+        Deno.errors.InvalidData,
+        "UnknownIssuer",
+      );
+      conn.close();
+    }
+
+    await Promise.all([server(), connectTlsClient()]);
+
+    async function startTlsClient() {
+      const tcpConn = await Deno.connect({ hostname, port });
+      const tlsConn = await Deno.startTls(tcpConn, {
+        hostname: "foo.land",
+        caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
+      });
+      // Handshake fails because hostname doesn't match the certificate.
+      await assertRejects(
+        () => tlsConn.handshake(),
+        Deno.errors.InvalidData,
+        "CertNotValidForName",
+      );
+      tlsConn.close();
+    }
+
+    await Promise.all([server(), startTlsClient()]);
   },
 );

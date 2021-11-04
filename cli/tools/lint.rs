@@ -51,9 +51,9 @@ pub async fn lint(
   watch: bool,
 ) -> Result<(), AnyError> {
   let LintFlags {
-    rules_tags,
-    rules_include,
-    rules_exclude,
+    maybe_rules_tags,
+    maybe_rules_include,
+    maybe_rules_exclude,
     files: args,
     ignore,
     json,
@@ -86,6 +86,10 @@ pub async fn lint(
     }
   }
 
+  if include_files.is_empty() {
+    include_files = [std::env::current_dir()?].to_vec();
+  }
+
   let reporter_kind = if json {
     LintReporterKind::Json
   } else {
@@ -98,33 +102,34 @@ pub async fn lint(
   // and `--rules-include` CLI flag, only the flag value is taken into account.
   let lint_rules = get_configured_rules(
     maybe_lint_config.as_ref(),
-    rules_tags,
-    rules_include,
-    rules_exclude,
+    maybe_rules_tags,
+    maybe_rules_include,
+    maybe_rules_exclude,
   )?;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
-    let result = collect_files(
-      &*include_files.clone(),
-      &*exclude_files.clone(),
-      is_supported_ext,
-    )
-    .map(|files| {
-      if let Some(paths) = changed {
-        files
-          .into_iter()
-          .filter(|path| paths.contains(path))
-          .collect::<Vec<_>>()
-      } else {
-        files
+    let collect_files =
+      collect_files(&include_files, &exclude_files, is_supported_ext);
+
+    let paths_to_watch = include_files.clone();
+
+    let (result, should_relint) = match collect_files {
+      Ok(value) => {
+        if let Some(paths) = changed {
+          (
+            Ok(value.clone()),
+            Some(value.iter().any(|path| paths.contains(path))),
+          )
+        } else {
+          (Ok(value), None)
+        }
       }
-    });
-    let paths_to_watch = args.clone();
+      Err(e) => (Err(e), None),
+    };
+
     async move {
-      if (files_changed || !watch)
-        && matches!(result, Ok(ref files) if files.is_empty())
-      {
+      if files_changed && matches!(should_relint, Some(false)) {
         ResolutionResult::Ignore
       } else {
         ResolutionResult::Restart {
@@ -483,20 +488,20 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
 
 pub(crate) fn get_configured_rules(
   maybe_lint_config: Option<&LintConfig>,
-  rules_tags: Vec<String>,
-  rules_include: Vec<String>,
-  rules_exclude: Vec<String>,
+  maybe_rules_tags: Option<Vec<String>>,
+  maybe_rules_include: Option<Vec<String>>,
+  maybe_rules_exclude: Option<Vec<String>>,
 ) -> Result<Vec<Arc<dyn LintRule>>, AnyError> {
   if maybe_lint_config.is_none()
-    && rules_tags.is_empty()
-    && rules_include.is_empty()
-    && rules_exclude.is_empty()
+    && maybe_rules_tags.is_none()
+    && maybe_rules_include.is_none()
+    && maybe_rules_exclude.is_none()
   {
     return Ok(rules::get_recommended_rules());
   }
 
   let (config_file_tags, config_file_include, config_file_exclude) =
-    if let Some(lint_config) = maybe_lint_config.as_ref() {
+    if let Some(lint_config) = maybe_lint_config {
       (
         lint_config.rules.tags.clone(),
         lint_config.rules.include.clone(),
@@ -506,26 +511,26 @@ pub(crate) fn get_configured_rules(
       (None, None, None)
     };
 
-  let maybe_configured_include = if !rules_include.is_empty() {
-    Some(rules_include)
+  let maybe_configured_include = if maybe_rules_include.is_some() {
+    maybe_rules_include
   } else {
     config_file_include
   };
 
-  let maybe_configured_exclude = if !rules_exclude.is_empty() {
-    Some(rules_exclude)
+  let maybe_configured_exclude = if maybe_rules_exclude.is_some() {
+    maybe_rules_exclude
   } else {
     config_file_exclude
   };
 
-  let configured_tags = if !rules_tags.is_empty() {
-    rules_tags
+  let maybe_configured_tags = if maybe_rules_tags.is_some() {
+    maybe_rules_tags
   } else {
-    config_file_tags.unwrap_or_else(Vec::new)
+    config_file_tags
   };
 
   let configured_rules = rules::get_filtered_rules(
-    Some(configured_tags),
+    maybe_configured_tags,
     maybe_configured_exclude,
     maybe_configured_include,
   );

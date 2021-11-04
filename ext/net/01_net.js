@@ -3,7 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { BadResource } = core;
+  const { BadResource, Interrupted } = core;
   const {
     PromiseResolve,
     SymbolAsyncIterator,
@@ -31,27 +31,27 @@
   }
 
   function opAccept(rid, transport) {
-    return core.opAsync("op_accept", { rid, transport });
+    return core.opAsync("op_net_accept", { rid, transport });
   }
 
   function opListen(args) {
-    return core.opSync("op_listen", args);
+    return core.opSync("op_net_listen", args);
   }
 
   function opConnect(args) {
-    return core.opAsync("op_connect", args);
+    return core.opAsync("op_net_connect", args);
   }
 
   function opReceive(rid, transport, zeroCopy) {
     return core.opAsync(
-      "op_datagram_receive",
+      "op_dgram_recv",
       { rid, transport },
       zeroCopy,
     );
   }
 
   function opSend(args, zeroCopy) {
-    return core.opAsync("op_datagram_send", args, zeroCopy);
+    return core.opAsync("op_dgram_send", args, zeroCopy);
   }
 
   function resolveDns(query, recordType, options) {
@@ -124,7 +124,7 @@
       try {
         conn = await this.accept();
       } catch (error) {
-        if (error instanceof BadResource) {
+        if (error instanceof BadResource || error instanceof Interrupted) {
           return { value: undefined, done: true };
         }
         throw error;
@@ -191,7 +191,7 @@
         try {
           yield await this.receive();
         } catch (err) {
-          if (err instanceof BadResource) {
+          if (err instanceof BadResource || err instanceof Interrupted) {
             break;
           }
           throw err;

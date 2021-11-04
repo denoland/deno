@@ -23,7 +23,7 @@ unitTest(
 unitTest({ permissions: { net: true } }, async function fetchProtocolError() {
   await assertRejects(
     async () => {
-      await fetch("file:///");
+      await fetch("ftp://localhost:21/a/file");
     },
     TypeError,
     "not supported",
@@ -1322,5 +1322,97 @@ unitTest(
         method: "HEAD",
         headers: { "": "value" },
       }), TypeError);
+  },
+);
+
+unitTest(
+  { permissions: { net: true, read: true } },
+  async function fetchSupportsHttp1Only() {
+    const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
+    const res = await fetch("https://localhost:5546/http_version", { client });
+    assert(res.ok);
+    assertEquals(await res.text(), "HTTP/1.1");
+    client.close();
+  },
+);
+
+unitTest(
+  { permissions: { net: true, read: true } },
+  async function fetchSupportsHttp2() {
+    const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
+    const res = await fetch("https://localhost:5547/http_version", { client });
+    assert(res.ok);
+    assertEquals(await res.text(), "HTTP/2.0");
+    client.close();
+  },
+);
+
+unitTest(
+  { permissions: { net: true, read: true } },
+  async function fetchPrefersHttp2() {
+    const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
+    const res = await fetch("https://localhost:5545/http_version", { client });
+    assert(res.ok);
+    assertEquals(await res.text(), "HTTP/2.0");
+    client.close();
+  },
+);
+
+unitTest(async function fetchFilePerm() {
+  await assertRejects(async () => {
+    await fetch(new URL("../testdata/subdir/json_1.json", import.meta.url));
+  }, Deno.errors.PermissionDenied);
+});
+
+unitTest(async function fetchFilePermDoesNotExist() {
+  await assertRejects(async () => {
+    await fetch(new URL("./bad.json", import.meta.url));
+  }, Deno.errors.PermissionDenied);
+});
+
+unitTest(
+  { permissions: { read: true } },
+  async function fetchFileBadMethod() {
+    await assertRejects(
+      async () => {
+        await fetch(
+          new URL("../testdata/subdir/json_1.json", import.meta.url),
+          {
+            method: "POST",
+          },
+        );
+      },
+      TypeError,
+      "Fetching files only supports the GET method. Received POST.",
+    );
+  },
+);
+
+unitTest(
+  { permissions: { read: true } },
+  async function fetchFileDoesNotExist() {
+    await assertRejects(
+      async () => {
+        await fetch(new URL("./bad.json", import.meta.url));
+      },
+      TypeError,
+    );
+  },
+);
+
+unitTest(
+  { permissions: { read: true } },
+  async function fetchFile() {
+    const res = await fetch(
+      new URL("../testdata/subdir/json_1.json", import.meta.url),
+    );
+    assert(res.ok);
+    const fixture = await Deno.readTextFile(
+      "cli/tests/testdata/subdir/json_1.json",
+    );
+    assertEquals(await res.text(), fixture);
   },
 );

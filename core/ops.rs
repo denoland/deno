@@ -6,9 +6,13 @@ use crate::gotham_state::GothamState;
 use crate::ops_metrics::OpsTracker;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
+use futures::future::maybe_done;
+use futures::future::FusedFuture;
+use futures::future::MaybeDone;
+use futures::ready;
+use futures::task::noop_waker;
 use futures::Future;
 use indexmap::IndexMap;
-use rusty_v8 as v8;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::RefCell;
@@ -17,10 +21,67 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::Context;
+use std::task::Poll;
+
+/// Wrapper around a Future, which causes that Future to be polled immediately.
+/// (Background: ops are stored in a `FuturesUnordered` structure which polls
+/// them, but without the `OpCall` wrapper this doesn't happen until the next
+/// turn of the event loop, which is too late for certain ops.)
+pub struct OpCall<T>(MaybeDone<Pin<Box<dyn Future<Output = T>>>>);
+
+impl<T> OpCall<T> {
+  /// Wraps a future, and polls the inner future immediately.
+  /// This should be the default choice for ops.
+  pub fn eager(fut: impl Future<Output = T> + 'static) -> Self {
+    let boxed = Box::pin(fut) as Pin<Box<dyn Future<Output = T>>>;
+    let mut inner = maybe_done(boxed);
+    let waker = noop_waker();
+    let mut cx = Context::from_waker(&waker);
+    let mut pinned = Pin::new(&mut inner);
+    let _ = pinned.as_mut().poll(&mut cx);
+    Self(inner)
+  }
+
+  /// Wraps a future; the inner future is polled the usual way (lazily).
+  pub fn lazy(fut: impl Future<Output = T> + 'static) -> Self {
+    let boxed = Box::pin(fut) as Pin<Box<dyn Future<Output = T>>>;
+    let inner = maybe_done(boxed);
+    Self(inner)
+  }
+
+  /// Create a future by specifying its output. This is basically the same as
+  /// `async { value }` or `futures::future::ready(value)`.
+  pub fn ready(value: T) -> Self {
+    Self(MaybeDone::Done(value))
+  }
+}
+
+impl<T> Future for OpCall<T> {
+  type Output = T;
+
+  fn poll(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Self::Output> {
+    let inner = unsafe { &mut self.get_unchecked_mut().0 };
+    let mut pinned = Pin::new(inner);
+    ready!(pinned.as_mut().poll(cx));
+    Poll::Ready(pinned.as_mut().take_output().unwrap())
+  }
+}
+
+impl<F> FusedFuture for OpCall<F>
+where
+  F: Future,
+{
+  fn is_terminated(&self) -> bool {
+    self.0.is_terminated()
+  }
+}
 
 pub type PromiseId = u64;
-pub type OpAsyncFuture =
-  Pin<Box<dyn Future<Output = (PromiseId, OpId, OpResult)>>>;
+pub type OpAsyncFuture = OpCall<(PromiseId, OpId, OpResult)>;
 pub type OpFn = dyn Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static;
 pub type OpId = usize;
 
@@ -79,6 +140,7 @@ pub struct OpError {
   #[serde(rename = "$err_class_name")]
   class_name: &'static str,
   message: String,
+  code: Option<&'static str>,
 }
 
 pub fn serialize_op_result<R: Serialize + 'static>(
@@ -90,6 +152,7 @@ pub fn serialize_op_result<R: Serialize + 'static>(
     Err(err) => OpResult::Err(OpError {
       class_name: (state.borrow().get_error_class_fn)(&err),
       message: err.to_string(),
+      code: crate::error_codes::get_error_code(&err),
     }),
   }
 }
@@ -110,7 +173,7 @@ impl OpState {
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
       tracker: OpsTracker {
-        ops: Vec::with_capacity(256),
+        ops: RefCell::new(Vec::with_capacity(256)),
       },
       gotham_state: Default::default(),
     }

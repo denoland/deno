@@ -9,19 +9,18 @@ itest!(globals {
 });
 
 itest!(fs_promises {
-  args: "run --compat --unstable -A compat/fs_promises.js",
+  args: "run --compat --unstable -A compat/fs_promises.mjs",
   output: "compat/fs_promises.out",
 });
 
 itest!(node_prefix_fs_promises {
-  args: "run --compat --unstable -A compat/node_fs_promises.js",
+  args: "run --compat --unstable -A compat/node_fs_promises.mjs",
   output: "compat/fs_promises.out",
 });
 
-itest!(existing_import_map {
-  args: "run --compat --unstable --import-map compat/existing_import_map.json compat/fs_promises.js",
-  output: "compat/existing_import_map.out",
-  exit_code: 1,
+itest!(compat_with_import_map_and_https_imports {
+  args: "run --quiet --compat --unstable -A --import-map=compat/import_map.json compat/import_map_https_imports.mjs",
+  output: "compat/import_map_https_imports.out",
 });
 
 #[test]
@@ -34,4 +33,21 @@ fn globals_in_repl() {
     false,
   );
   assert!(out.contains("true"));
+}
+
+#[test]
+fn node_compat_url() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    false,
+    vec!["repl", "--compat", "--unstable", "--quiet"],
+    None,
+    Some(vec![(
+      "DENO_NODE_COMPAT_URL".to_string(),
+      "file:///non_existent/".to_string(),
+    )]),
+    false,
+  );
+  assert!(out.is_empty());
+  assert!(!err.is_empty());
+  assert!(err.contains("file:///non_existent/node/global.ts"));
 }

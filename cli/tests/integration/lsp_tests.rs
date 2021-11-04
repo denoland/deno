@@ -431,7 +431,7 @@ fn lsp_hover_asset() {
       "deno/virtualTextDocument",
       json!({
         "textDocument": {
-          "uri": "deno:/asset//lib.deno.shared_globals.d.ts"
+          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -442,7 +442,7 @@ fn lsp_hover_asset() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": "deno:/asset//lib.es2015.symbol.wellknown.d.ts"
+          "uri": "deno:asset/lib.es2015.symbol.wellknown.d.ts"
         },
         "position": {
           "line": 109,
@@ -919,11 +919,11 @@ fn lsp_hover_dependency() {
       "range": {
         "start": {
           "line": 0,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 0,
-          "character": 61
+          "character": 62
         }
       }
     }))
@@ -953,11 +953,11 @@ fn lsp_hover_dependency() {
       "range": {
         "start": {
           "line": 3,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 3,
-          "character": 66
+          "character": 67
         }
       }
     }))
@@ -987,11 +987,11 @@ fn lsp_hover_dependency() {
       "range": {
         "start": {
           "line": 4,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 4,
-          "character": 56
+          "character": 57
         }
       }
     }))
@@ -1021,11 +1021,11 @@ fn lsp_hover_dependency() {
       "range": {
         "start": {
           "line": 5,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 5,
-          "character": 131
+          "character": 132
         }
       }
     }))
@@ -1055,11 +1055,11 @@ fn lsp_hover_dependency() {
       "range": {
         "start": {
           "line": 6,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 6,
-          "character": 32
+          "character": 33
         }
       }
     }))
@@ -1771,7 +1771,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "deno/virtualTextDocument",
       json!({
         "textDocument": {
-          "uri": "deno:/asset//lib.deno.shared_globals.d.ts"
+          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -1783,7 +1783,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "textDocument/codeLens",
       json!({
         "textDocument": {
-          "uri": "deno:/asset//lib.deno.shared_globals.d.ts"
+          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -2714,11 +2714,11 @@ fn lsp_cache_location() {
       "range": {
         "start": {
           "line": 0,
-          "character": 20
+          "character": 19
         },
         "end":{
           "line": 0,
-          "character": 61
+          "character": 62
         }
       }
     }))

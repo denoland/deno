@@ -1,0 +1,4 @@
+[WILDCARD]error: Uncaught Error: foo
+Warning Couldn't format source line: Column 31 is out of bounds (source may have changed at runtime)
+    at file:///[WILDCARD]/eval_context_conflicting_source.ts:1:31
+    at file:///[WILDCARD]/eval_context_throw_with_conflicting_source.ts:[WILDCARD]

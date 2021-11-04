@@ -198,6 +198,7 @@ impl WebWorkerHandle {
   pub async fn get_control_event(
     &self,
   ) -> Result<Option<WorkerControlEvent>, AnyError> {
+    #![allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
     let mut receiver = self.receiver.borrow_mut();
     Ok(receiver.next().await)
   }
@@ -317,13 +318,14 @@ impl WebWorker {
       deno_console::init(),
       deno_url::init(),
       deno_web::init(options.blob_store.clone(), Some(main_module.clone())),
-      deno_fetch::init::<Permissions>(
+      deno_fetch::init::<Permissions, deno_fetch::FsFetchHandler>(
         options.user_agent.clone(),
         options.root_cert_store.clone(),
         None,
         None,
         options.unsafely_ignore_certificate_errors.clone(),
         None,
+        deno_fetch::FsFetchHandler,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),

@@ -108,3 +108,31 @@ unitTest(
     );
   },
 );
+
+unitTest(
+  { permissions: { read: true, write: ["."] } },
+  async function symlinkNoFullWritePermissions() {
+    await assertRejects(
+      () => Deno.symlink("old", "new"),
+      Deno.errors.PermissionDenied,
+    );
+    assertThrows(
+      () => Deno.symlinkSync("old", "new"),
+      Deno.errors.PermissionDenied,
+    );
+  },
+);
+
+unitTest(
+  { permissions: { read: ["."], write: true } },
+  async function symlinkNoFullReadPermissions() {
+    await assertRejects(
+      () => Deno.symlink("old", "new"),
+      Deno.errors.PermissionDenied,
+    );
+    assertThrows(
+      () => Deno.symlinkSync("old", "new"),
+      Deno.errors.PermissionDenied,
+    );
+  },
+);

@@ -61,6 +61,8 @@ const TLS_CLIENT_AUTH_PORT: u16 = 4552;
 const BASIC_AUTH_REDIRECT_PORT: u16 = 4554;
 const TLS_PORT: u16 = 4557;
 const HTTPS_PORT: u16 = 5545;
+const H1_ONLY_PORT: u16 = 5546;
+const H2_ONLY_PORT: u16 = 5547;
 const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
@@ -290,10 +292,22 @@ async fn run_ws_close_server(addr: &SocketAddr) {
   }
 }
 
+enum SupportedHttpVersions {
+  All,
+  Http1Only,
+  Http2Only,
+}
+impl Default for SupportedHttpVersions {
+  fn default() -> SupportedHttpVersions {
+    SupportedHttpVersions::All
+  }
+}
+
 async fn get_tls_config(
   cert: &str,
   key: &str,
   ca: &str,
+  http_versions: SupportedHttpVersions,
 ) -> io::Result<Arc<rustls::ServerConfig>> {
   let cert_path = testdata_path().join(cert);
   let key_path = testdata_path().join(key);
@@ -336,6 +350,15 @@ async fn get_tls_config(
       let allow_client_auth =
         rustls::AllowAnyAnonymousOrAuthenticatedClient::new(root_cert_store);
       let mut config = rustls::ServerConfig::new(allow_client_auth);
+      match http_versions {
+        SupportedHttpVersions::All => {
+          config.set_protocols(&["h2".into(), "http/1.1".into()]);
+        }
+        SupportedHttpVersions::Http1Only => {}
+        SupportedHttpVersions::Http2Only => {
+          config.set_protocols(&["h2".into()]);
+        }
+      }
       config
         .set_single_cert(cert, key)
         .map_err(|e| {
@@ -354,9 +377,10 @@ async fn run_wss_server(addr: &SocketAddr) {
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
 
-  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
-    .await
-    .unwrap();
+  let tls_config =
+    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
+      .await
+      .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
   let listener = TcpListener::bind(addr).await.unwrap();
   println!("ready: wss"); // Eye catcher for HttpServerCount
@@ -396,9 +420,10 @@ async fn run_tls_client_auth_server() {
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
-    .await
-    .unwrap();
+  let tls_config =
+    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
+      .await
+      .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
 
   // Listen on ALL addresses that localhost can resolves to.
@@ -459,9 +484,10 @@ async fn run_tls_server() {
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
-    .await
-    .unwrap();
+  let tls_config =
+    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
+      .await
+      .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
 
   // Listen on ALL addresses that localhost can resolves to.
@@ -819,6 +845,10 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
         Ok(Response::new(Body::empty()))
       }
     }
+    (_, "/http_version") => {
+      let version = format!("{:?}", req.version());
+      Ok(Response::new(version.into()))
+    }
     _ => {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
@@ -959,9 +989,10 @@ async fn wrap_main_https_server() {
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
-    .await
-    .unwrap();
+  let tls_config =
+    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
+      .await
+      .unwrap();
   loop {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
@@ -993,15 +1024,106 @@ async fn wrap_main_https_server() {
   }
 }
 
+async fn wrap_https_h1_only_server() {
+  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  let tls_config = get_tls_config(
+    cert_file,
+    key_file,
+    ca_cert_file,
+    SupportedHttpVersions::Http1Only,
+  )
+  .await
+  .unwrap();
+  loop {
+    let tcp = TcpListener::bind(&main_server_https_addr)
+      .await
+      .expect("Cannot bind TCP");
+    println!("ready: https"); // Eye catcher for HttpServerCount
+    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
+    // Prepare a long-running future stream to accept and serve cients.
+    let incoming_tls_stream = async_stream::stream! {
+      loop {
+          let (socket, _) = tcp.accept().await?;
+          let stream = tls_acceptor.accept(socket);
+          yield stream.await;
+      }
+    }
+    .boxed();
+
+    let main_server_https_svc = make_service_fn(|_| async {
+      Ok::<_, Infallible>(service_fn(main_server))
+    });
+    let main_server_https = Server::builder(HyperAcceptor {
+      acceptor: incoming_tls_stream,
+    })
+    .http1_only(true)
+    .serve(main_server_https_svc);
+
+    //continue to prevent TLS error stopping the server
+    if main_server_https.await.is_err() {
+      continue;
+    }
+  }
+}
+
+async fn wrap_https_h2_only_server() {
+  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], H2_ONLY_PORT));
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  let tls_config = get_tls_config(
+    cert_file,
+    key_file,
+    ca_cert_file,
+    SupportedHttpVersions::Http2Only,
+  )
+  .await
+  .unwrap();
+  loop {
+    let tcp = TcpListener::bind(&main_server_https_addr)
+      .await
+      .expect("Cannot bind TCP");
+    println!("ready: https"); // Eye catcher for HttpServerCount
+    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
+    // Prepare a long-running future stream to accept and serve cients.
+    let incoming_tls_stream = async_stream::stream! {
+      loop {
+          let (socket, _) = tcp.accept().await?;
+          let stream = tls_acceptor.accept(socket);
+          yield stream.await;
+      }
+    }
+    .boxed();
+
+    let main_server_https_svc = make_service_fn(|_| async {
+      Ok::<_, Infallible>(service_fn(main_server))
+    });
+    let main_server_https = Server::builder(HyperAcceptor {
+      acceptor: incoming_tls_stream,
+    })
+    .http2_only(true)
+    .serve(main_server_https_svc);
+
+    //continue to prevent TLS error stopping the server
+    if main_server_https.await.is_err() {
+      continue;
+    }
+  }
+}
+
 async fn wrap_client_auth_https_server() {
   let main_server_https_addr =
     SocketAddr::from(([127, 0, 0, 1], HTTPS_CLIENT_AUTH_PORT));
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
-    .await
-    .unwrap();
+  let tls_config =
+    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
+      .await
+      .unwrap();
   loop {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
@@ -1078,6 +1200,8 @@ pub async fn run_all_servers() {
   let client_auth_server_https_fut = wrap_client_auth_https_server();
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
+  let h1_only_server_fut = wrap_https_h1_only_server();
+  let h2_only_server_fut = wrap_https_h2_only_server();
 
   let mut server_fut = async {
     futures::join!(
@@ -1096,6 +1220,8 @@ pub async fn run_all_servers() {
       main_server_fut,
       main_server_https_fut,
       client_auth_server_https_fut,
+      h1_only_server_fut,
+      h2_only_server_fut
     )
   }
   .boxed();

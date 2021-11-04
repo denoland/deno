@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use rusty_v8 as v8;
-
 use crate::bindings;
 use crate::error::generic_error;
 use crate::error::AnyError;
@@ -18,7 +16,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::convert::TryFrom;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -722,6 +719,7 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::ops::OpCall;
   use crate::serialize_op_result;
   use crate::JsRuntime;
   use crate::Op;
@@ -1009,7 +1007,7 @@ mod tests {
       let (control, _): (u8, ()) = payload.deserialize().unwrap();
       assert_eq!(control, 42);
       let resp = (0, 1, serialize_op_result(Ok(43), state));
-      Op::Async(Box::pin(futures::future::ready(resp)))
+      Op::Async(OpCall::ready(resp))
     };
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
