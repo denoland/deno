@@ -3,6 +3,7 @@
 use crate::bindings;
 use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
+use crate::error::get_custom_js_constructor;
 use crate::error::AnyError;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
@@ -1139,7 +1140,6 @@ impl JsRuntime {
 
   fn dynamic_import_reject(&mut self, id: ModuleLoadId, err: AnyError) {
     let module_map_rc = Self::module_map(self.v8_isolate());
-    let get_error_class_fn = self.op_state().borrow().get_error_class_fn;
     let scope = &mut self.handle_scope();
 
     let resolver_handle = module_map_rc
@@ -1152,23 +1152,31 @@ impl JsRuntime {
     let exception = err
       .downcast_ref::<ErrWithV8Handle>()
       .map(|err| err.get_handle(scope))
+      .or_else(|| {
+        if let Some(js_constructor) = get_custom_js_constructor(&err) {
+          if let Ok(err_class) = Self::execute_script_with_scope(
+            scope,
+            "<anonymous>",
+            js_constructor,
+          ) {
+            if let Ok(err_class) = v8::Local::<v8::Function>::try_from(
+              v8::Local::<v8::Value>::new(scope, err_class),
+            ) {
+              let message = v8::String::new(scope, &err.to_string()).unwrap();
+              return Some(
+                err_class
+                  .new_instance(scope, &[message.into()])
+                  .unwrap()
+                  .into(),
+              );
+            }
+          }
+        }
+        None
+      })
       .unwrap_or_else(|| {
         let message = err.to_string();
         let message = v8::String::new(scope, &message).unwrap();
-        if let Ok(err_class) = Self::execute_script_with_scope(
-          scope,
-          "<anonymous>",
-          get_error_class_fn(&err),
-        ) {
-          if let Ok(err_class) = v8::Local::<v8::Function>::try_from(
-            v8::Local::<v8::Value>::new(scope, err_class),
-          ) {
-            return err_class
-              .new_instance(scope, &[message.into()])
-              .unwrap()
-              .into();
-          }
-        }
         v8::Exception::type_error(scope, message)
       });
 

@@ -20,6 +20,7 @@ use crate::version;
 
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
+use deno_core::error::custom_error_with_js_constructor;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
@@ -517,23 +518,20 @@ impl ProcState {
           return Ok(module_source.clone());
         }
       } else {
-        let error_class = if self.flags.compat {
-          "Deno.compat.errors.ERR_MODULE_NOT_FOUND"
-        } else {
-          "TypeError"
-        };
+        let mut message = format!("Cannot load module \"{}\".", specifier);
         if maybe_referrer.is_some() && !is_dynamic {
           if let Some(span) = graph_data.resolved_map.get(&specifier) {
-            return Err(custom_error(
-              error_class,
-              format!("Cannot load module \"{}\".\n    at {}", specifier, span),
-            ));
+            message =
+              format!("Cannot load module \"{}\".\n    at {}", specifier, span);
           }
         }
-        return Err(custom_error(
-          error_class,
-          format!("Cannot load module \"{}\".", specifier),
-        ));
+        if self.flags.compat {
+          return Err(custom_error_with_js_constructor(
+            "Deno.compat.errors.ERR_MODULE_NOT_FOUND",
+            message,
+          ));
+        }
+        return Err(custom_error("NotFound", message));
       }
     }
 

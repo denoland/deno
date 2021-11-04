@@ -82,10 +82,50 @@ impl Display for CustomError {
 
 impl Error for CustomError {}
 
+pub fn custom_error_with_js_constructor(
+  js_constructor: &'static str,
+  message: impl Into<Cow<'static, str>>,
+) -> AnyError {
+  CustomErrorWithJsConstructor {
+    js_constructor,
+    message: message.into(),
+  }
+  .into()
+}
+
+#[derive(Debug)]
+struct CustomErrorWithJsConstructor {
+  js_constructor: &'static str,
+  message: Cow<'static, str>,
+}
+
+impl Display for CustomErrorWithJsConstructor {
+  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    f.write_str(&self.message)
+  }
+}
+
+impl Error for CustomErrorWithJsConstructor {}
+
 /// If this error was crated with `custom_error()`, return the specified error
 /// class name. In all other cases this function returns `None`.
 pub fn get_custom_error_class(error: &AnyError) -> Option<&'static str> {
-  error.downcast_ref::<CustomError>().map(|e| e.class)
+  error
+    .downcast_ref::<CustomError>()
+    .map(|e| e.class)
+    .or_else(|| {
+      error
+        .downcast_ref::<CustomErrorWithJsConstructor>()
+        .map(|e| e.js_constructor)
+    })
+}
+
+/// If this error was crated with `custom_error()`, return the specified js constructor
+/// class name. In all other cases this function returns `None`.
+pub fn get_custom_js_constructor(error: &AnyError) -> Option<&'static str> {
+  error
+    .downcast_ref::<CustomErrorWithJsConstructor>()
+    .map(|e| e.js_constructor)
 }
 
 /// A `JsError` represents an exception coming from V8, with stack frames and
