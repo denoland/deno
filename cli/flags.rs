@@ -1976,19 +1976,18 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None => vec![],
   };
   let rules = matches.is_present("rules");
-  let maybe_rules_tags = match matches.values_of("rules-tags") {
-    Some(f) => Some(f.map(String::from).collect()),
-    None => None,
-  };
+  let maybe_rules_tags = matches
+    .values_of("rules-tags")
+    .map(|f| f.map(String::from).collect());
 
-  let maybe_rules_include = match matches.values_of("rules-include") {
-    Some(f) => Some(f.map(String::from).collect()),
-    None => None,
-  };
-  let maybe_rules_exclude = match matches.values_of("rules-exclude") {
-    Some(f) => Some(f.map(String::from).collect()),
-    None => None,
-  };
+  let maybe_rules_include = matches
+    .values_of("rules-include")
+    .map(|f| f.map(String::from).collect());
+
+  let maybe_rules_exclude = matches
+    .values_of("rules-exclude")
+    .map(|f| f.map(String::from).collect());
+
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files,
