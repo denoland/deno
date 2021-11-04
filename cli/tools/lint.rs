@@ -501,7 +501,7 @@ pub(crate) fn get_configured_rules(
   }
 
   let (config_file_tags, config_file_include, config_file_exclude) =
-    if let Some(lint_config) = maybe_lint_config.as_ref() {
+    if let Some(lint_config) = maybe_lint_config {
       (
         lint_config.rules.tags.clone(),
         lint_config.rules.include.clone(),

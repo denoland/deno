@@ -1,8 +1,13 @@
 {
   "lint": {
     "rules": {
-      "exclude": ["camelcase"],
-      "include": ["ban-untagged-todo"]
+      "exclude": [
+        "camelcase"
+      ],
+      "include": [
+        "ban-untagged-todo"
+      ],
+      "tags": []
     }
   }
 }
