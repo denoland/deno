@@ -6,8 +6,28 @@
   const { pathFromURL } = window.__bootstrap.util;
   const { read, write } = window.__bootstrap.io;
   const { illegalConstructorKey } = window.__bootstrap.webUtil;
-  const { ArrayPrototypeMap, ObjectEntries, String, TypeError, Uint8Array } =
+  const { ArrayPrototypeMap, ObjectEntries, String, TypeError } =
     window.__bootstrap.primordials;
+
+  function createReadableIOStream(rid) {
+    return new ReadableStream({
+      async pull(controller) {
+        const view = controller.byobRequest.view;
+        const res = await read(rid, view);
+        if (res === null) {
+          core.close(rid);
+          controller.close();
+        } else {
+          controller.byobRequest.respond(res);
+        }
+      },
+      cancel() {
+        core.close(rid);
+      },
+      type: "bytes",
+      autoAllocateChunkSize: 16384,
+    });
+  }
 
   class Command {
     #options;
@@ -67,19 +87,19 @@
     }
 
     #stdinRid;
-    #stdin;
+    #stdin = null;
     get stdin() {
       return this.#stdin;
     }
 
     #stdoutRid;
-    #stdout;
+    #stdout = null;
     get stdout() {
       return this.#stdout;
     }
 
     #stderrRid;
-    #stderr;
+    #stderr = null;
     get stderr() {
       return this.#stderr;
     }
@@ -108,58 +128,22 @@
             core.tryClose(stdinRid);
           },
         });
-      } else {
-        this.#stdin = null;
       }
 
       if (stdoutRid !== null) {
         this.#stdoutRid = stdoutRid;
-        // TODO(@crowlkats): BYOB Stream
-        this.#stdout = new ReadableStream({
-          async pull(controller) {
-            const buf = new Uint8Array(16384);
-            const res = await read(stdoutRid, buf);
-            if (res === null) {
-              core.close(stdoutRid);
-              controller.close();
-            } else {
-              controller.enqueue(buf.subarray(0, res));
-            }
-          },
-          cancel() {
-            core.close(stdoutRid);
-          },
-        });
-      } else {
-        this.#stdout = null;
+        this.#stdout = createReadableIOStream(stdoutRid);
       }
 
       if (stderrRid !== null) {
         this.#stderrRid = stderrRid;
-        // TODO(@crowlkats): BYOB Stream
-        this.#stderr = new ReadableStream({
-          async pull(controller) {
-            const buf = new Uint8Array(16384);
-            const res = await read(stderrRid, buf);
-            if (res === null) {
-              core.close(stderrRid);
-              controller.close();
-            } else {
-              controller.enqueue(buf.subarray(0, res));
-            }
-          },
-          cancel() {
-            core.close(stderrRid);
-          },
-        });
-      } else {
-        this.#stderr = null;
+        this.#stderr = createReadableIOStream(stderrRid);
       }
     }
 
     get status() {
       const status = core.opSync("op_command_child_status", this.#rid);
-      // TODO(@crowlKats): change typings to return null instead of undefined for status.signal
+      // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
       status.signal ??= undefined;
       return status;
     }
@@ -171,7 +155,7 @@
         this.#stdinRid,
       );
       await this.stdin?.abort();
-      // TODO(@crowlKats): change typings to return null instead of undefined for status.signal
+      // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
       status.signal ??= undefined;
       return status;
     }
@@ -183,7 +167,7 @@
         stderrRid: this.#stderrRid,
       });
       await this.stdin?.abort();
-      // TODO(@crowlKats): change typings to return null instead of undefined for status.signal
+      // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
       res.status.signal ??= undefined;
       return res;
     }
