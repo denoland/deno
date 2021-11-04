@@ -1228,13 +1228,15 @@ itest!(jsx_import_source_pragma_with_config {
 });
 
 itest!(jsx_import_source_pragma_with_dev_config {
-  args: "run --reload --config jsx/deno-jsxdev.jsonc jsx_import_source_pragma.tsx",
+  args:
+    "run --reload --config jsx/deno-jsxdev.jsonc jsx_import_source_pragma.tsx",
   output: "jsx_import_source_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma {
-  args: "run --reload --config jsx/deno-jsx.jsonc jsx_import_source_no_pragma.tsx",
+  args:
+    "run --reload --config jsx/deno-jsx.jsonc jsx_import_source_no_pragma.tsx",
   output: "jsx_import_source.out",
   http_server: true,
 });

@@ -1,4 +1,4 @@
-// deno-lint-ignore-file no-implicit-any
+// deno-lint-ignore-file no-explicit-any
 export function jsx(
   _type: any,
   _props: any,
