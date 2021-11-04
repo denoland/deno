@@ -3,6 +3,7 @@ mod async_cancel;
 mod async_cell;
 mod bindings;
 pub mod error;
+mod error_codes;
 mod extensions;
 mod flags;
 mod gotham_state;

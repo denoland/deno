@@ -119,6 +119,10 @@
       const err = errorBuilder ? errorBuilder(res.message) : new Error(
         `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
       );
+      // Set .code if error was a known OS error, see error_codes.rs
+      if (res.code) {
+        err.code = res.code;
+      }
       // Strip unwrapOpResult() and errorBuilder() calls from stack trace
       ErrorCaptureStackTrace(err, unwrapOpResult);
       throw err;
