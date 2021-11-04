@@ -405,12 +405,24 @@ impl TestReporter for PrettyTestReporter {
       colors::green("ok").to_string()
     };
 
+    let get_steps_text = |count: usize| -> String {
+      if count == 0 {
+        String::new()
+      } else if count == 1 {
+        " (1 step)".to_string()
+      } else {
+        format!(" ({} steps)", count)
+      }
+    };
     println!(
-      "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
       status,
-      summary.passed + summary.passed_steps + summary.pending_steps,
-      summary.failed + summary.failed_steps,
-      summary.ignored + summary.ignored_steps,
+      summary.passed,
+      get_steps_text(summary.passed_steps),
+      summary.failed,
+      get_steps_text(summary.failed_steps + summary.pending_steps),
+      summary.ignored,
+      get_steps_text(summary.ignored_steps),
       summary.measured,
       summary.filtered_out,
       colors::gray(human_elapsed(elapsed.as_millis())),
