@@ -121,9 +121,9 @@ pub struct LintFlags {
   pub files: Vec<PathBuf>,
   pub ignore: Vec<PathBuf>,
   pub rules: bool,
-  pub rules_tags: Vec<String>,
-  pub rules_include: Vec<String>,
-  pub rules_exclude: Vec<String>,
+  pub maybe_rules_tags: Option<Vec<String>>,
+  pub maybe_rules_include: Option<Vec<String>>,
+  pub maybe_rules_exclude: Option<Vec<String>>,
   pub json: bool,
 }
 
@@ -1976,25 +1976,26 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None => vec![],
   };
   let rules = matches.is_present("rules");
-  let rules_tags = match matches.values_of("rules-tags") {
-    Some(f) => f.map(String::from).collect(),
-    None => vec![],
+  let maybe_rules_tags = match matches.values_of("rules-tags") {
+    Some(f) => Some(f.map(String::from).collect()),
+    None => None,
   };
-  let rules_include = match matches.values_of("rules-include") {
-    Some(f) => f.map(String::from).collect(),
-    None => vec![],
+
+  let maybe_rules_include = match matches.values_of("rules-include") {
+    Some(f) => Some(f.map(String::from).collect()),
+    None => None,
   };
-  let rules_exclude = match matches.values_of("rules-exclude") {
-    Some(f) => f.map(String::from).collect(),
-    None => vec![],
+  let maybe_rules_exclude = match matches.values_of("rules-exclude") {
+    Some(f) => Some(f.map(String::from).collect()),
+    None => None,
   };
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files,
     rules,
-    rules_tags,
-    rules_include,
-    rules_exclude,
+    maybe_rules_tags,
+    maybe_rules_include,
+    maybe_rules_exclude,
     ignore,
     json,
   });
@@ -2826,9 +2827,9 @@ mod tests {
             PathBuf::from("script_2.ts")
           ],
           rules: false,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: false,
           ignore: vec![],
         }),
@@ -2844,9 +2845,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![],
           rules: false,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: false,
           ignore: vec![
             PathBuf::from("script_1.ts"),
@@ -2864,9 +2865,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![],
           rules: true,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: false,
           ignore: vec![],
         }),
@@ -2887,9 +2888,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![],
           rules: false,
-          rules_tags: svec![""],
-          rules_include: svec!["ban-untagged-todo", "no-undef"],
-          rules_exclude: svec!["no-const-assign"],
+          maybe_rules_tags: Some(svec![""]),
+          maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
+          maybe_rules_exclude: Some(svec!["no-const-assign"]),
           json: false,
           ignore: vec![],
         }),
@@ -2904,9 +2905,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![PathBuf::from("script_1.ts")],
           rules: false,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: true,
           ignore: vec![],
         }),
@@ -2928,9 +2929,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![PathBuf::from("script_1.ts")],
           rules: false,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: true,
           ignore: vec![],
         }),
