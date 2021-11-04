@@ -1367,13 +1367,6 @@ itest!(error_import_map_unable_to_load {
   exit_code: 1,
 });
 
-// This test ensure that useUnknownInCatchVariables is enabled by default.
-itest!(use_unknown_in_catch_variables {
-  args: "run useUnknownInCatchVariables.ts",
-  output: "useUnknownInCatchVariables.ts.out",
-  exit_code: 1,
-});
-
 // Test that setting `self` in the main thread to some other value doesn't break
 // the world.
 itest!(replace_self {
