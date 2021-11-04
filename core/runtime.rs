@@ -1159,9 +1159,8 @@ impl JsRuntime {
             "<anonymous>",
             js_constructor,
           ) {
-            if let Ok(err_class) = v8::Local::<v8::Function>::try_from(
-              v8::Local::<v8::Value>::new(scope, err_class),
-            ) {
+            let value = v8::Local::<v8::Value>::new(scope, err_class);
+            if let Ok(err_class) = v8::Local::<v8::Function>::try_from(value) {
               let message = v8::String::new(scope, &err.to_string()).unwrap();
               return Some(
                 err_class

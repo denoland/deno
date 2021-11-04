@@ -120,8 +120,9 @@ pub fn get_custom_error_class(error: &AnyError) -> Option<&'static str> {
     })
 }
 
-/// If this error was crated with `custom_error()`, return the specified js constructor
-/// class name. In all other cases this function returns `None`.
+/// If this error was crated with `custom_error_with_js_constructor()`, return
+/// the specified js constructor class name. In all other cases this function
+/// returns `None`.
 pub fn get_custom_js_constructor(error: &AnyError) -> Option<&'static str> {
   error
     .downcast_ref::<CustomErrorWithJsConstructor>()
