@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::analysis;
 use super::language_server;
 use super::lsp_custom;
 use super::tsc;
@@ -85,21 +84,34 @@ async fn check_auto_config_registry(
   }
 }
 
+/// Ranges from the graph for specifiers include the leading and trailing quote,
+/// which we want to ignore when replacing text.
+fn to_narrow_lsp_range(range: &deno_graph::Range) -> lsp::Range {
+  lsp::Range {
+    start: lsp::Position {
+      line: range.start.line as u32,
+      character: (range.start.character + 1) as u32,
+    },
+    end: lsp::Position {
+      line: range.end.line as u32,
+      character: (range.end.character - 1) as u32,
+    },
+  }
+}
+
 /// Given a specifier, a position, and a snapshot, optionally return a
 /// completion response, which will be valid import completions for the specific
 /// context.
-pub async fn get_import_completions(
+pub(crate) async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   state_snapshot: &language_server::StateSnapshot,
   client: lspower::Client,
 ) -> Option<lsp::CompletionResponse> {
-  let analysis::DependencyRange {
-    range,
-    specifier: text,
-  } = state_snapshot
+  let (text, _, range) = state_snapshot
     .documents
-    .is_specifier_position(specifier, position)?;
+    .get_maybe_dependency(specifier, position)?;
+  let range = to_narrow_lsp_range(&range);
   // completions for local relative modules
   if text.starts_with("./") || text.starts_with("../") {
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
@@ -258,7 +270,7 @@ fn get_workspace_completions(
   range: &lsp::Range,
   state_snapshot: &language_server::StateSnapshot,
 ) -> Vec<lsp::CompletionItem> {
-  let workspace_specifiers = state_snapshot.sources.specifiers();
+  let workspace_specifiers = state_snapshot.documents.specifiers(false, true);
   let specifier_strings =
     get_relative_specifiers(specifier, workspace_specifiers);
   specifier_strings
@@ -399,11 +411,8 @@ fn relative_specifier(
 mod tests {
   use super::*;
   use crate::http_cache::HttpCache;
-  use crate::lsp::analysis;
-  use crate::lsp::documents::DocumentCache;
+  use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
-  use crate::lsp::sources::Sources;
-  use deno_ast::MediaType;
   use deno_core::resolve_url;
   use std::collections::HashMap;
   use std::path::Path;
@@ -415,37 +424,17 @@ mod tests {
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> language_server::StateSnapshot {
-    let mut documents = DocumentCache::default();
+    let documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(
         specifier.clone(),
         *version,
-        *language_id,
+        language_id.clone(),
         Arc::new(source.to_string()),
       );
-      let media_type = MediaType::from(&specifier);
-      let parsed_module = documents
-        .get(&specifier)
-        .unwrap()
-        .source()
-        .module()
-        .map(|r| r.as_ref())
-        .unwrap()
-        .unwrap();
-      let (deps, _) = analysis::analyze_dependencies(
-        &specifier,
-        media_type,
-        parsed_module,
-        &None,
-      );
-      let dep_ranges = analysis::analyze_dependency_ranges(parsed_module).ok();
-      documents
-        .set_dependencies(&specifier, Some(deps), dep_ranges)
-        .unwrap();
     }
-    let sources = Sources::new(location);
     let http_cache = HttpCache::new(location);
     for (specifier, source) in source_fixtures {
       let specifier =
@@ -454,13 +443,12 @@ mod tests {
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
       assert!(
-        sources.get_source(&specifier).is_some(),
+        documents.content(&specifier).is_some(),
         "source could not be setup"
       );
     }
     language_server::StateSnapshot {
       documents,
-      sources,
       ..Default::default()
     }
   }

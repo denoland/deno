@@ -73,7 +73,7 @@ unitTest(function webAssemblyExists() {
 
 declare global {
   namespace Deno {
-    // deno-lint-ignore no-explicit-any
+    // deno-lint-ignore no-explicit-any, no-var
     var core: any;
   }
 }
@@ -121,4 +121,14 @@ unitTest(async function windowQueueMicrotask() {
   setTimeout(resolve2!, 0);
   await p1;
   await p2;
+});
+
+unitTest(function webApiGlobalThis() {
+  assert(globalThis.FormData !== null);
+  assert(globalThis.TextEncoder !== null);
+  assert(globalThis.TextEncoderStream !== null);
+  assert(globalThis.TextDecoder !== null);
+  assert(globalThis.TextDecoderStream !== null);
+  assert(globalThis.CountQueuingStrategy !== null);
+  assert(globalThis.ByteLengthQueuingStrategy !== null);
 });

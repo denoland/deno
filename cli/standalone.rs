@@ -29,7 +29,6 @@ use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use deno_tls::create_default_root_cert_store;
 use log::Level;
-use std::convert::TryInto;
 use std::env::current_exe;
 use std::fs::File;
 use std::io::BufReader;

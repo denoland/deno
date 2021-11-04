@@ -88,6 +88,7 @@
     listen: __bootstrap.net.listen,
     connectTls: __bootstrap.tls.connectTls,
     listenTls: __bootstrap.tls.listenTls,
+    startTls: __bootstrap.tls.startTls,
     shutdown: __bootstrap.net.shutdown,
     fstatSync: __bootstrap.fs.fstatSync,
     fstat: __bootstrap.fs.fstat,
@@ -109,9 +110,8 @@
   };
 
   __bootstrap.denoNsUnstable = {
-    signal: __bootstrap.signals.signal,
-    Signal: __bootstrap.signals.Signal,
-    SignalStream: __bootstrap.signals.SignalStream,
+    addSignalListener: __bootstrap.signals.addSignalListener,
+    removeSignalListener: __bootstrap.signals.removeSignalListener,
     emit: __bootstrap.compilerApi.emit,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
@@ -126,7 +126,6 @@
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
-    startTls: __bootstrap.tls.startTls,
     umask: __bootstrap.fs.umask,
     futime: __bootstrap.fs.futime,
     futimeSync: __bootstrap.fs.futimeSync,

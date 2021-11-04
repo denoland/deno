@@ -19,6 +19,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use hyper::body::HttpBody;
 use hyper::header::CONNECTION;
@@ -331,7 +332,9 @@ fn is_websocket_request(req: &hyper::Request<hyper::Body>) -> bool {
     && req.method() == hyper::Method::GET
     && req.headers().contains_key(&SEC_WEBSOCKET_KEY)
     && header(req.headers(), &SEC_WEBSOCKET_VERSION) == b"13"
-    && header(req.headers(), &UPGRADE).eq_ignore_ascii_case(b"websocket")
+    && header(req.headers(), &UPGRADE)
+      .split(|c| *c == b' ' || *c == b',')
+      .any(|token| token.eq_ignore_ascii_case(b"websocket"))
     && header(req.headers(), &CONNECTION)
       .split(|c| *c == b' ' || *c == b',')
       .any(|token| token.eq_ignore_ascii_case(b"upgrade"))
@@ -400,7 +403,7 @@ struct RespondArgs(
 async fn op_http_response(
   state: Rc<RefCell<OpState>>,
   args: RespondArgs,
-  data: Option<ZeroCopyBuf>,
+  data: Option<StringOrBuffer>,
 ) -> Result<Option<ResourceId>, AnyError> {
   let RespondArgs(rid, status, headers) = args;
 
@@ -426,15 +429,13 @@ async fn op_http_response(
     builder = builder.header(key.as_ref(), value.as_ref());
   }
 
-  let res;
-  let maybe_response_body_rid = if let Some(d) = data {
+  let (maybe_response_body_rid, res) = if let Some(d) = data {
     // If a body is passed, we use it, and don't return a body for streaming.
-    res = builder.body(Vec::from(&*d).into())?;
-    None
+    (None, builder.body(d.into_bytes().into())?)
   } else {
     // If no body is passed, we return a writer for streaming the body.
     let (sender, body) = Body::channel();
-    res = builder.body(body)?;
+    let res = builder.body(body)?;
 
     let response_body_rid =
       state.borrow_mut().resource_table.add(ResponseBodyResource {
@@ -442,7 +443,7 @@ async fn op_http_response(
         conn_rid,
       });
 
-    Some(response_body_rid)
+    (Some(response_body_rid), res)
   };
 
   // oneshot::Sender::send(v) returns |v| on error, not an error object.

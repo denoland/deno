@@ -1,5 +1,11 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  delay,
+  unitTest,
+} from "./test_util.ts";
 
 // TODO(ry) Add more tests to specify format.
 
@@ -36,10 +42,18 @@ async function getTwoEvents(
   return events;
 }
 
+async function makeTempDir(): Promise<string> {
+  const testDir = await Deno.makeTempDir();
+  // The watcher sometimes witnesses the creation of it's own root
+  // directory. Delay a bit.
+  await delay(100);
+  return testDir;
+}
+
 unitTest(
   { permissions: { read: true, write: true } },
   async function watchFsBasic() {
-    const testDir = Deno.makeTempDirSync();
+    const testDir = await makeTempDir();
     const iter = Deno.watchFs(testDir);
 
     // Asynchornously capture two fs events.
@@ -66,7 +80,7 @@ unitTest(
 unitTest(
   { permissions: { read: true, write: true } },
   async function watchFsReturn() {
-    const testDir = Deno.makeTempDirSync();
+    const testDir = await makeTempDir();
     const iter = Deno.watchFs(testDir);
 
     // Asynchronously loop events.
@@ -84,14 +98,14 @@ unitTest(
 unitTest(
   { permissions: { read: true, write: true } },
   async function watchFsClose() {
-    const testDir = Deno.makeTempDirSync();
+    const testDir = await makeTempDir();
     const iter = Deno.watchFs(testDir);
 
     // Asynchronously loop events.
     const eventsPromise = getTwoEvents(iter);
 
     // Close the watcher.
-    await iter.close();
+    iter.close();
 
     // Expect zero events.
     const events = await eventsPromise;

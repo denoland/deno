@@ -13,7 +13,6 @@ use futures::ready;
 use futures::task::noop_waker;
 use futures::Future;
 use indexmap::IndexMap;
-use rusty_v8 as v8;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::RefCell;
@@ -172,7 +171,7 @@ impl OpState {
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
       tracker: OpsTracker {
-        ops: Vec::with_capacity(256),
+        ops: RefCell::new(Vec::with_capacity(256)),
       },
       gotham_state: Default::default(),
     }

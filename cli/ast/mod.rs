@@ -24,7 +24,7 @@ use deno_ast::swc::transforms::hygiene;
 use deno_ast::swc::transforms::pass::Optional;
 use deno_ast::swc::transforms::proposals;
 use deno_ast::swc::transforms::react;
-use deno_ast::swc::transforms::resolver::ts_resolver;
+use deno_ast::swc::transforms::resolver_with_mark;
 use deno_ast::swc::transforms::typescript;
 use deno_ast::swc::visit::FoldWith;
 use deno_ast::Diagnostic;
@@ -182,6 +182,8 @@ fn strip_config_from_emit_options(
   options: &EmitOptions,
 ) -> typescript::strip::Config {
   typescript::strip::Config {
+    pragma: Some(options.jsx_factory.clone()),
+    pragma_frag: Some(options.jsx_fragment_factory.clone()),
     import_not_used_as_values: match options.imports_not_used_as_values {
       ImportsNotUsedAsValues::Remove => {
         typescript::strip::ImportsNotUsedAsValues::Remove
@@ -201,6 +203,27 @@ fn strip_config_from_emit_options(
   }
 }
 
+/// Implements a configuration trait for source maps that reflects the logic
+/// to embed sources in the source map or not.
+#[derive(Debug)]
+pub(crate) struct SourceMapConfig {
+  pub inline_sources: bool,
+}
+
+impl deno_ast::swc::common::source_map::SourceMapGenConfig for SourceMapConfig {
+  fn file_name_to_source(&self, f: &FileName) -> String {
+    f.to_string()
+  }
+
+  fn inline_sources_content(&self, f: &FileName) -> bool {
+    match f {
+      FileName::Real(..) | FileName::Custom(..) => false,
+      FileName::Url(..) => self.inline_sources,
+      _ => true,
+    }
+  }
+}
+
 /// Transform a TypeScript file into a JavaScript file, based on the supplied
 /// options.
 ///
@@ -211,6 +234,9 @@ pub fn transpile(
 ) -> Result<(String, Option<String>), AnyError> {
   let program: Program = (*parsed_source.program()).clone();
   let source_map = Rc::new(SourceMap::default());
+  let source_map_config = SourceMapConfig {
+    inline_sources: options.inline_sources,
+  };
   let specifier = resolve_url_or_path(parsed_source.specifier())?;
   let file_name = FileName::Url(specifier);
   source_map
@@ -219,41 +245,13 @@ pub fn transpile(
   let globals = Globals::new();
   deno_ast::swc::common::GLOBALS.set(&globals, || {
     let top_level_mark = Mark::fresh(Mark::root());
-    let jsx_pass = chain!(
-      ts_resolver(top_level_mark),
-      react::react(
-        source_map.clone(),
-        Some(&comments),
-        react::Options {
-          pragma: options.jsx_factory.clone(),
-          pragma_frag: options.jsx_fragment_factory.clone(),
-          // this will use `Object.assign()` instead of the `_extends` helper
-          // when spreading props.
-          use_builtins: true,
-          ..Default::default()
-        },
-        top_level_mark,
-      ),
+    let module = fold_program(
+      program,
+      options,
+      source_map.clone(),
+      &comments,
+      top_level_mark,
     );
-    let mut passes = chain!(
-      Optional::new(jsx_pass, options.transform_jsx),
-      Optional::new(transforms::DownlevelImportsFolder, options.repl_imports),
-      Optional::new(transforms::StripExportsFolder, options.repl_imports),
-      proposals::decorators::decorators(proposals::decorators::Config {
-        legacy: true,
-        emit_metadata: options.emit_metadata
-      }),
-      helpers::inject_helpers(),
-      typescript::strip::strip_with_config(strip_config_from_emit_options(
-        options
-      )),
-      fixer(Some(&comments)),
-      hygiene(),
-    );
-
-    let program = helpers::HELPERS.set(&helpers::Helpers::new(false), || {
-      program.fold_with(&mut passes)
-    });
 
     let mut src_map_buf = vec![];
     let mut buf = vec![];
@@ -271,14 +269,14 @@ pub fn transpile(
         cm: source_map.clone(),
         wr: writer,
       };
-      program.emit_with(&mut emitter)?;
+      module.emit_with(&mut emitter)?;
     }
     let mut src = String::from_utf8(buf)?;
     let mut map: Option<String> = None;
     {
       let mut buf = Vec::new();
       source_map
-        .build_source_map_from(&mut src_map_buf, None)
+        .build_source_map_with_config(&mut src_map_buf, None, source_map_config)
         .to_writer(&mut buf)?;
 
       if options.inline_source_map {
@@ -299,8 +297,7 @@ pub fn transpile_module(
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
-  emit_options: &EmitOptions,
-  globals: &Globals,
+  options: &EmitOptions,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<deno_ast::swc::common::SourceFile>, Module), AnyError> {
   let source = strip_bom(source);
@@ -314,52 +311,85 @@ pub fn transpile_module(
   let module = parser.parse_module().map_err(|err| {
     let location = cm.lookup_char_pos(err.span().lo);
     Diagnostic {
+      specifier: specifier.to_string(),
+      span: err.span(),
       display_position: LineAndColumnDisplay {
         line_number: location.line,
         column_number: location.col_display + 1,
       },
-      specifier: specifier.to_string(),
-      message: err.into_kind().msg().to_string(),
+      kind: err.into_kind(),
     }
   })?;
 
-  deno_ast::swc::common::GLOBALS.set(globals, || {
-    let top_level_mark = Mark::fresh(Mark::root());
-    let jsx_pass = chain!(
-      ts_resolver(top_level_mark),
-      react::react(
-        cm,
-        Some(&comments),
-        react::Options {
-          pragma: emit_options.jsx_factory.clone(),
-          pragma_frag: emit_options.jsx_fragment_factory.clone(),
-          // this will use `Object.assign()` instead of the `_extends` helper
-          // when spreading props.
-          use_builtins: true,
-          ..Default::default()
-        },
-        top_level_mark,
-      ),
-    );
-    let mut passes = chain!(
-      Optional::new(jsx_pass, emit_options.transform_jsx),
-      proposals::decorators::decorators(proposals::decorators::Config {
-        legacy: true,
-        emit_metadata: emit_options.emit_metadata
-      }),
-      helpers::inject_helpers(),
+  let top_level_mark = Mark::fresh(Mark::root());
+  let program = fold_program(
+    Program::Module(module),
+    options,
+    cm,
+    &comments,
+    top_level_mark,
+  );
+  let module = match program {
+    Program::Module(module) => module,
+    _ => unreachable!(),
+  };
+
+  Ok((source_file, module))
+}
+
+fn fold_program(
+  program: Program,
+  options: &EmitOptions,
+  source_map: Rc<SourceMap>,
+  comments: &SingleThreadedComments,
+  top_level_mark: Mark,
+) -> Program {
+  let jsx_pass = chain!(
+    resolver_with_mark(top_level_mark),
+    react::react(
+      source_map.clone(),
+      Some(comments),
+      react::Options {
+        pragma: options.jsx_factory.clone(),
+        pragma_frag: options.jsx_fragment_factory.clone(),
+        // this will use `Object.assign()` instead of the `_extends` helper
+        // when spreading props.
+        use_builtins: true,
+        ..Default::default()
+      },
+      top_level_mark,
+    ),
+  );
+  let mut passes = chain!(
+    Optional::new(transforms::DownlevelImportsFolder, options.repl_imports),
+    Optional::new(transforms::StripExportsFolder, options.repl_imports),
+    proposals::decorators::decorators(proposals::decorators::Config {
+      legacy: true,
+      emit_metadata: options.emit_metadata
+    }),
+    helpers::inject_helpers(),
+    Optional::new(
       typescript::strip::strip_with_config(strip_config_from_emit_options(
-        emit_options
+        options
       )),
-      fixer(Some(&comments)),
-      hygiene(),
-    );
+      !options.transform_jsx
+    ),
+    Optional::new(
+      typescript::strip::strip_with_jsx(
+        source_map,
+        strip_config_from_emit_options(options),
+        comments,
+        top_level_mark
+      ),
+      options.transform_jsx
+    ),
+    Optional::new(jsx_pass, options.transform_jsx),
+    fixer(Some(comments)),
+    hygiene(),
+  );
 
-    let module = helpers::HELPERS.set(&helpers::Helpers::new(false), || {
-      module.fold_with(&mut passes)
-    });
-
-    Ok((source_file, module))
+  helpers::HELPERS.set(&helpers::Helpers::new(false), || {
+    program.fold_with(&mut passes)
   })
 }
 
@@ -432,6 +462,37 @@ mod tests {
     let (code, _) = transpile(&module, &EmitOptions::default())
       .expect("could not strip types");
     assert!(code.contains("React.createElement(\"div\", null"));
+  }
+
+  #[test]
+  fn test_transpile_jsx_pragma() {
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
+      .expect("could not resolve specifier");
+    let source = r#"
+/** @jsx h */
+/** @jsxFrag Fragment */
+import { h, Fragment } from "https://deno.land/x/mod.ts";
+
+function App() {
+  return (
+    <div><></></div>
+  );
+}"#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      source: SourceTextInfo::from_string(source.to_string()),
+      media_type: deno_ast::MediaType::Jsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+    let (code, _) = transpile(&module, &EmitOptions::default()).unwrap();
+    let expected = r#"/** @jsx h */ /** @jsxFrag Fragment */ import { h, Fragment } from "https://deno.land/x/mod.ts";
+function App() {
+    return(/*#__PURE__*/ h("div", null, /*#__PURE__*/ h(Fragment, null)));
+}"#;
+    assert_eq!(&code[..expected.len()], expected);
   }
 
   #[test]

@@ -134,6 +134,145 @@ declare namespace Deno {
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
+
+    /** Specifies the permissions that should be used to run the test.
+     * Set this to "inherit" to keep the calling thread's permissions.
+     * Set this to "none" to revoke all permissions.
+     *
+     * Defaults to "inherit".
+     */
+    permissions?: "inherit" | "none" | {
+      /** Specifies if the `net` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `env` permission will be inherited.
+       * If set to `true`, the global `net` permission will be requested.
+       * If set to `false`, the global `net` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      env?: "inherit" | boolean | string[];
+
+      /** Specifies if the `hrtime` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `hrtime` permission will be inherited.
+       * If set to `true`, the global `hrtime` permission will be requested.
+       * If set to `false`, the global `hrtime` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      hrtime?: "inherit" | boolean;
+
+      /** Specifies if the `net` permission should be requested or revoked.
+       * if set to `"inherit"`, the current `net` permission will be inherited.
+       * if set to `true`, the global `net` permission will be requested.
+       * if set to `false`, the global `net` permission will be revoked.
+       * if set to `string[]`, the `net` permission will be requested with the
+       * specified host strings with the format `"<host>[:<port>]`.
+       *
+       * Defaults to "inherit".
+       *
+       * Examples:
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "inherit",
+       *   permissions: {
+       *     net: "inherit",
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" })
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "true",
+       *   permissions: {
+       *     net: true,
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" });
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "false",
+       *   permissions: {
+       *     net: false,
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" });
+       *     assertEquals(status.state, "denied");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "localhost:8080",
+       *   permissions: {
+       *     net: ["localhost:8080"],
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       */
+      net?: "inherit" | boolean | string[];
+
+      /** Specifies if the `ffi` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `ffi` permission will be inherited.
+       * If set to `true`, the global `ffi` permission will be requested.
+       * If set to `false`, the global `ffi` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      ffi?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `read` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `read` permission will be inherited.
+       * If set to `true`, the global `read` permission will be requested.
+       * If set to `false`, the global `read` permission will be revoked.
+       * If set to `Array<string | URL>`, the `read` permission will be requested with the
+       * specified file paths.
+       *
+       * Defaults to "inherit".
+       */
+      read?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `run` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `run` permission will be inherited.
+       * If set to `true`, the global `run` permission will be requested.
+       * If set to `false`, the global `run` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      run?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `write` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `write` permission will be inherited.
+       * If set to `true`, the global `write` permission will be requested.
+       * If set to `false`, the global `write` permission will be revoked.
+       * If set to `Array<string | URL>`, the `write` permission will be requested with the
+       * specified file paths.
+       *
+       * Defaults to "inherit".
+       */
+      write?: "inherit" | boolean | Array<string | URL>;
+    };
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -426,8 +565,8 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use `copy` from https://deno.land/std/io/util.ts instead.
-   * `Deno.copy` will be removed in Deno 2.0.
+   * @deprecated Use `copy` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.copy` will be removed in Deno 2.0.
    *
    * Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
    * an error occurs. It resolves to the number of bytes copied or rejects with
@@ -453,7 +592,9 @@ declare namespace Deno {
   ): Promise<number>;
 
   /**
-   * @deprecated Use iter from https://deno.land/std/io/util.ts instead. Deno.iter will be removed in Deno 2.0.
+   * @deprecated Use `iterateReader` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iter` will be
+   * removed in Deno 2.0.
    *
    * Turns a Reader, `r`, into an async iterator.
    *
@@ -492,7 +633,9 @@ declare namespace Deno {
   ): AsyncIterableIterator<Uint8Array>;
 
   /**
-   * @deprecated Use iterSync from https://deno.land/std/io/util.ts instead. Deno.iterSync will be removed in Deno 2.0.
+   * @deprecated Use `iterateReaderSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iterSync` will
+   * be removed in Deno 2.0.
    *
    * Turns a ReaderSync, `r`, into an iterator.
    *
@@ -978,7 +1121,8 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use readAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
+   * @deprecated Use `readAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.readAll` will be removed in Deno 2.0.
    *
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
@@ -1002,7 +1146,9 @@ declare namespace Deno {
   export function readAll(r: Reader): Promise<Uint8Array>;
 
   /**
-   * @deprecated Use readAllSync from https://deno.land/std/io/util.ts instead. Deno.readAllSync will be removed in Deno 2.0.
+   * @deprecated Use `readAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.readAllSync`
+   * will be removed in Deno 2.0.
    *
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
@@ -1026,7 +1172,8 @@ declare namespace Deno {
   export function readAllSync(r: ReaderSync): Uint8Array;
 
   /**
-   * @deprecated Use writeAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
+   * @deprecated Use `writeAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.writeAll` will be removed in Deno 2.0.
    *
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
@@ -1055,7 +1202,9 @@ declare namespace Deno {
   export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
 
   /**
-   * @deprecated Use writeAllSync from https://deno.land/std/io/util.ts instead. Deno.writeAllSync will be removed in Deno 2.0.
+   * @deprecated Use `writeAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.writeAllSync`
+   * will be removed in Deno 2.0.
    *
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
@@ -1967,6 +2116,12 @@ declare namespace Deno {
     close(): void;
 
     /** Send a signal to process.
+     *
+     * ```ts
+     * const p = Deno.run({ cmd: [ "sleep", "20" ]});
+     * p.kill("SIGTERM");
+     * p.close();
+     * ```
      */
     kill(signo: Signal): void;
   }
@@ -2379,7 +2534,7 @@ declare namespace Deno {
    * Deno.symlinkSync("old/name", "new/name");
    * ```
    *
-   * Requires `allow-write` permission. */
+   * Requires full `allow-read` and `allow-write` permissions. */
   export function symlinkSync(
     oldpath: string | URL,
     newpath: string | URL,
@@ -2396,7 +2551,7 @@ declare namespace Deno {
    * await Deno.symlink("old/name", "new/name");
    * ```
    *
-   * Requires `allow-write` permission. */
+   * Requires full `allow-read` and `allow-write` permissions. */
   export function symlink(
     oldpath: string | URL,
     newpath: string | URL,

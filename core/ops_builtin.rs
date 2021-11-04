@@ -98,7 +98,7 @@ pub fn op_print(
   Ok(())
 }
 
-pub struct WasmStreamingResource(pub(crate) RefCell<rusty_v8::WasmStreaming>);
+pub struct WasmStreamingResource(pub(crate) RefCell<v8::WasmStreaming>);
 
 impl Resource for WasmStreamingResource {
   fn close(self: Rc<Self>) {
