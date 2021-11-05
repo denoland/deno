@@ -140,6 +140,7 @@ pub struct OpError {
   #[serde(rename = "$err_class_name")]
   class_name: &'static str,
   message: String,
+  code: Option<&'static str>,
 }
 
 pub fn serialize_op_result<R: Serialize + 'static>(
@@ -151,6 +152,7 @@ pub fn serialize_op_result<R: Serialize + 'static>(
     Err(err) => OpResult::Err(OpError {
       class_name: (state.borrow().get_error_class_fn)(&err),
       message: err.to_string(),
+      code: crate::error_codes::get_error_code(&err),
     }),
   }
 }

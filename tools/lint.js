@@ -109,7 +109,14 @@ async function clippy() {
   }
 
   const p = Deno.run({
-    cmd: [...cmd, "--", "-D", "clippy::all"],
+    cmd: [
+      ...cmd,
+      "--",
+      "-D",
+      "clippy::all",
+      "-D",
+      "clippy::await_holding_refcell_ref",
+    ],
   });
   const { success } = await p.status();
   if (!success) {
