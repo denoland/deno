@@ -1054,7 +1054,7 @@ pub async fn run_tests_with_watch(
     let paths_to_watch_clone = paths_to_watch.clone();
 
     let maybe_resolver =
-      ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
+      ps.maybe_import_map.clone().map(ImportMapResolver::new);
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_imports = ps
       .maybe_config_file

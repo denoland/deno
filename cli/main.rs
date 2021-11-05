@@ -469,7 +469,7 @@ async fn info_command(
     );
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_resolver =
-      ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
+      ps.maybe_import_map.clone().map(ImportMapResolver::new);
     let graph = deno_graph::create_graph(
       vec![specifier],
       false,
@@ -642,7 +642,7 @@ async fn create_graph_and_maybe_check(
     .as_ref()
     .map(|cf| cf.to_maybe_imports())
     .flatten();
-  let maybe_resolver = ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
+  let maybe_resolver = ps.maybe_import_map.clone().map(ImportMapResolver::new);
   let graph = Arc::new(
     deno_graph::create_graph(
       vec![root],
@@ -971,7 +971,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         .map(|cf| cf.to_maybe_imports())
         .flatten();
       let maybe_resolver =
-        ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
+        ps.maybe_import_map.clone().map(ImportMapResolver::new);
       let graph = deno_graph::create_graph(
         vec![main_module.clone()],
         false,

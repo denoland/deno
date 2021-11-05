@@ -80,7 +80,7 @@ pub struct Inner {
   graph_data: Arc<Mutex<GraphData>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_config_file: Option<ConfigFile>,
-  pub maybe_import_map: Option<ImportMap>,
+  pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub root_cert_store: Option<RootCertStore>,
   pub blob_store: BlobStore,
@@ -201,7 +201,7 @@ impl ProcState {
         None
       };
 
-    let maybe_import_map: Option<ImportMap> =
+    let maybe_import_map: Option<Arc<ImportMap>> =
       match flags.import_map_path.as_ref() {
         None => None,
         Some(import_map_url) => {
@@ -219,7 +219,7 @@ impl ProcState {
             ))?;
           let import_map =
             ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
-          Some(import_map)
+          Some(Arc::new(import_map))
         }
       };
 
@@ -300,16 +300,16 @@ impl ProcState {
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports();
     let node_resolver = NodeEsmResolver::new(
-      self.maybe_import_map.as_ref().map(ImportMapResolver::new),
+      self.maybe_import_map.clone().map(ImportMapResolver::new),
     );
     let maybe_import_map_resolver =
-      self.maybe_import_map.as_ref().map(ImportMapResolver::new);
+      self.maybe_import_map.clone().map(ImportMapResolver::new);
     let maybe_jsx_resolver = self
       .maybe_config_file
       .as_ref()
       .map(|cf| {
         cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.as_ref()))
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
       })
       .flatten();
     let maybe_resolver = if self.flags.compat {

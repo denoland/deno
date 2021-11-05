@@ -33,6 +33,7 @@ pub struct EmitConfigOptions {
   pub jsx: String,
   pub jsx_factory: String,
   pub jsx_fragment_factory: String,
+  pub jsx_import_source: Option<String>,
 }
 
 /// There are certain compiler options that can impact what modules are part of
@@ -455,7 +456,7 @@ impl ConfigFile {
       serde_json::from_value(compiler_options_value.clone()).ok()?;
     match compiler_options.jsx.as_deref() {
       Some("react-jsx") => Some("jsx-runtime".to_string()),
-      Some("react-jsx-dev") => Some("jsx-dev-runtime".to_string()),
+      Some("react-jsxdev") => Some("jsx-dev-runtime".to_string()),
       _ => None,
     }
   }

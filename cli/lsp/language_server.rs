@@ -116,7 +116,7 @@ pub(crate) struct Inner {
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
   /// An optional import map which is used to resolve modules.
-  pub(crate) maybe_import_map: Option<ImportMap>,
+  pub(crate) maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// A collection of measurements which instrument that performance of the LSP.
@@ -481,13 +481,13 @@ impl Inner {
           )
         })?
       };
-      let import_map =
-        ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
+      let import_map = Arc::new(ImportMap::from_json(
+        &import_map_url.to_string(),
+        &import_map_json,
+      )?);
       self.maybe_import_map_uri = Some(import_map_url);
-      self.maybe_import_map = Some(import_map.clone());
-      self.documents.set_import_map(Some(Arc::new(import_map)));
+      self.maybe_import_map = Some(import_map);
     } else {
-      self.documents.set_import_map(None);
       self.maybe_import_map = None;
     }
     self.performance.measure(mark);
@@ -700,6 +700,10 @@ impl Inner {
     if let Err(err) = self.update_registries().await {
       self.client.show_message(MessageType::Warning, err).await;
     }
+    self.documents.update_config(
+      self.maybe_import_map.clone(),
+      self.maybe_config_file.as_ref(),
+    );
 
     self.performance.measure(mark);
     Ok(InitializeResult {
@@ -908,6 +912,10 @@ impl Inner {
     if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
     }
+    self.documents.update_config(
+      self.maybe_import_map.clone(),
+      self.maybe_config_file.as_ref(),
+    );
 
     self.performance.measure(mark);
   }
@@ -942,6 +950,10 @@ impl Inner {
       }
     }
     if touched {
+      self.documents.update_config(
+        self.maybe_import_map.clone(),
+        self.maybe_config_file.as_ref(),
+      );
       self.diagnostics_server.invalidate_all().await;
       if let Err(err) = self.diagnostics_server.update() {
         error!("Cannot update diagnostics: {}", err);
@@ -2624,6 +2636,7 @@ impl Inner {
         CacheServer::new(
           self.maybe_cache_path.clone(),
           self.maybe_import_map.clone(),
+          self.maybe_config_file.clone(),
         )
         .await,
       );

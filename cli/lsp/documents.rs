@@ -1,14 +1,16 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::resolver::ImportMapResolver;
 use super::text::LineIndex;
 use super::tsc;
 
+use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
+use crate::resolver::ImportMapResolver;
+use crate::resolver::JsxResolver;
 use crate::text_encoding;
 
 use deno_ast::MediaType;
@@ -378,6 +380,8 @@ struct Inner {
   docs: HashMap<ModuleSpecifier, Document>,
   /// The optional import map that should be used when resolving dependencies.
   maybe_import_map: Option<ImportMapResolver>,
+  /// The optional JSX resolver, which is used when JSX imports are configured.
+  maybe_jsx_resolver: Option<JsxResolver>,
   redirects: HashMap<ModuleSpecifier, ModuleSpecifier>,
 }
 
@@ -389,6 +393,7 @@ impl Inner {
       dependents_map: HashMap::default(),
       docs: HashMap::default(),
       maybe_import_map: None,
+      maybe_jsx_resolver: None,
       redirects: HashMap::default(),
     }
   }
@@ -407,7 +412,7 @@ impl Inner {
         version,
         None,
         content,
-        self.maybe_import_map.as_ref().map(|r| r.as_resolver()),
+        self.get_maybe_resolver(),
       )
     } else {
       let cache_filename = self.cache.get_cache_filename(&specifier)?;
@@ -421,7 +426,7 @@ impl Inner {
         version,
         maybe_headers,
         content,
-        self.maybe_import_map.as_ref().map(|r| r.as_resolver()),
+        self.get_maybe_resolver(),
       )
     };
     self.dirty = true;
@@ -481,6 +486,14 @@ impl Inner {
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<(), AnyError> {
+    // this duplicates the .get_resolver() method, because there is no easy
+    // way to avoid the double borrow of self that occurs here with getting the
+    // mut doc out.
+    let maybe_resolver = if self.maybe_jsx_resolver.is_some() {
+      self.maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+    } else {
+      self.maybe_import_map.as_ref().map(|im| im.as_resolver())
+    };
     let doc = self.docs.get_mut(specifier).map_or_else(
       || {
         Err(custom_error(
@@ -491,11 +504,7 @@ impl Inner {
       Ok,
     )?;
     self.dirty = true;
-    doc.change(
-      version,
-      changes,
-      self.maybe_import_map.as_ref().map(|r| r.as_resolver()),
-    )
+    doc.change(version, changes, maybe_resolver)
   }
 
   fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
@@ -604,6 +613,14 @@ impl Inner {
     })
   }
 
+  fn get_maybe_resolver(&self) -> Option<&dyn deno_graph::source::Resolver> {
+    if self.maybe_jsx_resolver.is_some() {
+      self.maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+    } else {
+      self.maybe_import_map.as_ref().map(|im| im.as_resolver())
+    }
+  }
+  
   fn get_maybe_types_for_dependency(
     &mut self,
     dependency: &deno_graph::Dependency,
@@ -832,15 +849,6 @@ impl Inner {
     }
   }
 
-  fn set_import_map(
-    &mut self,
-    maybe_import_map: Option<Arc<import_map::ImportMap>>,
-  ) {
-    // TODO update resolved dependencies?
-    self.maybe_import_map = maybe_import_map.map(ImportMapResolver::new);
-    self.dirty = true;
-  }
-
   fn set_location(&mut self, location: PathBuf) {
     // TODO update resolved dependencies?
     self.cache = HttpCache::new(&location);
@@ -884,6 +892,22 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Option<SourceTextInfo> {
     self.get(specifier).map(|d| d.source.clone())
+  }
+
+  fn update_config(
+    &mut self,
+    maybe_import_map: Option<Arc<import_map::ImportMap>>,
+    maybe_config_file: Option<&ConfigFile>,
+  ) {
+    // TODO(@kitsonk) update resolved dependencies?
+    self.maybe_import_map = maybe_import_map.map(ImportMapResolver::new);
+    self.maybe_jsx_resolver = maybe_config_file
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, self.maybe_import_map.clone()))
+      })
+      .flatten();
+    self.dirty = true;
   }
 
   fn version(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
@@ -1050,14 +1074,6 @@ impl Documents {
     self.0.lock().resolve(specifiers, referrer)
   }
 
-  /// Set the optional import map for the document cache.
-  pub fn set_import_map(
-    &self,
-    maybe_import_map: Option<Arc<import_map::ImportMap>>,
-  ) {
-    self.0.lock().set_import_map(maybe_import_map);
-  }
-
   /// Update the location of the on disk cache for the document store.
   pub fn set_location(&self, location: PathBuf) {
     self.0.lock().set_location(location)
@@ -1093,6 +1109,17 @@ impl Documents {
     specifier: &ModuleSpecifier,
   ) -> Option<SourceTextInfo> {
     self.0.lock().text_info(specifier)
+  }
+
+  pub fn update_config(
+    &self,
+    maybe_import_map: Option<Arc<import_map::ImportMap>>,
+    maybe_config_file: Option<&ConfigFile>,
+  ) {
+    self
+      .0
+      .lock()
+      .update_config(maybe_import_map, maybe_config_file)
   }
 
   /// Return the version of a document in the document cache.
