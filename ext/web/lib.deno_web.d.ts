@@ -416,24 +416,26 @@ interface ReadableStreamDefaultReader<R = any> {
   releaseLock(): void;
 }
 
-interface ReadableStreamBYOBReadDoneResult {
+interface ReadableStreamBYOBReadDoneResult<V extends ArrayBufferView> {
   done: true;
-  value?: ArrayBufferView;
+  value?: V;
 }
 
-interface ReadableStreamBYOBReadValueResult {
+interface ReadableStreamBYOBReadValueResult<V extends ArrayBufferView> {
   done: false;
-  value: ArrayBufferView;
+  value: V;
 }
 
-type ReadableStreamBYOBReadResult =
-  | ReadableStreamBYOBReadDoneResult
-  | ReadableStreamBYOBReadValueResult;
+type ReadableStreamBYOBReadResult<V extends ArrayBufferView> =
+  | ReadableStreamBYOBReadDoneResult<V>
+  | ReadableStreamBYOBReadValueResult<V>;
 
 interface ReadableStreamBYOBReader {
   readonly closed: Promise<void>;
   cancel(reason?: any): Promise<void>;
-  read(view: ArrayBufferView): Promise<ReadableStreamBYOBReadResult>;
+  read<V extends ArrayBufferView>(
+    view: V,
+  ): Promise<ReadableStreamBYOBReadResult<V>>;
   releaseLock(): void;
 }
 
@@ -569,7 +571,8 @@ interface ReadableStream<R = any> {
    *             async iterator.
    */
   getIterator(options?: { preventCancel?: boolean }): AsyncIterableIterator<R>;
-  getReader(): ReadableStreamDefaultReader<R>;
+  getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
+  getReader(options?: { mode?: undefined }): ReadableStreamDefaultReader<R>;
   pipeThrough<T>(
     { writable, readable }: {
       writable: WritableStream<R>;
