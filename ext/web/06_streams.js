@@ -9,7 +9,8 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  const { add, signalAbort, newSignal } = window.__bootstrap.abortSignal;
+  const { add, remove, signalAbort, newSignal } =
+    window.__bootstrap.abortSignal;
   const {
     ArrayBuffer,
     ArrayBufferIsView,
@@ -2107,7 +2108,7 @@
       readableStreamReaderGenericRelease(reader);
 
       if (signal !== undefined) {
-        signal[add](abortAlgorithm);
+        signal[remove](abortAlgorithm);
       }
       if (isError) {
         promise.reject(error);
