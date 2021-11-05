@@ -1,5 +1,0 @@
-[WILDCARD]
-error: TS2571 [ERROR]: Object is of type 'unknown'.
-  console.log(e.message);
-              ^
-    at file://[WILDCARD]/useUnknownInCatchVariables.ts:4:15
