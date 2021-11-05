@@ -6110,15 +6110,11 @@
   "streams": {
     "idlharness.any.html": [
       "WritableStreamDefaultController interface: attribute abortReason",
-      "WritableStreamDefaultController interface: attribute signal",
-      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"abortReason\" with the proper type",
-      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"signal\" with the proper type"
+      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"abortReason\" with the proper type"
     ],
     "idlharness.any.worker.html": [
       "WritableStreamDefaultController interface: attribute abortReason",
-      "WritableStreamDefaultController interface: attribute signal",
-      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"abortReason\" with the proper type",
-      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"signal\" with the proper type"
+      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"abortReason\" with the proper type"
     ],
     "piping": {
       "abort.any.html": true,
@@ -6218,22 +6214,10 @@
     },
     "writable-streams": {
       "aborting.any.html": [
-        "WritableStreamDefaultController.signal",
-        "the abort signal is signalled synchronously - write",
-        "the abort signal is signalled synchronously - close",
-        "the abort signal is not signalled on error",
-        "the abort signal is not signalled on write failure",
-        "the abort signal is not signalled on close failure",
-        "recursive abort() call"
+        "WritableStreamDefaultController.signal"
       ],
       "aborting.any.worker.html": [
-        "WritableStreamDefaultController.signal",
-        "the abort signal is signalled synchronously - write",
-        "the abort signal is signalled synchronously - close",
-        "the abort signal is not signalled on error",
-        "the abort signal is not signalled on write failure",
-        "the abort signal is not signalled on close failure",
-        "recursive abort() call"
+        "WritableStreamDefaultController.signal"
       ],
       "bad-strategies.any.html": true,
       "bad-strategies.any.worker.html": true,
