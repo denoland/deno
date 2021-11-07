@@ -1241,6 +1241,7 @@ mod tests {
     // indicates trying to parse an empty file.
     let result = module_registry.check_origin("https://deno.com").await;
     assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
     assert!(err.contains("EOF while parsing a value at line 1 column 0"));
   }
 }
