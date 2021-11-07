@@ -232,7 +232,7 @@ pub struct FileFetcher {
   allow_remote: bool,
   cache: FileCache,
   cache_setting: CacheSetting,
-  http_cache: HttpCache,
+  pub(crate) http_cache: HttpCache,
   http_client: reqwest::Client,
   blob_store: BlobStore,
 }
