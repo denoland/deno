@@ -1931,15 +1931,24 @@ fn lsp_signature_help() {
       "signatures": [
         {
           "label": "add(a: number, b: number): number",
-          "documentation": "Adds two numbers.",
+          "documentation": {
+            "kind": "markdown",
+            "value": "Adds two numbers."
+          },
           "parameters": [
             {
               "label": "a: number",
-              "documentation": "This is a first number."
+              "documentation": {
+                "kind": "markdown",
+                "value": "This is a first number."
+              }
             },
             {
               "label": "b: number",
-              "documentation": "This is a second number."
+              "documentation": {
+                "kind": "markdown",
+                "value": "This is a second number."
+              }
             }
           ]
         }
@@ -1995,15 +2004,24 @@ fn lsp_signature_help() {
       "signatures": [
         {
           "label": "add(a: number, b: number): number",
-          "documentation": "Adds two numbers.",
+          "documentation": {
+            "kind": "markdown",
+            "value": "Adds two numbers."
+          },
           "parameters": [
             {
               "label": "a: number",
-              "documentation": "This is a first number."
+              "documentation": {
+                "kind": "markdown",
+                "value": "This is a first number."
+              }
             },
             {
               "label": "b: number",
-              "documentation": "This is a second number."
+              "documentation": {
+                "kind": "markdown",
+                "value": "This is a second number."
+              }
             }
           ]
         }
