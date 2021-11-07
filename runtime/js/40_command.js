@@ -9,6 +9,20 @@
   const { ArrayPrototypeMap, ObjectEntries, String, TypeError } =
     window.__bootstrap.primordials;
 
+  function createWritableIOStream(rid) {
+    return new WritableStream({
+      async write(chunk) {
+        let nwritten = 0;
+        while (nwritten < chunk.byteLength) {
+          nwritten += await write(rid, chunk.subarray(nwritten));
+        }
+      },
+      abort() {
+        core.tryClose(rid);
+      },
+    });
+  }
+
   function createReadableIOStream(rid) {
     return new ReadableStream({
       async pull(controller) {
@@ -120,14 +134,7 @@
 
       if (stdinRid !== null) {
         this.#stdinRid = stdinRid;
-        this.#stdin = new WritableStream({
-          async write(chunk) {
-            await write(stdinRid, chunk);
-          },
-          abort() {
-            core.tryClose(stdinRid);
-          },
-        });
+        this.#stdin = createWritableIOStream(stdinRid);
       }
 
       if (stdoutRid !== null) {
