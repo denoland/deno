@@ -3,7 +3,6 @@
 use crate::bindings;
 use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
-use crate::error::get_custom_js_constructor;
 use crate::error::AnyError;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
@@ -562,14 +561,7 @@ impl JsRuntime {
     source_code: &str,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     let scope = &mut self.handle_scope();
-    Self::execute_script_with_scope(scope, name, source_code)
-  }
 
-  fn execute_script_with_scope(
-    scope: &mut v8::HandleScope,
-    name: &str,
-    source_code: &str,
-  ) -> Result<v8::Global<v8::Value>, AnyError> {
     let source = v8::String::new(scope, source_code).unwrap();
     let name = v8::String::new(scope, name).unwrap();
     let origin = bindings::script_origin(scope, name);
@@ -1152,27 +1144,6 @@ impl JsRuntime {
     let exception = err
       .downcast_ref::<ErrWithV8Handle>()
       .map(|err| err.get_handle(scope))
-      .or_else(|| {
-        if let Some(js_constructor) = get_custom_js_constructor(&err) {
-          if let Ok(err_class) = Self::execute_script_with_scope(
-            scope,
-            "<anonymous>",
-            js_constructor,
-          ) {
-            let value = v8::Local::<v8::Value>::new(scope, err_class);
-            if let Ok(err_class) = v8::Local::<v8::Function>::try_from(value) {
-              let message = v8::String::new(scope, &err.to_string()).unwrap();
-              return Some(
-                err_class
-                  .new_instance(scope, &[message.into()])
-                  .unwrap()
-                  .into(),
-              );
-            }
-          }
-        }
-        None
-      })
       .unwrap_or_else(|| {
         let message = err.to_string();
         let message = v8::String::new(scope, &message).unwrap();
