@@ -122,10 +122,16 @@ pub struct EmitOptions {
   pub inline_source_map: bool,
   /// Should the sources be inlined in the source map.  Defaults to `true`.
   pub inline_sources: bool,
-  // Should a corresponding .map file be created for the output. This should be
-  // false if inline_source_map is true. Defaults to `false`.
+  /// Should a corresponding .map file be created for the output. This should be
+  /// false if inline_source_map is true. Defaults to `false`.
   pub source_map: bool,
+  /// `true` if the program should use an implicit JSX import source/the "new"
+  /// JSX transforms.
   pub jsx_automatic: bool,
+  /// If JSX is automatic, if it is in development mode, meaning that it should
+  /// import `jsx-dev-runtime` and transform JSX using `jsxDEV` import from the
+  /// JSX import source as well as provide additional debug information to the
+  /// JSX factory.
   pub jsx_development: bool,
   /// When transforming JSX, what value should be used for the JSX factory.
   /// Defaults to `React.createElement`.
@@ -133,6 +139,8 @@ pub struct EmitOptions {
   /// When transforming JSX, what value should be used for the JSX fragment
   /// factory.  Defaults to `React.Fragment`.
   pub jsx_fragment_factory: String,
+  /// The string module specifier to implicitly import JSX factories from when
+  /// transpiling JSX.
   pub jsx_import_source: Option<String>,
   /// Should JSX be transformed or preserved.  Defaults to `true`.
   pub transform_jsx: bool,

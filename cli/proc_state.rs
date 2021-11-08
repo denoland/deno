@@ -5,6 +5,7 @@ use crate::colors;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
 use crate::config_file::ConfigFile;
+use crate::config_file::MaybeImportsResult;
 use crate::deno_dir;
 use crate::emit;
 use crate::errors::get_module_graph_error_class;
@@ -259,10 +260,10 @@ impl ProcState {
 
   /// Return any imports that should be brought into the scope of the module
   /// graph.
-  fn get_maybe_imports(&self) -> Option<Vec<(ModuleSpecifier, Vec<String>)>> {
+  fn get_maybe_imports(&self) -> MaybeImportsResult {
     let mut imports = Vec::new();
     if let Some(config_file) = &self.maybe_config_file {
-      if let Some(config_imports) = config_file.to_maybe_imports() {
+      if let Some(config_imports) = config_file.to_maybe_imports()? {
         imports.extend(config_imports);
       }
     }
@@ -270,9 +271,9 @@ impl ProcState {
       imports.extend(compat::get_node_imports());
     }
     if imports.is_empty() {
-      None
+      Ok(None)
     } else {
-      Some(imports)
+      Ok(Some(imports))
     }
   }
 
@@ -298,7 +299,7 @@ impl ProcState {
       dynamic_permissions.clone(),
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
-    let maybe_imports = self.get_maybe_imports();
+    let maybe_imports = self.get_maybe_imports()?;
     let node_resolver = NodeEsmResolver::new(
       self.maybe_import_map.clone().map(ImportMapResolver::new),
     );
@@ -315,6 +316,8 @@ impl ProcState {
     let maybe_resolver = if self.flags.compat {
       Some(node_resolver.as_resolver())
     } else if maybe_jsx_resolver.is_some() {
+      // the JSX resolver offloads to the import map if present, otherwise uses
+      // the default Deno explicit import resolution.
       maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
     } else {
       maybe_import_map_resolver

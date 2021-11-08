@@ -1,9 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use crate::fs_util::canonicalize_path;
 
 use deno_core::error::anyhow;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::serde::Deserialize;
@@ -18,6 +18,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
+
+pub(crate) type MaybeImportsResult =
+  Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
 
 /// The transpile options that are significant out of a user provided tsconfig
 /// file, that we want to deserialize out of the final config for a transpile.
@@ -409,42 +412,36 @@ impl ConfigFile {
 
   /// If the configuration file contains "extra" modules (like TypeScript
   /// `"types"`) options, return them as imports to be added to a module graph.
-  pub fn to_maybe_imports(
-    &self,
-  ) -> Option<Vec<(ModuleSpecifier, Vec<String>)>> {
+  pub fn to_maybe_imports(&self) -> MaybeImportsResult {
     let mut imports = Vec::new();
-    let compiler_options_value = self.json.compiler_options.as_ref()?;
+    let compiler_options_value =
+      if let Some(value) = self.json.compiler_options.as_ref() {
+        value
+      } else {
+        return Ok(None);
+      };
     let compiler_options: CompilerOptions =
-      serde_json::from_value(compiler_options_value.clone()).ok()?;
-    let referrer = ModuleSpecifier::from_file_path(&self.path).ok()?;
+      serde_json::from_value(compiler_options_value.clone())?;
+    let referrer = ModuleSpecifier::from_file_path(&self.path)
+      .map_err(|_| custom_error("TypeError", "bad config file specifier"))?;
     if let Some(types) = compiler_options.types {
       imports.extend(types);
     }
     if compiler_options.jsx == Some("react-jsx".to_string()) {
       imports.push(format!(
         "{}/jsx-runtime",
-        compiler_options
-          .jsx_import_source
-          .unwrap_or_else(|| {
-            log::warn!("{}: Compiler option 'jsx' set to 'react-jsx', but no 'jsxImportSource' defined, defaulting to 'react'.", colors::yellow("warning"));
-            "react".to_string()
-          })
+        compiler_options.jsx_import_source.ok_or_else(|| custom_error("TypeError", "Compiler option 'jsx' set to 'react-jsx', but no 'jsxImportSource' defined."))?
       ));
     } else if compiler_options.jsx == Some("react-jsxdev".to_string()) {
       imports.push(format!(
         "{}/jsx-dev-runtime",
-        compiler_options
-          .jsx_import_source
-          .unwrap_or_else(|| {
-            log::warn!("{}: Compiler option 'jsx' set to 'react-jsxdev', but no 'jsxImportSource' defined, defaulting to 'react'.", colors::yellow("warning"));
-            "react".to_string()
-          })
+        compiler_options.jsx_import_source.ok_or_else(|| custom_error("TypeError", "Compiler option 'jsx' set to 'react-jsxdev', but no 'jsxImportSource' defined."))?
       ));
     }
     if !imports.is_empty() {
-      Some(vec![(referrer, imports)])
+      Ok(Some(vec![(referrer, imports)]))
     } else {
-      None
+      Ok(None)
     }
   }
 

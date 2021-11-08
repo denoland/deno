@@ -620,7 +620,7 @@ impl Inner {
       self.maybe_import_map.as_ref().map(|im| im.as_resolver())
     }
   }
-  
+
   fn get_maybe_types_for_dependency(
     &mut self,
     dependency: &deno_graph::Dependency,

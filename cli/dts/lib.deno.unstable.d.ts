@@ -289,7 +289,7 @@ declare namespace Deno {
     jsxFragmentFactory?: string;
     /** Declares the module specifier to be used for importing the `jsx` and
      * `jsxs` factory functions when using jsx as `"react-jsx"` or
-     * `"react-jsxdev"`. Defaults to `"https://esm.sh/preact"`. */
+     * `"react-jsxdev"`. Defaults to `"react"`. */
     jsxImportSource?: string;
     /** Resolve keyof to string valued property names only (no numbers or
      * symbols). Defaults to `false`. */

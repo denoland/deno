@@ -60,6 +60,7 @@ use crate::fmt_errors::PrettyJsError;
 use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
+use crate::resolver::JsxResolver;
 use crate::source_maps::apply_source_map;
 use crate::tools::installer::infer_name_from_url;
 use deno_ast::MediaType;
@@ -468,14 +469,29 @@ async fn info_command(
       Permissions::allow_all(),
     );
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-    let maybe_resolver =
+    let maybe_import_map_resolver =
       ps.maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      })
+      .flatten();
+    let maybe_resolver = if maybe_jsx_resolver.is_some() {
+      maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+    } else {
+      maybe_import_map_resolver
+        .as_ref()
+        .map(|im| im.as_resolver())
+    };
     let graph = deno_graph::create_graph(
       vec![specifier],
       false,
       None,
       &mut cache,
-      maybe_resolver.as_ref().map(|r| r.as_resolver()),
+      maybe_resolver,
       maybe_locker,
       None,
     )
@@ -637,19 +653,35 @@ async fn create_graph_and_maybe_check(
     Permissions::allow_all(),
   );
   let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-  let maybe_imports = ps
+  let maybe_imports = if let Some(config_file) = &ps.maybe_config_file {
+    config_file.to_maybe_imports()?
+  } else {
+    None
+  };
+  let maybe_import_map_resolver =
+    ps.maybe_import_map.clone().map(ImportMapResolver::new);
+  let maybe_jsx_resolver = ps
     .maybe_config_file
     .as_ref()
-    .map(|cf| cf.to_maybe_imports())
+    .map(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    })
     .flatten();
-  let maybe_resolver = ps.maybe_import_map.clone().map(ImportMapResolver::new);
+  let maybe_resolver = if maybe_jsx_resolver.is_some() {
+    maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+  } else {
+    maybe_import_map_resolver
+      .as_ref()
+      .map(|im| im.as_resolver())
+  };
   let graph = Arc::new(
     deno_graph::create_graph(
       vec![root],
       false,
       maybe_imports,
       &mut cache,
-      maybe_resolver.as_ref().map(|r| r.as_resolver()),
+      maybe_resolver,
       maybe_locker,
       None,
     )
@@ -965,19 +997,34 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         Permissions::allow_all(),
       );
       let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-      let maybe_imports = ps
+      let maybe_imports = if let Some(config_file) = &ps.maybe_config_file {
+        config_file.to_maybe_imports()?
+      } else {
+        None
+      };
+      let maybe_import_map_resolver =
+        ps.maybe_import_map.clone().map(ImportMapResolver::new);
+      let maybe_jsx_resolver = ps
         .maybe_config_file
         .as_ref()
-        .map(|cf| cf.to_maybe_imports())
+        .map(|cf| {
+          cf.to_maybe_jsx_import_source_module()
+            .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+        })
         .flatten();
-      let maybe_resolver =
-        ps.maybe_import_map.clone().map(ImportMapResolver::new);
+      let maybe_resolver = if maybe_jsx_resolver.is_some() {
+        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+      } else {
+        maybe_import_map_resolver
+          .as_ref()
+          .map(|im| im.as_resolver())
+      };
       let graph = deno_graph::create_graph(
         vec![main_module.clone()],
         false,
         maybe_imports,
         &mut cache,
-        maybe_resolver.as_ref().map(|r| r.as_resolver()),
+        maybe_resolver,
         maybe_locker,
         None,
       )
