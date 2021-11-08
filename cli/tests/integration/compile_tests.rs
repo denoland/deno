@@ -376,9 +376,9 @@ fn standalone_runtime_flags() {
 fn skip_rebundle() {
   let dir = TempDir::new().expect("tempdir fail");
   let exe = if cfg!(windows) {
-    dir.path().join("welcome.exe")
+    dir.path().join("hello_world.exe")
   } else {
-    dir.path().join("welcome")
+    dir.path().join("hello_world")
   };
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
