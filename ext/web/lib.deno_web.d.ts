@@ -635,6 +635,7 @@ declare var WritableStream: {
  * sink is given a corresponding WritableStreamDefaultController instance to
  * manipulate. */
 interface WritableStreamDefaultController {
+  signal: AbortSignal;
   error(error?: any): void;
 }
 
