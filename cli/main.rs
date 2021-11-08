@@ -423,7 +423,19 @@ async fn compile_command(
 
   let graph =
     create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?;
-  let (bundle_str, _) = bundle_module_graph(graph.as_ref(), &ps, &flags)?;
+
+  let source = if graph.as_ref().modules().len() == 1 {
+    match MediaType::from(&module_specifier) {
+      MediaType::Jsx | MediaType::TypeScript | MediaType::Tsx => {
+        bundle_module_graph(graph.as_ref(), &ps, &flags)?.0
+      }
+      _ => std::fs::read_to_string(&module_specifier.path())?,
+    }
+  } else {
+    println!("no empty");
+
+    bundle_module_graph(graph.as_ref(), &ps, &flags)?.0
+  };
 
   info!(
     "{} {}",
@@ -438,7 +450,7 @@ async fn compile_command(
 
   let final_bin = tools::standalone::create_standalone_binary(
     original_binary,
-    bundle_str,
+    source,
     run_flags,
   )?;
 
