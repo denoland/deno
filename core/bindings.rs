@@ -244,6 +244,11 @@ pub extern "C" fn host_import_module_dynamically_callback(
         let message = arg.get(scope, message_key.into()).unwrap();
         let exception =
           v8::Exception::type_error(scope, message.try_into().unwrap());
+        let code_key = v8::String::new(scope, "code").unwrap();
+        let code_value =
+          v8::String::new(scope, "ERR_MODULE_NOT_FOUND").unwrap();
+        let exception_obj = exception.to_object(scope).unwrap();
+        exception_obj.set(scope, code_key.into(), code_value.into());
         scope.throw_exception(exception);
         return;
       }
