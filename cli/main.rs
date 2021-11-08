@@ -425,11 +425,12 @@ async fn compile_command(
     create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?;
 
   let source = if graph.as_ref().modules().len() == 1 {
-    match MediaType::from(&module_specifier) {
+    let root_module = graph.as_ref().modules()[0];
+    match root_module.media_type {
       MediaType::Jsx | MediaType::TypeScript | MediaType::Tsx => {
         bundle_module_graph(graph.as_ref(), &ps, &flags)?.0
       }
-      _ => std::fs::read_to_string(&module_specifier.path())?,
+      _ => root_module.source.to_string(),
     }
   } else {
     bundle_module_graph(graph.as_ref(), &ps, &flags)?.0
