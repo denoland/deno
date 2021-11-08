@@ -424,17 +424,18 @@ async fn compile_command(
   let graph =
     create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?;
 
-  let source = if graph.as_ref().modules().len() == 1 {
-    let root_module = graph.as_ref().modules()[0];
-    match root_module.media_type {
-      MediaType::Jsx | MediaType::TypeScript | MediaType::Tsx => {
-        bundle_module_graph(graph.as_ref(), &ps, &flags)?.0
+  let source = (graph.as_ref().modules().len() == 1)
+    .then(|| {
+      let root_module = graph.as_ref().modules()[0];
+      match root_module.media_type {
+        MediaType::JavaScript => Some(Ok(root_module.source.to_string())),
+        _ => None,
       }
-      _ => root_module.source.to_string(),
-    }
-  } else {
-    bundle_module_graph(graph.as_ref(), &ps, &flags)?.0
-  };
+    })
+    .flatten()
+    .unwrap_or_else(|| {
+      bundle_module_graph(graph.as_ref(), &ps, &flags).map(|r| r.0)
+    })?;
 
   info!(
     "{} {}",
