@@ -70,14 +70,20 @@ async fn check_auto_config_registry(
             .check_origin(&origin)
             .await
             .is_ok();
-          client
-            .send_custom_notification::<lsp_custom::RegistryStateNotification>(
-              lsp_custom::RegistryStateNotificationParams {
-                origin,
-                suggestions,
-              },
-            )
-            .await;
+          // we are only sending registry state when enabled now, but changing
+          // the custom notification would make older versions of the plugin
+          // incompatible.
+          // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
+          if suggestions {
+            client
+              .send_custom_notification::<lsp_custom::RegistryStateNotification>(
+                lsp_custom::RegistryStateNotificationParams {
+                  origin,
+                  suggestions,
+                },
+              )
+              .await;
+          }
         }
       }
     }

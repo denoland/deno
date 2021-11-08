@@ -263,6 +263,13 @@ impl Document {
     self.maybe_lsp_version.is_some()
   }
 
+  fn maybe_types_dependency(&self) -> deno_graph::Resolved {
+    let module_result = self.maybe_module.as_ref()?;
+    let module = module_result.as_ref().ok()?;
+    let (_, maybe_dep) = module.maybe_types_dependency.as_ref()?;
+    maybe_dep.clone()
+  }
+
   fn media_type(&self) -> MediaType {
     if let Some(Ok(module)) = &self.maybe_module {
       module.media_type
@@ -595,6 +602,16 @@ impl Inner {
         .includes(&position)
         .map(|r| (s.clone(), dep.clone(), r.clone()))
     })
+  }
+
+  fn get_maybe_types_for_dependency(
+    &mut self,
+    dependency: &deno_graph::Dependency,
+  ) -> deno_graph::Resolved {
+    let code_dep = dependency.maybe_code.as_ref()?;
+    let (specifier, _) = code_dep.as_ref().ok()?;
+    let doc = self.get(specifier)?;
+    doc.maybe_types_dependency()
   }
 
   fn get_navigation_tree(
@@ -950,6 +967,16 @@ impl Documents {
     position: &lsp::Position,
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
     self.0.lock().get_maybe_dependency(specifier, position)
+  }
+
+  /// For a given dependency, try to resolve the maybe_types_dependency for the
+  /// dependency. This covers modules that assert their own types, like via the
+  /// triple-slash reference, or the `X-TypeScript-Types` header.
+  pub fn get_maybe_types_for_dependency(
+    &self,
+    dependency: &deno_graph::Dependency,
+  ) -> deno_graph::Resolved {
+    self.0.lock().get_maybe_types_for_dependency(dependency)
   }
 
   /// Get a reference to the navigation tree stored for a given specifier, if

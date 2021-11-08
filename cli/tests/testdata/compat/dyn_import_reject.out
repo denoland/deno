@@ -1,0 +1,2 @@
+TypeError: Cannot load module "file:///[WILDCARD]/testdata/compat/foobar.js".
+ERR_MODULE_NOT_FOUND

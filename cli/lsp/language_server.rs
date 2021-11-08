@@ -1087,21 +1087,34 @@ impl Inner {
         &specifier,
         &params.text_document_position_params.position,
       ) {
-      let value = match (&dep.maybe_code, &dep.maybe_type) {
-        (Some(code_dep), Some(type_dep)) => format!(
+      let maybe_types_dependency =
+        self.documents.get_maybe_types_for_dependency(&dep);
+      let value = match (&dep.maybe_code, &dep.maybe_type, &maybe_types_dependency) {
+        (Some(code_dep), Some(type_dep), None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
           to_hover_text(code_dep),
           to_hover_text(type_dep)
         ),
-        (Some(code_dep), None) => format!(
+        (Some(code_dep), Some(type_dep), Some(types_dep)) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
+          to_hover_text(code_dep),
+          to_hover_text(types_dep),
+          to_hover_text(type_dep)
+        ),
+        (Some(code_dep), None, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n",
           to_hover_text(code_dep)
         ),
-        (None, Some(type_dep)) => format!(
+        (Some(code_dep), None, Some(types_dep)) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          to_hover_text(code_dep),
+          to_hover_text(types_dep)
+        ),
+        (None, Some(type_dep), _) => format!(
           "**Resolved Dependency**\n\n**Types**: {}\n",
           to_hover_text(type_dep)
         ),
-        (None, None) => unreachable!("{}", json!(params)),
+        (None, None, _) => unreachable!("{}", json!(params)),
       };
       Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
@@ -2661,11 +2674,6 @@ impl Inner {
       .performance
       .mark("virtual_text_document", Some(&params));
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    info!(
-      "virtual_text_document\n{}\nspecifier: {}",
-      json!(params),
-      specifier
-    );
     let contents = if specifier.as_str() == "deno:/status.md" {
       let mut contents = String::new();
       let mut documents_specifiers = self.documents.specifiers(false, false);
