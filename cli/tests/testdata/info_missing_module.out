@@ -1,0 +1,6 @@
+local: [WILDCARD]error_009_missing_js_module.js
+type: JavaScript
+dependencies: 0 unique (total 26B)
+
+file://[WILDCARD]/error_009_missing_js_module.js (26B)
+└── file://[WILDCARD]/bad-module.js (missing)

@@ -3,6 +3,7 @@
 use crate::deno_dir::DenoDir;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
+use crate::flags::RunFlags;
 use deno_core::error::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -23,16 +24,14 @@ use crate::standalone::MAGIC_TRAILER;
 pub async fn get_base_binary(
   deno_dir: &DenoDir,
   target: Option<String>,
-  lite: bool,
 ) -> Result<Vec<u8>, AnyError> {
-  if target.is_none() && !lite {
+  if target.is_none() {
     let path = std::env::current_exe()?;
     return Ok(tokio::fs::read(path).await?);
   }
 
   let target = target.unwrap_or_else(|| env!("TARGET").to_string());
-  let exe_name = if lite { "denort" } else { "deno" };
-  let binary_name = format!("{}-{}.zip", exe_name, target);
+  let binary_name = format!("deno-{}.zip", target);
 
   let binary_path_suffix = if crate::version::is_canary() {
     format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
@@ -48,11 +47,8 @@ pub async fn get_base_binary(
   }
 
   let archive_data = tokio::fs::read(binary_path).await?;
-  let base_binary_path = crate::tools::upgrade::unpack(
-    archive_data,
-    exe_name,
-    target.contains("windows"),
-  )?;
+  let base_binary_path =
+    crate::tools::upgrade::unpack(archive_data, target.contains("windows"))?;
   let base_binary = tokio::fs::read(base_binary_path).await?;
   Ok(base_binary)
 }
@@ -104,7 +100,11 @@ pub fn create_standalone_binary(
     location: flags.location.clone(),
     permissions: flags.clone().into(),
     v8_flags: flags.v8_flags.clone(),
+    unsafely_ignore_certificate_errors: flags
+      .unsafely_ignore_certificate_errors
+      .clone(),
     log_level: flags.log_level,
+    ca_stores: flags.ca_stores,
     ca_data,
   };
   let mut metadata = serde_json::to_string(&metadata)?.as_bytes().to_vec();
@@ -170,6 +170,10 @@ pub async fn write_standalone_binary(
     if !has_trailer {
       bail!("Could not compile: cannot overwrite {:?}.", &output);
     }
+
+    // Remove file if it was indeed a deno compiled binary, to avoid corruption
+    // (see https://github.com/denoland/deno/issues/10310)
+    std::fs::remove_file(&output)?;
   }
   tokio::fs::write(&output, final_bin).await?;
   #[cfg(unix)]
@@ -196,32 +200,38 @@ pub fn compile_to_runtime_flags(
   // change to `Flags` should be reflected here.
   Ok(Flags {
     argv: baked_args,
-    subcommand: DenoSubcommand::Run {
+    subcommand: DenoSubcommand::Run(RunFlags {
       script: "placeholder".to_string(),
-    },
+    }),
     allow_env: flags.allow_env,
     allow_hrtime: flags.allow_hrtime,
     allow_net: flags.allow_net,
-    allow_plugin: flags.allow_plugin,
+    allow_ffi: flags.allow_ffi,
     allow_read: flags.allow_read,
     allow_run: flags.allow_run,
     allow_write: flags.allow_write,
-    cache_blocklist: vec![],
+    ca_stores: flags.ca_stores,
     ca_file: flags.ca_file,
+    cache_blocklist: vec![],
+    cache_path: None,
     cached_only: false,
     config_path: None,
     coverage_dir: flags.coverage_dir,
+    enable_testing_features: false,
     ignore: vec![],
     import_map_path: None,
-    inspect: None,
     inspect_brk: None,
+    inspect: None,
     location: flags.location,
-    lock: None,
     lock_write: false,
+    lock: None,
     log_level: flags.log_level,
     no_check: false,
-    no_prompts: flags.no_prompts,
+    compat: flags.compat,
+    unsafely_ignore_certificate_errors: flags
+      .unsafely_ignore_certificate_errors,
     no_remote: false,
+    prompt: flags.prompt,
     reload: false,
     repl: false,
     seed: flags.seed,

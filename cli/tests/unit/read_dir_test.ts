@@ -2,13 +2,13 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
 
-function assertSameContent(files: Deno.DirEntry[]): void {
+function assertSameContent(files: Deno.DirEntry[]) {
   let counter = 0;
 
   for (const entry of files) {
@@ -21,66 +21,70 @@ function assertSameContent(files: Deno.DirEntry[]): void {
   assertEquals(counter, 1);
 }
 
-unitTest({ perms: { read: true } }, function readDirSyncSuccess(): void {
-  const files = [...Deno.readDirSync("cli/tests/")];
+unitTest({ permissions: { read: true } }, function readDirSyncSuccess() {
+  const files = [...Deno.readDirSync("cli/tests/testdata")];
   assertSameContent(files);
 });
 
-unitTest({ perms: { read: true } }, function readDirSyncWithUrl(): void {
-  const files = [...Deno.readDirSync(pathToAbsoluteFileUrl("cli/tests"))];
+unitTest({ permissions: { read: true } }, function readDirSyncWithUrl() {
+  const files = [
+    ...Deno.readDirSync(pathToAbsoluteFileUrl("cli/tests/testdata")),
+  ];
   assertSameContent(files);
 });
 
-unitTest({ perms: { read: false } }, function readDirSyncPerm(): void {
+unitTest({ permissions: { read: false } }, function readDirSyncPerm() {
   assertThrows(() => {
     Deno.readDirSync("tests/");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { read: true } }, function readDirSyncNotDir(): void {
-  assertThrows(() => {
-    Deno.readDirSync("cli/tests/fixture.json");
-  }, Error);
+unitTest({ permissions: { read: true } }, function readDirSyncNotDir() {
+  assertThrows(
+    () => {
+      Deno.readDirSync("cli/tests/testdata/fixture.json");
+    },
+    Error,
+    `readdir 'cli/tests/testdata/fixture.json'`,
+  );
 });
 
-unitTest({ perms: { read: true } }, function readDirSyncNotFound(): void {
-  assertThrows(() => {
-    Deno.readDirSync("bad_dir_name");
-  }, Deno.errors.NotFound);
+unitTest({ permissions: { read: true } }, function readDirSyncNotFound() {
+  assertThrows(
+    () => {
+      Deno.readDirSync("bad_dir_name");
+    },
+    Deno.errors.NotFound,
+    `readdir 'bad_dir_name'`,
+  );
 });
 
-unitTest({ perms: { read: true } }, async function readDirSuccess(): Promise<
-  void
-> {
+unitTest({ permissions: { read: true } }, async function readDirSuccess() {
   const files = [];
-  for await (const dirEntry of Deno.readDir("cli/tests/")) {
+  for await (const dirEntry of Deno.readDir("cli/tests/testdata")) {
     files.push(dirEntry);
   }
   assertSameContent(files);
 });
 
-unitTest({ perms: { read: true } }, async function readDirWithUrl(): Promise<
-  void
-> {
+unitTest({ permissions: { read: true } }, async function readDirWithUrl() {
   const files = [];
   for await (
-    const dirEntry of Deno.readDir(pathToAbsoluteFileUrl("cli/tests"))
+    const dirEntry of Deno.readDir(pathToAbsoluteFileUrl("cli/tests/testdata"))
   ) {
     files.push(dirEntry);
   }
   assertSameContent(files);
 });
 
-unitTest({ perms: { read: false } }, async function readDirPerm(): Promise<
-  void
-> {
-  await assertThrowsAsync(async () => {
+unitTest({ permissions: { read: false } }, async function readDirPerm() {
+  await assertRejects(async () => {
     await Deno.readDir("tests/")[Symbol.asyncIterator]().next();
   }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
-  { perms: { read: true }, ignore: Deno.build.os == "windows" },
+  { permissions: { read: true }, ignore: Deno.build.os == "windows" },
   async function readDirDevFd(): Promise<
     void
   > {
@@ -91,10 +95,20 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true }, ignore: Deno.build.os == "windows" },
-  function readDirDevFdSync(): void {
+  { permissions: { read: true }, ignore: Deno.build.os == "windows" },
+  function readDirDevFdSync() {
     for (const _ of Deno.readDirSync("/dev/fd")) {
       // We don't actually care whats in here; just that we don't panic on non regular file entries
     }
   },
 );
+
+unitTest({ permissions: { read: true } }, async function readDirNotFound() {
+  await assertRejects(
+    async () => {
+      await Deno.readDir("bad_dir_name")[Symbol.asyncIterator]().next();
+    },
+    Deno.errors.NotFound,
+    `readdir 'bad_dir_name'`,
+  );
+});

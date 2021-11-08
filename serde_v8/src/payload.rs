@@ -1,16 +1,17 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use rusty_v8 as v8;
 
 // TODO: maybe add a Payload type that holds scope & v8::Value
 // so it can implement Deserialize by itself
 
 // Classifies v8::Values into sub-types
+#[derive(Debug)]
 pub enum ValueType {
   Null,
   Bool,
   Number,
   String,
   Array,
+  ArrayBufferView,
   Object,
 }
 
@@ -24,6 +25,8 @@ impl ValueType {
       return Self::String;
     } else if v.is_array() {
       return Self::Array;
+    } else if v.is_array_buffer_view() {
+      return Self::ArrayBufferView;
     } else if v.is_object() {
       return Self::Object;
     } else if v.is_null_or_undefined() {

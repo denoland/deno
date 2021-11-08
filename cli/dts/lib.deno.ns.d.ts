@@ -2,6 +2,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
+/// <reference lib="deno.net" />
 
 /** Deno provides extra properties on `import.meta`.  These are included here
  * to ensure that these are still available when using the Deno namespace in
@@ -53,7 +54,7 @@ declare interface PerformanceMeasureOptions {
   detail?: any;
 
   /** Timestamp to be used as the start time or string to be used as start
-   * mark.*/
+   * mark. */
   start?: string | number;
 
   /** Duration between the start and end times. */
@@ -65,53 +66,213 @@ declare interface PerformanceMeasureOptions {
 
 declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs. */
-  export const errors: {
-    NotFound: ErrorConstructor;
-    PermissionDenied: ErrorConstructor;
-    ConnectionRefused: ErrorConstructor;
-    ConnectionReset: ErrorConstructor;
-    ConnectionAborted: ErrorConstructor;
-    NotConnected: ErrorConstructor;
-    AddrInUse: ErrorConstructor;
-    AddrNotAvailable: ErrorConstructor;
-    BrokenPipe: ErrorConstructor;
-    AlreadyExists: ErrorConstructor;
-    InvalidData: ErrorConstructor;
-    TimedOut: ErrorConstructor;
-    Interrupted: ErrorConstructor;
-    WriteZero: ErrorConstructor;
-    UnexpectedEof: ErrorConstructor;
-    BadResource: ErrorConstructor;
-    Http: ErrorConstructor;
-    Busy: ErrorConstructor;
-  };
+  export namespace errors {
+    export class NotFound extends Error {}
+    export class PermissionDenied extends Error {}
+    export class ConnectionRefused extends Error {}
+    export class ConnectionReset extends Error {}
+    export class ConnectionAborted extends Error {}
+    export class NotConnected extends Error {}
+    export class AddrInUse extends Error {}
+    export class AddrNotAvailable extends Error {}
+    export class BrokenPipe extends Error {}
+    export class AlreadyExists extends Error {}
+    export class InvalidData extends Error {}
+    export class TimedOut extends Error {}
+    export class Interrupted extends Error {}
+    export class WriteZero extends Error {}
+    export class UnexpectedEof extends Error {}
+    export class BadResource extends Error {}
+    export class Http extends Error {}
+    export class Busy extends Error {}
+  }
 
   /** The current process id of the runtime. */
   export const pid: number;
 
-  /** Reflects the `NO_COLOR` environment variable.
+  /**
+   * The pid of the current process's parent.
+   */
+  export const ppid: number;
+
+  export interface MemoryUsage {
+    rss: number;
+    heapTotal: number;
+    heapUsed: number;
+    external: number;
+  }
+
+  /**
+   * Returns an object describing the memory usage of the Deno process measured
+   * in bytes.
+   */
+  export function memoryUsage(): MemoryUsage;
+
+  /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestContext {
+  }
+
   export interface TestDefinition {
-    fn: () => void | Promise<void>;
+    fn: (t: TestContext) => void | Promise<void>;
     name: string;
     ignore?: boolean;
-    /** If at lease one test has `only` set to true, only run tests that have
+    /** If at least one test has `only` set to true, only run tests that have
      * `only` set to true and fail the test suite. */
     only?: boolean;
     /** Check that the number of async completed ops after the test is the same
-     * as number of dispatched ops. Defaults to true.*/
+     * as number of dispatched ops. Defaults to true. */
     sanitizeOps?: boolean;
     /** Ensure the test case does not "leak" resources - ie. the resource table
      * after the test has exactly the same contents as before the test. Defaults
      * to true. */
     sanitizeResources?: boolean;
-
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
+
+    /** Specifies the permissions that should be used to run the test.
+     * Set this to "inherit" to keep the calling thread's permissions.
+     * Set this to "none" to revoke all permissions.
+     *
+     * Defaults to "inherit".
+     */
+    permissions?: "inherit" | "none" | {
+      /** Specifies if the `net` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `env` permission will be inherited.
+       * If set to `true`, the global `net` permission will be requested.
+       * If set to `false`, the global `net` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      env?: "inherit" | boolean | string[];
+
+      /** Specifies if the `hrtime` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `hrtime` permission will be inherited.
+       * If set to `true`, the global `hrtime` permission will be requested.
+       * If set to `false`, the global `hrtime` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      hrtime?: "inherit" | boolean;
+
+      /** Specifies if the `net` permission should be requested or revoked.
+       * if set to `"inherit"`, the current `net` permission will be inherited.
+       * if set to `true`, the global `net` permission will be requested.
+       * if set to `false`, the global `net` permission will be revoked.
+       * if set to `string[]`, the `net` permission will be requested with the
+       * specified host strings with the format `"<host>[:<port>]`.
+       *
+       * Defaults to "inherit".
+       *
+       * Examples:
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "inherit",
+       *   permissions: {
+       *     net: "inherit",
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" })
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "true",
+       *   permissions: {
+       *     net: true,
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" });
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "false",
+       *   permissions: {
+       *     net: false,
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net" });
+       *     assertEquals(status.state, "denied");
+       *   },
+       * });
+       * ```
+       *
+       * ```ts
+       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+       *
+       * Deno.test({
+       *   name: "localhost:8080",
+       *   permissions: {
+       *     net: ["localhost:8080"],
+       *   },
+       *   async fn() {
+       *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
+       *     assertEquals(status.state, "granted");
+       *   },
+       * });
+       * ```
+       */
+      net?: "inherit" | boolean | string[];
+
+      /** Specifies if the `ffi` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `ffi` permission will be inherited.
+       * If set to `true`, the global `ffi` permission will be requested.
+       * If set to `false`, the global `ffi` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      ffi?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `read` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `read` permission will be inherited.
+       * If set to `true`, the global `read` permission will be requested.
+       * If set to `false`, the global `read` permission will be revoked.
+       * If set to `Array<string | URL>`, the `read` permission will be requested with the
+       * specified file paths.
+       *
+       * Defaults to "inherit".
+       */
+      read?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `run` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `run` permission will be inherited.
+       * If set to `true`, the global `run` permission will be requested.
+       * If set to `false`, the global `run` permission will be revoked.
+       *
+       * Defaults to "inherit".
+       */
+      run?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `write` permission should be requested or revoked.
+       * If set to `"inherit"`, the current `write` permission will be inherited.
+       * If set to `true`, the global `write` permission will be requested.
+       * If set to `false`, the global `write` permission will be revoked.
+       * If set to `Array<string | URL>`, the `write` permission will be requested with the
+       * specified file paths.
+       *
+       * Defaults to "inherit".
+       */
+      write?: "inherit" | boolean | Array<string | URL>;
+    };
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -164,8 +325,11 @@ declare namespace Deno {
    *   assertEquals(decoder.decode(data), "Hello world");
    * });
    * ```
-   * */
-  export function test(name: string, fn: () => void | Promise<void>): void;
+   */
+  export function test(
+    name: string,
+    fn: (t: TestContext) => void | Promise<void>,
+  ): void;
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
@@ -177,12 +341,12 @@ declare namespace Deno {
   export function exit(code?: number): never;
 
   export const env: {
-    /** Retrieve the value of an environment variable. Returns undefined if that
+    /** Retrieve the value of an environment variable. Returns `undefined` if that
      * key doesn't exist.
      *
      * ```ts
      * console.log(Deno.env.get("HOME"));  // e.g. outputs "/home/alice"
-     * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "Undefined"
+     * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "undefined"
      * ```
      * Requires `allow-env` permission. */
     get(key: string): string | undefined;
@@ -190,7 +354,7 @@ declare namespace Deno {
     /** Set the value of an environment variable.
      *
      * ```ts
-     * Deno.env.set("SOME_VAR", "Value"));
+     * Deno.env.set("SOME_VAR", "Value");
      * Deno.env.get("SOME_VAR");  // outputs "Value"
      * ```
      *
@@ -200,8 +364,8 @@ declare namespace Deno {
     /** Delete the value of an environment variable.
      *
      * ```ts
-     * Deno.env.set("SOME_VAR", "Value"));
-     * Deno.env.delete("SOME_VAR");  // outputs "Undefined"
+     * Deno.env.set("SOME_VAR", "Value");
+     * Deno.env.delete("SOME_VAR");  // outputs "undefined"
      * ```
      *
      * Requires `allow-env` permission. */
@@ -247,7 +411,7 @@ declare namespace Deno {
    *
    * Requires --allow-read.
    */
-  export function chdir(directory: string): void;
+  export function chdir(directory: string | URL): void;
 
   /**
    * Return a string representing the current working directory.
@@ -276,7 +440,6 @@ declare namespace Deno {
   export function linkSync(oldpath: string, newpath: string): void;
 
   /**
-   *
    * Creates `newpath` as a hard link to `oldpath`.
    *
    * ```ts
@@ -312,7 +475,8 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use Deno.iter() to turn a Reader into an AsyncIterator.
+     * Use iter() from https://deno.land/std/io/util.ts to turn a Reader into an
+     * AsyncIterator.
      */
     read(p: Uint8Array): Promise<number | null>;
   }
@@ -320,9 +484,9 @@ declare namespace Deno {
   export interface ReaderSync {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number
      * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
-     * encountered. Even if `read()` returns `n` < `p.byteLength`, it may use
+     * encountered. Even if `readSync()` returns `n` < `p.byteLength`, it may use
      * all of `p` as scratch space during the call. If some data is available
-     * but not `p.byteLength` bytes, `read()` conventionally returns what is
+     * but not `p.byteLength` bytes, `readSync()` conventionally returns what is
      * available instead of waiting for more.
      *
      * When `readSync()` encounters end-of-file condition, it returns EOF
@@ -336,7 +500,8 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use Deno.iterSync() to turn a ReaderSync into an Iterator.
+     * Use iterSync() from https://deno.land/std/io/util.ts to turn a ReaderSync
+     * into an Iterator.
      */
     readSync(p: Uint8Array): number | null;
   }
@@ -399,15 +564,19 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): number;
   }
 
-  /** Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
+  /**
+   * @deprecated Use `copy` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.copy` will be removed in Deno 2.0.
+   *
+   * Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
    * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
    *
    * ```ts
    * const source = await Deno.open("my_file.txt");
-   * const buffer = new Deno.Buffer()
    * const bytesCopied1 = await Deno.copy(source, Deno.stdout);
-   * const bytesCopied2 = await Deno.copy(source, buffer);
+   * const destination = await Deno.create("my_file_2.txt");
+   * const bytesCopied2 = await Deno.copy(source, destination);
    * ```
    *
    * @param src The source to copy from
@@ -422,7 +591,12 @@ declare namespace Deno {
     },
   ): Promise<number>;
 
-  /** Turns a Reader, `r`, into an async iterator.
+  /**
+   * @deprecated Use `iterateReader` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iter` will be
+   * removed in Deno 2.0.
+   *
+   * Turns a Reader, `r`, into an async iterator.
    *
    * ```ts
    * let f = await Deno.open("/etc/passwd");
@@ -458,7 +632,12 @@ declare namespace Deno {
     },
   ): AsyncIterableIterator<Uint8Array>;
 
-  /** Turns a ReaderSync, `r`, into an iterator.
+  /**
+   * @deprecated Use `iterateReaderSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iterSync` will
+   * be removed in Deno 2.0.
+   *
+   * Turns a ReaderSync, `r`, into an iterator.
    *
    * ```ts
    * let f = Deno.openSync("/etc/passwd");
@@ -643,6 +822,7 @@ declare namespace Deno {
    * ```ts
    * const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
    * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
+   *
    * // advance cursor 6 bytes
    * const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.Start);
    * console.log(cursorPosition);  // 6
@@ -655,6 +835,9 @@ declare namespace Deno {
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+   * const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
+   *
    * // Seek 6 bytes from the start of the file
    * console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.Start)); // "6"
    * // Seek 2 more bytes from the current position
@@ -673,8 +856,10 @@ declare namespace Deno {
    * The call resolves to the new position within the resource (bytes from the start).
    *
    * ```ts
+   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
    * const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
    * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
+   *
    * // advance cursor 6 bytes
    * const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.Start);
    * console.log(cursorPosition);  // 6
@@ -687,6 +872,9 @@ declare namespace Deno {
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+   * const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
+   *
    * // Seek 6 bytes from the start of the file
    * console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.Start)); // "6"
    * // Seek 2 more bytes from the current position
@@ -773,10 +961,14 @@ declare namespace Deno {
     constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
     writeSync(p: Uint8Array): number;
+    truncate(len?: number): Promise<void>;
+    truncateSync(len?: number): void;
     read(p: Uint8Array): Promise<number | null>;
     readSync(p: Uint8Array): number | null;
     seek(offset: number, whence: SeekMode): Promise<number>;
     seekSync(offset: number, whence: SeekMode): number;
+    stat(): Promise<FileInfo>;
+    statSync(): FileInfo;
     close(): void;
   }
 
@@ -796,7 +988,7 @@ declare namespace Deno {
      * any write calls on it will overwrite its contents, by default without
      * truncating it. */
     write?: boolean;
-    /**Sets the option for the append mode. This option, when `true`, means that
+    /** Sets the option for the append mode. This option, when `true`, means that
      * writes will append to a file instead of overwriting previous contents.
      * Note that setting `{ write: true, append: true }` has the same effect as
      * setting only `{ append: true }`. */
@@ -821,8 +1013,16 @@ declare namespace Deno {
     mode?: number;
   }
 
+  export interface ReadFileOptions {
+    /**
+     * An abort signal to allow cancellation of the file read operation.
+     * If the signal becomes aborted the readFile operation will be stopped
+     * and the promise returned will be rejected with an AbortError.
+     */
+    signal?: AbortSignal;
+  }
+
   /**
-   *
    *  Check if a given resource id (`rid`) is a TTY.
    *
    * ```ts
@@ -837,7 +1037,10 @@ declare namespace Deno {
    */
   export function isatty(rid: number): boolean;
 
-  /** A variable-sized buffer of bytes with `read()` and `write()` methods.
+  /**
+   * @deprecated Use Buffer from https://deno.land/std/io/buffer.ts instead. Deno.Buffer will be removed in Deno 2.0.
+   *
+   * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
    * Deno.Buffer is almost always used with some I/O like files and sockets. It
    * allows one to buffer up a download from a socket. Buffer grows and shrinks
@@ -917,7 +1120,11 @@ declare namespace Deno {
     readFromSync(r: ReaderSync): number;
   }
 
-  /** Read Reader `r` until EOF (`null`) and resolve to the content as
+  /**
+   * @deprecated Use `readAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.readAll` will be removed in Deno 2.0.
+   *
+   * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
    * ```ts
@@ -938,7 +1145,12 @@ declare namespace Deno {
    */
   export function readAll(r: Reader): Promise<Uint8Array>;
 
-  /** Synchronously reads Reader `r` until EOF (`null`) and returns the content
+  /**
+   * @deprecated Use `readAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.readAllSync`
+   * will be removed in Deno 2.0.
+   *
+   * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
    * ```ts
@@ -959,19 +1171,27 @@ declare namespace Deno {
    */
   export function readAllSync(r: ReaderSync): Uint8Array;
 
-  /** Write all the content of the array buffer (`arr`) to the writer (`w`).
+  /**
+   * @deprecated Use `writeAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.writeAll` will be removed in Deno 2.0.
+   *
+   * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
    * ```ts
    * // Example writing to stdout
    * const contentBytes = new TextEncoder().encode("Hello World");
    * await Deno.writeAll(Deno.stdout, contentBytes);
+   * ```
    *
+   * ```ts
    * // Example writing to file
    * const contentBytes = new TextEncoder().encode("Hello World");
    * const file = await Deno.open('test.file', {write: true});
    * await Deno.writeAll(file, contentBytes);
    * Deno.close(file.rid);
+   * ```
    *
+   * ```ts
    * // Example writing to buffer
    * const contentBytes = new TextEncoder().encode("Hello World");
    * const writer = new Deno.Buffer();
@@ -981,20 +1201,29 @@ declare namespace Deno {
    */
   export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
 
-  /** Synchronously write all the content of the array buffer (`arr`) to the
+  /**
+   * @deprecated Use `writeAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.writeAllSync`
+   * will be removed in Deno 2.0.
+   *
+   * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
    * ```ts
    * // Example writing to stdout
    * const contentBytes = new TextEncoder().encode("Hello World");
    * Deno.writeAllSync(Deno.stdout, contentBytes);
+   * ```
    *
+   * ```ts
    * // Example writing to file
    * const contentBytes = new TextEncoder().encode("Hello World");
    * const file = Deno.openSync('test.file', {write: true});
    * Deno.writeAllSync(file, contentBytes);
    * Deno.close(file.rid);
+   * ```
    *
+   * ```ts
    * // Example writing to buffer
    * const contentBytes = new TextEncoder().encode("Hello World");
    * const writer = new Deno.Buffer();
@@ -1277,7 +1506,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permissions. */
-  export function renameSync(oldpath: string, newpath: string): void;
+  export function renameSync(
+    oldpath: string | URL,
+    newpath: string | URL,
+  ): void;
 
   /** Renames (moves) `oldpath` to `newpath`.  Paths may be files or directories.
    * If `newpath` already exists and is not a directory, `rename()` replaces it.
@@ -1294,7 +1526,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permission. */
-  export function rename(oldpath: string, newpath: string): Promise<void>;
+  export function rename(
+    oldpath: string | URL,
+    newpath: string | URL,
+  ): Promise<void>;
 
   /** Synchronously reads and returns the entire contents of a file as utf8
    *  encoded string. Reading a directory throws an error.
@@ -1316,7 +1551,10 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function readTextFile(path: string | URL): Promise<string>;
+  export function readTextFile(
+    path: string | URL,
+    options?: ReadFileOptions,
+  ): Promise<string>;
 
   /** Synchronously reads and returns the entire contents of a file as an array
    * of bytes. `TextDecoder` can be used to transform the bytes to string if
@@ -1342,7 +1580,10 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function readFile(path: string | URL): Promise<Uint8Array>;
+  export function readFile(
+    path: string | URL,
+    options?: ReadFileOptions,
+  ): Promise<Uint8Array>;
 
   /** A FileInfo describes a file and is returned by `stat`, `lstat`,
    * `statSync`, `lstatSync`. */
@@ -1422,8 +1663,8 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission for the target path.
    * Also requires `allow-read` permission for the CWD if the target path is
-   * relative.*/
-  export function realPathSync(path: string): string;
+   * relative. */
+  export function realPathSync(path: string | URL): string;
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
    *
@@ -1438,8 +1679,8 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission for the target path.
    * Also requires `allow-read` permission for the CWD if the target path is
-   * relative.*/
-  export function realPath(path: string): Promise<string>;
+   * relative. */
+  export function realPath(path: string | URL): Promise<string>;
 
   export interface DirEntry {
     name: string;
@@ -1548,6 +1789,7 @@ declare namespace Deno {
    * what it points to..
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const fileInfo = Deno.lstatSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -1589,6 +1831,12 @@ declare namespace Deno {
     create?: boolean;
     /** Permissions always applied to file. */
     mode?: number;
+    /**
+     * An abort signal to allow cancellation of the file write operation.
+     * If the signal becomes aborted the writeFile operation will be stopped
+     * and the promise returned will be rejected with an AbortError.
+     */
+    signal?: AbortSignal;
   }
 
   /** Synchronously write `data` to the given `path`, by default creating a new
@@ -1699,150 +1947,7 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  export interface NetAddr {
-    transport: "tcp" | "udp";
-    hostname: string;
-    port: number;
-  }
-
-  export interface UnixAddr {
-    transport: "unix" | "unixpacket";
-    path: string;
-  }
-
-  export type Addr = NetAddr | UnixAddr;
-
-  /** A generic network listener for stream-oriented protocols. */
-  export interface Listener extends AsyncIterable<Conn> {
-    /** Waits for and resolves to the next connection to the `Listener`. */
-    accept(): Promise<Conn>;
-    /** Close closes the listener. Any pending accept promises will be rejected
-     * with errors. */
-    close(): void;
-    /** Return the address of the `Listener`. */
-    readonly addr: Addr;
-
-    /** Return the rid of the `Listener`. */
-    readonly rid: number;
-
-    [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
-  }
-
-  export interface Conn extends Reader, Writer, Closer {
-    /** The local address of the connection. */
-    readonly localAddr: Addr;
-    /** The remote address of the connection. */
-    readonly remoteAddr: Addr;
-    /** The resource ID of the connection. */
-    readonly rid: number;
-    /** Shuts down (`shutdown(2)`) the write side of the connection. Most
-     * callers should just use `close()`. */
-    closeWrite(): Promise<void>;
-  }
-
-  export interface ListenOptions {
-    /** The port to listen on. */
-    port: number;
-    /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `0.0.0.0`. */
-    hostname?: string;
-  }
-
-  /** Listen announces on the local transport address.
-   *
-   * ```ts
-   * const listener1 = Deno.listen({ port: 80 })
-   * const listener2 = Deno.listen({ hostname: "192.0.2.1", port: 80 })
-   * const listener3 = Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
-   * const listener4 = Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
-   * ```
-   *
-   * Requires `allow-net` permission. */
-  export function listen(
-    options: ListenOptions & { transport?: "tcp" },
-  ): Listener;
-
-  export interface ListenTlsOptions extends ListenOptions {
-    /** Server certificate file. */
-    certFile: string;
-    /** Server public key file. */
-    keyFile: string;
-
-    transport?: "tcp";
-  }
-
-  /** Listen announces on the local transport address over TLS (transport layer
-   * security).
-   *
-   * ```ts
-   * const lstnr = Deno.listenTls({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
-   * ```
-   *
-   * Requires `allow-net` permission. */
-  export function listenTls(options: ListenTlsOptions): Listener;
-
-  export interface ConnectOptions {
-    /** The port to connect to. */
-    port: number;
-    /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `127.0.0.1`. */
-    hostname?: string;
-    transport?: "tcp";
-  }
-
-  /**
-   * Connects to the hostname (default is "127.0.0.1") and port on the named
-   * transport (default is "tcp"), and resolves to the connection (`Conn`).
-   *
-   * ```ts
-   * const conn1 = await Deno.connect({ port: 80 });
-   * const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
-   * const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
-   * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
-   * ```
-   *
-   * Requires `allow-net` permission for "tcp". */
-  export function connect(options: ConnectOptions): Promise<Conn>;
-
-  export interface ConnectTlsOptions {
-    /** The port to connect to. */
-    port: number;
-    /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `127.0.0.1`. */
-    hostname?: string;
-    /** Server certificate file. */
-    certFile?: string;
-  }
-
-  /** Establishes a secure connection over TLS (transport layer security) using
-   * an optional cert file, hostname (default is "127.0.0.1") and port.  The
-   * cert file is optional and if not included Mozilla's root certificates will
-   * be used (see also https://github.com/ctz/webpki-roots for specifics)
-   *
-   * ```ts
-   * const conn1 = await Deno.connectTls({ port: 80 });
-   * const conn2 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "192.0.2.1", port: 80 });
-   * const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80 });
-   * const conn4 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "golang.org", port: 80});
-   * ```
-   *
-   * Requires `allow-net` permission.
-   */
-  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
-
-  /** Shutdown socket send operations.
-   *
-   * Matches behavior of POSIX shutdown(3).
-   *
-   * ```ts
-   * const listener = Deno.listen({ port: 80 });
-   * const conn = await listener.accept();
-   * Deno.shutdown(conn.rid);
-   * ```
-   */
-  export function shutdown(rid: number): Promise<void>;
-
-  export interface Metrics {
+  export interface OpMetrics {
     opsDispatched: number;
     opsDispatchedSync: number;
     opsDispatchedAsync: number;
@@ -1854,6 +1959,10 @@ declare namespace Deno {
     bytesSentControl: number;
     bytesSentData: number;
     bytesReceived: number;
+  }
+
+  export interface Metrics extends OpMetrics {
+    ops: Record<string, OpMetrics>;
   }
 
   /** Receive metrics from the privileged side of Deno. This is primarily used
@@ -1903,6 +2012,25 @@ declare namespace Deno {
     paths: string[];
   }
 
+  /**
+   * FsWatcher is returned by `Deno.watchFs` function when you start watching
+   * the file system. You can iterate over this interface to get the file
+   * system events, and also you can stop watching the file system by calling
+   * `.close()` method.
+   */
+  export interface FsWatcher extends AsyncIterable<FsEvent> {
+    /** The resource id of the `FsWatcher`. */
+    readonly rid: number;
+    /** Stops watching the file system and closes the watcher resource. */
+    close(): void;
+    /** @deprecated
+     * Stops watching the file system and closes the watcher resource.
+     * Will be removed at 2.0.
+     */
+    return?(value?: any): Promise<IteratorResult<FsEvent>>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
+  }
+
   /** Watch for file system events against one or more `paths`, which can be files
    * or directories.  These paths must exist already.  One user action (e.g.
    * `touch test.file`) can  generate multiple file system events.  Likewise,
@@ -1917,14 +2045,28 @@ declare namespace Deno {
    *    console.log(">>>> event", event);
    *    // { kind: "create", paths: [ "/foo.txt" ] }
    * }
-   *```
+   * ```
    *
    * Requires `allow-read` permission.
+   *
+   * Call `watcher.close()` to stop watching.
+   *
+   * ```ts
+   * const watcher = Deno.watchFs("/");
+   *
+   * setTimeout(() => {
+   *   watcher.close();
+   * }, 5000);
+   *
+   * for await (const event of watcher) {
+   *    console.log(">>>> event", event);
+   * }
+   * ```
    */
   export function watchFs(
     paths: string | string[],
     options?: { recursive: boolean },
-  ): AsyncIterableIterator<FsEvent>;
+  ): FsWatcher;
 
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
@@ -1944,12 +2086,12 @@ declare namespace Deno {
      *
      * If `stdout` and/or `stderr` were set to `"piped"`, they must be closed
      * manually before the process can exit.
-     * 
+     *
      * To run process to completion and collect output from both `stdout` and
      * `stderr` use:
-     * 
+     *
      * ```ts
-     * const p = Deno.run({ cmd, stderr: 'piped', stdout: 'piped' });
+     * const p = Deno.run({ cmd: [ "echo", "hello world" ], stderr: 'piped', stdout: 'piped' });
      * const [status, stdout, stderr] = await Promise.all([
      *   p.status(),
      *   p.output(),
@@ -1957,7 +2099,7 @@ declare namespace Deno {
      * ]);
      * p.close();
      * ```
-     **/
+     */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.
      *
@@ -1973,14 +2115,51 @@ declare namespace Deno {
     stderrOutput(): Promise<Uint8Array>;
     close(): void;
 
-    /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
-     * enum.
+    /** Send a signal to process.
      *
-     * Send a signal to process. This functionality currently only works on
-     * Linux and Mac OS.
+     * ```ts
+     * const p = Deno.run({ cmd: [ "sleep", "20" ]});
+     * p.kill("SIGTERM");
+     * p.close();
+     * ```
      */
-    kill(signo: number): void;
+    kill(signo: Signal): void;
   }
+
+  export type Signal =
+    | "SIGABRT"
+    | "SIGALRM"
+    | "SIGBUS"
+    | "SIGCHLD"
+    | "SIGCONT"
+    | "SIGEMT"
+    | "SIGFPE"
+    | "SIGHUP"
+    | "SIGILL"
+    | "SIGINFO"
+    | "SIGINT"
+    | "SIGIO"
+    | "SIGKILL"
+    | "SIGPIPE"
+    | "SIGPROF"
+    | "SIGPWR"
+    | "SIGQUIT"
+    | "SIGSEGV"
+    | "SIGSTKFLT"
+    | "SIGSTOP"
+    | "SIGSYS"
+    | "SIGTERM"
+    | "SIGTRAP"
+    | "SIGTSTP"
+    | "SIGTTIN"
+    | "SIGTTOU"
+    | "SIGURG"
+    | "SIGUSR1"
+    | "SIGUSR2"
+    | "SIGVTALRM"
+    | "SIGWINCH"
+    | "SIGXCPU"
+    | "SIGXFSZ";
 
   export type ProcessStatus =
     | {
@@ -2019,8 +2198,18 @@ declare namespace Deno {
    * Subprocess uses same working directory as parent process unless `opt.cwd`
    * is specified.
    *
+   * Environmental variables from parent process can be cleared using `opt.clearEnv`.
+   * Doesn't guarantee that only `opt.env` variables are present,
+   * as the OS may set environmental variables for processes.
+   *
    * Environmental variables for subprocess can be specified using `opt.env`
    * mapping.
+   *
+   * `opt.uid` sets the child process’s user ID. This translates to a setuid call
+   * in the child process. Failure in the setuid call will cause the spawn to fail.
+   *
+   * `opt.gid` is similar to `opt.uid`, but sets the group ID of the child process.
+   * This has the same semantics as the uid field.
    *
    * By default subprocess inherits stdio of parent process. To change that
    * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
@@ -2067,33 +2256,35 @@ declare namespace Deno {
    * `console.log()`.
    *
    * ```ts
-   * const obj = {};
-   * obj.propA = 10;
-   * obj.propB = "hello";
-   * const objAsString = Deno.inspect(obj); // { propA: 10, propB: "hello" }
-   * console.log(obj);  // prints same value as objAsString, e.g. { propA: 10, propB: "hello" }
+   * const obj = {
+   *   a: 10,
+   *   b: "hello",
+   * };
+   * const objAsString = Deno.inspect(obj); // { a: 10, b: "hello" }
+   * console.log(obj);  // prints same value as objAsString, e.g. { a: 10, b: "hello" }
    * ```
    *
-   * You can also register custom inspect functions, via the `customInspect` Deno
-   * symbol on objects, to control and customize the output.
+   * You can also register custom inspect functions, via the symbol `Symbol.for("Deno.customInspect")`,
+   * on objects, to control and customize the output.
    *
    * ```ts
    * class A {
    *   x = 10;
    *   y = "hello";
-   *   [Deno.customInspect](): string {
+   *   [Symbol.for("Deno.customInspect")](): string {
    *     return "x=" + this.x + ", y=" + this.y;
    *   }
    * }
-   * ```
    *
-   *      const inStringFormat = Deno.inspect(new A()); // "x=10, y=hello"
-   *      console.log(inStringFormat);  // prints "x=10, y=hello"
+   * const inStringFormat = Deno.inspect(new A()); // "x=10, y=hello"
+   * console.log(inStringFormat);  // prints "x=10, y=hello"
+   * ```
    *
    * Finally, you can also specify the depth to which it will format.
    *
-   *      Deno.inspect({a: {b: {c: {d: 'hello'}}}}, {depth: 2}); // { a: { b: [Object] } }
-   *
+   * ```ts
+   * Deno.inspect({a: {b: {c: {d: 'hello'}}}}, {depth: 2}); // { a: { b: [Object] } }
+   * ```
    */
   export function inspect(value: unknown, options?: InspectOptions): string;
 
@@ -2104,7 +2295,7 @@ declare namespace Deno {
     | "write"
     | "net"
     | "env"
-    | "plugin"
+    | "ffi"
     | "hrtime";
 
   /** The current status of the permission. */
@@ -2112,16 +2303,17 @@ declare namespace Deno {
 
   export interface RunPermissionDescriptor {
     name: "run";
+    command?: string | URL;
   }
 
   export interface ReadPermissionDescriptor {
     name: "read";
-    path?: string;
+    path?: string | URL;
   }
 
   export interface WritePermissionDescriptor {
     name: "write";
-    path?: string;
+    path?: string | URL;
   }
 
   export interface NetPermissionDescriptor {
@@ -2136,10 +2328,12 @@ declare namespace Deno {
 
   export interface EnvPermissionDescriptor {
     name: "env";
+    variable?: string;
   }
 
-  export interface PluginPermissionDescriptor {
-    name: "plugin";
+  export interface FfiPermissionDescriptor {
+    name: "ffi";
+    path?: string | URL;
   }
 
   export interface HrtimePermissionDescriptor {
@@ -2154,7 +2348,7 @@ declare namespace Deno {
     | WritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
-    | PluginPermissionDescriptor
+    | FfiPermissionDescriptor
     | HrtimePermissionDescriptor;
 
   export interface PermissionStatusEventMap {
@@ -2198,9 +2392,7 @@ declare namespace Deno {
      *
      * ```ts
      * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
-     * if (status.state === "granted") {
-     *   data = await Deno.readFile("/etc/passwd");
-     * }
+     * console.log(status.state);
      * ```
      */
     query(desc: PermissionDescriptor): Promise<PermissionStatus>;
@@ -2208,6 +2400,8 @@ declare namespace Deno {
     /** Revokes a permission, and resolves to the state of the permission.
      *
      * ```ts
+     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     *
      * const status = await Deno.permissions.revoke({ name: "run" });
      * assert(status.state !== "granted")
      * ```
@@ -2236,7 +2430,7 @@ declare namespace Deno {
     /** The LLVM target triple */
     target: string;
     /** Instruction set architecture */
-    arch: "x86_64";
+    arch: "x86_64" | "aarch64";
     /** Operating system */
     os: "darwin" | "linux" | "windows";
     /** Computer vendor */
@@ -2266,9 +2460,13 @@ declare namespace Deno {
    */
   export const args: string[];
 
-  /** A symbol which can be used as a key for a custom method which will be
+  /**
+   * @deprecated A symbol which can be used as a key for a custom method which will be
    * called when `Deno.inspect()` is called, or when the object is logged to
-   * the console. */
+   * the console.
+   *
+   * This symbol is deprecated since 1.9. Use `Symbol.for("Deno.customInspect")` instead.
+   */
   export const customInspect: unique symbol;
 
   /** The URL of the entrypoint module entered from the command-line. */
@@ -2288,10 +2486,10 @@ declare namespace Deno {
    * Deno.symlinkSync("old/name", "new/name");
    * ```
    *
-   * Requires `allow-write` permission. */
+   * Requires full `allow-read` and `allow-write` permissions. */
   export function symlinkSync(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): void;
 
@@ -2305,10 +2503,278 @@ declare namespace Deno {
    * await Deno.symlink("old/name", "new/name");
    * ```
    *
-   * Requires `allow-write` permission. */
+   * Requires full `allow-read` and `allow-write` permissions. */
   export function symlink(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): Promise<void>;
+
+  /**
+   * Synchronously truncates or extends the specified file stream, to reach the
+   * specified `len`.
+   *
+   * If `len` is not specified then the entire file contents are truncated as if len was set to 0.
+   *
+   * if the file previously was larger than this new length, the extra  data  is  lost.
+   *
+   * if  the  file  previously  was shorter, it is extended, and the extended part reads as null bytes ('\0').
+   *
+   * ```ts
+   * // truncate the entire file
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, truncate: true, create: true });
+   * Deno.ftruncateSync(file.rid);
+   * ```
+   *
+   * ```ts
+   * // truncate part of the file
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.ftruncateSync(file.rid, 7);
+   * Deno.seekSync(file.rid, 0, Deno.SeekMode.Start);
+   * const data = new Uint8Array(32);
+   * Deno.readSync(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   */
+  export function ftruncateSync(rid: number, len?: number): void;
+
+  /**
+   * Truncates or extends the specified file stream, to reach the specified `len`.
+   *
+   * If `len` is not specified then the entire file contents are truncated as if len was set to 0.
+   *
+   * If the file previously was larger than this new length, the extra  data  is  lost.
+   *
+   * If  the  file  previously  was shorter, it is extended, and the extended part reads as null bytes ('\0').
+   *
+   * ```ts
+   * // truncate the entire file
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.ftruncate(file.rid);
+   * ```
+   *
+   * ```ts
+   * // truncate part of the file
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.ftruncate(file.rid, 7);
+   * const data = new Uint8Array(32);
+   * await Deno.read(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   */
+  export function ftruncate(rid: number, len?: number): Promise<void>;
+
+  /**
+   * Synchronously returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * const file = Deno.openSync("file.txt", { read: true });
+   * const fileInfo = Deno.fstatSync(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstatSync(rid: number): FileInfo;
+
+  /**
+   * Returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * const file = await Deno.open("file.txt", { read: true });
+   * const fileInfo = await Deno.fstat(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstat(rid: number): Promise<FileInfo>;
+
+  export interface RequestEvent {
+    readonly request: Request;
+    respondWith(r: Response | Promise<Response>): Promise<void>;
+  }
+
+  export interface HttpConn extends AsyncIterable<RequestEvent> {
+    readonly rid: number;
+
+    nextRequest(): Promise<RequestEvent | null>;
+    close(): void;
+  }
+
+  /**
+   * Services HTTP requests given a TCP or TLS socket.
+   *
+   * ```ts
+   * const conn = await Deno.listen({ port: 80 });
+   * const httpConn = Deno.serveHttp(await conn.accept());
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   e.respondWith(new Response("Hello World"));
+   * }
+   * ```
+   *
+   * If `httpConn.nextRequest()` encounters an error or returns `null`
+   * then the underlying HttpConn resource is closed automatically.
+   *
+   * Alternatively, you can also use the Async Iterator approach:
+   *
+   * ```ts
+   * async function handleHttp(conn: Deno.Conn) {
+   *   for await (const e of Deno.serveHttp(conn)) {
+   *     e.respondWith(new Response("Hello World"));
+   *   }
+   * }
+   *
+   * for await (const conn of Deno.listen({ port: 80 })) {
+   *   handleHttp(conn);
+   * }
+   * ```
+   */
+  export function serveHttp(conn: Conn): HttpConn;
+
+  export interface WebSocketUpgrade {
+    response: Response;
+    socket: WebSocket;
+  }
+
+  export interface UpgradeWebSocketOptions {
+    protocol?: string;
+  }
+
+  /**
+   * Used to upgrade an incoming HTTP request to a WebSocket.
+   *
+   * Given a request, returns a pair of WebSocket and Response. The original
+   * request must be responded to with the returned response for the websocket
+   * upgrade to be successful.
+   *
+   * ```ts
+   * const conn = await Deno.listen({ port: 80 });
+   * const httpConn = Deno.serveHttp(await conn.accept());
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   const { socket, response } = Deno.upgradeWebSocket(e.request);
+   *   socket.onopen = () => {
+   *     socket.send("Hello World!");
+   *   };
+   *   socket.onmessage = (e) => {
+   *     console.log(e.data);
+   *     socket.close();
+   *   };
+   *   socket.onclose = () => console.log("WebSocket has been closed.");
+   *   socket.onerror = (e) => console.error("WebSocket error:", e);
+   *   e.respondWith(response);
+   * }
+   * ```
+   *
+   * If the request body is disturbed (read from) before the upgrade is
+   * completed, upgrading fails.
+   *
+   * This operation does not yet consume the request or open the websocket. This
+   * only happens once the returned response has been passed to `respondWith`.
+   */
+  export function upgradeWebSocket(
+    request: Request,
+    options?: UpgradeWebSocketOptions,
+  ): WebSocketUpgrade;
+
+  /** Send a signal to process under given `pid`.
+   *
+   * If `pid` is negative, the signal will be sent to the process group
+   * identified by `pid`.
+   *
+   *      const p = Deno.run({
+   *        cmd: ["sleep", "10000"]
+   *      });
+   *
+   *      Deno.kill(p.pid, "SIGINT");
+   *
+   * Requires `allow-run` permission. */
+  export function kill(pid: number, signo: Signal): void;
+
+  /** The type of the resource record.
+   * Only the listed types are supported currently. */
+  export type RecordType =
+    | "A"
+    | "AAAA"
+    | "ANAME"
+    | "CNAME"
+    | "MX"
+    | "PTR"
+    | "SRV"
+    | "TXT";
+
+  export interface ResolveDnsOptions {
+    /** The name server to be used for lookups.
+     * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
+    nameServer?: {
+      /** The IP address of the name server */
+      ipAddr: string;
+      /** The port number the query will be sent to.
+       * If not specified, defaults to 53. */
+      port?: number;
+    };
+  }
+
+  /** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
+  export interface MXRecord {
+    preference: number;
+    exchange: string;
+  }
+
+  /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
+  export interface SRVRecord {
+    priority: number;
+    weight: number;
+    port: number;
+    target: string;
+  }
+
+  export function resolveDns(
+    query: string,
+    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
+    options?: ResolveDnsOptions,
+  ): Promise<string[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "MX",
+    options?: ResolveDnsOptions,
+  ): Promise<MXRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "SRV",
+    options?: ResolveDnsOptions,
+  ): Promise<SRVRecord[]>;
+
+  export function resolveDns(
+    query: string,
+    recordType: "TXT",
+    options?: ResolveDnsOptions,
+  ): Promise<string[][]>;
+
+  /**
+   * Performs DNS resolution against the given query, returning resolved records.
+   * Fails in the cases such as:
+   * - the query is in invalid format
+   * - the options have an invalid parameter, e.g. `nameServer.port` is beyond the range of 16-bit unsigned integer
+   * - timed out
+   *
+   * ```ts
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   */
+  export function resolveDns(
+    query: string,
+    recordType: RecordType,
+    options?: ResolveDnsOptions,
+  ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
 }

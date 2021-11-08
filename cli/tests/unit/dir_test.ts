@@ -1,13 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
-unitTest({ perms: { read: true } }, function dirCwdNotNull(): void {
+unitTest({ permissions: { read: true } }, function dirCwdNotNull() {
   assert(Deno.cwd() != null);
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
-  function dirCwdChdirSuccess(): void {
+  { permissions: { read: true, write: true } },
+  function dirCwdChdirSuccess() {
     const initialdir = Deno.cwd();
     const path = Deno.makeTempDirSync();
     Deno.chdir(path);
@@ -21,7 +21,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { read: true, write: true } }, function dirCwdError(): void {
+unitTest({ permissions: { read: true, write: true } }, function dirCwdError() {
   // excluding windows since it throws resource busy, while removeSync
   if (["linux", "darwin"].includes(Deno.build.os)) {
     const initialdir = Deno.cwd();
@@ -38,7 +38,7 @@ unitTest({ perms: { read: true, write: true } }, function dirCwdError(): void {
   }
 });
 
-unitTest({ perms: { read: false } }, function dirCwdPermError(): void {
+unitTest({ permissions: { read: false } }, function dirCwdPermError() {
   assertThrows(
     () => {
       Deno.cwd();
@@ -49,11 +49,15 @@ unitTest({ perms: { read: false } }, function dirCwdPermError(): void {
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
-  function dirChdirError(): void {
+  { permissions: { read: true, write: true } },
+  function dirChdirError() {
     const path = Deno.makeTempDirSync() + "test";
-    assertThrows(() => {
-      Deno.chdir(path);
-    }, Deno.errors.NotFound);
+    assertThrows(
+      () => {
+        Deno.chdir(path);
+      },
+      Deno.errors.NotFound,
+      `chdir '${path}'`,
+    );
   },
 );

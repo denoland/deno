@@ -1,11 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
+use deno_runtime::colors;
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
+use deno_graph::ModuleGraphError;
 use regex::Regex;
 use std::error::Error;
 use std::fmt;
@@ -14,20 +15,25 @@ const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
 const UNSTABLE_DENO_PROPS: &[&str] = &[
   "CompilerOptions",
+  "CreateHttpClientOptions",
   "DatagramConn",
   "Diagnostic",
   "DiagnosticCategory",
   "DiagnosticItem",
   "DiagnosticMessageChain",
+  "EmitOptions",
+  "EmitResult",
   "HttpClient",
-  "LinuxSignal",
   "Location",
-  "MacOSSignal",
-  "Signal",
+  "MXRecord",
+  "Metrics",
+  "OpMetrics",
+  "RecordType",
+  "SRVRecord",
+  "SetRawOptions",
   "SignalStream",
   "StartTlsOptions",
-  "SymlinkOptions",
-  "TranspileOnlyResult",
+  "SystemMemoryInfo",
   "UnixConnectOptions",
   "UnixListenOptions",
   "applySourceMap",
@@ -38,26 +44,22 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "formatDiagnostics",
   "futime",
   "futimeSync",
-  "fstat",
-  "fstatSync",
-  "ftruncate",
-  "ftruncateSync",
   "hostname",
   "kill",
   "listen",
   "listenDatagram",
   "loadavg",
-  "mainModule",
-  "openPlugin",
+  "dlopen",
   "osRelease",
   "ppid",
   "setRaw",
   "shutdown",
+  "Signal",
   "signal",
   "signals",
+  "sleepSync",
   "startTls",
   "systemMemoryInfo",
-  "systemCpuInfo",
   "umask",
   "utime",
   "utimeSync",
@@ -179,7 +181,7 @@ impl DiagnosticMessageChain {
   pub fn format_message(&self, level: usize) -> String {
     let mut s = String::new();
 
-    s.push_str(&std::iter::repeat(" ").take(level * 2).collect::<String>());
+    s.push_str(&" ".repeat(level * 2));
     s.push_str(&self.message_text);
     if let Some(next) = &self.next {
       s.push('\n');
@@ -223,13 +225,14 @@ impl Diagnostic {
       _ => "",
     };
 
+    let code = if self.code >= 900001 {
+      "".to_string()
+    } else {
+      colors::bold(format!("TS{} ", self.code)).to_string()
+    };
+
     if !category.is_empty() {
-      write!(
-        f,
-        "{} [{}]: ",
-        colors::bold(&format!("TS{}", self.code)),
-        category
-      )
+      write!(f, "{}[{}]: ", code, category)
     } else {
       Ok(())
     }
@@ -349,6 +352,21 @@ impl Diagnostics {
     Diagnostics(diagnostics)
   }
 
+  pub fn extend_graph_errors(&mut self, errors: Vec<ModuleGraphError>) {
+    self.0.extend(errors.into_iter().map(|err| Diagnostic {
+      category: DiagnosticCategory::Error,
+      code: 900001,
+      start: None,
+      end: None,
+      message_text: Some(err.to_string()),
+      message_chain: None,
+      source: None,
+      source_line: None,
+      file_name: Some(err.specifier().to_string()),
+      related_information: None,
+    }));
+  }
+
   pub fn is_empty(&self) -> bool {
     self.0.is_empty()
   }
@@ -397,9 +415,9 @@ impl Error for Diagnostics {}
 #[cfg(test)]
 mod tests {
   use super::*;
-  use colors::strip_ansi_codes;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
+  use test_util::strip_ansi_codes;
 
   #[test]
   fn test_de_diagnostics() {
@@ -596,46 +614,5 @@ mod tests {
     let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
     let actual = diagnostics.to_string();
     assert_eq!(strip_ansi_codes(&actual), "TS2552 [ERROR]: Cannot find name \'foo_Bar\'. Did you mean \'foo_bar\'?\nfoo_Bar();\n~~~~~~~\n    at test.ts:8:1\n\n    \'foo_bar\' is declared here.\n    function foo_bar() {\n             ~~~~~~~\n        at test.ts:4:10");
-  }
-
-  #[test]
-  fn test_unstable_suggestion() {
-    let value = json![
-      {
-        "start": {
-          "line": 0,
-          "character": 17
-        },
-        "end": {
-          "line": 0,
-          "character": 21
-        },
-        "fileName": "file:///cli/tests/unstable_ts2551.ts",
-        "messageText": "Property 'ppid' does not exist on type 'typeof Deno'. Did you mean 'pid'?",
-        "sourceLine": "console.log(Deno.ppid);",
-        "relatedInformation": [
-          {
-            "start": {
-              "line": 89,
-              "character": 15
-            },
-            "end": {
-              "line": 89,
-              "character": 18
-            },
-            "fileName": "asset:///lib.deno.ns.d.ts",
-            "messageText": "'pid' is declared here.",
-            "sourceLine": "  export const pid: number;",
-            "category": 3,
-            "code": 2728
-          }
-        ],
-        "category": 1,
-        "code": 2551
-      }
-    ];
-    let diagnostics: Diagnostic = serde_json::from_value(value).unwrap();
-    let actual = diagnostics.to_string();
-    assert_eq!(strip_ansi_codes(&actual), "TS2551 [ERROR]: Property \'ppid\' does not exist on type \'typeof Deno\'. \'Deno.ppid\' is an unstable API. Did you forget to run with the \'--unstable\' flag, or did you mean \'pid\'?\nconsole.log(Deno.ppid);\n                 ~~~~\n    at file:///cli/tests/unstable_ts2551.ts:1:18\n\n    \'pid\' is declared here.\n      export const pid: number;\n                   ~~~\n        at asset:///lib.deno.ns.d.ts:90:16");
   }
 }

@@ -5,23 +5,33 @@
 ///! language server, which helps determine what messages are sent from the
 ///! client.
 ///!
+use lspower::lsp::CallHierarchyServerCapability;
 use lspower::lsp::ClientCapabilities;
 use lspower::lsp::CodeActionKind;
 use lspower::lsp::CodeActionOptions;
 use lspower::lsp::CodeActionProviderCapability;
 use lspower::lsp::CodeLensOptions;
 use lspower::lsp::CompletionOptions;
+use lspower::lsp::FoldingRangeProviderCapability;
 use lspower::lsp::HoverProviderCapability;
 use lspower::lsp::ImplementationProviderCapability;
 use lspower::lsp::OneOf;
 use lspower::lsp::SaveOptions;
 use lspower::lsp::SelectionRangeProviderCapability;
+use lspower::lsp::SemanticTokensFullOptions;
+use lspower::lsp::SemanticTokensOptions;
+use lspower::lsp::SemanticTokensServerCapabilities;
 use lspower::lsp::ServerCapabilities;
 use lspower::lsp::SignatureHelpOptions;
 use lspower::lsp::TextDocumentSyncCapability;
 use lspower::lsp::TextDocumentSyncKind;
 use lspower::lsp::TextDocumentSyncOptions;
 use lspower::lsp::WorkDoneProgressOptions;
+use lspower::lsp::WorkspaceFoldersServerCapabilities;
+use lspower::lsp::WorkspaceServerCapabilities;
+
+use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
+use super::semantic_tokens::get_legend;
 
 fn code_action_capabilities(
   client_capabilities: &ClientCapabilities,
@@ -32,8 +42,16 @@ fn code_action_capabilities(
     .and_then(|it| it.code_action.as_ref())
     .and_then(|it| it.code_action_literal_support.as_ref())
     .map_or(CodeActionProviderCapability::Simple(true), |_| {
+      let mut code_action_kinds =
+        vec![CodeActionKind::QUICKFIX, CodeActionKind::REFACTOR];
+      code_action_kinds.extend(
+        ALL_KNOWN_REFACTOR_ACTION_KINDS
+          .iter()
+          .map(|action| action.kind.clone()),
+      );
+
       CodeActionProviderCapability::Options(CodeActionOptions {
-        code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
+        code_action_kinds: Some(code_action_kinds),
         resolve_provider: Some(true),
         work_done_progress_options: Default::default(),
       })
@@ -96,7 +114,8 @@ pub fn server_capabilities(
     )),
     references_provider: Some(OneOf::Left(true)),
     document_highlight_provider: Some(OneOf::Left(true)),
-    document_symbol_provider: None,
+    // TODO: Provide a label once https://github.com/gluon-lang/lsp-types/pull/207 is merged
+    document_symbol_provider: Some(OneOf::Left(true)),
     workspace_symbol_provider: None,
     code_action_provider: Some(code_action_provider),
     code_lens_provider: Some(CodeLensOptions {
@@ -108,14 +127,29 @@ pub fn server_capabilities(
     selection_range_provider: Some(SelectionRangeProviderCapability::Simple(
       true,
     )),
-    folding_range_provider: None,
+    folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
     rename_provider: Some(OneOf::Left(true)),
     document_link_provider: None,
     color_provider: None,
     execute_command_provider: None,
-    call_hierarchy_provider: None,
-    semantic_tokens_provider: None,
-    workspace: None,
+    call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
+    semantic_tokens_provider: Some(
+      SemanticTokensServerCapabilities::SemanticTokensOptions(
+        SemanticTokensOptions {
+          legend: get_legend(),
+          range: Some(true),
+          full: Some(SemanticTokensFullOptions::Bool(true)),
+          ..Default::default()
+        },
+      ),
+    ),
+    workspace: Some(WorkspaceServerCapabilities {
+      workspace_folders: Some(WorkspaceFoldersServerCapabilities {
+        supported: Some(true),
+        change_notifications: None,
+      }),
+      file_operations: None,
+    }),
     experimental: None,
     linked_editing_range_provider: None,
     moniker_provider: None,

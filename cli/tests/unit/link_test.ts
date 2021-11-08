@@ -1,9 +1,15 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+  unitTest,
+} from "./test_util.ts";
 
 unitTest(
-  { perms: { read: true, write: true } },
-  function linkSyncSuccess(): void {
+  { permissions: { read: true, write: true } },
+  function linkSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const oldData = "Hardlink";
     const oldName = testDir + "/oldname";
@@ -41,8 +47,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
-  function linkSyncExists(): void {
+  { permissions: { read: true, write: true } },
+  function linkSyncExists() {
     const testDir = Deno.makeTempDirSync();
     const oldName = testDir + "/oldname";
     const newName = testDir + "/newname";
@@ -50,37 +56,36 @@ unitTest(
     // newname is already created.
     Deno.writeFileSync(newName, new TextEncoder().encode("newName"));
 
-    assertThrows(() => {
-      Deno.linkSync(oldName, newName);
-    }, Deno.errors.AlreadyExists);
+    assertThrows(
+      () => {
+        Deno.linkSync(oldName, newName);
+      },
+      Deno.errors.AlreadyExists,
+      `link '${oldName}' -> '${newName}'`,
+    );
   },
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
-  function linkSyncNotFound(): void {
+  { permissions: { read: true, write: true } },
+  function linkSyncNotFound() {
     const testDir = Deno.makeTempDirSync();
     const oldName = testDir + "/oldname";
     const newName = testDir + "/newname";
 
-    assertThrows(() => {
-      Deno.linkSync(oldName, newName);
-    }, Deno.errors.NotFound);
+    assertThrows(
+      () => {
+        Deno.linkSync(oldName, newName);
+      },
+      Deno.errors.NotFound,
+      `link '${oldName}' -> '${newName}'`,
+    );
   },
 );
 
 unitTest(
-  { perms: { read: false, write: true } },
-  function linkSyncReadPerm(): void {
-    assertThrows(() => {
-      Deno.linkSync("oldbaddir", "newbaddir");
-    }, Deno.errors.PermissionDenied);
-  },
-);
-
-unitTest(
-  { perms: { read: true, write: false } },
-  function linkSyncWritePerm(): void {
+  { permissions: { read: false, write: true } },
+  function linkSyncReadPerm() {
     assertThrows(() => {
       Deno.linkSync("oldbaddir", "newbaddir");
     }, Deno.errors.PermissionDenied);
@@ -88,8 +93,17 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
-  async function linkSuccess(): Promise<void> {
+  { permissions: { read: true, write: false } },
+  function linkSyncWritePerm() {
+    assertThrows(() => {
+      Deno.linkSync("oldbaddir", "newbaddir");
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
+  { permissions: { read: true, write: true } },
+  async function linkSuccess() {
     const testDir = Deno.makeTempDirSync();
     const oldData = "Hardlink";
     const oldName = testDir + "/oldname";
@@ -123,5 +137,60 @@ unitTest(
       newData3,
       new TextDecoder().decode(Deno.readFileSync(newName)),
     );
+  },
+);
+
+unitTest(
+  { permissions: { read: true, write: true } },
+  async function linkExists() {
+    const testDir = Deno.makeTempDirSync();
+    const oldName = testDir + "/oldname";
+    const newName = testDir + "/newname";
+    Deno.writeFileSync(oldName, new TextEncoder().encode("oldName"));
+    // newname is already created.
+    Deno.writeFileSync(newName, new TextEncoder().encode("newName"));
+
+    await assertRejects(
+      async () => {
+        await Deno.link(oldName, newName);
+      },
+      Deno.errors.AlreadyExists,
+      `link '${oldName}' -> '${newName}'`,
+    );
+  },
+);
+
+unitTest(
+  { permissions: { read: true, write: true } },
+  async function linkNotFound() {
+    const testDir = Deno.makeTempDirSync();
+    const oldName = testDir + "/oldname";
+    const newName = testDir + "/newname";
+
+    await assertRejects(
+      async () => {
+        await Deno.link(oldName, newName);
+      },
+      Deno.errors.NotFound,
+      `link '${oldName}' -> '${newName}'`,
+    );
+  },
+);
+
+unitTest(
+  { permissions: { read: false, write: true } },
+  async function linkReadPerm() {
+    await assertRejects(async () => {
+      await Deno.link("oldbaddir", "newbaddir");
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+unitTest(
+  { permissions: { read: true, write: false } },
+  async function linkWritePerm() {
+    await assertRejects(async () => {
+      await Deno.link("oldbaddir", "newbaddir");
+    }, Deno.errors.PermissionDenied);
   },
 );

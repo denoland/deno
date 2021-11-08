@@ -1,0 +1,98 @@
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 10
+      },
+      "end": {
+        "line": 0,
+        "character": 11
+      }
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "source": "implementations"
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 10
+      },
+      "end": {
+        "line": 0,
+        "character": 11
+      }
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "source": "references"
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 4,
+        "character": 6
+      },
+      "end": {
+        "line": 4,
+        "character": 7
+      }
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "source": "references"
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 10,
+        "character": 10
+      },
+      "end": {
+        "line": 10,
+        "character": 11
+      }
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "source": "implementations"
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 10,
+        "character": 10
+      },
+      "end": {
+        "line": 10,
+        "character": 11
+      }
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "source": "references"
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 11,
+        "character": 2
+      },
+      "end": {
+        "line": 11,
+        "character": 3
+      }
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "source": "references"
+    }
+  }
+]

@@ -1,0 +1,34 @@
+# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_crypto"
+version = "0.37.0"
+authors = ["the Deno authors"]
+edition = "2021"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+description = "Web Cryptography API implementation for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+aes = "0.7.5"
+block-modes = "0.8.1"
+deno_core = { version = "0.105.0", path = "../../core" }
+deno_web = { version = "0.54.0", path = "../web" }
+elliptic-curve = "0.10.6"
+lazy_static = "1.4.0"
+num-traits = "0.2.14"
+p256 = { version = "0.9.0", features = ["ecdh"] }
+p384 = "0.8.0"
+rand = "0.8.4"
+ring = { version = "0.16.20", features = ["std"] }
+rsa = { version = "0.5.0", default-features = false, features = ["std"] }
+serde = { version = "1.0.129", features = ["derive"] }
+sha-1 = "0.9.7"
+sha2 = "0.9.5"
+spki = "0.4.1"
+tokio = { version = "1.10.1", features = ["full"] }
+uuid = { version = "0.8.2", features = ["v4"] }

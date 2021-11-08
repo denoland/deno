@@ -1,6 +1,0 @@
-error: Uncaught (in promise) TypeError: Unsupported scheme "xxx" for module "xxx:". Supported schemes: [
-    "data",
-    "file",
-    "http",
-    "https",
-]

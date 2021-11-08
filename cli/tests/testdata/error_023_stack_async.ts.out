@@ -1,0 +1,10 @@
+[WILDCARD]Error: async
+    at [WILDCARD]/error_023_stack_async.ts:[WILDCARD]
+    at async [WILDCARD]/error_023_stack_async.ts:[WILDCARD]
+    at async [WILDCARD]/error_023_stack_async.ts:[WILDCARD]
+error: Uncaught Error: async
+    throw new Error("async");
+          ^
+    at [WILDCARD]/error_023_stack_async.ts:[WILDCARD]
+    at async [WILDCARD]/error_023_stack_async.ts:[WILDCARD]
+    at async [WILDCARD]/error_023_stack_async.ts:[WILDCARD]

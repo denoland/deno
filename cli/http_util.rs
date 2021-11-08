@@ -1,45 +1,17 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::auth_tokens::AuthToken;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_fetch::reqwest::header::HeaderMap;
 use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
 use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
 use deno_runtime::deno_fetch::reqwest::header::IF_NONE_MATCH;
 use deno_runtime::deno_fetch::reqwest::header::LOCATION;
-use deno_runtime::deno_fetch::reqwest::header::USER_AGENT;
-use deno_runtime::deno_fetch::reqwest::redirect::Policy;
 use deno_runtime::deno_fetch::reqwest::Client;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
 use log::debug;
 use std::collections::HashMap;
-
-/// Create new instance of async reqwest::Client. This client supports
-/// proxies and doesn't follow redirects.
-pub fn create_http_client(
-  user_agent: String,
-  ca_data: Option<Vec<u8>>,
-) -> Result<Client, AnyError> {
-  let mut headers = HeaderMap::new();
-  headers.insert(USER_AGENT, user_agent.parse().unwrap());
-  let mut builder = Client::builder()
-    .redirect(Policy::none())
-    .default_headers(headers)
-    .use_rustls_tls();
-
-  if let Some(ca_data) = ca_data {
-    let cert = reqwest::Certificate::from_pem(&ca_data)?;
-    builder = builder.add_root_certificate(cert);
-  }
-
-  builder
-    .build()
-    .map_err(|e| generic_error(format!("Unable to build http client: {}", e)))
-}
 
 /// Construct the next uri based on base uri and location header fragment
 /// See <https://tools.ietf.org/html/rfc3986#section-4.2>
@@ -168,19 +140,27 @@ pub async fn fetch_once(
 mod tests {
   use super::*;
   use crate::version;
+  use deno_tls::create_http_client;
   use std::fs::read;
 
-  fn create_test_client(ca_data: Option<Vec<u8>>) -> Client {
-    create_http_client("test_client".to_string(), ca_data).unwrap()
+  fn create_test_client() -> Client {
+    create_http_client(
+      "test_client".to_string(),
+      None,
+      vec![],
+      None,
+      None,
+      None,
+    )
+    .unwrap()
   }
 
   #[tokio::test]
   async fn test_fetch_string() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url =
-      Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
-    let client = create_test_client(None);
+    let url = Url::parse("http://127.0.0.1:4545/fixture.json").unwrap();
+    let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
@@ -202,11 +182,9 @@ mod tests {
   async fn test_fetch_gzip() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse(
-      "http://127.0.0.1:4545/cli/tests/053_import_compression/gziped",
-    )
-    .unwrap();
-    let client = create_test_client(None);
+    let url = Url::parse("http://127.0.0.1:4545/053_import_compression/gziped")
+      .unwrap();
+    let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
@@ -231,7 +209,7 @@ mod tests {
   async fn test_fetch_with_etag() {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
-    let client = create_test_client(None);
+    let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client: client.clone(),
       url: url.clone(),
@@ -265,11 +243,9 @@ mod tests {
   async fn test_fetch_brotli() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse(
-      "http://127.0.0.1:4545/cli/tests/053_import_compression/brotli",
-    )
-    .unwrap();
-    let client = create_test_client(None);
+    let url = Url::parse("http://127.0.0.1:4545/053_import_compression/brotli")
+      .unwrap();
+    let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
@@ -295,12 +271,10 @@ mod tests {
   async fn test_fetch_once_with_redirect() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url =
-      Url::parse("http://127.0.0.1:4546/cli/tests/fixture.json").unwrap();
+    let url = Url::parse("http://127.0.0.1:4546/fixture.json").unwrap();
     // Dns resolver substitutes `127.0.0.1` with `localhost`
-    let target_url =
-      Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
-    let client = create_test_client(None);
+    let target_url = Url::parse("http://localhost:4545/fixture.json").unwrap();
+    let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
@@ -357,20 +331,21 @@ mod tests {
   async fn test_fetch_with_cafile_string() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url =
-      Url::parse("https://localhost:5545/cli/tests/fixture.json").unwrap();
+    let url = Url::parse("https://localhost:5545/fixture.json").unwrap();
 
     let client = create_http_client(
       version::get_user_agent(),
-      Some(
-        read(
-          test_util::root_path()
-            .join("cli/tests/tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap(),
-      ),
+      None,
+      vec![read(
+        test_util::testdata_path()
+          .join("tls/RootCA.pem")
+          .to_str()
+          .unwrap(),
+      )
+      .unwrap()],
+      None,
+      None,
+      None,
     )
     .unwrap();
     let result = fetch_once(FetchOnceArgs {
@@ -391,24 +366,87 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_fetch_with_default_certificate_store() {
+    let _http_server_guard = test_util::http_server();
+    // Relies on external http server with a valid mozilla root CA cert.
+    let url = Url::parse("https://deno.land").unwrap();
+    let client = create_http_client(
+      version::get_user_agent(),
+      None, // This will load mozilla certs by default
+      vec![],
+      None,
+      None,
+      None,
+    )
+    .unwrap();
+
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
+
+    println!("{:?}", result);
+    if let Ok(FetchOnceResult::Code(body, _headers)) = result {
+      assert!(!body.is_empty());
+    } else {
+      panic!();
+    }
+  }
+
+  // TODO(@justinmchase): Windows should verify certs too and fail to make this request without ca certs
+  #[cfg(not(windows))]
+  #[tokio::test]
+  async fn test_fetch_with_empty_certificate_store() {
+    let _http_server_guard = test_util::http_server();
+    // Relies on external http server with a valid mozilla root CA cert.
+    let url = Url::parse("https://deno.land").unwrap();
+    let client = create_http_client(
+      version::get_user_agent(),
+      Some(deno_tls::rustls::RootCertStore::empty()), // no certs loaded at all
+      vec![],
+      None,
+      None,
+      None,
+    )
+    .unwrap();
+
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
+
+    if let Ok(FetchOnceResult::Code(_body, _headers)) = result {
+      // This test is expected to fail since to CA certs have been loaded
+      panic!();
+    }
+  }
+
+  #[tokio::test]
   async fn test_fetch_with_cafile_gzip() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse(
-      "https://localhost:5545/cli/tests/053_import_compression/gziped",
-    )
-    .unwrap();
+    let url =
+      Url::parse("https://localhost:5545/053_import_compression/gziped")
+        .unwrap();
     let client = create_http_client(
       version::get_user_agent(),
-      Some(
-        read(
-          test_util::root_path()
-            .join("cli/tests/tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap(),
-      ),
+      None,
+      vec![read(
+        test_util::testdata_path()
+          .join("tls/RootCA.pem")
+          .to_str()
+          .unwrap(),
+      )
+      .unwrap()],
+      None,
+      None,
+      None,
     )
     .unwrap();
     let result = fetch_once(FetchOnceArgs {
@@ -437,15 +475,17 @@ mod tests {
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
     let client = create_http_client(
       version::get_user_agent(),
-      Some(
-        read(
-          test_util::root_path()
-            .join("cli/tests/tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap(),
-      ),
+      None,
+      vec![read(
+        test_util::testdata_path()
+          .join("tls/RootCA.pem")
+          .to_str()
+          .unwrap(),
+      )
+      .unwrap()],
+      None,
+      None,
+      None,
     )
     .unwrap();
     let result = fetch_once(FetchOnceArgs {
@@ -482,21 +522,22 @@ mod tests {
   async fn test_fetch_with_cafile_brotli() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse(
-      "https://localhost:5545/cli/tests/053_import_compression/brotli",
-    )
-    .unwrap();
+    let url =
+      Url::parse("https://localhost:5545/053_import_compression/brotli")
+        .unwrap();
     let client = create_http_client(
       version::get_user_agent(),
-      Some(
-        read(
-          test_util::root_path()
-            .join("cli/tests/tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap(),
-      ),
+      None,
+      vec![read(
+        test_util::testdata_path()
+          .join("tls/RootCA.pem")
+          .to_str()
+          .unwrap(),
+      )
+      .unwrap()],
+      None,
+      None,
+      None,
     )
     .unwrap();
     let result = fetch_once(FetchOnceArgs {
@@ -525,7 +566,7 @@ mod tests {
     let _g = test_util::http_server();
     let url_str = "http://127.0.0.1:4545/bad_redirect";
     let url = Url::parse(url_str).unwrap();
-    let client = create_test_client(None);
+    let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client,
       url,

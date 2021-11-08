@@ -1,37 +1,87 @@
 # Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 [workspace]
+resolver = "2"
 members = [
+  "bench_util",
   "cli",
   "core",
   "runtime",
   "serde_v8",
-  "test_plugin",
+  "test_ffi",
   "test_util",
-  "op_crates/crypto",
-  "op_crates/fetch",
-  "op_crates/url",
-  "op_crates/web",
-  "op_crates/webgpu",
-  "op_crates/webidl",
-  "op_crates/websocket",
+  "ext/broadcast_channel",
+  "ext/console",
+  "ext/crypto",
+  "ext/fetch",
+  "ext/ffi",
+  "ext/http",
+  "ext/net",
+  "ext/timers",
+  "ext/url",
+  "ext/web",
+  "ext/webgpu",
+  "ext/webidl",
+  "ext/websocket",
+  "ext/webstorage",
 ]
-exclude = [
-  "std/hash/_wasm"
-]
+exclude = ["test_util/std/hash/_wasm"]
 
-
+# NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]
 codegen-units = 1
+incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 
+# NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.bench]
 codegen-units = 1
+incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 
-# Optimize these packages for perf
+# Key generation is too slow on `debug`
+#
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+
+# Optimize these packages for performance.
+# NB: the `bench` and `release` profiles must remain EXACTLY the same.
+[profile.bench.package.rand]
+opt-level = 3
+[profile.bench.package.flate2]
+opt-level = 3
+[profile.bench.package.brotli]
+opt-level = 3
+[profile.bench.package.miniz_oxide]
+opt-level = 3
+[profile.bench.package.async-compression]
+opt-level = 3
+[profile.bench.package.brotli-decompressor]
+opt-level = 3
+[profile.bench.package.deno_core]
+opt-level = 3
+[profile.bench.package.deno_runtime]
+opt-level = 3
+[profile.bench.package.deno_http]
+opt-level = 3
+[profile.bench.package.deno_net]
+opt-level = 3
+[profile.bench.package.num-bigint-dig]
+opt-level = 3
+[profile.bench.package.v8]
+opt-level = 3
+[profile.bench.package.serde_v8]
+opt-level = 3
+[profile.bench.package.serde]
+opt-level = 3
+[profile.bench.package.deno_url]
+opt-level = 3
+[profile.bench.package.url]
+opt-level = 3
+
+# NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release.package.rand]
 opt-level = 3
 [profile.release.package.flate2]
@@ -43,4 +93,24 @@ opt-level = 3
 [profile.release.package.async-compression]
 opt-level = 3
 [profile.release.package.brotli-decompressor]
+opt-level = 3
+[profile.release.package.deno_core]
+opt-level = 3
+[profile.release.package.deno_runtime]
+opt-level = 3
+[profile.release.package.deno_http]
+opt-level = 3
+[profile.release.package.deno_net]
+opt-level = 3
+[profile.release.package.num-bigint-dig]
+opt-level = 3
+[profile.release.package.v8]
+opt-level = 3
+[profile.release.package.serde_v8]
+opt-level = 3
+[profile.release.package.serde]
+opt-level = 3
+[profile.release.package.deno_url]
+opt-level = 3
+[profile.release.package.url]
 opt-level = 3

@@ -13,15 +13,18 @@ async function handle(conn: Deno.Conn): Promise<void> {
   const buffer = new Uint8Array(1024);
   try {
     while (true) {
-      const r = await conn.read(buffer);
-      if (r === null) {
-        break;
-      }
+      await conn.read(buffer);
       await conn.write(response);
     }
-  } finally {
-    conn.close();
+  } catch (e) {
+    if (
+      !(e instanceof Deno.errors.BrokenPipe) &&
+      !(e instanceof Deno.errors.ConnectionReset)
+    ) {
+      throw e;
+    }
   }
+  conn.close();
 }
 
 console.log("Listening on", addr);

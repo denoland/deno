@@ -1,0 +1,15 @@
+Check [WILDCARD]/test/ignore.ts
+running 10 tests from [WILDCARD]/test/ignore.ts
+test test 0 ... ignored ([WILDCARD])
+test test 1 ... ignored ([WILDCARD])
+test test 2 ... ignored ([WILDCARD])
+test test 3 ... ignored ([WILDCARD])
+test test 4 ... ignored ([WILDCARD])
+test test 5 ... ignored ([WILDCARD])
+test test 6 ... ignored ([WILDCARD])
+test test 7 ... ignored ([WILDCARD])
+test test 8 ... ignored ([WILDCARD])
+test test 9 ... ignored ([WILDCARD])
+
+test result: ok. 0 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

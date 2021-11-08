@@ -1,14 +1,14 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
 unitTest(
-  { perms: { read: true, write: true } },
-  function writeTextFileSyncSuccess(): void {
+  { permissions: { read: true, write: true } },
+  function writeTextFileSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeTextFileSync(filename, "Hello");
     const dataRead = Deno.readTextFileSync(filename);
@@ -17,8 +17,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
-  function writeTextFileSyncByUrl(): void {
+  { permissions: { read: true, write: true } },
+  function writeTextFileSyncByUrl() {
     const tempDir = Deno.makeTempDirSync();
     const fileUrl = new URL(
       `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`,
@@ -31,7 +31,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { write: true } }, function writeTextFileSyncFail(): void {
+unitTest({ permissions: { write: true } }, function writeTextFileSyncFail() {
   const filename = "/baddir/test.txt";
   // The following should fail because /baddir doesn't exist (hopefully).
   assertThrows(() => {
@@ -39,7 +39,7 @@ unitTest({ perms: { write: true } }, function writeTextFileSyncFail(): void {
   }, Deno.errors.NotFound);
 });
 
-unitTest({ perms: { write: false } }, function writeTextFileSyncPerm(): void {
+unitTest({ permissions: { write: false } }, function writeTextFileSyncPerm() {
   const filename = "/baddir/test.txt";
   // The following should fail due to no write permission
   assertThrows(() => {
@@ -48,8 +48,8 @@ unitTest({ perms: { write: false } }, function writeTextFileSyncPerm(): void {
 });
 
 unitTest(
-  { perms: { read: true, write: true } },
-  function writeTextFileSyncUpdateMode(): void {
+  { permissions: { read: true, write: true } },
+  function writeTextFileSyncUpdateMode() {
     if (Deno.build.os !== "windows") {
       const data = "Hello";
       const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -62,8 +62,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
-  function writeTextFileSyncCreate(): void {
+  { permissions: { read: true, write: true } },
+  function writeTextFileSyncCreate() {
     const data = "Hello";
     const filename = Deno.makeTempDirSync() + "/test.txt";
     let caughtError = false;
@@ -84,8 +84,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
-  function writeTextFileSyncAppend(): void {
+  { permissions: { read: true, write: true } },
+  function writeTextFileSyncAppend() {
     const data = "Hello";
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeTextFileSync(filename, data);
@@ -101,8 +101,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
-  async function writeTextFileSuccess(): Promise<void> {
+  { permissions: { read: true, write: true } },
+  async function writeTextFileSuccess() {
     const filename = Deno.makeTempDirSync() + "/test.txt";
     await Deno.writeTextFile(filename, "Hello");
     const dataRead = Deno.readTextFileSync(filename);
@@ -111,8 +111,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
-  async function writeTextFileByUrl(): Promise<void> {
+  { permissions: { read: true, write: true } },
+  async function writeTextFileByUrl() {
     const tempDir = Deno.makeTempDirSync();
     const fileUrl = new URL(
       `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`,
@@ -126,30 +126,30 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
-  async function writeTextFileNotFound(): Promise<void> {
+  { permissions: { read: true, write: true } },
+  async function writeTextFileNotFound() {
     const filename = "/baddir/test.txt";
     // The following should fail because /baddir doesn't exist (hopefully).
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.writeTextFile(filename, "Hello");
     }, Deno.errors.NotFound);
   },
 );
 
 unitTest(
-  { perms: { write: false } },
-  async function writeTextFilePerm(): Promise<void> {
+  { permissions: { write: false } },
+  async function writeTextFilePerm() {
     const filename = "/baddir/test.txt";
     // The following should fail due to no write permission
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.writeTextFile(filename, "Hello");
     }, Deno.errors.PermissionDenied);
   },
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
-  async function writeTextFileUpdateMode(): Promise<void> {
+  { permissions: { read: true, write: true } },
+  async function writeTextFileUpdateMode() {
     if (Deno.build.os !== "windows") {
       const data = "Hello";
       const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -162,8 +162,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
-  async function writeTextFileCreate(): Promise<void> {
+  { permissions: { read: true, write: true } },
+  async function writeTextFileCreate() {
     const data = "Hello";
     const filename = Deno.makeTempDirSync() + "/test.txt";
     let caughtError = false;
@@ -184,8 +184,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
-  async function writeTextFileAppend(): Promise<void> {
+  { permissions: { read: true, write: true } },
+  async function writeTextFileAppend() {
     const data = "Hello";
     const filename = Deno.makeTempDirSync() + "/test.txt";
     await Deno.writeTextFile(filename, data);

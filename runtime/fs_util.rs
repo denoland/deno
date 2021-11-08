@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::error::Context;
 pub use deno_core::normalize_path;
 use std::env::current_dir;
 use std::io::Error;
@@ -24,7 +25,8 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
   } else {
-    let cwd = current_dir().unwrap();
+    let cwd =
+      current_dir().context("Failed to get current working directory")?;
     cwd.join(path)
   };
 

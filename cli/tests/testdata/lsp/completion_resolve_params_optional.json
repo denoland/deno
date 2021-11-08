@@ -1,0 +1,15 @@
+{
+  "label": "b?",
+  "kind": 5,
+  "sortText": "1",
+  "filterText": "b",
+  "insertText": "b",
+  "data": {
+    "tsc": {
+      "specifier": "file:///a/file.ts",
+      "position": 79,
+      "name": "b",
+      "useCodeSnippet": false
+    }
+  }
+}

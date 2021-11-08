@@ -1,5 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+  unitTest,
+} from "./test_util.ts";
 
 unitTest(async function responseText() {
   const response = new Response("hello world");
@@ -34,18 +40,54 @@ unitTest(async function responseBlob() {
   assert(blobPromise instanceof Promise);
   const blob = await blobPromise;
   assert(blob instanceof Blob);
-  assertEquals(blob, new Blob([new Uint8Array([1, 2, 3])]));
+  assertEquals(blob.size, 3);
+  assertEquals(await blob.arrayBuffer(), new Uint8Array([1, 2, 3]).buffer);
 });
 
 unitTest(async function responseFormData() {
   const input = new FormData();
   input.append("hello", "world");
-  const response = new Response(input, {
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
+  const response = new Response(input);
+  const contentType = response.headers.get("content-type")!;
+  assert(contentType.startsWith("multipart/form-data"));
   const formDataPromise = response.formData();
   assert(formDataPromise instanceof Promise);
   const formData = await formDataPromise;
   assert(formData instanceof FormData);
-  assertEquals(formData, input);
+  assertEquals([...formData], [...input]);
+});
+
+unitTest(function responseInvalidInit() {
+  // deno-lint-ignore ban-ts-comment
+  // @ts-expect-error
+  assertThrows(() => new Response("", 0));
+  assertThrows(() => new Response("", { status: 0 }));
+  // deno-lint-ignore ban-ts-comment
+  // @ts-expect-error
+  assertThrows(() => new Response("", { status: null }));
+});
+
+unitTest(function responseNullInit() {
+  // deno-lint-ignore ban-ts-comment
+  // @ts-expect-error
+  const response = new Response("", null);
+  assertEquals(response.status, 200);
+});
+
+unitTest(function customInspectFunction() {
+  const response = new Response();
+  assertEquals(
+    Deno.inspect(response),
+    `Response {
+  body: null,
+  bodyUsed: false,
+  headers: Headers {},
+  ok: true,
+  redirected: false,
+  status: 200,
+  statusText: "",
+  url: ""
+}`,
+  );
+  assertStringIncludes(Deno.inspect(Response.prototype), "Response");
 });

@@ -8,17 +8,17 @@ use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -27,10 +27,14 @@ use tokio::process::Command;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_run", op_run);
-  super::reg_json_async(rt, "op_run_status", op_run_status);
-  super::reg_json_sync(rt, "op_kill", op_kill);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_run", op_sync(op_run)),
+      ("op_run_status", op_async(op_run_status)),
+      ("op_kill", op_sync(op_kill)),
+    ])
+    .build()
 }
 
 fn clone_file(
@@ -57,7 +61,12 @@ fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
 pub struct RunArgs {
   cmd: Vec<String>,
   cwd: Option<String>,
+  clear_env: bool,
   env: Vec<(String, String)>,
+  #[cfg(unix)]
+  gid: Option<u32>,
+  #[cfg(unix)]
+  uid: Option<u32>,
   stdin: String,
   stdout: String,
   stderr: String,
@@ -82,14 +91,24 @@ impl ChildResource {
   }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+// TODO(@AaronO): maybe find a more descriptive name or a convention for return structs
+struct RunInfo {
+  rid: ResourceId,
+  pid: Option<u32>,
+  stdin_rid: Option<ResourceId>,
+  stdout_rid: Option<ResourceId>,
+  stderr_rid: Option<ResourceId>,
+}
+
 fn op_run(
   state: &mut OpState,
   run_args: RunArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  state.borrow::<Permissions>().run.check()?;
-
+  _: (),
+) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
+  state.borrow_mut::<Permissions>().run.check(&args[0])?;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -99,8 +118,31 @@ fn op_run(
     c.arg(arg);
   });
   cwd.map(|d| c.current_dir(d));
+
+  if run_args.clear_env {
+    super::check_unstable(state, "Deno.run.clearEnv");
+    c.env_clear();
+  }
   for (key, value) in &env {
     c.env(key, value);
+  }
+
+  #[cfg(unix)]
+  if let Some(gid) = run_args.gid {
+    super::check_unstable(state, "Deno.run.gid");
+    c.gid(gid);
+  }
+  #[cfg(unix)]
+  if let Some(uid) = run_args.uid {
+    super::check_unstable(state, "Deno.run.uid");
+    c.uid(uid);
+  }
+  #[cfg(unix)]
+  unsafe {
+    c.pre_exec(|| {
+      libc::setgroups(0, std::ptr::null());
+      Ok(())
+    });
   }
 
   // TODO: make this work with other resources, eg. sockets
@@ -167,38 +209,32 @@ fn op_run(
   };
   let child_rid = state.resource_table.add(child_resource);
 
-  Ok(json!({
-    "rid": child_rid,
-    "pid": pid,
-    "stdinRid": stdin_rid,
-    "stdoutRid": stdout_rid,
-    "stderrRid": stderr_rid,
-  }))
+  Ok(RunInfo {
+    rid: child_rid,
+    pid,
+    stdin_rid,
+    stdout_rid,
+    stderr_rid,
+  })
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RunStatusArgs {
-  rid: ResourceId,
+struct ProcessStatus {
+  got_signal: bool,
+  exit_code: i32,
+  exit_signal: i32,
 }
 
 async fn op_run_status(
   state: Rc<RefCell<OpState>>,
-  args: RunStatusArgs,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  let rid = args.rid;
-
-  {
-    let s = state.borrow();
-    s.borrow::<Permissions>().run.check()?;
-  }
-
+  rid: ResourceId,
+  _: (),
+) -> Result<ProcessStatus, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ChildResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<ChildResource>(rid)?;
   let mut child = resource.borrow_mut().await;
   let run_status = child.wait().await?;
   let code = run_status.code();
@@ -213,24 +249,24 @@ async fn op_run_status(
     .expect("Should have either an exit code or a signal.");
   let got_signal = signal.is_some();
 
-  Ok(json!({
-     "gotSignal": got_signal,
-     "exitCode": code.unwrap_or(-1),
-     "exitSignal": signal.unwrap_or(-1),
-  }))
+  Ok(ProcessStatus {
+    got_signal,
+    exit_code: code.unwrap_or(-1),
+    exit_signal: signal.unwrap_or(-1),
+  })
 }
 
 #[cfg(unix)]
-pub fn kill(pid: i32, signo: i32) -> Result<(), AnyError> {
+pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
+  let signo = super::signal::signal_str_to_int(signal)?;
   use nix::sys::signal::{kill as unix_kill, Signal};
   use nix::unistd::Pid;
-  use std::convert::TryFrom;
   let sig = Signal::try_from(signo)?;
   unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(AnyError::from)
 }
 
 #[cfg(not(unix))]
-pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
+pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   use std::io::Error;
   use std::io::ErrorKind::NotFound;
   use winapi::shared::minwindef::DWORD;
@@ -243,14 +279,10 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
   use winapi::um::processthreadsapi::TerminateProcess;
   use winapi::um::winnt::PROCESS_TERMINATE;
 
-  const SIGINT: i32 = 2;
-  const SIGKILL: i32 = 9;
-  const SIGTERM: i32 = 15;
-
-  if !matches!(signal, SIGINT | SIGKILL | SIGTERM) {
-    Err(type_error("unsupported signal"))
+  if !matches!(signal, "SIGKILL" | "SIGTERM") {
+    Err(type_error(format!("Invalid signal: {}", signal)))
   } else if pid <= 0 {
-    Err(type_error("unsupported pid"))
+    Err(type_error("Invalid pid"))
   } else {
     let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
     if handle.is_null() {
@@ -271,20 +303,12 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
   }
 }
 
-#[derive(Deserialize)]
-struct KillArgs {
-  pid: i32,
-  signo: i32,
-}
-
 fn op_kill(
   state: &mut OpState,
-  args: KillArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  super::check_unstable(state, "Deno.kill");
-  state.borrow::<Permissions>().run.check()?;
-
-  kill(args.pid, args.signo)?;
-  Ok(json!({}))
+  pid: i32,
+  signal: String,
+) -> Result<(), AnyError> {
+  state.borrow_mut::<Permissions>().run.check_all()?;
+  kill(pid, &signal)?;
+  Ok(())
 }

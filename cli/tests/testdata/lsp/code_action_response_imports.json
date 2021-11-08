@@ -1,0 +1,242 @@
+[
+  {
+    "title": "Import 'abc' from module \"./file00.ts\"",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 12
+          },
+          "end": {
+            "line": 1,
+            "character": 15
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'abc'."
+      }
+    ],
+    "edit": {
+      "documentChanges": [
+        {
+          "textDocument": {
+            "uri": "file:///a/file01.ts",
+            "version": 1
+          },
+          "edits": [
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 0,
+                  "character": 0
+                }
+              },
+              "newText": "import { abc } from \"./file00.ts\";\n"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "title": "Add all missing imports",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 12
+          },
+          "end": {
+            "line": 1,
+            "character": 15
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'abc'."
+      }
+    ],
+    "data": {
+      "specifier": "file:///a/file01.ts",
+      "fixId": "fixMissingImport"
+    }
+  },
+  {
+    "title": "Add missing function declaration 'abc'",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 12
+          },
+          "end": {
+            "line": 1,
+            "character": 15
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'abc'."
+      }
+    ],
+    "edit": {
+      "documentChanges": [
+        {
+          "textDocument": {
+            "uri": "file:///a/file01.ts",
+            "version": 1
+          },
+          "edits": [
+            {
+              "range": {
+                "start": {
+                  "line": 3,
+                  "character": 0
+                },
+                "end": {
+                  "line": 3,
+                  "character": 0
+                }
+              },
+              "newText": "\nfunction abc(abc: any) {\nthrow new Error(\"Function not implemented.\");\n}\n"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "title": "Import 'def' from module \"./file00.ts\"",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 12
+          },
+          "end": {
+            "line": 2,
+            "character": 15
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'def'."
+      }
+    ],
+    "edit": {
+      "documentChanges": [
+        {
+          "textDocument": {
+            "uri": "file:///a/file01.ts",
+            "version": 1
+          },
+          "edits": [
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 0,
+                  "character": 0
+                }
+              },
+              "newText": "import { def } from \"./file00.ts\";\n"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "title": "Add missing function declaration 'def'",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 12
+          },
+          "end": {
+            "line": 2,
+            "character": 15
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'def'."
+      }
+    ],
+    "edit": {
+      "documentChanges": [
+        {
+          "textDocument": {
+            "uri": "file:///a/file01.ts",
+            "version": 1
+          },
+          "edits": [
+            {
+              "range": {
+                "start": {
+                  "line": 3,
+                  "character": 0
+                },
+                "end": {
+                  "line": 3,
+                  "character": 0
+                }
+              },
+              "newText": "\nfunction def(def: any) {\nthrow new Error(\"Function not implemented.\");\n}\n"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "title": "Add all missing function declarations",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 12
+          },
+          "end": {
+            "line": 1,
+            "character": 15
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'abc'."
+      }
+    ],
+    "data": {
+      "specifier": "file:///a/file01.ts",
+      "fixId": "fixMissingFunctionDeclaration"
+    }
+  }
+]

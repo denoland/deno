@@ -1,41 +1,73 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::web_worker::WebWorkerHandle;
-use crate::web_worker::WorkerEvent;
-use deno_core::futures::channel::mpsc;
-use deno_core::serde_json::{json, Value};
+mod sync_fetch;
 
-pub fn init(
-  rt: &mut deno_core::JsRuntime,
-  sender: mpsc::Sender<WorkerEvent>,
-  handle: WebWorkerHandle,
-) {
-  // Post message to host as guest worker.
-  let sender_ = sender.clone();
-  super::reg_json_sync(
-    rt,
-    "op_worker_post_message",
-    move |_state, _args: Value, bufs| {
-      assert_eq!(bufs.len(), 1, "Invalid number of arguments");
-      let msg_buf: Box<[u8]> = (*bufs[0]).into();
-      sender_
-        .clone()
-        .try_send(WorkerEvent::Message(msg_buf))
-        .expect("Failed to post message to host");
-      Ok(json!({}))
-    },
-  );
+use crate::web_worker::WebWorkerInternalHandle;
+use crate::web_worker::WebWorkerType;
+use deno_core::error::AnyError;
+use deno_core::op_async;
+use deno_core::op_sync;
+use deno_core::CancelFuture;
+use deno_core::Extension;
+use deno_core::OpState;
+use deno_web::JsMessageData;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-  // Notify host that guest worker closes.
-  super::reg_json_sync(
-    rt,
-    "op_worker_close",
-    move |_state, _args: Value, _bufs| {
-      // Notify parent that we're finished
-      sender.clone().close_channel();
-      // Terminate execution of current worker
-      handle.terminate();
-      Ok(json!({}))
-    },
-  );
+use self::sync_fetch::op_worker_sync_fetch;
+
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_worker_post_message", op_sync(op_worker_post_message)),
+      ("op_worker_recv_message", op_async(op_worker_recv_message)),
+      // Notify host that guest worker closes.
+      ("op_worker_close", op_sync(op_worker_close)),
+      ("op_worker_get_type", op_sync(op_worker_get_type)),
+      ("op_worker_sync_fetch", op_sync(op_worker_sync_fetch)),
+    ])
+    .build()
+}
+
+fn op_worker_post_message(
+  state: &mut OpState,
+  data: JsMessageData,
+  _: (),
+) -> Result<(), AnyError> {
+  let handle = state.borrow::<WebWorkerInternalHandle>().clone();
+  handle.port.send(state, data)?;
+  Ok(())
+}
+
+async fn op_worker_recv_message(
+  state: Rc<RefCell<OpState>>,
+  _: (),
+  _: (),
+) -> Result<Option<JsMessageData>, AnyError> {
+  let handle = {
+    let state = state.borrow();
+    state.borrow::<WebWorkerInternalHandle>().clone()
+  };
+  handle
+    .port
+    .recv(state.clone())
+    .or_cancel(handle.cancel)
+    .await?
+}
+
+fn op_worker_close(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
+  // Notify parent that we're finished
+  let mut handle = state.borrow_mut::<WebWorkerInternalHandle>().clone();
+
+  handle.terminate();
+  Ok(())
+}
+
+fn op_worker_get_type(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<WebWorkerType, AnyError> {
+  let handle = state.borrow::<WebWorkerInternalHandle>().clone();
+  Ok(handle.worker_type)
 }

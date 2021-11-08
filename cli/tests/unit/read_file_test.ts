@@ -2,14 +2,14 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
 
-unitTest({ perms: { read: true } }, function readFileSyncSuccess(): void {
-  const data = Deno.readFileSync("cli/tests/fixture.json");
+unitTest({ permissions: { read: true } }, function readFileSyncSuccess() {
+  const data = Deno.readFileSync("cli/tests/testdata/fixture.json");
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
   const json = decoder.decode(data);
@@ -17,9 +17,9 @@ unitTest({ perms: { read: true } }, function readFileSyncSuccess(): void {
   assertEquals(pkg.name, "deno");
 });
 
-unitTest({ perms: { read: true } }, function readFileSyncUrl(): void {
+unitTest({ permissions: { read: true } }, function readFileSyncUrl() {
   const data = Deno.readFileSync(
-    pathToAbsoluteFileUrl("cli/tests/fixture.json"),
+    pathToAbsoluteFileUrl("cli/tests/testdata/fixture.json"),
   );
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
@@ -28,23 +28,21 @@ unitTest({ perms: { read: true } }, function readFileSyncUrl(): void {
   assertEquals(pkg.name, "deno");
 });
 
-unitTest({ perms: { read: false } }, function readFileSyncPerm(): void {
+unitTest({ permissions: { read: false } }, function readFileSyncPerm() {
   assertThrows(() => {
-    Deno.readFileSync("cli/tests/fixture.json");
+    Deno.readFileSync("cli/tests/testdata/fixture.json");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { read: true } }, function readFileSyncNotFound(): void {
+unitTest({ permissions: { read: true } }, function readFileSyncNotFound() {
   assertThrows(() => {
     Deno.readFileSync("bad_filename");
   }, Deno.errors.NotFound);
 });
 
-unitTest({ perms: { read: true } }, async function readFileUrl(): Promise<
-  void
-> {
+unitTest({ permissions: { read: true } }, async function readFileUrl() {
   const data = await Deno.readFile(
-    pathToAbsoluteFileUrl("cli/tests/fixture.json"),
+    pathToAbsoluteFileUrl("cli/tests/testdata/fixture.json"),
   );
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
@@ -53,10 +51,8 @@ unitTest({ perms: { read: true } }, async function readFileUrl(): Promise<
   assertEquals(pkg.name, "deno");
 });
 
-unitTest({ perms: { read: true } }, async function readFileSuccess(): Promise<
-  void
-> {
-  const data = await Deno.readFile("cli/tests/fixture.json");
+unitTest({ permissions: { read: true } }, async function readFileSuccess() {
+  const data = await Deno.readFile("cli/tests/testdata/fixture.json");
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
   const json = decoder.decode(data);
@@ -64,16 +60,58 @@ unitTest({ perms: { read: true } }, async function readFileSuccess(): Promise<
   assertEquals(pkg.name, "deno");
 });
 
-unitTest({ perms: { read: false } }, async function readFilePerm(): Promise<
-  void
-> {
-  await assertThrowsAsync(async () => {
-    await Deno.readFile("cli/tests/fixture.json");
+unitTest({ permissions: { read: false } }, async function readFilePerm() {
+  await assertRejects(async () => {
+    await Deno.readFile("cli/tests/testdata/fixture.json");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { read: true } }, function readFileSyncLoop(): void {
+unitTest({ permissions: { read: true } }, function readFileSyncLoop() {
   for (let i = 0; i < 256; i++) {
-    Deno.readFileSync("cli/tests/fixture.json");
+    Deno.readFileSync("cli/tests/testdata/fixture.json");
   }
 });
+
+unitTest(
+  { permissions: { read: true } },
+  async function readFileDoesNotLeakResources() {
+    const resourcesBefore = Deno.resources();
+    await assertRejects(async () => await Deno.readFile("cli"));
+    assertEquals(resourcesBefore, Deno.resources());
+  },
+);
+
+unitTest(
+  { permissions: { read: true } },
+  function readFileSyncDoesNotLeakResources() {
+    const resourcesBefore = Deno.resources();
+    assertThrows(() => Deno.readFileSync("cli"));
+    assertEquals(resourcesBefore, Deno.resources());
+  },
+);
+
+unitTest(
+  { permissions: { read: true } },
+  async function readFileWithAbortSignal() {
+    const ac = new AbortController();
+    queueMicrotask(() => ac.abort());
+    await assertRejects(async () => {
+      await Deno.readFile("cli/tests/testdata/fixture.json", {
+        signal: ac.signal,
+      });
+    });
+  },
+);
+
+unitTest(
+  { permissions: { read: true } },
+  async function readTextileWithAbortSignal() {
+    const ac = new AbortController();
+    queueMicrotask(() => ac.abort());
+    await assertRejects(async () => {
+      await Deno.readTextFile("cli/tests/testdata/fixture.json", {
+        signal: ac.signal,
+      });
+    });
+  },
+);

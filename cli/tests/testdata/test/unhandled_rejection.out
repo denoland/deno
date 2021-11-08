@@ -1,0 +1,10 @@
+Check [WILDCARD]/test/unhandled_rejection.ts
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Uncaught (in promise) Error: rejection
+  reject(new Error("rejection"));
+         ^
+    at [WILDCARD]/test/unhandled_rejection.ts:2:10
+    at new Promise (<anonymous>)
+    at [WILDCARD]/test/unhandled_rejection.ts:1:1

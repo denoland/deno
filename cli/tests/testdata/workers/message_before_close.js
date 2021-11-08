@@ -1,0 +1,4 @@
+onmessage = () => {
+  postMessage({});
+  close();
+};

@@ -1,0 +1,20 @@
+{
+  "title": "Extract to interface",
+  "kind": "refactor.extract.interface",
+  "isPreferred": true,
+  "data": {
+    "specifier": "file:///a/file.ts",
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 7
+      },
+      "end": {
+        "line": 0,
+        "character": 33
+      }
+    },
+    "refactorName": "Extract type",
+    "actionName": "Extract to interface"
+  }
+}

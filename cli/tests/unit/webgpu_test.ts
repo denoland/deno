@@ -10,7 +10,7 @@ try {
 // Skip this test on linux CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
 unitTest({
-  perms: { read: true, env: true },
+  permissions: { read: true, env: true },
   ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
 }, async function webgpuComputePass() {
   const adapter = await navigator.gpu.requestAdapter();
@@ -22,7 +22,7 @@ unitTest({
   assert(device);
 
   const shaderCode = await Deno.readTextFile(
-    "cli/tests/webgpu_computepass_shader.wgsl",
+    "cli/tests/testdata/webgpu_computepass_shader.wgsl",
   );
 
   const shaderModule = device.createShaderModule({
@@ -49,18 +49,13 @@ unitTest({
 
   storageBuffer.unmap();
 
-  const bindGroupLayout = device.createBindGroupLayout({
-    entries: [
-      {
-        binding: 0,
-        visibility: 4,
-        buffer: {
-          type: "storage",
-          minBindingSize: 4,
-        },
-      },
-    ],
+  const computePipeline = device.createComputePipeline({
+    compute: {
+      module: shaderModule,
+      entryPoint: "main",
+    },
   });
+  const bindGroupLayout = computePipeline.getBindGroupLayout(0);
 
   const bindGroup = device.createBindGroup({
     layout: bindGroupLayout,
@@ -72,18 +67,6 @@ unitTest({
         },
       },
     ],
-  });
-
-  const pipelineLayout = device.createPipelineLayout({
-    bindGroupLayouts: [bindGroupLayout],
-  });
-
-  const computePipeline = device.createComputePipeline({
-    layout: pipelineLayout,
-    compute: {
-      module: shaderModule,
-      entryPoint: "main",
-    },
   });
 
   const encoder = device.createCommandEncoder();
@@ -118,7 +101,7 @@ unitTest({
 // Skip this test on linux CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
 unitTest({
-  perms: { read: true, env: true },
+  permissions: { read: true, env: true },
   ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
 }, async function webgpuHelloTriangle() {
   const adapter = await navigator.gpu.requestAdapter();
@@ -128,7 +111,7 @@ unitTest({
   assert(device);
 
   const shaderCode = await Deno.readTextFile(
-    "cli/tests/webgpu_hellotriangle_shader.wgsl",
+    "cli/tests/testdata/webgpu_hellotriangle_shader.wgsl",
   );
 
   const shaderModule = device.createShaderModule({
@@ -179,10 +162,11 @@ unitTest({
   });
 
   const encoder = device.createCommandEncoder();
+  const view = texture.createView();
   const renderPass = encoder.beginRenderPass({
     colorAttachments: [
       {
-        view: texture.createView(),
+        view,
         storeOp: "store",
         loadValue: [0, 1, 0, 1],
       },
@@ -204,12 +188,16 @@ unitTest({
     dimensions,
   );
 
-  device.queue.submit([encoder.finish()]);
+  const bundle = encoder.finish();
+  device.queue.submit([bundle]);
 
   await outputBuffer.mapAsync(1);
   const data = new Uint8Array(outputBuffer.getMappedRange());
 
-  assertEquals(data, await Deno.readFile("cli/tests/webgpu_hellotriangle.out"));
+  assertEquals(
+    data,
+    await Deno.readFile("cli/tests/testdata/webgpu_hellotriangle.out"),
+  );
 
   outputBuffer.unmap();
 

@@ -1,9 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use rusty_v8 as v8;
 use serde::de::{self, Visitor};
 use serde::Deserialize;
-
-use std::convert::TryFrom;
 
 use crate::error::{Error, Result};
 use crate::keys::{v8_struct_key, KeyCache};
@@ -69,13 +66,40 @@ macro_rules! wip {
   };
 }
 
+// TODO: maybe check for BigInt truncation ?
+// (i.e: values larger than i64/u64 can hold)
 macro_rules! deserialize_signed {
   ($dmethod:ident, $vmethod:ident, $t:tt) => {
     fn $dmethod<V>(self, visitor: V) -> Result<V::Value>
     where
       V: Visitor<'de>,
     {
-      visitor.$vmethod(self.input.integer_value(&mut self.scope).unwrap() as $t)
+      let value: $t = match self.input.is_big_int() {
+        true => {
+          let bigint = v8::Local::<v8::BigInt>::try_from(self.input);
+          bigint.unwrap().i64_value().0 as $t
+        }
+        false => self.input.integer_value(&mut self.scope).unwrap() as $t,
+      };
+      visitor.$vmethod(value)
+    }
+  };
+}
+
+macro_rules! deserialize_unsigned {
+  ($dmethod:ident, $vmethod:ident, $t:tt) => {
+    fn $dmethod<V>(self, visitor: V) -> Result<V::Value>
+    where
+      V: Visitor<'de>,
+    {
+      let value: $t = match self.input.is_big_int() {
+        true => {
+          let bigint = v8::Local::<v8::BigInt>::try_from(self.input);
+          bigint.unwrap().u64_value().0 as $t
+        }
+        false => self.input.integer_value(&mut self.scope).unwrap() as $t,
+      };
+      visitor.$vmethod(value)
     }
   };
 }
@@ -105,6 +129,16 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       ValueType::String => self.deserialize_string(visitor),
       ValueType::Array => self.deserialize_seq(visitor),
       ValueType::Object => self.deserialize_map(visitor),
+      // Map to Vec<u8> when deserialized via deserialize_any
+      // e.g: for untagged enums or StringOrBuffer
+      ValueType::ArrayBufferView => {
+        v8::Local::<v8::ArrayBufferView>::try_from(self.input)
+          .and_then(|view| {
+            magic::zero_copy_buf::ZeroCopyBuf::try_new(self.scope, view)
+          })
+          .map_err(|_| Error::ExpectedInteger)
+          .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
+      }
     }
   }
 
@@ -116,15 +150,16 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     visitor.visit_bool(self.input.is_true())
   }
 
+  // signed
   deserialize_signed!(deserialize_i8, visit_i8, i8);
   deserialize_signed!(deserialize_i16, visit_i16, i16);
   deserialize_signed!(deserialize_i32, visit_i32, i32);
   deserialize_signed!(deserialize_i64, visit_i64, i64);
-  // TODO: maybe handle unsigned by itself ?
-  deserialize_signed!(deserialize_u8, visit_u8, u8);
-  deserialize_signed!(deserialize_u16, visit_u16, u16);
-  deserialize_signed!(deserialize_u32, visit_u32, u32);
-  deserialize_signed!(deserialize_u64, visit_u64, u64);
+  // unsigned
+  deserialize_unsigned!(deserialize_u8, visit_u8, u8);
+  deserialize_unsigned!(deserialize_u16, visit_u16, u16);
+  deserialize_unsigned!(deserialize_u32, visit_u32, u32);
+  deserialize_unsigned!(deserialize_u64, visit_u64, u64);
 
   fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value>
   where
@@ -154,12 +189,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     if self.input.is_string() {
-      // TODO(@AaronO): implement a `.to_rust_string -> Option<String>` in rusty-v8
       let v8_string = v8::Local::<v8::String>::try_from(self.input).unwrap();
-      let string = match v8_to_rust_string(self.scope, v8_string) {
-        Some(string) => string,
-        None => return Err(Error::ExpectedUtf8),
-      };
+      let string = v8_string.to_rust_string_lossy(self.scope);
       visitor.visit_string(string)
     } else {
       Err(Error::ExpectedString)
@@ -184,11 +215,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    if self.input.is_null_or_undefined() {
-      visitor.visit_unit()
-    } else {
-      Err(Error::ExpectedNull)
-    }
+    visitor.visit_unit()
   }
 
   fn deserialize_unit_struct<V>(
@@ -267,7 +294,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: de::Visitor<'de>,
   {
     // Assume object, then get_own_property_names
-    let obj = v8::Local::<v8::Object>::try_from(self.input).unwrap();
+    let obj = v8::Local::<v8::Object>::try_from(self.input)
+      .map_err(|_| Error::ExpectedObject)?;
     let prop_names = obj.get_own_property_names(self.scope);
     let mut keys: Vec<magic::Value> = match prop_names {
       Some(names) => from_v8(self.scope, names.into()).unwrap(),
@@ -309,8 +337,44 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       return visitor.visit_u64(hack);
     }
 
+    // Magic Buffer
+    if name == magic::buffer::BUF_NAME {
+      let zero_copy_buf =
+        v8::Local::<v8::ArrayBufferView>::try_from(self.input)
+          .and_then(|view| {
+            magic::zero_copy_buf::ZeroCopyBuf::try_new(self.scope, view)
+          })
+          .map_err(|_| Error::ExpectedArray)?;
+      let data: [u8; 32] = unsafe { std::mem::transmute(zero_copy_buf) };
+      return visitor.visit_bytes(&data);
+    }
+
+    // Magic ByteString
+    if name == magic::bytestring::NAME {
+      if let Some(v8_string) = self.input.to_string(self.scope) {
+        if v8_string.contains_only_onebyte() {
+          let mut buffer: Vec<u8> = vec![0u8; v8_string.length()];
+          let written = v8_string.write_one_byte(
+            self.scope,
+            &mut buffer,
+            0,
+            v8::WriteOptions::NO_NULL_TERMINATION,
+          );
+          assert!(written == v8_string.length());
+          return visitor.visit_byte_buf(buffer);
+        } else {
+          return Err(Error::Message(
+            "Expected a valid ByteString.".to_string(),
+          ));
+        }
+      } else {
+        return Err(Error::ExpectedString);
+      }
+    }
+
     // Regular struct
-    let obj = v8::Local::<v8::Object>::try_from(self.input).unwrap();
+    let obj = v8::Local::<v8::Object>::try_from(self.input)
+      .map_err(|_| Error::ExpectedObject)?;
     let map = ObjectAccess {
       fields,
       obj,
@@ -534,6 +598,10 @@ impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_, '_> {
       Ok(None)
     }
   }
+
+  fn size_hint(&self) -> Option<usize> {
+    Some((self.len - self.pos) as usize)
+  }
 }
 
 struct EnumAccess<'a, 'b, 's> {
@@ -603,17 +671,5 @@ impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
   ) -> Result<V::Value> {
     let mut d = Deserializer::new(self.scope, self.value, None);
     de::Deserializer::deserialize_struct(&mut d, "", fields, visitor)
-  }
-}
-
-// Like v8::String::to_rust_string_lossy except returns None on non-utf8
-fn v8_to_rust_string(
-  scope: &mut v8::HandleScope,
-  s: v8::Local<v8::String>,
-) -> Option<String> {
-  let string = s.to_rust_string_lossy(scope);
-  match string.find(std::char::REPLACEMENT_CHARACTER) {
-    Some(_) => None,
-    None => Some(string),
   }
 }

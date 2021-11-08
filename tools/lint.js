@@ -16,19 +16,20 @@ async function dlint() {
   const sourceFiles = await getSources(ROOT_PATH, [
     "*.js",
     "*.ts",
-    ":!:cli/tests/swc_syntax_error.ts",
-    ":!:cli/tests/038_checkjs.js",
-    ":!:cli/tests/error_008_checkjs.js",
+    ":!:.github/mtime_cache/action.js",
+    ":!:cli/tests/testdata/swc_syntax_error.ts",
+    ":!:cli/tests/testdata/038_checkjs.js",
+    ":!:cli/tests/testdata/error_008_checkjs.js",
     ":!:std/**/testdata/*",
     ":!:std/**/node_modules/*",
     ":!:cli/bench/node*.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/dts/**",
-    ":!:cli/tests/encoding/**",
-    ":!:cli/tests/error_syntax.js",
+    ":!:cli/tests/testdata/encoding/**",
+    ":!:cli/tests/testdata/error_syntax.js",
     ":!:cli/tests/unit/**",
-    ":!:cli/tests/lint/**",
-    ":!:cli/tests/tsc/**",
+    ":!:cli/tests/testdata/lint/**",
+    ":!:cli/tests/testdata/tsc/**",
     ":!:cli/tsc/*typescript.js",
     ":!:test_util/wpt/**",
   ]);
@@ -37,19 +38,7 @@ async function dlint() {
     return;
   }
 
-  const MAX_COMMAND_LEN = 30000;
-  const preCommand = [execPath, "run"];
-  const chunks = [[]];
-  let cmdLen = preCommand.join(" ").length;
-  for (const f of sourceFiles) {
-    if (cmdLen + f.length > MAX_COMMAND_LEN) {
-      chunks.push([f]);
-      cmdLen = preCommand.join(" ").length;
-    } else {
-      chunks[chunks.length - 1].push(f);
-      cmdLen = preCommand.join(" ").length;
-    }
-  }
+  const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
     const p = Deno.run({
       cmd: [execPath, "run", "--config=" + configFile, ...chunk],
@@ -60,6 +49,53 @@ async function dlint() {
     }
     p.close();
   }
+}
+
+// `prefer-primordials` has to apply only to files related to bootstrapping,
+// which is different from other lint rules. This is why this dedicated function
+// is needed.
+async function dlintPreferPrimordials() {
+  const execPath = getPrebuiltToolPath("dlint");
+  console.log("prefer-primordials");
+
+  const sourceFiles = await getSources(ROOT_PATH, [
+    "runtime/**/*.js",
+    "ext/**/*.js",
+    "core/**/*.js",
+    ":!:core/examples/**",
+  ]);
+
+  if (!sourceFiles.length) {
+    return;
+  }
+
+  const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
+  for (const chunk of chunks) {
+    const p = Deno.run({
+      cmd: [execPath, "run", "--rule", "prefer-primordials", ...chunk],
+    });
+    const { success } = await p.status();
+    if (!success) {
+      throw new Error("prefer-primordials failed");
+    }
+    p.close();
+  }
+}
+
+function splitToChunks(paths, initCmdLen) {
+  let cmdLen = initCmdLen;
+  const MAX_COMMAND_LEN = 30000;
+  const chunks = [[]];
+  for (const p of paths) {
+    if (cmdLen + p.length > MAX_COMMAND_LEN) {
+      chunks.push([p]);
+      cmdLen = initCmdLen;
+    } else {
+      chunks[chunks.length - 1].push(p);
+      cmdLen += p.length;
+    }
+  }
+  return chunks;
 }
 
 async function clippy() {
@@ -73,7 +109,14 @@ async function clippy() {
   }
 
   const p = Deno.run({
-    cmd: [...cmd, "--", "-D", "clippy::all"],
+    cmd: [
+      ...cmd,
+      "--",
+      "-D",
+      "clippy::all",
+      "-D",
+      "clippy::await_holding_refcell_ref",
+    ],
   });
   const { success } = await p.status();
   if (!success) {
@@ -89,6 +132,7 @@ async function main() {
 
   if (Deno.args.includes("--js")) {
     await dlint();
+    await dlintPreferPrimordials();
     didLint = true;
   }
 
@@ -99,6 +143,7 @@ async function main() {
 
   if (!didLint) {
     await dlint();
+    await dlintPreferPrimordials();
     await clippy();
   }
 }

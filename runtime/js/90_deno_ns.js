@@ -2,10 +2,11 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const __bootstrap = window.__bootstrap;
   __bootstrap.denoNs = {
+    metrics: core.metrics,
     test: __bootstrap.testing.test,
-    metrics: __bootstrap.metrics.metrics,
     Process: __bootstrap.process.Process,
     run: __bootstrap.process.run,
     isatty: __bootstrap.tty.isatty,
@@ -50,7 +51,11 @@
     lstat: __bootstrap.fs.lstat,
     truncateSync: __bootstrap.fs.truncateSync,
     truncate: __bootstrap.fs.truncate,
+    ftruncateSync: __bootstrap.fs.ftruncateSync,
+    ftruncate: __bootstrap.fs.ftruncate,
     errors: __bootstrap.errors.errors,
+    // TODO(kt3k): Remove this export at v2
+    // See https://github.com/denoland/deno/issues/9294
     customInspect: __bootstrap.console.customInspect,
     inspect: __bootstrap.console.inspect,
     env: __bootstrap.os.env,
@@ -83,7 +88,10 @@
     listen: __bootstrap.net.listen,
     connectTls: __bootstrap.tls.connectTls,
     listenTls: __bootstrap.tls.listenTls,
-    sleepSync: __bootstrap.timers.sleepSync,
+    startTls: __bootstrap.tls.startTls,
+    shutdown: __bootstrap.net.shutdown,
+    fstatSync: __bootstrap.fs.fstatSync,
+    fstat: __bootstrap.fs.fstat,
     fsyncSync: __bootstrap.fs.fsyncSync,
     fsync: __bootstrap.fs.fsync,
     fdatasyncSync: __bootstrap.fs.fdatasyncSync,
@@ -95,16 +103,16 @@
     permissions: __bootstrap.permissions.permissions,
     Permissions: __bootstrap.permissions.Permissions,
     PermissionStatus: __bootstrap.permissions.PermissionStatus,
+    serveHttp: __bootstrap.http.serveHttp,
+    resolveDns: __bootstrap.net.resolveDns,
+    upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
+    kill: __bootstrap.process.kill,
   };
 
   __bootstrap.denoNsUnstable = {
-    signal: __bootstrap.signals.signal,
-    signals: __bootstrap.signals.signals,
-    Signal: __bootstrap.signals.Signal,
-    SignalStream: __bootstrap.signals.SignalStream,
+    addSignalListener: __bootstrap.signals.addSignalListener,
+    removeSignalListener: __bootstrap.signals.removeSignalListener,
     emit: __bootstrap.compilerApi.emit,
-    openPlugin: __bootstrap.plugins.openPlugin,
-    kill: __bootstrap.process.kill,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
@@ -112,19 +120,12 @@
     hostname: __bootstrap.os.hostname,
     osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
-    systemCpuInfo: __bootstrap.os.systemCpuInfo,
     applySourceMap: __bootstrap.errorStack.opApplySourceMap,
     formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
-    shutdown: __bootstrap.net.shutdown,
-    resolveDns: __bootstrap.net.resolveDns,
+    sleepSync: __bootstrap.timers.sleepSync,
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
-    startTls: __bootstrap.tls.startTls,
-    fstatSync: __bootstrap.fs.fstatSync,
-    fstat: __bootstrap.fs.fstat,
-    ftruncateSync: __bootstrap.fs.ftruncateSync,
-    ftruncate: __bootstrap.fs.ftruncate,
     umask: __bootstrap.fs.umask,
     futime: __bootstrap.fs.futime,
     futimeSync: __bootstrap.fs.futimeSync,
@@ -132,5 +133,11 @@
     utimeSync: __bootstrap.fs.utimeSync,
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
+    http: __bootstrap.http,
+    dlopen: __bootstrap.ffi.dlopen,
+    flock: __bootstrap.fs.flock,
+    flockSync: __bootstrap.fs.flockSync,
+    funlock: __bootstrap.fs.funlock,
+    funlockSync: __bootstrap.fs.funlockSync,
   };
 })(this);

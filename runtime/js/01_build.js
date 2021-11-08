@@ -2,6 +2,8 @@
 "use strict";
 
 ((window) => {
+  const { ObjectFreeze, StringPrototypeSplit } = window.__bootstrap.primordials;
+
   const build = {
     target: "unknown",
     arch: "unknown",
@@ -11,13 +13,13 @@
   };
 
   function setBuildInfo(target) {
-    const [arch, vendor, os, env] = target.split("-", 4);
+    const [arch, vendor, os, env] = StringPrototypeSplit(target, "-", 4);
     build.target = target;
     build.arch = arch;
     build.vendor = vendor;
     build.os = os;
     build.env = env;
-    Object.freeze(build);
+    ObjectFreeze(build);
   }
 
   window.__bootstrap.build = {

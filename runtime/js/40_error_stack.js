@@ -5,11 +5,15 @@
   const core = window.Deno.core;
 
   function opFormatDiagnostics(diagnostics) {
-    return core.jsonOpSync("op_format_diagnostic", diagnostics);
+    return core.opSync("op_format_diagnostic", diagnostics);
+  }
+
+  function opFormatFileName(location) {
+    return core.opSync("op_format_file_name", location);
   }
 
   function opApplySourceMap(location) {
-    const res = core.jsonOpSync("op_apply_source_map", location);
+    const res = core.opSync("op_apply_source_map", location);
     return {
       fileName: res.fileName,
       lineNumber: res.lineNumber,
@@ -18,7 +22,8 @@
   }
 
   window.__bootstrap.errorStack = {
-    opApplySourceMap,
     opFormatDiagnostics,
+    opFormatFileName,
+    opApplySourceMap,
   };
 })(this);

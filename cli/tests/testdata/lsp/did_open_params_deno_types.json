@@ -1,0 +1,8 @@
+{
+  "textDocument": {
+    "uri": "file:///a/file.ts",
+    "languageId": "typescript",
+    "version": 1,
+    "text": "/// <reference types=\"https://example.com/a/b.d.ts\" />\n/// <reference path=\"https://example.com/a/c.ts\"\n\n// @deno-types=https://example.com/a/d.d.ts\nimport * as d from \"https://example.com/a/d.js\";\n\n// @deno-types=\"https://example.com/a/e.d.ts\"\nimport * as e from \"https://example.com/a/e.js\";\n\nconsole.log(d, e);\n"
+  }
+}

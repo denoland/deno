@@ -1,14 +1,17 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast;
-use crate::ast::TokenOrComment;
+use crate::ast::transpile;
+use crate::ast::ImportsNotUsedAsValues;
 use crate::colors;
-use crate::media_type::MediaType;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
+use deno_ast::swc::parser::error::SyntaxError;
+use deno_ast::swc::parser::token::{Token, Word};
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_runtime::inspector::InspectorSession;
+use deno_core::LocalInspectorSession;
 use deno_runtime::worker::MainWorker;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
@@ -16,37 +19,141 @@ use rustyline::highlight::Highlighter;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
+use rustyline::CompletionType;
+use rustyline::Config;
 use rustyline::Context;
 use rustyline::Editor;
 use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::sync_channel;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
-use std::sync::mpsc::SyncSender;
+use std::cell::RefCell;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
-use swc_ecmascript::parser::token::{Token, Word};
-use tokio::pin;
+use tokio::sync::mpsc::channel;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
 #[derive(Helper, Hinter)]
-struct Helper {
+struct EditorHelper {
   context_id: u64,
-  message_tx: SyncSender<(String, Option<Value>)>,
-  response_rx: Receiver<Result<Value, AnyError>>,
+  message_tx: Sender<(String, Option<Value>)>,
+  response_rx: RefCell<UnboundedReceiver<Result<Value, AnyError>>>,
 }
 
-impl Helper {
+impl EditorHelper {
+  pub fn get_global_lexical_scope_names(&self) -> Vec<String> {
+    let evaluate_response = self
+      .post_message(
+        "Runtime.globalLexicalScopeNames",
+        Some(json!({
+          "executionContextId": self.context_id,
+        })),
+      )
+      .unwrap();
+
+    evaluate_response
+      .get("names")
+      .unwrap()
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|n| n.as_str().unwrap().to_string())
+      .collect()
+  }
+
+  pub fn get_expression_property_names(&self, expr: &str) -> Vec<String> {
+    // try to get the properties from the expression
+    if let Some(properties) = self.get_object_expr_properties(expr) {
+      return properties;
+    }
+
+    // otherwise fall back to the prototype
+    let expr_type = self.get_expression_type(expr);
+    let object_expr = match expr_type.as_deref() {
+      // possibilities: https://chromedevtools.github.io/devtools-protocol/v8/Runtime/#type-RemoteObject
+      Some("object") => "Object.prototype",
+      Some("function") => "Function.prototype",
+      Some("string") => "String.prototype",
+      Some("boolean") => "Boolean.prototype",
+      Some("bigint") => "BigInt.prototype",
+      Some("number") => "Number.prototype",
+      _ => return Vec::new(), // undefined, symbol, and unhandled
+    };
+
+    self
+      .get_object_expr_properties(object_expr)
+      .unwrap_or_else(Vec::new)
+  }
+
+  fn get_expression_type(&self, expr: &str) -> Option<String> {
+    self
+      .evaluate_expression(expr)?
+      .get("result")?
+      .get("type")?
+      .as_str()
+      .map(|s| s.to_string())
+  }
+
+  fn get_object_expr_properties(
+    &self,
+    object_expr: &str,
+  ) -> Option<Vec<String>> {
+    let evaluate_result = self.evaluate_expression(object_expr)?;
+    let object_id = evaluate_result.get("result")?.get("objectId")?;
+
+    let get_properties_response = self
+      .post_message(
+        "Runtime.getProperties",
+        Some(json!({
+          "objectId": object_id,
+        })),
+      )
+      .ok()?;
+
+    Some(
+      get_properties_response
+        .get("result")?
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
+        .collect(),
+    )
+  }
+
+  fn evaluate_expression(&self, expr: &str) -> Option<Value> {
+    let evaluate_response = self
+      .post_message(
+        "Runtime.evaluate",
+        Some(json!({
+          "contextId": self.context_id,
+          "expression": expr,
+          "throwOnSideEffect": true,
+          "timeout": 200,
+        })),
+      )
+      .ok()?;
+
+    if evaluate_response.get("exceptionDetails").is_some() {
+      None
+    } else {
+      Some(evaluate_response)
+    }
+  }
+
   fn post_message(
     &self,
     method: &str,
     params: Option<Value>,
   ) -> Result<Value, AnyError> {
-    self.message_tx.send((method.to_string(), params))?;
-    self.response_rx.recv()?
+    self
+      .message_tx
+      .blocking_send((method.to_string(), params))?;
+    self.response_rx.borrow_mut().blocking_recv().unwrap()
   }
 }
 
@@ -58,7 +165,22 @@ fn is_word_boundary(c: char) -> bool {
   }
 }
 
-impl Completer for Helper {
+fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
+  let start = line[..cursor_pos]
+    .rfind(is_word_boundary)
+    .map_or_else(|| 0, |i| i);
+  let end = line[cursor_pos..]
+    .rfind(is_word_boundary)
+    .map_or_else(|| cursor_pos, |i| cursor_pos + i);
+
+  let word = &line[start..end];
+  let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
+  let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
+
+  word
+}
+
+impl Completer for EditorHelper {
   type Candidate = String;
 
   fn complete(
@@ -67,80 +189,38 @@ impl Completer for Helper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let start = line[..pos].rfind(is_word_boundary).map_or_else(|| 0, |i| i);
-    let end = line[pos..]
-      .rfind(is_word_boundary)
-      .map_or_else(|| pos, |i| pos + i);
+    let expr = get_expr_from_line_at_pos(line, pos);
 
-    let word = &line[start..end];
-    let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-    let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
+    // check if the expression is in the form `obj.prop`
+    if let Some(index) = expr.rfind('.') {
+      let sub_expr = &expr[..index];
+      let prop_name = &expr[index + 1..];
+      let candidates = self
+        .get_expression_property_names(sub_expr)
+        .into_iter()
+        .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
+        .collect();
 
-    let fallback = format!(".{}", word);
+      Ok((pos - prop_name.len(), candidates))
+    } else {
+      // combine results of declarations and globalThis properties
+      let mut candidates = self
+        .get_expression_property_names("globalThis")
+        .into_iter()
+        .chain(self.get_global_lexical_scope_names())
+        .filter(|n| n.starts_with(expr))
+        .collect::<Vec<_>>();
 
-    let (prefix, suffix) = match word.rfind('.') {
-      Some(index) => word.split_at(index),
-      None => ("globalThis", fallback.as_str()),
-    };
+      // sort and remove duplicates
+      candidates.sort();
+      candidates.dedup(); // make sure to sort first
 
-    let evaluate_response = self
-      .post_message(
-        "Runtime.evaluate",
-        Some(json!({
-          "contextId": self.context_id,
-          "expression": prefix,
-          "throwOnSideEffect": true,
-          "timeout": 200,
-        })),
-      )
-      .unwrap();
-
-    if evaluate_response.get("exceptionDetails").is_some() {
-      let candidates = Vec::new();
-      return Ok((pos, candidates));
+      Ok((pos - expr.len(), candidates))
     }
-
-    if let Some(result) = evaluate_response.get("result") {
-      if let Some(object_id) = result.get("objectId") {
-        let get_properties_response = self.post_message(
-          "Runtime.getProperties",
-          Some(json!({
-            "objectId": object_id,
-          })),
-        );
-
-        if let Ok(get_properties_response) = get_properties_response {
-          if let Some(result) = get_properties_response.get("result") {
-            let candidates = result
-              .as_array()
-              .unwrap()
-              .iter()
-              .filter_map(|r| {
-                let name = r.get("name").unwrap().as_str().unwrap().to_string();
-
-                if name.starts_with("Symbol(") {
-                  return None;
-                }
-
-                if name.starts_with(&suffix[1..]) {
-                  return Some(name);
-                }
-
-                None
-              })
-              .collect();
-
-            return Ok((pos - (suffix.len() - 1), candidates));
-          }
-        }
-      }
-    }
-
-    Ok((pos, Vec::new()))
   }
 }
 
-impl Validator for Helper {
+impl Validator for EditorHelper {
   fn validate(
     &self,
     ctx: &mut ValidationContext,
@@ -148,8 +228,8 @@ impl Validator for Helper {
     let mut stack: Vec<Token> = Vec::new();
     let mut in_template = false;
 
-    for item in ast::lex("", ctx.input(), &MediaType::JavaScript) {
-      if let TokenOrComment::Token(token) = item.inner {
+    for item in deno_ast::lex(ctx.input(), deno_ast::MediaType::TypeScript) {
+      if let deno_ast::TokenOrComment::Token(token) = item.inner {
         match token {
           Token::BackQuote => in_template = !in_template,
           Token::LParen
@@ -175,6 +255,17 @@ impl Validator for Helper {
               }
             }
           }
+          Token::Error(error) => {
+            match error.kind() {
+              // If there is unterminated template, it continues to read input.
+              SyntaxError::UnterminatedTpl => {}
+              _ => {
+                // If it failed parsing, it should be V8's task to output error instead.
+                // Thus marked as valid with no info.
+                return Ok(ValidationResult::Valid(None));
+              }
+            }
+          }
           _ => {}
         }
       }
@@ -188,7 +279,7 @@ impl Validator for Helper {
   }
 }
 
-impl Highlighter for Helper {
+impl Highlighter for EditorHelper {
   fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
     hint.into()
   }
@@ -196,9 +287,13 @@ impl Highlighter for Helper {
   fn highlight_candidate<'c>(
     &self,
     candidate: &'c str,
-    _completion: rustyline::CompletionType,
+    completion: rustyline::CompletionType,
   ) -> Cow<'c, str> {
-    self.highlight(candidate, 0)
+    if completion == CompletionType::List {
+      candidate.into()
+    } else {
+      self.highlight(candidate, 0)
+    }
   }
 
   fn highlight_char(&self, line: &str, _: usize) -> bool {
@@ -208,16 +303,19 @@ impl Highlighter for Helper {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
     let mut out_line = String::from(line);
 
-    for item in ast::lex("", line, &MediaType::JavaScript) {
+    for item in deno_ast::lex(line, deno_ast::MediaType::TypeScript) {
       // Adding color adds more bytes to the string,
       // so an offset is needed to stop spans falling out of sync.
       let offset = out_line.len() - line.len();
-      let span = item.span_as_range();
+      let span = std::ops::Range {
+        start: item.span.lo.0 as usize,
+        end: item.span.hi.0 as usize,
+      };
 
       out_line.replace_range(
         span.start + offset..span.end + offset,
         &match item.inner {
-          TokenOrComment::Token(token) => match token {
+          deno_ast::TokenOrComment::Token(token) => match token {
             Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
               colors::green(&line[span]).to_string()
             }
@@ -244,7 +342,7 @@ impl Highlighter for Helper {
             },
             _ => line[span].to_string(),
           },
-          TokenOrComment::Comment { .. } => {
+          deno_ast::TokenOrComment::Comment { .. } => {
             colors::gray(&line[span]).to_string()
           }
         },
@@ -255,68 +353,41 @@ impl Highlighter for Helper {
   }
 }
 
-async fn post_message_and_poll(
-  worker: &mut MainWorker,
-  session: &mut InspectorSession,
-  method: &str,
-  params: Option<Value>,
-) -> Result<Value, AnyError> {
-  let response = session.post_message(method, params);
-  tokio::pin!(response);
-
-  loop {
-    tokio::select! {
-      result = &mut response => {
-        return result
-      }
-
-      _ = worker.run_event_loop() => {
-        // A zero delay is long enough to yield the thread in order to prevent the loop from
-        // running hot for messages that are taking longer to resolve like for example an
-        // evaluation of top level await.
-        tokio::time::sleep(tokio::time::Duration::from_millis(0)).await;
-      }
-    }
-  }
+#[derive(Clone)]
+struct ReplEditor {
+  inner: Arc<Mutex<Editor<EditorHelper>>>,
+  history_file_path: PathBuf,
 }
 
-async fn read_line_and_poll(
-  worker: &mut MainWorker,
-  session: &mut InspectorSession,
-  message_rx: &Receiver<(String, Option<Value>)>,
-  response_tx: &Sender<Result<Value, AnyError>>,
-  editor: Arc<Mutex<Editor<Helper>>>,
-) -> Result<String, ReadlineError> {
-  let mut line =
-    tokio::task::spawn_blocking(move || editor.lock().unwrap().readline("> "));
+impl ReplEditor {
+  pub fn new(helper: EditorHelper, history_file_path: PathBuf) -> Self {
+    let editor_config = Config::builder()
+      .completion_type(CompletionType::List)
+      .build();
 
-  let mut poll_worker = true;
+    let mut editor = Editor::with_config(editor_config);
+    editor.set_helper(Some(helper));
+    editor.load_history(&history_file_path).unwrap_or(());
 
-  loop {
-    for (method, params) in message_rx.try_iter() {
-      response_tx
-        .send(session.post_message(&method, params).await)
-        .unwrap();
+    ReplEditor {
+      inner: Arc::new(Mutex::new(editor)),
+      history_file_path,
     }
+  }
 
-    // Because an inspector websocket client may choose to connect at anytime when we have an
-    // inspector server we need to keep polling the worker to pick up new connections.
-    // TODO(piscisaureus): the above comment is a red herring; figure out if/why
-    // the event loop isn't woken by a waker when a websocket client connects.
-    let timeout = tokio::time::sleep(tokio::time::Duration::from_millis(100));
-    pin!(timeout);
+  pub fn readline(&self) -> Result<String, ReadlineError> {
+    self.inner.lock().readline("> ")
+  }
 
-    tokio::select! {
-      result = &mut line => {
-        return result.unwrap();
-      }
-      _ = worker.run_event_loop(), if poll_worker => {
-        poll_worker = false;
-      }
-      _ = timeout => {
-        poll_worker = true
-      }
-    }
+  pub fn add_history_entry(&self, entry: String) {
+    self.inner.lock().add_history_entry(entry);
+  }
+
+  pub fn save_history(&self) -> Result<(), AnyError> {
+    std::fs::create_dir_all(self.history_file_path.parent().unwrap())?;
+
+    self.inner.lock().save_history(&self.history_file_path)?;
+    Ok(())
   }
 }
 
@@ -351,225 +422,365 @@ Object.defineProperty(globalThis, "_error", {
 });
 "#;
 
-async fn inject_prelude(
-  worker: &mut MainWorker,
-  session: &mut InspectorSession,
-  context_id: u64,
-) -> Result<(), AnyError> {
-  post_message_and_poll(
-    worker,
-    session,
-    "Runtime.evaluate",
-    Some(json!({
-      "expression": PRELUDE,
-      "contextId": context_id,
-    })),
-  )
-  .await?;
-
-  Ok(())
+enum EvaluationOutput {
+  Value(String),
+  Error(String),
 }
 
-pub async fn is_closing(
-  worker: &mut MainWorker,
-  session: &mut InspectorSession,
-  context_id: u64,
-) -> Result<bool, AnyError> {
-  let closed = post_message_and_poll(
-    worker,
-    session,
-    "Runtime.evaluate",
-    Some(json!({
-      "expression": "(globalThis.closed)",
-      "contextId": context_id,
-    })),
-  )
-  .await?
-  .get("result")
-  .unwrap()
-  .get("value")
-  .unwrap()
-  .as_bool()
-  .unwrap();
-
-  Ok(closed)
+impl std::fmt::Display for EvaluationOutput {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      EvaluationOutput::Value(value) => f.write_str(value),
+      EvaluationOutput::Error(value) => f.write_str(value),
+    }
+  }
 }
 
-pub async fn run(
-  program_state: &ProgramState,
-  mut worker: MainWorker,
-) -> Result<(), AnyError> {
-  let mut session = worker.create_inspector_session();
+struct ReplSession {
+  worker: MainWorker,
+  session: LocalInspectorSession,
+  pub context_id: u64,
+}
 
-  let history_file = program_state.dir.root.join("deno_history.txt");
+impl ReplSession {
+  pub async fn initialize(mut worker: MainWorker) -> Result<Self, AnyError> {
+    let mut session = worker.create_inspector_session().await;
 
-  post_message_and_poll(&mut worker, &mut session, "Runtime.enable", None)
-    .await?;
+    worker
+      .with_event_loop(
+        session.post_message("Runtime.enable", None).boxed_local(),
+      )
+      .await?;
 
-  // Enabling the runtime domain will always send trigger one executionContextCreated for each
-  // context the inspector knows about so we grab the execution context from that since
-  // our inspector does not support a default context (0 is an invalid context id).
-  let mut context_id: u64 = 0;
-  for notification in session.notifications() {
-    let method = notification.get("method").unwrap().as_str().unwrap();
-    let params = notification.get("params").unwrap();
+    // Enabling the runtime domain will always send trigger one executionContextCreated for each
+    // context the inspector knows about so we grab the execution context from that since
+    // our inspector does not support a default context (0 is an invalid context id).
+    let mut context_id: u64 = 0;
+    for notification in session.notifications() {
+      let method = notification.get("method").unwrap().as_str().unwrap();
+      let params = notification.get("params").unwrap();
 
-    if method == "Runtime.executionContextCreated" {
-      context_id = params
-        .get("context")
-        .unwrap()
-        .get("id")
-        .unwrap()
-        .as_u64()
-        .unwrap();
+      if method == "Runtime.executionContextCreated" {
+        context_id = params
+          .get("context")
+          .unwrap()
+          .get("id")
+          .unwrap()
+          .as_u64()
+          .unwrap();
+      }
+    }
+
+    let mut repl_session = ReplSession {
+      worker,
+      session,
+      context_id,
+    };
+
+    // inject prelude
+    repl_session.evaluate_expression(PRELUDE).await?;
+
+    Ok(repl_session)
+  }
+
+  pub async fn is_closing(&mut self) -> Result<bool, AnyError> {
+    let closed = self
+      .evaluate_expression("(this.closed)")
+      .await?
+      .get("result")
+      .unwrap()
+      .get("value")
+      .unwrap()
+      .as_bool()
+      .unwrap();
+
+    Ok(closed)
+  }
+
+  pub async fn post_message_with_event_loop(
+    &mut self,
+    method: &str,
+    params: Option<Value>,
+  ) -> Result<Value, AnyError> {
+    self
+      .worker
+      .with_event_loop(self.session.post_message(method, params).boxed_local())
+      .await
+  }
+
+  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
+    self.worker.run_event_loop(true).await
+  }
+
+  pub async fn evaluate_line_and_get_output(
+    &mut self,
+    line: &str,
+  ) -> Result<EvaluationOutput, AnyError> {
+    match self.evaluate_line_with_object_wrapping(line).await {
+      Ok(evaluate_response) => {
+        let evaluate_result = evaluate_response.get("result").unwrap();
+        let evaluate_exception_details =
+          evaluate_response.get("exceptionDetails");
+
+        if evaluate_exception_details.is_some() {
+          self.set_last_thrown_error(evaluate_result).await?;
+        } else {
+          self.set_last_eval_result(evaluate_result).await?;
+        }
+
+        let value = self.get_eval_value(evaluate_result).await?;
+        Ok(match evaluate_exception_details {
+          Some(_) => EvaluationOutput::Error(format!("Uncaught {}", value)),
+          None => EvaluationOutput::Value(value),
+        })
+      }
+      Err(err) => {
+        // handle a parsing diagnostic
+        match err.downcast_ref::<deno_ast::Diagnostic>() {
+          Some(diagnostic) => Ok(EvaluationOutput::Error(format!(
+            "{}: {} at {}:{}",
+            colors::red("parse error"),
+            diagnostic.message(),
+            diagnostic.display_position.line_number,
+            diagnostic.display_position.column_number,
+          ))),
+          None => Err(err),
+        }
+      }
     }
   }
 
-  let (message_tx, message_rx) = sync_channel(1);
-  let (response_tx, response_rx) = channel();
+  async fn evaluate_line_with_object_wrapping(
+    &mut self,
+    line: &str,
+  ) -> Result<Value, AnyError> {
+    // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
+    // statement rather than an object literal so we interpret it as an expression statement
+    // to match the behavior found in a typical prompt including browser developer tools.
+    let wrapped_line = if line.trim_start().starts_with('{')
+      && !line.trim_end().ends_with(';')
+    {
+      format!("({})", &line)
+    } else {
+      line.to_string()
+    };
 
-  let helper = Helper {
-    context_id,
+    let evaluate_response = self.evaluate_ts_expression(&wrapped_line).await?;
+
+    // If that fails, we retry it without wrapping in parens letting the error bubble up to the
+    // user if it is still an error.
+    let evaluate_response =
+      if evaluate_response.get("exceptionDetails").is_some()
+        && wrapped_line != line
+      {
+        self.evaluate_ts_expression(line).await?
+      } else {
+        evaluate_response
+      };
+
+    Ok(evaluate_response)
+  }
+
+  async fn set_last_thrown_error(
+    &mut self,
+    error: &Value,
+  ) -> Result<(), AnyError> {
+    self.post_message_with_event_loop(
+      "Runtime.callFunctionOn",
+      Some(json!({
+        "executionContextId": self.context_id,
+        "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
+        "arguments": [
+          error,
+        ],
+      })),
+    ).await?;
+    Ok(())
+  }
+
+  async fn set_last_eval_result(
+    &mut self,
+    evaluate_result: &Value,
+  ) -> Result<(), AnyError> {
+    self.post_message_with_event_loop(
+      "Runtime.callFunctionOn",
+      Some(json!({
+        "executionContextId": self.context_id,
+        "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
+        "arguments": [
+          evaluate_result,
+        ],
+      })),
+    ).await?;
+    Ok(())
+  }
+
+  pub async fn get_eval_value(
+    &mut self,
+    evaluate_result: &Value,
+  ) -> Result<String, AnyError> {
+    // TODO(caspervonb) we should investigate using previews here but to keep things
+    // consistent with the previous implementation we just get the preview result from
+    // Deno.inspectArgs.
+    let inspect_response = self.post_message_with_event_loop(
+      "Runtime.callFunctionOn",
+      Some(json!({
+        "executionContextId": self.context_id,
+        "functionDeclaration": r#"function (object) {
+          try {
+            return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
+          } catch (err) {
+            return Deno[Deno.internal].inspectArgs(["%o", err]);
+          }
+        }"#,
+        "arguments": [
+          evaluate_result,
+        ],
+      })),
+    ).await?;
+
+    let inspect_result = inspect_response.get("result").unwrap();
+    let value = inspect_result.get("value").unwrap().as_str().unwrap();
+
+    Ok(value.to_string())
+  }
+
+  async fn evaluate_ts_expression(
+    &mut self,
+    expression: &str,
+  ) -> Result<Value, AnyError> {
+    let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: "repl.ts".to_string(),
+      source: deno_ast::SourceTextInfo::from_string(expression.to_string()),
+      media_type: deno_ast::MediaType::TypeScript,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })?;
+
+    let transpiled_src = transpile(
+      &parsed_module,
+      &crate::ast::EmitOptions {
+        emit_metadata: false,
+        source_map: false,
+        inline_source_map: false,
+        inline_sources: false,
+        imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
+        // JSX is not supported in the REPL
+        transform_jsx: false,
+        jsx_factory: "React.createElement".into(),
+        jsx_fragment_factory: "React.Fragment".into(),
+        repl_imports: true,
+      },
+    )?
+    .0;
+
+    self
+      .evaluate_expression(&format!(
+        "'use strict'; void 0;\n{}",
+        transpiled_src
+      ))
+      .await
+  }
+
+  async fn evaluate_expression(
+    &mut self,
+    expression: &str,
+  ) -> Result<Value, AnyError> {
+    self
+      .post_message_with_event_loop(
+        "Runtime.evaluate",
+        Some(json!({
+          "expression": expression,
+          "contextId": self.context_id,
+          "replMode": true,
+        })),
+      )
+      .await
+  }
+}
+
+async fn read_line_and_poll(
+  repl_session: &mut ReplSession,
+  message_rx: &mut Receiver<(String, Option<Value>)>,
+  response_tx: &UnboundedSender<Result<Value, AnyError>>,
+  editor: ReplEditor,
+) -> Result<String, ReadlineError> {
+  let mut line_fut = tokio::task::spawn_blocking(move || editor.readline());
+  let mut poll_worker = true;
+
+  loop {
+    tokio::select! {
+      result = &mut line_fut => {
+        return result.unwrap();
+      }
+      result = message_rx.recv() => {
+        if let Some((method, params)) = result {
+          let result = repl_session
+            .post_message_with_event_loop(&method, params)
+            .await;
+          response_tx.send(result).unwrap();
+        }
+
+        poll_worker = true;
+      },
+      _ = repl_session.run_event_loop(), if poll_worker => {
+        poll_worker = false;
+      }
+    }
+  }
+}
+
+pub async fn run(
+  ps: &ProcState,
+  worker: MainWorker,
+  maybe_eval: Option<String>,
+) -> Result<(), AnyError> {
+  let mut repl_session = ReplSession::initialize(worker).await?;
+  let (message_tx, mut message_rx) = channel(1);
+  let (response_tx, response_rx) = unbounded_channel();
+
+  let helper = EditorHelper {
+    context_id: repl_session.context_id,
     message_tx,
-    response_rx,
+    response_rx: RefCell::new(response_rx),
   };
 
-  let editor = Arc::new(Mutex::new(Editor::new()));
+  let history_file_path = ps.dir.root.join("deno_history.txt");
+  let editor = ReplEditor::new(helper, history_file_path);
 
-  editor.lock().unwrap().set_helper(Some(helper));
-
-  editor
-    .lock()
-    .unwrap()
-    .load_history(history_file.to_str().unwrap())
-    .unwrap_or(());
+  if let Some(eval) = maybe_eval {
+    let output = repl_session.evaluate_line_and_get_output(&eval).await?;
+    // only output errors
+    if let EvaluationOutput::Error(error_text) = output {
+      println!("error in --eval flag. {}", error_text);
+    }
+  }
 
   println!("Deno {}", crate::version::deno());
   println!("exit using ctrl+d or close()");
 
-  inject_prelude(&mut worker, &mut session, context_id).await?;
-
   loop {
     let line = read_line_and_poll(
-      &mut worker,
-      &mut session,
-      &message_rx,
+      &mut repl_session,
+      &mut message_rx,
       &response_tx,
       editor.clone(),
     )
     .await;
     match line {
       Ok(line) => {
-        // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
-        // statement rather than an object literal so we interpret it as an expression statement
-        // to match the behavior found in a typical prompt including browser developer tools.
-        let wrapped_line = if line.trim_start().starts_with('{')
-          && !line.trim_end().ends_with(';')
-        {
-          format!("({})", &line)
-        } else {
-          line.clone()
-        };
-
-        let evaluate_response = post_message_and_poll(
-          &mut worker,
-          &mut session,
-          "Runtime.evaluate",
-          Some(json!({
-            "expression": format!("'use strict'; void 0;\n{}", &wrapped_line),
-            "contextId": context_id,
-            "replMode": true,
-          })),
-        )
-        .await?;
-
-        // If that fails, we retry it without wrapping in parens letting the error bubble up to the
-        // user if it is still an error.
-        let evaluate_response =
-          if evaluate_response.get("exceptionDetails").is_some()
-            && wrapped_line != line
-          {
-            post_message_and_poll(
-              &mut worker,
-              &mut session,
-              "Runtime.evaluate",
-              Some(json!({
-                "expression": format!("'use strict'; void 0;\n{}", &line),
-                "contextId": context_id,
-                "replMode": true,
-              })),
-            )
-            .await?
-          } else {
-            evaluate_response
-          };
+        let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
         // We check for close and break here instead of making it a loop condition to get
         // consistent behavior in when the user evaluates a call to close().
-        if is_closing(&mut worker, &mut session, context_id).await? {
+        if repl_session.is_closing().await? {
           break;
         }
 
-        let evaluate_result = evaluate_response.get("result").unwrap();
-        let evaluate_exception_details =
-          evaluate_response.get("exceptionDetails");
-
-        if evaluate_exception_details.is_some() {
-          post_message_and_poll(
-                    &mut worker,
-                    &mut session,
-                    "Runtime.callFunctionOn",
-                    Some(json!({
-                      "executionContextId": context_id,
-                      "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
-                      "arguments": [
-                        evaluate_result,
-                      ],
-                    })),
-                  ).await?;
-        } else {
-          post_message_and_poll(
-                    &mut worker,
-                    &mut session,
-                    "Runtime.callFunctionOn",
-                    Some(json!({
-                      "executionContextId": context_id,
-                      "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
-                      "arguments": [
-                        evaluate_result,
-                      ],
-                    })),
-                  ).await?;
-        }
-
-        // TODO(caspervonb) we should investigate using previews here but to keep things
-        // consistent with the previous implementation we just get the preview result from
-        // Deno.inspectArgs.
-        let inspect_response =
-          post_message_and_poll(
-            &mut worker,
-            &mut session,
-            "Runtime.callFunctionOn",
-            Some(json!({
-              "executionContextId": context_id,
-              "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: !Deno.noColor }); }",
-              "arguments": [
-                evaluate_result,
-              ],
-            })),
-          ).await?;
-
-        let inspect_result = inspect_response.get("result").unwrap();
-
-        let value = inspect_result.get("value").unwrap().as_str().unwrap();
-        let output = match evaluate_exception_details {
-          Some(_) => format!("Uncaught {}", value),
-          None => value.to_string(),
-        };
-
         println!("{}", output);
 
-        editor.lock().unwrap().add_history_entry(line.as_str());
+        editor.add_history_entry(line);
       }
       Err(ReadlineError::Interrupted) => {
         println!("exit using ctrl+d or close()");
@@ -585,11 +796,7 @@ pub async fn run(
     }
   }
 
-  std::fs::create_dir_all(history_file.parent().unwrap())?;
-  editor
-    .lock()
-    .unwrap()
-    .save_history(history_file.to_str().unwrap())?;
+  editor.save_history()?;
 
   Ok(())
 }

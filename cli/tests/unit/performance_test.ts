@@ -2,22 +2,23 @@
 import {
   assert,
   assertEquals,
+  assertStringIncludes,
   assertThrows,
   deferred,
   unitTest,
 } from "./test_util.ts";
 
-unitTest({ perms: { hrtime: false } }, async function performanceNow(): Promise<
-  void
-> {
+unitTest({ permissions: { hrtime: false } }, async function performanceNow() {
   const resolvable = deferred();
   const start = performance.now();
-  setTimeout((): void => {
+  let totalTime = 0;
+  setTimeout(() => {
     const end = performance.now();
-    assert(end - start >= 10);
+    totalTime = end - start;
     resolvable.resolve();
   }, 10);
   await resolvable;
+  assert(totalTime >= 10);
 });
 
 unitTest(function performanceMark() {
@@ -81,13 +82,39 @@ unitTest(function performanceMeasure() {
   });
 });
 
+unitTest(function performanceCustomInspectFunction() {
+  assertStringIncludes(Deno.inspect(performance), "Performance");
+  assertStringIncludes(
+    Deno.inspect(Performance.prototype),
+    "Performance",
+  );
+});
+
+unitTest(function performanceMarkCustomInspectFunction() {
+  const mark1 = performance.mark("mark1");
+  assertStringIncludes(Deno.inspect(mark1), "PerformanceMark");
+  assertStringIncludes(
+    Deno.inspect(PerformanceMark.prototype),
+    "PerformanceMark",
+  );
+});
+
+unitTest(function performanceMeasureCustomInspectFunction() {
+  const measure1 = performance.measure("measure1");
+  assertStringIncludes(Deno.inspect(measure1), "PerformanceMeasure");
+  assertStringIncludes(
+    Deno.inspect(PerformanceMeasure.prototype),
+    "PerformanceMeasure",
+  );
+});
+
 unitTest(function performanceIllegalConstructor() {
-  assertThrows(() => new Performance(), TypeError, "Illegal constructor.");
+  assertThrows(() => new Performance(), TypeError, "Illegal constructor");
   assertEquals(Performance.length, 0);
 });
 
 unitTest(function performanceEntryIllegalConstructor() {
-  assertThrows(() => new PerformanceEntry(), TypeError, "Illegal constructor.");
+  assertThrows(() => new PerformanceEntry(), TypeError, "Illegal constructor");
   assertEquals(PerformanceEntry.length, 0);
 });
 
@@ -95,6 +122,6 @@ unitTest(function performanceMeasureIllegalConstructor() {
   assertThrows(
     () => new PerformanceMeasure(),
     TypeError,
-    "Illegal constructor.",
+    "Illegal constructor",
   );
 });

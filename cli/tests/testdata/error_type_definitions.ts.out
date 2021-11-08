@@ -1,0 +1,1 @@
+[WILDCARD]error: Relative import path "baz" not prefixed with / or ./ or ../ from "[WILDCARD]/type_definitions/bar.d.ts"

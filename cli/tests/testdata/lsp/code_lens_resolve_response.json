@@ -1,0 +1,38 @@
+{
+  "range": {
+    "start": {
+      "line": 0,
+      "character": 6
+    },
+    "end": {
+      "line": 0,
+      "character": 7
+    }
+  },
+  "command": {
+    "title": "1 reference",
+    "command": "deno.showReferences",
+    "arguments": [
+      "file:///a/file.ts",
+      {
+        "line": 0,
+        "character": 6
+      },
+      [
+        {
+          "uri": "file:///a/file.ts",
+          "range": {
+            "start": {
+              "line": 12,
+              "character": 14
+            },
+            "end": {
+              "line": 12,
+              "character": 15
+            }
+          }
+        }
+      ]
+    ]
+  }
+}

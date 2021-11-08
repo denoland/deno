@@ -1,78 +1,30 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast;
-use crate::ast::TokenOrComment;
 use crate::colors;
+use crate::emit;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
-use crate::media_type::MediaType;
-use crate::module_graph::TypeLib;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use crate::source_maps::SourceMapGetter;
+
+use deno_ast::swc::common::Span;
+use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_runtime::inspector::InspectorSession;
+use deno_core::LocalInspectorSession;
 use deno_runtime::permissions::Permissions;
 use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
 use sourcemap::SourceMap;
 use std::fs;
+use std::fs::File;
+use std::io::BufWriter;
+use std::io::Write;
 use std::path::PathBuf;
-use swc_common::Span;
+use std::sync::Arc;
 use uuid::Uuid;
-
-pub struct CoverageCollector {
-  pub dir: PathBuf,
-  session: Box<InspectorSession>,
-}
-
-impl CoverageCollector {
-  pub fn new(dir: PathBuf, session: Box<InspectorSession>) -> Self {
-    Self { dir, session }
-  }
-
-  pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
-    self.session.post_message("Debugger.enable", None).await?;
-    self.session.post_message("Profiler.enable", None).await?;
-
-    self
-      .session
-      .post_message(
-        "Profiler.startPreciseCoverage",
-        Some(json!({"callCount": true, "detailed": true})),
-      )
-      .await?;
-
-    Ok(())
-  }
-
-  pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
-    let result = self
-      .session
-      .post_message("Profiler.takePreciseCoverage", None)
-      .await?;
-
-    let take_coverage_result: TakePreciseCoverageResult =
-      serde_json::from_value(result)?;
-
-    fs::create_dir_all(&self.dir)?;
-
-    let script_coverages = take_coverage_result.result;
-    for script_coverage in script_coverages {
-      let filename = format!("{}.json", Uuid::new_v4());
-      let json = serde_json::to_string(&script_coverage)?;
-      fs::write(self.dir.join(filename), &json)?;
-    }
-
-    self.session.post_message("Profiler.disable", None).await?;
-    self.session.post_message("Debugger.disable", None).await?;
-
-    Ok(())
-  }
-}
 
 // TODO(caspervonb) all of these structs can and should be made private, possibly moved to
 // inspector::protocol.
@@ -102,15 +54,120 @@ pub struct ScriptCoverage {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TakePreciseCoverageResult {
-  result: Vec<ScriptCoverage>,
+pub struct StartPreciseCoverageParameters {
+  pub call_count: bool,
+  pub detailed: bool,
+  pub allow_triggered_updates: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetScriptSourceResult {
-  pub script_source: String,
-  pub bytecode: Option<String>,
+pub struct StartPreciseCoverageReturnObject {
+  pub timestamp: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TakePreciseCoverageReturnObject {
+  pub result: Vec<ScriptCoverage>,
+  pub timestamp: f64,
+}
+
+pub struct CoverageCollector {
+  pub dir: PathBuf,
+  session: LocalInspectorSession,
+}
+
+impl CoverageCollector {
+  pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
+    Self { dir, session }
+  }
+
+  async fn enable_debugger(&mut self) -> Result<(), AnyError> {
+    self.session.post_message("Debugger.enable", None).await?;
+
+    Ok(())
+  }
+
+  async fn enable_profiler(&mut self) -> Result<(), AnyError> {
+    self.session.post_message("Profiler.enable", None).await?;
+
+    Ok(())
+  }
+
+  async fn disable_debugger(&mut self) -> Result<(), AnyError> {
+    self.session.post_message("Debugger.disable", None).await?;
+
+    Ok(())
+  }
+
+  async fn disable_profiler(&mut self) -> Result<(), AnyError> {
+    self.session.post_message("Profiler.disable", None).await?;
+
+    Ok(())
+  }
+
+  async fn start_precise_coverage(
+    &mut self,
+    parameters: StartPreciseCoverageParameters,
+  ) -> Result<StartPreciseCoverageReturnObject, AnyError> {
+    let parameters_value = serde_json::to_value(parameters)?;
+    let return_value = self
+      .session
+      .post_message("Profiler.startPreciseCoverage", Some(parameters_value))
+      .await?;
+
+    let return_object = serde_json::from_value(return_value)?;
+
+    Ok(return_object)
+  }
+
+  async fn take_precise_coverage(
+    &mut self,
+  ) -> Result<TakePreciseCoverageReturnObject, AnyError> {
+    let return_value = self
+      .session
+      .post_message("Profiler.takePreciseCoverage", None)
+      .await?;
+
+    let return_object = serde_json::from_value(return_value)?;
+
+    Ok(return_object)
+  }
+
+  pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
+    self.enable_debugger().await?;
+    self.enable_profiler().await?;
+    self
+      .start_precise_coverage(StartPreciseCoverageParameters {
+        call_count: true,
+        detailed: true,
+        allow_triggered_updates: false,
+      })
+      .await?;
+
+    Ok(())
+  }
+
+  pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
+    fs::create_dir_all(&self.dir)?;
+
+    let script_coverages = self.take_precise_coverage().await?.result;
+    for script_coverage in script_coverages {
+      let filename = format!("{}.json", Uuid::new_v4());
+      let filepath = self.dir.join(filename);
+
+      let mut out = BufWriter::new(File::create(filepath)?);
+      serde_json::to_writer_pretty(&mut out, &script_coverage)?;
+      out.write_all(b"\n")?;
+      out.flush()?;
+    }
+
+    self.disable_debugger().await?;
+    self.disable_profiler().await?;
+
+    Ok(())
+  }
 }
 
 pub enum CoverageReporterKind {
@@ -133,7 +190,7 @@ pub trait CoverageReporter {
     script_coverage: &ScriptCoverage,
     script_source: &str,
     maybe_source_map: Option<Vec<u8>>,
-    maybe_original_source: Option<String>,
+    maybe_original_source: Option<Arc<String>>,
   );
 
   fn done(&mut self);
@@ -153,7 +210,7 @@ impl CoverageReporter for LcovCoverageReporter {
     script_coverage: &ScriptCoverage,
     script_source: &str,
     maybe_source_map: Option<Vec<u8>>,
-    _maybe_original_source: Option<String>,
+    _maybe_original_source: Option<Arc<String>>,
   ) {
     // TODO(caspervonb) cleanup and reduce duplication between reporters, pre-compute line coverage
     // elsewhere.
@@ -369,14 +426,14 @@ impl CoverageReporter for PrettyCoverageReporter {
     script_coverage: &ScriptCoverage,
     script_source: &str,
     maybe_source_map: Option<Vec<u8>>,
-    maybe_original_source: Option<String>,
+    maybe_original_source: Option<Arc<String>>,
   ) {
     let maybe_source_map = maybe_source_map
       .map(|source_map| SourceMap::from_slice(&source_map).unwrap());
 
     let mut ignored_spans: Vec<Span> = Vec::new();
-    for item in ast::lex("", script_source, &MediaType::JavaScript) {
-      if let TokenOrComment::Token(_) = item.inner {
+    for item in deno_ast::lex(script_source, MediaType::JavaScript) {
+      if let deno_ast::TokenOrComment::Token(_) = item.inner {
         continue;
       }
 
@@ -596,7 +653,7 @@ fn filter_coverages(
     .filter(|e| {
       let is_internal = e.url.starts_with("deno:")
         || e.url.ends_with("__anonymous__")
-        || e.url.ends_with("$deno$test.ts");
+        || e.url.ends_with("$deno$test.js");
 
       let is_included = include.iter().any(|p| p.is_match(&e.url));
       let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));
@@ -614,7 +671,7 @@ pub async fn cover_files(
   exclude: Vec<String>,
   lcov: bool,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags).await?;
+  let ps = ProcState::build(flags).await?;
 
   let script_coverages = collect_coverages(files, ignore)?;
   let script_coverages = filter_coverages(script_coverages, include, exclude);
@@ -630,28 +687,27 @@ pub async fn cover_files(
   for script_coverage in script_coverages {
     let module_specifier =
       deno_core::resolve_url_or_path(&script_coverage.url)?;
-    program_state
-      .prepare_module_load(
-        module_specifier.clone(),
-        TypeLib::UnstableDenoWindow,
-        Permissions::allow_all(),
-        false,
-        program_state.maybe_import_map.clone(),
-      )
-      .await?;
+    ps.prepare_module_load(
+      vec![module_specifier.clone()],
+      false,
+      emit::TypeLib::UnstableDenoWindow,
+      Permissions::allow_all(),
+      Permissions::allow_all(),
+    )
+    .await?;
 
-    let module_source = program_state.load(module_specifier.clone(), None)?;
+    let module_source = ps.load(module_specifier.clone(), None, false)?;
     let script_source = &module_source.code;
 
-    let maybe_source_map = program_state.get_source_map(&script_coverage.url);
-    let maybe_cached_source = program_state
+    let maybe_source_map = ps.get_source_map(&script_coverage.url);
+    let maybe_cached_source = ps
       .file_fetcher
       .get_source(&module_specifier)
       .map(|f| f.source);
 
     reporter.visit_coverage(
       &script_coverage,
-      &script_source,
+      script_source,
       maybe_source_map,
       maybe_cached_source,
     );

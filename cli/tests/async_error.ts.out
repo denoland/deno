@@ -1,8 +1,0 @@
-[WILDCARD]hello
-before error
-world
-error: Uncaught (in promise) Error: error
-  throw Error("error");
-        ^
-    at foo ([WILDCARD]tests/async_error.ts:5:9)
-    at [WILDCARD]tests/async_error.ts:8:1

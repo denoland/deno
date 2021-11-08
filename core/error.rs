@@ -3,10 +3,7 @@
 pub use anyhow::anyhow;
 pub use anyhow::bail;
 pub use anyhow::Context;
-use rusty_v8 as v8;
 use std::borrow::Cow;
-use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Debug;
@@ -34,6 +31,14 @@ pub fn generic_error(message: impl Into<Cow<'static, str>>) -> AnyError {
 
 pub fn type_error(message: impl Into<Cow<'static, str>>) -> AnyError {
   custom_error("TypeError", message)
+}
+
+pub fn range_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+  custom_error("RangeError", message)
+}
+
+pub fn invalid_hostname(hostname: &str) -> AnyError {
+  type_error(format!("Invalid hostname: '{}'", hostname))
 }
 
 pub fn uri_error(message: impl Into<Cow<'static, str>>) -> AnyError {
@@ -177,10 +182,9 @@ impl JsError {
 
     let msg = v8::Exception::create_message(scope, exception);
 
-    let (message, frames, stack) = if exception.is_native_error() {
+    let (message, frames, stack) = if is_instance_of_error(scope, exception) {
       // The exception is a JS Error object.
-      let exception: v8::Local<v8::Object> =
-        exception.clone().try_into().unwrap();
+      let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
 
       let e: NativeJsError =
         serde_v8::from_v8(scope, exception.into()).unwrap();
@@ -283,6 +287,37 @@ pub(crate) fn attach_handle_to_error(
   handle: v8::Local<v8::Value>,
 ) -> AnyError {
   ErrWithV8Handle::new(scope, err, handle).into()
+}
+
+/// Implements `value instanceof primordials.Error` in JS. Similar to
+/// `Value::is_native_error()` but more closely matches the semantics
+/// of `instanceof`. `Value::is_native_error()` also checks for static class
+/// inheritance rather than just scanning the prototype chain, which doesn't
+/// work with our WebIDL implementation of `DOMException`.
+pub(crate) fn is_instance_of_error<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  value: v8::Local<v8::Value>,
+) -> bool {
+  if !value.is_object() {
+    return false;
+  }
+  let message = v8::String::empty(scope);
+  let error_prototype = v8::Exception::error(scope, message)
+    .to_object(scope)
+    .unwrap()
+    .get_prototype(scope)
+    .unwrap();
+  let mut maybe_prototype =
+    value.to_object(scope).unwrap().get_prototype(scope);
+  while let Some(prototype) = maybe_prototype {
+    if prototype.strict_equals(error_prototype) {
+      return true;
+    }
+    maybe_prototype = prototype
+      .to_object(scope)
+      .and_then(|o| o.get_prototype(scope));
+  }
+  false
 }
 
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on

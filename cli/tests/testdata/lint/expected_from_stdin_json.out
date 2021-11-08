@@ -1,0 +1,23 @@
+{
+  "diagnostics": [
+    {
+      "range": {
+        "start": {
+          "line": 1,
+          "col": 8,
+          "bytePos": 8
+        },
+        "end": {
+          "line": 1,
+          "col": 11,
+          "bytePos": 11
+        }
+      },
+      "filename": "_stdin.ts",
+      "message": "`any` type is not allowed",
+      "code": "no-explicit-any",
+      "hint": [WILDCARD]
+    }
+  ],
+  "errors": []
+}

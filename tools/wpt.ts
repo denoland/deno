@@ -14,7 +14,9 @@ import {
   autoConfig,
   cargoBuild,
   checkPy3Available,
+  escapeLoneSurrogates,
   Expectation,
+  generateRunInfo,
   getExpectation,
   getExpectFailForCase,
   getManifest,
@@ -26,14 +28,10 @@ import {
   rest,
   runPy,
   updateManifest,
+  wptreport,
 } from "./wpt/utils.ts";
-import {
-  blue,
-  bold,
-  green,
-  red,
-  yellow,
-} from "https://deno.land/std@0.84.0/fmt/colors.ts";
+import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
+import { writeAll, writeAllSync } from "../test_util/std/io/util.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
@@ -74,27 +72,27 @@ More details at https://deno.land/manual@main/contributing/web_platform_tests
 }
 
 async function setup() {
+  const hostsPath = Deno.build.os == "windows"
+    ? `${Deno.env.get("SystemRoot")}\\System32\\drivers\\etc\\hosts`
+    : "/etc/hosts";
   // TODO(lucacsonato): use this when 1.7.1 is released.
   // const records = await Deno.resolveDns("web-platform.test", "A");
   // const etcHostsConfigured = records[0] == "127.0.0.1";
-  const hostsFile = await Deno.readTextFile("/etc/hosts");
+  const hostsFile = await Deno.readTextFile(hostsPath);
   const etcHostsConfigured = hostsFile.includes("web-platform.test");
 
   if (etcHostsConfigured) {
-    console.log("/etc/hosts is already configured.");
+    console.log(hostsPath + " is already configured.");
   } else {
     const autoConfigure = autoConfig ||
       confirm(
-        "The WPT require certain entries to be present in your /etc/hosts file. Should these be configured automatically?",
+        `The WPT require certain entries to be present in your ${hostsPath} file. Should these be configured automatically?`,
       );
     if (autoConfigure) {
       const proc = runPy(["wpt", "make-hosts-file"], { stdout: "piped" });
       const status = await proc.status();
       assert(status.success, "wpt make-hosts-file should not fail");
       const entries = new TextDecoder().decode(await proc.output());
-      const hostsPath = Deno.build.os == "windows"
-        ? `${Deno.env.get("SystemRoot")}\\System32\\drivers\\etc\\hosts`
-        : "/etc/hosts";
       const file = await Deno.open(hostsPath, { append: true }).catch((err) => {
         if (err instanceof Deno.errors.PermissionDenied) {
           throw new Error(
@@ -104,15 +102,15 @@ async function setup() {
           throw err;
         }
       });
-      await Deno.writeAll(
+      await writeAll(
         file,
         new TextEncoder().encode(
           "\n\n# Configured for Web Platform Tests (Deno)\n" + entries,
         ),
       );
-      console.log("Updated /etc/hosts");
+      console.log(`Updated ${hostsPath}`);
     } else {
-      console.log("Please configure the /etc/hosts entries manually.");
+      console.log(`Please configure the ${hostsPath} entries manually.`);
       if (Deno.build.os == "windows") {
         console.log("To do this run the following command in PowerShell:");
         console.log("");
@@ -137,7 +135,6 @@ async function setup() {
 }
 
 interface TestToRun {
-  sourcePath: string;
   path: string;
   url: URL;
   options: ManifestTestOptions;
@@ -145,8 +142,14 @@ interface TestToRun {
 }
 
 async function run() {
+  const startTime = new Date().getTime();
   assert(Array.isArray(rest), "filter must be array");
-  const tests = discoverTestsToRun(rest.length == 0 ? undefined : rest);
+  const expectation = getExpectation();
+  const tests = discoverTestsToRun(
+    rest.length == 0 ? undefined : rest,
+    expectation,
+  );
+  assertAllExpectationsHaveTests(expectation, tests, rest);
   console.log(`Going to run ${tests.length} test files.`);
 
   const results = await runWithTestUtil(false, async () => {
@@ -157,7 +160,7 @@ async function run() {
       const result = await runSingleTest(
         test.url,
         test.options,
-        json ? () => {} : createReportTestCase(test.expectation),
+        createReportTestCase(test.expectation),
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -165,12 +168,134 @@ async function run() {
 
     return results;
   });
+  const endTime = new Date().getTime();
 
   if (json) {
-    await Deno.writeTextFile(json, JSON.stringify(results));
+    const minifiedResults = [];
+    for (const result of results) {
+      const minified = {
+        file: result.test.path,
+        name:
+          Object.fromEntries(result.test.options.script_metadata ?? []).title ??
+            null,
+        cases: result.result.cases.map((case_) => ({
+          name: case_.name,
+          passed: case_.passed,
+        })),
+      };
+      minifiedResults.push(minified);
+    }
+    await Deno.writeTextFile(json, JSON.stringify(minifiedResults));
   }
+
+  if (wptreport) {
+    const report = await generateWptReport(results, startTime, endTime);
+    await Deno.writeTextFile(wptreport, JSON.stringify(report));
+  }
+
   const code = reportFinal(results);
   Deno.exit(code);
+}
+
+async function generateWptReport(
+  results: { test: TestToRun; result: TestResult }[],
+  startTime: number,
+  endTime: number,
+) {
+  const runInfo = await generateRunInfo();
+  const reportResults = [];
+  for (const { test, result } of results) {
+    const status = result.status !== 0
+      ? "CRASH"
+      : result.harnessStatus?.status === 0
+      ? "OK"
+      : "ERROR";
+    let message;
+    if (result.harnessStatus === null && result.status === 0) {
+      // If the only error is the event loop running out of tasks, using stderr
+      // as the message won't help.
+      message = "Event loop run out of tasks.";
+    } else {
+      message = result.harnessStatus?.message ?? (result.stderr.trim() || null);
+    }
+    const reportResult = {
+      test: test.url.pathname + test.url.search + test.url.hash,
+      subtests: result.cases.map((case_) => {
+        let expected = undefined;
+        if (!case_.passed) {
+          if (typeof test.expectation === "boolean") {
+            expected = test.expectation ? "PASS" : "FAIL";
+          } else {
+            expected = test.expectation.includes(case_.name) ? "FAIL" : "PASS";
+          }
+        }
+
+        return {
+          name: escapeLoneSurrogates(case_.name),
+          status: case_.passed ? "PASS" : "FAIL",
+          message: escapeLoneSurrogates(case_.message),
+          expected,
+          known_intermittent: [],
+        };
+      }),
+      status,
+      message: escapeLoneSurrogates(message),
+      duration: result.duration,
+      expected: status === "OK" ? undefined : "OK",
+      "known_intermittent": [],
+    };
+    reportResults.push(reportResult);
+  }
+  return {
+    "run_info": runInfo,
+    "time_start": startTime,
+    "time_end": endTime,
+    "results": reportResults,
+  };
+}
+
+// Check that all expectations in the expectations file have a test that will be
+// run.
+function assertAllExpectationsHaveTests(
+  expectation: Expectation,
+  testsToRun: TestToRun[],
+  filter?: string[],
+): void {
+  const tests = new Set(testsToRun.map((t) => t.path));
+  const missingTests: string[] = [];
+
+  function walk(parentExpectation: Expectation, parent: string) {
+    for (const key in parentExpectation) {
+      const path = `${parent}/${key}`;
+      if (
+        filter &&
+        !filter.find((filter) => path.substring(1).startsWith(filter))
+      ) {
+        continue;
+      }
+      const expectation = parentExpectation[key];
+      if (typeof expectation == "boolean" || Array.isArray(expectation)) {
+        if (!tests.has(path)) {
+          missingTests.push(path);
+        }
+      } else {
+        walk(expectation, path);
+      }
+    }
+  }
+
+  walk(expectation, "");
+
+  if (missingTests.length > 0) {
+    console.log(
+      red(
+        "Following tests are missing in manifest, but are present in expectations:",
+      ),
+    );
+    console.log("");
+    console.log(missingTests.join("\n"));
+    Deno.exit(1);
+  }
 }
 
 async function update() {
@@ -201,21 +326,21 @@ async function update() {
 
   const resultTests: Record<
     string,
-    { passed: string[]; failed: string[]; status: number }
+    { passed: string[]; failed: string[]; testSucceeded: boolean }
   > = {};
   for (const { test, result } of results) {
-    if (!resultTests[test.sourcePath]) {
-      resultTests[test.sourcePath] = {
+    if (!resultTests[test.path]) {
+      resultTests[test.path] = {
         passed: [],
         failed: [],
-        status: result.status,
+        testSucceeded: result.status === 0 && result.harnessStatus !== null,
       };
     }
     for (const case_ of result.cases) {
       if (case_.passed) {
-        resultTests[test.sourcePath].passed.push(case_.name);
+        resultTests[test.path].passed.push(case_.name);
       } else {
-        resultTests[test.sourcePath].failed.push(case_.name);
+        resultTests[test.path].failed.push(case_.name);
       }
     }
   }
@@ -223,11 +348,11 @@ async function update() {
   const currentExpectation = getExpectation();
 
   for (const path in resultTests) {
-    const { passed, failed, status } = resultTests[path];
+    const { passed, failed, testSucceeded } = resultTests[path];
     let finalExpectation: boolean | string[];
-    if (failed.length == 0 && status == 0) {
+    if (failed.length == 0 && testSucceeded) {
       finalExpectation = true;
-    } else if (failed.length > 0 && passed.length > 0 && status == 0) {
+    } else if (failed.length > 0 && passed.length > 0 && testSucceeded) {
       finalExpectation = failed;
     } else {
       finalExpectation = false;
@@ -283,17 +408,23 @@ function reportFinal(
   let finalExpectedFailedAndFailedCount = 0;
   const finalExpectedFailedButPassedTests: [string, TestCaseResult][] = [];
   const finalExpectedFailedButPassedFiles: string[] = [];
+  const finalFailedFiles: string[] = [];
   for (const { test, result } of results) {
-    const { failed, failedCount, expectedFailedButPassed } = analyzeTestResult(
+    const {
+      failed,
+      failedCount,
+      expectedFailedButPassed,
+      expectedFailedAndFailedCount,
+    } = analyzeTestResult(
       result,
       test.expectation,
     );
-    if (result.status !== 0) {
+    if (result.status !== 0 || result.harnessStatus === null) {
       if (test.expectation === false) {
         finalExpectedFailedAndFailedCount += 1;
       } else {
         finalFailedCount += 1;
-        finalExpectedFailedButPassedFiles.push(test.path);
+        finalFailedFiles.push(test.path);
       }
     } else if (failedCount > 0) {
       finalFailedCount += 1;
@@ -303,6 +434,11 @@ function reportFinal(
       for (const case_ of expectedFailedButPassed) {
         finalExpectedFailedButPassedTests.push([test.path, case_]);
       }
+    } else if (
+      test.expectation === false &&
+      expectedFailedAndFailedCount != result.cases.length
+    ) {
+      finalExpectedFailedButPassedFiles.push(test.path);
     }
   }
   const finalPassedCount = finalTotalCount - finalFailedCount;
@@ -315,6 +451,14 @@ function reportFinal(
   for (const result of finalFailed) {
     console.log(
       `        ${JSON.stringify(`${result[0]} - ${result[1].name}`)}`,
+    );
+  }
+  if (finalFailedFiles.length > 0) {
+    console.log(`\nfile failures:\n`);
+  }
+  for (const result of finalFailedFiles) {
+    console.log(
+      `        ${JSON.stringify(result)}`,
     );
   }
   if (finalExpectedFailedButPassedTests.length > 0) {
@@ -332,13 +476,16 @@ function reportFinal(
     console.log(`        ${JSON.stringify(result)}`);
   }
 
+  const failed = (finalFailedCount > 0) ||
+    (finalExpectedFailedButPassedFiles.length > 0);
+
   console.log(
     `\nfinal result: ${
-      finalFailedCount > 0 ? red("failed") : green("ok")
+      failed ? red("failed") : green("ok")
     }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount}\n`,
   );
 
-  return finalFailedCount > 0 ? 1 : 0;
+  return failed ? 1 : 0;
 }
 
 function analyzeTestResult(
@@ -379,15 +526,18 @@ function analyzeTestResult(
 }
 
 function reportVariation(result: TestResult, expectation: boolean | string[]) {
-  if (result.status !== 0) {
+  if (result.status !== 0 || result.harnessStatus === null) {
     console.log(`test stderr:`);
-    Deno.writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
+    writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
 
     const expectFail = expectation === false;
+    const failReason = result.status !== 0
+      ? "runner failed during test"
+      : "the event loop run out of tasks during the test";
     console.log(
       `\nfile result: ${
         expectFail ? yellow("failed (expected)") : red("failed")
-      }. runner failed during test\n`,
+      }. ${failReason}\n`,
     );
     return;
   }
@@ -409,7 +559,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
     console.log(`\n${result.name}\n${result.message}\n${result.stack}`);
   }
 
-  if (failed.length > 0) {
+  if (failedCount > 0) {
     console.log(`\nfailures:\n`);
   }
   for (const result of failed) {
@@ -467,7 +617,7 @@ function createReportTestCase(expectation: boolean | string[]) {
         break;
     }
 
-    console.log(simpleMessage);
+    writeAllSync(Deno.stdout, new TextEncoder().encode(simpleMessage + "\n"));
   };
 }
 
@@ -485,27 +635,9 @@ function discoverTestsToRun(
     prefix: string,
   ) {
     for (const key in parentFolder) {
-      const sourcePath = `${prefix}/${key}`;
       const entry = parentFolder[key];
-      const expectation = Array.isArray(parentExpectation) ||
-          typeof parentExpectation == "boolean"
-        ? parentExpectation
-        : parentExpectation[key];
-
-      if (expectation === undefined) continue;
 
       if (Array.isArray(entry)) {
-        assert(
-          Array.isArray(expectation) || typeof expectation == "boolean",
-          "test entry must not have a folder expectation",
-        );
-        if (
-          filter &&
-          !filter.find((filter) => sourcePath.substring(1).startsWith(filter))
-        ) {
-          continue;
-        }
-
         for (
           const [path, options] of entry.slice(
             1,
@@ -513,17 +645,63 @@ function discoverTestsToRun(
         ) {
           if (!path) continue;
           const url = new URL(path, "http://web-platform.test:8000");
-          if (!url.pathname.endsWith(".any.html")) continue;
+          if (
+            !url.pathname.endsWith(".any.html") &&
+            !url.pathname.endsWith(".window.html") &&
+            !url.pathname.endsWith(".worker.html") &&
+            !url.pathname.endsWith(".worker-module.html")
+          ) {
+            continue;
+          }
+          // These tests require an HTTP2 compatible server.
+          if (url.pathname.includes(".h2.")) {
+            continue;
+          }
+          // Streaming fetch requests need a server that supports chunked
+          // encoding, which the WPT test server does not. Unfortunately this
+          // also disables some useful fetch tests.
+          if (url.pathname.includes("request-upload")) {
+            continue;
+          }
+          const finalPath = url.pathname + url.search;
+
+          const split = finalPath.split("/");
+          const finalKey = split[split.length - 1];
+
+          const expectation = Array.isArray(parentExpectation) ||
+              typeof parentExpectation == "boolean"
+            ? parentExpectation
+            : parentExpectation[finalKey];
+
+          if (expectation === undefined) continue;
+
+          assert(
+            Array.isArray(expectation) || typeof expectation == "boolean",
+            "test entry must not have a folder expectation",
+          );
+
+          if (
+            filter &&
+            !filter.find((filter) => finalPath.substring(1).startsWith(filter))
+          ) {
+            continue;
+          }
           testsToRun.push({
-            sourcePath,
-            path: url.pathname + url.search,
+            path: finalPath,
             url,
             options,
             expectation,
           });
         }
       } else {
-        walk(entry, expectation, sourcePath);
+        const expectation = Array.isArray(parentExpectation) ||
+            typeof parentExpectation == "boolean"
+          ? parentExpectation
+          : parentExpectation[key];
+
+        if (expectation === undefined) continue;
+
+        walk(entry, expectation, `${prefix}/${key}`);
       }
     }
   }

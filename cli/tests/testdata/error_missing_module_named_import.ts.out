@@ -1,0 +1,2 @@
+[WILDCARD]
+error: Cannot load module "file://[WILDCARD]/does_not_exist.js".

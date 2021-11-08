@@ -1,8 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::JsRuntime;
@@ -12,7 +10,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
-use std::convert::TryFrom;
 use std::env;
 use std::io::Error;
 use std::net::SocketAddr;
@@ -111,18 +108,19 @@ impl From<tokio::net::TcpStream> for TcpStream {
 
 fn create_js_runtime() -> JsRuntime {
   let mut runtime = JsRuntime::new(Default::default());
-  runtime.register_op("listen", deno_core::json_op_sync(op_listen));
-  runtime.register_op("close", deno_core::json_op_sync(op_close));
-  runtime.register_op("accept", deno_core::json_op_async(op_accept));
-  runtime.register_op("read", deno_core::json_op_async(op_read));
-  runtime.register_op("write", deno_core::json_op_async(op_write));
+  runtime.register_op("listen", deno_core::op_sync(op_listen));
+  runtime.register_op("close", deno_core::op_sync(op_close));
+  runtime.register_op("accept", deno_core::op_async(op_accept));
+  runtime.register_op("read", deno_core::op_async(op_read));
+  runtime.register_op("write", deno_core::op_async(op_write));
+  runtime.sync_ops_cache();
   runtime
 }
 
 fn op_listen(
   state: &mut OpState,
-  _args: (),
-  _bufs: &mut [ZeroCopyBuf],
+  _: (),
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   log::debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
@@ -136,28 +134,20 @@ fn op_listen(
 fn op_close(
   state: &mut OpState,
   rid: ResourceId,
-  _buf: &mut [ZeroCopyBuf],
+  _: (),
 ) -> Result<(), AnyError> {
   log::debug!("close rid={}", rid);
-  state
-    .resource_table
-    .close(rid)
-    .map(|_| ())
-    .ok_or_else(bad_resource_id)
+  state.resource_table.close(rid).map(|_| ())
 }
 
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _bufs: BufVec,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   log::debug!("accept rid={}", rid);
 
-  let listener = state
-    .borrow()
-    .resource_table
-    .get::<TcpListener>(rid)
-    .ok_or_else(bad_resource_id)?;
+  let listener = state.borrow().resource_table.get::<TcpListener>(rid)?;
   let stream = listener.accept().await?;
   let rid = state.borrow_mut().resource_table.add(stream);
   Ok(rid)
@@ -166,34 +156,24 @@ async fn op_accept(
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  mut bufs: BufVec,
+  mut buf: ZeroCopyBuf,
 ) -> Result<usize, AnyError> {
-  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
   log::debug!("read rid={}", rid);
 
-  let stream = state
-    .borrow()
-    .resource_table
-    .get::<TcpStream>(rid)
-    .ok_or_else(bad_resource_id)?;
-  let nread = stream.read(&mut bufs[0]).await?;
+  let stream = state.borrow().resource_table.get::<TcpStream>(rid)?;
+  let nread = stream.read(&mut buf).await?;
   Ok(nread)
 }
 
 async fn op_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  bufs: BufVec,
+  buf: ZeroCopyBuf,
 ) -> Result<usize, AnyError> {
-  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
   log::debug!("write rid={}", rid);
 
-  let stream = state
-    .borrow()
-    .resource_table
-    .get::<TcpStream>(rid)
-    .ok_or_else(bad_resource_id)?;
-  let nwritten = stream.write(&bufs[0]).await?;
+  let stream = state.borrow().resource_table.get::<TcpStream>(rid)?;
+  let nwritten = stream.write(&buf).await?;
   Ok(nwritten)
 }
 
@@ -217,12 +197,12 @@ fn main() {
 
   let future = async move {
     js_runtime
-      .execute(
+      .execute_script(
         "http_bench_json_ops.js",
         include_str!("http_bench_json_ops.js"),
       )
       .unwrap();
-    js_runtime.run_event_loop().await
+    js_runtime.run_event_loop(false).await
   };
   runtime.block_on(future).unwrap();
 }

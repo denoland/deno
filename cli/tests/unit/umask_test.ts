@@ -5,7 +5,7 @@ unitTest(
   {
     ignore: Deno.build.os === "windows",
   },
-  function umaskSuccess(): void {
+  function umaskSuccess() {
     const prevMask = Deno.umask(0o020);
     const newMask = Deno.umask(prevMask);
     const finalMask = Deno.umask();

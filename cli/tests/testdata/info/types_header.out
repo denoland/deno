@@ -1,0 +1,8 @@
+[WILDCARD]
+local: [WILDCARD]type_directives_01.ts
+type: TypeScript
+dependencies: 2 unique (total [WILDCARD])
+
+[WILDCARD]/type_directives_01.ts ([WILDCARD])
+└─┬ http://127.0.0.1:4545/xTypeScriptTypes.js ([WILDCARD])
+  └── http://127.0.0.1:4545/xTypeScriptTypes.d.ts ([WILDCARD])

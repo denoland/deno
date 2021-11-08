@@ -10,8 +10,6 @@ pub fn deno() -> String {
   })
 }
 
-// allow(dead_code) because denort does not use this.
-#[allow(dead_code)]
 pub fn is_canary() -> bool {
   option_env!("DENO_CANARY").is_some()
 }

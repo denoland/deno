@@ -4,18 +4,21 @@ use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
+use deno_core::op_sync;
 use deno_core::url;
+use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::path::Path;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_query_permission", op_query_permission);
-  super::reg_json_sync(rt, "op_revoke_permission", op_revoke_permission);
-  super::reg_json_sync(rt, "op_request_permission", op_request_permission);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_query_permission", op_sync(op_query_permission)),
+      ("op_revoke_permission", op_sync(op_revoke_permission)),
+      ("op_request_permission", op_sync(op_request_permission)),
+    ])
+    .build()
 }
 
 #[derive(Deserialize)]
@@ -23,13 +26,15 @@ pub struct PermissionArgs {
   name: String,
   path: Option<String>,
   host: Option<String>,
+  variable: Option<String>,
+  command: Option<String>,
 }
 
 pub fn op_query_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _: (),
+) -> Result<String, AnyError> {
   let permissions = state.borrow::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -42,9 +47,9 @@ pub fn op_query_permission(
       }
       .as_ref(),
     ),
-    "env" => permissions.env.query(),
-    "run" => permissions.run.query(),
-    "plugin" => permissions.plugin.query(),
+    "env" => permissions.env.query(args.variable.as_deref()),
+    "run" => permissions.run.query(args.command.as_deref()),
+    "ffi" => permissions.ffi.query(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.query(),
     n => {
       return Err(custom_error(
@@ -53,14 +58,14 @@ pub fn op_query_permission(
       ))
     }
   };
-  Ok(json!({ "state": perm.to_string() }))
+  Ok(perm.to_string())
 }
 
 pub fn op_revoke_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _: (),
+) -> Result<String, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -73,9 +78,9 @@ pub fn op_revoke_permission(
       }
       .as_ref(),
     ),
-    "env" => permissions.env.revoke(),
-    "run" => permissions.run.revoke(),
-    "plugin" => permissions.plugin.revoke(),
+    "env" => permissions.env.revoke(args.variable.as_deref()),
+    "run" => permissions.run.revoke(args.command.as_deref()),
+    "ffi" => permissions.ffi.revoke(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.revoke(),
     n => {
       return Err(custom_error(
@@ -84,14 +89,14 @@ pub fn op_revoke_permission(
       ))
     }
   };
-  Ok(json!({ "state": perm.to_string() }))
+  Ok(perm.to_string())
 }
 
 pub fn op_request_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _: (),
+) -> Result<String, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -104,9 +109,9 @@ pub fn op_request_permission(
       }
       .as_ref(),
     ),
-    "env" => permissions.env.request(),
-    "run" => permissions.run.request(),
-    "plugin" => permissions.plugin.request(),
+    "env" => permissions.env.request(args.variable.as_deref()),
+    "run" => permissions.run.request(args.command.as_deref()),
+    "ffi" => permissions.ffi.request(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.request(),
     n => {
       return Err(custom_error(
@@ -115,7 +120,7 @@ pub fn op_request_permission(
       ))
     }
   };
-  Ok(json!({ "state": perm.to_string() }))
+  Ok(perm.to_string())
 }
 
 fn parse_host(host_str: &str) -> Result<(String, Option<u16>), AnyError> {

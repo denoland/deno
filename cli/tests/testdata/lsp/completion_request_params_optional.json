@@ -1,0 +1,13 @@
+{
+  "textDocument": {
+    "uri": "file:///a/file.ts"
+  },
+  "position": {
+    "line": 8,
+    "character": 4
+  },
+  "context": {
+    "triggerKind": 2,
+    "triggerCharacter": "."
+  }
+}

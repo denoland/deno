@@ -3,29 +3,29 @@ import { assert, assertThrows, unitTest } from "./test_util.ts";
 
 // Note tests for Deno.setRaw is in integration tests.
 
-unitTest({ perms: { read: true } }, function consoleSizeFile(): void {
-  const file = Deno.openSync("cli/tests/hello.txt");
+unitTest({ permissions: { read: true } }, function consoleSizeFile() {
+  const file = Deno.openSync("cli/tests/testdata/hello.txt");
   assertThrows(() => {
     Deno.consoleSize(file.rid);
   }, Error);
   file.close();
 });
 
-unitTest(function consoleSizeError(): void {
+unitTest(function consoleSizeError() {
   assertThrows(() => {
     // Absurdly large rid.
     Deno.consoleSize(0x7fffffff);
   }, Deno.errors.BadResource);
 });
 
-unitTest({ perms: { read: true } }, function isatty(): void {
+unitTest({ permissions: { read: true } }, function isatty() {
   // CI not under TTY, so cannot test stdin/stdout/stderr.
-  const f = Deno.openSync("cli/tests/hello.txt");
+  const f = Deno.openSync("cli/tests/testdata/hello.txt");
   assert(!Deno.isatty(f.rid));
   f.close();
 });
 
-unitTest(function isattyError(): void {
+unitTest(function isattyError() {
   let caught = false;
   try {
     // Absurdly large rid.

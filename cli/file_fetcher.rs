@@ -3,24 +3,29 @@
 use crate::auth_tokens::AuthTokens;
 use crate::colors;
 use crate::http_cache::HttpCache;
-use crate::http_util::create_http_client;
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
-use crate::media_type::MediaType;
 use crate::text_encoding;
 use crate::version::get_user_agent;
+use data_url::DataUrl;
+use deno_ast::MediaType;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::FutureExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
+use deno_tls::create_http_client;
+use deno_tls::rustls::RootCertStore;
 use log::debug;
 use log::info;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -29,10 +34,10 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 static DENO_AUTH_TOKENS: &str = "DENO_AUTH_TOKENS";
-pub const SUPPORTED_SCHEMES: [&str; 4] = ["data", "file", "http", "https"];
+pub const SUPPORTED_SCHEMES: [&str; 5] =
+  ["data", "blob", "file", "http", "https"];
 
 /// A structure representing a source file.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -47,25 +52,27 @@ pub struct File {
   /// The resolved media type for the file.
   pub media_type: MediaType,
   /// The source of the file as a string.
-  pub source: String,
+  pub source: Arc<String>,
   /// The _final_ specifier for the file.  The requested specifier and the final
   /// specifier maybe different for remote files that have been redirected.
   pub specifier: ModuleSpecifier,
+
+  pub maybe_headers: Option<HashMap<String, String>>,
 }
 
 /// Simple struct implementing in-process caching to prevent multiple
 /// fs reads/net fetches for same file.
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 struct FileCache(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
 
 impl FileCache {
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<File> {
-    let cache = self.0.lock().unwrap();
+    let cache = self.0.lock();
     cache.get(specifier).cloned()
   }
 
   pub fn insert(&self, specifier: ModuleSpecifier, file: File) -> Option<File> {
-    let mut cache = self.0.lock().unwrap();
+    let mut cache = self.0.lock();
     cache.insert(specifier, file)
   }
 }
@@ -130,9 +137,28 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
     local,
     maybe_types: None,
     media_type,
-    source,
+    source: Arc::new(source),
     specifier: specifier.clone(),
+    maybe_headers: None,
   })
+}
+
+/// Returns the decoded body and content-type of a provided
+/// data URL.
+pub fn get_source_from_data_url(
+  specifier: &ModuleSpecifier,
+) -> Result<(String, String), AnyError> {
+  let data_url = DataUrl::process(specifier.as_str())
+    .map_err(|e| uri_error(format!("{:?}", e)))?;
+  let mime = data_url.mime_type();
+  let charset = mime.get_parameter("charset").map(|v| v.to_string());
+  let (bytes, _) = data_url
+    .decode_to_vec()
+    .map_err(|e| uri_error(format!("{:?}", e)))?;
+  Ok((
+    strip_shebang(get_source_from_bytes(bytes, charset)?),
+    format!("{}", mime),
+  ))
 }
 
 /// Given a vector of bytes and optionally a charset, decode the bytes to a
@@ -148,40 +174,6 @@ pub fn get_source_from_bytes(
   };
 
   Ok(source)
-}
-
-fn get_source_from_data_url(
-  specifier: &ModuleSpecifier,
-) -> Result<(String, MediaType, String), AnyError> {
-  if specifier.scheme() != "data" {
-    return Err(custom_error(
-      "BadScheme",
-      format!("Unexpected scheme of \"{}\"", specifier.scheme()),
-    ));
-  }
-  let path = specifier.path();
-  let mut parts = path.splitn(2, ',');
-  let media_type_part =
-    percent_encoding::percent_decode_str(parts.next().unwrap())
-      .decode_utf8()?;
-  let data_part = if let Some(data) = parts.next() {
-    data
-  } else {
-    return Err(custom_error(
-      "BadUrl",
-      "The data URL is badly formed, missing a comma.",
-    ));
-  };
-  let (media_type, maybe_charset) =
-    map_content_type(specifier, Some(media_type_part.to_string()));
-  let is_base64 = media_type_part.rsplit(';').any(|p| p == "base64");
-  let bytes = if is_base64 {
-    base64::decode(data_part)?
-  } else {
-    percent_encoding::percent_decode_str(data_part).collect()
-  };
-  let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
-  Ok((source, media_type, media_type_part.to_string()))
 }
 
 /// Return a validated scheme for a given module specifier.
@@ -208,33 +200,7 @@ pub fn map_content_type(
   if let Some(content_type) = maybe_content_type {
     let mut content_types = content_type.split(';');
     let content_type = content_types.next().unwrap();
-    let media_type = match content_type.trim().to_lowercase().as_ref() {
-      "application/typescript"
-      | "text/typescript"
-      | "video/vnd.dlna.mpeg-tts"
-      | "video/mp2t"
-      | "application/x-typescript" => {
-        map_js_like_extension(specifier, MediaType::TypeScript)
-      }
-      "application/javascript"
-      | "text/javascript"
-      | "application/ecmascript"
-      | "text/ecmascript"
-      | "application/x-javascript"
-      | "application/node" => {
-        map_js_like_extension(specifier, MediaType::JavaScript)
-      }
-      "text/jsx" => MediaType::Jsx,
-      "text/tsx" => MediaType::Tsx,
-      "application/json" | "text/json" => MediaType::Json,
-      "application/wasm" => MediaType::Wasm,
-      // Handle plain and possibly webassembly
-      "text/plain" | "application/octet-stream" => MediaType::from(specifier),
-      _ => {
-        debug!("unknown content type: {}", content_type);
-        MediaType::Unknown
-      }
-    };
+    let media_type = MediaType::from_content_type(specifier, content_type);
     let charset = content_types
       .map(str::trim)
       .find_map(|s| s.strip_prefix("charset="))
@@ -243,55 +209,6 @@ pub fn map_content_type(
     (media_type, charset)
   } else {
     (MediaType::from(specifier), None)
-  }
-}
-
-/// Used to augment media types by using the path part of a module specifier to
-/// resolve to a more accurate media type.
-fn map_js_like_extension(
-  specifier: &ModuleSpecifier,
-  default: MediaType,
-) -> MediaType {
-  let path = if specifier.scheme() == "file" {
-    if let Ok(path) = specifier.to_file_path() {
-      path
-    } else {
-      PathBuf::from(specifier.path())
-    }
-  } else {
-    PathBuf::from(specifier.path())
-  };
-  match path.extension() {
-    None => default,
-    Some(os_str) => match os_str.to_str() {
-      None => default,
-      Some("jsx") => MediaType::Jsx,
-      Some("tsx") => MediaType::Tsx,
-      // Because DTS files do not have a separate media type, or a unique
-      // extension, we have to "guess" at those things that we consider that
-      // look like TypeScript, and end with `.d.ts` are DTS files.
-      Some("ts") => {
-        if default == MediaType::TypeScript {
-          match path.file_stem() {
-            None => default,
-            Some(os_str) => {
-              if let Some(file_stem) = os_str.to_str() {
-                if file_stem.ends_with(".d") {
-                  MediaType::Dts
-                } else {
-                  default
-                }
-              } else {
-                default
-              }
-            }
-          }
-        } else {
-          default
-        }
-      }
-      Some(_) => default,
-    },
   }
 }
 
@@ -309,14 +226,15 @@ fn strip_shebang(mut value: String) -> String {
 }
 
 /// A structure for resolving, fetching and caching source files.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FileFetcher {
   auth_tokens: AuthTokens,
   allow_remote: bool,
   cache: FileCache,
   cache_setting: CacheSetting,
-  http_cache: HttpCache,
+  pub(crate) http_cache: HttpCache,
   http_client: reqwest::Client,
+  blob_store: BlobStore,
 }
 
 impl FileFetcher {
@@ -324,7 +242,9 @@ impl FileFetcher {
     http_cache: HttpCache,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    ca_data: Option<Vec<u8>>,
+    root_cert_store: Option<RootCertStore>,
+    blob_store: BlobStore,
+    unsafely_ignore_certificate_errors: Option<Vec<String>>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       auth_tokens: AuthTokens::new(env::var(DENO_AUTH_TOKENS).ok()),
@@ -332,7 +252,15 @@ impl FileFetcher {
       cache: Default::default(),
       cache_setting,
       http_cache,
-      http_client: create_http_client(get_user_agent(), ca_data)?,
+      http_client: create_http_client(
+        get_user_agent(),
+        root_cert_store,
+        vec![],
+        None,
+        unsafely_ignore_certificate_errors,
+        None,
+      )?,
+      blob_store,
     })
   }
 
@@ -354,14 +282,21 @@ impl FileFetcher {
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
     let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
-    let maybe_types = headers.get("x-typescript-types").cloned();
+    let maybe_types = match media_type {
+      MediaType::JavaScript
+      | MediaType::Cjs
+      | MediaType::Mjs
+      | MediaType::Jsx => headers.get("x-typescript-types").cloned(),
+      _ => None,
+    };
 
     Ok(File {
       local,
       maybe_types,
       media_type,
-      source,
+      source: Arc::new(source),
       specifier: specifier.clone(),
+      maybe_headers: Some(headers.clone()),
     })
   }
 
@@ -424,8 +359,10 @@ impl FileFetcher {
       ));
     }
 
-    let (source, media_type, content_type) =
-      get_source_from_data_url(specifier)?;
+    let (source, content_type) = get_source_from_data_url(specifier)?;
+    let (media_type, _) =
+      map_content_type(specifier, Some(content_type.clone()));
+
     let local =
       self
         .http_cache
@@ -435,17 +372,83 @@ impl FileFetcher {
         })?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
-    self.http_cache.set(specifier, headers, source.as_bytes())?;
+    self
+      .http_cache
+      .set(specifier, headers.clone(), source.as_bytes())?;
 
     Ok(File {
       local,
       maybe_types: None,
       media_type,
-      source,
+      source: Arc::new(source),
       specifier: specifier.clone(),
+      maybe_headers: Some(headers),
     })
   }
 
+  /// Get a blob URL.
+  async fn fetch_blob_url(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<File, AnyError> {
+    debug!("FileFetcher::fetch_blob_url() - specifier: {}", specifier);
+    match self.fetch_cached(specifier, 0) {
+      Ok(Some(file)) => return Ok(file),
+      Ok(None) => {}
+      Err(err) => return Err(err),
+    }
+
+    if self.cache_setting == CacheSetting::Only {
+      return Err(custom_error(
+        "NotFound",
+        format!(
+          "Specifier not found in cache: \"{}\", --cached-only is specified.",
+          specifier
+        ),
+      ));
+    }
+
+    let blob = {
+      let blob_store = self.blob_store.borrow();
+      blob_store
+        .get_object_url(specifier.clone())?
+        .ok_or_else(|| {
+          custom_error(
+            "NotFound",
+            format!("Blob URL not found: \"{}\".", specifier),
+          )
+        })?
+    };
+
+    let content_type = blob.media_type.clone();
+    let bytes = blob.read_all().await?;
+
+    let (media_type, maybe_charset) =
+      map_content_type(specifier, Some(content_type.clone()));
+    let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
+
+    let local =
+      self
+        .http_cache
+        .get_cache_filename(specifier)
+        .ok_or_else(|| {
+          generic_error("Cannot convert specifier to cached filename.")
+        })?;
+    let mut headers = HashMap::new();
+    headers.insert("content-type".to_string(), content_type);
+    self
+      .http_cache
+      .set(specifier, headers.clone(), source.as_bytes())?;
+
+    Ok(File {
+      local,
+      maybe_types: None,
+      media_type,
+      source: Arc::new(source),
+      specifier: specifier.clone(),
+      maybe_headers: Some(headers),
+    })
+  }
   /// Asynchronously fetch remote source file specified by the URL following
   /// redirects.
   ///
@@ -454,7 +457,7 @@ impl FileFetcher {
   fn fetch_remote(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &Permissions,
+    permissions: &mut Permissions,
     redirect_limit: i64,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
@@ -496,9 +499,9 @@ impl FileFetcher {
       Ok((_, headers)) => headers.get("etag").cloned(),
       _ => None,
     };
-    let maybe_auth_token = self.auth_tokens.get(&specifier);
+    let maybe_auth_token = self.auth_tokens.get(specifier);
     let specifier = specifier.clone();
-    let permissions = permissions.clone();
+    let mut permissions = permissions.clone();
     let client = self.http_client.clone();
     let file_fetcher = self.clone();
     // A single pass of fetch either yields code or yields a redirect.
@@ -518,7 +521,7 @@ impl FileFetcher {
         FetchOnceResult::Redirect(redirect_url, headers) => {
           file_fetcher.http_cache.set(&specifier, headers, &[])?;
           file_fetcher
-            .fetch_remote(&redirect_url, &permissions, redirect_limit - 1)
+            .fetch_remote(&redirect_url, &mut permissions, redirect_limit - 1)
             .await
         }
         FetchOnceResult::Code(bytes, headers) => {
@@ -538,7 +541,7 @@ impl FileFetcher {
   pub async fn fetch(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &Permissions,
+    permissions: &mut Permissions,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
     let scheme = get_validated_scheme(specifier)?;
@@ -555,6 +558,12 @@ impl FileFetcher {
         self.cache.insert(specifier.clone(), file.clone());
       }
       result
+    } else if scheme == "blob" {
+      let result = self.fetch_blob_url(specifier).await;
+      if let Ok(file) = &result {
+        self.cache.insert(specifier.clone(), file.clone());
+      }
+      result
     } else if !self.allow_remote {
       Err(custom_error(
         "NoRemote",
@@ -566,6 +575,14 @@ impl FileFetcher {
         self.cache.insert(specifier.clone(), file.clone());
       }
       result
+    }
+  }
+
+  pub fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+    if specifier.scheme() == "file" {
+      specifier.to_file_path().ok()
+    } else {
+      self.http_cache.get_cache_filename(specifier)
     }
   }
 
@@ -604,6 +621,8 @@ mod tests {
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
   use deno_core::resolve_url_or_path;
+  use deno_runtime::deno_web::Blob;
+  use deno_runtime::deno_web::InMemoryBlobPart;
   use std::rc::Rc;
   use tempfile::TempDir;
 
@@ -611,14 +630,30 @@ mod tests {
     cache_setting: CacheSetting,
     maybe_temp_dir: Option<Rc<TempDir>>,
   ) -> (FileFetcher, Rc<TempDir>) {
+    let (file_fetcher, temp_dir, _) =
+      setup_with_blob_store(cache_setting, maybe_temp_dir);
+    (file_fetcher, temp_dir)
+  }
+
+  fn setup_with_blob_store(
+    cache_setting: CacheSetting,
+    maybe_temp_dir: Option<Rc<TempDir>>,
+  ) -> (FileFetcher, Rc<TempDir>, BlobStore) {
     let temp_dir = maybe_temp_dir.unwrap_or_else(|| {
       Rc::new(TempDir::new().expect("failed to create temp directory"))
     });
     let location = temp_dir.path().join("deps");
-    let file_fetcher =
-      FileFetcher::new(HttpCache::new(&location), cache_setting, true, None)
-        .expect("setup failed");
-    (file_fetcher, temp_dir)
+    let blob_store = BlobStore::default();
+    let file_fetcher = FileFetcher::new(
+      HttpCache::new(&location),
+      cache_setting,
+      true,
+      None,
+      blob_store.clone(),
+      None,
+    )
+    .expect("setup failed");
+    (file_fetcher, temp_dir, blob_store)
   }
 
   macro_rules! file_url {
@@ -634,7 +669,7 @@ mod tests {
   async fn test_fetch(specifier: &ModuleSpecifier) -> (File, FileFetcher) {
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result = file_fetcher
-      .fetch(specifier, &Permissions::allow_all())
+      .fetch(specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     (result.unwrap(), file_fetcher)
@@ -646,7 +681,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
-      .fetch_remote(specifier, &Permissions::allow_all(), 1)
+      .fetch_remote(specifier, &mut Permissions::allow_all(), 1)
       .await;
     assert!(result.is_ok());
     let (_, headers) = file_fetcher.http_cache.get(specifier).unwrap();
@@ -658,11 +693,10 @@ mod tests {
     charset: &str,
     expected: &str,
   ) {
-    let url_str =
-      format!("http://127.0.0.1:4545/cli/tests/encoding/{}", fixture);
+    let url_str = format!("http://127.0.0.1:4545/encoding/{}", fixture);
     let specifier = resolve_url(&url_str).unwrap();
     let (file, headers) = test_fetch_remote(&specifier).await;
-    assert_eq!(file.source, expected);
+    assert_eq!(file.source.as_str(), expected);
     assert_eq!(file.media_type, MediaType::TypeScript);
     assert_eq!(
       headers.get("content-type").unwrap(),
@@ -671,44 +705,10 @@ mod tests {
   }
 
   async fn test_fetch_local_encoded(charset: &str, expected: String) {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .join(format!("tests/encoding/{}.ts", charset));
+    let p = test_util::testdata_path().join(format!("encoding/{}.ts", charset));
     let specifier = resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let (file, _) = test_fetch(&specifier).await;
-    assert_eq!(file.source, expected);
-  }
-
-  #[test]
-  fn test_get_source_from_data_url() {
-    let fixtures = vec![
-      ("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=", true, MediaType::TypeScript, "application/typescript;base64", "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"),
-      ("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=?a=b&b=c", true, MediaType::TypeScript, "application/typescript;base64", "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"),
-      ("data:text/plain,Hello%2C%20Deno!", true, MediaType::Unknown, "text/plain", "Hello, Deno!"),
-      ("data:,Hello%2C%20Deno!", true, MediaType::Unknown, "", "Hello, Deno!"),
-      ("data:application/javascript,console.log(\"Hello, Deno!\");%0A", true, MediaType::JavaScript, "application/javascript", "console.log(\"Hello, Deno!\");\n"),
-      ("data:text/jsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::Jsx, "text/jsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
-      ("data:text/tsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::Tsx, "text/tsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
-    ];
-
-    for (
-      url_str,
-      expected_ok,
-      expected_media_type,
-      expected_media_type_str,
-      expected,
-    ) in fixtures
-    {
-      let specifier = resolve_url(url_str).unwrap();
-      let actual = get_source_from_data_url(&specifier);
-      assert_eq!(actual.is_ok(), expected_ok);
-      if expected_ok {
-        let (actual, actual_media_type, actual_media_type_str) =
-          actual.unwrap();
-        assert_eq!(actual, expected);
-        assert_eq!(actual_media_type, expected_media_type);
-        assert_eq!(actual_media_type_str, expected_media_type_str);
-      }
-    }
+    assert_eq!(file.source.as_str(), expected);
   }
 
   #[test]
@@ -746,13 +746,17 @@ mod tests {
       // Extension only
       (file_url!("/foo/bar.ts"), None, MediaType::TypeScript, None),
       (file_url!("/foo/bar.tsx"), None, MediaType::Tsx, None),
+      (file_url!("/foo/bar.d.cts"), None, MediaType::Dcts, None),
+      (file_url!("/foo/bar.d.mts"), None, MediaType::Dmts, None),
       (file_url!("/foo/bar.d.ts"), None, MediaType::Dts, None),
       (file_url!("/foo/bar.js"), None, MediaType::JavaScript, None),
       (file_url!("/foo/bar.jsx"), None, MediaType::Jsx, None),
       (file_url!("/foo/bar.json"), None, MediaType::Json, None),
       (file_url!("/foo/bar.wasm"), None, MediaType::Wasm, None),
-      (file_url!("/foo/bar.cjs"), None, MediaType::JavaScript, None),
-      (file_url!("/foo/bar.mjs"), None, MediaType::JavaScript, None),
+      (file_url!("/foo/bar.cjs"), None, MediaType::Cjs, None),
+      (file_url!("/foo/bar.mjs"), None, MediaType::Mjs, None),
+      (file_url!("/foo/bar.cts"), None, MediaType::Cts, None),
+      (file_url!("/foo/bar.mts"), None, MediaType::Mts, None),
       (file_url!("/foo/bar"), None, MediaType::Unknown, None),
       // Media type no extension
       (
@@ -885,7 +889,7 @@ mod tests {
       (
         "https://deno.land/x/mod.d.ts",
         Some("application/javascript".to_string()),
-        MediaType::JavaScript,
+        MediaType::Dts,
         None,
       ),
       (
@@ -921,13 +925,14 @@ mod tests {
       local,
       maybe_types: None,
       media_type: MediaType::TypeScript,
-      source: "some source code".to_string(),
+      source: Arc::new("some source code".to_string()),
       specifier: specifier.clone(),
+      maybe_headers: None,
     };
     file_fetcher.insert_cached(file.clone());
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let result_file = result.unwrap();
@@ -938,26 +943,23 @@ mod tests {
   async fn test_get_source() {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
-    let specifier = resolve_url(
-      "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
-    )
-    .unwrap();
+    let specifier =
+      resolve_url("http://localhost:4548/subdir/redirects/redirect1.js")
+        .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
     let maybe_file = file_fetcher.get_source(&specifier);
     assert!(maybe_file.is_some());
     let file = maybe_file.unwrap();
-    assert_eq!(file.source, "export const redirect = 1;\n");
+    assert_eq!(file.source.as_str(), "export const redirect = 1;\n");
     assert_eq!(
       file.specifier,
-      resolve_url(
-        "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js"
-      )
-      .unwrap()
+      resolve_url("http://localhost:4545/subdir/redirects/redirect1.js")
+        .unwrap()
     );
   }
 
@@ -975,12 +977,44 @@ mod tests {
     let specifier = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source,
+      file.source.as_str(),
+      "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
+    );
+    assert_eq!(file.media_type, MediaType::TypeScript);
+    assert_eq!(file.maybe_types, None);
+    assert_eq!(file.specifier, specifier);
+  }
+
+  #[tokio::test]
+  async fn test_fetch_blob_url() {
+    let (file_fetcher, _, blob_store) =
+      setup_with_blob_store(CacheSetting::Use, None);
+
+    let bytes =
+      "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
+        .as_bytes()
+        .to_vec();
+
+    let specifier = blob_store.insert_object_url(
+      Blob {
+        media_type: "application/typescript".to_string(),
+        parts: vec![Arc::new(InMemoryBlobPart::from(bytes))],
+      },
+      None,
+    );
+
+    let result = file_fetcher
+      .fetch(&specifier, &mut Permissions::allow_all())
+      .await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    assert_eq!(
+      file.source.as_str(),
       "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
@@ -995,16 +1029,15 @@ mod tests {
     let (file_fetcher_01, _) = setup(CacheSetting::Use, Some(temp_dir.clone()));
     let (file_fetcher_02, _) = setup(CacheSetting::Use, Some(temp_dir.clone()));
     let specifier =
-      resolve_url_or_path("http://localhost:4545/cli/tests/subdir/mod2.ts")
-        .unwrap();
+      resolve_url_or_path("http://localhost:4545/subdir/mod2.ts").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source,
+      file.source.as_str(),
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
@@ -1022,12 +1055,12 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source,
+      file.source.as_str(),
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     // This validates that when using the cached value, because we modified
@@ -1043,12 +1076,12 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result = file_fetcher_02
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source,
+      file.source.as_str(),
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(file.media_type, MediaType::Json);
@@ -1061,15 +1094,17 @@ mod tests {
       CacheSetting::ReloadAll,
       true,
       None,
+      BlobStore::default(),
+      None,
     )
     .expect("setup failed");
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(
-      file.source,
+      file.source.as_str(),
       "export { printHello } from \"./print_hello.ts\";\n"
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
@@ -1087,18 +1122,19 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let specifier =
-      resolve_url("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts")
-        .unwrap();
+      resolve_url("http://localhost:4545/subdir/mismatch_ext.ts").unwrap();
     let cache_filename = file_fetcher_01
       .http_cache
       .get_cache_filename(&specifier)
       .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1114,10 +1150,12 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1138,25 +1176,23 @@ mod tests {
   async fn test_fetch_redirected() {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
-    let specifier = resolve_url(
-      "http://localhost:4546/cli/tests/subdir/redirects/redirect1.js",
-    )
-    .unwrap();
+    let specifier =
+      resolve_url("http://localhost:4546/subdir/redirects/redirect1.js")
+        .unwrap();
     let cached_filename = file_fetcher
       .http_cache
       .get_cache_filename(&specifier)
       .unwrap();
-    let redirected_specifier = resolve_url(
-      "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js",
-    )
-    .unwrap();
+    let redirected_specifier =
+      resolve_url("http://localhost:4545/subdir/redirects/redirect1.js")
+        .unwrap();
     let redirected_cached_filename = file_fetcher
       .http_cache
       .get_cache_filename(&redirected_specifier)
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1173,7 +1209,7 @@ mod tests {
       .expect("could not get file");
     assert_eq!(
       headers.get("location").unwrap(),
-      "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js"
+      "http://localhost:4545/subdir/redirects/redirect1.js"
     );
 
     assert_eq!(
@@ -1191,33 +1227,30 @@ mod tests {
   async fn test_fetch_multiple_redirects() {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
-    let specifier = resolve_url(
-      "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
-    )
-    .unwrap();
+    let specifier =
+      resolve_url("http://localhost:4548/subdir/redirects/redirect1.js")
+        .unwrap();
     let cached_filename = file_fetcher
       .http_cache
       .get_cache_filename(&specifier)
       .unwrap();
-    let redirected_01_specifier = resolve_url(
-      "http://localhost:4546/cli/tests/subdir/redirects/redirect1.js",
-    )
-    .unwrap();
+    let redirected_01_specifier =
+      resolve_url("http://localhost:4546/subdir/redirects/redirect1.js")
+        .unwrap();
     let redirected_01_cached_filename = file_fetcher
       .http_cache
       .get_cache_filename(&redirected_01_specifier)
       .unwrap();
-    let redirected_02_specifier = resolve_url(
-      "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js",
-    )
-    .unwrap();
+    let redirected_02_specifier =
+      resolve_url("http://localhost:4545/subdir/redirects/redirect1.js")
+        .unwrap();
     let redirected_02_cached_filename = file_fetcher
       .http_cache
       .get_cache_filename(&redirected_02_specifier)
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1234,7 +1267,7 @@ mod tests {
       .expect("could not get file");
     assert_eq!(
       headers.get("location").unwrap(),
-      "http://localhost:4546/cli/tests/subdir/redirects/redirect1.js"
+      "http://localhost:4546/subdir/redirects/redirect1.js"
     );
 
     assert_eq!(
@@ -1248,7 +1281,7 @@ mod tests {
       .expect("could not get file");
     assert_eq!(
       headers.get("location").unwrap(),
-      "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js"
+      "http://localhost:4545/subdir/redirects/redirect1.js"
     );
 
     assert_eq!(
@@ -1274,21 +1307,21 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let specifier =
-      resolve_url("http://localhost:4548/cli/tests/subdir/mismatch_ext.ts")
-        .unwrap();
+      resolve_url("http://localhost:4548/subdir/mismatch_ext.ts").unwrap();
     let redirected_specifier =
-      resolve_url("http://localhost:4546/cli/tests/subdir/mismatch_ext.ts")
-        .unwrap();
+      resolve_url("http://localhost:4546/subdir/mismatch_ext.ts").unwrap();
     let redirected_cache_filename = file_fetcher_01
       .http_cache
       .get_cache_filename(&redirected_specifier)
       .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1304,10 +1337,12 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
-      .fetch(&redirected_specifier, &Permissions::allow_all())
+      .fetch(&redirected_specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1328,18 +1363,17 @@ mod tests {
   async fn test_fetcher_limits_redirects() {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
-    let specifier = resolve_url(
-      "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
-    )
-    .unwrap();
+    let specifier =
+      resolve_url("http://localhost:4548/subdir/redirects/redirect1.js")
+        .unwrap();
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &Permissions::allow_all(), 2)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 2)
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &Permissions::allow_all(), 1)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 1)
       .await;
     assert!(result.is_err());
 
@@ -1355,24 +1389,23 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = resolve_url(
-      "http://localhost:4550/REDIRECT/cli/tests/subdir/redirects/redirect1.js",
+      "http://localhost:4550/REDIRECT/subdir/redirects/redirect1.js",
     )
     .unwrap();
     let cached_filename = file_fetcher
       .http_cache
       .get_cache_filename(&specifier)
       .unwrap();
-    let redirected_specifier = resolve_url(
-      "http://localhost:4550/cli/tests/subdir/redirects/redirect1.js",
-    )
-    .unwrap();
+    let redirected_specifier =
+      resolve_url("http://localhost:4550/subdir/redirects/redirect1.js")
+        .unwrap();
     let redirected_cached_filename = file_fetcher
       .http_cache
       .get_cache_filename(&redirected_specifier)
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1389,7 +1422,7 @@ mod tests {
       .expect("could not get file");
     assert_eq!(
       headers.get("location").unwrap(),
-      "/cli/tests/subdir/redirects/redirect1.js"
+      "/subdir/redirects/redirect1.js"
     );
 
     assert_eq!(
@@ -1413,18 +1446,19 @@ mod tests {
       CacheSetting::Use,
       false,
       None,
+      BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
-    let specifier =
-      resolve_url("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
+    let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(get_custom_error_class(&err), Some("NoRemote"));
-    assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/cli/tests/002_hello.ts\", but --no-remote is specified.");
+    assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/002_hello.ts\", but --no-remote is specified.");
   }
 
   #[tokio::test]
@@ -1439,6 +1473,8 @@ mod tests {
       CacheSetting::Only,
       true,
       None,
+      BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let file_fetcher_02 = FileFetcher::new(
@@ -1446,26 +1482,27 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
-    let specifier =
-      resolve_url("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
+    let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(get_custom_error_class(&err), Some("NotFound"));
-    assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/cli/tests/002_hello.ts\", --cached-only is specified.");
+    assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/002_hello.ts\", --cached-only is specified.");
 
     let result = file_fetcher_02
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1483,20 +1520,20 @@ mod tests {
     fs::write(fixture_path.clone(), r#"console.log("hello deno");"#)
       .expect("could not write file");
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    assert_eq!(file.source, r#"console.log("hello deno");"#);
+    assert_eq!(file.source.as_str(), r#"console.log("hello deno");"#);
 
     fs::write(fixture_path, r#"console.log("goodbye deno");"#)
       .expect("could not write file");
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
-    assert_eq!(file.source, r#"console.log("goodbye deno");"#);
+    assert_eq!(file.source.as_str(), r#"console.log("goodbye deno");"#);
   }
 
   #[tokio::test]
@@ -1527,7 +1564,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_fetch_remote_with_types() {
+  async fn test_fetch_remote_javascript_with_types() {
     let specifier =
       resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.js").unwrap();
     let (file, _) = test_fetch_remote(&specifier).await;
@@ -1535,6 +1572,27 @@ mod tests {
       file.maybe_types,
       Some("./xTypeScriptTypes.d.ts".to_string())
     );
+  }
+
+  #[tokio::test]
+  async fn test_fetch_remote_jsx_with_types() {
+    let specifier =
+      resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.jsx")
+        .unwrap();
+    let (file, _) = test_fetch_remote(&specifier).await;
+    assert_eq!(file.media_type, MediaType::Jsx,);
+    assert_eq!(
+      file.maybe_types,
+      Some("./xTypeScriptTypes.d.ts".to_string())
+    );
+  }
+
+  #[tokio::test]
+  async fn test_fetch_remote_typescript_with_types() {
+    let specifier =
+      resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.ts").unwrap();
+    let (file, _) = test_fetch_remote(&specifier).await;
+    assert_eq!(file.maybe_types, None);
   }
 
   #[tokio::test]

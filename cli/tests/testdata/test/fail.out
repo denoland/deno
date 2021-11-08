@@ -1,0 +1,81 @@
+Check [WILDCARD]/test/fail.ts
+running 10 tests from [WILDCARD]/test/fail.ts
+test test 0 ... FAILED ([WILDCARD])
+test test 1 ... FAILED ([WILDCARD])
+test test 2 ... FAILED ([WILDCARD])
+test test 3 ... FAILED ([WILDCARD])
+test test 4 ... FAILED ([WILDCARD])
+test test 5 ... FAILED ([WILDCARD])
+test test 6 ... FAILED ([WILDCARD])
+test test 7 ... FAILED ([WILDCARD])
+test test 8 ... FAILED ([WILDCARD])
+test test 9 ... FAILED ([WILDCARD])
+
+failures:
+
+test 0
+Error
+    at [WILDCARD]/test/fail.ts:2:9
+    at [WILDCARD]
+
+test 1
+Error
+    at [WILDCARD]/test/fail.ts:5:9
+    at [WILDCARD]
+
+test 2
+Error
+    at [WILDCARD]/test/fail.ts:8:9
+    at [WILDCARD]
+
+test 3
+Error
+    at [WILDCARD]/test/fail.ts:11:9
+    at [WILDCARD]
+
+test 4
+Error
+    at [WILDCARD]/test/fail.ts:14:9
+    at [WILDCARD]
+
+test 5
+Error
+    at [WILDCARD]/test/fail.ts:17:9
+    at [WILDCARD]
+
+test 6
+Error
+    at [WILDCARD]/test/fail.ts:20:9
+    at [WILDCARD]
+
+test 7
+Error
+    at [WILDCARD]/test/fail.ts:23:9
+    at [WILDCARD]
+
+test 8
+Error
+    at [WILDCARD]/test/fail.ts:26:9
+    at [WILDCARD]
+
+test 9
+Error
+    at [WILDCARD]/test/fail.ts:29:9
+    at [WILDCARD]
+
+failures:
+
+	test 0
+	test 1
+	test 2
+	test 3
+	test 4
+	test 5
+	test 6
+	test 7
+	test 8
+	test 9
+
+test result: FAILED. 0 passed; 10 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Test failed

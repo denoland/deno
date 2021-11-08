@@ -1,6 +1,5 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use bencher::{benchmark_group, benchmark_main, Bencher};
-
-use rusty_v8 as v8;
 
 use serde::Serialize;
 

@@ -1,75 +1,66 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
-use crate::colors;
+use crate::colors::cyan;
+use crate::colors::italic_bold;
+use crate::colors::red;
+use crate::colors::yellow;
 use deno_core::error::{AnyError, JsError, JsStackFrame};
+use deno_core::url::Url;
 use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
 
 const SOURCE_ABBREV_THRESHOLD: usize = 150;
+const DATA_URL_ABBREV_THRESHOLD: usize = 150;
 
-fn default_color(s: &str, internal: bool) -> String {
-  if internal {
-    colors::gray(s).to_string()
-  } else {
-    s.to_string()
+pub fn format_file_name(file_name: &str) -> String {
+  if file_name.len() > DATA_URL_ABBREV_THRESHOLD {
+    if let Ok(url) = Url::parse(file_name) {
+      if url.scheme() == "data" {
+        let data_path = url.path();
+        if let Some(data_pieces) = data_path.split_once(',') {
+          let data_length = data_pieces.1.len();
+          if let Some(data_start) = data_pieces.1.get(0..20) {
+            if let Some(data_end) = data_pieces.1.get(data_length - 20..) {
+              return format!(
+                "{}:{},{}......{}",
+                url.scheme(),
+                data_pieces.0,
+                data_start,
+                data_end
+              );
+            }
+          }
+        }
+      }
+    }
   }
+  file_name.to_string()
 }
 
-fn cyan(s: &str, internal: bool) -> String {
-  if internal {
-    colors::gray(s).to_string()
-  } else {
-    colors::cyan(s).to_string()
-  }
-}
-
-fn yellow(s: &str, internal: bool) -> String {
-  if internal {
-    colors::gray(s).to_string()
-  } else {
-    colors::yellow(s).to_string()
-  }
-}
-
-fn italic_bold(s: &str, internal: bool) -> String {
-  if internal {
-    colors::italic_bold_gray(s).to_string()
-  } else {
-    colors::italic_bold(s).to_string()
-  }
-}
-
-// Keep in sync with `runtime/js/40_error_stack.js`.
+// Keep in sync with `/core/error.js`.
 pub fn format_location(frame: &JsStackFrame) -> String {
-  let internal = frame
+  let _internal = frame
     .file_name
     .as_ref()
     .map_or(false, |f| f.starts_with("deno:"));
   if frame.is_native {
-    return cyan("native", internal);
+    return cyan("native").to_string();
   }
   let mut result = String::new();
   if let Some(file_name) = &frame.file_name {
-    result += &cyan(&file_name, internal);
+    result += &cyan(&format_file_name(file_name)).to_string();
   } else {
     if frame.is_eval {
-      result += &(cyan(&frame.eval_origin.as_ref().unwrap(), internal) + ", ");
+      result +=
+        &(cyan(&frame.eval_origin.as_ref().unwrap()).to_string() + ", ");
     }
-    result += &cyan("<anonymous>", internal);
+    result += &cyan("<anonymous>").to_string();
   }
   if let Some(line_number) = frame.line_number {
-    result += &format!(
-      "{}{}",
-      default_color(":", internal),
-      yellow(&line_number.to_string(), internal)
-    );
+    result += &format!("{}{}", ":", yellow(&line_number.to_string()));
     if let Some(column_number) = frame.column_number {
-      result += &format!(
-        "{}{}",
-        default_color(":", internal),
-        yellow(&column_number.to_string(), internal)
-      );
+      result += &format!("{}{}", ":", yellow(&column_number.to_string()));
     }
   }
   result
@@ -77,7 +68,7 @@ pub fn format_location(frame: &JsStackFrame) -> String {
 
 // Keep in sync with `runtime/js/40_error_stack.js`.
 fn format_frame(frame: &JsStackFrame) -> String {
-  let internal = frame
+  let _internal = frame
     .file_name
     .as_ref()
     .map_or(false, |f| f.starts_with("deno:"));
@@ -85,16 +76,14 @@ fn format_frame(frame: &JsStackFrame) -> String {
     !(frame.is_top_level.unwrap_or_default() || frame.is_constructor);
   let mut result = String::new();
   if frame.is_async {
-    result += &colors::gray("async ").to_string();
+    result += "async ";
   }
   if frame.is_promise_all {
-    result += &italic_bold(
-      &format!(
-        "Promise.all (index {})",
-        frame.promise_index.unwrap_or_default().to_string()
-      ),
-      internal,
-    );
+    result += &italic_bold(&format!(
+      "Promise.all (index {})",
+      frame.promise_index.unwrap_or_default().to_string()
+    ))
+    .to_string();
     return result;
   }
   if is_method_call {
@@ -105,7 +94,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
           formatted_method += &format!("{}.", type_name);
         }
       }
-      formatted_method += &function_name;
+      formatted_method += function_name;
       if let Some(method_name) = &frame.method_name {
         if !function_name.ends_with(method_name) {
           formatted_method += &format!(" [as {}]", method_name);
@@ -116,31 +105,26 @@ fn format_frame(frame: &JsStackFrame) -> String {
         formatted_method += &format!("{}.", type_name);
       }
       if let Some(method_name) = &frame.method_name {
-        formatted_method += &method_name
+        formatted_method += method_name
       } else {
         formatted_method += "<anonymous>";
       }
     }
-    result += &italic_bold(&formatted_method, internal);
+    result += &italic_bold(&formatted_method).to_string();
   } else if frame.is_constructor {
-    result += &colors::gray("new ").to_string();
+    result += "new ";
     if let Some(function_name) = &frame.function_name {
-      result += &italic_bold(&function_name, internal);
+      result += &italic_bold(&function_name).to_string();
     } else {
-      result += &cyan("<anonymous>", internal);
+      result += &cyan("<anonymous>").to_string();
     }
   } else if let Some(function_name) = &frame.function_name {
-    result += &italic_bold(&function_name, internal);
+    result += &italic_bold(&function_name).to_string();
   } else {
     result += &format_location(frame);
     return result;
   }
-  result += &format!(
-    " {}{}{}",
-    default_color("(", internal),
-    format_location(frame),
-    default_color(")", internal)
-  );
+  result += &format!(" ({})", format_location(frame));
   result
 }
 
@@ -193,12 +177,23 @@ fn format_maybe_source_line(
   if source_line.is_empty() || source_line.len() > SOURCE_ABBREV_THRESHOLD {
     return "".to_string();
   }
+  if source_line.contains("Couldn't format source line: ") {
+    return format!("\n{}", source_line);
+  }
 
   assert!(start_column.is_some());
   assert!(end_column.is_some());
   let mut s = String::new();
   let start_column = start_column.unwrap();
   let end_column = end_column.unwrap();
+
+  if start_column as usize >= source_line.len() {
+    return format!(
+      "\n{} Couldn't format source line: Column {} is out of bounds (source may have changed at runtime)",
+      crate::colors::yellow("Warning"), start_column + 1,
+    );
+  }
+
   // TypeScript uses `~` always, but V8 would utilise `^` always, even when
   // doing ranges, so here, if we only have one marker (very common with V8
   // errors) we will use `^` instead.
@@ -218,9 +213,9 @@ fn format_maybe_source_line(
     s.push(underline_char);
   }
   let color_underline = if is_error {
-    colors::red(&s).to_string()
+    red(&s).to_string()
   } else {
-    colors::cyan(&s).to_string()
+    cyan(&s).to_string()
   };
 
   let indent = format!("{:indent$}", "", indent = level);
@@ -289,7 +284,7 @@ impl Error for PrettyJsError {}
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::colors::strip_ansi_codes;
+  use test_util::strip_ansi_codes;
 
   #[test]
   fn test_format_none_source_line() {

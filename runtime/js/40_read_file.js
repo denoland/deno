@@ -2,37 +2,36 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const { open, openSync } = window.__bootstrap.files;
-  const { readAll, readAllSync } = window.__bootstrap.buffer;
+  const { readAllSyncSized, readAllInnerSized } = window.__bootstrap.io;
 
   function readFileSync(path) {
     const file = openSync(path);
-    const contents = readAllSync(file);
-    file.close();
-    return contents;
+    try {
+      const { size } = file.statSync();
+      return readAllSyncSized(file, size);
+    } finally {
+      file.close();
+    }
   }
 
-  async function readFile(path) {
+  async function readFile(path, options) {
     const file = await open(path);
-    const contents = await readAll(file);
-    file.close();
-    return contents;
+    try {
+      const { size } = await file.stat();
+      return await readAllInnerSized(file, size, options);
+    } finally {
+      file.close();
+    }
   }
 
   function readTextFileSync(path) {
-    const file = openSync(path);
-    const contents = readAllSync(file);
-    file.close();
-    const decoder = new TextDecoder();
-    return decoder.decode(contents);
+    return core.decode(readFileSync(path));
   }
 
-  async function readTextFile(path) {
-    const file = await open(path);
-    const contents = await readAll(file);
-    file.close();
-    const decoder = new TextDecoder();
-    return decoder.decode(contents);
+  async function readTextFile(path, options) {
+    return core.decode(await readFile(path, options));
   }
 
   window.__bootstrap.readFile = {

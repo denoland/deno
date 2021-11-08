@@ -1,0 +1,162 @@
+[
+  {
+    "range": {
+      "start": {
+        "line": 4,
+        "character": 5
+      },
+      "end": {
+        "line": 4,
+        "character": 9
+      }
+    },
+    "command": {
+      "title": "▶︎ Run Test",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test a"
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 5,
+        "character": 5
+      },
+      "end": {
+        "line": 5,
+        "character": 9
+      }
+    },
+    "command": {
+      "title": "▶︎ Run Test",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test b"
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 9,
+        "character": 0
+      },
+      "end": {
+        "line": 9,
+        "character": 4
+      }
+    },
+    "command": {
+      "title": "▶︎ Run Test",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test c"
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 13,
+        "character": 0
+      },
+      "end": {
+        "line": 13,
+        "character": 4
+      }
+    },
+    "command": {
+      "title": "▶︎ Run Test",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test d"
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 14,
+        "character": 0
+      },
+      "end": {
+        "line": 14,
+        "character": 5
+      }
+    },
+    "command": {
+      "title": "▶︎ Run Test",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test e"
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 18,
+        "character": 0
+      },
+      "end": {
+        "line": 18,
+        "character": 5
+      }
+    },
+    "command": {
+      "title": "▶︎ Run Test",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test f"
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 19,
+        "character": 0
+      },
+      "end": {
+        "line": 19,
+        "character": 5
+      }
+    },
+    "command": {
+      "title": "▶︎ Run Test",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test g"
+      ]
+    }
+  },
+  {
+    "range": {
+      "start": {
+        "line": 23,
+        "character": 0
+      },
+      "end": {
+        "line": 23,
+        "character": 5
+      }
+    },
+    "command": {
+      "title": "▶︎ Run Test",
+      "command": "deno.test",
+      "arguments": [
+        "file:///a/file.ts",
+        "test h"
+      ]
+    }
+  }
+]

@@ -1,0 +1,6 @@
+Proxy server listening on [WILDCARD]
+Proxy request to: http://localhost:4545/045_mod.ts
+Proxy request to: http://localhost:4545/045_mod.ts
+Proxy request to: http://localhost:4545/045_output.ts
+Proxy request to: http://localhost:4545/045_mod.ts
+proxy-authorization: Basic dXNlcm5hbWU6cGFzc3dvcmQ=

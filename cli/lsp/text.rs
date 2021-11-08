@@ -20,7 +20,7 @@ where
   P: FnMut(&T) -> bool,
 {
   let mut left = 0;
-  let mut right = slice.len();
+  let mut right = slice.len() - 1;
 
   while left != right {
     let mid = left + (right - left) / 2;
@@ -31,7 +31,7 @@ where
     // In both cases left <= right is satisfied.
     // Therefore if left < right in a step,
     // left <= right is satisfied in the next step.
-    // Therefore as long as left != right, 0 <= left < right <= len is satisfied
+    // Therefore as long as left != right, 0 <= left < right < len is satisfied
     // and if this case 0 <= mid < len is satisfied too.
     let value = unsafe { slice.get_unchecked(mid) };
     if predicate(value) {
@@ -109,6 +109,10 @@ impl LineIndex {
       curr_col += c_len;
     }
 
+    // utf8_offsets and utf16_offsets length is equal to (# of lines + 1)
+    utf8_offsets.push(curr_row);
+    utf16_offsets.push(curr_offset_u16);
+
     if !utf16_chars.is_empty() {
       utf16_lines.insert(line, utf16_chars);
     }
@@ -185,6 +189,10 @@ impl LineIndex {
     }
   }
 
+  pub fn text_content_length_utf16(&self) -> TextSize {
+    *self.utf16_offsets.last().unwrap()
+  }
+
   fn utf16_to_utf8_col(&self, line: u32, mut col: u32) -> TextSize {
     if let Some(utf16_chars) = self.utf16_lines.get(&line) {
       for c in utf16_chars {
@@ -202,21 +210,12 @@ impl LineIndex {
 
 /// Compare two strings and return a vector of text edit records which are
 /// supported by the Language Server Protocol.
-pub fn get_edits(
-  a: &str,
-  b: &str,
-  maybe_line_index: Option<LineIndex>,
-) -> Vec<TextEdit> {
+pub fn get_edits(a: &str, b: &str, line_index: &LineIndex) -> Vec<TextEdit> {
   if a == b {
     return vec![];
   }
   let chunks = diff(a, b);
   let mut text_edits = Vec::<TextEdit>::new();
-  let line_index = if let Some(line_index) = maybe_line_index {
-    line_index
-  } else {
-    LineIndex::new(a)
-  };
   let mut iter = chunks.iter().peekable();
   let mut a_pos = TextSize::from(0);
   loop {
@@ -567,7 +566,7 @@ const C: char = \"メ メ\";
   fn test_get_edits() {
     let a = "abcdefg";
     let b = "a\nb\nchije\nfg\n";
-    let actual = get_edits(a, b, None);
+    let actual = get_edits(a, b, &LineIndex::new(a));
     assert_eq!(
       actual,
       vec![
@@ -605,7 +604,7 @@ const C: char = \"メ メ\";
   fn test_get_edits_mbc() {
     let a = "const bar = \"👍🇺🇸😃\";\nconsole.log('hello deno')\n";
     let b = "const bar = \"👍🇺🇸😃\";\nconsole.log(\"hello deno\");\n";
-    let actual = get_edits(a, b, None);
+    let actual = get_edits(a, b, &LineIndex::new(a));
     assert_eq!(
       actual,
       vec![

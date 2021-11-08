@@ -1,13 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
-unitTest(function resourcesCloseBadArgs(): void {
+unitTest(function resourcesCloseBadArgs() {
   assertThrows(() => {
     Deno.close((null as unknown) as number);
   }, TypeError);
 });
 
-unitTest(function resourcesStdio(): void {
+unitTest(function resourcesStdio() {
   const res = Deno.resources();
 
   assertEquals(res[0], "stdin");
@@ -15,9 +15,7 @@ unitTest(function resourcesStdio(): void {
   assertEquals(res[2], "stderr");
 });
 
-unitTest({ perms: { net: true } }, async function resourcesNet(): Promise<
-  void
-> {
+unitTest({ permissions: { net: true } }, async function resourcesNet() {
   const listener = Deno.listen({ port: 4501 });
   const dialerConn = await Deno.connect({ port: 4501 });
   const listenerConn = await listener.accept();
@@ -37,11 +35,9 @@ unitTest({ perms: { net: true } }, async function resourcesNet(): Promise<
   listener.close();
 });
 
-unitTest({ perms: { read: true } }, async function resourcesFile(): Promise<
-  void
-> {
+unitTest({ permissions: { read: true } }, async function resourcesFile() {
   const resourcesBefore = Deno.resources();
-  const f = await Deno.open("cli/tests/hello.txt");
+  const f = await Deno.open("cli/tests/testdata/hello.txt");
   const resourcesAfter = Deno.resources();
   f.close();
 
@@ -51,7 +47,7 @@ unitTest({ perms: { read: true } }, async function resourcesFile(): Promise<
     Object.keys(resourcesBefore).length + 1,
   );
   const newRid = +Object.keys(resourcesAfter).find((rid): boolean => {
-    return !resourcesBefore.hasOwnProperty(rid);
+    return !Object.prototype.hasOwnProperty.call(resourcesBefore, rid);
   })!;
   assertEquals(resourcesAfter[newRid], "fsFile");
 });

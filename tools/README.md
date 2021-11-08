@@ -30,3 +30,32 @@ executable
 ```sh
 cargo run -- run --allow-read --allow-write --allow-run --unstable ./tools/<script>
 ```
+
+## flamebench.js
+
+`flamebench.js` facilitates profiling and generating flamegraphs from
+benchmarks.
+
+General usage:
+
+```
+❯ ./tools/flamebench.js
+flamebench <bench_name> [bench_filter]
+
+Available benches:
+op_baseline
+ser
+de
+```
+
+To profile the `op_baseline` bench, run `./tools/flamebench.js op_baseline`,
+this will run all 3 benches in `op_baseline.
+
+Often when profiling/optimizing, you'll want to focus on a specific sub-bench,
+`flamebench` supports a bench/test filter arg like the regular cargo commands.
+So you can simply run `./tools/flamebench.js op_baseline bench_op_async` or
+`./tools/flamebench.js op_baseline bench_op_nop` to profile specific benches.
+
+Tip: the `[bench_filter]` argument doesn't have to be an exact bench name, you
+can use a shorthand or a partial match to profile a group of benches, e.g:
+`./tools/flamebench.js de v8`

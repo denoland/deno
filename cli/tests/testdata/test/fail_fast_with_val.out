@@ -1,0 +1,23 @@
+[WILDCARD]
+running 10 tests from [WILDCARD]/test/fail_fast_with_val.ts
+test test 1 ... FAILED ([WILDCARD])
+test test 2 ... FAILED ([WILDCARD])
+
+failures:
+
+test 1
+Error
+    at [WILDCARD]/test/fail_fast_with_val.ts:2:9
+    at [WILDCARD]
+
+test 2
+Error
+    at [WILDCARD]/test/fail_fast_with_val.ts:5:9
+    at [WILDCARD]
+
+failures:
+
+	test 1
+	test 2
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])

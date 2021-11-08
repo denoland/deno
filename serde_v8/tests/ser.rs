@@ -1,6 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use rusty_v8 as v8;
-
 use serde::Serialize;
 use serde_json::json;
 use serde_v8::utils::{js_exec, v8_do};
@@ -25,8 +23,21 @@ function arrEqual(a, b) {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 "#;
+const JS_POLLUTE: &str = r#"
+Object.defineProperty(Array.prototype, "0", {
+  set: function (v) {
+    throw new Error("Polluted Array 0 set");
+  },
+});
 
-fn sercheck<T: Serialize>(val: T, code: &str) -> bool {
+Object.defineProperty(Object.prototype, "a", {
+  set: (v) => {
+    throw new Error("Polluted Object 'a' set");
+  }
+});
+"#;
+
+fn sercheck<T: Serialize>(val: T, code: &str, pollute: bool) -> bool {
   let mut equal = false;
 
   v8_do(|| {
@@ -36,14 +47,26 @@ fn sercheck<T: Serialize>(val: T, code: &str) -> bool {
     let context = v8::Context::new(handle_scope);
     let scope = &mut v8::ContextScope::new(handle_scope, context);
 
+    // Load util functions
+    js_exec(scope, JS_UTILS);
+    if pollute {
+      js_exec(scope, JS_POLLUTE);
+    }
+    // TryCatch scope (to catch pollution exceptions)
+    let scope = &mut v8::TryCatch::new(scope);
+
     // Set value as "x" in global scope
     let global = context.global(scope);
     let v8_key = serde_v8::to_v8(scope, "x").unwrap();
     let v8_val = serde_v8::to_v8(scope, val).unwrap();
     global.set(scope, v8_key, v8_val);
 
-    // Load util functions
-    js_exec(scope, JS_UTILS);
+    // Pollution check
+    if let Some(message) = scope.message() {
+      let msg = message.get(scope).to_rust_string_lossy(scope);
+      panic!("JS Exception: {}", msg);
+    }
+
     // Execute equality check in JS (e.g: x == ...)
     let v = js_exec(scope, code);
     // Cast to bool
@@ -58,7 +81,21 @@ macro_rules! sertest {
     #[test]
     fn $fn_name() {
       assert!(
-        sercheck($rust, $src),
+        sercheck($rust, $src, false),
+        "Expected: {} where x={:?}",
+        $src,
+        $rust,
+      );
+    }
+  };
+}
+
+macro_rules! sertest_polluted {
+  ($fn_name:ident, $rust:expr, $src:expr) => {
+    #[test]
+    fn $fn_name() {
+      assert!(
+        sercheck($rust, $src, true),
         "Expected: {} where x={:?}",
         $src,
         $rust,
@@ -130,3 +167,25 @@ sertest!(
   json!([true, 42, "nabla"]),
   "arrEqual(x, [true, 42, 'nabla'])"
 );
+
+////
+// Pollution tests
+////
+
+sertest_polluted!(
+  ser_polluted_obj,
+  MathOp {
+    a: 1,
+    b: 2,
+    operator: None
+  },
+  "objEqual(x, { a: 1, b: 2, operator: null })"
+);
+
+sertest_polluted!(
+  ser_polluted_tuple,
+  (true, 123, false),
+  "arrEqual(x, [true, 123, false])"
+);
+
+sertest_polluted!(ser_polluted_vec, vec![1, 2, 3], "arrEqual(x, [1, 2, 3])");

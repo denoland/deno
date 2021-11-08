@@ -4,13 +4,17 @@
 ((window) => {
   const core = window.Deno.core;
   const { errors } = window.__bootstrap.errors;
-
+  const {
+    ArrayIsArray,
+    PromiseResolve,
+    SymbolAsyncIterator,
+  } = window.__bootstrap.primordials;
   class FsWatcher {
     #rid = 0;
 
     constructor(paths, options) {
       const { recursive } = options;
-      this.#rid = core.jsonOpSync("op_fs_events_open", { recursive, paths });
+      this.#rid = core.opSync("op_fs_events_open", { recursive, paths });
     }
 
     get rid() {
@@ -19,9 +23,10 @@
 
     async next() {
       try {
-        return await core.jsonOpAsync("op_fs_events_poll", {
-          rid: this.rid,
-        });
+        const value = await core.opAsync("op_fs_events_poll", this.rid);
+        return value
+          ? { value, done: false }
+          : { value: undefined, done: true };
       } catch (error) {
         if (error instanceof errors.BadResource) {
           return { value: undefined, done: true };
@@ -32,12 +37,18 @@
       }
     }
 
+    // TODO(kt3k): This is deprecated. Will be removed in v2.0.
+    // See https://github.com/denoland/deno/issues/10577 for details
     return(value) {
       core.close(this.rid);
-      return Promise.resolve({ value, done: true });
+      return PromiseResolve({ value, done: true });
     }
 
-    [Symbol.asyncIterator]() {
+    close() {
+      core.close(this.rid);
+    }
+
+    [SymbolAsyncIterator]() {
       return this;
     }
   }
@@ -46,7 +57,7 @@
     paths,
     options = { recursive: true },
   ) {
-    return new FsWatcher(Array.isArray(paths) ? paths : [paths], options);
+    return new FsWatcher(ArrayIsArray(paths) ? paths : [paths], options);
   }
 
   window.__bootstrap.fsEvents = {

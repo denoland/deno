@@ -1,3 +1,0 @@
-DENO_DIR location: "[WILDCARD]"
-Remote modules cache: "[WILDCARD]deps"
-TypeScript compiler cache: "[WILDCARD]gen"

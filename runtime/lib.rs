@@ -1,25 +1,31 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#![deny(warnings)]
-
+pub use deno_broadcast_channel;
 pub use deno_console;
 pub use deno_crypto;
 pub use deno_fetch;
+pub use deno_ffi;
+pub use deno_http;
+pub use deno_net;
+pub use deno_timers;
+pub use deno_tls;
 pub use deno_url;
 pub use deno_web;
 pub use deno_webgpu;
 pub use deno_webidl;
 pub use deno_websocket;
+pub use deno_webstorage;
 
 pub mod colors;
 pub mod errors;
 pub mod fs_util;
-pub mod inspector;
+pub mod inspector_server;
 pub mod js;
-pub mod metrics;
 pub mod ops;
 pub mod permissions;
-pub mod resolve_addr;
 pub mod tokio_util;
 pub mod web_worker;
 pub mod worker;
+
+mod worker_bootstrap;
+pub use worker_bootstrap::BootstrapOptions;

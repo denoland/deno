@@ -1,10 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use rusty_v8 as v8;
 use serde::ser;
-use serde::ser::{Impossible, Serialize};
+use serde::ser::Serialize;
 
 use std::cell::RefCell;
-use std::rc::Rc;
 
 use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;
@@ -13,49 +11,52 @@ use crate::magic;
 type JsValue<'s> = v8::Local<'s, v8::Value>;
 type JsResult<'s> = Result<JsValue<'s>>;
 
-type ScopePtr<'a, 'b> = Rc<RefCell<v8::EscapableHandleScope<'a, 'b>>>;
+type ScopePtr<'a, 'b, 'c> = &'c RefCell<&'b mut v8::HandleScope<'a>>;
 
 pub fn to_v8<'a, T>(scope: &mut v8::HandleScope<'a>, input: T) -> JsResult<'a>
 where
   T: Serialize,
 {
-  let subscope = v8::EscapableHandleScope::new(scope);
-  let scopeptr = Rc::new(RefCell::new(subscope));
-  let serializer = Serializer::new(scopeptr.clone());
-  let x = input.serialize(serializer)?;
-  let x = scopeptr.clone().borrow_mut().escape(x);
+  let scopeptr = RefCell::new(scope);
+  let serializer = Serializer::new(&scopeptr);
 
-  Ok(x)
+  input.serialize(serializer)
 }
 
 /// Wraps other serializers into an enum tagged variant form.
 /// Uses {"Variant": ...payload...} for compatibility with serde-json.
-pub struct VariantSerializer<'a, 'b, S> {
-  variant: &'static str,
+pub struct VariantSerializer<'a, 'b, 'c, S> {
   inner: S,
-  scope: ScopePtr<'a, 'b>,
+  scope: ScopePtr<'a, 'b, 'c>,
+  variant: &'static str,
 }
 
-impl<'a, 'b, S> VariantSerializer<'a, 'b, S> {
-  pub fn new(scope: ScopePtr<'a, 'b>, variant: &'static str, inner: S) -> Self {
+impl<'a, 'b, 'c, S> VariantSerializer<'a, 'b, 'c, S> {
+  pub fn new(
+    scope: ScopePtr<'a, 'b, 'c>,
+    variant: &'static str,
+    inner: S,
+  ) -> Self {
     Self {
+      inner,
       scope,
       variant,
-      inner,
     }
   }
 
   fn end(self, inner: impl FnOnce(S) -> JsResult<'a>) -> JsResult<'a> {
     let value = inner(self.inner)?;
     let scope = &mut *self.scope.borrow_mut();
-    let obj = v8::Object::new(scope);
+    let null = v8::null(scope).into();
     let key = v8_struct_key(scope, self.variant).into();
-    obj.set(scope, key, value);
+    let obj =
+      v8::Object::with_prototype_and_properties(scope, null, &[key], &[value]);
     Ok(obj.into())
   }
 }
 
-impl<'a, 'b, S> ser::SerializeTupleVariant for VariantSerializer<'a, 'b, S>
+impl<'a, 'b, 'c, S> ser::SerializeTupleVariant
+  for VariantSerializer<'a, 'b, 'c, S>
 where
   S: ser::SerializeTupleStruct<Ok = JsValue<'a>, Error = Error>,
 {
@@ -74,7 +75,8 @@ where
   }
 }
 
-impl<'a, 'b, S> ser::SerializeStructVariant for VariantSerializer<'a, 'b, S>
+impl<'a, 'b, 'c, S> ser::SerializeStructVariant
+  for VariantSerializer<'a, 'b, 'c, S>
 where
   S: ser::SerializeStruct<Ok = JsValue<'a>, Error = Error>,
 {
@@ -94,24 +96,22 @@ where
   }
 }
 
-pub struct ArraySerializer<'a, 'b> {
-  // serializer: Serializer<'a, 'b>,
+pub struct ArraySerializer<'a, 'b, 'c> {
   pending: Vec<JsValue<'a>>,
-  scope: ScopePtr<'a, 'b>,
+  scope: ScopePtr<'a, 'b, 'c>,
 }
 
-impl<'a, 'b> ArraySerializer<'a, 'b> {
-  pub fn new(scope: ScopePtr<'a, 'b>) -> Self {
-    // let serializer = Serializer::new(scope);
-    Self {
-      scope,
-      // serializer,
-      pending: vec![],
-    }
+impl<'a, 'b, 'c> ArraySerializer<'a, 'b, 'c> {
+  pub fn new(scope: ScopePtr<'a, 'b, 'c>, len: Option<usize>) -> Self {
+    let pending = match len {
+      Some(len) => Vec::with_capacity(len),
+      None => vec![],
+    };
+    Self { pending, scope }
   }
 }
 
-impl<'a, 'b> ser::SerializeSeq for ArraySerializer<'a, 'b> {
+impl<'a, 'b, 'c> ser::SerializeSeq for ArraySerializer<'a, 'b, 'c> {
   type Ok = JsValue<'a>;
   type Error = Error;
 
@@ -119,7 +119,7 @@ impl<'a, 'b> ser::SerializeSeq for ArraySerializer<'a, 'b> {
     &mut self,
     value: &T,
   ) -> Result<()> {
-    let x = value.serialize(Serializer::new(self.scope.clone()))?;
+    let x = value.serialize(Serializer::new(self.scope))?;
     self.pending.push(x);
     Ok(())
   }
@@ -132,7 +132,7 @@ impl<'a, 'b> ser::SerializeSeq for ArraySerializer<'a, 'b> {
   }
 }
 
-impl<'a, 'b> ser::SerializeTuple for ArraySerializer<'a, 'b> {
+impl<'a, 'b, 'c> ser::SerializeTuple for ArraySerializer<'a, 'b, 'c> {
   type Ok = JsValue<'a>;
   type Error = Error;
 
@@ -148,7 +148,7 @@ impl<'a, 'b> ser::SerializeTuple for ArraySerializer<'a, 'b> {
   }
 }
 
-impl<'a, 'b> ser::SerializeTupleStruct for ArraySerializer<'a, 'b> {
+impl<'a, 'b, 'c> ser::SerializeTupleStruct for ArraySerializer<'a, 'b, 'c> {
   type Ok = JsValue<'a>;
   type Error = Error;
 
@@ -164,19 +164,25 @@ impl<'a, 'b> ser::SerializeTupleStruct for ArraySerializer<'a, 'b> {
   }
 }
 
-pub struct ObjectSerializer<'a, 'b> {
-  scope: ScopePtr<'a, 'b>,
-  obj: v8::Local<'a, v8::Object>,
+pub struct ObjectSerializer<'a, 'b, 'c> {
+  scope: ScopePtr<'a, 'b, 'c>,
+  keys: Vec<v8::Local<'a, v8::Name>>,
+  values: Vec<JsValue<'a>>,
 }
 
-impl<'a, 'b> ObjectSerializer<'a, 'b> {
-  pub fn new(scope: ScopePtr<'a, 'b>) -> Self {
-    let obj = v8::Object::new(&mut *scope.borrow_mut());
-    Self { scope, obj }
+impl<'a, 'b, 'c> ObjectSerializer<'a, 'b, 'c> {
+  pub fn new(scope: ScopePtr<'a, 'b, 'c>, len: usize) -> Self {
+    let keys = Vec::with_capacity(len);
+    let values = Vec::with_capacity(len);
+    Self {
+      scope,
+      keys,
+      values,
+    }
   }
 }
 
-impl<'a, 'b> ser::SerializeStruct for ObjectSerializer<'a, 'b> {
+impl<'a, 'b, 'c> ser::SerializeStruct for ObjectSerializer<'a, 'b, 'c> {
   type Ok = JsValue<'a>;
   type Error = Error;
 
@@ -185,24 +191,32 @@ impl<'a, 'b> ser::SerializeStruct for ObjectSerializer<'a, 'b> {
     key: &'static str,
     value: &T,
   ) -> Result<()> {
-    let value = value.serialize(Serializer::new(self.scope.clone()))?;
+    let value = value.serialize(Serializer::new(self.scope))?;
     let scope = &mut *self.scope.borrow_mut();
     let key = v8_struct_key(scope, key).into();
-    self.obj.set(scope, key, value);
+    self.keys.push(key);
+    self.values.push(value);
     Ok(())
   }
 
   fn end(self) -> JsResult<'a> {
-    Ok(self.obj.into())
+    let scope = &mut *self.scope.borrow_mut();
+    let null = v8::null(scope);
+    let obj = v8::Object::with_prototype_and_properties(
+      scope,
+      null.into(),
+      &self.keys[..],
+      &self.values[..],
+    );
+    Ok(obj.into())
   }
 }
 
-pub struct MagicSerializer<'a, 'b> {
-  scope: ScopePtr<'a, 'b>,
+pub struct MagicSerializer<'a> {
   v8_value: Option<v8::Local<'a, v8::Value>>,
 }
 
-impl<'a, 'b> ser::SerializeStruct for MagicSerializer<'a, 'b> {
+impl<'a> ser::SerializeStruct for MagicSerializer<'a> {
   type Ok = JsValue<'a>;
   type Error = Error;
 
@@ -214,10 +228,9 @@ impl<'a, 'b> ser::SerializeStruct for MagicSerializer<'a, 'b> {
     if key != magic::FIELD {
       unreachable!();
     }
-    let v8_value = value.serialize(MagicTransmuter {
-      _scope: self.scope.clone(),
-    })?;
-    self.v8_value = Some(v8_value);
+    let transmuted: u64 = value.serialize(magic::FieldSerializer {})?;
+    let mv: magic::Value<'a> = unsafe { std::mem::transmute(transmuted) };
+    self.v8_value = Some(mv.v8_value);
     Ok(())
   }
 
@@ -226,13 +239,115 @@ impl<'a, 'b> ser::SerializeStruct for MagicSerializer<'a, 'b> {
   }
 }
 
-// Dispatches between magic and regular struct serializers
-pub enum StructSerializers<'a, 'b> {
-  Magic(MagicSerializer<'a, 'b>),
-  Regular(ObjectSerializer<'a, 'b>),
+// TODO(@AaronO): refactor this and streamline how we transmute values
+pub struct MagicBufferSerializer<'a, 'b, 'c> {
+  scope: ScopePtr<'a, 'b, 'c>,
+  f1: u64,
+  f2: u64,
 }
 
-impl<'a, 'b> ser::SerializeStruct for StructSerializers<'a, 'b> {
+impl<'a, 'b, 'c> MagicBufferSerializer<'a, 'b, 'c> {
+  pub fn new(scope: ScopePtr<'a, 'b, 'c>) -> Self {
+    Self {
+      scope,
+      f1: 0,
+      f2: 0,
+    }
+  }
+}
+
+impl<'a, 'b, 'c> ser::SerializeStruct for MagicBufferSerializer<'a, 'b, 'c> {
+  type Ok = JsValue<'a>;
+  type Error = Error;
+
+  fn serialize_field<T: ?Sized + Serialize>(
+    &mut self,
+    key: &'static str,
+    value: &T,
+  ) -> Result<()> {
+    // Get u64 chunk
+    let transmuted: u64 = value.serialize(magic::FieldSerializer {})?;
+    match key {
+      magic::buffer::BUF_FIELD_1 => self.f1 = transmuted,
+      magic::buffer::BUF_FIELD_2 => self.f2 = transmuted,
+      _ => unreachable!(),
+    }
+    Ok(())
+  }
+
+  fn end(self) -> JsResult<'a> {
+    let x: [usize; 2] = [self.f1 as usize, self.f2 as usize];
+    let buf: Box<[u8]> = unsafe { std::mem::transmute(x) };
+    let scope = &mut *self.scope.borrow_mut();
+    let v8_value = boxed_slice_to_uint8array(scope, buf);
+    Ok(v8_value.into())
+  }
+}
+
+pub struct MagicByteStringSerializer<'a, 'b, 'c> {
+  scope: ScopePtr<'a, 'b, 'c>,
+  ptr: Option<std::ptr::NonNull<u8>>,
+  len: Option<usize>,
+}
+
+impl<'a, 'b, 'c> MagicByteStringSerializer<'a, 'b, 'c> {
+  pub fn new(scope: ScopePtr<'a, 'b, 'c>) -> Self {
+    Self {
+      scope,
+      ptr: None,
+      len: None,
+    }
+  }
+}
+
+impl<'a, 'b, 'c> ser::SerializeStruct
+  for MagicByteStringSerializer<'a, 'b, 'c>
+{
+  type Ok = JsValue<'a>;
+  type Error = Error;
+
+  fn serialize_field<T: ?Sized + Serialize>(
+    &mut self,
+    key: &'static str,
+    value: &T,
+  ) -> Result<()> {
+    // Get u64 chunk
+    let transmuted: u64 = value.serialize(magic::FieldSerializer {})?;
+    match key {
+      magic::bytestring::FIELD_PTR => {
+        self.ptr = std::ptr::NonNull::new(transmuted as *mut u8);
+      }
+      magic::bytestring::FIELD_LEN => {
+        self.len = Some(transmuted as usize);
+      }
+      _ => unreachable!(),
+    }
+    Ok(())
+  }
+
+  fn end(self) -> JsResult<'a> {
+    // SAFETY: This function is only called from ByteString::serialize(), which
+    // guarantees the Vec is still alive.
+    let bytes = unsafe {
+      std::slice::from_raw_parts(self.ptr.unwrap().as_ptr(), self.len.unwrap())
+    };
+    let scope = &mut *self.scope.borrow_mut();
+    let v8_value =
+      v8::String::new_from_one_byte(scope, bytes, v8::NewStringType::Normal)
+        .unwrap();
+    Ok(v8_value.into())
+  }
+}
+
+// Dispatches between magic and regular struct serializers
+pub enum StructSerializers<'a, 'b, 'c> {
+  Magic(MagicSerializer<'a>),
+  MagicBuffer(MagicBufferSerializer<'a, 'b, 'c>),
+  MagicByteString(MagicByteStringSerializer<'a, 'b, 'c>),
+  Regular(ObjectSerializer<'a, 'b, 'c>),
+}
+
+impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
   type Ok = JsValue<'a>;
   type Error = Error;
 
@@ -243,6 +358,8 @@ impl<'a, 'b> ser::SerializeStruct for StructSerializers<'a, 'b> {
   ) -> Result<()> {
     match self {
       StructSerializers::Magic(s) => s.serialize_field(key, value),
+      StructSerializers::MagicBuffer(s) => s.serialize_field(key, value),
+      StructSerializers::MagicByteString(s) => s.serialize_field(key, value),
       StructSerializers::Regular(s) => s.serialize_field(key, value),
     }
   }
@@ -250,36 +367,41 @@ impl<'a, 'b> ser::SerializeStruct for StructSerializers<'a, 'b> {
   fn end(self) -> JsResult<'a> {
     match self {
       StructSerializers::Magic(s) => s.end(),
+      StructSerializers::MagicBuffer(s) => s.end(),
+      StructSerializers::MagicByteString(s) => s.end(),
       StructSerializers::Regular(s) => s.end(),
     }
   }
 }
 
 // Serializes to JS Objects, NOT JS Maps ...
-pub struct MapSerializer<'a, 'b> {
-  scope: ScopePtr<'a, 'b>,
-  obj: v8::Local<'a, v8::Object>,
-  next_key: Option<JsValue<'a>>,
+pub struct MapSerializer<'a, 'b, 'c> {
+  scope: ScopePtr<'a, 'b, 'c>,
+  keys: Vec<v8::Local<'a, v8::Name>>,
+  values: Vec<JsValue<'a>>,
 }
 
-impl<'a, 'b> MapSerializer<'a, 'b> {
-  pub fn new(scope: ScopePtr<'a, 'b>) -> Self {
-    let obj = v8::Object::new(&mut *scope.borrow_mut());
+impl<'a, 'b, 'c> MapSerializer<'a, 'b, 'c> {
+  pub fn new(scope: ScopePtr<'a, 'b, 'c>, len: Option<usize>) -> Self {
+    let keys = Vec::with_capacity(len.unwrap_or_default());
+    let values = Vec::with_capacity(len.unwrap_or_default());
     Self {
       scope,
-      obj,
-      next_key: None,
+      keys,
+      values,
     }
   }
 }
 
-impl<'a, 'b> ser::SerializeMap for MapSerializer<'a, 'b> {
+impl<'a, 'b, 'c> ser::SerializeMap for MapSerializer<'a, 'b, 'c> {
   type Ok = JsValue<'a>;
   type Error = Error;
 
   fn serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) -> Result<()> {
-    debug_assert!(self.next_key.is_none());
-    self.next_key = Some(key.serialize(Serializer::new(self.scope.clone()))?);
+    let key = key.serialize(Serializer::new(self.scope))?;
+    self.keys.push(key.try_into().map_err(|_| {
+      Error::Message("Serialized Maps expect String keys".into())
+    })?);
     Ok(())
   }
 
@@ -287,25 +409,31 @@ impl<'a, 'b> ser::SerializeMap for MapSerializer<'a, 'b> {
     &mut self,
     value: &T,
   ) -> Result<()> {
-    let v8_value = value.serialize(Serializer::new(self.scope.clone()))?;
-    let scope = &mut *self.scope.borrow_mut();
-    self.obj.set(scope, self.next_key.take().unwrap(), v8_value);
+    let v8_value = value.serialize(Serializer::new(self.scope))?;
+    self.values.push(v8_value);
     Ok(())
   }
 
   fn end(self) -> JsResult<'a> {
-    debug_assert!(self.next_key.is_none());
-    Ok(self.obj.into())
+    debug_assert!(self.keys.len() == self.values.len());
+    let scope = &mut *self.scope.borrow_mut();
+    let null = v8::null(scope).into();
+    let obj = v8::Object::with_prototype_and_properties(
+      scope,
+      null,
+      &self.keys[..],
+      &self.values[..],
+    );
+    Ok(obj.into())
   }
 }
 
-#[derive(Clone)]
-pub struct Serializer<'a, 'b> {
-  scope: ScopePtr<'a, 'b>,
+pub struct Serializer<'a, 'b, 'c> {
+  scope: ScopePtr<'a, 'b, 'c>,
 }
 
-impl<'a, 'b> Serializer<'a, 'b> {
-  pub fn new(scope: ScopePtr<'a, 'b>) -> Self {
+impl<'a, 'b, 'c> Serializer<'a, 'b, 'c> {
+  pub fn new(scope: ScopePtr<'a, 'b, 'c>) -> Self {
     Serializer { scope }
   }
 }
@@ -318,19 +446,19 @@ macro_rules! forward_to {
     };
 }
 
-impl<'a, 'b> ser::Serializer for Serializer<'a, 'b> {
+impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   type Ok = v8::Local<'a, v8::Value>;
   type Error = Error;
 
-  type SerializeSeq = ArraySerializer<'a, 'b>;
-  type SerializeTuple = ArraySerializer<'a, 'b>;
-  type SerializeTupleStruct = ArraySerializer<'a, 'b>;
+  type SerializeSeq = ArraySerializer<'a, 'b, 'c>;
+  type SerializeTuple = ArraySerializer<'a, 'b, 'c>;
+  type SerializeTupleStruct = ArraySerializer<'a, 'b, 'c>;
   type SerializeTupleVariant =
-    VariantSerializer<'a, 'b, ArraySerializer<'a, 'b>>;
-  type SerializeMap = MapSerializer<'a, 'b>;
-  type SerializeStruct = StructSerializers<'a, 'b>;
+    VariantSerializer<'a, 'b, 'c, ArraySerializer<'a, 'b, 'c>>;
+  type SerializeMap = MapSerializer<'a, 'b, 'c>;
+  type SerializeStruct = StructSerializers<'a, 'b, 'c>;
   type SerializeStructVariant =
-    VariantSerializer<'a, 'b, StructSerializers<'a, 'b>>;
+    VariantSerializer<'a, 'b, 'c, StructSerializers<'a, 'b, 'c>>;
 
   forward_to! {
       serialize_i8(i8, serialize_i32, 'a);
@@ -416,14 +544,14 @@ impl<'a, 'b> ser::Serializer for Serializer<'a, 'b> {
     variant: &'static str,
     value: &T,
   ) -> JsResult<'a> {
-    let scope = self.scope.clone();
+    let scope = self.scope;
     let x = self.serialize_newtype_struct(variant, value)?;
     VariantSerializer::new(scope, variant, x).end(Ok)
   }
 
   /// Serialises any Rust iterable into a JS Array
-  fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
-    Ok(ArraySerializer::new(self.scope))
+  fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
+    Ok(ArraySerializer::new(self.scope, len))
   }
 
   fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
@@ -446,35 +574,44 @@ impl<'a, 'b> ser::Serializer for Serializer<'a, 'b> {
     len: usize,
   ) -> Result<Self::SerializeTupleVariant> {
     Ok(VariantSerializer::new(
-      self.scope.clone(),
+      self.scope,
       variant,
       self.serialize_tuple_struct(variant, len)?,
     ))
   }
 
-  fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
+  fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
     // Serializes a rust Map (e.g: BTreeMap, HashMap) to a v8 Object
     // TODO: consider allowing serializing to v8 Maps (e.g: via a magic type)
     // since they're lighter and better suited for K/V data
     // and maybe restrict keys (e.g: strings and numbers)
-    Ok(MapSerializer::new(self.scope))
+    Ok(MapSerializer::new(self.scope, len))
   }
 
   /// Serialises Rust typed structs into plain JS objects.
   fn serialize_struct(
     self,
     name: &'static str,
-    _len: usize,
+    len: usize,
   ) -> Result<Self::SerializeStruct> {
-    if name == magic::NAME {
-      let m = MagicSerializer {
-        scope: self.scope,
-        v8_value: None,
-      };
-      return Ok(StructSerializers::Magic(m));
+    match name {
+      magic::NAME => {
+        let m: MagicSerializer<'a> = MagicSerializer { v8_value: None };
+        Ok(StructSerializers::Magic(m))
+      }
+      magic::buffer::BUF_NAME => {
+        let m = MagicBufferSerializer::new(self.scope);
+        Ok(StructSerializers::MagicBuffer(m))
+      }
+      magic::bytestring::NAME => {
+        let m = MagicByteStringSerializer::new(self.scope);
+        Ok(StructSerializers::MagicByteString(m))
+      }
+      _ => {
+        let o = ObjectSerializer::new(self.scope, len);
+        Ok(StructSerializers::Regular(o))
+      }
     }
-    let o = ObjectSerializer::new(self.scope);
-    Ok(StructSerializers::Regular(o))
   }
 
   fn serialize_struct_variant(
@@ -484,150 +621,26 @@ impl<'a, 'b> ser::Serializer for Serializer<'a, 'b> {
     variant: &'static str,
     len: usize,
   ) -> Result<Self::SerializeStructVariant> {
-    let scope = self.scope.clone();
+    let scope = self.scope;
     let x = self.serialize_struct(variant, len)?;
     Ok(VariantSerializer::new(scope, variant, x))
   }
 }
 
-macro_rules! not_reachable {
-    ($($name:ident($ty:ty, $lt:lifetime);)*) => {
-        $(fn $name(self, _v: $ty) -> JsResult<$lt> {
-            unreachable!();
-        })*
-    };
-}
-
-/// A VERY hackish serde::Serializer
-/// that exists solely to transmute a u64 to a serde_v8::Value
-struct MagicTransmuter<'a, 'b> {
-  _scope: ScopePtr<'a, 'b>,
-}
-
-impl<'a, 'b> ser::Serializer for MagicTransmuter<'a, 'b> {
-  type Ok = v8::Local<'a, v8::Value>;
-  type Error = Error;
-
-  type SerializeSeq = Impossible<v8::Local<'a, v8::Value>, Error>;
-  type SerializeTuple = Impossible<v8::Local<'a, v8::Value>, Error>;
-  type SerializeTupleStruct = Impossible<v8::Local<'a, v8::Value>, Error>;
-  type SerializeTupleVariant = Impossible<v8::Local<'a, v8::Value>, Error>;
-  type SerializeMap = Impossible<v8::Local<'a, v8::Value>, Error>;
-  type SerializeStruct = Impossible<v8::Local<'a, v8::Value>, Error>;
-  type SerializeStructVariant = Impossible<v8::Local<'a, v8::Value>, Error>;
-
-  // The only serialize method for this hackish struct
-  fn serialize_u64(self, v: u64) -> JsResult<'a> {
-    let mv: magic::Value = unsafe { std::mem::transmute(v) };
-    Ok(mv.v8_value)
+// Used to map MagicBuffers to v8
+pub fn boxed_slice_to_uint8array<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  buf: Box<[u8]>,
+) -> v8::Local<'a, v8::Uint8Array> {
+  if buf.is_empty() {
+    let ab = v8::ArrayBuffer::new(scope, 0);
+    return v8::Uint8Array::new(scope, ab, 0, 0)
+      .expect("Failed to create UintArray8");
   }
-
-  not_reachable! {
-      serialize_i8(i8, 'a);
-      serialize_i16(i16, 'a);
-      serialize_i32(i32, 'a);
-      serialize_i64(i64, 'a);
-      serialize_u8(u8, 'a);
-      serialize_u16(u16, 'a);
-      serialize_u32(u32, 'a);
-      // serialize_u64(u64, 'a); the chosen one
-      serialize_f32(f32, 'a);
-      serialize_f64(f64, 'a);
-      serialize_bool(bool, 'a);
-      serialize_char(char, 'a);
-      serialize_str(&str, 'a);
-      serialize_bytes(&[u8], 'a);
-  }
-
-  fn serialize_none(self) -> JsResult<'a> {
-    unreachable!();
-  }
-
-  fn serialize_some<T: ?Sized + Serialize>(self, _value: &T) -> JsResult<'a> {
-    unreachable!();
-  }
-
-  fn serialize_unit(self) -> JsResult<'a> {
-    unreachable!();
-  }
-
-  fn serialize_unit_struct(self, _name: &'static str) -> JsResult<'a> {
-    unreachable!();
-  }
-
-  /// For compatibility with serde-json, serialises unit variants as "Variant" strings.
-  fn serialize_unit_variant(
-    self,
-    _name: &'static str,
-    _variant_index: u32,
-    _variant: &'static str,
-  ) -> JsResult<'a> {
-    unreachable!();
-  }
-
-  fn serialize_newtype_struct<T: ?Sized + Serialize>(
-    self,
-    _name: &'static str,
-    _value: &T,
-  ) -> JsResult<'a> {
-    unreachable!();
-  }
-
-  fn serialize_newtype_variant<T: ?Sized + Serialize>(
-    self,
-    _name: &'static str,
-    _variant_index: u32,
-    _variant: &'static str,
-    _value: &T,
-  ) -> JsResult<'a> {
-    unreachable!();
-  }
-  fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
-    unreachable!();
-  }
-
-  fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple> {
-    unreachable!();
-  }
-
-  fn serialize_tuple_struct(
-    self,
-    _name: &'static str,
-    _len: usize,
-  ) -> Result<Self::SerializeTupleStruct> {
-    unreachable!();
-  }
-
-  fn serialize_tuple_variant(
-    self,
-    _name: &'static str,
-    _variant_index: u32,
-    _variant: &'static str,
-    _len: usize,
-  ) -> Result<Self::SerializeTupleVariant> {
-    unreachable!();
-  }
-
-  fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
-    unreachable!();
-  }
-
-  /// Serialises Rust typed structs into plain JS objects.
-  fn serialize_struct(
-    self,
-    _name: &'static str,
-    _len: usize,
-  ) -> Result<Self::SerializeStruct> {
-    unreachable!();
-  }
-
-  fn serialize_struct_variant(
-    self,
-    _name: &'static str,
-    _variant_index: u32,
-    _variant: &'static str,
-    _len: usize,
-  ) -> Result<Self::SerializeStructVariant> {
-    unreachable!();
-  }
+  let buf_len = buf.len();
+  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
+  let backing_store_shared = backing_store.make_shared();
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+  v8::Uint8Array::new(scope, ab, 0, buf_len)
+    .expect("Failed to create UintArray8")
 }

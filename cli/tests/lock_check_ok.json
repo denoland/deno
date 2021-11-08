@@ -1,4 +1,0 @@
-{
-  "http://127.0.0.1:4545/cli/tests/subdir/print_hello.ts": "fe7bbccaedb6579200a8b582f905139296402d06b1b91109d6e12c41a23125da",
-  "http://127.0.0.1:4545/cli/tests/003_relative_import.ts": "aa9e16de824f81871a1c7164d5bd6857df7db2e18621750bd66b0bde4df07f21"
-}

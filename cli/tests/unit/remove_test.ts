@@ -1,16 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  assertThrows,
-  assertThrowsAsync,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertRejects, assertThrows, unitTest } from "./test_util.ts";
 
 const REMOVE_METHODS = ["remove", "removeSync"] as const;
 
 unitTest(
-  { perms: { write: true, read: true } },
-  async function removeDirSuccess(): Promise<void> {
+  { permissions: { write: true, read: true } },
+  async function removeDirSuccess() {
     for (const method of REMOVE_METHODS) {
       // REMOVE EMPTY DIRECTORY
       const path = Deno.makeTempDirSync() + "/subdir";
@@ -27,8 +22,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { write: true, read: true } },
-  async function removeFileSuccess(): Promise<void> {
+  { permissions: { write: true, read: true } },
+  async function removeFileSuccess() {
     for (const method of REMOVE_METHODS) {
       // REMOVE FILE
       const enc = new TextEncoder();
@@ -47,8 +42,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { write: true, read: true } },
-  async function removeFileByUrl(): Promise<void> {
+  { permissions: { write: true, read: true } },
+  async function removeFileByUrl() {
     for (const method of REMOVE_METHODS) {
       // REMOVE FILE
       const enc = new TextEncoder();
@@ -72,8 +67,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { write: true, read: true } },
-  async function removeFail(): Promise<void> {
+  { permissions: { write: true, read: true } },
+  async function removeFail() {
     for (const method of REMOVE_METHODS) {
       // NON-EMPTY DIRECTORY
       const path = Deno.makeTempDirSync() + "/dir/subdir";
@@ -85,22 +80,30 @@ unitTest(
       const subPathInfo = Deno.statSync(subPath);
       assert(subPathInfo.isDirectory); // check exist first
 
-      await assertThrowsAsync(async () => {
-        await Deno[method](path);
-      }, Error);
+      await assertRejects(
+        async () => {
+          await Deno[method](path);
+        },
+        Error,
+        `remove '${path}'`,
+      );
       // TODO(ry) Is Other really the error we should get here? What would Go do?
 
       // NON-EXISTENT DIRECTORY/FILE
-      await assertThrowsAsync(async () => {
-        await Deno[method]("/baddir");
-      }, Deno.errors.NotFound);
+      await assertRejects(
+        async () => {
+          await Deno[method]("/baddir");
+        },
+        Deno.errors.NotFound,
+        `remove '/baddir'`,
+      );
     }
   },
 );
 
 unitTest(
-  { perms: { write: true, read: true } },
-  async function removeDanglingSymlinkSuccess(): Promise<void> {
+  { permissions: { write: true, read: true } },
+  async function removeDanglingSymlinkSuccess() {
     for (const method of REMOVE_METHODS) {
       const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
       if (Deno.build.os === "windows") {
@@ -121,8 +124,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { write: true, read: true } },
-  async function removeValidSymlinkSuccess(): Promise<void> {
+  { permissions: { write: true, read: true } },
+  async function removeValidSymlinkSuccess() {
     for (const method of REMOVE_METHODS) {
       const encoder = new TextEncoder();
       const data = encoder.encode("Test");
@@ -146,19 +149,17 @@ unitTest(
   },
 );
 
-unitTest({ perms: { write: false } }, async function removePerm(): Promise<
-  void
-> {
+unitTest({ permissions: { write: false } }, async function removePerm() {
   for (const method of REMOVE_METHODS) {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno[method]("/baddir");
     }, Deno.errors.PermissionDenied);
   }
 });
 
 unitTest(
-  { perms: { write: true, read: true } },
-  async function removeAllDirSuccess(): Promise<void> {
+  { permissions: { write: true, read: true } },
+  async function removeAllDirSuccess() {
     for (const method of REMOVE_METHODS) {
       // REMOVE EMPTY DIRECTORY
       let path = Deno.makeTempDirSync() + "/dir/subdir";
@@ -194,8 +195,8 @@ unitTest(
 );
 
 unitTest(
-  { perms: { write: true, read: true } },
-  async function removeAllFileSuccess(): Promise<void> {
+  { permissions: { write: true, read: true } },
+  async function removeAllFileSuccess() {
     for (const method of REMOVE_METHODS) {
       // REMOVE FILE
       const enc = new TextEncoder();
@@ -214,23 +215,23 @@ unitTest(
   },
 );
 
-unitTest({ perms: { write: true } }, async function removeAllFail(): Promise<
-  void
-> {
+unitTest({ permissions: { write: true } }, async function removeAllFail() {
   for (const method of REMOVE_METHODS) {
     // NON-EXISTENT DIRECTORY/FILE
-    await assertThrowsAsync(async () => {
-      // Non-existent
-      await Deno[method]("/baddir", { recursive: true });
-    }, Deno.errors.NotFound);
+    await assertRejects(
+      async () => {
+        // Non-existent
+        await Deno[method]("/baddir", { recursive: true });
+      },
+      Deno.errors.NotFound,
+      `remove '/baddir'`,
+    );
   }
 });
 
-unitTest({ perms: { write: false } }, async function removeAllPerm(): Promise<
-  void
-> {
+unitTest({ permissions: { write: false } }, async function removeAllPerm() {
   for (const method of REMOVE_METHODS) {
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno[method]("/baddir", { recursive: true });
     }, Deno.errors.PermissionDenied);
   }
@@ -239,9 +240,9 @@ unitTest({ perms: { write: false } }, async function removeAllPerm(): Promise<
 unitTest(
   {
     ignore: Deno.build.os === "windows",
-    perms: { write: true, read: true },
+    permissions: { write: true, read: true },
   },
-  async function removeUnixSocketSuccess(): Promise<void> {
+  async function removeUnixSocketSuccess() {
     for (const method of REMOVE_METHODS) {
       // MAKE TEMPORARY UNIX SOCKET
       const path = Deno.makeTempDirSync() + "/test.sock";
@@ -259,8 +260,8 @@ unitTest(
 
 if (Deno.build.os === "windows") {
   unitTest(
-    { perms: { run: true, write: true, read: true } },
-    async function removeFileSymlink(): Promise<void> {
+    { permissions: { run: true, write: true, read: true } },
+    async function removeFileSymlink() {
       const symlink = Deno.run({
         cmd: ["cmd", "/c", "mklink", "file_link", "bar"],
         stdout: "null",
@@ -269,15 +270,15 @@ if (Deno.build.os === "windows") {
       assert(await symlink.status());
       symlink.close();
       await Deno.remove("file_link");
-      await assertThrowsAsync(async () => {
+      await assertRejects(async () => {
         await Deno.lstat("file_link");
       }, Deno.errors.NotFound);
     },
   );
 
   unitTest(
-    { perms: { run: true, write: true, read: true } },
-    async function removeDirSymlink(): Promise<void> {
+    { permissions: { run: true, write: true, read: true } },
+    async function removeDirSymlink() {
       const symlink = Deno.run({
         cmd: ["cmd", "/c", "mklink", "/d", "dir_link", "bar"],
         stdout: "null",
@@ -287,7 +288,7 @@ if (Deno.build.os === "windows") {
       symlink.close();
 
       await Deno.remove("dir_link");
-      await assertThrowsAsync(async () => {
+      await assertRejects(async () => {
         await Deno.lstat("dir_link");
       }, Deno.errors.NotFound);
     },

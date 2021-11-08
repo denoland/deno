@@ -1,20 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::custom_error;
-use deno_core::json_op_sync;
+use deno_core::op_sync;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
-use deno_runtime::deno_console;
-use deno_runtime::deno_crypto;
-use deno_runtime::deno_fetch;
-use deno_runtime::deno_url;
-use deno_runtime::deno_web;
-use deno_runtime::deno_webgpu;
-use deno_runtime::deno_websocket;
 use regex::Regex;
 use std::collections::HashMap;
 use std::env;
@@ -36,7 +29,7 @@ fn create_snapshot(
     let display_path = file.strip_prefix(display_root).unwrap();
     let display_path_str = display_path.display().to_string();
     js_runtime
-      .execute(
+      .execute_script(
         &("deno:".to_string() + &display_path_str.replace('\\', "/")),
         &std::fs::read_to_string(&file).unwrap(),
       )
@@ -69,7 +62,13 @@ fn create_compiler_snapshot(
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
   op_crate_libs.insert("deno.webgpu", deno_webgpu::get_declaration());
   op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
+  op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
   op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
+  op_crate_libs.insert(
+    "deno.broadcast_channel",
+    deno_broadcast_channel::get_declaration(),
+  );
+  op_crate_libs.insert("deno.net", deno_net::get_declaration());
 
   // ensure we invalidate the build properly.
   for (_, path) in op_crate_libs.iter() {
@@ -122,11 +121,15 @@ fn create_compiler_snapshot(
     "es2020.sharedmemory",
     "es2020.string",
     "es2020.symbol.wellknown",
+    "es2021",
+    "es2021.promise",
+    "es2021.string",
+    "es2021.weakref",
     "esnext",
+    "esnext.error",
     "esnext.intl",
-    "esnext.promise",
+    "esnext.object",
     "esnext.string",
-    "esnext.weakref",
   ];
 
   let path_dts = cwd.join("dts");
@@ -154,18 +157,22 @@ fn create_compiler_snapshot(
   });
   js_runtime.register_op(
     "op_build_info",
-    json_op_sync(move |_state, _args: Value, _bufs| {
+    op_sync(move |_state, _args: Value, _: ()| {
       Ok(json!({
         "buildSpecifier": build_specifier,
         "libs": build_libs,
       }))
     }),
   );
+  js_runtime.register_op(
+    "op_cwd",
+    op_sync(move |_state, _args: Value, _: ()| Ok(json!("cache:///"))),
+  );
   // using the same op that is used in `tsc.rs` for loading modules and reading
   // files, but a slightly different implementation at build time.
   js_runtime.register_op(
     "op_load",
-    json_op_sync(move |_state, args, _bufs| {
+    op_sync(move |_state, args, _: ()| {
       let v: LoadArgs = serde_json::from_value(args)?;
       // we need a basic file to send to tsc to warm it up.
       if v.specifier == build_specifier {
@@ -208,6 +215,8 @@ fn create_compiler_snapshot(
       }
     }),
   );
+  js_runtime.sync_ops_cache();
+
   create_snapshot(js_runtime, snapshot_path, files);
 }
 
@@ -256,8 +265,17 @@ fn main() {
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
-  println!("cargo:rustc-env=TS_VERSION={}", ts_version());
+  if let Ok(c) = env::var("DENO_CANARY") {
+    println!("cargo:rustc-env=DENO_CANARY={}", c);
+  }
+  println!("cargo:rerun-if-env-changed=DENO_CANARY");
+
   println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_commit_hash());
+  println!("cargo:rerun-if-env-changed=GIT_COMMIT_HASH");
+
+  println!("cargo:rustc-env=TS_VERSION={}", ts_version());
+  println!("cargo:rerun-if-env-changed=TS_VERSION");
+
   println!(
     "cargo:rustc-env=DENO_CONSOLE_LIB_PATH={}",
     deno_console::get_declaration().display()
@@ -283,15 +301,24 @@ fn main() {
     deno_websocket::get_declaration().display()
   );
   println!(
+    "cargo:rustc-env=DENO_WEBSTORAGE_LIB_PATH={}",
+    deno_webstorage::get_declaration().display()
+  );
+  println!(
     "cargo:rustc-env=DENO_CRYPTO_LIB_PATH={}",
     deno_crypto::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_BROADCAST_CHANNEL_LIB_PATH={}",
+    deno_broadcast_channel::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_NET_LIB_PATH={}",
+    deno_net::get_declaration().display()
   );
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
-  if let Ok(c) = env::var("DENO_CANARY") {
-    println!("cargo:rustc-env=DENO_CANARY={}", c);
-  }
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());

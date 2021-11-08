@@ -1,0 +1,51 @@
+[WILDCARD]
+running 7 tests from [WILDCARD]
+test read ... FAILED [WILDCARD]
+test write ... FAILED [WILDCARD]
+test net ... FAILED [WILDCARD]
+test env ... FAILED [WILDCARD]
+test run ... FAILED [WILDCARD]
+test ffi ... FAILED [WILDCARD]
+test hrtime ... FAILED [WILDCARD]
+
+failures:
+
+read
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+write
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+net
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+env
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+run
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+ffi
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+hrtime
+PermissionDenied: Can't escalate parent thread permissions
+[WILDCARD]
+
+failures:
+
+	read
+	write
+	net
+	env
+	run
+	ffi
+	hrtime
+
+test result: FAILED. 0 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]

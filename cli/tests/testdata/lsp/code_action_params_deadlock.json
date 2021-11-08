@@ -1,0 +1,38 @@
+{
+  "textDocument": {
+    "uri": "file:///a/file.ts"
+  },
+  "range": {
+    "start": {
+      "line": 441,
+      "character": 33
+    },
+    "end": {
+      "line": 441,
+      "character": 42
+    }
+  },
+  "context": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 441,
+            "character": 33
+          },
+          "end": {
+            "line": 441,
+            "character": 42
+          }
+        },
+        "severity": 1,
+        "code": 7031,
+        "source": "deno-ts",
+        "message": "Binding element 'debugFlag' implicitly has an 'any' type."
+      }
+    ],
+    "only": [
+      "quickfix"
+    ]
+  }
+}

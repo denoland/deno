@@ -1,20 +1,36 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use deno_core::serde_json::json;
+use log::debug;
+use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::fmt;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceAverage {
   pub name: String,
   pub count: u32,
   pub average_duration: u32,
+}
+
+impl PartialOrd for PerformanceAverage {
+  fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl Ord for PerformanceAverage {
+  fn cmp(&self, other: &Self) -> cmp::Ordering {
+    self.name.cmp(&other.name)
+  }
 }
 
 /// A structure which serves as a start of a measurement span.
@@ -31,6 +47,12 @@ pub struct PerformanceMeasure {
   pub name: String,
   pub count: u32,
   pub duration: Duration,
+}
+
+impl fmt::Display for PerformanceMeasure {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{} ({}ms)", self.name, self.duration.as_millis())
+  }
 }
 
 impl From<PerformanceMark> for PerformanceMeasure {
@@ -71,7 +93,7 @@ impl Performance {
   #[cfg(test)]
   pub fn average(&self, name: &str) -> Option<(usize, Duration)> {
     let mut items = Vec::new();
-    for measure in self.measures.lock().unwrap().iter() {
+    for measure in self.measures.lock().iter() {
       if measure.name == name {
         items.push(measure.duration);
       }
@@ -90,7 +112,7 @@ impl Performance {
   /// of each measurement.
   pub fn averages(&self) -> Vec<PerformanceAverage> {
     let mut averages: HashMap<String, Vec<Duration>> = HashMap::new();
-    for measure in self.measures.lock().unwrap().iter() {
+    for measure in self.measures.lock().iter() {
       averages
         .entry(measure.name.clone())
         .or_default()
@@ -112,11 +134,29 @@ impl Performance {
   /// Marks the start of a measurement which returns a performance mark
   /// structure, which is then passed to `.measure()` to finalize the duration
   /// and add it to the internal buffer.
-  pub fn mark<S: AsRef<str>>(&self, name: S) -> PerformanceMark {
+  pub fn mark<S: AsRef<str>, V: Serialize>(
+    &self,
+    name: S,
+    maybe_args: Option<V>,
+  ) -> PerformanceMark {
     let name = name.as_ref();
-    let mut counts = self.counts.lock().unwrap();
+    let mut counts = self.counts.lock();
     let count = counts.entry(name.to_string()).or_insert(0);
     *count += 1;
+    let msg = if let Some(args) = maybe_args {
+      json!({
+        "type": "mark",
+        "name": name,
+        "count": count,
+        "args": args,
+      })
+    } else {
+      json!({
+        "type": "mark",
+        "name": name,
+      })
+    };
+    debug!("{},", msg);
     PerformanceMark {
       name: name.to_string(),
       count: *count,
@@ -129,13 +169,27 @@ impl Performance {
   /// measurement to the internal buffer.
   pub fn measure(&self, mark: PerformanceMark) -> Duration {
     let measure = PerformanceMeasure::from(mark);
+    debug!(
+      "{},",
+      json!({
+        "type": "measure",
+        "name": measure.name,
+        "count": measure.count,
+        "duration": measure.duration.as_millis() as u32,
+      })
+    );
     let duration = measure.duration;
-    let mut measures = self.measures.lock().unwrap();
-    measures.push_back(measure);
+    let mut measures = self.measures.lock();
+    measures.push_front(measure);
     while measures.len() > self.max_size {
-      measures.pop_front();
+      measures.pop_back();
     }
     duration
+  }
+
+  pub fn to_vec(&self) -> Vec<PerformanceMeasure> {
+    let measures = self.measures.lock();
+    measures.iter().cloned().collect()
   }
 }
 
@@ -146,9 +200,9 @@ mod tests {
   #[test]
   fn test_average() {
     let performance = Performance::default();
-    let mark1 = performance.mark("a");
-    let mark2 = performance.mark("a");
-    let mark3 = performance.mark("b");
+    let mark1 = performance.mark("a", None::<()>);
+    let mark2 = performance.mark("a", None::<()>);
+    let mark3 = performance.mark("b", None::<()>);
     performance.measure(mark2);
     performance.measure(mark1);
     performance.measure(mark3);
@@ -162,8 +216,8 @@ mod tests {
   #[test]
   fn test_averages() {
     let performance = Performance::default();
-    let mark1 = performance.mark("a");
-    let mark2 = performance.mark("a");
+    let mark1 = performance.mark("a", None::<()>);
+    let mark2 = performance.mark("a", None::<()>);
     performance.measure(mark2);
     performance.measure(mark1);
     let averages = performance.averages();

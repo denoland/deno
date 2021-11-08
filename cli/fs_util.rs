@@ -1,7 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::error::Context;
 pub use deno_core::normalize_path;
+use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
 use std::env::current_dir;
 use std::fs::OpenOptions;
@@ -65,23 +67,60 @@ pub fn write_file_2<T: AsRef<[u8]>>(
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
-  let mut canonicalized_path = path.canonicalize()?;
-  if cfg!(windows) {
-    canonicalized_path = PathBuf::from(
-      canonicalized_path
-        .display()
-        .to_string()
-        .trim_start_matches("\\\\?\\"),
-    );
+  let path = path.canonicalize()?;
+  #[cfg(windows)]
+  return Ok(strip_unc_prefix(path));
+  #[cfg(not(windows))]
+  return Ok(path);
+}
+
+#[cfg(windows)]
+fn strip_unc_prefix(path: PathBuf) -> PathBuf {
+  use std::path::Component;
+  use std::path::Prefix;
+
+  let mut components = path.components();
+  match components.next() {
+    Some(Component::Prefix(prefix)) => {
+      match prefix.kind() {
+        // \\?\device
+        Prefix::Verbatim(device) => {
+          let mut path = PathBuf::new();
+          path.push(format!(r"\\{}\", device.to_string_lossy()));
+          path.extend(components.filter(|c| !matches!(c, Component::RootDir)));
+          path
+        }
+        // \\?\c:\path
+        Prefix::VerbatimDisk(_) => {
+          let mut path = PathBuf::new();
+          path.push(prefix.as_os_str().to_string_lossy().replace(r"\\?\", ""));
+          path.extend(components);
+          path
+        }
+        // \\?\UNC\hostname\share_name\path
+        Prefix::VerbatimUNC(hostname, share_name) => {
+          let mut path = PathBuf::new();
+          path.push(format!(
+            r"\\{}\{}\",
+            hostname.to_string_lossy(),
+            share_name.to_string_lossy()
+          ));
+          path.extend(components.filter(|c| !matches!(c, Component::RootDir)));
+          path
+        }
+        _ => path,
+      }
+    }
+    _ => path,
   }
-  Ok(canonicalized_path)
 }
 
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
   } else {
-    let cwd = current_dir().unwrap();
+    let cwd =
+      current_dir().context("Failed to get current working directory")?;
     cwd.join(path)
   };
 
@@ -103,7 +142,68 @@ pub fn is_supported_ext_fmt(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
-      "ts" | "tsx" | "js" | "jsx" | "mjs" | "md" | "json" | "jsonc"
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "json"
+        | "jsonc"
+        | "md"
+        | "mkd"
+        | "mkdn"
+        | "mdwn"
+        | "mdown"
+        | "markdown"
+    )
+  } else {
+    false
+  }
+}
+
+/// Checks if the path has a basename and extension Deno supports for tests.
+pub fn is_supported_test_path(path: &Path) -> bool {
+  use std::path::Component;
+  if let Some(Component::Normal(basename_os_str)) =
+    path.components().next_back()
+  {
+    let basename = basename_os_str.to_string_lossy();
+    basename.ends_with("_test.ts")
+      || basename.ends_with("_test.tsx")
+      || basename.ends_with("_test.js")
+      || basename.ends_with("_test.mjs")
+      || basename.ends_with("_test.jsx")
+      || basename.ends_with(".test.ts")
+      || basename.ends_with(".test.tsx")
+      || basename.ends_with(".test.js")
+      || basename.ends_with(".test.mjs")
+      || basename.ends_with(".test.jsx")
+      || basename == "test.ts"
+      || basename == "test.tsx"
+      || basename == "test.js"
+      || basename == "test.mjs"
+      || basename == "test.jsx"
+  } else {
+    false
+  }
+}
+
+/// Checks if the path has an extension Deno supports for tests.
+pub fn is_supported_test_ext(path: &Path) -> bool {
+  if let Some(ext) = get_extension(path) {
+    matches!(
+      ext.as_str(),
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "md"
+        | "mkd"
+        | "mkdn"
+        | "mdwn"
+        | "mdown"
+        | "markdown"
     )
   } else {
     false
@@ -133,17 +233,14 @@ where
   // retain only the paths which exist and ignore the rest
   let canonicalized_ignore: Vec<PathBuf> = ignore
     .iter()
-    .filter_map(|i| i.canonicalize().ok())
+    .filter_map(|i| canonicalize_path(i).ok())
     .collect();
-
-  let cur_dir = [std::env::current_dir()?];
-  let files = if files.is_empty() { &cur_dir } else { files };
 
   for file in files {
     for entry in WalkDir::new(file)
       .into_iter()
       .filter_entry(|e| {
-        e.path().canonicalize().map_or(false, |c| {
+        canonicalize_path(e.path()).map_or(false, |c| {
           !canonicalized_ignore.iter().any(|i| c.starts_with(i))
         })
       })
@@ -152,11 +249,63 @@ where
         _ => None,
       })
     {
-      target_files.push(entry.into_path().canonicalize()?)
+      target_files.push(canonicalize_path(entry.path())?)
     }
   }
 
   Ok(target_files)
+}
+
+/// Collects module specifiers that satisfy the given predicate as a file path, by recursively walking `include`.
+/// Specifiers that start with http and https are left intact.
+pub fn collect_specifiers<P>(
+  include: Vec<String>,
+  ignore: &[PathBuf],
+  predicate: P,
+) -> Result<Vec<ModuleSpecifier>, AnyError>
+where
+  P: Fn(&Path) -> bool,
+{
+  let mut prepared = vec![];
+
+  let root_path = std::env::current_dir()?;
+  for path in include {
+    let lowercase_path = path.to_lowercase();
+    if lowercase_path.starts_with("http://")
+      || lowercase_path.starts_with("https://")
+    {
+      let url = ModuleSpecifier::parse(&path)?;
+      prepared.push(url);
+      continue;
+    }
+
+    let p = normalize_path(&root_path.join(path));
+    if p.is_dir() {
+      let test_files = collect_files(&[p], ignore, &predicate).unwrap();
+      let mut test_files_as_urls = test_files
+        .iter()
+        .map(|f| ModuleSpecifier::from_file_path(f).unwrap())
+        .collect::<Vec<ModuleSpecifier>>();
+
+      test_files_as_urls.sort();
+      prepared.extend(test_files_as_urls);
+    } else {
+      let url = ModuleSpecifier::from_file_path(p).unwrap();
+      prepared.push(url);
+    }
+  }
+
+  Ok(prepared)
+}
+
+// Asynchronously removes a directory and all its descendants, but does not error
+// when the directory does not exist.
+pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
+  let result = tokio::fs::remove_dir_all(path).await;
+  match result {
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    _ => result,
+  }
 }
 
 #[cfg(test)]
@@ -212,8 +361,8 @@ mod tests {
     assert!(!is_supported_ext(Path::new("tests/subdir/redirects")));
     assert!(!is_supported_ext(Path::new("README.md")));
     assert!(is_supported_ext(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext(Path::new("cli/tests/001_hello.js")));
-    assert!(is_supported_ext(Path::new("cli/tests/002_hello.ts")));
+    assert!(is_supported_ext(Path::new("testdata/001_hello.js")));
+    assert!(is_supported_ext(Path::new("testdata/002_hello.ts")));
     assert!(is_supported_ext(Path::new("foo.jsx")));
     assert!(is_supported_ext(Path::new("foo.tsx")));
     assert!(is_supported_ext(Path::new("foo.TS")));
@@ -229,9 +378,14 @@ mod tests {
     assert!(!is_supported_ext_fmt(Path::new("tests/subdir/redirects")));
     assert!(is_supported_ext_fmt(Path::new("README.md")));
     assert!(is_supported_ext_fmt(Path::new("readme.MD")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mkd")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mkdn")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mdwn")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
+    assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
     assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext_fmt(Path::new("cli/tests/001_hello.js")));
-    assert!(is_supported_ext_fmt(Path::new("cli/tests/002_hello.ts")));
+    assert!(is_supported_ext_fmt(Path::new("testdata/001_hello.js")));
+    assert!(is_supported_ext_fmt(Path::new("testdata/002_hello.ts")));
     assert!(is_supported_ext_fmt(Path::new("foo.jsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.tsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.TS")));
@@ -244,6 +398,61 @@ mod tests {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+  }
+
+  #[test]
+  fn test_is_supported_test_ext() {
+    assert!(!is_supported_test_ext(Path::new("tests/subdir/redirects")));
+    assert!(is_supported_test_ext(Path::new("README.md")));
+    assert!(is_supported_test_ext(Path::new("readme.MD")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mkd")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mkdn")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mdwn")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
+    assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
+    assert!(is_supported_test_ext(Path::new("lib/typescript.d.ts")));
+    assert!(is_supported_test_ext(Path::new("testdata/001_hello.js")));
+    assert!(is_supported_test_ext(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_test_ext(Path::new("foo.jsx")));
+    assert!(is_supported_test_ext(Path::new("foo.tsx")));
+    assert!(is_supported_test_ext(Path::new("foo.TS")));
+    assert!(is_supported_test_ext(Path::new("foo.TSX")));
+    assert!(is_supported_test_ext(Path::new("foo.JS")));
+    assert!(is_supported_test_ext(Path::new("foo.JSX")));
+    assert!(is_supported_test_ext(Path::new("foo.mjs")));
+    assert!(!is_supported_test_ext(Path::new("foo.mjsx")));
+    assert!(!is_supported_test_ext(Path::new("foo.jsonc")));
+    assert!(!is_supported_test_ext(Path::new("foo.JSONC")));
+    assert!(!is_supported_test_ext(Path::new("foo.json")));
+    assert!(!is_supported_test_ext(Path::new("foo.JsON")));
+  }
+
+  #[test]
+  fn test_is_supported_test_path() {
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.ts"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.tsx"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.js"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.jsx"
+    )));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.ts")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.tsx")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.js")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.jsx")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.js")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.jsx")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.ts")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.tsx")));
+    assert!(!is_supported_test_path(Path::new("README.md")));
+    assert!(!is_supported_test_path(Path::new("lib/typescript.d.ts")));
+    assert!(!is_supported_test_path(Path::new("notatest.js")));
+    assert!(!is_supported_test_path(Path::new("NotAtest.ts")));
   }
 
   #[test]
@@ -305,5 +514,118 @@ mod tests {
       assert!(result.iter().any(|r| r.ends_with(e)));
     }
     assert_eq!(result.len(), expected.len());
+  }
+
+  #[test]
+  fn test_collect_specifiers() {
+    fn create_files(dir_path: &Path, files: &[&str]) {
+      std::fs::create_dir(dir_path).expect("Failed to create directory");
+      for f in files {
+        let path = dir_path.join(f);
+        std::fs::write(path, "").expect("Failed to create file");
+      }
+    }
+
+    // dir.ts
+    // ├── a.ts
+    // ├── b.js
+    // ├── child
+    // │   ├── e.mjs
+    // │   ├── f.mjsx
+    // │   ├── .foo.TS
+    // │   └── README.md
+    // ├── c.tsx
+    // ├── d.jsx
+    // └── ignore
+    //     ├── g.d.ts
+    //     └── .gitignore
+
+    let t = TempDir::new().expect("tempdir fail");
+
+    let root_dir_path = t.path().join("dir.ts");
+    let root_dir_files = ["a.ts", "b.js", "c.tsx", "d.jsx"];
+    create_files(&root_dir_path, &root_dir_files);
+
+    let child_dir_path = root_dir_path.join("child");
+    let child_dir_files = ["e.mjs", "f.mjsx", ".foo.TS", "README.md"];
+    create_files(&child_dir_path, &child_dir_files);
+
+    let ignore_dir_path = root_dir_path.join("ignore");
+    let ignore_dir_files = ["g.d.ts", ".gitignore"];
+    create_files(&ignore_dir_path, &ignore_dir_files);
+
+    let result = collect_specifiers(
+      vec![
+        "http://localhost:8080".to_string(),
+        root_dir_path.to_str().unwrap().to_string(),
+        "https://localhost:8080".to_string(),
+      ],
+      &[ignore_dir_path],
+      |path| {
+        // exclude dotfiles
+        path
+          .file_name()
+          .and_then(|f| f.to_str())
+          .map_or(false, |f| !f.starts_with('.'))
+      },
+    )
+    .unwrap();
+
+    let root_dir_url = ModuleSpecifier::from_file_path(
+      canonicalize_path(&root_dir_path).unwrap(),
+    )
+    .unwrap()
+    .to_string();
+    let expected: Vec<ModuleSpecifier> = [
+      "http://localhost:8080",
+      &format!("{}/a.ts", root_dir_url),
+      &format!("{}/b.js", root_dir_url),
+      &format!("{}/c.tsx", root_dir_url),
+      &format!("{}/child/README.md", root_dir_url),
+      &format!("{}/child/e.mjs", root_dir_url),
+      &format!("{}/child/f.mjsx", root_dir_url),
+      &format!("{}/d.jsx", root_dir_url),
+      "https://localhost:8080",
+    ]
+    .iter()
+    .map(|f| ModuleSpecifier::parse(f).unwrap())
+    .collect::<Vec<ModuleSpecifier>>();
+
+    assert_eq!(result, expected);
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn test_strip_unc_prefix() {
+    run_test(r"C:\", r"C:\");
+    run_test(r"C:\test\file.txt", r"C:\test\file.txt");
+
+    run_test(r"\\?\C:\", r"C:\");
+    run_test(r"\\?\C:\test\file.txt", r"C:\test\file.txt");
+
+    run_test(r"\\.\C:\", r"\\.\C:\");
+    run_test(r"\\.\C:\Test\file.txt", r"\\.\C:\Test\file.txt");
+
+    run_test(r"\\?\UNC\localhost\", r"\\localhost");
+    run_test(r"\\?\UNC\localhost\c$\", r"\\localhost\c$");
+    run_test(
+      r"\\?\UNC\localhost\c$\Windows\file.txt",
+      r"\\localhost\c$\Windows\file.txt",
+    );
+    run_test(r"\\?\UNC\wsl$\deno.json", r"\\wsl$\deno.json");
+
+    run_test(r"\\?\server1", r"\\server1");
+    run_test(r"\\?\server1\e$\", r"\\server1\e$\");
+    run_test(
+      r"\\?\server1\e$\test\file.txt",
+      r"\\server1\e$\test\file.txt",
+    );
+
+    fn run_test(input: &str, expected: &str) {
+      assert_eq!(
+        strip_unc_prefix(PathBuf::from(input)),
+        PathBuf::from(expected)
+      );
+    }
   }
 }

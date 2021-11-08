@@ -3,30 +3,24 @@
 use super::language_server;
 use super::tsc;
 
-use crate::ast;
-use crate::import_map::ImportMap;
-use crate::media_type::MediaType;
-use crate::module_graph::parse_deno_types;
-use crate::module_graph::parse_ts_reference;
-use crate::module_graph::TypeScriptReference;
+use crate::config_file::LintConfig;
 use crate::tools::lint::create_linter;
+use crate::tools::lint::get_configured_rules;
 
+use deno_ast::SourceTextInfo;
+use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
-use deno_lint::rules;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;
+use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::fmt;
-use std::rc::Rc;
 
 lazy_static::lazy_static! {
   /// Diagnostic error codes which actually are the same, and so when grouping
@@ -56,10 +50,26 @@ lazy_static::lazy_static! {
   .iter()
   .cloned()
   .collect();
+
+  static ref IMPORT_SPECIFIER_RE: Regex = Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap();
+
+  static ref DENO_TYPES_RE: Regex =
+    Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#)
+      .unwrap();
+  static ref TRIPLE_SLASH_REFERENCE_RE: Regex =
+    Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap();
+  static ref PATH_REFERENCE_RE: Regex =
+    Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap();
+  static ref TYPES_REFERENCE_RE: Regex =
+    Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap();
+
 }
+
+const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
 
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
+#[derive(Debug, PartialEq, Eq)]
 pub enum Category {
   /// A lint diagnostic, where the first element is the message.
   Lint {
@@ -70,36 +80,61 @@ pub enum Category {
 }
 
 /// A structure to hold a reference to a diagnostic message.
+#[derive(Debug, PartialEq, Eq)]
 pub struct Reference {
   category: Category,
   range: Range,
 }
 
+impl Reference {
+  pub fn to_diagnostic(&self) -> lsp::Diagnostic {
+    match &self.category {
+      Category::Lint {
+        message,
+        code,
+        hint,
+      } => lsp::Diagnostic {
+        range: self.range,
+        severity: Some(lsp::DiagnosticSeverity::Warning),
+        code: Some(lsp::NumberOrString::String(code.to_string())),
+        code_description: None,
+        source: Some("deno-lint".to_string()),
+        message: {
+          let mut msg = message.to_string();
+          if let Some(hint) = hint {
+            msg.push('\n');
+            msg.push_str(hint);
+          }
+          msg
+        },
+        related_information: None,
+        tags: None, // we should tag unused code
+        data: None,
+      },
+    }
+  }
+}
+
 fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
   Range {
     start: Position {
-      line: (range.start.line - 1) as u32,
-      character: range.start.col as u32,
+      line: range.start.line_index as u32,
+      character: range.start.column_index as u32,
     },
     end: Position {
-      line: (range.end.line - 1) as u32,
-      character: range.end.col as u32,
+      line: range.end.line_index as u32,
+      character: range.end.column_index as u32,
     },
   }
 }
 
 pub fn get_lint_references(
-  specifier: &ModuleSpecifier,
-  media_type: &MediaType,
-  source_code: &str,
+  parsed_source: &deno_ast::ParsedSource,
+  maybe_lint_config: Option<&LintConfig>,
 ) -> Result<Vec<Reference>, AnyError> {
-  let syntax = ast::get_syntax(media_type);
-  let lint_rules = rules::get_recommended_rules();
-  let mut linter = create_linter(syntax, lint_rules);
-  // TODO(@kitsonk) we should consider caching the swc source file versions for
-  // reuse by other processes
-  let (_, lint_diagnostics) =
-    linter.lint(specifier.to_string(), source_code.to_string())?;
+  let lint_rules = get_configured_rules(maybe_lint_config, None, None, None)?;
+  let linter = create_linter(parsed_source.media_type(), lint_rules);
+  let lint_diagnostics = linter.lint_with_ast(parsed_source);
 
   Ok(
     lint_diagnostics
@@ -116,243 +151,138 @@ pub fn get_lint_references(
   )
 }
 
-pub fn references_to_diagnostics(
-  references: Vec<Reference>,
-) -> Vec<lsp::Diagnostic> {
-  references
-    .into_iter()
-    .map(|r| match r.category {
-      Category::Lint { message, code, .. } => lsp::Diagnostic {
-        range: r.range,
-        severity: Some(lsp::DiagnosticSeverity::Warning),
-        code: Some(lsp::NumberOrString::String(code)),
-        code_description: None,
-        source: Some("deno-lint".to_string()),
-        message,
-        related_information: None,
-        tags: None, // we should tag unused code
-        data: None,
-      },
-    })
-    .collect()
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct Dependency {
-  pub is_dynamic: bool,
-  pub maybe_code: Option<ResolvedDependency>,
-  pub maybe_code_specifier_range: Option<Range>,
-  pub maybe_type: Option<ResolvedDependency>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResolvedDependencyErr {
-  InvalidDowngrade,
-  InvalidLocalImport,
-  InvalidSpecifier(ModuleResolutionError),
-  Missing,
-}
-
-impl ResolvedDependencyErr {
-  pub fn as_code(&self) -> lsp::NumberOrString {
-    match self {
-      Self::InvalidDowngrade => {
-        lsp::NumberOrString::String("invalid-downgrade".to_string())
-      }
-      Self::InvalidLocalImport => {
-        lsp::NumberOrString::String("invalid-local-import".to_string())
-      }
-      Self::InvalidSpecifier(_) => {
-        lsp::NumberOrString::String("invalid-specifier".to_string())
-      }
-      Self::Missing => lsp::NumberOrString::String("missing".to_string()),
-    }
-  }
-}
-
-impl fmt::Display for ResolvedDependencyErr {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self {
-      Self::InvalidDowngrade => {
-        write!(f, "HTTPS modules cannot import HTTP modules.")
-      }
-      Self::InvalidLocalImport => {
-        write!(f, "Remote modules cannot import local modules.")
-      }
-      Self::InvalidSpecifier(err) => write!(f, "{}", err),
-      Self::Missing => write!(f, "The module is unexpectedly missing."),
-    }
-  }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResolvedDependency {
-  Resolved(ModuleSpecifier),
-  Err(ResolvedDependencyErr),
-}
-
-pub fn resolve_import(
-  specifier: &str,
-  referrer: &ModuleSpecifier,
-  maybe_import_map: &Option<ImportMap>,
-) -> ResolvedDependency {
-  let maybe_mapped = if let Some(import_map) = maybe_import_map {
-    if let Ok(maybe_specifier) =
-      import_map.resolve(specifier, referrer.as_str())
-    {
-      maybe_specifier
-    } else {
-      None
-    }
-  } else {
-    None
-  };
-  let remapped = maybe_mapped.is_some();
-  let specifier = if let Some(remapped) = maybe_mapped {
-    remapped
-  } else {
-    match deno_core::resolve_import(specifier, referrer.as_str()) {
-      Ok(resolved) => resolved,
-      Err(err) => {
-        return ResolvedDependency::Err(
-          ResolvedDependencyErr::InvalidSpecifier(err),
-        )
-      }
-    }
-  };
-  let referrer_scheme = referrer.scheme();
-  let specifier_scheme = specifier.scheme();
-  if referrer_scheme == "https" && specifier_scheme == "http" {
-    return ResolvedDependency::Err(ResolvedDependencyErr::InvalidDowngrade);
-  }
-  if (referrer_scheme == "https" || referrer_scheme == "http")
-    && !(specifier_scheme == "https" || specifier_scheme == "http")
-    && !remapped
-  {
-    return ResolvedDependency::Err(ResolvedDependencyErr::InvalidLocalImport);
-  }
-
-  ResolvedDependency::Resolved(specifier)
-}
-
-pub fn parse_module(
-  specifier: &ModuleSpecifier,
-  source: &str,
-  media_type: &MediaType,
-) -> Result<ast::ParsedModule, AnyError> {
-  let source_map = Rc::new(swc_common::SourceMap::default());
-  ast::parse_with_source_map(
-    &specifier.to_string(),
-    source,
-    &media_type,
-    source_map,
-  )
-}
-
-// TODO(@kitsonk) a lot of this logic is duplicated in module_graph.rs in
-// Module::parse() and should be refactored out to a common function.
-pub fn analyze_dependencies(
-  specifier: &ModuleSpecifier,
-  media_type: &MediaType,
-  parsed_module: &ast::ParsedModule,
-  maybe_import_map: &Option<ImportMap>,
-) -> (HashMap<String, Dependency>, Option<ResolvedDependency>) {
-  let mut maybe_type = None;
-  let mut dependencies = HashMap::<String, Dependency>::new();
-
-  // Parse leading comments for supported triple slash references.
-  for comment in parsed_module.get_leading_comments().iter() {
-    if let Some(ts_reference) = parse_ts_reference(&comment.text) {
-      match ts_reference {
-        TypeScriptReference::Path(import) => {
-          let dep = dependencies.entry(import.clone()).or_default();
-          let resolved_import =
-            resolve_import(&import, specifier, maybe_import_map);
-          dep.maybe_code = Some(resolved_import);
-        }
-        TypeScriptReference::Types(import) => {
-          let resolved_import =
-            resolve_import(&import, specifier, maybe_import_map);
-          if media_type == &MediaType::JavaScript
-            || media_type == &MediaType::Jsx
-          {
-            maybe_type = Some(resolved_import)
-          } else {
-            let dep = dependencies.entry(import).or_default();
-            dep.maybe_type = Some(resolved_import);
-          }
-        }
-      }
-    }
-  }
-
-  // Parse ES and type only imports
-  let descriptors = parsed_module.analyze_dependencies();
-  for desc in descriptors.into_iter().filter(|desc| {
-    desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
-  }) {
-    let resolved_import =
-      resolve_import(&desc.specifier, specifier, maybe_import_map);
-
-    let maybe_resolved_type_dependency =
-      // Check for `@deno-types` pragmas that affect the import
-      if let Some(comment) = desc.leading_comments.last() {
-        parse_deno_types(&comment.text).as_ref().map(|deno_types| resolve_import(deno_types, specifier, maybe_import_map))
-      } else {
-        None
-      };
-
-    let dep = dependencies.entry(desc.specifier.to_string()).or_default();
-    dep.is_dynamic = desc.is_dynamic;
-    match desc.kind {
-      swc_ecmascript::dep_graph::DependencyKind::ExportType
-      | swc_ecmascript::dep_graph::DependencyKind::ImportType => {
-        dep.maybe_type = Some(resolved_import)
-      }
-      _ => {
-        dep.maybe_code_specifier_range = Some(Range {
-          start: Position {
-            line: (desc.specifier_line - 1) as u32,
-            character: desc.specifier_col as u32,
-          },
-          end: Position {
-            line: (desc.specifier_line - 1) as u32,
-            character: (desc.specifier_col + desc.specifier.chars().count() + 2)
-              as u32,
-          },
-        });
-        dep.maybe_code = Some(resolved_import);
-      }
-    }
-    if maybe_resolved_type_dependency.is_some() && dep.maybe_type.is_none() {
-      dep.maybe_type = maybe_resolved_type_dependency;
-    }
-  }
-
-  (dependencies, maybe_type)
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub enum CodeLensSource {
-  #[serde(rename = "implementations")]
-  Implementations,
-  #[serde(rename = "references")]
-  References,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeLensData {
-  pub source: CodeLensSource,
-  pub specifier: ModuleSpecifier,
-}
-
 fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
   match code {
     Some(lsp::NumberOrString::String(str)) => str.clone(),
     Some(lsp::NumberOrString::Number(num)) => num.to_string(),
     _ => "".to_string(),
   }
+}
+
+/// Iterate over the supported extensions, concatenating the extension on the
+/// specifier, returning the first specifier that is resolve-able, otherwise
+/// None if none match.
+fn check_specifier(
+  specifier: &str,
+  referrer: &ModuleSpecifier,
+  snapshot: &language_server::StateSnapshot,
+) -> Option<String> {
+  for ext in SUPPORTED_EXTENSIONS {
+    let specifier_with_ext = format!("{}{}", specifier, ext);
+    if snapshot
+      .documents
+      .contains_import(&specifier_with_ext, referrer)
+    {
+      return Some(specifier_with_ext);
+    }
+  }
+  None
+}
+
+/// For a set of tsc changes, can them for any that contain something that looks
+/// like an import and rewrite the import specifier to include the extension
+pub(crate) fn fix_ts_import_changes(
+  referrer: &ModuleSpecifier,
+  changes: &[tsc::FileTextChanges],
+  language_server: &language_server::Inner,
+) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
+  let mut r = Vec::new();
+  let snapshot = language_server.snapshot()?;
+  for change in changes {
+    let mut text_changes = Vec::new();
+    for text_change in &change.text_changes {
+      if let Some(captures) =
+        IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
+      {
+        let specifier = captures
+          .get(1)
+          .ok_or_else(|| anyhow!("Missing capture."))?
+          .as_str();
+        if let Some(new_specifier) =
+          check_specifier(specifier, referrer, &snapshot)
+        {
+          let new_text =
+            text_change.new_text.replace(specifier, &new_specifier);
+          text_changes.push(tsc::TextChange {
+            span: text_change.span.clone(),
+            new_text,
+          });
+        } else {
+          text_changes.push(text_change.clone());
+        }
+      } else {
+        text_changes.push(text_change.clone());
+      }
+    }
+    r.push(tsc::FileTextChanges {
+      file_name: change.file_name.clone(),
+      text_changes,
+      is_new_file: change.is_new_file,
+    });
+  }
+  Ok(r)
+}
+
+/// Fix tsc import code actions so that the module specifier is correct for
+/// resolution by Deno (includes the extension).
+fn fix_ts_import_action(
+  referrer: &ModuleSpecifier,
+  action: &tsc::CodeFixAction,
+  language_server: &language_server::Inner,
+) -> Result<tsc::CodeFixAction, AnyError> {
+  if action.fix_name == "import" {
+    let change = action
+      .changes
+      .get(0)
+      .ok_or_else(|| anyhow!("Unexpected action changes."))?;
+    let text_change = change
+      .text_changes
+      .get(0)
+      .ok_or_else(|| anyhow!("Missing text change."))?;
+    if let Some(captures) = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
+    {
+      let specifier = captures
+        .get(1)
+        .ok_or_else(|| anyhow!("Missing capture."))?
+        .as_str();
+      let snapshot = language_server.snapshot()?;
+      if let Some(new_specifier) =
+        check_specifier(specifier, referrer, &snapshot)
+      {
+        let description = action.description.replace(specifier, &new_specifier);
+        let changes = action
+          .changes
+          .iter()
+          .map(|c| {
+            let text_changes = c
+              .text_changes
+              .iter()
+              .map(|tc| tsc::TextChange {
+                span: tc.span.clone(),
+                new_text: tc.new_text.replace(specifier, &new_specifier),
+              })
+              .collect();
+            tsc::FileTextChanges {
+              file_name: c.file_name.clone(),
+              text_changes,
+              is_new_file: c.is_new_file,
+            }
+          })
+          .collect();
+
+        return Ok(tsc::CodeFixAction {
+          description,
+          changes,
+          commands: None,
+          fix_name: action.fix_name.clone(),
+          fix_id: None,
+          fix_all_description: None,
+        });
+      }
+    }
+  }
+
+  Ok(action.clone())
 }
 
 /// Determines if two TypeScript diagnostic codes are effectively equivalent.
@@ -436,6 +366,7 @@ pub struct DenoFixData {
 #[derive(Debug, Clone)]
 enum CodeActionKind {
   Deno(lsp::CodeAction),
+  DenoLint(lsp::CodeAction),
   Tsc(lsp::CodeAction, tsc::CodeFixAction),
 }
 
@@ -482,9 +413,172 @@ impl CodeActionCollection {
     Ok(())
   }
 
+  pub(crate) fn add_deno_lint_ignore_action(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    diagnostic: &lsp::Diagnostic,
+    maybe_text_info: Option<SourceTextInfo>,
+    maybe_parsed_source: Option<deno_ast::ParsedSource>,
+  ) -> Result<(), AnyError> {
+    let code = diagnostic
+      .code
+      .as_ref()
+      .map(|v| match v {
+        lsp::NumberOrString::String(v) => v.to_owned(),
+        _ => "".to_string(),
+      })
+      .unwrap();
+
+    let line_content = maybe_text_info.map(|ti| {
+      ti.line_text(diagnostic.range.start.line as usize)
+        .to_string()
+    });
+
+    let mut changes = HashMap::new();
+    changes.insert(
+      specifier.clone(),
+      vec![lsp::TextEdit {
+        new_text: prepend_whitespace(
+          format!("// deno-lint-ignore {}\n", code),
+          line_content,
+        ),
+        range: lsp::Range {
+          start: lsp::Position {
+            line: diagnostic.range.start.line,
+            character: 0,
+          },
+          end: lsp::Position {
+            line: diagnostic.range.start.line,
+            character: 0,
+          },
+        },
+      }],
+    );
+    let ignore_error_action = lsp::CodeAction {
+      title: format!("Disable {} for this line", code),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data: None,
+      edit: Some(lsp::WorkspaceEdit {
+        changes: Some(changes),
+        change_annotations: None,
+        document_changes: None,
+      }),
+    };
+    self
+      .actions
+      .push(CodeActionKind::DenoLint(ignore_error_action));
+
+    // Disable a lint error for the entire file.
+    let maybe_ignore_comment = maybe_parsed_source.clone().and_then(|ps| {
+      // Note: we can use ps.get_leading_comments() but it doesn't
+      // work when shebang is present at the top of the file.
+      ps.comments().get_vec().iter().find_map(|c| {
+        let comment_text = c.text.trim();
+        comment_text.split_whitespace().next().and_then(|prefix| {
+          if prefix == "deno-lint-ignore-file" {
+            Some(c.clone())
+          } else {
+            None
+          }
+        })
+      })
+    });
+
+    let mut new_text = format!("// deno-lint-ignore-file {}\n", code);
+    let mut range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 0,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 0,
+      },
+    };
+    // If ignore file comment already exists, append the lint code
+    // to the existing comment.
+    if let Some(ignore_comment) = maybe_ignore_comment {
+      new_text = format!(" {}", code);
+      // Get the end position of the comment.
+      let line = maybe_parsed_source
+        .unwrap()
+        .source()
+        .line_and_column_index(ignore_comment.span.hi());
+      let position = lsp::Position {
+        line: line.line_index as u32,
+        character: line.column_index as u32,
+      };
+      // Set the edit range to the end of the comment.
+      range.start = position;
+      range.end = position;
+    }
+
+    let mut changes = HashMap::new();
+    changes.insert(specifier.clone(), vec![lsp::TextEdit { new_text, range }]);
+    let ignore_file_action = lsp::CodeAction {
+      title: format!("Disable {} for the entire file", code),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data: None,
+      edit: Some(lsp::WorkspaceEdit {
+        changes: Some(changes),
+        change_annotations: None,
+        document_changes: None,
+      }),
+    };
+    self
+      .actions
+      .push(CodeActionKind::DenoLint(ignore_file_action));
+
+    let mut changes = HashMap::new();
+    changes.insert(
+      specifier.clone(),
+      vec![lsp::TextEdit {
+        new_text: "// deno-lint-ignore-file\n".to_string(),
+        range: lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 0,
+          },
+          end: lsp::Position {
+            line: 0,
+            character: 0,
+          },
+        },
+      }],
+    );
+    let ignore_file_action = lsp::CodeAction {
+      title: "Ignore lint errors for the entire file".to_string(),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data: None,
+      edit: Some(lsp::WorkspaceEdit {
+        changes: Some(changes),
+        change_annotations: None,
+        document_changes: None,
+      }),
+    };
+    self
+      .actions
+      .push(CodeActionKind::DenoLint(ignore_file_action));
+
+    Ok(())
+  }
+
   /// Add a TypeScript code fix action to the code actions collection.
   pub(crate) async fn add_ts_fix_action(
     &mut self,
+    specifier: &ModuleSpecifier,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
     language_server: &mut language_server::Inner,
@@ -502,6 +596,7 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
+    let action = fix_ts_import_action(specifier, action, language_server)?;
     let edit = ts_changes_to_edit(&action.changes, language_server).await?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
@@ -594,6 +689,7 @@ impl CodeActionCollection {
       .map(|i| match i {
         CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),
         CodeActionKind::Deno(c) => lsp::CodeActionOrCommand::CodeAction(c),
+        CodeActionKind::DenoLint(c) => lsp::CodeActionOrCommand::CodeAction(c),
       })
       .collect()
   }
@@ -648,22 +744,91 @@ impl CodeActionCollection {
   }
 }
 
+/// Prepend the whitespace characters found at the start of line_content to content.
+fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
+  if let Some(line) = line_content {
+    let whitespaces =
+      line.chars().position(|c| !c.is_whitespace()).unwrap_or(0);
+    let whitespace = &line[0..whitespaces];
+    format!("{}{}", &whitespace, content)
+  } else {
+    content
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::resolve_url;
+
+  #[test]
+  fn test_reference_to_diagnostic() {
+    let range = Range {
+      start: Position {
+        line: 1,
+        character: 1,
+      },
+      end: Position {
+        line: 2,
+        character: 2,
+      },
+    };
+
+    let test_cases = [
+      (
+        Reference {
+          category: Category::Lint {
+            message: "message1".to_string(),
+            code: "code1".to_string(),
+            hint: None,
+          },
+          range,
+        },
+        lsp::Diagnostic {
+          range,
+          severity: Some(lsp::DiagnosticSeverity::Warning),
+          code: Some(lsp::NumberOrString::String("code1".to_string())),
+          source: Some("deno-lint".to_string()),
+          message: "message1".to_string(),
+          ..Default::default()
+        },
+      ),
+      (
+        Reference {
+          category: Category::Lint {
+            message: "message2".to_string(),
+            code: "code2".to_string(),
+            hint: Some("hint2".to_string()),
+          },
+          range,
+        },
+        lsp::Diagnostic {
+          range,
+          severity: Some(lsp::DiagnosticSeverity::Warning),
+          code: Some(lsp::NumberOrString::String("code2".to_string())),
+          source: Some("deno-lint".to_string()),
+          message: "message2\nhint2".to_string(),
+          ..Default::default()
+        },
+      ),
+    ];
+
+    for (input, expected) in test_cases.iter() {
+      let actual = input.to_diagnostic();
+      assert_eq!(&actual, expected);
+    }
+  }
 
   #[test]
   fn test_as_lsp_range() {
     let fixture = deno_lint::diagnostic::Range {
       start: deno_lint::diagnostic::Position {
-        line: 1,
-        col: 2,
+        line_index: 0,
+        column_index: 2,
         byte_pos: 23,
       },
       end: deno_lint::diagnostic::Position {
-        line: 2,
-        col: 0,
+        line_index: 1,
+        column_index: 0,
         byte_pos: 33,
       },
     };
@@ -680,73 +845,6 @@ mod tests {
           character: 0,
         },
       }
-    );
-  }
-
-  #[test]
-  fn test_analyze_dependencies() {
-    let specifier = resolve_url("file:///a.ts").expect("bad specifier");
-    let source = r#"import {
-      Application,
-      Context,
-      Router,
-      Status,
-    } from "https://deno.land/x/oak@v6.3.2/mod.ts";
-
-    // @deno-types="https://deno.land/x/types/react/index.d.ts";
-    import * as React from "https://cdn.skypack.dev/react";
-    "#;
-    let parsed_module =
-      parse_module(&specifier, source, &MediaType::TypeScript).unwrap();
-    let (actual, maybe_type) = analyze_dependencies(
-      &specifier,
-      &MediaType::TypeScript,
-      &parsed_module,
-      &None,
-    );
-    assert!(maybe_type.is_none());
-    assert_eq!(actual.len(), 2);
-    assert_eq!(
-      actual.get("https://cdn.skypack.dev/react").cloned(),
-      Some(Dependency {
-        is_dynamic: false,
-        maybe_code: Some(ResolvedDependency::Resolved(
-          resolve_url("https://cdn.skypack.dev/react").unwrap()
-        )),
-        maybe_type: Some(ResolvedDependency::Resolved(
-          resolve_url("https://deno.land/x/types/react/index.d.ts").unwrap()
-        )),
-        maybe_code_specifier_range: Some(Range {
-          start: Position {
-            line: 8,
-            character: 27,
-          },
-          end: Position {
-            line: 8,
-            character: 58,
-          }
-        }),
-      })
-    );
-    assert_eq!(
-      actual.get("https://deno.land/x/oak@v6.3.2/mod.ts").cloned(),
-      Some(Dependency {
-        is_dynamic: false,
-        maybe_code: Some(ResolvedDependency::Resolved(
-          resolve_url("https://deno.land/x/oak@v6.3.2/mod.ts").unwrap()
-        )),
-        maybe_type: None,
-        maybe_code_specifier_range: Some(Range {
-          start: Position {
-            line: 5,
-            character: 11,
-          },
-          end: Position {
-            line: 5,
-            character: 50,
-          }
-        }),
-      })
     );
   }
 }

@@ -1,0 +1,7 @@
+Check [WILDCARD]/test/meta.ts
+import.meta.main: false
+import.meta.url: [WILDCARD]/test/meta.ts
+running 0 tests from [WILDCARD]/test/meta.ts
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

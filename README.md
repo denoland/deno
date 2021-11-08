@@ -1,8 +1,9 @@
 # Deno
 
 [![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
+[![Discord Chat](https://img.shields.io/discord/684898665143206084?logo=discord&style=social)](https://discord.gg/deno)
 
-<img align="right" src=docs/images/deno3.png height="150px">
+<img align="right" src="https://deno.land/logo.svg" height="150px" alt="the deno mascot dinosaur standing in the rain">
 
 Deno is a _simple_, _modern_ and _secure_ runtime for **JavaScript** and
 **TypeScript** that uses V8 and is built in Rust.
@@ -13,8 +14,7 @@ Deno is a _simple_, _modern_ and _secure_ runtime for **JavaScript** and
   enabled.
 - Supports TypeScript out of the box.
 - Ships only a single executable file.
-- Built-in utilities like a dependency inspector (deno info) and a code
-  formatter (deno fmt).
+- [Built-in utilities.](https://deno.land/manual/tools#built-in-tooling)
 - Set of reviewed standard modules that are guaranteed to work with
   [Deno](https://deno.land/std/).
 
@@ -71,18 +71,24 @@ deno run https://deno.land/std/examples/welcome.ts
 Or a more complex one:
 
 ```ts
-import { serve } from "https://deno.land/std/http/server.ts";
-const s = serve({ port: 8000 });
+const listener = Deno.listen({ port: 8000 });
 console.log("http://localhost:8000/");
-for await (const req of s) {
-  req.respond({ body: "Hello World\n" });
+
+for await (const conn of listener) {
+  serve(conn);
+}
+
+async function serve(conn: Deno.Conn) {
+  for await (const { respondWith } of Deno.serveHttp(conn)) {
+    respondWith(new Response("Hello world"));
+  }
 }
 ```
 
-You can find a more in depth introduction, examples, and environment setup
-guides in the [manual](https://deno.land/manual).
+You can find a deeper introduction, examples, and environment setup guides in
+the [manual](https://deno.land/manual).
 
-More in-depth info can be found in the runtime
+The complete API reference is available at the runtime
 [documentation](https://doc.deno.land).
 
 ### Contributing
@@ -90,7 +96,7 @@ More in-depth info can be found in the runtime
 We appreciate your help!
 
 To contribute, please read our
-[guidelines](https://github.com/denoland/deno/blob/main/docs/contributing/style_guide.md).
+[contributing instructions](https://deno.land/manual/contributing).
 
 [Build Status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=main&event=push
 [Build status]: https://github.com/denoland/deno/actions

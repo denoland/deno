@@ -8,6 +8,11 @@
 ((window) => {
   const core = window.Deno.core;
   const util = window.__bootstrap.util;
+  const {
+    StringPrototypeMatch,
+    PromiseReject,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   /**
    * @typedef {object} ImportMap
@@ -17,7 +22,7 @@
 
   /**
    * @typedef {object} OpEmitRequest
-   * @property {"esm"=} bundle
+   * @property {"module" | "classic"=} bundle
    * @property {boolean=} check
    * @property {Record<string, any>=} compilerOptions
    * @property {ImportMap=} importMap
@@ -35,26 +40,29 @@
    */
 
   /**
-   * @param {OpEmitRequest} request 
+   * @param {OpEmitRequest} request
    * @returns {Promise<OpEmitResponse>}
    */
   function opEmit(request) {
-    return core.jsonOpAsync("op_emit", request);
+    return core.opAsync("op_emit", request);
   }
 
   /**
-   * @param {string} specifier 
+   * @param {string} specifier
    * @returns {string}
    */
   function checkRelative(specifier) {
-    return specifier.match(/^([\.\/\\]|https?:\/{2}|file:\/{2})/)
+    return StringPrototypeMatch(
+        specifier,
+        /^([\.\/\\]|https?:\/{2}|file:\/{2})/,
+      )
       ? specifier
       : `./${specifier}`;
   }
 
   /**
    * @typedef {object} EmitOptions
-   * @property {"esm"=} bundle
+   * @property {"module" | "classic"=} bundle
    * @property {boolean=} check
    * @property {Record<string, any>=} compilerOptions
    * @property {ImportMap=} importMap
@@ -63,14 +71,14 @@
    */
 
   /**
-   * @param {string | URL} rootSpecifier 
+   * @param {string | URL} rootSpecifier
    * @param {EmitOptions=} options
-   * @returns {Promise<OpEmitResponse>} 
+   * @returns {Promise<OpEmitResponse>}
    */
   function emit(rootSpecifier, options = {}) {
     util.log(`Deno.emit`, { rootSpecifier });
     if (!rootSpecifier) {
-      return Promise.reject(
+      return PromiseReject(
         new TypeError("A root specifier must be supplied."),
       );
     }

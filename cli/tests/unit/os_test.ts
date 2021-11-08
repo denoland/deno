@@ -7,7 +7,7 @@ import {
   unitTest,
 } from "./test_util.ts";
 
-unitTest({ perms: { env: true } }, function envSuccess(): void {
+unitTest({ permissions: { env: true } }, function envSuccess() {
   Deno.env.set("TEST_VAR", "A");
   const env = Deno.env.toObject();
   Deno.env.set("TEST_VAR", "B");
@@ -15,19 +15,19 @@ unitTest({ perms: { env: true } }, function envSuccess(): void {
   assertNotEquals(Deno.env.get("TEST_VAR"), env["TEST_VAR"]);
 });
 
-unitTest({ perms: { env: true } }, function envNotFound(): void {
+unitTest({ permissions: { env: true } }, function envNotFound() {
   const r = Deno.env.get("env_var_does_not_exist!");
   assertEquals(r, undefined);
 });
 
-unitTest({ perms: { env: true } }, function deleteEnv(): void {
+unitTest({ permissions: { env: true } }, function deleteEnv() {
   Deno.env.set("TEST_VAR", "A");
   assertEquals(Deno.env.get("TEST_VAR"), "A");
   assertEquals(Deno.env.delete("TEST_VAR"), undefined);
   assertEquals(Deno.env.get("TEST_VAR"), undefined);
 });
 
-unitTest({ perms: { env: true } }, function avoidEmptyNamedEnv(): void {
+unitTest({ permissions: { env: true } }, function avoidEmptyNamedEnv() {
   assertThrows(() => Deno.env.set("", "v"), TypeError);
   assertThrows(() => Deno.env.set("a=a", "v"), TypeError);
   assertThrows(() => Deno.env.set("a\0a", "v"), TypeError);
@@ -42,13 +42,13 @@ unitTest({ perms: { env: true } }, function avoidEmptyNamedEnv(): void {
   assertThrows(() => Deno.env.delete("a\0a"), TypeError);
 });
 
-unitTest(function envPermissionDenied1(): void {
+unitTest(function envPermissionDenied1() {
   assertThrows(() => {
     Deno.env.toObject();
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest(function envPermissionDenied2(): void {
+unitTest(function envPermissionDenied2() {
   assertThrows(() => {
     Deno.env.get("PATH");
   }, Deno.errors.PermissionDenied);
@@ -60,7 +60,7 @@ unitTest(function envPermissionDenied2(): void {
 unitTest(
   {
     ignore: Deno.build.os !== "windows",
-    perms: { read: true, env: true, run: true },
+    permissions: { read: true, env: true, run: true },
   },
   async function envCaseInsensitive() {
     // Utility function that runs a Deno subprocess with the environment
@@ -70,7 +70,7 @@ unitTest(
     const checkChildEnv = async (
       inputEnv: Record<string, string>,
       expectedEnv: Record<string, string>,
-    ): Promise<void> => {
+    ) => {
       const src = `
       console.log(
         ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env.get(k))
@@ -122,17 +122,17 @@ unitTest(
   },
 );
 
-unitTest(function osPid(): void {
+unitTest(function osPid() {
   assert(Deno.pid > 0);
 });
 
-unitTest(function osPpid(): void {
+unitTest(function osPpid() {
   assert(Deno.ppid > 0);
 });
 
 unitTest(
-  { perms: { run: true, read: true } },
-  async function osPpidIsEqualToPidOfParentProcess(): Promise<void> {
+  { permissions: { run: true, read: true } },
+  async function osPpidIsEqualToPidOfParentProcess() {
     const decoder = new TextDecoder();
     const process = Deno.run({
       cmd: [Deno.execPath(), "eval", "-p", "--unstable", "Deno.ppid"],
@@ -148,11 +148,11 @@ unitTest(
   },
 );
 
-unitTest({ perms: { read: true } }, function execPath(): void {
+unitTest({ permissions: { read: true } }, function execPath() {
   assertNotEquals(Deno.execPath(), "");
 });
 
-unitTest({ perms: { read: false } }, function execPathPerm(): void {
+unitTest({ permissions: { read: false } }, function execPathPerm() {
   assertThrows(
     () => {
       Deno.execPath();
@@ -162,38 +162,38 @@ unitTest({ perms: { read: false } }, function execPathPerm(): void {
   );
 });
 
-unitTest({ perms: { env: true } }, function loadavgSuccess(): void {
+unitTest({ permissions: { env: true } }, function loadavgSuccess() {
   const load = Deno.loadavg();
   assertEquals(load.length, 3);
 });
 
-unitTest({ perms: { env: false } }, function loadavgPerm(): void {
+unitTest({ permissions: { env: false } }, function loadavgPerm() {
   assertThrows(() => {
     Deno.loadavg();
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { env: true } }, function hostnameDir(): void {
+unitTest({ permissions: { env: true } }, function hostnameDir() {
   assertNotEquals(Deno.hostname(), "");
 });
 
-unitTest({ perms: { env: false } }, function hostnamePerm(): void {
+unitTest({ permissions: { env: false } }, function hostnamePerm() {
   assertThrows(() => {
     Deno.hostname();
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { env: true } }, function releaseDir(): void {
+unitTest({ permissions: { env: true } }, function releaseDir() {
   assertNotEquals(Deno.osRelease(), "");
 });
 
-unitTest({ perms: { env: false } }, function releasePerm(): void {
+unitTest({ permissions: { env: false } }, function releasePerm() {
   assertThrows(() => {
     Deno.osRelease();
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { env: true } }, function systemMemoryInfo(): void {
+unitTest({ permissions: { env: true } }, function systemMemoryInfo() {
   const info = Deno.systemMemoryInfo();
   assert(info.total >= 0);
   assert(info.free >= 0);
@@ -202,10 +202,4 @@ unitTest({ perms: { env: true } }, function systemMemoryInfo(): void {
   assert(info.cached >= 0);
   assert(info.swapTotal >= 0);
   assert(info.swapFree >= 0);
-});
-
-unitTest({ perms: { env: true } }, function systemCpuInfo(): void {
-  const { cores, speed } = Deno.systemCpuInfo();
-  assert(cores === undefined || cores > 0);
-  assert(speed === undefined || speed > 0);
 });

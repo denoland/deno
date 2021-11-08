@@ -67,7 +67,7 @@ impl DiskCache {
           out.push(path_seg);
         }
       }
-      "http" | "https" | "data" => out = url_to_filename(url)?,
+      "http" | "https" | "data" | "blob" => out = url_to_filename(url)?,
       "file" => {
         let path = match url.to_file_path() {
           Ok(path) => path,
@@ -139,7 +139,7 @@ impl DiskCache {
   pub fn set(&self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
     let path = self.location.join(filename);
     match path.parent() {
-      Some(ref parent) => self.ensure_dir_exists(parent),
+      Some(parent) => self.ensure_dir_exists(parent),
       None => Ok(()),
     }?;
     fs_util::atomic_write_file(&path, data, crate::http_cache::CACHE_PERM)
@@ -170,12 +170,12 @@ mod tests {
     let mut cache_location = temp_dir.path().to_owned();
     assert!(fs::remove_dir(&cache_location).is_ok());
     cache_location.push("foo");
-    assert_eq!(cache_location.is_dir(), false);
+    assert!(!cache_location.is_dir());
     let cache = DiskCache::new(&cache_location);
     cache
       .ensure_dir_exists(&cache.location)
       .expect("Testing expect:");
-    assert_eq!(cache_location.is_dir(), true);
+    assert!(cache_location.is_dir());
   }
 
   #[test]
