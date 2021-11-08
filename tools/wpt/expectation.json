@@ -8485,7 +8485,6 @@
         "abort.any.worker.html?wss": true,
         "backpressure-receive.any.html?wpt_flags=h2": false,
         "backpressure-receive.any.html?wss": true,
-        "backpressure-receive.any.worker.html?wpt_flags=h2": false,
         "backpressure-receive.any.worker.html?wss": true,
         "backpressure-send.any.html?wpt_flags=h2": false,
         "backpressure-send.any.html?wss": true,
