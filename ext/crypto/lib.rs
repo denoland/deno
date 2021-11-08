@@ -882,9 +882,10 @@ pub async fn op_crypto_derive_bits(
           okm.fill(&mut r)?;
           Ok(r.into())
         }
-        Err(_e) => {
-          Err(custom_error("DOMExceptionOperationError", "The length provided for HKDF is too large"))
-        }
+        Err(_e) => Err(custom_error(
+          "DOMExceptionOperationError",
+          "The length provided for HKDF is too large",
+        )),
       }
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
