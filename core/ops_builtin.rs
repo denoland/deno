@@ -1,6 +1,7 @@
 use crate::error::type_error;
 use crate::error::AnyError;
 use crate::include_js_files;
+use crate::op_async;
 use crate::op_sync;
 use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
@@ -36,6 +37,10 @@ pub(crate) fn init_builtins() -> Extension {
       ("op_metrics", op_sync(op_metrics)),
       ("op_void_sync", void_op_sync()),
       ("op_void_async", void_op_async()),
+      // TODO(@AaronO): track IO metrics for builtin streams
+      ("op_read", op_async(op_read)),
+      ("op_write", op_async(op_write)),
+      ("op_shutdown", op_async(op_shutdown)),
     ])
     .build()
 }
@@ -169,4 +174,31 @@ pub fn op_metrics(
   let aggregate = state.tracker.aggregate();
   let per_op = state.tracker.per_op();
   Ok((aggregate, per_op))
+}
+
+async fn op_read(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf: ZeroCopyBuf,
+) -> Result<u32, AnyError> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  resource.read(buf).await.map(|n| n as u32)
+}
+
+async fn op_write(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf: ZeroCopyBuf,
+) -> Result<u32, AnyError> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  resource.write(buf).await.map(|n| n as u32)
+}
+
+async fn op_shutdown(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  _: (),
+) -> Result<(), AnyError> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  resource.shutdown().await
 }
