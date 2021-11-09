@@ -414,6 +414,27 @@ pub struct ResolveArgs {
   pub specifiers: Vec<String>,
 }
 
+fn resolve_specifier(
+  state: &mut State,
+  specifier: &ModuleSpecifier,
+) -> (String, String) {
+  let media_type = state
+    .graph
+    .get(specifier)
+    .map_or(&MediaType::Unknown, |m| &m.media_type);
+  let specifier_str = match specifier.scheme() {
+    "data" | "blob" => {
+      let specifier_str = hash_url(specifier, media_type);
+      state
+        .data_url_map
+        .insert(specifier_str.clone(), specifier.clone());
+      specifier_str
+    }
+    _ => specifier.to_string(),
+  };
+  (specifier_str, media_type.as_ts_extension().into())
+}
+
 fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_resolve\".")?;
@@ -434,30 +455,31 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         MediaType::from(specifier).as_ts_extension().to_string(),
       ));
     } else {
-      let resolved_dependency =
-        match state.graph.resolve_dependency(specifier, &referrer, true) {
-          Some(resolved_specifier) => {
-            let media_type = state
-              .graph
-              .get(resolved_specifier)
-              .map_or(&MediaType::Unknown, |m| &m.media_type);
-            let resolved_specifier_str = match resolved_specifier.scheme() {
-              "data" | "blob" => {
-                let specifier_str = hash_url(resolved_specifier, media_type);
-                state
-                  .data_url_map
-                  .insert(specifier_str.clone(), resolved_specifier.clone());
-                specifier_str
-              }
-              _ => resolved_specifier.to_string(),
-            };
-            (resolved_specifier_str, media_type.as_ts_extension().into())
-          }
-          None => (
-            "deno:///missing_dependency.d.ts".to_string(),
-            ".d.ts".to_string(),
-          ),
-        };
+      // here, we try to resolve the specifier via the referrer, but if we can't
+      // we will try to resolve the specifier via the configuration file, if
+      // present, finally defaulting to a "placeholder" specifier. This handles
+      // situations like the jsxImportSource, which tsc tries to resolve the
+      // import source from a JSX module, but the module graph only contains the
+      // import as a dependency of the configuration file.
+      let resolved_dependency = if let Some(resolved_specifier) = state
+        .graph
+        .resolve_dependency(specifier, &referrer, true)
+        .cloned()
+      {
+        resolve_specifier(state, &resolved_specifier)
+      } else if let Some(resolved_specifier) = state
+        .maybe_config_specifier
+        .as_ref()
+        .map(|cf| state.graph.resolve_dependency(specifier, cf, true).cloned())
+        .flatten()
+      {
+        resolve_specifier(state, &resolved_specifier)
+      } else {
+        (
+          "deno:///missing_dependency.d.ts".to_string(),
+          ".d.ts".to_string(),
+        )
+      };
       resolved.push(resolved_dependency);
     }
   }
