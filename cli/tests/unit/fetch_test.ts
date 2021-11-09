@@ -640,6 +640,7 @@ unitTest(
     const actual = new TextDecoder().decode((await bufPromise).bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
+      "content-length: 0\r\n",
       "hello: World\r\n",
       "foo: Bar\r\n",
       "accept: */*\r\n",
