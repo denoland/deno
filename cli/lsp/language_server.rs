@@ -316,7 +316,7 @@ impl Inner {
           | MediaType::Dts
       )
     } else {
-      self.documents.is_diagnosable(specifier)
+      self.documents.get(specifier).map(|d| d.is_diagnosable()).unwrap_or(false)
     }
   }
 

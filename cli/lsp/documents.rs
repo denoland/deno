@@ -768,14 +768,6 @@ impl DocumentsInner {
     }
   }
 
-  fn is_diagnosable(&mut self, specifier: &ModuleSpecifier) -> bool {
-    if let Some(doc) = self.get(specifier) {
-      doc.is_diagnosable()
-    } else {
-      false
-    }
-  }
-
   fn is_valid(&mut self, specifier: &ModuleSpecifier) -> bool {
     if self.get_cached(specifier).map(|d| d.is_open()).unwrap_or(false) {
       true
@@ -963,6 +955,20 @@ impl Documents {
     Self(Arc::new(Mutex::new(DocumentsInner::new(location))))
   }
 
+  /// "Open" a document from the perspective of the editor, meaning that
+  /// requests for information from the document will come from the in-memory
+  /// representation received from the language server client, versus reading
+  /// information from the disk.
+  pub fn open(
+    &self,
+    specifier: ModuleSpecifier,
+    version: i32,
+    language_id: LanguageId,
+    content: Arc<String>,
+  ) -> Document {
+    self.0.lock().open(specifier, version, language_id, content)
+  }
+
   /// Apply language server content changes to an open document.
   pub fn change(
     &self,
@@ -1005,28 +1011,21 @@ impl Documents {
     self.0.lock().dependents(specifier)
   }
 
+  /// Return a vector of documents that are contained in the document store,
+  /// where `open_only` flag would provide only those documents currently open
+  /// in the editor and `diagnosable_only` would provide only those documents
+  /// that the language server can provide diagnostics for.
+  pub fn documents(
+    &self,
+    open_only: bool,
+    diagnosable_only: bool,
+  ) -> Vec<Document> {
+    self.0.lock().documents(open_only, diagnosable_only)
+  }
+
   /// Return a document for the specifier.
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
     self.0.lock().get(specifier).map(|d| d.clone())
-  }
-
-  /// Indicates that a specifier is able to be diagnosed by the language server
-  pub fn is_diagnosable(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.lock().is_diagnosable(specifier)
-  }
-
-  /// "Open" a document from the perspective of the editor, meaning that
-  /// requests for information from the document will come from the in-memory
-  /// representation received from the language server client, versus reading
-  /// information from the disk.
-  pub fn open(
-    &self,
-    specifier: ModuleSpecifier,
-    version: i32,
-    language_id: LanguageId,
-    content: Arc<String>,
-  ) -> Document {
-    self.0.lock().open(specifier, version, language_id, content)
   }
 
   /// For a given set of string specifiers, resolve each one from the graph,
@@ -1063,18 +1062,6 @@ impl Documents {
       .0
       .lock()
       .set_navigation_tree(specifier, navigation_tree)
-  }
-
-  /// Return a vector of documents that are contained in the document store,
-  /// where `open_only` flag would provide only those documents currently open
-  /// in the editor and `diagnosable_only` would provide only those documents
-  /// that the language server can provide diagnostics for.
-  pub fn documents(
-    &self,
-    open_only: bool,
-    diagnosable_only: bool,
-  ) -> Vec<Document> {
-    self.0.lock().documents(open_only, diagnosable_only)
   }
 }
 
