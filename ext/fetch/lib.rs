@@ -373,8 +373,8 @@ impl Resource for FetchRequestBodyResource {
     "fetchRequestBody".into()
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
-    Some(Box::pin(async move {
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(async move {
       let data = buf.to_vec();
       let len = data.len();
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
@@ -384,7 +384,7 @@ impl Resource for FetchRequestBodyResource {
       })?;
 
       Ok(len)
-    }))
+    })
   }
 
   fn close(self: Rc<Self>) {
@@ -405,13 +405,13 @@ impl Resource for FetchResponseBodyResource {
     "fetchResponseBody".into()
   }
 
-  fn read(self: Rc<Self>, mut buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
-    Some(Box::pin(async move {
+  fn read(self: Rc<Self>, mut buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(async move {
       let mut reader = RcRef::map(&self, |r| &r.reader).borrow_mut().await;
       let cancel = RcRef::map(self, |r| &r.cancel);
       let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
       Ok(read)
-    }))
+    })
   }
 
   fn close(self: Rc<Self>) {

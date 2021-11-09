@@ -1,4 +1,3 @@
-use crate::error::not_supported;
 use crate::error::type_error;
 use crate::error::AnyError;
 use crate::include_js_files;
@@ -183,10 +182,7 @@ async fn op_read(
   buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
   let resource = state.borrow().resource_table.get_any(rid)?;
-  match resource.read(buf) {
-    Some(fut) => fut.await.map(|n| n as u32),
-    None => Err(not_supported()),
-  }
+  resource.read(buf).await.map(|n| n as u32)
 }
 
 async fn op_write(
@@ -195,10 +191,7 @@ async fn op_write(
   buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
   let resource = state.borrow().resource_table.get_any(rid)?;
-  match resource.write(buf) {
-    Some(fut) => fut.await.map(|n| n as u32),
-    None => Err(not_supported()),
-  }
+  resource.write(buf).await.map(|n| n as u32)
 }
 
 async fn op_shutdown(
@@ -207,8 +200,5 @@ async fn op_shutdown(
   _: (),
 ) -> Result<(), AnyError> {
   let resource = state.borrow().resource_table.get_any(rid)?;
-  match resource.shutdown() {
-    Some(fut) => fut.await,
-    None => Err(not_supported()),
-  }
+  resource.shutdown().await
 }

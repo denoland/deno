@@ -7,6 +7,7 @@
 // file descriptor (hence the different name).
 
 use crate::error::bad_resource_id;
+use crate::error::not_supported;
 use crate::error::AnyError;
 use crate::ZeroCopyBuf;
 use futures::Future;
@@ -35,18 +36,18 @@ pub trait Resource: Any + 'static {
   }
 
   /// Resources may implement `read()` to be a readable stream
-  fn read(self: Rc<Self>, _buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
-    None
+  fn read(self: Rc<Self>, _buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(futures::future::err(not_supported()))
   }
 
   /// Resources may implement `write()` to be a writable stream
-  fn write(self: Rc<Self>, _buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
-    None
+  fn write(self: Rc<Self>, _buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(futures::future::err(not_supported()))
   }
 
   /// Resources may implement `shutdown()` for graceful async shutdowns
-  fn shutdown(self: Rc<Self>) -> Option<AsyncResult<()>> {
-    None
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(futures::future::err(not_supported()))
   }
 
   /// Resources may implement the `close()` trait method if they need to do

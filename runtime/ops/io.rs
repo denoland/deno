@@ -183,12 +183,12 @@ impl Resource for ChildStdinResource {
     "childStdin".into()
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
-    Some(Box::pin(self.write(buf)))
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.write(buf))
   }
 
-  fn shutdown(self: Rc<Self>) -> Option<AsyncResult<()>> {
-    Some(Box::pin(self.shutdown()))
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(self.shutdown())
   }
 }
 
@@ -199,8 +199,8 @@ impl Resource for ChildStdoutResource {
     "childStdout".into()
   }
 
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
-    Some(Box::pin(self.read(buf)))
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
   }
 
   fn close(self: Rc<Self>) {
@@ -215,8 +215,8 @@ impl Resource for ChildStderrResource {
     "childStderr".into()
   }
 
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
-    Some(Box::pin(self.read(buf)))
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
   }
 
   fn close(self: Rc<Self>) {
@@ -336,12 +336,12 @@ impl Resource for StdFileResource {
     self.name.as_str().into()
   }
 
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
-    Some(Box::pin(self.read(buf)))
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
-    Some(Box::pin(self.write(buf)))
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.write(buf))
   }
 
   fn close(self: Rc<Self>) {

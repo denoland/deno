@@ -98,12 +98,12 @@ impl TcpStream {
 }
 
 impl Resource for TcpStream {
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
-    Some(Box::pin(self.read(buf)))
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Option<AsyncResult<usize>> {
-    Some(Box::pin(self.write(buf)))
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.write(buf))
   }
 
   fn close(self: Rc<Self>) {
