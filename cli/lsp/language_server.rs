@@ -37,9 +37,9 @@ use super::config::ConfigSnapshot;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
-use super::documents::AssetOrDocument;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
+use super::documents::AssetOrDocument;
 use super::documents::Documents;
 use super::documents::LanguageId;
 use super::lsp_custom;
@@ -173,28 +173,38 @@ impl Inner {
 
   /// Searches assets and open documents which might be performed asynchronously,
   /// hydrating in memory caches for subsequent requests.
-  pub(crate) async fn get_asset_or_document(&mut self, specifier: &ModuleSpecifier) -> LspResult<AssetOrDocument> {
-    self.get_maybe_asset_or_document(&specifier).await?.map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "Unable to find asset or document for: {}",
-          specifier
-        )))
-      },
-      Ok,
-    )
+  pub(crate) async fn get_asset_or_document(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> LspResult<AssetOrDocument> {
+    self
+      .get_maybe_asset_or_document(specifier)
+      .await?
+      .map_or_else(
+        || {
+          Err(LspError::invalid_params(format!(
+            "Unable to find asset or document for: {}",
+            specifier
+          )))
+        },
+        Ok,
+      )
   }
 
   /// Searches assets and open documents which might be performed asynchronously,
   /// hydrating in memory caches for subsequent requests.
-  pub(crate) async fn get_maybe_asset_or_document(&mut self, specifier: &ModuleSpecifier) -> LspResult<Option<AssetOrDocument>> {
-    let mark = self
-      .performance
-      .mark("get_maybe_asset_or_document", Some(json!({ "specifier": specifier })));
+  pub(crate) async fn get_maybe_asset_or_document(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> LspResult<Option<AssetOrDocument>> {
+    let mark = self.performance.mark(
+      "get_maybe_asset_or_document",
+      Some(json!({ "specifier": specifier })),
+    );
     let result = if specifier.scheme() == "asset" {
-      self.get_asset(specifier).await?.map(|asset| AssetOrDocument::Asset(asset.clone()))
+      self.get_asset(specifier).await?.map(AssetOrDocument::Asset)
     } else {
-      self.documents.get(specifier).map(|d| AssetOrDocument::Document(d))
+      self.documents.get(specifier).map(AssetOrDocument::Document)
     };
     self.performance.measure(mark);
     Ok(result)
@@ -202,25 +212,41 @@ impl Inner {
 
   /// Only searches already cached assets and documents. If
   /// the asset or document cannot be found an error is returned.
-  pub(crate) fn get_cached_asset_or_document(&self, specifier: &ModuleSpecifier) -> LspResult<AssetOrDocument> {
-    self.get_maybe_cached_asset_or_document(specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )
+  pub(crate) fn get_cached_asset_or_document(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> LspResult<AssetOrDocument> {
+    self
+      .get_maybe_cached_asset_or_document(specifier)
+      .map_or_else(
+        || {
+          Err(LspError::invalid_params(format!(
+            "An unexpected specifier ({}) was provided.",
+            specifier
+          )))
+        },
+        Ok,
+      )
   }
 
   /// Only searches already cached assets and documents. If
   /// the asset or document cannot be found, `None` is returned.
-  pub(crate) fn get_maybe_cached_asset_or_document(&self, specifier: &ModuleSpecifier) -> Option<AssetOrDocument> {
+  pub(crate) fn get_maybe_cached_asset_or_document(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<AssetOrDocument> {
     if specifier.scheme() == "asset" {
-      self.assets.get(specifier).map(|maybe_asset| maybe_asset.as_ref().map(|asset| AssetOrDocument::Asset(asset.clone()))).flatten()
+      self
+        .assets
+        .get(specifier)
+        .map(|maybe_asset| {
+          maybe_asset
+            .as_ref()
+            .map(|asset| AssetOrDocument::Asset(asset.clone()))
+        })
+        .flatten()
     } else {
-      self.documents.get(specifier).map(|d| AssetOrDocument::Document(d))
+      self.documents.get(specifier).map(AssetOrDocument::Document)
     }
   }
 
@@ -233,28 +259,29 @@ impl Inner {
       Some(json!({ "specifier": specifier })),
     );
     let asset_or_doc = self.get_cached_asset_or_document(specifier)?;
-    let navigation_tree = if let Some(navigation_tree) = asset_or_doc.maybe_navigation_tree() {
-      navigation_tree
-    } else {
-      let navigation_tree: tsc::NavigationTree = self
-        .ts_server
-        .request(
-          self.snapshot()?,
-          tsc::RequestMethod::GetNavigationTree(specifier.clone()),
-        )
-        .await?;
-      let navigation_tree = Arc::new(navigation_tree);
-      if specifier.scheme() == "asset" {
-        self
-          .assets
-          .set_navigation_tree(specifier, navigation_tree.clone())?;
+    let navigation_tree =
+      if let Some(navigation_tree) = asset_or_doc.maybe_navigation_tree() {
+        navigation_tree
       } else {
-        self
-          .documents
-          .set_navigation_tree(specifier, navigation_tree.clone())?;
-      }
-      navigation_tree
-    };
+        let navigation_tree: tsc::NavigationTree = self
+          .ts_server
+          .request(
+            self.snapshot()?,
+            tsc::RequestMethod::GetNavigationTree(specifier.clone()),
+          )
+          .await?;
+        let navigation_tree = Arc::new(navigation_tree);
+        if specifier.scheme() == "asset" {
+          self
+            .assets
+            .set_navigation_tree(specifier, navigation_tree.clone())?;
+        } else {
+          self
+            .documents
+            .set_navigation_tree(specifier, navigation_tree.clone())?;
+        }
+        navigation_tree
+      };
     self.performance.measure(mark);
     Ok(navigation_tree)
   }
@@ -316,7 +343,11 @@ impl Inner {
           | MediaType::Dts
       )
     } else {
-      self.documents.get(specifier).map(|d| d.is_diagnosable()).unwrap_or(false)
+      self
+        .documents
+        .get(specifier)
+        .map(|d| d.is_diagnosable())
+        .unwrap_or(false)
     }
   }
 
@@ -583,10 +614,12 @@ impl Inner {
       Ok(maybe_asset.clone())
     } else {
       let maybe_asset =
-        tsc::get_asset(specifier, &self.ts_server, self.snapshot()?).await.map_err(|err| {
-          error!("Error getting asset {}: {}", specifier, err);
-          LspError::internal_error()
-        })?;
+        tsc::get_asset(specifier, &self.ts_server, self.snapshot()?)
+          .await
+          .map_err(|err| {
+            error!("Error getting asset {}: {}", specifier, err);
+            LspError::internal_error()
+          })?;
       self.assets.insert(specifier.clone(), maybe_asset.clone());
       Ok(maybe_asset)
     }
@@ -1042,8 +1075,12 @@ impl Inner {
 
     let mark = self.performance.mark("hover", Some(&params));
     let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
-    let hover = if let Some((_, dep, range)) = asset_or_doc.get_maybe_dependency(&params.text_document_position_params.position) {
-      let dep_maybe_types_dependency = dep.get_code().map(|s| self.documents.get(s))
+    let hover = if let Some((_, dep, range)) = asset_or_doc
+      .get_maybe_dependency(&params.text_document_position_params.position)
+    {
+      let dep_maybe_types_dependency = dep
+        .get_code()
+        .map(|s| self.documents.get(s))
         .flatten()
         .map(|d| d.maybe_types_dependency())
         .flatten();
@@ -1335,7 +1372,8 @@ impl Inner {
           error!("Unable to decode code action data: {}", err);
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
-      let asset_or_doc = self.get_cached_asset_or_document(&action_data.specifier)?;
+      let asset_or_doc =
+        self.get_cached_asset_or_document(&action_data.specifier)?;
       let line_index = asset_or_doc.line_index();
       let start = line_index.offset_tsc(action_data.range.start)?;
       let length = line_index.offset_tsc(action_data.range.end)? - start;
@@ -1390,9 +1428,8 @@ impl Inner {
         error!("Error getting code lenses for \"{}\": {}", specifier, err);
         LspError::internal_error()
       })?;
-    let parsed_source = asset_or_doc.maybe_parsed_source()
-      .map(|r| r.ok())
-      .flatten();
+    let parsed_source =
+      asset_or_doc.maybe_parsed_source().map(|r| r.ok()).flatten();
     let line_index = asset_or_doc.line_index();
     let code_lenses = code_lens::collect(
       &specifier,
@@ -2507,7 +2544,12 @@ impl Inner {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let contents = if specifier.as_str() == "deno:/status.md" {
       let mut contents = String::new();
-      let mut documents_specifiers = self.documents.documents(false, false).into_iter().map(|d| d.specifier().clone()).collect::<Vec<_>>();
+      let mut documents_specifiers = self
+        .documents
+        .documents(false, false)
+        .into_iter()
+        .map(|d| d.specifier().clone())
+        .collect::<Vec<_>>();
       documents_specifiers.sort();
       let measures = self.performance.to_vec();
       let workspace_settings = self.config.get_workspace_settings();
@@ -2561,7 +2603,10 @@ impl Inner {
       }
       Some(contents)
     } else {
-      let asset_or_doc = self.get_maybe_asset_or_document(&specifier).await.map_err(|_| LspError::internal_error())?;
+      let asset_or_doc = self
+        .get_maybe_asset_or_document(&specifier)
+        .await
+        .map_err(|_| LspError::internal_error())?;
       if let Some(asset_or_doc) = asset_or_doc {
         Some(asset_or_doc.text().to_string())
       } else {

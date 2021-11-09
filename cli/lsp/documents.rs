@@ -156,7 +156,7 @@ impl AssetOrDocument {
   pub fn line_index(&self) -> Arc<LineIndex> {
     match self {
       AssetOrDocument::Asset(a) => a.line_index.clone(),
-      AssetOrDocument::Document(d) => d.line_index().clone(),
+      AssetOrDocument::Document(d) => d.line_index(),
     }
   }
 
@@ -171,10 +171,15 @@ impl AssetOrDocument {
     &self,
     position: &lsp::Position,
   ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
-    self.document().map(|d| d.get_maybe_dependency(position)).flatten()
+    self
+      .document()
+      .map(|d| d.get_maybe_dependency(position))
+      .flatten()
   }
 
-  pub fn maybe_parsed_source(&self) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
+  pub fn maybe_parsed_source(
+    &self,
+  ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
     self.document().map(|d| d.maybe_parsed_source()).flatten()
   }
 
@@ -237,7 +242,7 @@ impl Document {
         text_info: source,
         specifier,
         version,
-      })
+      }),
     }
   }
 
@@ -362,7 +367,10 @@ impl Document {
     }
   }
 
-  fn with_navigation_tree(&self, navigation_tree: Arc<tsc::NavigationTree>) -> Document {
+  fn with_navigation_tree(
+    &self,
+    navigation_tree: Arc<tsc::NavigationTree>,
+  ) -> Document {
     Document {
       inner: Arc::new(DocumentInner {
         specifier: self.inner.specifier.clone(),
@@ -372,7 +380,7 @@ impl Document {
         maybe_navigation_tree: Some(navigation_tree),
         maybe_warning: self.inner.maybe_warning.clone(),
         line_index: self.inner.line_index.clone(),
-        maybe_lsp_version: self.inner.maybe_lsp_version.clone(),
+        maybe_lsp_version: self.inner.maybe_lsp_version,
         maybe_language_id: self.inner.maybe_language_id.clone(),
       }),
     }
@@ -399,8 +407,9 @@ impl Document {
   }
 
   pub fn script_version(&self) -> String {
-    self.maybe_lsp_version()
-        .map_or_else(|| self.version().to_string(), |v| v.to_string())
+    self
+      .maybe_lsp_version()
+      .map_or_else(|| self.version().to_string(), |v| v.to_string())
   }
 
   pub fn is_diagnosable(&self) -> bool {
@@ -436,14 +445,18 @@ impl Document {
 
   /// Returns the current language server client version if any.
   pub fn maybe_lsp_version(&self) -> Option<i32> {
-    self.inner.maybe_lsp_version.clone()
+    self.inner.maybe_lsp_version
   }
 
-  fn maybe_module(&self) -> Option<&Result<deno_graph::Module, deno_graph::ModuleGraphError>> {
+  fn maybe_module(
+    &self,
+  ) -> Option<&Result<deno_graph::Module, deno_graph::ModuleGraphError>> {
     self.inner.maybe_module.as_ref()
   }
 
-  pub fn maybe_parsed_source(&self) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
+  pub fn maybe_parsed_source(
+    &self,
+  ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
     self.maybe_module().map(|r| {
       r.as_ref()
         .map(|m| m.parsed_source.clone())
@@ -459,9 +472,7 @@ impl Document {
     self.inner.maybe_warning.clone()
   }
 
-  pub fn dependencies(
-    &self,
-  ) -> Option<Vec<(String, deno_graph::Dependency)>> {
+  pub fn dependencies(&self) -> Option<Vec<(String, deno_graph::Dependency)>> {
     let module = self.maybe_module()?.as_ref().ok()?;
     Some(
       module
@@ -769,7 +780,11 @@ impl DocumentsInner {
   }
 
   fn is_valid(&mut self, specifier: &ModuleSpecifier) -> bool {
-    if self.get_cached(specifier).map(|d| d.is_open()).unwrap_or(false) {
+    if self
+      .get_cached(specifier)
+      .map(|d| d.is_open())
+      .unwrap_or(false)
+    {
       true
     } else if let Some(specifier) = self.resolve_specifier(specifier) {
       self.docs.get(&specifier).map(|d| d.version().to_string())
@@ -838,8 +853,7 @@ impl DocumentsInner {
     specifier: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let doc = self.get(specifier)?;
-    let maybe_module =
-      doc.maybe_module().map(|r| r.as_ref().ok()).flatten();
+    let maybe_module = doc.maybe_module().map(|r| r.as_ref().ok()).flatten();
     let maybe_types_dependency = maybe_module
       .map(|m| {
         m.maybe_types_dependency
@@ -1025,7 +1039,7 @@ impl Documents {
 
   /// Return a document for the specifier.
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
-    self.0.lock().get(specifier).map(|d| d.clone())
+    self.0.lock().get(specifier).cloned()
   }
 
   /// For a given set of string specifiers, resolve each one from the graph,
@@ -1087,12 +1101,8 @@ console.log(b);
 "#
       .to_string(),
     );
-    let document = documents.open(
-      specifier.clone(),
-      1,
-      "javascript".parse().unwrap(),
-      content,
-    );
+    let document =
+      documents.open(specifier, 1, "javascript".parse().unwrap(), content);
     assert!(document.is_open());
     assert!(document.is_diagnosable());
   }

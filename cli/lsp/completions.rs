@@ -275,7 +275,12 @@ fn get_workspace_completions(
   range: &lsp::Range,
   state_snapshot: &language_server::StateSnapshot,
 ) -> Vec<lsp::CompletionItem> {
-  let workspace_specifiers = state_snapshot.documents.documents(false, true).into_iter().map(|d| d.specifier().clone()).collect();
+  let workspace_specifiers = state_snapshot
+    .documents
+    .documents(false, true)
+    .into_iter()
+    .map(|d| d.specifier().clone())
+    .collect();
   let specifier_strings =
     get_relative_specifiers(specifier, workspace_specifiers);
   specifier_strings

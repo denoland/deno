@@ -315,7 +315,7 @@ async fn generate_lint_diagnostics(
         let current_version = collection
           .lock()
           .await
-          .get_version(&document.specifier(), &DiagnosticSource::DenoLint);
+          .get_version(document.specifier(), &DiagnosticSource::DenoLint);
         if version != current_version {
           let diagnostics = match document.maybe_parsed_source() {
             Some(Ok(parsed_source)) => {
@@ -337,7 +337,11 @@ async fn generate_lint_diagnostics(
               Vec::new()
             }
           };
-          diagnostics_vec.push((document.specifier().clone(), version, diagnostics));
+          diagnostics_vec.push((
+            document.specifier().clone(),
+            version,
+            diagnostics,
+          ));
         }
       }
     }
@@ -377,7 +381,11 @@ async fn generate_ts_diagnostics(
       ts_server.request(snapshot.clone(), req).await?;
     for (specifier_str, ts_diagnostics) in ts_diagnostics_map {
       let specifier = resolve_url(&specifier_str)?;
-      let version = snapshot.documents.get(&specifier).map(|d| d.maybe_lsp_version()).flatten();
+      let version = snapshot
+        .documents
+        .get(&specifier)
+        .map(|d| d.maybe_lsp_version())
+        .flatten();
       diagnostics_vec.push((
         specifier,
         version,
@@ -499,7 +507,11 @@ async fn generate_deps_diagnostics(
             );
           }
         }
-        diagnostics_vec.push((document.specifier().clone(), version, diagnostics));
+        diagnostics_vec.push((
+          document.specifier().clone(),
+          version,
+          diagnostics,
+        ));
       }
     }
 
@@ -536,8 +548,14 @@ async fn publish_diagnostics(
         diagnostics
           .extend(collection.get(&specifier, DiagnosticSource::Deno).cloned());
       }
-      let version = snapshot.documents.get(&specifier).map(|d| d.maybe_lsp_version()).flatten();
-      client.publish_diagnostics(specifier.clone(), diagnostics, version).await;
+      let version = snapshot
+        .documents
+        .get(&specifier)
+        .map(|d| d.maybe_lsp_version())
+        .flatten();
+      client
+        .publish_diagnostics(specifier.clone(), diagnostics, version)
+        .await;
     }
   }
 }

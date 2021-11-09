@@ -586,7 +586,10 @@ impl DocumentSpan {
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = normalize_specifier(&self.file_name).ok()?;
-    let target_asset_or_doc = language_server.get_asset_or_document(&target_specifier).await.ok()?;
+    let target_asset_or_doc = language_server
+      .get_asset_or_document(&target_specifier)
+      .await
+      .ok()?;
     let target_line_index = target_asset_or_doc.line_index();
     let target_uri = language_server
       .url_map
@@ -833,7 +836,8 @@ impl RenameLocations {
     for location in self.locations.iter() {
       let specifier = normalize_specifier(&location.document_span.file_name)?;
       let uri = language_server.url_map.normalize_specifier(&specifier)?;
-      let asset_or_doc = language_server.get_asset_or_document(&specifier).await?;
+      let asset_or_doc =
+        language_server.get_asset_or_document(&specifier).await?;
 
       // ensure TextDocumentEdit for `location.file_name`.
       if text_document_edit_map.get(&uri).is_none() {
@@ -998,7 +1002,8 @@ impl FileTextChanges {
     language_server: &mut language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
     let specifier = normalize_specifier(&self.file_name)?;
-    let asset_or_doc = language_server.get_asset_or_document(&specifier).await?;
+    let asset_or_doc =
+      language_server.get_asset_or_document(&specifier).await?;
     let edits = self
       .text_changes
       .iter()
@@ -1020,12 +1025,16 @@ impl FileTextChanges {
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
     let specifier = normalize_specifier(&self.file_name)?;
     let maybe_asset_or_document = if !self.is_new_file.unwrap_or(false) {
-      let asset_or_doc = language_server.get_asset_or_document(&specifier).await?;
+      let asset_or_doc =
+        language_server.get_asset_or_document(&specifier).await?;
       Some(asset_or_doc)
     } else {
       None
     };
-    let line_index = maybe_asset_or_document.as_ref().map(|d| d.line_index()).unwrap_or_else(|| Arc::new(LineIndex::new("")));
+    let line_index = maybe_asset_or_document
+      .as_ref()
+      .map(|d| d.line_index())
+      .unwrap_or_else(|| Arc::new(LineIndex::new("")));
 
     if self.is_new_file.unwrap_or(false) {
       ops.push(lsp::DocumentChangeOperation::Op(lsp::ResourceOp::Create(
@@ -1048,7 +1057,9 @@ impl FileTextChanges {
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
-        version: maybe_asset_or_document.map(|d| d.document_version()).flatten(),
+        version: maybe_asset_or_document
+          .map(|d| d.document_version())
+          .flatten(),
       },
       edits,
     }));
@@ -1336,7 +1347,10 @@ impl CallHierarchyItem {
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
     let target_specifier = normalize_specifier(&self.file).ok()?;
-    let target_asset_or_doc = language_server.get_asset_or_document(&target_specifier).await.ok()?;
+    let target_asset_or_doc = language_server
+      .get_asset_or_document(&target_specifier)
+      .await
+      .ok()?;
 
     Some(self.to_call_hierarchy_item(
       target_asset_or_doc.line_index(),
@@ -1434,7 +1448,10 @@ impl CallHierarchyIncomingCall {
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
     let target_specifier = normalize_specifier(&self.from.file).ok()?;
-    let target_asset_or_doc = language_server.get_asset_or_document(&target_specifier).await.ok()?;
+    let target_asset_or_doc = language_server
+      .get_asset_or_document(&target_specifier)
+      .await
+      .ok()?;
 
     Some(lsp::CallHierarchyIncomingCall {
       from: self.from.to_call_hierarchy_item(
@@ -1466,7 +1483,10 @@ impl CallHierarchyOutgoingCall {
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
     let target_specifier = normalize_specifier(&self.to.file).ok()?;
-    let target_asset_or_doc = language_server.get_asset_or_document(&target_specifier).await.ok()?;
+    let target_asset_or_doc = language_server
+      .get_asset_or_document(&target_specifier)
+      .await
+      .ok()?;
 
     Some(lsp::CallHierarchyOutgoingCall {
       to: self.to.to_call_hierarchy_item(
@@ -2075,7 +2095,8 @@ fn cache_snapshot(
       .get(specifier)
       .ok_or_else(|| {
         anyhow!("Specifier unexpectedly doesn't exist: {}", specifier)
-      })?.content();
+      })?
+      .content();
     state
       .snapshots
       .insert((specifier.clone(), version.into()), content.to_string());
@@ -2320,7 +2341,15 @@ fn op_script_names(
   state: &mut State,
   _args: Value,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
-  Ok(state.state_snapshot.documents.documents(true, true).into_iter().map(|d| d.specifier().clone()).collect())
+  Ok(
+    state
+      .state_snapshot
+      .documents
+      .documents(true, true)
+      .into_iter()
+      .map(|d| d.specifier().clone())
+      .collect(),
+  )
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -2345,7 +2374,10 @@ fn op_script_version(
       Ok(None)
     }
   } else {
-    let script_version = state.state_snapshot.documents.get(&specifier)
+    let script_version = state
+      .state_snapshot
+      .documents
+      .get(&specifier)
       .map(|d| d.script_version());
     Ok(script_version)
   };
