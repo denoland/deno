@@ -18,6 +18,7 @@ use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
+use crate::resolver::JsxResolver;
 use crate::tools::coverage::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
@@ -1053,14 +1054,21 @@ pub async fn run_tests_with_watch(
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
-    let maybe_resolver =
-      ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
+    let maybe_import_map_resolver =
+      ps.maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      })
+      .flatten();
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_imports = ps
       .maybe_config_file
       .as_ref()
-      .map(|cf| cf.to_maybe_imports())
-      .flatten();
+      .map(|cf| cf.to_maybe_imports());
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
@@ -1081,13 +1089,24 @@ pub async fn run_tests_with_watch(
           .filter_map(|url| deno_core::resolve_url(url.as_str()).ok())
           .collect()
       };
-
+      let maybe_imports = if let Some(result) = maybe_imports {
+        result?
+      } else {
+        None
+      };
+      let maybe_resolver = if maybe_jsx_resolver.is_some() {
+        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+      } else {
+        maybe_import_map_resolver
+          .as_ref()
+          .map(|im| im.as_resolver())
+      };
       let graph = deno_graph::create_graph(
         test_modules.clone(),
         false,
         maybe_imports,
         cache.as_mut_loader(),
-        maybe_resolver.as_ref().map(|r| r.as_resolver()),
+        maybe_resolver,
         maybe_locker,
         None,
       )

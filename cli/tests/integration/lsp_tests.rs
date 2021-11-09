@@ -3684,3 +3684,82 @@ fn lsp_lint_with_config() {
   }
   shutdown(&mut client);
 }
+
+#[test]
+fn lsp_jsx_import_source_pragma() {
+  let _g = http_server();
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.tsx",
+        "languageId": "typescriptreact",
+        "version": 1,
+        "text":
+"/** @jsxImportSource http://localhost:4545/jsx */
+
+function A() {
+  return \"hello\";
+}
+
+export function B() {
+  return <A></A>;
+}
+",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.tsx",
+        },
+        "uris": [
+          {
+            "uri": "http://127.0.0.1:4545/jsx/jsx-runtime",
+          }
+        ],
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.tsx"
+        },
+        "position": {
+          "line": 0,
+          "character": 25
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://localhost:4545/jsx/jsx-runtime\n",
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 21
+        },
+        "end": {
+          "line": 0,
+          "character": 46
+        }
+      }
+    }))
+  );
+  shutdown(&mut client);
+}
