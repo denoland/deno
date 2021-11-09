@@ -776,16 +776,8 @@ impl DocumentsInner {
     }
   }
 
-  fn is_open(&mut self, specifier: &ModuleSpecifier) -> bool {
-    if let Some(doc) = self.get_cached(&specifier) {
-      doc.is_open()
-    } else {
-      false
-    }
-  }
-
   fn is_valid(&mut self, specifier: &ModuleSpecifier) -> bool {
-    if self.is_open(specifier) {
+    if self.get_cached(specifier).map(|d| d.is_open()).unwrap_or(false) {
       true
     } else if let Some(specifier) = self.resolve_specifier(specifier) {
       self.docs.get(&specifier).map(|d| d.version().to_string())
