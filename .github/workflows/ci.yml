@@ -405,7 +405,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main'
         run: |
-          gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
 
       - name: Upload canary to dl.deno.land (windows)
         if: |
@@ -418,7 +418,7 @@ jobs:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
         shell: bash
         run: |
-          gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
 
       - name: Test debug
         if: |
@@ -508,10 +508,10 @@ jobs:
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         run: |
           gzip ./wptreport.json
-          gsutil cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
-          gsutil cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz
           echo $(git rev-parse HEAD) > wpt-latest.txt
-          gsutil cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
 
       - name: Upload wpt results to wpt.fyi
         if: |
@@ -581,9 +581,9 @@ jobs:
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/')
         run: |
-          gsutil cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           echo ${GITHUB_REF#refs/*/} > release-latest.txt
-          gsutil cp release-latest.txt gs://dl.deno.land/release-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
       - name: Upload release to dl.deno.land (windows)
         if: |
@@ -596,9 +596,9 @@ jobs:
           CLOUDSDK_PYTHON: ${{env.pythonLocation}}\python.exe
         shell: bash
         run: |
-          gsutil cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           echo ${GITHUB_REF#refs/*/} > release-latest.txt
-          gsutil cp release-latest.txt gs://dl.deno.land/release-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@59c3b4891632ff9a897f99a91d7bc557467a3a22
@@ -635,4 +635,4 @@ jobs:
       - name: Upload canary version file to dl.deno.land
         run: |
           echo ${{ github.sha }} > canary-latest.txt
-          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
