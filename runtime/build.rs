@@ -82,6 +82,7 @@ mod not_docs {
     }
   }
 
+  #[cfg(feature = "deno_ffi")]
   impl deno_ffi::FfiPermissions for Permissions {
     fn check(
       &mut self,
@@ -133,12 +134,14 @@ mod not_docs {
       deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),
       deno_crypto::init(None),
+      #[cfg(feature = "deno_webgpu")]
       deno_webgpu::init(false),
       deno_timers::init::<Permissions>(),
       deno_broadcast_channel::init(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
+      #[cfg(feature = "deno_ffi")]
       deno_ffi::init::<Permissions>(false),
       deno_net::init::<Permissions>(
         None, false, // No --unstable.

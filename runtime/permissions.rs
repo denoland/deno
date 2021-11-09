@@ -1313,6 +1313,7 @@ impl deno_websocket::WebSocketPermissions for Permissions {
   }
 }
 
+#[cfg(feature = "deno_ffi")]
 impl deno_ffi::FfiPermissions for Permissions {
   fn check(&mut self, path: &Path) -> Result<(), AnyError> {
     self.ffi.check(path)

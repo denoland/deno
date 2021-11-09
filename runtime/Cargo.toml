@@ -12,6 +12,7 @@ description = "Provides the deno runtime library"
 [features]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
+default=[ "deno_webgpu", "deno_ffi" ]
 
 [lib]
 name = "deno_runtime"
@@ -27,14 +28,14 @@ deno_console = { version = "0.23.0", path = "../ext/console" }
 deno_core = { version = "0.105.0", path = "../core" }
 deno_crypto = { version = "0.37.0", path = "../ext/crypto" }
 deno_fetch = { version = "0.46.0", path = "../ext/fetch" }
-deno_ffi = { version = "0.10.0", path = "../ext/ffi" }
+deno_ffi = { version = "0.10.0", path = "../ext/ffi", optional = true }
 deno_http = { version = "0.15.0", path = "../ext/http" }
 deno_net = { version = "0.15.0", path = "../ext/net" }
 deno_timers = { version = "0.21.0", path = "../ext/timers" }
 deno_tls = { version = "0.10.0", path = "../ext/tls" }
 deno_url = { version = "0.23.0", path = "../ext/url" }
 deno_web = { version = "0.54.0", path = "../ext/web" }
-deno_webgpu = { version = "0.24.0", path = "../ext/webgpu" }
+deno_webgpu = { version = "0.24.0", path = "../ext/webgpu", optional = true }
 deno_webidl = { version = "0.23.0", path = "../ext/webidl" }
 deno_websocket = { version = "0.28.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.18.0", path = "../ext/webstorage" }
@@ -49,14 +50,14 @@ deno_console = { version = "0.23.0", path = "../ext/console" }
 deno_core = { version = "0.105.0", path = "../core" }
 deno_crypto = { version = "0.37.0", path = "../ext/crypto" }
 deno_fetch = { version = "0.46.0", path = "../ext/fetch" }
-deno_ffi = { version = "0.10.0", path = "../ext/ffi" }
+deno_ffi = { version = "0.10.0", path = "../ext/ffi", optional = true }
 deno_http = { version = "0.15.0", path = "../ext/http" }
 deno_net = { version = "0.15.0", path = "../ext/net" }
 deno_timers = { version = "0.21.0", path = "../ext/timers" }
 deno_tls = { version = "0.10.0", path = "../ext/tls" }
 deno_url = { version = "0.23.0", path = "../ext/url" }
 deno_web = { version = "0.54.0", path = "../ext/web" }
-deno_webgpu = { version = "0.24.0", path = "../ext/webgpu" }
+deno_webgpu = { version = "0.24.0", path = "../ext/webgpu", optional = true }
 deno_webidl = { version = "0.23.0", path = "../ext/webidl" }
 deno_websocket = { version = "0.28.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.18.0", path = "../ext/webstorage" }

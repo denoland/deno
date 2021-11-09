@@ -4,6 +4,7 @@ pub use deno_broadcast_channel;
 pub use deno_console;
 pub use deno_crypto;
 pub use deno_fetch;
+#[cfg(feature = "deno_ffi")]
 pub use deno_ffi;
 pub use deno_http;
 pub use deno_net;
@@ -11,6 +12,7 @@ pub use deno_timers;
 pub use deno_tls;
 pub use deno_url;
 pub use deno_web;
+#[cfg(feature = "deno_webgpu")]
 pub use deno_webgpu;
 pub use deno_webidl;
 pub use deno_websocket;

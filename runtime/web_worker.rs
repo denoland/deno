@@ -334,9 +334,11 @@ impl WebWorker {
       ),
       deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
       deno_crypto::init(options.seed),
+      #[cfg(feature = "deno_webgpu")]
       deno_webgpu::init(unstable),
       deno_timers::init::<Permissions>(),
       // ffi
+      #[cfg(feature = "deno_ffi")]
       deno_ffi::init::<Permissions>(unstable),
       // Permissions ext (worker specific state)
       perm_ext,
