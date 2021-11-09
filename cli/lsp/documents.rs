@@ -758,15 +758,7 @@ impl DocumentsInner {
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Document, AnyError> {
-    // this duplicates the .get_resolver() method, because there is no easy
-    // way to avoid the double borrow of self that occurs here with getting the
-    // mut doc out.
-    let maybe_resolver = if self.maybe_jsx_resolver.is_some() {
-      self.maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-    } else {
-      self.maybe_import_map.as_ref().map(|im| im.as_resolver())
-    };
-    let doc = self.docs.get_mut(specifier).map_or_else(
+    let doc = self.docs.get(specifier).map_or_else(
       || {
         Err(custom_error(
           "NotFound",
@@ -776,12 +768,9 @@ impl DocumentsInner {
       Ok,
     )?;
     self.dirty = true;
-    *doc = doc.with_change(
-      version,
-      changes,
-      maybe_resolver,
-    )?;
-    Ok(doc.clone())
+    let doc = doc.with_change(version, changes, self.get_maybe_resolver())?;
+    self.docs.insert(doc.specifier().clone(), doc.clone());
+    Ok(doc)
   }
 
   fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
@@ -917,6 +906,26 @@ impl DocumentsInner {
     self.docs.insert(specifier, document.clone());
     self.dirty = true;
     document
+  }
+
+  fn documents(
+    &self,
+    open_only: bool,
+    diagnosable_only: bool,
+  ) -> Vec<Document> {
+    self
+      .docs
+      .values()
+      .filter_map(|doc| {
+        let open = open_only && doc.is_open();
+        let diagnosable = diagnosable_only && doc.is_diagnosable();
+        if (!open_only || open) && (!diagnosable_only || diagnosable) {
+          Some(doc.clone())
+        } else {
+          None
+        }
+      })
+      .collect()
   }
 
   fn resolve(
@@ -1057,26 +1066,6 @@ impl DocumentsInner {
     Ok(())
   }
 
-  fn documents(
-    &self,
-    open_only: bool,
-    diagnosable_only: bool,
-  ) -> Vec<Document> {
-    self
-      .docs
-      .values()
-      .filter_map(|doc| {
-        let open = open_only && doc.is_open();
-        let diagnosable = diagnosable_only && doc.is_diagnosable();
-        if (!open_only || open) && (!diagnosable_only || diagnosable) {
-          Some(doc.clone())
-        } else {
-          None
-        }
-      })
-      .collect()
-  }
-
   fn update_config(
     &mut self,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
@@ -1106,7 +1095,6 @@ impl DocumentsInner {
     }
     self.dirty = true;
   }
-
 }
 
 #[derive(Debug, Clone, Default)]
