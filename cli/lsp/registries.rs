@@ -787,7 +787,7 @@ mod tests {
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
       assert!(
-        documents.content(&specifier).is_some(),
+        documents.get(&specifier).is_some(),
         "source could not be setup"
       );
     }

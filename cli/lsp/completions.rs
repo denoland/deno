@@ -114,9 +114,8 @@ pub(crate) async fn get_import_completions(
   state_snapshot: &language_server::StateSnapshot,
   client: lspower::Client,
 ) -> Option<lsp::CompletionResponse> {
-  let (text, _, range) = state_snapshot
-    .documents
-    .get_maybe_dependency(specifier, position)?;
+  let document = state_snapshot.documents.get(specifier)?;
+  let (text, _, range) = document.get_maybe_dependency(position)?;
   let range = to_narrow_lsp_range(&range);
   // completions for local relative modules
   if text.starts_with("./") || text.starts_with("../") {
@@ -276,7 +275,7 @@ fn get_workspace_completions(
   range: &lsp::Range,
   state_snapshot: &language_server::StateSnapshot,
 ) -> Vec<lsp::CompletionItem> {
-  let workspace_specifiers = state_snapshot.documents.specifiers(false, true);
+  let workspace_specifiers = state_snapshot.documents.documents(false, true).into_iter().map(|d| d.specifier().clone()).collect();
   let specifier_strings =
     get_relative_specifiers(specifier, workspace_specifiers);
   specifier_strings
@@ -449,7 +448,7 @@ mod tests {
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
       assert!(
-        documents.content(&specifier).is_some(),
+        documents.get(&specifier).is_some(),
         "source could not be setup"
       );
     }
