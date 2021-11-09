@@ -971,12 +971,9 @@ impl Inner {
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.documents.is_formattable(&specifier) {
-      return Ok(None);
-    }
     let document = match self.documents.get(&specifier) {
-      Some(doc) => doc,
-      None => return Ok(None),
+      Some(doc) if doc.is_open() => doc,
+      _ => return Ok(None),
     };
     let mark = self.performance.mark("formatting", Some(&params));
     let file_path =

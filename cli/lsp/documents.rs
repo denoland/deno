@@ -776,11 +776,6 @@ impl DocumentsInner {
     }
   }
 
-  fn is_formattable(&mut self, specifier: &ModuleSpecifier) -> bool {
-    // currently any document that is open in the language server is formattable
-    self.is_open(specifier)
-  }
-
   fn is_open(&mut self, specifier: &ModuleSpecifier) -> bool {
     if let Some(doc) = self.get_cached(&specifier) {
       doc.is_open()
@@ -1028,11 +1023,6 @@ impl Documents {
     self.0.lock().is_diagnosable(specifier)
   }
 
-  /// Gets a document if its formattable.
-  pub fn is_formattable(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.lock().is_formattable(specifier)
-  }
-
   /// "Open" a document from the perspective of the editor, meaning that
   /// requests for information from the document will come from the in-memory
   /// representation received from the language server client, versus reading
@@ -1124,7 +1114,7 @@ console.log(b);
       "javascript".parse().unwrap(),
       content,
     );
-    assert!(documents.is_formattable(&specifier));
+    assert!(document.is_open());
     assert!(document.is_diagnosable());
   }
 
