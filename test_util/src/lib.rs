@@ -566,7 +566,9 @@ async fn absolute_redirect(
   Ok(file_resp)
 }
 
-async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
+async fn main_server(
+  req: Request<Body>,
+) -> Result<Response<Body>, hyper::http::Error> {
   return match (req.method(), req.uri().path()) {
     (&hyper::Method::POST, "/echo_server") => {
       let (parts, body) = req.into_parts();
@@ -849,6 +851,31 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       let version = format!("{:?}", req.version());
       Ok(Response::new(version.into()))
     }
+    (_, "/content_length") => {
+      let content_length = format!("{:?}", req.headers().get("content-length"));
+      Ok(Response::new(content_length.into()))
+    }
+    (_, "/jsx/jsx-runtime") | (_, "/jsx/jsx-dev-runtime") => {
+      let mut res = Response::new(Body::from(
+        r#"export function jsx(
+          _type,
+          _props,
+          _key,
+          _source,
+          _self,
+        ) {}
+        export const jsxs = jsx;
+        export const jsxDEV = jsx;
+        export const Fragment = Symbol("Fragment");
+        console.log("imported", import.meta.url);
+        "#,
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      Ok(res)
+    }
     _ => {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
@@ -857,7 +884,9 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
         return Ok(file_resp);
       }
 
-      return Ok(Response::new(Body::empty()));
+      Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Body::empty())
     }
   };
 }

@@ -5,6 +5,7 @@ use crate::colors;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
 use crate::config_file::ConfigFile;
+use crate::config_file::MaybeImportsResult;
 use crate::deno_dir;
 use crate::emit;
 use crate::errors::get_module_graph_error_class;
@@ -15,6 +16,7 @@ use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::resolver::ImportMapResolver;
+use crate::resolver::JsxResolver;
 use crate::source_maps::SourceMapGetter;
 use crate::version;
 
@@ -79,7 +81,7 @@ pub struct Inner {
   graph_data: Arc<Mutex<GraphData>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_config_file: Option<ConfigFile>,
-  pub maybe_import_map: Option<ImportMap>,
+  pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub root_cert_store: Option<RootCertStore>,
   pub blob_store: BlobStore,
@@ -200,7 +202,7 @@ impl ProcState {
         None
       };
 
-    let maybe_import_map: Option<ImportMap> =
+    let maybe_import_map: Option<Arc<ImportMap>> =
       match flags.import_map_path.as_ref() {
         None => None,
         Some(import_map_url) => {
@@ -218,7 +220,7 @@ impl ProcState {
             ))?;
           let import_map =
             ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
-          Some(import_map)
+          Some(Arc::new(import_map))
         }
       };
 
@@ -258,10 +260,10 @@ impl ProcState {
 
   /// Return any imports that should be brought into the scope of the module
   /// graph.
-  fn get_maybe_imports(&self) -> Option<Vec<(ModuleSpecifier, Vec<String>)>> {
+  fn get_maybe_imports(&self) -> MaybeImportsResult {
     let mut imports = Vec::new();
     if let Some(config_file) = &self.maybe_config_file {
-      if let Some(config_imports) = config_file.to_maybe_imports() {
+      if let Some(config_imports) = config_file.to_maybe_imports()? {
         imports.extend(config_imports);
       }
     }
@@ -269,9 +271,9 @@ impl ProcState {
       imports.extend(compat::get_node_imports());
     }
     if imports.is_empty() {
-      None
+      Ok(None)
     } else {
-      Some(imports)
+      Ok(Some(imports))
     }
   }
 
@@ -297,16 +299,30 @@ impl ProcState {
       dynamic_permissions.clone(),
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
-    let maybe_imports = self.get_maybe_imports();
+    let maybe_imports = self.get_maybe_imports()?;
     let node_resolver = NodeEsmResolver::new(
-      self.maybe_import_map.as_ref().map(ImportMapResolver::new),
+      self.maybe_import_map.clone().map(ImportMapResolver::new),
     );
-    let import_map_resolver =
-      self.maybe_import_map.as_ref().map(ImportMapResolver::new);
+    let maybe_import_map_resolver =
+      self.maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = self
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      })
+      .flatten();
     let maybe_resolver = if self.flags.compat {
       Some(node_resolver.as_resolver())
+    } else if maybe_jsx_resolver.is_some() {
+      // the JSX resolver offloads to the import map if present, otherwise uses
+      // the default Deno explicit import resolution.
+      maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
     } else {
-      import_map_resolver.as_ref().map(|im| im.as_resolver())
+      maybe_import_map_resolver
+        .as_ref()
+        .map(|im| im.as_resolver())
     };
     // TODO(bartlomieju): this is very make-shift, is there an existing API
     // that we could include it like with "maybe_imports"?

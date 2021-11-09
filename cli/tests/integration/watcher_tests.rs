@@ -120,7 +120,7 @@ fn lint_watch_test() {
   assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
-  assert_eq!(expected, output);
+  assert_eq!(output, expected);
 
   // Change content of the file again to be badly-linted1
   std::fs::copy(&badly_linted_fixed1, &badly_linted)
@@ -129,7 +129,7 @@ fn lint_watch_test() {
 
   output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
-  assert_eq!(expected, output);
+  assert_eq!(output, expected);
 
   // Change content of the file again to be badly-linted1
   std::fs::copy(&badly_linted_fixed2, &badly_linted)
@@ -138,7 +138,7 @@ fn lint_watch_test() {
 
   output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_fixed2_output).unwrap();
-  assert_eq!(expected, output);
+  assert_eq!(output, expected);
 
   // the watcher process is still alive
   assert!(child.try_wait().unwrap().is_none());
@@ -188,7 +188,7 @@ fn lint_watch_without_args_test() {
   assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
-  assert_eq!(expected, output);
+  assert_eq!(output, expected);
 
   // Change content of the file again to be badly-linted1
   std::fs::copy(&badly_linted_fixed1, &badly_linted)
@@ -197,7 +197,7 @@ fn lint_watch_without_args_test() {
 
   output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
-  assert_eq!(expected, output);
+  assert_eq!(output, expected);
 
   // Change content of the file again to be badly-linted1
   std::fs::copy(&badly_linted_fixed2, &badly_linted)
@@ -206,7 +206,7 @@ fn lint_watch_without_args_test() {
 
   output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_fixed2_output).unwrap();
-  assert_eq!(expected, output);
+  assert_eq!(output, expected);
 
   // the watcher process is still alive
   assert!(child.try_wait().unwrap().is_none());
@@ -295,9 +295,10 @@ fn fmt_watch_test() {
 
   let expected = std::fs::read_to_string(fixed.clone()).unwrap();
   let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
-  assert_eq!(expected, actual);
+  assert_eq!(actual, expected);
   assert_contains!(stderr_lines.next().unwrap(), "Checked 1 file");
   assert_contains!(stderr_lines.next().unwrap(), "Restarting on file change");
+
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
@@ -309,7 +310,7 @@ fn fmt_watch_test() {
   // Check if file has been automatically formatted by watcher
   let expected = std::fs::read_to_string(fixed).unwrap();
   let actual = std::fs::read_to_string(badly_formatted).unwrap();
-  assert_eq!(expected, actual);
+  assert_eq!(actual, expected);
   check_alive_then_kill(child);
 }
 
@@ -344,7 +345,8 @@ fn fmt_watch_without_args_test() {
 
   let expected = std::fs::read_to_string(fixed.clone()).unwrap();
   let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
-  assert_eq!(expected, actual);
+  assert_eq!(actual, expected);
+
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
   std::thread::sleep(std::time::Duration::from_secs(1));
@@ -352,7 +354,7 @@ fn fmt_watch_without_args_test() {
   // Check if file has been automatically formatted by watcher
   let expected = std::fs::read_to_string(fixed).unwrap();
   let actual = std::fs::read_to_string(badly_formatted).unwrap();
-  assert_eq!(expected, actual);
+  assert_eq!(actual, expected);
   check_alive_then_kill(child);
 }
 

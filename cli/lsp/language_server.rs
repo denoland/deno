@@ -116,7 +116,7 @@ pub(crate) struct Inner {
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
   /// An optional import map which is used to resolve modules.
-  pub(crate) maybe_import_map: Option<ImportMap>,
+  pub(crate) maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// A collection of measurements which instrument that performance of the LSP.
@@ -327,6 +327,7 @@ impl Inner {
     if specifier.scheme() == "asset" {
       matches!(
         MediaType::from(specifier),
+        // todo(#12410): Update with new media types for TS 4.5
         MediaType::JavaScript
           | MediaType::Jsx
           | MediaType::TypeScript
@@ -480,13 +481,13 @@ impl Inner {
           )
         })?
       };
-      let import_map =
-        ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
+      let import_map = Arc::new(ImportMap::from_json(
+        &import_map_url.to_string(),
+        &import_map_json,
+      )?);
       self.maybe_import_map_uri = Some(import_map_url);
-      self.maybe_import_map = Some(import_map.clone());
-      self.documents.set_import_map(Some(Arc::new(import_map)));
+      self.maybe_import_map = Some(import_map);
     } else {
-      self.documents.set_import_map(None);
       self.maybe_import_map = None;
     }
     self.performance.measure(mark);
@@ -571,6 +572,8 @@ impl Inner {
       "strict": true,
       "target": "esnext",
       "useDefineForClassFields": true,
+      // TODO(@kitsonk) remove for Deno 1.15
+      "useUnknownInCatchVariables": false,
     }));
     let config = &self.config;
     let workspace_settings = config.get_workspace_settings();
@@ -697,6 +700,10 @@ impl Inner {
     if let Err(err) = self.update_registries().await {
       self.client.show_message(MessageType::Warning, err).await;
     }
+    self.documents.update_config(
+      self.maybe_import_map.clone(),
+      self.maybe_config_file.as_ref(),
+    );
 
     self.performance.measure(mark);
     Ok(InitializeResult {
@@ -905,6 +912,10 @@ impl Inner {
     if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
     }
+    self.documents.update_config(
+      self.maybe_import_map.clone(),
+      self.maybe_config_file.as_ref(),
+    );
 
     self.performance.measure(mark);
   }
@@ -939,6 +950,10 @@ impl Inner {
       }
     }
     if touched {
+      self.documents.update_config(
+        self.maybe_import_map.clone(),
+        self.maybe_config_file.as_ref(),
+      );
       self.diagnostics_server.invalidate_all().await;
       if let Err(err) = self.diagnostics_server.update() {
         error!("Cannot update diagnostics: {}", err);
@@ -1084,21 +1099,34 @@ impl Inner {
         &specifier,
         &params.text_document_position_params.position,
       ) {
-      let value = match (&dep.maybe_code, &dep.maybe_type) {
-        (Some(code_dep), Some(type_dep)) => format!(
+      let maybe_types_dependency =
+        self.documents.get_maybe_types_for_dependency(&dep);
+      let value = match (&dep.maybe_code, &dep.maybe_type, &maybe_types_dependency) {
+        (Some(code_dep), Some(type_dep), None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
           to_hover_text(code_dep),
           to_hover_text(type_dep)
         ),
-        (Some(code_dep), None) => format!(
+        (Some(code_dep), Some(type_dep), Some(types_dep)) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
+          to_hover_text(code_dep),
+          to_hover_text(types_dep),
+          to_hover_text(type_dep)
+        ),
+        (Some(code_dep), None, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n",
           to_hover_text(code_dep)
         ),
-        (None, Some(type_dep)) => format!(
+        (Some(code_dep), None, Some(types_dep)) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          to_hover_text(code_dep),
+          to_hover_text(types_dep)
+        ),
+        (None, Some(type_dep), _) => format!(
           "**Resolved Dependency**\n\n**Types**: {}\n",
           to_hover_text(type_dep)
         ),
-        (None, None) => unreachable!("{}", json!(params)),
+        (None, None, _) => unreachable!("{}", json!(params)),
       };
       Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
@@ -2608,6 +2636,7 @@ impl Inner {
         CacheServer::new(
           self.maybe_cache_path.clone(),
           self.maybe_import_map.clone(),
+          self.maybe_config_file.clone(),
         )
         .await,
       );
@@ -2658,11 +2687,6 @@ impl Inner {
       .performance
       .mark("virtual_text_document", Some(&params));
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    info!(
-      "virtual_text_document\n{}\nspecifier: {}",
-      json!(params),
-      specifier
-    );
     let contents = if specifier.as_str() == "deno:/status.md" {
       let mut contents = String::new();
       let mut documents_specifiers = self.documents.specifiers(false, false);

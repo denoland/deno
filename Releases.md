@@ -6,6 +6,63 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.16.0 / 2021.11.09
+
+- BREAKING(ext/web): remove `ReadableStream.getIterator` (#12652)
+- feat(cli): support React 17 JSX transforms (#12631)
+- feat(compat): add .code to dyn import error (#12633)
+- feat(compat): integrate import map and classic resolutions in ESM resolution
+  (#12549)
+- feat(ext/console): Display error.cause in console (#12462)
+- feat(ext/fetch): support fetching local files (#12545)
+- feat(ext/net): add TlsConn.handshake() (#12467)
+- feat(ext/web): BYOB support for ReadableStream (#12616)
+- feat(ext/web): WritableStreamDefaultController.signal (#12654)
+- feat(ext/web): add `AbortSignal.reason` (#12697)
+- feat(ext/webstorage): use implied origin when --location not set (#12548)
+- feat(runtime): add Deno.addSignalListener API (#12512)
+- feat(runtime): give OS errors .code attributes (#12591)
+- feat(test): better formatting for test elapsed time (#12610)
+- feat(runtime): Stabilize Deno.TestDefinition.permissions (#12078)
+- feat(runtime): stabilize Deno.startTls (#12581)
+- feat(core): update to V8 9.7 (#12685)
+- fix(cli): do not cache emit when diagnostics present (#12541)
+- fix(cli): don't panic when mapping unknown errors (#12659)
+- fix(cli): lint/format all discoverd files on each change (#12518)
+- fix(cli): linter/formater watches current directory without args (#12550)
+- fix(cli): no-check respects inlineSources compiler option (#12559)
+- fix(cli/upgrade): nice error when unzip is missing (#12693)
+- fix(encoding): support additional encoding labels (#12586)
+- fix(ext/fetch): Replace redundant local variable with inline return statement
+  (#12583)
+- fix(ext/http): allow multiple values in upgrade header for websocket (#12551)
+- fix(ext/net): expose all tls ops (#12699)
+- fix(fetch): set content-length for empty POST/PUT (#12703)
+- fix(fmt): reduce likelihood of deno fmt panic for file with multi-byte chars
+  (#12623)
+- fix(fmt/lint): strip unc paths on Windows when displaying file paths in lint
+  and fmt (#12606)
+- fix(lint): use recommended tag if there is no tags in config file or flags
+  (#12644)
+- fix(lint): use recommended tags when no tags specified in config, but includes
+  or excludes are (#12700)
+- fix(lsp): cache unsupported import completion origins (#12661)
+- fix(lsp): display module types only dependencies on hover (#12683)
+- fix(lsp): display signature docs as markdown (#12636)
+- fix(runtime): require full read and write permissions to create symlinks
+  (#12554)
+- fix(tls): Make TLS clients support HTTP/2 (#12530)
+- fix(webidl): Don't throw when converting a detached buffer source (#12585)
+- fix(workers): Make `importScripts()` use the same HTTP client as `fetch`
+  (#12540)
+- fix: Deno.emit crashes with BorrowMutError (#12627)
+- fix: support verbatim UNC prefixed paths on Windows (#12438)
+- fix: typings for BYOB stream readers (#12651)
+- perf(core): optimize waker capture in AsyncRefCell (#12332)
+- perf(encoding): avoid copying the input data in `TextDecoder` (#12573)
+- perf(http): encode string bodies in op-layer (#12451)
+- perf: optimize some important crates more aggressively (#12332)
+
 ### 1.15.3 / 2021.10.25
 
 - feat(serde_v8): StringOrBuffer (#12503)

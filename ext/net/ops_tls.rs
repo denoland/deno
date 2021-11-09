@@ -774,13 +774,13 @@ pub struct ConnectTlsArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StartTlsArgs {
+pub struct StartTlsArgs {
   rid: ResourceId,
   ca_certs: Vec<String>,
   hostname: String,
 }
 
-async fn op_tls_start<NP>(
+pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
   _: (),
@@ -1013,7 +1013,7 @@ pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-fn op_tls_listen<NP>(
+pub fn op_tls_listen<NP>(
   state: &mut OpState,
   args: ListenTlsArgs,
   _: (),
@@ -1073,7 +1073,7 @@ where
   })
 }
 
-async fn op_tls_accept(
+pub async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),
@@ -1123,7 +1123,7 @@ async fn op_tls_accept(
   })
 }
 
-async fn op_tls_handshake(
+pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),

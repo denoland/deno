@@ -29,7 +29,6 @@ use futures::task::AtomicWaker;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::mem::forget;
 use std::option::Option;
@@ -2318,11 +2317,14 @@ assertEquals(1, notify_return_value);
       _: (),
       _: (),
     ) -> Result<(), AnyError> {
-      let op_state = op_state.borrow();
-      let inner_state = op_state.borrow::<InnerState>();
+      let n = {
+        let op_state = op_state.borrow();
+        let inner_state = op_state.borrow::<InnerState>();
+        inner_state.0
+      };
       // Future must be Poll::Pending on first call
       tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-      if inner_state.0 != 42 {
+      if n != 42 {
         unreachable!();
       }
       Ok(())

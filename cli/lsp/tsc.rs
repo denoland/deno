@@ -16,7 +16,6 @@ use super::text::LineIndex;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::TsConfig;
-use crate::tokio_util::create_basic_runtime;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 
@@ -37,6 +36,7 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
+use deno_runtime::tokio_util::create_basic_runtime;
 use log::warn;
 use lspower::lsp;
 use regex::Captures;
@@ -410,6 +410,12 @@ pub enum ScriptElementKind {
   JsxAttribute,
   #[serde(rename = "string")]
   String,
+  #[serde(rename = "link")]
+  Link,
+  #[serde(rename = "link name")]
+  LinkName,
+  #[serde(rename = "link test")]
+  LinkText,
 }
 
 impl Default for ScriptElementKind {
@@ -418,6 +424,7 @@ impl Default for ScriptElementKind {
   }
 }
 
+/// This mirrors the method `convertKind` in `completions.ts` in vscode
 impl From<ScriptElementKind> for lsp::CompletionItemKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
@@ -468,29 +475,33 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
   }
 }
 
+/// This mirrors `fromProtocolScriptElementKind` in vscode
 impl From<ScriptElementKind> for lsp::SymbolKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
-      ScriptElementKind::ModuleElement => lsp::SymbolKind::Module,
-      ScriptElementKind::ClassElement => lsp::SymbolKind::Class,
-      ScriptElementKind::EnumElement => lsp::SymbolKind::Enum,
-      ScriptElementKind::InterfaceElement => lsp::SymbolKind::Interface,
-      ScriptElementKind::MemberFunctionElement => lsp::SymbolKind::Method,
-      ScriptElementKind::MemberVariableElement => lsp::SymbolKind::Property,
-      ScriptElementKind::MemberGetAccessorElement => lsp::SymbolKind::Property,
-      ScriptElementKind::MemberSetAccessorElement => lsp::SymbolKind::Property,
-      ScriptElementKind::VariableElement => lsp::SymbolKind::Variable,
-      ScriptElementKind::ConstElement => lsp::SymbolKind::Variable,
-      ScriptElementKind::LocalVariableElement => lsp::SymbolKind::Variable,
-      ScriptElementKind::FunctionElement => lsp::SymbolKind::Function,
-      ScriptElementKind::LocalFunctionElement => lsp::SymbolKind::Function,
-      ScriptElementKind::ConstructSignatureElement => {
-        lsp::SymbolKind::Constructor
-      }
-      ScriptElementKind::ConstructorImplementationElement => {
-        lsp::SymbolKind::Constructor
-      }
-      _ => lsp::SymbolKind::Variable,
+      ScriptElementKind::ModuleElement => Self::Module,
+      ScriptElementKind::ClassElement => Self::Class,
+      ScriptElementKind::EnumElement => Self::Enum,
+      ScriptElementKind::EnumMemberElement => Self::EnumMember,
+      ScriptElementKind::InterfaceElement => Self::Interface,
+      ScriptElementKind::IndexSignatureElement => Self::Method,
+      ScriptElementKind::CallSignatureElement => Self::Method,
+      ScriptElementKind::MemberFunctionElement => Self::Method,
+      ScriptElementKind::MemberVariableElement => Self::Property,
+      ScriptElementKind::MemberGetAccessorElement => Self::Property,
+      ScriptElementKind::MemberSetAccessorElement => Self::Property,
+      ScriptElementKind::VariableElement => Self::Variable,
+      ScriptElementKind::LetElement => Self::Variable,
+      ScriptElementKind::ConstElement => Self::Variable,
+      ScriptElementKind::LocalVariableElement => Self::Variable,
+      ScriptElementKind::Alias => Self::Variable,
+      ScriptElementKind::FunctionElement => Self::Function,
+      ScriptElementKind::LocalFunctionElement => Self::Function,
+      ScriptElementKind::ConstructSignatureElement => Self::Constructor,
+      ScriptElementKind::ConstructorImplementationElement => Self::Constructor,
+      ScriptElementKind::TypeParameterElement => Self::TypeParameter,
+      ScriptElementKind::String => Self::String,
+      _ => Self::Variable,
     }
   }
 }
@@ -1953,11 +1964,15 @@ impl SignatureHelpItem {
       .collect::<Vec<String>>()
       .join(", ");
     let suffix_text = display_parts_to_string(&self.suffix_display_parts);
+    let documentation = display_parts_to_string(&self.documentation);
     lsp::SignatureInformation {
       label: format!("{}{}{}", prefix_text, params_text, suffix_text),
-      documentation: Some(lsp::Documentation::String(display_parts_to_string(
-        &self.documentation,
-      ))),
+      documentation: Some(lsp::Documentation::MarkupContent(
+        lsp::MarkupContent {
+          kind: lsp::MarkupKind::Markdown,
+          value: documentation,
+        },
+      )),
       parameters: Some(
         self
           .parameters
@@ -1981,13 +1996,17 @@ pub struct SignatureHelpParameter {
 
 impl SignatureHelpParameter {
   pub fn into_parameter_information(self) -> lsp::ParameterInformation {
+    let documentation = display_parts_to_string(&self.documentation);
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
       )),
-      documentation: Some(lsp::Documentation::String(display_parts_to_string(
-        &self.documentation,
-      ))),
+      documentation: Some(lsp::Documentation::MarkupContent(
+        lsp::MarkupContent {
+          kind: lsp::MarkupKind::Markdown,
+          value: documentation,
+        },
+      )),
     }
   }
 }

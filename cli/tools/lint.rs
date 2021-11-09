@@ -51,9 +51,9 @@ pub async fn lint(
   watch: bool,
 ) -> Result<(), AnyError> {
   let LintFlags {
-    rules_tags,
-    rules_include,
-    rules_exclude,
+    maybe_rules_tags,
+    maybe_rules_include,
+    maybe_rules_exclude,
     files: args,
     ignore,
     json,
@@ -102,9 +102,9 @@ pub async fn lint(
   // and `--rules-include` CLI flag, only the flag value is taken into account.
   let lint_rules = get_configured_rules(
     maybe_lint_config.as_ref(),
-    rules_tags,
-    rules_include,
-    rules_exclude,
+    maybe_rules_tags,
+    maybe_rules_include,
+    maybe_rules_exclude,
   )?;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
@@ -488,20 +488,20 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
 
 pub(crate) fn get_configured_rules(
   maybe_lint_config: Option<&LintConfig>,
-  rules_tags: Vec<String>,
-  rules_include: Vec<String>,
-  rules_exclude: Vec<String>,
+  maybe_rules_tags: Option<Vec<String>>,
+  maybe_rules_include: Option<Vec<String>>,
+  maybe_rules_exclude: Option<Vec<String>>,
 ) -> Result<Vec<Arc<dyn LintRule>>, AnyError> {
   if maybe_lint_config.is_none()
-    && rules_tags.is_empty()
-    && rules_include.is_empty()
-    && rules_exclude.is_empty()
+    && maybe_rules_tags.is_none()
+    && maybe_rules_include.is_none()
+    && maybe_rules_exclude.is_none()
   {
     return Ok(rules::get_recommended_rules());
   }
 
   let (config_file_tags, config_file_include, config_file_exclude) =
-    if let Some(lint_config) = maybe_lint_config.as_ref() {
+    if let Some(lint_config) = maybe_lint_config {
       (
         lint_config.rules.tags.clone(),
         lint_config.rules.include.clone(),
@@ -511,26 +511,26 @@ pub(crate) fn get_configured_rules(
       (None, None, None)
     };
 
-  let maybe_configured_include = if !rules_include.is_empty() {
-    Some(rules_include)
+  let maybe_configured_include = if maybe_rules_include.is_some() {
+    maybe_rules_include
   } else {
     config_file_include
   };
 
-  let maybe_configured_exclude = if !rules_exclude.is_empty() {
-    Some(rules_exclude)
+  let maybe_configured_exclude = if maybe_rules_exclude.is_some() {
+    maybe_rules_exclude
   } else {
     config_file_exclude
   };
 
-  let configured_tags = if !rules_tags.is_empty() {
-    rules_tags
+  let maybe_configured_tags = if maybe_rules_tags.is_some() {
+    maybe_rules_tags
   } else {
-    config_file_tags.unwrap_or_else(Vec::new)
+    config_file_tags
   };
 
   let configured_rules = rules::get_filtered_rules(
-    Some(configured_tags),
+    maybe_configured_tags.or_else(|| Some(vec!["recommended".to_string()])),
     maybe_configured_exclude,
     maybe_configured_include,
   );
@@ -540,4 +540,37 @@ pub(crate) fn get_configured_rules(
   }
 
   Ok(configured_rules)
+}
+
+#[cfg(test)]
+mod test {
+  use deno_lint::rules::get_recommended_rules;
+
+  use super::*;
+  use crate::config_file::LintRulesConfig;
+
+  #[test]
+  fn recommended_rules_when_no_tags_in_config() {
+    let lint_config = LintConfig {
+      rules: LintRulesConfig {
+        exclude: Some(vec!["no-debugger".to_string()]),
+        ..Default::default()
+      },
+      ..Default::default()
+    };
+    let rules =
+      get_configured_rules(Some(&lint_config), None, None, None).unwrap();
+    let mut rule_names = rules
+      .into_iter()
+      .map(|r| r.code().to_string())
+      .collect::<Vec<_>>();
+    rule_names.sort();
+    let mut recommended_rule_names = get_recommended_rules()
+      .into_iter()
+      .map(|r| r.code().to_string())
+      .filter(|n| n != "no-debugger")
+      .collect::<Vec<_>>();
+    recommended_rule_names.sort();
+    assert_eq!(rule_names, recommended_rule_names);
+  }
 }

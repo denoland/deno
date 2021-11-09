@@ -23,7 +23,7 @@ unitTest(
 unitTest({ permissions: { net: true } }, async function fetchProtocolError() {
   await assertRejects(
     async () => {
-      await fetch("file:///");
+      await fetch("ftp://localhost:21/a/file");
     },
     TypeError,
     "not supported",
@@ -640,6 +640,7 @@ unitTest(
     const actual = new TextDecoder().decode((await bufPromise).bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
+      "content-length: 0\r\n",
       "hello: World\r\n",
       "foo: Bar\r\n",
       "accept: */*\r\n",
@@ -1358,5 +1359,118 @@ unitTest(
     assert(res.ok);
     assertEquals(await res.text(), "HTTP/2.0");
     client.close();
+  },
+);
+
+unitTest(async function fetchFilePerm() {
+  await assertRejects(async () => {
+    await fetch(new URL("../testdata/subdir/json_1.json", import.meta.url));
+  }, Deno.errors.PermissionDenied);
+});
+
+unitTest(async function fetchFilePermDoesNotExist() {
+  await assertRejects(async () => {
+    await fetch(new URL("./bad.json", import.meta.url));
+  }, Deno.errors.PermissionDenied);
+});
+
+unitTest(
+  { permissions: { read: true } },
+  async function fetchFileBadMethod() {
+    await assertRejects(
+      async () => {
+        await fetch(
+          new URL("../testdata/subdir/json_1.json", import.meta.url),
+          {
+            method: "POST",
+          },
+        );
+      },
+      TypeError,
+      "Fetching files only supports the GET method. Received POST.",
+    );
+  },
+);
+
+unitTest(
+  { permissions: { read: true } },
+  async function fetchFileDoesNotExist() {
+    await assertRejects(
+      async () => {
+        await fetch(new URL("./bad.json", import.meta.url));
+      },
+      TypeError,
+    );
+  },
+);
+
+unitTest(
+  { permissions: { read: true } },
+  async function fetchFile() {
+    const res = await fetch(
+      new URL("../testdata/subdir/json_1.json", import.meta.url),
+    );
+    assert(res.ok);
+    const fixture = await Deno.readTextFile(
+      "cli/tests/testdata/subdir/json_1.json",
+    );
+    assertEquals(await res.text(), fixture);
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchContentLengthPost() {
+    const response = await fetch("http://localhost:4545/content_length", {
+      method: "POST",
+    });
+    const length = await response.text();
+    assertEquals(length, 'Some("0")');
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchContentLengthPut() {
+    const response = await fetch("http://localhost:4545/content_length", {
+      method: "PUT",
+    });
+    const length = await response.text();
+    assertEquals(length, 'Some("0")');
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchContentLengthPatch() {
+    const response = await fetch("http://localhost:4545/content_length", {
+      method: "PATCH",
+    });
+    const length = await response.text();
+    assertEquals(length, "None");
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchContentLengthPostWithStringBody() {
+    const response = await fetch("http://localhost:4545/content_length", {
+      method: "POST",
+      body: "Hey!",
+    });
+    const length = await response.text();
+    assertEquals(length, 'Some("4")');
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchContentLengthPostWithBufferBody() {
+    const response = await fetch("http://localhost:4545/content_length", {
+      method: "POST",
+      body: new TextEncoder().encode("Hey!"),
+    });
+    const length = await response.text();
+    assertEquals(length, 'Some("4")');
   },
 );
