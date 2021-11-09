@@ -59,6 +59,10 @@ impl CacheServer {
             .as_ref()
             .map(|im| im.as_resolver())
         };
+        let maybe_imports = maybe_config_file
+          .map(|cf| cf.to_maybe_imports().ok())
+          .flatten()
+          .flatten();
         let mut cache = FetchCacher::new(
           ps.dir.gen_cache.clone(),
           ps.file_fetcher.clone(),
@@ -70,7 +74,7 @@ impl CacheServer {
           let graph = deno_graph::create_graph(
             roots,
             false,
-            None,
+            maybe_imports.clone(),
             cache.as_mut_loader(),
             maybe_resolver,
             None,
