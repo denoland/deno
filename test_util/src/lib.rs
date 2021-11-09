@@ -851,6 +851,10 @@ async fn main_server(
       let version = format!("{:?}", req.version());
       Ok(Response::new(version.into()))
     }
+    (_, "/content_length") => {
+      let content_length = format!("{:?}", req.headers().get("content-length"));
+      Ok(Response::new(content_length.into()))
+    }
     (_, "/jsx/jsx-runtime") | (_, "/jsx/jsx-dev-runtime") => {
       let mut res = Response::new(Body::from(
         r#"export function jsx(
