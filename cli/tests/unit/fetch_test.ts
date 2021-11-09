@@ -640,6 +640,7 @@ unitTest(
     const actual = new TextDecoder().decode((await bufPromise).bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
+      "content-length: 0\r\n",
       "hello: World\r\n",
       "foo: Bar\r\n",
       "accept: */*\r\n",
@@ -1414,5 +1415,62 @@ unitTest(
       "cli/tests/testdata/subdir/json_1.json",
     );
     assertEquals(await res.text(), fixture);
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchContentLengthPost() {
+    const response = await fetch("http://localhost:4545/content_length", {
+      method: "POST",
+    });
+    const length = await response.text();
+    assertEquals(length, 'Some("0")');
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchContentLengthPut() {
+    const response = await fetch("http://localhost:4545/content_length", {
+      method: "PUT",
+    });
+    const length = await response.text();
+    assertEquals(length, 'Some("0")');
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchContentLengthPatch() {
+    const response = await fetch("http://localhost:4545/content_length", {
+      method: "PATCH",
+    });
+    const length = await response.text();
+    assertEquals(length, "None");
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchContentLengthPostWithStringBody() {
+    const response = await fetch("http://localhost:4545/content_length", {
+      method: "POST",
+      body: "Hey!",
+    });
+    const length = await response.text();
+    assertEquals(length, 'Some("4")');
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function fetchContentLengthPostWithBufferBody() {
+    const response = await fetch("http://localhost:4545/content_length", {
+      method: "POST",
+      body: new TextEncoder().encode("Hey!"),
+    });
+    const length = await response.text();
+    assertEquals(length, 'Some("4")');
   },
 );

@@ -7,17 +7,25 @@
 // file descriptor (hence the different name).
 
 use crate::error::bad_resource_id;
+use crate::error::not_supported;
 use crate::error::AnyError;
+use crate::ZeroCopyBuf;
+use futures::Future;
 use std::any::type_name;
 use std::any::Any;
 use std::any::TypeId;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::iter::Iterator;
+use std::pin::Pin;
 use std::rc::Rc;
+
+/// Returned by resource read/write/shutdown methods
+pub type AsyncResult<T> = Pin<Box<dyn Future<Output = Result<T, AnyError>>>>;
 
 /// All objects that can be store in the resource table should implement the
 /// `Resource` trait.
+/// TODO(@AaronO): investigate avoiding alloc on read/write/shutdown
 pub trait Resource: Any + 'static {
   /// Returns a string representation of the resource which is made available
   /// to JavaScript code through `op_resources`. The default implementation
@@ -25,6 +33,21 @@ pub trait Resource: Any + 'static {
   /// trait method.
   fn name(&self) -> Cow<str> {
     type_name::<Self>().into()
+  }
+
+  /// Resources may implement `read()` to be a readable stream
+  fn read(self: Rc<Self>, _buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(futures::future::err(not_supported()))
+  }
+
+  /// Resources may implement `write()` to be a writable stream
+  fn write(self: Rc<Self>, _buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(futures::future::err(not_supported()))
+  }
+
+  /// Resources may implement `shutdown()` for graceful async shutdowns
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(futures::future::err(not_supported()))
   }
 
   /// Resources may implement the `close()` trait method if they need to do

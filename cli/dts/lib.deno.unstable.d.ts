@@ -277,15 +277,20 @@ declare namespace Deno {
     /** Emit the source alongside the source maps within a single file; requires
      * `inlineSourceMap` or `sourceMap` to be set. Defaults to `false`. */
     inlineSources?: boolean;
-    /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`.
+    /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`,
+     * `"react-jsx", `"react-jsxdev"`.
      * Defaults to `"react"`. */
-    jsx?: "react" | "preserve" | "react-native";
+    jsx?: "react" | "preserve" | "react-native" | "react-jsx" | "react-jsx-dev";
     /** Specify the JSX factory function to use when targeting react JSX emit,
      * e.g. `React.createElement` or `h`. Defaults to `React.createElement`. */
     jsxFactory?: string;
     /** Specify the JSX fragment factory function to use when targeting react
      * JSX emit, e.g. `Fragment`. Defaults to `React.Fragment`. */
     jsxFragmentFactory?: string;
+    /** Declares the module specifier to be used for importing the `jsx` and
+     * `jsxs` factory functions when using jsx as `"react-jsx"` or
+     * `"react-jsxdev"`. Defaults to `"react"`. */
+    jsxImportSource?: string;
     /** Resolve keyof to string valued property names only (no numbers or
      * symbols). Defaults to `false`. */
     keyofStringsOnly?: string;

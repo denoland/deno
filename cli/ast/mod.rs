@@ -122,15 +122,26 @@ pub struct EmitOptions {
   pub inline_source_map: bool,
   /// Should the sources be inlined in the source map.  Defaults to `true`.
   pub inline_sources: bool,
-  // Should a corresponding .map file be created for the output. This should be
-  // false if inline_source_map is true. Defaults to `false`.
+  /// Should a corresponding .map file be created for the output. This should be
+  /// false if inline_source_map is true. Defaults to `false`.
   pub source_map: bool,
+  /// `true` if the program should use an implicit JSX import source/the "new"
+  /// JSX transforms.
+  pub jsx_automatic: bool,
+  /// If JSX is automatic, if it is in development mode, meaning that it should
+  /// import `jsx-dev-runtime` and transform JSX using `jsxDEV` import from the
+  /// JSX import source as well as provide additional debug information to the
+  /// JSX factory.
+  pub jsx_development: bool,
   /// When transforming JSX, what value should be used for the JSX factory.
   /// Defaults to `React.createElement`.
   pub jsx_factory: String,
   /// When transforming JSX, what value should be used for the JSX fragment
   /// factory.  Defaults to `React.Fragment`.
   pub jsx_fragment_factory: String,
+  /// The string module specifier to implicitly import JSX factories from when
+  /// transpiling JSX.
+  pub jsx_import_source: Option<String>,
   /// Should JSX be transformed or preserved.  Defaults to `true`.
   pub transform_jsx: bool,
   /// Should import declarations be transformed to variable declarations.
@@ -146,8 +157,11 @@ impl Default for EmitOptions {
       inline_source_map: true,
       inline_sources: true,
       source_map: false,
+      jsx_automatic: false,
+      jsx_development: false,
       jsx_factory: "React.createElement".into(),
       jsx_fragment_factory: "React.Fragment".into(),
+      jsx_import_source: None,
       transform_jsx: true,
       repl_imports: false,
     }
@@ -164,15 +178,25 @@ impl From<config_file::TsConfig> for EmitOptions {
         "error" => ImportsNotUsedAsValues::Error,
         _ => ImportsNotUsedAsValues::Remove,
       };
+    let (transform_jsx, jsx_automatic, jsx_development) =
+      match options.jsx.as_str() {
+        "react" => (true, false, false),
+        "react-jsx" => (true, true, false),
+        "react-jsxdev" => (true, true, true),
+        _ => (false, false, false),
+      };
     EmitOptions {
       emit_metadata: options.emit_decorator_metadata,
       imports_not_used_as_values,
       inline_source_map: options.inline_source_map,
       inline_sources: options.inline_sources,
       source_map: options.source_map,
+      jsx_automatic,
+      jsx_development,
       jsx_factory: options.jsx_factory,
       jsx_fragment_factory: options.jsx_fragment_factory,
-      transform_jsx: options.jsx == "react",
+      jsx_import_source: options.jsx_import_source,
+      transform_jsx,
       repl_imports: false,
     }
   }
@@ -355,6 +379,13 @@ fn fold_program(
         // this will use `Object.assign()` instead of the `_extends` helper
         // when spreading props.
         use_builtins: true,
+        runtime: if options.jsx_automatic {
+          Some(react::Runtime::Automatic)
+        } else {
+          None
+        },
+        development: options.jsx_development,
+        import_source: options.jsx_import_source.clone().unwrap_or_default(),
         ..Default::default()
       },
       top_level_mark,
@@ -494,6 +525,112 @@ function App() {
 }"#;
     assert_eq!(&code[..expected.len()], expected);
   }
+
+  #[test]
+  fn test_transpile_jsx_import_source_pragma() {
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.tsx")
+      .expect("could not resolve specifier");
+    let source = r#"
+/** @jsxImportSource jsx_lib */
+
+function App() {
+  return (
+    <div><></></div>
+  );
+}"#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      source: SourceTextInfo::from_string(source.to_string()),
+      media_type: deno_ast::MediaType::Jsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+    let (code, _) = transpile(&module, &EmitOptions::default()).unwrap();
+    let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
+/** @jsxImportSource jsx_lib */ function App() {
+    return(/*#__PURE__*/ _jsx("div", {
+        children: /*#__PURE__*/ _jsx(_Fragment, {
+        })
+    }));
+"#;
+    assert_eq!(&code[..expected.len()], expected);
+  }
+
+  #[test]
+  fn test_transpile_jsx_import_source_no_pragma() {
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.tsx")
+      .expect("could not resolve specifier");
+    let source = r#"
+function App() {
+  return (
+    <div><></></div>
+  );
+}"#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      source: SourceTextInfo::from_string(source.to_string()),
+      media_type: deno_ast::MediaType::Jsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+    let emit_options = EmitOptions {
+      jsx_automatic: true,
+      jsx_import_source: Some("jsx_lib".to_string()),
+      ..Default::default()
+    };
+    let (code, _) = transpile(&module, &emit_options).unwrap();
+    let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
+function App() {
+    return(/*#__PURE__*/ _jsx("div", {
+        children: /*#__PURE__*/ _jsx(_Fragment, {
+        })
+    }));
+}
+"#;
+    assert_eq!(&code[..expected.len()], expected);
+  }
+
+  // TODO(@kitsonk) https://github.com/swc-project/swc/issues/2656
+  //   #[test]
+  //   fn test_transpile_jsx_import_source_no_pragma_dev() {
+  //     let specifier = resolve_url_or_path("https://deno.land/x/mod.tsx")
+  //       .expect("could not resolve specifier");
+  //     let source = r#"
+  // function App() {
+  //   return (
+  //     <div><></></div>
+  //   );
+  // }"#;
+  //     let module = parse_module(ParseParams {
+  //       specifier: specifier.as_str().to_string(),
+  //       source: SourceTextInfo::from_string(source.to_string()),
+  //       media_type: deno_ast::MediaType::Jsx,
+  //       capture_tokens: false,
+  //       maybe_syntax: None,
+  //       scope_analysis: true,
+  //     })
+  //     .unwrap();
+  //     let emit_options = EmitOptions {
+  //       jsx_automatic: true,
+  //       jsx_import_source: Some("jsx_lib".to_string()),
+  //       jsx_development: true,
+  //       ..Default::default()
+  //     };
+  //     let (code, _) = transpile(&module, &emit_options).unwrap();
+  //     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
+  // function App() {
+  //     return(/*#__PURE__*/ _jsx("div", {
+  //         children: /*#__PURE__*/ _jsx(_Fragment, {
+  //         })
+  //     }));
+  // }
+  // "#;
+  //     assert_eq!(&code[..expected.len()], expected);
+  //   }
 
   #[test]
   fn test_transpile_decorators() {

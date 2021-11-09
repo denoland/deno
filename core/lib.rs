@@ -86,6 +86,7 @@ pub use crate::ops_json::op_async_unref;
 pub use crate::ops_json::op_sync;
 pub use crate::ops_json::void_op_async;
 pub use crate::ops_json::void_op_sync;
+pub use crate::resources::AsyncResult;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
 pub use crate::resources::ResourceTable;
