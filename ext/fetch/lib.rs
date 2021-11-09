@@ -246,7 +246,7 @@ where
       let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url)?;
 
-      let mut request = client.request(method, url);
+      let mut request = client.request(method.clone(), url);
 
       let request_body_rid = if args.has_body {
         match data {
@@ -278,6 +278,11 @@ where
           }
         }
       } else {
+        // POST and PUT requests should always have a 0 length content-length,
+        // if there is no body. https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
+        if matches!(method, Method::POST | Method::PUT) {
+          request = request.header(CONTENT_LENGTH, HeaderValue::from(0));
+        }
         None
       };
 
