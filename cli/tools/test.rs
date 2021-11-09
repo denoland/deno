@@ -712,6 +712,7 @@ async fn check_specifiers(
       lib.clone(),
       Permissions::allow_all(),
       permissions.clone(),
+      ps.graph_data.clone(),
     )
     .await?;
   }
@@ -733,6 +734,7 @@ async fn check_specifiers(
     lib,
     Permissions::allow_all(),
     permissions,
+    ps.graph_data.clone(),
   )
   .await?;
 

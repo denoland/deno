@@ -693,10 +693,11 @@ pub async fn cover_files(
       emit::TypeLib::UnstableDenoWindow,
       Permissions::allow_all(),
       Permissions::allow_all(),
+      ps.graph_data.clone(),
     )
     .await?;
 
-    let module_source = ps.load(module_specifier.clone(), None, false)?;
+    let module_source = ps.load(module_specifier.clone(), None, false, ps.graph_data.clone())?;
     let script_source = &module_source.code;
 
     let maybe_source_map = ps.get_source_map(&script_coverage.url);

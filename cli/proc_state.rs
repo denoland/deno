@@ -40,13 +40,13 @@ use deno_tls::rustls::RootCertStore;
 use deno_tls::rustls_native_certs::load_native_certs;
 use deno_tls::webpki_roots::TLS_SERVER_ROOTS;
 use import_map::ImportMap;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
 use std::ops::Deref;
 use std::sync::Arc;
+use crate::module_loader::GraphData;
 
 /// This structure represents state of single "deno" program.
 ///
@@ -54,23 +54,6 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct ProcState(Arc<Inner>);
 
-#[derive(Default)]
-struct GraphData {
-  modules: HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>,
-  // because the graph detects resolution issues early, but is build and dropped
-  // during the `prepare_module_load` method, we need to extract out the module
-  // resolution map so that those errors can be surfaced at the appropriate time
-  resolution_map:
-    HashMap<ModuleSpecifier, HashMap<String, deno_graph::Resolved>>,
-  // in some cases we want to provide the range where the resolution error
-  // occurred but need to surface it on load, but on load we don't know who the
-  // referrer and span was, so we need to cache those
-  resolved_map: HashMap<ModuleSpecifier, deno_graph::Range>,
-  // deno_graph detects all sorts of issues at build time (prepare_module_load)
-  // but if they are errors at that stage, the don't cause the correct behaviors
-  // so we cache the error and then surface it when appropriate (e.g. load)
-  maybe_graph_error: Option<deno_graph::ModuleGraphError>,
-}
 
 pub struct Inner {
   /// Flags parsed from `argv` contents.
@@ -78,7 +61,7 @@ pub struct Inner {
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
-  graph_data: Arc<Mutex<GraphData>>,
+  // pub graph_data: Arc<Mutex<GraphData>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_config_file: Option<ConfigFile>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
@@ -291,6 +274,7 @@ impl ProcState {
     lib: emit::TypeLib,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
+    graph_data: Arc<Mutex<GraphData>>,
   ) -> Result<(), AnyError> {
     let mut cache = cache::FetchCacher::new(
       self.dir.gen_cache.clone(),
@@ -350,7 +334,7 @@ impl ProcState {
     // Determine any modules that have already been emitted this session and
     // should be skipped.
     let reload_exclusions: HashSet<ModuleSpecifier> = {
-      let graph_data = self.graph_data.lock();
+      let graph_data = graph_data.lock();
       graph_data.modules.keys().cloned().collect()
     };
 
@@ -435,7 +419,7 @@ impl ProcState {
     }
 
     {
-      let mut graph_data = self.graph_data.lock();
+      let mut graph_data = graph_data.lock();
       // we iterate over the graph, looking for any modules that were emitted, or
       // should be loaded as their un-emitted source and add them to the in memory
       // cache of modules for loading by deno_core.
@@ -466,10 +450,11 @@ impl ProcState {
     &self,
     specifier: &str,
     referrer: &str,
+    graph_data: Arc<Mutex<GraphData>>,
   ) -> Result<ModuleSpecifier, AnyError> {
     if let Ok(s) = deno_core::resolve_url_or_path(referrer) {
       let maybe_resolved = {
-        let graph_data = self.graph_data.lock();
+        let graph_data = graph_data.lock();
         let resolved_specifier = graph_data
           .resolution_map
           .get(&s)
@@ -480,7 +465,7 @@ impl ProcState {
       if let Some(resolved) = maybe_resolved {
         match resolved {
           Some(Ok((specifier, span))) => {
-            let mut graph_data = self.graph_data.lock();
+            let mut graph_data = graph_data.lock();
             graph_data.resolved_map.insert(specifier.clone(), span);
             return Ok(specifier);
           }
@@ -515,6 +500,7 @@ impl ProcState {
     specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     is_dynamic: bool,
+    graph_data: Arc<Mutex<GraphData>>,
   ) -> Result<ModuleSource, AnyError> {
     log::debug!(
       "specifier: {} maybe_referrer: {} is_dynamic: {}",
@@ -527,7 +513,7 @@ impl ProcState {
     );
 
     {
-      let graph_data = self.graph_data.lock();
+      let graph_data = graph_data.lock();
       if let Some(module_result) = graph_data.modules.get(&specifier) {
         if let Ok(module_source) = module_result {
           return Ok(module_source.clone());
@@ -549,7 +535,7 @@ impl ProcState {
     }
 
     // If we're this far it means that there was an error for this module load.
-    let mut graph_data = self.graph_data.lock();
+    let mut graph_data = graph_data.lock();
     let err = graph_data
       .modules
       .get(&specifier)
@@ -634,7 +620,7 @@ impl SourceMapGetter for ProcState {
       if let Some((code, maybe_map)) = self.get_emit(&specifier) {
         let code = String::from_utf8(code).unwrap();
         source_map_from_code(code).or(maybe_map)
-      } else if let Ok(source) = self.load(specifier, None, false) {
+      } else if let Ok(source) = self.load(specifier, None, false, self.graph_data.clone()) {
         source_map_from_code(source.code)
       } else {
         None
