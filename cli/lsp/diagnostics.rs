@@ -311,7 +311,6 @@ async fn generate_lint_diagnostics(
     if workspace_settings.lint {
       for document in documents {
         let version = document.maybe_lsp_version();
-        // todo: remove this lock
         let current_version = collection
           .lock()
           .await

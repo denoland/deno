@@ -406,7 +406,7 @@ impl Document {
     })
   }
 
-  fn with_close(&self) -> Document {
+  fn with_closed(&self) -> Document {
     Document {
       inner: Arc::new(DocumentInner {
         specifier: self.inner.specifier.clone(),
@@ -783,7 +783,7 @@ impl DocumentsInner {
       },
       Ok,
     )?;
-    *doc = doc.with_close();
+    *doc = doc.with_closed();
     self.dirty = true;
     Ok(())
   }
