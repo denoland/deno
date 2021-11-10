@@ -152,7 +152,7 @@ impl AssetOrDocument {
   pub fn text(&self) -> Arc<String> {
     match self {
       AssetOrDocument::Asset(a) => a.text.clone(),
-      AssetOrDocument::Document(d) => d.inner.text_info.text(),
+      AssetOrDocument::Document(d) => d.0.text_info.text(),
     }
   }
 
@@ -243,7 +243,7 @@ impl SyntheticModule {
     }
   }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct DocumentInner {
   line_index: Arc<LineIndex>,
   maybe_language_id: Option<LanguageId>,
@@ -258,9 +258,7 @@ struct DocumentInner {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Document {
-  inner: Arc<DocumentInner>,
-}
+pub(crate) struct Document(Arc<DocumentInner>);
 
 impl Document {
   fn new(
@@ -286,19 +284,17 @@ impl Document {
     ));
     let source = SourceTextInfo::new(content);
     let line_index = Arc::new(LineIndex::new(source.text_str()));
-    Self {
-      inner: Arc::new(DocumentInner {
-        line_index,
-        maybe_language_id: None,
-        maybe_lsp_version: None,
-        maybe_module,
-        maybe_navigation_tree: None,
-        maybe_warning,
-        text_info: source,
-        specifier,
-        version,
-      }),
-    }
+    Self(Arc::new(DocumentInner {
+      line_index,
+      maybe_language_id: None,
+      maybe_lsp_version: None,
+      maybe_module,
+      maybe_navigation_tree: None,
+      maybe_warning,
+      text_info: source,
+      specifier,
+      version,
+    }))
   }
 
   fn open(
@@ -323,19 +319,17 @@ impl Document {
     };
     let source = SourceTextInfo::new(content);
     let line_index = Arc::new(LineIndex::new(source.text_str()));
-    Self {
-      inner: Arc::new(DocumentInner {
-        line_index,
-        maybe_language_id: Some(language_id),
-        maybe_lsp_version: Some(version),
-        maybe_module,
-        maybe_navigation_tree: None,
-        maybe_warning: None,
-        text_info: source,
-        specifier,
-        version: "1".to_string(),
-      }),
-    }
+    Self(Arc::new(DocumentInner {
+      line_index,
+      maybe_language_id: Some(language_id),
+      maybe_lsp_version: Some(version),
+      maybe_module,
+      maybe_navigation_tree: None,
+      maybe_warning: None,
+      text_info: source,
+      specifier,
+      version: "1".to_string(),
+    }))
   }
 
   fn with_change(
@@ -344,8 +338,8 @@ impl Document {
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
   ) -> Result<Document, AnyError> {
-    let mut content = self.inner.text_info.text_str().to_string();
-    let mut line_index = self.inner.line_index.clone();
+    let mut content = self.0.text_info.text_str().to_string();
+    let mut line_index = self.0.line_index.clone();
     let mut index_valid = IndexValid::All;
     for change in changes {
       if let Some(range) = change.range {
@@ -362,21 +356,21 @@ impl Document {
     }
     let content = Arc::new(content);
     let maybe_module = if self
-      .inner
+      .0
       .maybe_language_id
       .as_ref()
       .map(|li| li.is_diagnosable())
       .unwrap_or(false)
     {
       let maybe_headers = self
-        .inner
+        .0
         .maybe_language_id
         .as_ref()
         .map(|li| li.as_headers())
         .flatten();
       let parser = SourceParser::default();
       Some(deno_graph::parse_module(
-        &self.inner.specifier,
+        &self.0.specifier,
         maybe_headers,
         content.clone(),
         maybe_resolver,
@@ -391,74 +385,52 @@ impl Document {
     } else {
       Arc::new(LineIndex::new(source.text_str()))
     };
-    Ok(Document {
-      inner: Arc::new(DocumentInner {
-        specifier: self.inner.specifier.clone(),
-        version: self.inner.version.clone(),
-        text_info: source,
-        line_index,
-        maybe_module,
-        maybe_language_id: self.inner.maybe_language_id.clone(),
-        maybe_warning: self.inner.maybe_warning.clone(),
-        maybe_lsp_version: Some(version),
-        maybe_navigation_tree: None,
-      }),
-    })
+    Ok(Document(Arc::new(DocumentInner {
+      text_info: source,
+      line_index,
+      maybe_module,
+      maybe_lsp_version: Some(version),
+      maybe_navigation_tree: None,
+      ..(*self.0).clone()
+    })))
   }
 
   fn with_closed(&self) -> Document {
-    Document {
-      inner: Arc::new(DocumentInner {
-        specifier: self.inner.specifier.clone(),
-        version: self.inner.version.clone(),
-        text_info: self.inner.text_info.clone(),
-        maybe_module: self.inner.maybe_module.clone(),
-        maybe_navigation_tree: self.inner.maybe_navigation_tree.clone(),
-        maybe_warning: self.inner.maybe_warning.clone(),
-        line_index: self.inner.line_index.clone(),
-        maybe_lsp_version: None,
-        maybe_language_id: None,
-      }),
-    }
+    Document(Arc::new(DocumentInner {
+      maybe_lsp_version: None,
+      maybe_language_id: None,
+      ..(*self.0).clone()
+    }))
   }
 
   fn with_navigation_tree(
     &self,
     navigation_tree: Arc<tsc::NavigationTree>,
   ) -> Document {
-    Document {
-      inner: Arc::new(DocumentInner {
-        specifier: self.inner.specifier.clone(),
-        version: self.inner.version.clone(),
-        text_info: self.inner.text_info.clone(),
-        maybe_module: self.inner.maybe_module.clone(),
-        maybe_navigation_tree: Some(navigation_tree),
-        maybe_warning: self.inner.maybe_warning.clone(),
-        line_index: self.inner.line_index.clone(),
-        maybe_lsp_version: self.inner.maybe_lsp_version,
-        maybe_language_id: self.inner.maybe_language_id.clone(),
-      }),
-    }
+    Document(Arc::new(DocumentInner {
+      maybe_navigation_tree: Some(navigation_tree),
+      ..(*self.0).clone()
+    }))
   }
 
   pub fn specifier(&self) -> &ModuleSpecifier {
-    &self.inner.specifier
+    &self.0.specifier
   }
 
   pub fn content(&self) -> Arc<String> {
-    self.inner.text_info.text()
+    self.0.text_info.text()
   }
 
   pub fn text_info(&self) -> SourceTextInfo {
-    self.inner.text_info.clone()
+    self.0.text_info.clone()
   }
 
   pub fn line_index(&self) -> Arc<LineIndex> {
-    self.inner.line_index.clone()
+    self.0.line_index.clone()
   }
 
   fn version(&self) -> &str {
-    self.inner.version.as_str()
+    self.0.version.as_str()
   }
 
   pub fn script_version(&self) -> String {
@@ -480,33 +452,33 @@ impl Document {
   }
 
   pub fn is_open(&self) -> bool {
-    self.inner.maybe_lsp_version.is_some()
+    self.0.maybe_lsp_version.is_some()
   }
 
   pub fn maybe_types_dependency(&self) -> deno_graph::Resolved {
-    let module_result = self.inner.maybe_module.as_ref()?;
+    let module_result = self.0.maybe_module.as_ref()?;
     let module = module_result.as_ref().ok()?;
     let (_, maybe_dep) = module.maybe_types_dependency.as_ref()?;
     maybe_dep.clone()
   }
 
   pub fn media_type(&self) -> MediaType {
-    if let Some(Ok(module)) = &self.inner.maybe_module {
+    if let Some(Ok(module)) = &self.0.maybe_module {
       module.media_type
     } else {
-      MediaType::from(&self.inner.specifier)
+      MediaType::from(&self.0.specifier)
     }
   }
 
   /// Returns the current language server client version if any.
   pub fn maybe_lsp_version(&self) -> Option<i32> {
-    self.inner.maybe_lsp_version
+    self.0.maybe_lsp_version
   }
 
   fn maybe_module(
     &self,
   ) -> Option<&Result<deno_graph::Module, deno_graph::ModuleGraphError>> {
-    self.inner.maybe_module.as_ref()
+    self.0.maybe_module.as_ref()
   }
 
   pub fn maybe_parsed_source(
@@ -520,11 +492,11 @@ impl Document {
   }
 
   pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
-    self.inner.maybe_navigation_tree.clone()
+    self.0.maybe_navigation_tree.clone()
   }
 
   pub fn maybe_warning(&self) -> Option<String> {
-    self.inner.maybe_warning.clone()
+    self.0.maybe_warning.clone()
   }
 
   pub fn dependencies(&self) -> Option<Vec<(String, deno_graph::Dependency)>> {
