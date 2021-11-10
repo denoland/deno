@@ -252,8 +252,8 @@ struct DocumentInner {
     Option<Result<deno_graph::Module, deno_graph::ModuleGraphError>>,
   maybe_navigation_tree: Option<Arc<tsc::NavigationTree>>,
   maybe_warning: Option<String>,
-  text_info: SourceTextInfo,
   specifier: ModuleSpecifier,
+  text_info: SourceTextInfo,
   version: String,
 }
 
