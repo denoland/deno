@@ -1762,6 +1762,7 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   }
 
   if !s.starts_with(parts[0]) {
+    println!("Doesn't start with parts[0]");
     return false;
   }
 
