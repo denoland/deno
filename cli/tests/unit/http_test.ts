@@ -999,3 +999,31 @@ unitTest(
     await Promise.all([server(), client()]);
   },
 );
+
+unitTest(
+  { permissions: { net: true } },
+  async function httpServerRespondNonAsciiUint8Array() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      const httpConn = Deno.serveHttp(conn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+      assertEquals(request.body, null);
+      await respondWith(
+        new Response(new Uint8Array([128]), {}),
+      );
+      httpConn.close();
+    })();
+
+    const resp = await fetch("http://localhost:4501/");
+    console.log(resp.headers);
+    assertEquals(resp.status, 200);
+    const body = await resp.arrayBuffer();
+    assertEquals(new Uint8Array(body), new Uint8Array([128]));
+
+    await promise;
+  },
+);

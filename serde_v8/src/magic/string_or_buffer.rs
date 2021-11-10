@@ -30,8 +30,9 @@ impl<'de> serde::Deserialize<'de> for StringOrBuffer {
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
 enum StringOrBufferInner {
-  String(String),
+  #[serde(with = "serde_bytes")]
   Buffer(Vec<u8>),
+  String(String),
 }
 
 impl StringOrBufferInner {
