@@ -1,10 +1,4 @@
-import {
-  assert,
-  assertEquals,
-  assertRejects,
-  assertThrowsAsync,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, assertRejects, unitTest } from "./test_util.ts";
 
 // https://github.com/denoland/deno/issues/11664
 unitTest(async function testImportArrayBufferKey() {
@@ -527,7 +521,7 @@ unitTest(async function testHkdfDeriveBitsWithLargeKeySize() {
     false,
     ["deriveBits"],
   );
-  assertThrowsAsync(
+  assertRejects(
     () =>
       crypto.subtle.deriveBits(
         {

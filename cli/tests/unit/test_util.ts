@@ -13,7 +13,6 @@ export {
   assertStrictEquals,
   assertStringIncludes,
   assertThrows,
-  assertThrowsAsync,
   fail,
   unimplemented,
   unreachable,
