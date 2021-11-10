@@ -313,9 +313,13 @@ impl TryFrom<GpuTextureFormat> for wgpu_types::TextureFormat {
       GpuTextureFormat::Bc7RgbaUnormSrgb => Ok(TextureFormat::Bc7RgbaUnormSrgb),
 
       GpuTextureFormat::Etc2Rgb8Unorm => Ok(TextureFormat::Etc2RgbUnorm),
-      GpuTextureFormat::Etc2Rrgb8UnormSrgb => Ok(TextureFormat::Etc2RgbUnormSrgb),
+      GpuTextureFormat::Etc2Rrgb8UnormSrgb => {
+        Ok(TextureFormat::Etc2RgbUnormSrgb)
+      }
       GpuTextureFormat::Etc2Rgb8a1Unorm => Ok(TextureFormat::Etc2RgbA1Unorm),
-      GpuTextureFormat::Etc2Rgb8a1UnormSrgb => Ok(TextureFormat::Etc2RgbA1UnormSrgb),
+      GpuTextureFormat::Etc2Rgb8a1UnormSrgb => {
+        Ok(TextureFormat::Etc2RgbA1UnormSrgb)
+      }
       GpuTextureFormat::Etc2Rgba8Unorm => Err(not_supported()),
       GpuTextureFormat::Etc2Rgba8UnormSrgb => Err(not_supported()),
 
@@ -324,33 +328,61 @@ impl TryFrom<GpuTextureFormat> for wgpu_types::TextureFormat {
       GpuTextureFormat::EacRg11Unorm => Ok(TextureFormat::EacRgUnorm),
       GpuTextureFormat::EacRg11Snorm => Ok(TextureFormat::EacRgSnorm),
       GpuTextureFormat::Astc4x4Unorm => Ok(TextureFormat::Astc4x4RgbaUnorm),
-      GpuTextureFormat::Astc4x4UnormSrgb => Ok(TextureFormat::Astc4x4RgbaUnormSrgb),
+      GpuTextureFormat::Astc4x4UnormSrgb => {
+        Ok(TextureFormat::Astc4x4RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc5x4Unorm => Ok(TextureFormat::Astc5x4RgbaUnorm),
-      GpuTextureFormat::Astc5x4UnormSrgb => Ok(TextureFormat::Astc5x4RgbaUnormSrgb),
+      GpuTextureFormat::Astc5x4UnormSrgb => {
+        Ok(TextureFormat::Astc5x4RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc5x5Unorm => Ok(TextureFormat::Astc5x5RgbaUnorm),
-      GpuTextureFormat::Astc5x5UnormSrgb => Ok(TextureFormat::Astc5x5RgbaUnormSrgb),
+      GpuTextureFormat::Astc5x5UnormSrgb => {
+        Ok(TextureFormat::Astc5x5RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc6x5Unorm => Ok(TextureFormat::Astc6x5RgbaUnorm),
-      GpuTextureFormat::Astc6x5UnormSrgb => Ok(TextureFormat::Astc6x5RgbaUnormSrgb),
+      GpuTextureFormat::Astc6x5UnormSrgb => {
+        Ok(TextureFormat::Astc6x5RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc6x6Unorm => Ok(TextureFormat::Astc6x6RgbaUnorm),
-      GpuTextureFormat::Astc6x6UnormSrgb => Ok(TextureFormat::Astc6x6RgbaUnormSrgb),
+      GpuTextureFormat::Astc6x6UnormSrgb => {
+        Ok(TextureFormat::Astc6x6RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc8x5Unorm => Ok(TextureFormat::Astc8x5RgbaUnorm),
-      GpuTextureFormat::Astc8x5UnormSrgb => Ok(TextureFormat::Astc8x5RgbaUnormSrgb),
+      GpuTextureFormat::Astc8x5UnormSrgb => {
+        Ok(TextureFormat::Astc8x5RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc8x6Unorm => Ok(TextureFormat::Astc8x6RgbaUnorm),
-      GpuTextureFormat::Astc8x6UnormSrgb => Ok(TextureFormat::Astc8x6RgbaUnormSrgb),
+      GpuTextureFormat::Astc8x6UnormSrgb => {
+        Ok(TextureFormat::Astc8x6RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc8x8Unorm => Ok(TextureFormat::Astc8x8RgbaUnorm),
-      GpuTextureFormat::Astc8x8UnormSrgb => Ok(TextureFormat::Astc8x8RgbaUnormSrgb),
+      GpuTextureFormat::Astc8x8UnormSrgb => {
+        Ok(TextureFormat::Astc8x8RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc10x5Unorm => Ok(TextureFormat::Astc10x5RgbaUnorm),
-      GpuTextureFormat::Astc10x5UnormSrgb => Ok(TextureFormat::Astc10x5RgbaUnormSrgb),
+      GpuTextureFormat::Astc10x5UnormSrgb => {
+        Ok(TextureFormat::Astc10x5RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc10x6Unorm => Ok(TextureFormat::Astc10x6RgbaUnorm),
-      GpuTextureFormat::Astc10x6UnormSrgb => Ok(TextureFormat::Astc10x6RgbaUnormSrgb),
+      GpuTextureFormat::Astc10x6UnormSrgb => {
+        Ok(TextureFormat::Astc10x6RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc10x8Unorm => Ok(TextureFormat::Astc10x8RgbaUnorm),
-      GpuTextureFormat::Astc10x8UnormSrgb => Ok(TextureFormat::Astc10x8RgbaUnormSrgb),
+      GpuTextureFormat::Astc10x8UnormSrgb => {
+        Ok(TextureFormat::Astc10x8RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc10x10Unorm => Ok(TextureFormat::Astc10x10RgbaUnorm),
-      GpuTextureFormat::Astc10x10UnormSrgb => Ok(TextureFormat::Astc10x10RgbaUnormSrgb),
+      GpuTextureFormat::Astc10x10UnormSrgb => {
+        Ok(TextureFormat::Astc10x10RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc12x10Unorm => Ok(TextureFormat::Astc12x10RgbaUnorm),
-      GpuTextureFormat::Astc12x10UnormSrgb => Ok(TextureFormat::Astc12x10RgbaUnormSrgb),
+      GpuTextureFormat::Astc12x10UnormSrgb => {
+        Ok(TextureFormat::Astc12x10RgbaUnormSrgb)
+      }
       GpuTextureFormat::Astc12x12Unorm => Ok(TextureFormat::Astc12x12RgbaUnorm),
-      GpuTextureFormat::Astc12x12UnormSrgb => Ok(TextureFormat::Astc12x12RgbaUnormSrgb),
+      GpuTextureFormat::Astc12x12UnormSrgb => {
+        Ok(TextureFormat::Astc12x12RgbaUnormSrgb)
+      }
 
       GpuTextureFormat::Depth24UnormStencil8 => Err(not_supported()), // wgpu#967,
 

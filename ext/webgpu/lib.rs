@@ -892,11 +892,15 @@ fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
     ),
     (
       "op_webgpu_compute_pass_begin_pipeline_statistics_query",
-      op_sync(compute_pass::op_webgpu_compute_pass_begin_pipeline_statistics_query),
+      op_sync(
+        compute_pass::op_webgpu_compute_pass_begin_pipeline_statistics_query,
+      ),
     ),
     (
       "op_webgpu_compute_pass_end_pipeline_statistics_query",
-      op_sync(compute_pass::op_webgpu_compute_pass_end_pipeline_statistics_query),
+      op_sync(
+        compute_pass::op_webgpu_compute_pass_end_pipeline_statistics_query,
+      ),
     ),
     (
       "op_webgpu_compute_pass_write_timestamp",
