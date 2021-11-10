@@ -163,11 +163,11 @@ jobs:
       - name: Set up Linux sysroot with Ubuntu 18.04 and LLVM
         if: matrix.use_sysroot
         run: |
-          # Avoid running man-db triggers, which sometimes takes several minutes
-          # to complete.
-          sudo apt-get remove -y --purge man-db
-          sudo apt-get update
-          sudo apt-get install debootstrap
+          # Avoid running man-db and mime-support triggers, which sometimes
+          # takes several minutes to complete.
+          sudo apt remove --purge -y man-db mime-support
+          sudo apt update
+          sudo apt install --no-install-recommends debootstrap
 
           # `file` and `make` are needed to build libffi-sys.
           # `curl` is needed to build rusty_v8.
@@ -190,8 +190,8 @@ jobs:
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
             sudo dd of=/sysroot/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo chroot /sysroot apt update -y
-          sudo chroot /sysroot apt install --no-install-recommends -y \
+          sudo chroot /sysroot apt update
+          sudo chroot /sysroot apt install --no-install-recommends \
                                            clang-13 lld-13
 
           # Redirect ld invocations to ld.lld-13 inside the chroot environment.
