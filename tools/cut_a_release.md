@@ -67,7 +67,7 @@ cut.**
 
 10. Use the output of the above command to update `Releases.md`
 
-12. Update link in `cli/compat/mod.rs` with the released version of `deno_std`.
+11. Update link in `cli/compat/mod.rs` with the released version of `deno_std`.
 
 12. Create a PR for these changes.
 
