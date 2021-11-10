@@ -1,4 +1,10 @@
-import { assert, assertEquals, assertRejects, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrowsAsync,
+  unitTest,
+} from "./test_util.ts";
 
 // https://github.com/denoland/deno/issues/11664
 unitTest(async function testImportArrayBufferKey() {
@@ -511,6 +517,31 @@ unitTest(async function testHkdfDeriveBits() {
     128,
   );
   assertEquals(result.byteLength, 128 / 8);
+});
+
+unitTest(async function testHkdfDeriveBitsWithLargeKeySize() {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array([0x00]),
+    "HKDF",
+    false,
+    ["deriveBits"],
+  );
+  assertThrowsAsync(
+    () =>
+      crypto.subtle.deriveBits(
+        {
+          name: "HKDF",
+          hash: "SHA-1",
+          salt: new Uint8Array(),
+          info: new Uint8Array(),
+        },
+        key,
+        ((20 * 255) << 3) + 8,
+      ),
+    DOMException,
+    "The length provided for HKDF is too large",
+  );
 });
 
 unitTest(async function testDeriveKey() {
