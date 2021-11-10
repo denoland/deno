@@ -1041,45 +1041,45 @@ fn typecheck_declarations_unstable() {
   assert!(status.success());
 }
 
-// This runs `deno test --doc` on two markdown files which both contain
-// a typechecking error on purpose, and tests if it's detected when using either LF or CRLF line-endings
-#[test]
-fn cross_platform_doc_check_test() {
-  let output_crlf = util::deno_cmd()
-    .arg("test")
-    .arg("--doc")
-    .arg(
-      util::root_path().join("cli/tests/testdata/test/typecheck_test_crlf.md"),
-    )
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
+// // This runs `deno test --doc` on two markdown files which both contain
+// // a typechecking error on purpose, and tests if it's detected when using either LF or CRLF line-endings
+// #[test]
+// fn cross_platform_doc_check_test() {
+//   let output_crlf = util::deno_cmd()
+//     .arg("test")
+//     .arg("--doc")
+//     .arg(
+//       util::root_path().join("cli/tests/testdata/test/typecheck_test_crlf.md"),
+//     )
+//     .stdout(std::process::Stdio::piped())
+//     .stderr(std::process::Stdio::piped())
+//     .spawn()
+//     .unwrap()
+//     .wait_with_output()
+//     .unwrap();
 
-  // Check that the type error did not go undetected
-  assert!(!output_crlf.stderr.is_empty());
+//   // Check that the type error did not go undetected
+//   assert!(!output_crlf.stderr.is_empty());
 
-  // Because a typechecking error is expected here, the exit code should be > 0
-  assert!(!output_crlf.status.success());
+//   // Because a typechecking error is expected here, the exit code should be > 0
+//   assert!(!output_crlf.status.success());
 
-  let output_lf = util::deno_cmd()
-    .arg("test")
-    .arg("--doc")
-    .arg(util::root_path().join("cli/tests/testdata/test/typecheck_test_lf.md"))
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
+//   let output_lf = util::deno_cmd()
+//     .arg("test")
+//     .arg("--doc")
+//     .arg(util::root_path().join("cli/tests/testdata/test/typecheck_test_lf.md"))
+//     .stdout(std::process::Stdio::piped())
+//     .stderr(std::process::Stdio::piped())
+//     .spawn()
+//     .unwrap()
+//     .wait_with_output()
+//     .unwrap();
 
-  println!("{:?}", output_lf.stderr);
+//   println!("{:?}", output_lf.stderr);
 
-  assert!(!output_lf.stderr.is_empty());
-  assert!(!output_lf.status.success());
-}
+//   assert!(!output_lf.stderr.is_empty());
+//   assert!(!output_lf.status.success());
+// }
 
 #[test]
 fn js_unit_tests_lint() {
