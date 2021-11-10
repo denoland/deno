@@ -245,6 +245,7 @@ impl SyntheticModule {
 }
 #[derive(Debug, Clone)]
 struct DocumentInner {
+  fs_version: String,
   line_index: Arc<LineIndex>,
   maybe_language_id: Option<LanguageId>,
   maybe_lsp_version: Option<i32>,
@@ -254,7 +255,6 @@ struct DocumentInner {
   maybe_warning: Option<String>,
   specifier: ModuleSpecifier,
   text_info: SourceTextInfo,
-  version: String,
 }
 
 #[derive(Debug, Clone)]
@@ -263,7 +263,7 @@ pub(crate) struct Document(Arc<DocumentInner>);
 impl Document {
   fn new(
     specifier: ModuleSpecifier,
-    version: String,
+    fs_version: String,
     maybe_headers: Option<&HashMap<String, String>>,
     content: Arc<String>,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
@@ -285,6 +285,7 @@ impl Document {
     let source = SourceTextInfo::new(content);
     let line_index = Arc::new(LineIndex::new(source.text_str()));
     Self(Arc::new(DocumentInner {
+      fs_version,
       line_index,
       maybe_language_id: None,
       maybe_lsp_version: None,
@@ -293,7 +294,6 @@ impl Document {
       maybe_warning,
       text_info: source,
       specifier,
-      version,
     }))
   }
 
@@ -320,6 +320,7 @@ impl Document {
     let source = SourceTextInfo::new(content);
     let line_index = Arc::new(LineIndex::new(source.text_str()));
     Self(Arc::new(DocumentInner {
+      fs_version: "1".to_string(),
       line_index,
       maybe_language_id: Some(language_id),
       maybe_lsp_version: Some(version),
@@ -328,7 +329,6 @@ impl Document {
       maybe_warning: None,
       text_info: source,
       specifier,
-      version: "1".to_string(),
     }))
   }
 
@@ -429,14 +429,14 @@ impl Document {
     self.0.line_index.clone()
   }
 
-  fn version(&self) -> &str {
-    self.0.version.as_str()
+  fn fs_version(&self) -> &str {
+    self.0.fs_version.as_str()
   }
 
   pub fn script_version(&self) -> String {
     self
       .maybe_lsp_version()
-      .map_or_else(|| self.version().to_string(), |v| v.to_string())
+      .map_or_else(|| self.fs_version().to_string(), |v| v.to_string())
   }
 
   pub fn is_diagnosable(&self) -> bool {
@@ -644,7 +644,7 @@ impl DocumentsInner {
 
   /// Adds a document by reading the document from the file system.
   fn add(&mut self, specifier: ModuleSpecifier) -> Option<Document> {
-    let version = self.calculate_version(&specifier)?;
+    let fs_version = self.calculate_fs_version(&specifier)?;
     let path = self.get_path(&specifier)?;
     let bytes = fs::read(path).ok()?;
     let doc = if specifier.scheme() == "file" {
@@ -653,7 +653,7 @@ impl DocumentsInner {
       let content = Arc::new(get_source_from_bytes(bytes, maybe_charset).ok()?);
       Document::new(
         specifier.clone(),
-        version,
+        fs_version,
         None,
         content,
         self.get_maybe_resolver(),
@@ -667,7 +667,7 @@ impl DocumentsInner {
       let content = Arc::new(get_source_from_bytes(bytes, maybe_charset).ok()?);
       Document::new(
         specifier.clone(),
-        version,
+        fs_version,
         maybe_headers,
         content,
         self.get_maybe_resolver(),
@@ -710,7 +710,10 @@ impl DocumentsInner {
     self.dependents_map = dependents_map;
   }
 
-  fn calculate_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  fn calculate_fs_version(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
     let path = self.get_path(specifier)?;
     let metadata = fs::metadata(path).ok()?;
     if let Ok(modified) = metadata.modified() {
@@ -851,8 +854,11 @@ impl DocumentsInner {
     {
       true
     } else if let Some(specifier) = self.resolve_specifier(specifier) {
-      self.docs.get(&specifier).map(|d| d.version().to_string())
-        == self.calculate_version(&specifier)
+      self
+        .docs
+        .get(&specifier)
+        .map(|d| d.fs_version().to_string())
+        == self.calculate_fs_version(&specifier)
     } else {
       // even though it isn't valid, it just can't exist, so we will say it is
       // valid

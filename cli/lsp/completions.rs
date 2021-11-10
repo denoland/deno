@@ -133,7 +133,9 @@ pub(crate) async fn get_import_completions(
     };
     let maybe_items = state_snapshot
       .module_registries
-      .get_completions(&text, offset, &range, state_snapshot)
+      .get_completions(&text, offset, &range, |specifier| {
+        state_snapshot.documents.contains_specifier(specifier)
+      })
       .await;
     let items = maybe_items.unwrap_or_else(|| {
       get_workspace_completions(specifier, &text, &range, state_snapshot)
