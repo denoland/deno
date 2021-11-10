@@ -4527,15 +4527,10 @@
       webidl.illegalConstructor();
     }
 
-    get executionTime() {
-      throw new Error("Not yet implemented");
-    }
-
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
-          // TODO(crowlKats): executionTime
         })
       }`;
     }
