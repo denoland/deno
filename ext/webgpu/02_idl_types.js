@@ -127,7 +127,6 @@
       "multi-draw-indirect-count",
       "push-constants",
       "address-mode-clamp-to-border",
-      "non-fill-polygon-mode",
       "texture-compression-etc2",
       "texture-compression-astc-ldr",
       "texture-adapter-specific-format-features",

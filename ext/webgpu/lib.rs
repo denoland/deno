@@ -179,9 +179,6 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   if features.contains(wgpu_types::Features::ADDRESS_MODE_CLAMP_TO_BORDER) {
     return_features.push("address-mode-clamp-to-border");
   }
-  if features.contains(wgpu_types::Features::NON_FILL_POLYGON_MODE) {
-    return_features.push("non-fill-polygon-mode");
-  }
   if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ETC2) {
     return_features.push("texture-compression-etc2");
   }
@@ -240,6 +237,7 @@ impl From<GpuPowerPreference> for wgpu_types::PowerPreference {
 #[serde(rename_all = "camelCase")]
 pub struct RequestAdapterArgs {
   power_preference: Option<GpuPowerPreference>,
+  force_fallback_adapter: bool,
 }
 
 #[derive(Serialize)]
@@ -282,7 +280,7 @@ pub async fn op_webgpu_request_adapter(
       Some(power_preference) => power_preference.into(),
       None => PowerPreference::default(),
     },
-    // TODO(lucacasonato): respect forceFallbackAdapter
+    force_fallback_adapter: args.force_fallback_adapter,
     compatible_surface: None, // windowless
   };
   let res = instance.request_adapter(
@@ -336,8 +334,8 @@ struct GpuLimits {
   max_uniform_buffers_per_shader_stage: Option<u32>,
   max_uniform_buffer_binding_size: Option<u32>, // TODO(@crowlkats): u64
   max_storage_buffer_binding_size: Option<u32>, // TODO(@crowlkats): u64
-  // min_uniform_buffer_offset_alignment: Option<u32>,
-  // min_storage_buffer_offset_alignment: Option<u32>,
+  min_uniform_buffer_offset_alignment: Option<u32>,
+  min_storage_buffer_offset_alignment: Option<u32>,
   max_vertex_buffers: Option<u32>,
   max_vertex_attributes: Option<u32>,
   max_vertex_buffer_array_stride: Option<u32>,
@@ -385,12 +383,12 @@ impl From<GpuLimits> for wgpu_types::Limits {
       max_storage_buffer_binding_size: limits
         .max_storage_buffer_binding_size
         .unwrap_or(134217728),
-      // min_uniform_buffer_offset_alignment: limits
-      //   .min_uniform_buffer_offset_alignment
-      //   .unwrap_or(default),
-      // min_storage_buffer_offset_alignment: limits
-      //   .min_storage_buffer_offset_alignment
-      //   .unwrap_or(default),
+      min_uniform_buffer_offset_alignment: limits
+        .min_uniform_buffer_offset_alignment
+        .unwrap_or(256),
+      min_storage_buffer_offset_alignment: limits
+        .min_storage_buffer_offset_alignment
+        .unwrap_or(256),
       max_vertex_buffers: limits.max_vertex_buffers.unwrap_or(8),
       max_vertex_attributes: limits.max_vertex_attributes.unwrap_or(16),
       max_vertex_buffer_array_stride: limits
@@ -492,9 +490,6 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
     }
     if required_features.0.contains("address-mode-clamp-to-border") {
       features.set(wgpu_types::Features::ADDRESS_MODE_CLAMP_TO_BORDER, true);
-    }
-    if required_features.0.contains("non-fill-polygon-mode") {
-      features.set(wgpu_types::Features::NON_FILL_POLYGON_MODE, true);
     }
     if required_features.0.contains("texture-compression-etc2") {
       features.set(wgpu_types::Features::TEXTURE_COMPRESSION_ETC2, true);
