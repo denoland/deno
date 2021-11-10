@@ -391,8 +391,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   /// - `{ Variant: payload }`: single K/V pairs, converted to `Enum::Variant { payload }`
   fn deserialize_enum<V>(
     self,
-    _name: &str,
-    _variants: &'static [&'static str],
+    name: &str,
+    variants: &'static [&'static str],
     visitor: V,
   ) -> Result<V::Value>
   where
