@@ -167,7 +167,7 @@ jobs:
           # to complete.
           sudo apt-get remove --purge -y man-db
           sudo apt-get update
-          sudo apt-get install --no-install-recommends debootstrap
+          sudo apt-get install debootstrap
 
           # `file` and `make` are needed to build libffi-sys.
           # `curl` is needed to build rusty_v8.
@@ -191,7 +191,7 @@ jobs:
             gpg --dearmor                                 |
             sudo dd of=/sysroot/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo chroot /sysroot apt-get update
-          sudo chroot /sysroot apt-get install --no-install-recommends \
+          sudo chroot /sysroot apt-get install --no-install-recommends -y \
                                                clang-13 lld-13
 
           # Redirect ld invocations to ld.lld-13 inside the chroot environment.
