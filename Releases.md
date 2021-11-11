@@ -6,6 +6,14 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.16.1 / 2021.11.11
+
+- feat(core): streams (#12596)
+- fix(crypto): handling large key length in HKDF (#12692)
+- fix: add typings for AbortSignal.reason (#12730)
+- fix(http): non ascii bytes in response (#12728)
+- fix: update unstable Deno props for signal API (#12723)
+
 ### 1.16.0 / 2021.11.09
 
 - BREAKING(ext/web): remove `ReadableStream.getIterator` (#12652)
