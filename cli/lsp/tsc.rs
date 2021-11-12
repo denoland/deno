@@ -119,25 +119,58 @@ impl TsServer {
   }
 }
 
+#[derive(Debug, Clone)]
+struct AssetDocumentInner {
+  text: Arc<String>,
+  length: usize,
+  line_index: Arc<LineIndex>,
+  maybe_navigation_tree: Option<Arc<NavigationTree>>,
+}
+
 /// An lsp representation of an asset in memory, that has either been retrieved
 /// from static assets built into Rust, or static assets built into tsc.
 #[derive(Debug, Clone)]
-pub struct AssetDocument {
-  pub text: Arc<String>,
-  pub length: usize,
-  pub line_index: Arc<LineIndex>,
-  pub maybe_navigation_tree: Option<Arc<NavigationTree>>,
-}
+pub struct AssetDocument(Arc<AssetDocumentInner>);
 
 impl AssetDocument {
-  pub fn new<T: AsRef<str>>(text: T) -> Self {
+  pub fn new(text: impl AsRef<str>) -> Self {
     let text = text.as_ref();
-    Self {
+    Self(Arc::new(AssetDocumentInner {
       text: Arc::new(text.to_string()),
       length: text.encode_utf16().count(),
       line_index: Arc::new(LineIndex::new(text)),
       maybe_navigation_tree: None,
-    }
+    }))
+  }
+
+  pub fn with_navigation_tree(
+    &self,
+    tree: Arc<NavigationTree>,
+  ) -> AssetDocument {
+    AssetDocument(Arc::new(AssetDocumentInner {
+      maybe_navigation_tree: Some(tree),
+      ..(*self.0).clone()
+    }))
+  }
+
+  pub fn text(&self) -> Arc<String> {
+    self.0.text.clone()
+  }
+
+  pub fn text_str(&self) -> &str {
+    self.0.text.as_str()
+  }
+
+  pub fn length(&self) -> usize {
+    self.0.length
+  }
+
+  pub fn line_index(&self) -> Arc<LineIndex> {
+    self.0.line_index.clone()
+  }
+
+  pub fn maybe_navigation_tree(&self) -> Option<Arc<NavigationTree>> {
+    self.0.maybe_navigation_tree.clone()
   }
 }
 
@@ -188,7 +221,7 @@ impl Assets {
     let doc = maybe_doc
       .as_mut()
       .ok_or_else(|| anyhow!("Cannot get doc mutable"))?;
-    doc.maybe_navigation_tree = Some(navigation_tree);
+    *doc = doc.with_navigation_tree(navigation_tree);
     Ok(())
   }
 }
@@ -2247,7 +2280,7 @@ fn op_get_length(
   let specifier = state.normalize_specifier(args.specifier)?;
   let r = if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier)
   {
-    Ok(asset.length)
+    Ok(asset.length())
   } else {
     cache_snapshot(state, &specifier, args.version.clone())?;
     let content = state
@@ -2280,7 +2313,7 @@ fn op_get_text(
   let specifier = state.normalize_specifier(args.specifier)?;
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
-      content.text.as_str()
+      content.text_str()
     } else {
       cache_snapshot(state, &specifier, args.version.clone())?;
       state

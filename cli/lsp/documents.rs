@@ -151,21 +151,21 @@ impl AssetOrDocument {
 
   pub fn text(&self) -> Arc<String> {
     match self {
-      AssetOrDocument::Asset(a) => a.text.clone(),
+      AssetOrDocument::Asset(a) => a.text(),
       AssetOrDocument::Document(d) => d.0.text_info.text(),
     }
   }
 
   pub fn line_index(&self) -> Arc<LineIndex> {
     match self {
-      AssetOrDocument::Asset(a) => a.line_index.clone(),
+      AssetOrDocument::Asset(a) => a.line_index(),
       AssetOrDocument::Document(d) => d.line_index(),
     }
   }
 
   pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
     match self {
-      AssetOrDocument::Asset(a) => a.maybe_navigation_tree.clone(),
+      AssetOrDocument::Asset(a) => a.maybe_navigation_tree(),
       AssetOrDocument::Document(d) => d.maybe_navigation_tree(),
     }
   }
@@ -282,8 +282,8 @@ impl Document {
       maybe_resolver,
       Some(&parser),
     ));
-    let source = SourceTextInfo::new(content);
-    let line_index = Arc::new(LineIndex::new(source.text_str()));
+    let text_info = SourceTextInfo::new(content);
+    let line_index = Arc::new(LineIndex::new(text_info.text_str()));
     Self(Arc::new(DocumentInner {
       fs_version,
       line_index,
@@ -292,7 +292,7 @@ impl Document {
       maybe_module,
       maybe_navigation_tree: None,
       maybe_warning,
-      text_info: source,
+      text_info,
       specifier,
     }))
   }
