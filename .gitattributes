@@ -12,3 +12,6 @@
 # Doesn't include them in the language statistics.
 /cli/tsc/00_typescript.js linguist-vendored
 /cli/dts/* linguist-vendored
+
+# Keep Windows line endings in cross-platform doc check test file
+/cli/tests/testdata/test/markdown_windows.md eol=crlf
