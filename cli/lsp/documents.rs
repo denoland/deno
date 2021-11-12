@@ -606,6 +606,66 @@ fn recurse_dependents(
 }
 
 #[derive(Debug, Default)]
+struct SpecifierResolver {
+  cache: HttpCache,
+  redirects: Mutex<HashMap<ModuleSpecifier, ModuleSpecifier>>,
+}
+
+impl SpecifierResolver {
+  pub fn new(cache_path: &Path) -> Self {
+    Self {
+      cache: HttpCache::new(cache_path),
+      redirects: Mutex::new(HashMap::new()),
+    }
+  }
+
+  pub fn resolve(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    let scheme = specifier.scheme();
+    if !SUPPORTED_SCHEMES.contains(&scheme) {
+      return None;
+    }
+
+    if scheme == "data" || scheme == "blob" || scheme == "file" {
+      Some(specifier.clone())
+    } else {
+      let mut redirects = self.redirects.lock();
+      if let Some(specifier) = redirects.get(specifier) {
+        Some(specifier.clone())
+      } else {
+        let redirect = self.resolve_remote(specifier, 10)?;
+        redirects.insert(specifier.clone(), redirect.clone());
+        Some(redirect)
+      }
+    }
+  }
+
+  fn resolve_remote(
+    &self,
+    specifier: &ModuleSpecifier,
+    redirect_limit: usize,
+  ) -> Option<ModuleSpecifier> {
+    let cache_filename = self.cache.get_cache_filename(specifier)?;
+    if redirect_limit > 0 && cache_filename.is_file() {
+      let headers = http_cache::Metadata::read(&cache_filename)
+        .ok()
+        .map(|m| m.headers)?;
+      if let Some(location) = headers.get("location") {
+        let redirect =
+          deno_core::resolve_import(location, specifier.as_str()).ok()?;
+        self.resolve_remote(&redirect, redirect_limit - 1)
+      } else {
+        Some(specifier.clone())
+      }
+    } else {
+      None
+    }
+  }
+}
+
+#[derive(Debug, Default)]
 struct DocumentsInner {
   /// The DENO_DIR that the documents looks for non-file based modules.
   cache: HttpCache,
@@ -625,7 +685,8 @@ struct DocumentsInner {
   maybe_import_map: Option<ImportMapResolver>,
   /// The optional JSX resolver, which is used when JSX imports are configured.
   maybe_jsx_resolver: Option<JsxResolver>,
-  redirects: HashMap<ModuleSpecifier, ModuleSpecifier>,
+  /// Resolves a specifier to its final redirected to specifier.
+  specifier_resolver: SpecifierResolver,
 }
 
 impl DocumentsInner {
@@ -638,7 +699,7 @@ impl DocumentsInner {
       imports: HashMap::default(),
       maybe_import_map: None,
       maybe_jsx_resolver: None,
-      redirects: HashMap::default(),
+      specifier_resolver: SpecifierResolver::new(location),
     }
   }
 
@@ -783,7 +844,8 @@ impl DocumentsInner {
 
   fn contains_specifier(&mut self, specifier: &ModuleSpecifier) -> bool {
     let specifier = self
-      .resolve_specifier(specifier)
+      .specifier_resolver
+      .resolve(specifier)
       .unwrap_or_else(|| specifier.clone());
     if !self.is_valid(&specifier) {
       self.add(specifier.clone());
@@ -800,7 +862,7 @@ impl DocumentsInner {
       self.dirty = false;
     }
     let mut dependents = HashSet::new();
-    if let Some(specifier) = self.resolve_specifier(specifier) {
+    if let Some(specifier) = self.specifier_resolver.resolve(specifier) {
       recurse_dependents(&specifier, &self.dependents_map, &mut dependents);
       dependents.into_iter().collect()
     } else {
@@ -809,16 +871,17 @@ impl DocumentsInner {
   }
 
   fn get(&mut self, specifier: &ModuleSpecifier) -> Option<&Document> {
-    let specifier = self.resolve_specifier(specifier)?;
+    let specifier = self.specifier_resolver.resolve(specifier)?;
     if !self.is_valid(&specifier) {
       self.add(specifier.clone());
     }
     self.docs.get(&specifier)
   }
 
-  fn get_cached(&mut self, specifier: &ModuleSpecifier) -> Option<&Document> {
+  fn get_cached(&self, specifier: &ModuleSpecifier) -> Option<&Document> {
     let specifier = self
-      .resolve_specifier(specifier)
+      .specifier_resolver
+      .resolve(specifier)
       .unwrap_or_else(|| specifier.clone());
     // this does not use `self.get` since that lazily adds documents, and we
     // only care about documents already in the cache.
@@ -846,14 +909,14 @@ impl DocumentsInner {
     }
   }
 
-  fn is_valid(&mut self, specifier: &ModuleSpecifier) -> bool {
+  fn is_valid(&self, specifier: &ModuleSpecifier) -> bool {
     if self
       .get_cached(specifier)
       .map(|d| d.is_open())
       .unwrap_or(false)
     {
       true
-    } else if let Some(specifier) = self.resolve_specifier(specifier) {
+    } else if let Some(specifier) = self.specifier_resolver.resolve(specifier) {
       self
         .docs
         .get(&specifier)
@@ -984,51 +1047,10 @@ impl DocumentsInner {
     None
   }
 
-  fn resolve_remote_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-    redirect_limit: usize,
-  ) -> Option<ModuleSpecifier> {
-    let cache_filename = self.cache.get_cache_filename(specifier)?;
-    if redirect_limit > 0 && cache_filename.is_file() {
-      let headers = http_cache::Metadata::read(&cache_filename)
-        .ok()
-        .map(|m| m.headers)?;
-      if let Some(location) = headers.get("location") {
-        let redirect =
-          deno_core::resolve_import(location, specifier.as_str()).ok()?;
-        self.resolve_remote_specifier(&redirect, redirect_limit - 1)
-      } else {
-        Some(specifier.clone())
-      }
-    } else {
-      None
-    }
-  }
-
-  fn resolve_specifier(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<ModuleSpecifier> {
-    let scheme = specifier.scheme();
-    if !SUPPORTED_SCHEMES.contains(&scheme) {
-      return None;
-    }
-
-    if scheme == "data" || scheme == "blob" || scheme == "file" {
-      Some(specifier.clone())
-    } else if let Some(specifier) = self.redirects.get(specifier) {
-      Some(specifier.clone())
-    } else {
-      let redirect = self.resolve_remote_specifier(specifier, 10)?;
-      self.redirects.insert(specifier.clone(), redirect.clone());
-      Some(redirect)
-    }
-  }
-
   fn set_location(&mut self, location: PathBuf) {
     // TODO update resolved dependencies?
     self.cache = HttpCache::new(&location);
+    self.specifier_resolver = SpecifierResolver::new(&location);
     self.dirty = true;
   }
 
