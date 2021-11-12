@@ -13,13 +13,10 @@ use crate::OpTable;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use log::debug;
-use rusty_v8 as v8;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
 use std::cell::RefCell;
-use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::option::Option;
 use url::Url;
 use v8::HandleScope;
@@ -247,6 +244,11 @@ pub extern "C" fn host_import_module_dynamically_callback(
         let message = arg.get(scope, message_key.into()).unwrap();
         let exception =
           v8::Exception::type_error(scope, message.try_into().unwrap());
+        let code_key = v8::String::new(scope, "code").unwrap();
+        let code_value =
+          v8::String::new(scope, "ERR_MODULE_NOT_FOUND").unwrap();
+        let exception_obj = exception.to_object(scope).unwrap();
+        exception_obj.set(scope, code_key.into(), code_value.into());
         scope.throw_exception(exception);
         return;
       }
@@ -633,7 +635,7 @@ fn set_wasm_streaming_callback(
     let undefined = v8::undefined(scope);
     let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
     cb_handle
-      .get(scope)
+      .open(scope)
       .call(scope, undefined.into(), &[arg, rid]);
   });
 }

@@ -18,7 +18,6 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::path::Path;
 use std::path::PathBuf;

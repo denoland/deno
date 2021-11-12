@@ -7,7 +7,6 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::convert::TryInto;
 use std::rc::Rc;
 
 use crate::pipeline::GpuIndexFormat;

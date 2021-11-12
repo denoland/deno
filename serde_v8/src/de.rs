@@ -1,9 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use rusty_v8 as v8;
 use serde::de::{self, Visitor};
 use serde::Deserialize;
-
-use std::convert::TryFrom;
 
 use crate::error::{Error, Result};
 use crate::keys::{v8_struct_key, KeyCache};

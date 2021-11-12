@@ -10,6 +10,12 @@ impl Deref for StringOrBuffer {
   }
 }
 
+impl StringOrBuffer {
+  pub fn into_bytes(self) -> Vec<u8> {
+    self.0
+  }
+}
+
 impl<'de> serde::Deserialize<'de> for StringOrBuffer {
   fn deserialize<D>(deserializer: D) -> Result<StringOrBuffer, D::Error>
   where
@@ -24,8 +30,9 @@ impl<'de> serde::Deserialize<'de> for StringOrBuffer {
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
 enum StringOrBufferInner {
-  String(String),
+  #[serde(with = "serde_bytes")]
   Buffer(Vec<u8>),
+  String(String),
 }
 
 impl StringOrBufferInner {

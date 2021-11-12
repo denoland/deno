@@ -63,6 +63,12 @@
           "default": "React.Fragment",
           "markdownDescription": "Specify the JSX Fragment reference used for fragments when targeting React JSX emit e.g. 'React.Fragment' or 'Fragment'.\n\nSee more: https://www.typescriptlang.org/tsconfig#jsxFragmentFactory"
         },
+        "jsxImportSource": {
+          "description": "Specify module specifier used to import the JSX factory functions when using jsx: 'react-jsx*'.",
+          "type": "string",
+          "default": "react",
+          "markdownDescription": "Specify module specifier used to import the JSX factory functions when using jsx: `react-jsx*`.\n\nSee more: https://www.typescriptlang.org/tsconfig/#jsxImportSource"
+        },
         "keyofStringsOnly": {
           "description": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.",
           "type": "boolean",
@@ -73,7 +79,9 @@
           "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
           "type": "array",
           "uniqueItems": true,
-          "default": ["deno.window"],
+          "default": [
+            "deno.window"
+          ],
           "items": {
             "type": "string"
           },

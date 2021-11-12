@@ -382,10 +382,20 @@ impl ModuleRegistry {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
-    let file = self
+    let fetch_result = self
       .file_fetcher
       .fetch(specifier, &mut Permissions::allow_all())
-      .await?;
+      .await;
+    // if there is an error fetching, we will cache an empty file, so that
+    // subsequent requests they are just an empty doc which will error without
+    // needing to connect to the remote URL
+    if fetch_result.is_err() {
+      self
+        .file_fetcher
+        .http_cache
+        .set(specifier, HashMap::default(), &[])?;
+    }
+    let file = fetch_result?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
     validate_config(&config)?;
     Ok(config.registries)
@@ -424,7 +434,7 @@ impl ModuleRegistry {
 
   /// For a string specifier from the client, provide a set of completions, if
   /// any, for the specifier.
-  pub async fn get_completions(
+  pub(crate) async fn get_completions(
     &self,
     current_specifier: &str,
     offset: usize,
@@ -520,8 +530,8 @@ impl ModuleRegistry {
                           ));
                           let command = if key.name == last_key_name
                             && !state_snapshot
-                              .sources
-                              .contains_key(&item_specifier)
+                              .documents
+                              .contains_specifier(&item_specifier)
                           {
                             Some(lsp::Command {
                               title: "".to_string(),
@@ -610,8 +620,8 @@ impl ModuleRegistry {
                             );
                             let command = if k.name == last_key_name
                               && !state_snapshot
-                                .sources
-                                .contains_key(&item_specifier)
+                                .documents
+                                .contains_specifier(&item_specifier)
                             {
                               Some(lsp::Command {
                                 title: "".to_string(),
@@ -761,16 +771,14 @@ impl ModuleRegistry {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::lsp::documents::DocumentCache;
-  use crate::lsp::sources::Sources;
+  use crate::lsp::documents::Documents;
   use tempfile::TempDir;
 
   fn mock_state_snapshot(
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> language_server::StateSnapshot {
-    let documents = DocumentCache::default();
-    let sources = Sources::new(location);
+    let documents = Documents::new(location);
     let http_cache = HttpCache::new(location);
     for (specifier, source) in source_fixtures {
       let specifier =
@@ -779,13 +787,12 @@ mod tests {
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
       assert!(
-        sources.get_source(&specifier).is_some(),
+        documents.content(&specifier).is_some(),
         "source could not be setup"
       );
     }
     language_server::StateSnapshot {
       documents,
-      sources,
       ..Default::default()
     }
   }
@@ -1205,5 +1212,36 @@ mod tests {
     assert_eq!(actual.len(), 2);
     assert!(actual.contains(&"module".to_owned()));
     assert!(actual.contains(&"version".to_owned()));
+  }
+
+  #[tokio::test]
+  async fn test_check_origin_supported() {
+    let _g = test_util::http_server();
+    let temp_dir = TempDir::new().expect("could not create tmp");
+    let location = temp_dir.path().join("registries");
+    let module_registry = ModuleRegistry::new(&location);
+    let result = module_registry.check_origin("http://localhost:4545").await;
+    assert!(result.is_ok());
+  }
+
+  #[tokio::test]
+  async fn test_check_origin_not_supported() {
+    let _g = test_util::http_server();
+    let temp_dir = TempDir::new().expect("could not create tmp");
+    let location = temp_dir.path().join("registries");
+    let module_registry = ModuleRegistry::new(&location);
+    let result = module_registry.check_origin("https://deno.com").await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err
+      .contains("https://deno.com/.well-known/deno-import-intellisense.json"));
+
+    // because we are caching an empty file when we hit an error with import
+    // detection when fetching the config file, we should have an error now that
+    // indicates trying to parse an empty file.
+    let result = module_registry.check_origin("https://deno.com").await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("EOF while parsing a value at line 1 column 0"));
   }
 }

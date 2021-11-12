@@ -18,6 +18,16 @@ itest!(node_prefix_fs_promises {
   output: "compat/fs_promises.out",
 });
 
+itest!(compat_with_import_map_and_https_imports {
+  args: "run --quiet --compat --unstable -A --import-map=compat/import_map.json compat/import_map_https_imports.mjs",
+  output: "compat/import_map_https_imports.out",
+});
+
+itest!(compat_dyn_import_rejects_with_node_compatible_error {
+  args: "run --quiet --compat --unstable -A compat/dyn_import_reject.js",
+  output: "compat/dyn_import_reject.out",
+});
+
 #[test]
 fn globals_in_repl() {
   let (out, _err) = util::run_and_collect_output_with_args(

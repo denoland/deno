@@ -18,7 +18,7 @@ use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
-use crate::tokio_util;
+use crate::resolver::JsxResolver;
 use crate::tools::coverage::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
@@ -33,6 +33,7 @@ use deno_core::serde_json::json;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::tokio_util::run_basic;
 use log::Level;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
@@ -249,7 +250,7 @@ impl PrettyTestReporter {
     println!(
       "{} {}",
       status,
-      colors::gray(format!("({}ms)", elapsed)).to_string()
+      colors::gray(human_elapsed(elapsed.into())).to_string()
     );
 
     if let Some(error_text) = result.error() {
@@ -258,6 +259,22 @@ impl PrettyTestReporter {
       }
     }
   }
+}
+
+/// A function that converts a milisecond elapsed time to a string that
+/// represents a human readable version of that time.
+fn human_elapsed(elapsed: u128) -> String {
+  if elapsed < 1_000 {
+    return format!("({}ms)", elapsed);
+  }
+  if elapsed < 1_000 * 60 {
+    return format!("({}s)", elapsed / 1000);
+  }
+
+  let seconds = elapsed / 1_000;
+  let minutes = seconds / 60;
+  let seconds_remainder = seconds % 60;
+  format!("({}m{}s)", minutes, seconds_remainder)
 }
 
 impl TestReporter for PrettyTestReporter {
@@ -323,7 +340,7 @@ impl TestReporter for PrettyTestReporter {
     println!(
       "{} {}",
       status,
-      colors::gray(format!("({}ms)", elapsed)).to_string()
+      colors::gray(human_elapsed(elapsed.into())).to_string()
     );
   }
 
@@ -389,7 +406,7 @@ impl TestReporter for PrettyTestReporter {
       summary.ignored,
       summary.measured,
       summary.filtered_out,
-      colors::gray(format!("({}ms)", elapsed.as_millis())),
+      colors::gray(human_elapsed(elapsed.as_millis())),
     );
   }
 }
@@ -499,8 +516,12 @@ fn extract_files_from_regex_blocks(
 
         match attributes.get(0) {
           Some(&"js") => MediaType::JavaScript,
+          Some(&"mjs") => MediaType::Mjs,
+          Some(&"cjs") => MediaType::Cjs,
           Some(&"jsx") => MediaType::Jsx,
           Some(&"ts") => MediaType::TypeScript,
+          Some(&"mts") => MediaType::Mts,
+          Some(&"cts") => MediaType::Cts,
           Some(&"tsx") => MediaType::Tsx,
           Some(&"") => media_type,
           _ => MediaType::Unknown,
@@ -762,7 +783,7 @@ async fn test_specifiers(
             sender,
           );
 
-          tokio_util::run_basic(future)
+          run_basic(future)
         });
 
         join_handle.join().unwrap()
@@ -1033,14 +1054,21 @@ pub async fn run_tests_with_watch(
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
-    let maybe_resolver =
-      ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
+    let maybe_import_map_resolver =
+      ps.maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      })
+      .flatten();
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_imports = ps
       .maybe_config_file
       .as_ref()
-      .map(|cf| cf.to_maybe_imports())
-      .flatten();
+      .map(|cf| cf.to_maybe_imports());
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
@@ -1061,13 +1089,24 @@ pub async fn run_tests_with_watch(
           .filter_map(|url| deno_core::resolve_url(url.as_str()).ok())
           .collect()
       };
-
+      let maybe_imports = if let Some(result) = maybe_imports {
+        result?
+      } else {
+        None
+      };
+      let maybe_resolver = if maybe_jsx_resolver.is_some() {
+        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+      } else {
+        maybe_import_map_resolver
+          .as_ref()
+          .map(|im| im.as_resolver())
+      };
       let graph = deno_graph::create_graph(
         test_modules.clone(),
         false,
         maybe_imports,
         cache.as_mut_loader(),
-        maybe_resolver.as_ref().map(|r| r.as_resolver()),
+        maybe_resolver,
         maybe_locker,
         None,
       )
@@ -1201,4 +1240,20 @@ pub async fn run_tests_with_watch(
   file_watcher::watch_func(resolver, operation, "Test").await?;
 
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_human_elapsed() {
+    assert_eq!(human_elapsed(1), "(1ms)");
+    assert_eq!(human_elapsed(256), "(256ms)");
+    assert_eq!(human_elapsed(1000), "(1s)");
+    assert_eq!(human_elapsed(1001), "(1s)");
+    assert_eq!(human_elapsed(1020), "(1s)");
+    assert_eq!(human_elapsed(70 * 1000), "(1m10s)");
+    assert_eq!(human_elapsed(86 * 1000 + 100), "(1m26s)");
+  }
 }

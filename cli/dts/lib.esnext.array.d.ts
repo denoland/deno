@@ -21,7 +21,30 @@ interface Array<T> {
    * @param index index to access.
    */
   at(index: number): T | undefined;
-}
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast<S extends T>(predicate: (this: void, value: T, index: number, obj: T[]) => value is S, thisArg?: any): S | undefined;
+  findLast(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): T | undefined;
+
+  /**
+  * Returns the index of the last element in the array where predicate is true, and -1
+  * otherwise.
+  * @param predicate find calls predicate once for each element of the array, in ascending
+  * order, until it finds one where predicate returns true. If such an element is found,
+  * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+  * @param thisArg If provided, it will be used as the this value for each invocation of
+  * predicate. If it is not provided, undefined is used instead.
+  */
+   findLastIndex(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): number;
+ }
 
 interface ReadonlyArray<T> {
   /**
@@ -29,6 +52,29 @@ interface ReadonlyArray<T> {
    * @param index index to access.
    */
   at(index: number): T | undefined;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast<S extends T>(predicate: (this: void, value: T, index: number, obj: T[]) => value is S, thisArg?: any): S | undefined;
+  findLast(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): T | undefined;
+ 
+   /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLastIndex(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): number;
 }
 
 interface Int8Array {
@@ -37,6 +83,28 @@ interface Int8Array {
    * @param index index to access.
    */
   at(index: number): number | undefined;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast(predicate: (value: number, index: number, obj: Int8Array) => boolean, thisArg?: any): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLastIndex(predicate: (value: number, index: number, obj: Int8Array) => boolean, thisArg?: any): number;
 }
 
 interface Uint8Array {
@@ -45,6 +113,28 @@ interface Uint8Array {
    * @param index index to access.
    */
   at(index: number): number | undefined;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast(predicate: (value: number, index: number, obj: Uint8Array) => boolean, thisArg?: any): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLastIndex(predicate: (value: number, index: number, obj: Uint8Array) => boolean, thisArg?: any): number;
 }
 
 interface Uint8ClampedArray {
@@ -53,7 +143,30 @@ interface Uint8ClampedArray {
    * @param index index to access.
    */
   at(index: number): number | undefined;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast(predicate: (value: number, index: number, obj: Uint8ClampedArray) => boolean, thisArg?: any): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findIndexLast(predicate: (value: number, index: number, obj: Uint8ClampedArray) => boolean, thisArg?: any): number;
 }
+
 
 interface Int16Array {
   /**
@@ -61,6 +174,28 @@ interface Int16Array {
    * @param index index to access.
    */
   at(index: number): number | undefined;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast(predicate: (value: number, index: number, obj: Int16Array) => boolean, thisArg?: any): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findIndexLast(predicate: (value: number, index: number, obj: Int16Array) => boolean, thisArg?: any): number;
 }
 
 interface Uint16Array {
@@ -69,6 +204,28 @@ interface Uint16Array {
    * @param index index to access.
    */
   at(index: number): number | undefined;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast(predicate: (value: number, index: number, obj: Uint16Array) => boolean, thisArg?: any): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findIndexLast(predicate: (value: number, index: number, obj: Uint16Array) => boolean, thisArg?: any): number;
 }
 
 interface Int32Array {
@@ -77,6 +234,28 @@ interface Int32Array {
    * @param index index to access.
    */
   at(index: number): number | undefined;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast(predicate: (value: number, index: number, obj: Int32Array) => boolean, thisArg?: any): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findIndexLast(predicate: (value: number, index: number, obj: Int32Array) => boolean, thisArg?: any): number;
 }
 
 interface Uint32Array {
@@ -85,6 +264,28 @@ interface Uint32Array {
    * @param index index to access.
    */
   at(index: number): number | undefined;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast(predicate: (value: number, index: number, obj: Uint32Array) => boolean, thisArg?: any): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findIndexLast(predicate: (value: number, index: number, obj: Uint32Array) => boolean, thisArg?: any): number;
 }
 
 interface Float32Array {
@@ -93,6 +294,28 @@ interface Float32Array {
    * @param index index to access.
    */
   at(index: number): number | undefined;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast(predicate: (value: number, index: number, obj: Float32Array) => boolean, thisArg?: any): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findIndexLast(predicate: (value: number, index: number, obj: Float32Array) => boolean, thisArg?: any): number;
 }
 
 interface Float64Array {
@@ -101,6 +324,28 @@ interface Float64Array {
    * @param index index to access.
    */
   at(index: number): number | undefined;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast(predicate: (value: number, index: number, obj: Float64Array) => boolean, thisArg?: any): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findIndexLast(predicate: (value: number, index: number, obj: Float64Array) => boolean, thisArg?: any): number;
 }
 
 interface BigInt64Array {
@@ -109,6 +354,28 @@ interface BigInt64Array {
    * @param index index to access.
    */
   at(index: number): bigint | undefined;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast(predicate: (value: bigint, index: number, obj: BigInt64Array) => boolean, thisArg?: any): bigint | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findIndexLast(predicate: (value: bigint, index: number, obj: BigInt64Array) => boolean, thisArg?: any): bigint;
 }
 
 interface BigUint64Array {
@@ -117,4 +384,26 @@ interface BigUint64Array {
    * @param index index to access.
    */
   at(index: number): bigint | undefined;
+
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast(predicate: (value: bigint, index: number, obj: BigUint64Array) => boolean, thisArg?: any): bigint | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findIndexLast(predicate: (value: bigint, index: number, obj: BigUint64Array) => boolean, thisArg?: any): bigint;
 }

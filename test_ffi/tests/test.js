@@ -33,6 +33,7 @@ const dylib = Deno.dlopen(libPath, {
   "add_isize": { parameters: ["isize", "isize"], result: "isize" },
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
+  "fill_buffer": { parameters: ["u8", "buffer", "usize"], result: "void" },
   "sleep_blocking": { parameters: ["u64"], result: "void", nonblocking: true },
   "nonblocking_buffer": {
     parameters: ["buffer", "usize"],
@@ -54,6 +55,21 @@ console.log(dylib.symbols.add_usize(123, 456));
 console.log(dylib.symbols.add_isize(123, 456));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
+
+// test mutating sync calls
+
+function test_fill_buffer(fillValue, arr) {
+  let buf = new Uint8Array(arr);
+  dylib.symbols.fill_buffer(fillValue, buf, buf.length);
+  for (let i = 0; i < buf.length; i++) {
+    if (buf[i] !== fillValue) {
+      throw new Error(`Found '${buf[i]}' in buffer, expected '${fillValue}'.`);
+    }
+  }
+}
+
+test_fill_buffer(0, [2, 3, 4]);
+test_fill_buffer(5, [2, 7, 3, 2, 1]);
 
 // Test non blocking calls
 

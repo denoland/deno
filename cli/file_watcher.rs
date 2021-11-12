@@ -1,6 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::fs_util::canonicalize_path;
+
 use deno_core::error::AnyError;
 use deno_core::futures::stream::{Stream, StreamExt};
 use deno_core::futures::Future;
@@ -231,7 +233,7 @@ fn new_watcher(
           let paths = event
             .paths
             .iter()
-            .filter_map(|path| path.canonicalize().ok());
+            .filter_map(|path| canonicalize_path(path).ok());
           let mut changed_paths = changed_paths.lock();
           changed_paths.extend(paths);
         }

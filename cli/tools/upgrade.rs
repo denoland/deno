@@ -2,7 +2,8 @@
 
 //! This module provides feature to upgrade deno executable
 
-use deno_core::error::{bail, AnyError};
+use deno_core::error::bail;
+use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
@@ -262,7 +263,17 @@ pub fn unpack(
       Command::new("unzip")
         .current_dir(&temp_dir)
         .arg(archive_path)
-        .spawn()?
+        .spawn()
+        .map_err(|err| {
+          if err.kind() == std::io::ErrorKind::NotFound {
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              "`unzip` was not found on your PATH, please install `unzip`",
+            )
+          } else {
+            err
+          }
+        })?
         .wait()?
     }
     ext => panic!("Unsupported archive type: '{}'", ext),

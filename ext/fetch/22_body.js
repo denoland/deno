@@ -35,15 +35,31 @@
     Uint8Array,
   } = window.__bootstrap.primordials;
 
+  /**
+   * @param {Uint8Array | string} chunk
+   * @returns {Uint8Array}
+   */
+  function chunkToU8(chunk) {
+    return typeof chunk === "string" ? core.encode(chunk) : chunk;
+  }
+
+  /**
+   * @param {Uint8Array | string} chunk
+   * @returns {string}
+   */
+  function chunkToString(chunk) {
+    return typeof chunk === "string" ? chunk : core.decode(chunk);
+  }
+
   class InnerBody {
     /**
-     * @param {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} stream
+     * @param {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} stream
      */
     constructor(stream) {
-      /** @type {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} */
+      /** @type {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} */
       this.streamOrStatic = stream ??
         { body: new Uint8Array(), consumed: false };
-      /** @type {null | Uint8Array | Blob | FormData} */
+      /** @type {null | Uint8Array | string | Blob | FormData} */
       this.source = null;
       /** @type {null | number} */
       this.length = null;
@@ -58,7 +74,7 @@
         } else {
           this.streamOrStatic = new ReadableStream({
             start(controller) {
-              controller.enqueue(body);
+              controller.enqueue(chunkToU8(body));
               controller.close();
             },
           });
@@ -271,14 +287,14 @@
 
   /**
    * https://fetch.spec.whatwg.org/#concept-body-package-data
-   * @param {Uint8Array} bytes
+   * @param {Uint8Array | string} bytes
    * @param {"ArrayBuffer" | "Blob" | "FormData" | "JSON" | "text"} type
    * @param {MimeType | null} [mimeType]
    */
   function packageData(bytes, type, mimeType) {
     switch (type) {
       case "ArrayBuffer":
-        return bytes.buffer;
+        return chunkToU8(bytes).buffer;
       case "Blob":
         return new Blob([bytes], {
           type: mimeType !== null ? mimesniff.serializeMimeType(mimeType) : "",
@@ -293,9 +309,10 @@
                 "Missing boundary parameter in mime type of multipart formdata.",
               );
             }
-            return parseFormData(bytes, boundary);
+            return parseFormData(chunkToU8(bytes), boundary);
           } else if (essence === "application/x-www-form-urlencoded") {
-            const entries = parseUrlEncoded(bytes);
+            // TODO(@AaronO): pass as-is with StringOrBuffer in op-layer
+            const entries = parseUrlEncoded(chunkToU8(bytes));
             return formDataFromEntries(
               ArrayPrototypeMap(
                 entries,
@@ -308,9 +325,9 @@
         throw new TypeError("Missing content type");
       }
       case "JSON":
-        return JSONParse(core.decode(bytes));
+        return JSONParse(chunkToString(bytes));
       case "text":
-        return core.decode(bytes);
+        return chunkToString(bytes);
     }
   }
 
@@ -319,7 +336,7 @@
    * @returns {{body: InnerBody, contentType: string | null}}
    */
   function extractBody(object) {
-    /** @type {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} */
+    /** @type {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} */
     let stream;
     let source = null;
     let length = null;
@@ -353,10 +370,10 @@
       contentType = res.type;
     } else if (object instanceof URLSearchParams) {
       // TODO(@satyarohith): not sure what primordial here.
-      source = core.encode(object.toString());
+      source = object.toString();
       contentType = "application/x-www-form-urlencoded;charset=UTF-8";
     } else if (typeof object === "string") {
-      source = core.encode(object);
+      source = object;
       contentType = "text/plain;charset=UTF-8";
     } else if (object instanceof ReadableStream) {
       stream = object;
@@ -367,6 +384,12 @@
     if (source instanceof Uint8Array) {
       stream = { body: source, consumed: false };
       length = source.byteLength;
+    } else if (typeof source === "string") {
+      // WARNING: this deviates from spec (expects length to be set)
+      // https://fetch.spec.whatwg.org/#bodyinit > 7.
+      // no observable side-effect for users so far, but could change
+      stream = { body: source, consumed: false };
+      length = null; // NOTE: string length != byte length
     }
     const body = new InnerBody(stream);
     body.source = source;
