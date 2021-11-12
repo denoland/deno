@@ -666,47 +666,21 @@ impl SpecifierResolver {
 }
 
 #[derive(Debug, Default)]
-struct DocumentsInner {
-  /// The DENO_DIR that the documents looks for non-file based modules.
-  cache: HttpCache,
-  /// A flag that indicates that stated data is potentially invalid and needs to
-  /// be recalculated before being considered valid.
-  dirty: bool,
-  /// A map where the key is a specifier and the value is a set of specifiers
-  /// that depend on the key.
-  dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
-  /// A map of documents that can either be "open" in the language server, or
-  /// just present on disk.
+struct FileSystemDocuments {
   docs: HashMap<ModuleSpecifier, Document>,
-  /// Any imports to the context supplied by configuration files. This is like
-  /// the imports into the a module graph in CLI.
-  imports: HashMap<ModuleSpecifier, SyntheticModule>,
-  /// The optional import map that should be used when resolving dependencies.
-  maybe_import_map: Option<ImportMapResolver>,
-  /// The optional JSX resolver, which is used when JSX imports are configured.
-  maybe_jsx_resolver: Option<JsxResolver>,
-  /// Resolves a specifier to its final redirected to specifier.
-  specifier_resolver: SpecifierResolver,
+  dirty: bool,
 }
 
-impl DocumentsInner {
-  fn new(location: &Path) -> Self {
-    Self {
-      cache: HttpCache::new(location),
-      dirty: true,
-      dependents_map: HashMap::default(),
-      docs: HashMap::default(),
-      imports: HashMap::default(),
-      maybe_import_map: None,
-      maybe_jsx_resolver: None,
-      specifier_resolver: SpecifierResolver::new(location),
-    }
-  }
-
-  /// Adds a document by reading the document from the file system.
-  fn add(&mut self, specifier: ModuleSpecifier) -> Option<Document> {
-    let fs_version = self.calculate_fs_version(&specifier)?;
-    let path = self.get_path(&specifier)?;
+impl FileSystemDocuments {
+  /// Adds or updates a document by reading the document from the file system.
+  fn refresh_document(
+    &mut self,
+    cache: &HttpCache,
+    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+    specifier: ModuleSpecifier,
+  ) -> Option<Document> {
+    let fs_version = calculate_fs_version(cache, &specifier)?;
+    let path = get_path(cache, &specifier)?;
     let bytes = fs::read(path).ok()?;
     let doc = if specifier.scheme() == "file" {
       let maybe_charset =
@@ -717,10 +691,10 @@ impl DocumentsInner {
         fs_version,
         None,
         content,
-        self.get_maybe_resolver(),
+        maybe_resolver,
       )
     } else {
-      let cache_filename = self.cache.get_cache_filename(&specifier)?;
+      let cache_filename = cache.get_cache_filename(&specifier)?;
       let metadata = http_cache::Metadata::read(&cache_filename).ok()?;
       let maybe_content_type = metadata.headers.get("content-type").cloned();
       let maybe_headers = Some(&metadata.headers);
@@ -731,20 +705,67 @@ impl DocumentsInner {
         fs_version,
         maybe_headers,
         content,
-        self.get_maybe_resolver(),
+        maybe_resolver,
       )
     };
     self.dirty = true;
     self.docs.insert(specifier, doc)
   }
+}
+
+#[derive(Debug, Clone, Default)]
+struct DocumentsInner {
+  /// The DENO_DIR that the documents looks for non-file based modules.
+  cache: HttpCache,
+  /// A flag that indicates that stated data is potentially invalid and needs to
+  /// be recalculated before being considered valid.
+  dirty: bool,
+  /// A map where the key is a specifier and the value is a set of specifiers
+  /// that depend on the key.
+  dependents_map: Arc<HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>>,
+  /// A map of documents that can either be "open" in the language server.
+  docs: HashMap<ModuleSpecifier, Document>,
+  /// Documents stored on the file system.
+  file_system_docs: Arc<Mutex<FileSystemDocuments>>,
+  /// Any imports to the context supplied by configuration files. This is like
+  /// the imports into the a module graph in CLI.
+  imports: Arc<HashMap<ModuleSpecifier, SyntheticModule>>,
+  /// The optional import map that should be used when resolving dependencies.
+  maybe_import_map: Option<ImportMapResolver>,
+  /// The optional JSX resolver, which is used when JSX imports are configured.
+  maybe_jsx_resolver: Option<JsxResolver>,
+  /// Resolves a specifier to its final redirected to specifier.
+  specifier_resolver: Arc<SpecifierResolver>,
+}
+
+impl DocumentsInner {
+  fn new(location: &Path) -> Self {
+    Self {
+      cache: HttpCache::new(location),
+      dirty: true,
+      dependents_map: Default::default(),
+      docs: HashMap::default(),
+      file_system_docs: Default::default(),
+      imports: Default::default(),
+      maybe_import_map: None,
+      maybe_jsx_resolver: None,
+      specifier_resolver: Arc::new(SpecifierResolver::new(location)),
+    }
+  }
 
   /// Iterate through the documents, building a map where the key is a unique
   /// document and the value is a set of specifiers that depend on that
   /// document.
-  fn calculate_dependents(&mut self) {
+  fn calculate_dependents_if_dirty(&mut self) {
+    let mut file_system_docs = self.file_system_docs.lock();
+    if !file_system_docs.dirty && !self.dirty {
+      return;
+    }
+
     let mut dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>> =
       HashMap::new();
-    for (specifier, doc) in &self.docs {
+    for (specifier, doc) in self.docs.iter().chain(file_system_docs.docs.iter())
+    {
       if let Some(Ok(module)) = doc.maybe_module() {
         for dependency in module.dependencies.values() {
           if let Some(dep) = dependency.get_code() {
@@ -768,24 +789,9 @@ impl DocumentsInner {
         }
       }
     }
-    self.dependents_map = dependents_map;
-  }
-
-  fn calculate_fs_version(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<String> {
-    let path = self.get_path(specifier)?;
-    let metadata = fs::metadata(path).ok()?;
-    if let Ok(modified) = metadata.modified() {
-      if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
-        Some(n.as_millis().to_string())
-      } else {
-        Some("1".to_string())
-      }
-    } else {
-      Some("1".to_string())
-    }
+    self.dependents_map = Arc::new(dependents_map);
+    self.dirty = false;
+    file_system_docs.dirty = false;
   }
 
   fn change(
@@ -794,15 +800,23 @@ impl DocumentsInner {
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Document, AnyError> {
-    let doc = self.docs.get(specifier).map_or_else(
-      || {
-        Err(custom_error(
-          "NotFound",
-          format!("The specifier \"{}\" was not found.", specifier),
-        ))
-      },
-      Ok,
-    )?;
+    let doc = self
+      .docs
+      .get(specifier)
+      .cloned()
+      .or_else(|| {
+        let mut file_system_docs = self.file_system_docs.lock();
+        file_system_docs.docs.remove(specifier)
+      })
+      .map_or_else(
+        || {
+          Err(custom_error(
+            "NotFound",
+            format!("The specifier \"{}\" was not found.", specifier),
+          ))
+        },
+        Ok,
+      )?;
     self.dirty = true;
     let doc = doc.with_change(version, changes, self.get_maybe_resolver())?;
     self.docs.insert(doc.specifier().clone(), doc.clone());
@@ -810,22 +824,30 @@ impl DocumentsInner {
   }
 
   fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
-    let doc = self.docs.get_mut(specifier).map_or_else(
-      || {
-        Err(custom_error(
-          "NotFound",
-          format!("The specifier \"{}\" was not found.", specifier),
-        ))
-      },
-      Ok,
-    )?;
-    *doc = doc.with_closed();
+    let mut file_system_docs = self.file_system_docs.lock();
+    let doc = self
+      .docs
+      .remove(specifier)
+      .or_else(|| file_system_docs.docs.remove(specifier))
+      .map_or_else(
+        || {
+          Err(custom_error(
+            "NotFound",
+            format!("The specifier \"{}\" was not found.", specifier),
+          ))
+        },
+        Ok,
+      )?;
+    file_system_docs
+      .docs
+      .insert(doc.specifier().clone(), doc.with_closed());
+    file_system_docs.dirty = true;
     self.dirty = true;
     Ok(())
   }
 
   fn contains_import(
-    &mut self,
+    &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> bool {
@@ -842,25 +864,15 @@ impl DocumentsInner {
     }
   }
 
-  fn contains_specifier(&mut self, specifier: &ModuleSpecifier) -> bool {
-    let specifier = self
-      .specifier_resolver
-      .resolve(specifier)
-      .unwrap_or_else(|| specifier.clone());
-    if !self.is_valid(&specifier) {
-      self.add(specifier.clone());
-    }
-    self.docs.contains_key(&specifier)
+  fn contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
+    self.get(specifier).is_some()
   }
 
   fn dependents(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Vec<ModuleSpecifier> {
-    if self.dirty {
-      self.calculate_dependents();
-      self.dirty = false;
-    }
+    self.calculate_dependents_if_dirty();
     let mut dependents = HashSet::new();
     if let Some(specifier) = self.specifier_resolver.resolve(specifier) {
       recurse_dependents(&specifier, &self.dependents_map, &mut dependents);
@@ -870,22 +882,31 @@ impl DocumentsInner {
     }
   }
 
-  fn get(&mut self, specifier: &ModuleSpecifier) -> Option<&Document> {
+  fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
     let specifier = self.specifier_resolver.resolve(specifier)?;
-    if !self.is_valid(&specifier) {
-      self.add(specifier.clone());
+    if let Some(document) = self.docs.get(&specifier) {
+      Some(document.clone())
+    } else if let Some(specifier) = self.specifier_resolver.resolve(&specifier)
+    {
+      let mut file_system_docs = self.file_system_docs.lock();
+      let fs_version = calculate_fs_version(&self.cache, &specifier);
+      if file_system_docs
+        .docs
+        .get(&specifier)
+        .map(|d| d.fs_version().to_string())
+        != fs_version
+      {
+        // attempt to update the file on the file system
+        file_system_docs.refresh_document(
+          &self.cache,
+          self.get_maybe_resolver(),
+          specifier.clone(),
+        );
+      }
+      file_system_docs.docs.get(&specifier).cloned()
+    } else {
+      None
     }
-    self.docs.get(&specifier)
-  }
-
-  fn get_cached(&self, specifier: &ModuleSpecifier) -> Option<&Document> {
-    let specifier = self
-      .specifier_resolver
-      .resolve(specifier)
-      .unwrap_or_else(|| specifier.clone());
-    // this does not use `self.get` since that lazily adds documents, and we
-    // only care about documents already in the cache.
-    self.docs.get(&specifier)
   }
 
   fn get_maybe_resolver(&self) -> Option<&dyn deno_graph::source::Resolver> {
@@ -893,39 +914,6 @@ impl DocumentsInner {
       self.maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
     } else {
       self.maybe_import_map.as_ref().map(|im| im.as_resolver())
-    }
-  }
-
-  fn get_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
-    if specifier.scheme() == "file" {
-      specifier.to_file_path().ok()
-    } else {
-      let path = self.cache.get_cache_filename(specifier)?;
-      if path.is_file() {
-        Some(path)
-      } else {
-        None
-      }
-    }
-  }
-
-  fn is_valid(&self, specifier: &ModuleSpecifier) -> bool {
-    if self
-      .get_cached(specifier)
-      .map(|d| d.is_open())
-      .unwrap_or(false)
-    {
-      true
-    } else if let Some(specifier) = self.specifier_resolver.resolve(specifier) {
-      self
-        .docs
-        .get(&specifier)
-        .map(|d| d.fs_version().to_string())
-        == self.calculate_fs_version(&specifier)
-    } else {
-      // even though it isn't valid, it just can't exist, so we will say it is
-      // valid
-      true
     }
   }
 
@@ -944,6 +932,9 @@ impl DocumentsInner {
       content,
       maybe_resolver,
     );
+    let mut file_system_docs = self.file_system_docs.lock();
+    file_system_docs.docs.remove(&specifier);
+    file_system_docs.dirty = true;
     self.docs.insert(specifier, document.clone());
     self.dirty = true;
     document
@@ -954,9 +945,11 @@ impl DocumentsInner {
     open_only: bool,
     diagnosable_only: bool,
   ) -> Vec<Document> {
+    let file_system_docs = self.file_system_docs.lock();
     self
       .docs
       .values()
+      .chain(file_system_docs.docs.values())
       .filter_map(|doc| {
         let open = open_only && doc.is_open();
         let diagnosable = diagnosable_only && doc.is_diagnosable();
@@ -970,7 +963,7 @@ impl DocumentsInner {
   }
 
   fn resolve(
-    &mut self,
+    &self,
     specifiers: Vec<String>,
     referrer: &ModuleSpecifier,
   ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
@@ -1009,7 +1002,7 @@ impl DocumentsInner {
   }
 
   fn resolve_dependency(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let doc = self.get(specifier)?;
@@ -1050,7 +1043,7 @@ impl DocumentsInner {
   fn set_location(&mut self, location: PathBuf) {
     // TODO update resolved dependencies?
     self.cache = HttpCache::new(&location);
-    self.specifier_resolver = SpecifierResolver::new(&location);
+    self.specifier_resolver = Arc::new(SpecifierResolver::new(&location));
     self.dirty = true;
   }
 
@@ -1059,10 +1052,19 @@ impl DocumentsInner {
     specifier: &ModuleSpecifier,
     navigation_tree: Arc<tsc::NavigationTree>,
   ) -> Result<(), AnyError> {
-    let doc = self.docs.get_mut(specifier).ok_or_else(|| {
-      custom_error("NotFound", format!("Specifier not found {}", specifier))
-    })?;
-    *doc = doc.with_navigation_tree(navigation_tree);
+    if let Some(doc) = self.docs.get_mut(specifier) {
+      *doc = doc.with_navigation_tree(navigation_tree);
+    } else {
+      let mut file_system_docs = self.file_system_docs.lock();
+      if let Some(doc) = file_system_docs.docs.get_mut(specifier) {
+        *doc = doc.with_navigation_tree(navigation_tree);
+      } else {
+        return Err(custom_error(
+          "NotFound",
+          format!("Specifier not found {}", specifier),
+        ));
+      }
+    }
     Ok(())
   }
 
@@ -1079,30 +1081,68 @@ impl DocumentsInner {
           .map(|im| JsxResolver::new(im, self.maybe_import_map.clone()))
       })
       .flatten();
-    if let Some(Ok(Some(imports))) =
-      maybe_config_file.map(|cf| cf.to_maybe_imports())
-    {
-      for (referrer, dependencies) in imports {
-        let dependencies =
-          dependencies.into_iter().map(|s| (s, None)).collect();
-        let module = SyntheticModule::new(
-          referrer.clone(),
-          dependencies,
-          self.get_maybe_resolver(),
-        );
-        self.imports.insert(referrer, module);
-      }
-    }
+    self.imports = Arc::new(
+      if let Some(Ok(Some(imports))) =
+        maybe_config_file.map(|cf| cf.to_maybe_imports())
+      {
+        imports
+          .into_iter()
+          .map(|(referrer, dependencies)| {
+            let dependencies =
+              dependencies.into_iter().map(|s| (s, None)).collect();
+            let module = SyntheticModule::new(
+              referrer.clone(),
+              dependencies,
+              self.get_maybe_resolver(),
+            );
+            (referrer, module)
+          })
+          .collect()
+      } else {
+        HashMap::new()
+      },
+    );
     self.dirty = true;
   }
 }
 
+fn calculate_fs_version(
+  cache: &HttpCache,
+  specifier: &ModuleSpecifier,
+) -> Option<String> {
+  let path = get_path(cache, specifier)?;
+  let metadata = fs::metadata(path).ok()?;
+  if let Ok(modified) = metadata.modified() {
+    if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+      Some(n.as_millis().to_string())
+    } else {
+      Some("1".to_string())
+    }
+  } else {
+    Some("1".to_string())
+  }
+}
+
+fn get_path(cache: &HttpCache, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+  if specifier.scheme() == "file" {
+    specifier.to_file_path().ok()
+  } else {
+    let path = cache.get_cache_filename(specifier)?;
+    if path.is_file() {
+      Some(path)
+    } else {
+      None
+    }
+  }
+}
+
+// todo(in this PR): collapse DocumentsInner into Documents after initial review
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Documents(Arc<Mutex<DocumentsInner>>);
+pub(crate) struct Documents(DocumentsInner);
 
 impl Documents {
   pub fn new(location: &Path) -> Self {
-    Self(Arc::new(Mutex::new(DocumentsInner::new(location))))
+    Self(DocumentsInner::new(location))
   }
 
   /// "Open" a document from the perspective of the editor, meaning that
@@ -1110,30 +1150,30 @@ impl Documents {
   /// representation received from the language server client, versus reading
   /// information from the disk.
   pub fn open(
-    &self,
+    &mut self,
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
     content: Arc<String>,
   ) -> Document {
-    self.0.lock().open(specifier, version, language_id, content)
+    self.0.open(specifier, version, language_id, content)
   }
 
   /// Apply language server content changes to an open document.
   pub fn change(
-    &self,
+    &mut self,
     specifier: &ModuleSpecifier,
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Document, AnyError> {
-    self.0.lock().change(specifier, version, changes)
+    self.0.change(specifier, version, changes)
   }
 
   /// Close an open document, this essentially clears any editor state that is
   /// being held, and the document store will revert to the file system if
   /// information about the document is required.
-  pub fn close(&self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
-    self.0.lock().close(specifier)
+  pub fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
+    self.0.close(specifier)
   }
 
   /// Return `true` if the provided specifier can be resolved to a document,
@@ -1143,22 +1183,22 @@ impl Documents {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> bool {
-    self.0.lock().contains_import(specifier, referrer)
+    self.0.contains_import(specifier, referrer)
   }
 
   /// Return `true` if the specifier can be resolved to a document.
   pub fn contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.lock().contains_specifier(specifier)
+    self.0.contains_specifier(specifier)
   }
 
   /// Return an array of specifiers, if any, that are dependent upon the
   /// supplied specifier. This is used to determine invalidation of diagnostics
   /// when a module has been changed.
   pub fn dependents(
-    &self,
+    &mut self,
     specifier: &ModuleSpecifier,
   ) -> Vec<ModuleSpecifier> {
-    self.0.lock().dependents(specifier)
+    self.0.dependents(specifier)
   }
 
   /// Return a vector of documents that are contained in the document store,
@@ -1170,12 +1210,12 @@ impl Documents {
     open_only: bool,
     diagnosable_only: bool,
   ) -> Vec<Document> {
-    self.0.lock().documents(open_only, diagnosable_only)
+    self.0.documents(open_only, diagnosable_only)
   }
 
   /// Return a document for the specifier.
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
-    self.0.lock().get(specifier).cloned()
+    self.0.get(specifier)
   }
 
   /// For a given set of string specifiers, resolve each one from the graph,
@@ -1186,35 +1226,29 @@ impl Documents {
     specifiers: Vec<String>,
     referrer: &ModuleSpecifier,
   ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
-    self.0.lock().resolve(specifiers, referrer)
+    self.0.resolve(specifiers, referrer)
   }
 
   /// Update the location of the on disk cache for the document store.
-  pub fn set_location(&self, location: PathBuf) {
-    self.0.lock().set_location(location)
+  pub fn set_location(&mut self, location: PathBuf) {
+    self.0.set_location(location)
   }
 
   /// Set a navigation tree that is associated with the provided specifier.
   pub fn set_navigation_tree(
-    &self,
+    &mut self,
     specifier: &ModuleSpecifier,
     navigation_tree: Arc<tsc::NavigationTree>,
   ) -> Result<(), AnyError> {
-    self
-      .0
-      .lock()
-      .set_navigation_tree(specifier, navigation_tree)
+    self.0.set_navigation_tree(specifier, navigation_tree)
   }
 
   pub fn update_config(
-    &self,
+    &mut self,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
     maybe_config_file: Option<&ConfigFile>,
   ) {
-    self
-      .0
-      .lock()
-      .update_config(maybe_import_map, maybe_config_file)
+    self.0.update_config(maybe_import_map, maybe_config_file)
   }
 }
 
@@ -1232,7 +1266,7 @@ mod tests {
 
   #[test]
   fn test_documents_open() {
-    let (documents, _) = setup();
+    let (mut documents, _) = setup();
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = Arc::new(
       r#"import * as b from "./b.ts";
@@ -1248,7 +1282,7 @@ console.log(b);
 
   #[test]
   fn test_documents_change() {
-    let (documents, _) = setup();
+    let (mut documents, _) = setup();
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
     let content = Arc::new(
       r#"import * as b from "./b.ts";
