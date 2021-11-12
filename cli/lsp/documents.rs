@@ -724,7 +724,7 @@ struct DocumentsInner {
   /// that depend on the key.
   dependents_map: Arc<HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>>,
   /// A map of documents that can either be "open" in the language server.
-  docs: HashMap<ModuleSpecifier, Document>,
+  open_docs: HashMap<ModuleSpecifier, Document>,
   /// Documents stored on the file system.
   file_system_docs: Arc<Mutex<FileSystemDocuments>>,
   /// Any imports to the context supplied by configuration files. This is like
@@ -744,7 +744,7 @@ impl DocumentsInner {
       cache: HttpCache::new(location),
       dirty: true,
       dependents_map: Default::default(),
-      docs: HashMap::default(),
+      open_docs: HashMap::default(),
       file_system_docs: Default::default(),
       imports: Default::default(),
       maybe_import_map: None,
@@ -765,7 +765,7 @@ impl DocumentsInner {
     let mut dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>> =
       HashMap::new();
     // favour documents that are open in case a document exists in both collections
-    let documents = file_system_docs.docs.iter().chain(self.docs.iter());
+    let documents = file_system_docs.docs.iter().chain(self.open_docs.iter());
     for (specifier, doc) in documents {
       if let Some(Ok(module)) = doc.maybe_module() {
         for dependency in module.dependencies.values() {
@@ -802,7 +802,7 @@ impl DocumentsInner {
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Document, AnyError> {
     let doc = self
-      .docs
+      .open_docs
       .get(specifier)
       .cloned()
       .or_else(|| {
@@ -820,14 +820,14 @@ impl DocumentsInner {
       )?;
     self.dirty = true;
     let doc = doc.with_change(version, changes, self.get_maybe_resolver())?;
-    self.docs.insert(doc.specifier().clone(), doc.clone());
+    self.open_docs.insert(doc.specifier().clone(), doc.clone());
     Ok(doc)
   }
 
   fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
     let mut file_system_docs = self.file_system_docs.lock();
     let doc = self
-      .docs
+      .open_docs
       .remove(specifier)
       .or_else(|| file_system_docs.docs.remove(specifier))
       .map_or_else(
@@ -885,7 +885,7 @@ impl DocumentsInner {
 
   fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
     let specifier = self.specifier_resolver.resolve(specifier)?;
-    if let Some(document) = self.docs.get(&specifier) {
+    if let Some(document) = self.open_docs.get(&specifier) {
       Some(document.clone())
     } else if let Some(specifier) = self.specifier_resolver.resolve(&specifier)
     {
@@ -936,7 +936,7 @@ impl DocumentsInner {
     let mut file_system_docs = self.file_system_docs.lock();
     file_system_docs.docs.remove(&specifier);
     file_system_docs.dirty = true;
-    self.docs.insert(specifier, document.clone());
+    self.open_docs.insert(specifier, document.clone());
     self.dirty = true;
     document
   }
@@ -948,7 +948,7 @@ impl DocumentsInner {
   ) -> Vec<Document> {
     if open_only {
       self
-        .docs
+        .open_docs
         .values()
         .filter_map(|doc| {
           if !diagnosable_only || doc.is_diagnosable() {
@@ -964,7 +964,7 @@ impl DocumentsInner {
       let mut seen_documents = HashSet::new();
       let file_system_docs = self.file_system_docs.lock();
       self
-        .docs
+        .open_docs
         .values()
         .chain(file_system_docs.docs.values())
         .filter_map(|doc| {
@@ -1071,7 +1071,7 @@ impl DocumentsInner {
     specifier: &ModuleSpecifier,
     navigation_tree: Arc<tsc::NavigationTree>,
   ) -> Result<(), AnyError> {
-    if let Some(doc) = self.docs.get_mut(specifier) {
+    if let Some(doc) = self.open_docs.get_mut(specifier) {
       *doc = doc.with_navigation_tree(navigation_tree);
     } else {
       let mut file_system_docs = self.file_system_docs.lock();
