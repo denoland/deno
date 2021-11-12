@@ -764,8 +764,9 @@ impl DocumentsInner {
 
     let mut dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>> =
       HashMap::new();
-    for (specifier, doc) in self.docs.iter().chain(file_system_docs.docs.iter())
-    {
+    // favour documents that are open in case a document exists in both collections
+    let documents = file_system_docs.docs.iter().chain(self.docs.iter());
+    for (specifier, doc) in documents {
       if let Some(Ok(module)) = doc.maybe_module() {
         for dependency in module.dependencies.values() {
           if let Some(dep) = dependency.get_code() {
@@ -945,21 +946,39 @@ impl DocumentsInner {
     open_only: bool,
     diagnosable_only: bool,
   ) -> Vec<Document> {
-    let file_system_docs = self.file_system_docs.lock();
-    self
-      .docs
-      .values()
-      .chain(file_system_docs.docs.values())
-      .filter_map(|doc| {
-        let open = open_only && doc.is_open();
-        let diagnosable = diagnosable_only && doc.is_diagnosable();
-        if (!open_only || open) && (!diagnosable_only || diagnosable) {
-          Some(doc.clone())
-        } else {
-          None
-        }
-      })
-      .collect()
+    if open_only {
+      self
+        .docs
+        .values()
+        .filter_map(|doc| {
+          if !diagnosable_only || doc.is_diagnosable() {
+            Some(doc.clone())
+          } else {
+            None
+          }
+        })
+        .collect()
+    } else {
+      // it is technically possible for a Document to end up in both the open
+      // and closed documents so we need to ensure we don't return duplicates
+      let mut seen_documents = HashSet::new();
+      let file_system_docs = self.file_system_docs.lock();
+      self
+        .docs
+        .values()
+        .chain(file_system_docs.docs.values())
+        .filter_map(|doc| {
+          // this prefers the open documents
+          if seen_documents.insert(doc.specifier().clone())
+            && (!diagnosable_only || doc.is_diagnosable())
+          {
+            Some(doc.clone())
+          } else {
+            None
+          }
+        })
+        .collect()
+    }
   }
 
   fn resolve(
@@ -1322,5 +1341,32 @@ console.log(b);
 console.log(b, "hello deno");
 "#
     );
+  }
+
+  #[test]
+  fn test_documents_ensure_no_duplicates() {
+    // it should never happen that a user of this API causes this to happen,
+    // but we'll guard against it anyway
+    let (mut documents, documents_path) = setup();
+    let file_path = documents_path.join("file.ts");
+    let file_specifier = ModuleSpecifier::from_file_path(&file_path).unwrap();
+    fs::create_dir_all(&documents_path).unwrap();
+    fs::write(&file_path, "").unwrap();
+
+    // open the document
+    documents.open(
+      file_specifier.clone(),
+      1,
+      LanguageId::TypeScript,
+      Default::default(),
+    );
+
+    // make a clone of the document store and close the document in that one
+    let mut documents2 = documents.clone();
+    documents2.close(&file_specifier).unwrap();
+
+    // At this point the document will be in both documents and the shared file system documents.
+    // Now make sure that the original documents doesn't return both copies
+    assert_eq!(documents.documents(false, false).len(), 1);
   }
 }
