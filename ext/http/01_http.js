@@ -90,7 +90,7 @@
         return null;
       }
 
-      const [streamRid, method, headersList, url] = nextRequest;
+      const [streamRid, method, headersList, url, bodySize] = nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
@@ -98,7 +98,7 @@
       // There might be a body, but we don't expose it for GET/HEAD requests.
       // It will be closed automatically once the request has been handled and
       // the response has been sent.
-      if (method !== "GET" && method !== "HEAD") {
+      if (method !== "GET" && method !== "HEAD" && bodySize !== 0) {
         body = createRequestBodyStream(streamRid);
       }
 

@@ -34,6 +34,7 @@ use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use deno_websocket::ws_create_server_stream;
+use hyper::body::HttpBody;
 use hyper::server::conn::Http;
 use hyper::service::Service;
 use hyper::Body;
@@ -341,6 +342,8 @@ struct NextRequestResponse(
   Vec<(ByteString, ByteString)>,
   // url:
   String,
+  // body_size:
+  Option<u64>,
 );
 
 async fn op_http_accept(
@@ -365,10 +368,11 @@ async fn op_http_accept(
   let method = request.method().to_string();
   let headers = req_headers(request);
   let url = req_url(request, conn.scheme(), conn.addr());
+  let body_size = request.size_hint().exact();
 
   let stream_rid = state.borrow_mut().resource_table.add_rc(stream);
 
-  let r = NextRequestResponse(stream_rid, method, headers, url);
+  let r = NextRequestResponse(stream_rid, method, headers, url, body_size);
   Ok(Some(r))
 }
 
