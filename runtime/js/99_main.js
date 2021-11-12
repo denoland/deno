@@ -665,7 +665,10 @@ delete Object.prototype.__proto__;
       cpuCount,
     } = runtimeOptions;
 
-    location.setLocationHref(locationHref);
+    if (locationHref != null) {
+      location.setLocationHref(locationHref);
+    }
+
     numCpus = cpuCount;
     registerErrors();
 
