@@ -25,18 +25,18 @@ jobs:
           - os: windows-2019
             job: test
             profile: release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: test
             profile: release
             use_sysroot: true
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: bench
             profile: release
             use_sysroot: true
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: test
             profile: debug
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: lint
             profile: debug
 
@@ -165,7 +165,7 @@ jobs:
         run: |
           # Avoid running man-db triggers, which sometimes takes several minutes
           # to complete.
-          sudo apt-get remove -y --purge man-db
+          sudo apt-get remove --purge -y man-db
           sudo apt-get update
           sudo apt-get install debootstrap
 
@@ -190,9 +190,9 @@ jobs:
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
             sudo dd of=/sysroot/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
-          sudo chroot /sysroot apt update -y
-          sudo chroot /sysroot apt install --no-install-recommends -y \
-                                           clang-13 lld-13
+          sudo chroot /sysroot apt-get update
+          sudo chroot /sysroot apt-get install --no-install-recommends -y \
+                                               clang-13 lld-13
 
           # Redirect ld invocations to ld.lld-13 inside the chroot environment.
           # Setting the 'LD' environment variable doesn't always work.
@@ -621,7 +621,7 @@ jobs:
   publish-canary:
     name: publish canary
     runs-on: ubuntu-20.04
-    needs: ['build']
+    needs: ["build"]
     if: github.repository == 'denoland/deno' &&
         (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     steps:
