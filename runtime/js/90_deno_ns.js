@@ -2,10 +2,11 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const __bootstrap = window.__bootstrap;
   __bootstrap.denoNs = {
+    metrics: core.metrics,
     test: __bootstrap.testing.test,
-    metrics: __bootstrap.metrics.metrics,
     Process: __bootstrap.process.Process,
     run: __bootstrap.process.run,
     isatty: __bootstrap.tty.isatty,
@@ -84,6 +85,7 @@
     listen: __bootstrap.net.listen,
     connectTls: __bootstrap.tls.connectTls,
     listenTls: __bootstrap.tls.listenTls,
+    startTls: __bootstrap.tls.startTls,
     shutdown: __bootstrap.net.shutdown,
     fstatSync: __bootstrap.fs.fstatSync,
     fstat: __bootstrap.fs.fstat,
@@ -99,15 +101,15 @@
     Permissions: __bootstrap.permissions.Permissions,
     PermissionStatus: __bootstrap.permissions.PermissionStatus,
     serveHttp: __bootstrap.http.serveHttp,
+    resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
+    kill: __bootstrap.process.kill,
   };
 
   __bootstrap.denoNsUnstable = {
-    signal: __bootstrap.signals.signal,
-    Signal: __bootstrap.signals.Signal,
-    SignalStream: __bootstrap.signals.SignalStream,
+    addSignalListener: __bootstrap.signals.addSignalListener,
+    removeSignalListener: __bootstrap.signals.removeSignalListener,
     emit: __bootstrap.compilerApi.emit,
-    kill: __bootstrap.process.kill,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
@@ -118,11 +120,9 @@
     applySourceMap: __bootstrap.errorStack.opApplySourceMap,
     formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
     sleepSync: __bootstrap.timers.sleepSync,
-    resolveDns: __bootstrap.net.resolveDns,
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
-    startTls: __bootstrap.tls.startTls,
     umask: __bootstrap.fs.umask,
     futime: __bootstrap.fs.futime,
     futimeSync: __bootstrap.fs.futimeSync,

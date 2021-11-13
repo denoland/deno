@@ -9,6 +9,7 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const {
     ArrayBuffer,
     ArrayBufferIsView,
@@ -41,12 +42,14 @@
     NumberMAX_SAFE_INTEGER,
     // deno-lint-ignore camelcase
     NumberMIN_SAFE_INTEGER,
+    ObjectAssign,
     ObjectCreate,
     ObjectDefineProperties,
     ObjectDefineProperty,
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertyDescriptors,
     ObjectGetPrototypeOf,
+    ObjectPrototypeHasOwnProperty,
     ObjectIs,
     PromisePrototypeThen,
     PromiseReject,
@@ -62,7 +65,6 @@
     String,
     StringFromCodePoint,
     StringPrototypeCharCodeAt,
-    StringPrototypeCodePointAt,
     Symbol,
     SymbolIterator,
     SymbolToStringTag,
@@ -360,11 +362,11 @@
   };
 
   converters.DOMString = function (V, opts = {}) {
-    if (opts.treatNullAsEmptyString && V === null) {
+    if (typeof V === "string") {
+      return V;
+    } else if (V === null && opts.treatNullAsEmptyString) {
       return "";
-    }
-
-    if (typeof V === "symbol") {
+    } else if (typeof V === "symbol") {
       throw makeException(
         TypeError,
         "is a symbol, which cannot be converted to a string",
@@ -375,15 +377,13 @@
     return String(V);
   };
 
+  // deno-lint-ignore no-control-regex
+  const IS_BYTE_STRING = /^[\x00-\xFF]*$/;
   converters.ByteString = (V, opts) => {
     const x = converters.DOMString(V, opts);
-    let c;
-    for (let i = 0; (c = StringPrototypeCodePointAt(x, i)) !== undefined; ++i) {
-      if (c > 255) {
-        throw makeException(TypeError, "is not a valid ByteString", opts);
-      }
+    if (!RegExpPrototypeTest(IS_BYTE_STRING, x)) {
+      throw makeException(TypeError, "is not a valid ByteString", opts);
     }
-
     return x;
   };
 
@@ -441,15 +441,6 @@
     return V instanceof SharedArrayBuffer;
   }
 
-  function isArrayBufferDetached(V) {
-    try {
-      new Uint8Array(V);
-      return false;
-    } catch {
-      return true;
-    }
-  }
-
   converters.ArrayBuffer = (V, opts = {}) => {
     if (!isNonSharedArrayBuffer(V)) {
       if (opts.allowShared && !isSharedArrayBuffer(V)) {
@@ -460,9 +451,6 @@
         );
       }
       throw makeException(TypeError, "is not an ArrayBuffer", opts);
-    }
-    if (isArrayBufferDetached(V)) {
-      throw makeException(TypeError, "is a detached ArrayBuffer", opts);
     }
 
     return V;
@@ -477,13 +465,6 @@
       throw makeException(
         TypeError,
         "is backed by a SharedArrayBuffer, which is not allowed",
-        opts,
-      );
-    }
-    if (isArrayBufferDetached(V.buffer)) {
-      throw makeException(
-        TypeError,
-        "is backed by a detached ArrayBuffer",
         opts,
       );
     }
@@ -529,13 +510,6 @@
             opts,
           );
         }
-        if (isArrayBufferDetached(V.buffer)) {
-          throw makeException(
-            TypeError,
-            "is a view on a detached ArrayBuffer",
-            opts,
-          );
-        }
 
         return V;
       };
@@ -561,13 +535,6 @@
       );
     }
 
-    if (isArrayBufferDetached(V.buffer)) {
-      throw makeException(
-        TypeError,
-        "is a view on a detached ArrayBuffer",
-        opts,
-      );
-    }
     return V;
   };
 
@@ -581,13 +548,6 @@
         );
       }
 
-      if (isArrayBufferDetached(V.buffer)) {
-        throw makeException(
-          TypeError,
-          "is a view on a detached ArrayBuffer",
-          opts,
-        );
-      }
       return V;
     }
 
@@ -608,9 +568,6 @@
         "is not an ArrayBuffer, SharedArrayBuffer, or a view on one",
         opts,
       );
-    }
-    if (isArrayBufferDetached(V)) {
-      throw makeException(TypeError, "is a detached ArrayBuffer", opts);
     }
 
     return V;
@@ -729,7 +686,7 @@
       }
       const esDict = V;
 
-      const idlDict = { ...defaultValues };
+      const idlDict = ObjectAssign({}, defaultValues);
 
       // NOTE: fast path Null and Undefined.
       if ((V === undefined || V === null) && !hasRequiredKey) {
@@ -846,8 +803,22 @@
           opts,
         );
       }
-      const keys = ReflectOwnKeys(V);
       const result = {};
+      // Fast path for common case (not a Proxy)
+      if (!core.isProxy(V)) {
+        for (const key in V) {
+          if (!ObjectPrototypeHasOwnProperty(V, key)) {
+            continue;
+          }
+          const typedKey = keyConverter(key, opts);
+          const value = V[key];
+          const typedValue = valueConverter(value, opts);
+          result[typedKey] = typedValue;
+        }
+        return result;
+      }
+      // Slow path if Proxy (e.g: in WPT tests)
+      const keys = ReflectOwnKeys(V);
       for (const key of keys) {
         const desc = ObjectGetOwnPropertyDescriptor(V, key);
         if (desc !== undefined && desc.enumerable === true) {
@@ -1053,6 +1024,12 @@
         });
       }
     }
+    ObjectDefineProperty(prototype.prototype, SymbolToStringTag, {
+      value: prototype.name,
+      enumerable: false,
+      configurable: true,
+      writable: false,
+    });
   }
 
   window.__bootstrap ??= {};

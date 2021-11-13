@@ -108,9 +108,13 @@ unitTest({ permissions: { read: false } }, function statSyncPerm() {
 });
 
 unitTest({ permissions: { read: true } }, function statSyncNotFound() {
-  assertThrows(() => {
-    Deno.statSync("bad_file_name");
-  }, Deno.errors.NotFound);
+  assertThrows(
+    () => {
+      Deno.statSync("bad_file_name");
+    },
+    Deno.errors.NotFound,
+    `stat 'bad_file_name'`,
+  );
 });
 
 unitTest({ permissions: { read: true } }, function lstatSyncSuccess() {
@@ -148,9 +152,13 @@ unitTest({ permissions: { read: false } }, function lstatSyncPerm() {
 });
 
 unitTest({ permissions: { read: true } }, function lstatSyncNotFound() {
-  assertThrows(() => {
-    Deno.lstatSync("bad_file_name");
-  }, Deno.errors.NotFound);
+  assertThrows(
+    () => {
+      Deno.lstatSync("bad_file_name");
+    },
+    Deno.errors.NotFound,
+    `stat 'bad_file_name'`,
+  );
 });
 
 unitTest(
@@ -228,8 +236,10 @@ unitTest({ permissions: { read: false } }, async function statPerm() {
 unitTest({ permissions: { read: true } }, async function statNotFound() {
   await assertRejects(
     async () => {
-      await Deno.stat("bad_file_name"), Deno.errors.NotFound;
+      await Deno.stat("bad_file_name");
     },
+    Deno.errors.NotFound,
+    `stat 'bad_file_name'`,
   );
 });
 
@@ -268,9 +278,13 @@ unitTest({ permissions: { read: false } }, async function lstatPerm() {
 });
 
 unitTest({ permissions: { read: true } }, async function lstatNotFound() {
-  await assertRejects(async () => {
-    await Deno.lstat("bad_file_name");
-  }, Deno.errors.NotFound);
+  await assertRejects(
+    async () => {
+      await Deno.lstat("bad_file_name");
+    },
+    Deno.errors.NotFound,
+    `stat 'bad_file_name'`,
+  );
 });
 
 unitTest(

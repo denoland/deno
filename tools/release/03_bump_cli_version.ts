@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run="cargo,git"
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo,git
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   DenoWorkspace,

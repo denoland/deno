@@ -2,10 +2,10 @@
 use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::js;
-use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
-use crate::tokio_util::create_basic_runtime;
+use crate::tokio_util::run_basic;
+use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -15,10 +15,10 @@ use deno_core::futures::stream::StreamExt;
 use deno_core::located_script_name;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8;
 use deno_core::CancelHandle;
+use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
@@ -34,7 +34,6 @@ use deno_web::BlobStore;
 use deno_web::MessagePort;
 use log::debug;
 use std::cell::RefCell;
-use std::env;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -199,6 +198,7 @@ impl WebWorkerHandle {
   pub async fn get_control_event(
     &self,
   ) -> Result<Option<WorkerControlEvent>, AnyError> {
+    #![allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
     let mut receiver = self.receiver.borrow_mut();
     Ok(receiver.next().await)
   }
@@ -259,11 +259,8 @@ pub struct WebWorker {
 }
 
 pub struct WebWorkerOptions {
-  /// Sets `Deno.args` in JS runtime.
-  pub args: Vec<String>,
-  pub debug_flag: bool,
-  pub unstable: bool,
-  pub enable_testing_features: bool,
+  pub bootstrap: BootstrapOptions,
+  pub extensions: Vec<Extension>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
@@ -274,31 +271,38 @@ pub struct WebWorkerOptions {
   pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
-  pub apply_source_maps: bool,
-  /// Sets `Deno.version.deno` in JS runtime.
-  pub runtime_version: String,
-  /// Sets `Deno.version.typescript` in JS runtime.
-  pub ts_version: String,
-  /// Sets `Deno.noColor` in JS runtime.
-  pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
-  pub cpu_count: usize,
+  pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
 }
 
 impl WebWorker {
+  pub fn bootstrap_from_options(
+    name: String,
+    permissions: Permissions,
+    main_module: ModuleSpecifier,
+    worker_id: WorkerId,
+    options: WebWorkerOptions,
+  ) -> (Self, SendableWebWorkerHandle) {
+    let bootstrap_options = options.bootstrap.clone();
+    let (mut worker, handle) =
+      Self::from_options(name, permissions, main_module, worker_id, options);
+    worker.bootstrap(&bootstrap_options);
+    (worker, handle)
+  }
+
   pub fn from_options(
     name: String,
     permissions: Permissions,
     main_module: ModuleSpecifier,
     worker_id: WorkerId,
-    options: &WebWorkerOptions,
+    mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
     // Permissions: many ops depend on this
-    let unstable = options.unstable;
-    let enable_testing_features = options.enable_testing_features;
+    let unstable = options.bootstrap.unstable;
+    let enable_testing_features = options.bootstrap.enable_testing_features;
     let perm_ext = Extension::builder()
       .state(move |state| {
         state.put::<Permissions>(permissions.clone());
@@ -314,30 +318,26 @@ impl WebWorker {
       deno_console::init(),
       deno_url::init(),
       deno_web::init(options.blob_store.clone(), Some(main_module.clone())),
-      deno_fetch::init::<Permissions>(
+      deno_fetch::init::<Permissions, deno_fetch::FsFetchHandler>(
         options.user_agent.clone(),
         options.root_cert_store.clone(),
         None,
         None,
         options.unsafely_ignore_certificate_errors.clone(),
         None,
+        deno_fetch::FsFetchHandler,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_broadcast_channel::init(
-        options.broadcast_channel.clone(),
-        options.unstable,
-      ),
+      deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
       deno_crypto::init(options.seed),
-      deno_webgpu::init(options.unstable),
+      deno_webgpu::init(unstable),
       deno_timers::init::<Permissions>(),
       // ffi
-      deno_ffi::init::<Permissions>(options.unstable),
-      // Metrics
-      metrics::init(),
+      deno_ffi::init::<Permissions>(unstable),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
@@ -358,7 +358,7 @@ impl WebWorker {
         deno_tls::init(),
         deno_net::init::<Permissions>(
           options.root_cert_store.clone(),
-          options.unstable,
+          unstable,
           options.unsafely_ignore_certificate_errors.clone(),
         ),
         ops::os::init(),
@@ -377,6 +377,7 @@ impl WebWorker {
     // Append exts
     extensions.extend(runtime_exts);
     extensions.extend(deno_ns_exts); // May be empty
+    extensions.extend(std::mem::take(&mut options.extensions));
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -384,6 +385,7 @@ impl WebWorker {
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
+      compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       ..Default::default()
     });
@@ -416,32 +418,15 @@ impl WebWorker {
     )
   }
 
-  pub fn bootstrap(&mut self, options: &WebWorkerOptions) {
-    let runtime_options = json!({
-      "args": options.args,
-      "applySourceMaps": options.apply_source_maps,
-      "debugFlag": options.debug_flag,
-      "denoVersion": options.runtime_version,
-      "noColor": options.no_color,
-      "pid": std::process::id(),
-      "ppid": ops::runtime::ppid(),
-      "target": env!("TARGET"),
-      "tsVersion": options.ts_version,
-      "unstableFlag": options.unstable,
-      "enableTestingFeaturesFlag": options.enable_testing_features,
-      "v8Version": deno_core::v8_version(),
-      "location": self.main_module,
-      "cpuCount": options.cpu_count,
-    });
-
-    let runtime_options_str =
-      serde_json::to_string_pretty(&runtime_options).unwrap();
-
+  pub fn bootstrap(&mut self, options: &BootstrapOptions) {
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     let script = format!(
       "bootstrap.workerRuntime({}, \"{}\", {}, \"{}\")",
-      runtime_options_str, self.name, options.use_deno_namespace, self.id
+      options.as_json(),
+      self.name,
+      self.use_deno_namespace,
+      self.id
     );
     self
       .execute_script(&located_script_name!(), &script)
@@ -505,18 +490,7 @@ impl WebWorker {
     }
   }
 
-  #[deprecated(
-    since = "0.26.0",
-    note = "This method had a bug, marking multiple modules loaded as \"main\". Use `execute_main_module`."
-  )]
-  pub async fn execute_module(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
-    self.execute_main_module(module_specifier).await
-  }
-
-  pub fn poll_event_loop(
+  fn poll_event_loop(
     &mut self,
     cx: &mut Context,
     wait_for_inspector: bool,
@@ -533,15 +507,8 @@ impl WebWorker {
           return Poll::Ready(Ok(()));
         }
 
-        // In case of an error, pass to parent without terminating worker
         if let Err(e) = r {
-          print_worker_error(e.to_string(), &self.name);
-          let handle = self.internal_handle.clone();
-          handle
-            .post_event(WorkerControlEvent::Error(e))
-            .expect("Failed to post message to host");
-
-          return Poll::Pending;
+          return Poll::Ready(Err(e));
         }
 
         panic!(
@@ -578,8 +545,6 @@ pub fn run_web_worker(
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
 
-  let rt = create_basic_runtime();
-
   // TODO(bartlomieju): run following block using "select!"
   // with terminate
 
@@ -601,6 +566,12 @@ pub fn run_web_worker(
       return Ok(());
     }
 
+    let result = if result.is_ok() {
+      worker.run_event_loop(true).await
+    } else {
+      result
+    };
+
     if let Err(e) = result {
       print_worker_error(e.to_string(), &name);
       internal_handle
@@ -611,10 +582,8 @@ pub fn run_web_worker(
       return Ok(());
     }
 
-    let result = worker.run_event_loop(true).await;
     debug!("Worker thread shuts down {}", &name);
     result
   };
-
-  rt.block_on(fut)
+  run_basic(fut)
 }

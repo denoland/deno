@@ -169,13 +169,8 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGINFO" => Ok(29),
     "SIGUSR1" => Ok(30),
     "SIGUSR2" => Ok(31),
-    _ => Err(type_error(format!("Invalid signal : {}", s))),
+    _ => Err(type_error(format!("Invalid signal: {}", s))),
   }
-}
-
-#[cfg(target_os = "windows")]
-pub fn signal_str_to_int(_s: &str) -> Result<libc::c_int, AnyError> {
-  Err(generic_error("not implemented"))
 }
 
 #[cfg(unix)]
@@ -229,7 +224,7 @@ pub fn op_signal_unbind(
 #[cfg(not(unix))]
 pub fn op_signal_bind(
   _state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
@@ -238,7 +233,7 @@ pub fn op_signal_bind(
 #[cfg(not(unix))]
 fn op_signal_unbind(
   _state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
@@ -247,7 +242,7 @@ fn op_signal_unbind(
 #[cfg(not(unix))]
 async fn op_signal_poll(
   _state: Rc<RefCell<OpState>>,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   Err(generic_error("not implemented"))

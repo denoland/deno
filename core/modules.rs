@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use rusty_v8 as v8;
-
 use crate::bindings;
 use crate::error::generic_error;
 use crate::error::AnyError;
@@ -18,7 +16,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::convert::TryFrom;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -71,7 +68,6 @@ pub trait ModuleLoader {
   /// apply import map for child imports.
   fn resolve(
     &self,
-    op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     _is_main: bool,
@@ -83,7 +79,6 @@ pub trait ModuleLoader {
   /// dynamic imports altogether.
   fn load(
     &self,
-    op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
@@ -116,7 +111,6 @@ pub struct NoopModuleLoader;
 impl ModuleLoader for NoopModuleLoader {
   fn resolve(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     _specifier: &str,
     _referrer: &str,
     _is_main: bool,
@@ -126,7 +120,6 @@ impl ModuleLoader for NoopModuleLoader {
 
   fn load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dyn_import: bool,
@@ -146,7 +139,6 @@ pub struct FsModuleLoader;
 impl ModuleLoader for FsModuleLoader {
   fn resolve(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     _is_main: bool,
@@ -156,7 +148,6 @@ impl ModuleLoader for FsModuleLoader {
 
   fn load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
@@ -269,18 +260,14 @@ impl RecursiveModuleLoad {
   pub fn resolve_root(&self) -> Result<ModuleSpecifier, AnyError> {
     match self.init {
       LoadInit::Main(ref specifier) => {
-        self
-          .loader
-          .resolve(self.op_state.clone(), specifier, ".", true)
+        self.loader.resolve(specifier, ".", true)
       }
       LoadInit::Side(ref specifier) => {
-        self
-          .loader
-          .resolve(self.op_state.clone(), specifier, ".", false)
+        self.loader.resolve(specifier, ".", false)
       }
-      LoadInit::DynamicImport(ref specifier, ref referrer) => self
-        .loader
-        .resolve(self.op_state.clone(), specifier, referrer, false),
+      LoadInit::DynamicImport(ref specifier, ref referrer) => {
+        self.loader.resolve(specifier, referrer, false)
+      }
     }
   }
 
@@ -288,24 +275,15 @@ impl RecursiveModuleLoad {
     let op_state = self.op_state.clone();
     let (module_specifier, maybe_referrer) = match self.init {
       LoadInit::Main(ref specifier) => {
-        let spec =
-          self
-            .loader
-            .resolve(op_state.clone(), specifier, ".", true)?;
+        let spec = self.loader.resolve(specifier, ".", true)?;
         (spec, None)
       }
       LoadInit::Side(ref specifier) => {
-        let spec =
-          self
-            .loader
-            .resolve(op_state.clone(), specifier, ".", false)?;
+        let spec = self.loader.resolve(specifier, ".", false)?;
         (spec, None)
       }
       LoadInit::DynamicImport(ref specifier, ref referrer) => {
-        let spec =
-          self
-            .loader
-            .resolve(op_state.clone(), specifier, referrer, false)?;
+        let spec = self.loader.resolve(specifier, referrer, false)?;
         (spec, Some(referrer.to_string()))
       }
     };
@@ -389,7 +367,6 @@ impl RecursiveModuleLoad {
             already_registered.push_back((module_id, specifier.clone()));
           } else {
             let fut = self.loader.load(
-              self.op_state.clone(),
               &specifier,
               Some(referrer.clone()),
               self.is_dynamic_import(),
@@ -454,12 +431,7 @@ impl Stream for RecursiveModuleLoad {
           };
           inner
             .loader
-            .load(
-              inner.op_state.clone(),
-              &module_specifier,
-              maybe_referrer,
-              inner.is_dynamic_import(),
-            )
+            .load(&module_specifier, maybe_referrer, inner.is_dynamic_import())
             .boxed_local()
         };
         inner.pending.push(load_fut);
@@ -586,12 +558,8 @@ impl ModuleMap {
       let import_specifier = module_request
         .get_specifier()
         .to_rust_string_lossy(tc_scope);
-      let module_specifier = self.loader.resolve(
-        self.op_state.clone(),
-        &import_specifier,
-        name,
-        false,
-      )?;
+      let module_specifier =
+        self.loader.resolve(&import_specifier, name, false)?;
       import_specifiers.push(module_specifier);
     }
 
@@ -700,12 +668,10 @@ impl ModuleMap {
       .borrow_mut()
       .dynamic_import_map
       .insert(load.id, resolver_handle);
-    let resolve_result = module_map_rc.borrow().loader.resolve(
-      module_map_rc.borrow().op_state.clone(),
-      specifier,
-      referrer,
-      false,
-    );
+    let resolve_result = module_map_rc
+      .borrow()
+      .loader
+      .resolve(specifier, referrer, false);
     let fut = match resolve_result {
       Ok(module_specifier) => {
         if module_map_rc.borrow().is_registered(&module_specifier) {
@@ -737,7 +703,7 @@ impl ModuleMap {
   ) -> Option<v8::Local<'s, v8::Module>> {
     let resolved_specifier = self
       .loader
-      .resolve(self.op_state.clone(), specifier, referrer, false)
+      .resolve(specifier, referrer, false)
       .expect("Module should have been already resolved");
 
     if let Some(id) = self.get_id(resolved_specifier.as_str()) {
@@ -753,6 +719,7 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::ops::OpCall;
   use crate::serialize_op_result;
   use crate::JsRuntime;
   use crate::Op;
@@ -864,7 +831,6 @@ mod tests {
   impl ModuleLoader for MockLoader {
     fn resolve(
       &self,
-      _op_state: Rc<RefCell<OpState>>,
       specifier: &str,
       referrer: &str,
       _is_root: bool,
@@ -891,7 +857,6 @@ mod tests {
 
     fn load(
       &self,
-      _op_state: Rc<RefCell<OpState>>,
       module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<ModuleSpecifier>,
       _is_dyn_import: bool,
@@ -1010,7 +975,6 @@ mod tests {
     impl ModuleLoader for ModsLoader {
       fn resolve(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
@@ -1024,7 +988,6 @@ mod tests {
 
       fn load(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
@@ -1043,8 +1006,8 @@ mod tests {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       let (control, _): (u8, ()) = payload.deserialize().unwrap();
       assert_eq!(control, 42);
-      let resp = (0, serialize_op_result(Ok(43), state));
-      Op::Async(Box::pin(futures::future::ready(resp)))
+      let resp = (0, 1, serialize_op_result(Ok(43), state));
+      Op::Async(OpCall::ready(resp))
     };
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -1130,7 +1093,6 @@ mod tests {
     impl ModuleLoader for DynImportErrLoader {
       fn resolve(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
@@ -1144,7 +1106,6 @@ mod tests {
 
       fn load(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         _module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
@@ -1192,7 +1153,6 @@ mod tests {
   impl ModuleLoader for DynImportOkLoader {
     fn resolve(
       &self,
-      _op_state: Rc<RefCell<OpState>>,
       specifier: &str,
       referrer: &str,
       _is_main: bool,
@@ -1207,7 +1167,6 @@ mod tests {
 
     fn load(
       &self,
-      _op_state: Rc<RefCell<OpState>>,
       specifier: &ModuleSpecifier,
       _maybe_referrer: Option<ModuleSpecifier>,
       _is_dyn_import: bool,
@@ -1330,7 +1289,6 @@ mod tests {
     impl ModuleLoader for DynImportCircularLoader {
       fn resolve(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
@@ -1342,7 +1300,6 @@ mod tests {
 
       fn load(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         specifier: &ModuleSpecifier,
         maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
@@ -1674,7 +1631,6 @@ mod tests {
     impl ModuleLoader for ModsLoader {
       fn resolve(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         specifier: &str,
         referrer: &str,
         _is_main: bool,
@@ -1685,7 +1641,6 @@ mod tests {
 
       fn load(
         &self,
-        _op_state: Rc<RefCell<OpState>>,
         module_specifier: &ModuleSpecifier,
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,

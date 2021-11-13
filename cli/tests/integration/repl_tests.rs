@@ -135,6 +135,17 @@ fn pty_ignore_symbols() {
 }
 
 #[test]
+fn pty_assign_global_this() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("globalThis = 42;");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(!output.contains("panicked"));
+  });
+}
+
+#[test]
 fn console_log() {
   let (out, err) = util::run_and_collect_output(
     true,

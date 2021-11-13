@@ -22,7 +22,6 @@ use crate::futures::task::Poll;
 use crate::serde_json;
 use crate::serde_json::json;
 use crate::serde_json::Value;
-use crate::v8;
 use parking_lot::Mutex;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
@@ -48,12 +47,6 @@ pub type SessionProxyReceiver = UnboundedReceiver<Vec<u8>>;
 pub struct InspectorSessionProxy {
   pub tx: SessionProxySender,
   pub rx: SessionProxyReceiver,
-}
-
-impl InspectorSessionProxy {
-  pub fn split(self) -> (SessionProxySender, SessionProxyReceiver) {
-    (self.tx, self.rx)
-  }
 }
 
 #[derive(Clone, Copy)]

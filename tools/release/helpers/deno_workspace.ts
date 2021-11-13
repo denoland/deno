@@ -43,10 +43,15 @@ export class DenoWorkspace {
   getDependencyCrates() {
     return [
       this.getBenchUtilCrate(),
+      this.getSerdeV8Crate(),
       this.getCoreCrate(),
       ...this.getExtCrates(),
       this.getRuntimeCrate(),
     ];
+  }
+
+  getSerdeV8Crate() {
+    return this.getCrateByNameOrThrow("serde_v8");
   }
 
   getCliCrate() {

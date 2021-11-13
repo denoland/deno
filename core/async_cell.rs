@@ -322,9 +322,8 @@ mod internal {
         // is updated, it should be impossible to add it to the current borrow.
         assert!(id > turn || borrow_count.try_add(M::borrow_mode()).is_none());
         // Save or update the waiter's Waker.
-        // TODO(piscisaureus): Use will_wake() to make this more efficient.
         let waiter_mut = waiters[id - turn].as_mut().unwrap();
-        waiter_mut.set_waker(cx.waker().clone());
+        waiter_mut.set_waker(cx.waker());
         Poll::Pending
       }
     }
@@ -593,8 +592,15 @@ mod internal {
       self.borrow_mode
     }
 
-    pub fn set_waker(&mut self, waker: Waker) {
-      self.waker.replace(waker);
+    pub fn set_waker(&mut self, new_waker: &Waker) {
+      if self
+        .waker
+        .as_ref()
+        .filter(|waker| waker.will_wake(new_waker))
+        .is_none()
+      {
+        self.waker.replace(new_waker.clone());
+      }
     }
 
     pub fn take_waker(&mut self) -> Option<Waker> {

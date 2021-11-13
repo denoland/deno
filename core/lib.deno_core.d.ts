@@ -45,6 +45,21 @@ declare namespace Deno {
      */
     function tryClose(rid: number): void;
 
+    /**
+     * Read from a (stream) resource that implements read()
+     */
+    function read(rid: number, buf: Uint8Array): Promise<number>;
+
+    /**
+     * Write to a (stream) resource that implements write()
+     */
+    function write(rid: number, buf: Uint8Array): Promise<number>;
+
+    /**
+     * Shutdown a resource
+     */
+    function shutdown(rid: number): Promise<void>;
+
     /** Get heap stats for current isolate/worker */
     function heapStats(): Record<string, number>;
 
@@ -63,6 +78,8 @@ declare namespace Deno {
      *     compiler. Takes the rid and a `Uint8Array`.
      *   - `op_wasm_streaming_abort`. Aborts the wasm compilation. Takes the rid
      *     and an exception. Invalidates the resource.
+     *   - `op_wasm_streaming_set_url`. Sets a source URL for the wasm module.
+     *     Takes the rid and a string.
      *   - To indicate the end of the resource, use `Deno.core.close()` with the
      *     rid.
      */

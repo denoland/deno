@@ -3,7 +3,7 @@
 use crate::itest;
 
 itest!(workers {
-  args: "test --reload --location http://127.0.0.1:4545/ --allow-net --allow-read --unstable workers/test.ts",
+  args: "test --reload --location http://127.0.0.1:4545/ -A --unstable workers/test.ts",
   output: "workers/test.ts.out",
   http_server: true,
 });
@@ -17,6 +17,20 @@ itest!(worker_error {
 itest!(worker_nested_error {
   args: "run -A workers/worker_nested_error.ts",
   output: "workers/worker_nested_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(worker_async_error {
+  args: "run -A --quiet --reload workers/worker_async_error.ts",
+  output: "workers/worker_async_error.ts.out",
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(worker_message_handler_error {
+  args: "run -A --quiet --reload workers/worker_message_handler_error.ts",
+  output: "workers/worker_message_handler_error.ts.out",
+  http_server: true,
   exit_code: 1,
 });
 

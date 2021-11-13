@@ -53,6 +53,7 @@
     SetPrototypeEntries,
     Symbol,
     SymbolPrototypeToString,
+    SymbolPrototypeValueOf,
     SymbolToStringTag,
     SymbolHasInstance,
     SymbolFor,
@@ -88,6 +89,9 @@
     MathFloor,
     Number,
     NumberPrototypeToString,
+    NumberPrototypeValueOf,
+    BigInt,
+    BigIntPrototypeToString,
     Proxy,
     ReflectGet,
     ReflectGetOwnPropertyDescriptor,
@@ -879,6 +883,26 @@
     return red(RegExpPrototypeToString(value)); // RegExps are red
   }
 
+  function inspectError(value) {
+    const causes = [];
+
+    let err = value;
+    while (
+      err.cause instanceof Error && err.cause !== value &&
+      !ArrayPrototypeIncludes(causes, err.cause) // circular check
+    ) {
+      ArrayPrototypePush(causes, err.cause);
+      err = err.cause;
+    }
+
+    return `${value.stack}${
+      ArrayPrototypeJoin(
+        ArrayPrototypeMap(causes, (cause) => `\nCaused by ${cause.stack}`),
+        "",
+      )
+    }`;
+  }
+
   function inspectStringObject(value, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
     return cyan(`[String: "${StringPrototypeToString(value)}"]`); // wrappers are in cyan
@@ -891,7 +915,24 @@
 
   function inspectNumberObject(value, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    return cyan(`[Number: ${NumberPrototypeToString(value)}]`); // wrappers are in cyan
+    // Special handling of -0
+    return cyan(
+      `[Number: ${
+        ObjectIs(NumberPrototypeValueOf(value), -0)
+          ? "-0"
+          : NumberPrototypeToString(value)
+      }]`,
+    ); // wrappers are in cyan
+  }
+
+  function inspectBigIntObject(value, inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
+    return cyan(`[BigInt: ${BigIntPrototypeToString(value)}n]`); // wrappers are in cyan
+  }
+
+  function inspectSymbolObject(value, inspectOptions) {
+    const cyan = maybeColor(colors.cyan, inspectOptions);
+    return cyan(`[Symbol: ${maybeQuoteSymbol(SymbolPrototypeValueOf(value))}]`); // wrappers are in cyan
   }
 
   const PromiseState = {
@@ -978,7 +1019,7 @@
         symbolKeys,
         (s1, s2) =>
           StringPrototypeLocaleCompare(
-            (s1.description ?? ""),
+            s1.description ?? "",
             s2.description ?? "",
           ),
       );
@@ -1120,15 +1161,19 @@
       return String(value[privateCustomInspect](inspect));
     }
     if (value instanceof Error) {
-      return String(value.stack);
+      return inspectError(value);
     } else if (ArrayIsArray(value)) {
       return inspectArray(value, level, inspectOptions);
     } else if (value instanceof Number) {
       return inspectNumberObject(value, inspectOptions);
+    } else if (value instanceof BigInt) {
+      return inspectBigIntObject(value, inspectOptions);
     } else if (value instanceof Boolean) {
       return inspectBooleanObject(value, inspectOptions);
     } else if (value instanceof String) {
       return inspectStringObject(value, inspectOptions);
+    } else if (value instanceof Symbol) {
+      return inspectSymbolObject(value, inspectOptions);
     } else if (value instanceof Promise) {
       return inspectPromise(value, level, inspectOptions);
     } else if (value instanceof RegExp) {

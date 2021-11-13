@@ -18,7 +18,6 @@
     ObjectEntries,
     ObjectSetPrototypeOf,
     SymbolFor,
-    SymbolToStringTag,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
@@ -97,11 +96,17 @@
       });
       this.#code = nameToCodeMapping[this.#name] ?? 0;
 
-      // `DOMException` does not have `.stack`, so `Error.prepareStackTrace()`
-      // is not called on it, meaning our structured stack trace hack doesn't
-      // apply. This patches it in.
-      const error = new Error();
-      error.stack;
+      const error = new Error(this.#message);
+      error.name = "DOMException";
+      ObjectDefineProperty(this, "stack", {
+        value: error.stack,
+        writable: true,
+        configurable: true,
+      });
+
+      // `DOMException` isn't a native error, so `Error.prepareStackTrace()` is
+      // not called when accessing `.stack`, meaning our structured stack trace
+      // hack doesn't apply. This patches it in.
       ObjectDefineProperty(this, "__callSiteEvals", {
         value: ArrayPrototypeSlice(error.__callSiteEvals, 1),
         configurable: true,
@@ -118,10 +123,6 @@
 
     get code() {
       return this.#code;
-    }
-
-    get [SymbolToStringTag]() {
-      return "DOMException";
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
