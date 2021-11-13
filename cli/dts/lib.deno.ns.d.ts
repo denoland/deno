@@ -371,7 +371,7 @@ declare namespace Deno {
    */
   export function test(
     name: string,
-    options: Omit<TestDefinition, "fn">,
+    options: Omit<TestDefinition, "fn" | "name">,
     fn: (t: TestContext) => void | Promise<void>,
   ): void;
 
@@ -394,10 +394,32 @@ declare namespace Deno {
    * ```
    */
   export function test(
-    options: Omit<TestDefinition, "fn" | "name">,
+    options: Omit<TestDefinition, "fn">,
     fn: (t: TestContext) => void | Promise<void>,
   ): void;
 
+  /** Register a test which will be run when `deno test` is used on the command
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required. Declared function must have a name.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.test({ permissions: { read: true } }, function myTestName(): void {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.test({ permissions: { read: false } }, function myOtherTestName(): Promise<void> {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+   export function test(
+    options: Omit<TestDefinition, "fn" | "name">,
+    fn: (t: TestContext) => void | Promise<void>,
+  ): void;
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
    *

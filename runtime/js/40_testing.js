@@ -309,11 +309,13 @@ finishing test case.`;
       };
     } else {
       let fn;
+      let name;
       if (typeof optionsOrFn === "function") {
         fn = optionsOrFn;
         if (nameOrFnOrOptions.fn != undefined) {
           throw new TypeError("Missing test function");
         }
+        // TODO: name;
       } else {
         if (!nameOrFnOrOptions.fn) {
           throw new TypeError("Missing test function");
@@ -322,6 +324,7 @@ finishing test case.`;
           throw new TypeError("'fn' must be a function");
         }
         fn = nameOrFnOrOptions.fn;
+        // TODO: name;
       }
       if (!nameOrFnOrOptions.name) {
         throw new TypeError("The test name can't be empty");
