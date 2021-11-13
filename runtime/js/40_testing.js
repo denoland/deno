@@ -253,8 +253,9 @@ finishing test case.`;
 
   // Main test function provided by Deno.
   function test(
-    t,
-    fn,
+    nameOrFnOrOptions,
+    optionsOrFn,
+    maybeFn,
   ) {
     let testDef;
     const defaults = {
@@ -266,22 +267,66 @@ finishing test case.`;
       permissions: null,
     };
 
-    if (typeof t === "string") {
-      if (!fn || typeof fn != "function") {
-        throw new TypeError("Missing test function");
-      }
-      if (!t) {
+    if (typeof nameOrFnOrOptions === "string") {
+      if (!nameOrFnOrOptions) {
         throw new TypeError("The test name can't be empty");
       }
-      testDef = { fn: fn, name: t, ...defaults };
+      if (typeof optionsOrFn === "function") {
+        testDef = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
+      } else {
+        if (!maybeFn || typeof maybeFn !== "function") {
+          throw new TypeError("Missing test function");
+        }
+        // TODO(bartlomieju):
+        if (optionsOrFn.fn != undefined) {
+          throw new TypeError("Missing test function");
+        }
+        if (optionsOrFn.name != undefined) {
+          throw new TypeError("Missing test function");
+        }
+        testDef = {
+          ...defaults,
+          ...optionsOrFn,
+          fn: maybeFn,
+          name: nameOrFnOrOptions,
+        };
+      }
+    } else if (typeof nameOrFnOrOptions === "function") {
+      if (!nameOrFnOrOptions.name) {
+        throw new TypeError("The test function must have a name");
+      }
+      // TODO(bartlomieju):
+      if (optionsOrFn != undefined) {
+        throw new TypeError("Missing test function");
+      }
+      if (maybeFn != undefined) {
+        throw new TypeError("Missing test function");
+      }
+      testDef = {
+        ...defaults,
+        fn: nameOrFnOrOptions,
+        name: nameOrFnOrOptions.name,
+      };
     } else {
-      if (!t.fn) {
-        throw new TypeError("Missing test function");
+      let fn;
+      if (typeof optionsOrFn === "function") {
+        fn = optionsOrFn;
+        if (nameOrFnOrOptions.fn != undefined) {
+          throw new TypeError("Missing test function");
+        }
+      } else {
+        if (!nameOrFnOrOptions.fn) {
+          throw new TypeError("Missing test function");
+        }
+        if (typeof nameOrFnOrOptions.fn !== "function") {
+          throw new TypeError("'fn' must be a function");
+        }
+        fn = nameOrFnOrOptions.fn;
       }
-      if (!t.name) {
+      if (!nameOrFnOrOptions.name) {
         throw new TypeError("The test name can't be empty");
       }
-      testDef = { ...defaults, ...t };
+      testDef = { ...defaults, ...nameOrFnOrOptions, fn };
     }
 
     testDef.fn = wrapTestFnWithSanitizers(testDef.fn, testDef);

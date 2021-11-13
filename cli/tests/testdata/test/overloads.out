@@ -1,0 +1,10 @@
+Check [WILDCARD]/test/overloads.ts
+running 5 tests from [WILDCARD]/test/overloads.ts
+test test0 ... ok ([WILDCARD])
+test test1 ... ok ([WILDCARD])
+test test2 ... ok ([WILDCARD])
+test test3 ... ok ([WILDCARD])
+test test4 ... ok ([WILDCARD])
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
