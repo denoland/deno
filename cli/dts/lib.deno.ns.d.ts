@@ -371,7 +371,7 @@ declare namespace Deno {
    */
   export function test(
     name: string,
-    options: Omit<TestDefinition, "fn" | "name">,
+    options: Omit<TestDefinition, "fn">,
     fn: (t: TestContext) => void | Promise<void>,
   ): void;
 
@@ -394,7 +394,7 @@ declare namespace Deno {
    * ```
    */
   export function test(
-    options: Omit<TestDefinition, "fn">,
+    options: Omit<TestDefinition, "fn" | "name">,
     fn: (t: TestContext) => void | Promise<void>,
   ): void;
 
