@@ -13,3 +13,13 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     .build()
     .unwrap()
 }
+
+// TODO(ry) rename to run_local ?
+pub fn run_basic<F, R>(future: F) -> R
+where
+  F: std::future::Future<Output = R>,
+{
+  let rt = create_basic_runtime();
+  let local = tokio::task::LocalSet::new();
+  local.block_on(&rt, future)
+}

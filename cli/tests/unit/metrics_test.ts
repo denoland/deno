@@ -16,7 +16,7 @@ unitTest(async function metrics() {
   assert(m1.bytesSentControl === 0);
   assert(m1.bytesSentData === 0);
   assert(m1.bytesReceived === 0);
-  const m1OpWrite = m1.ops["op_write_async"];
+  const m1OpWrite = m1.ops["op_write"];
   assert(m1OpWrite.opsDispatchedAsync > 0);
   assert(m1OpWrite.opsCompletedAsync > 0);
   assert(m1OpWrite.bytesSentControl === 0);
@@ -31,7 +31,7 @@ unitTest(async function metrics() {
   assert(m2.bytesSentControl === m1.bytesSentControl);
   assert(m2.bytesSentData === 0);
   assert(m2.bytesReceived === m1.bytesReceived);
-  const m2OpWrite = m2.ops["op_write_async"];
+  const m2OpWrite = m2.ops["op_write"];
   assert(m2OpWrite.opsDispatchedAsync > m1OpWrite.opsDispatchedAsync);
   assert(m2OpWrite.opsCompletedAsync > m1OpWrite.opsCompletedAsync);
   assert(m2OpWrite.bytesSentControl === m1OpWrite.bytesSentControl);

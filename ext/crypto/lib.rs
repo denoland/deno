@@ -876,10 +876,14 @@ pub async fn op_crypto_derive_bits(
       let salt = hkdf::Salt::new(algorithm, salt);
       let prk = salt.extract(&secret);
       let info = &[&*info];
-      let okm = prk.expand(info, HkdfOutput(length))?;
+      let okm = prk.expand(info, HkdfOutput(length)).map_err(|_e| {
+        custom_error(
+          "DOMExceptionOperationError",
+          "The length provided for HKDF is too large",
+        )
+      })?;
       let mut r = vec![0u8; length];
       okm.fill(&mut r)?;
-
       Ok(r.into())
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),

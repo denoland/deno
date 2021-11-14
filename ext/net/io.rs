@@ -1,21 +1,15 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops_tls::TlsStreamResource;
-use deno_core::error::not_supported;
 use deno_core::error::AnyError;
-use deno_core::op_async;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpPair;
-use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
-use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::rc::Rc;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
@@ -25,14 +19,6 @@ use tokio::net::tcp;
 
 #[cfg(unix)]
 use tokio::net::unix;
-
-pub fn init() -> Vec<OpPair> {
-  vec![
-    ("op_net_read_async", op_async(op_read_async)),
-    ("op_net_write_async", op_async(op_write_async)),
-    ("op_net_shutdown", op_async(op_shutdown)),
-  ]
-}
 
 /// A full duplex resource has a read and write ends that are completely
 /// independent, like TCP/Unix sockets and TLS streams.
@@ -80,21 +66,27 @@ where
   }
 
   pub async fn read(
-    self: &Rc<Self>,
-    buf: &mut [u8],
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
   ) -> Result<usize, AnyError> {
     let mut rd = self.rd_borrow_mut().await;
-    let nread = rd.read(buf).try_or_cancel(self.cancel_handle()).await?;
+    let nread = rd
+      .read(&mut buf)
+      .try_or_cancel(self.cancel_handle())
+      .await?;
     Ok(nread)
   }
 
-  pub async fn write(self: &Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+  pub async fn write(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
     let mut wr = self.wr_borrow_mut().await;
-    let nwritten = wr.write(buf).await?;
+    let nwritten = wr.write(&buf).await?;
     Ok(nwritten)
   }
 
-  pub async fn shutdown(self: &Rc<Self>) -> Result<(), AnyError> {
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
     let mut wr = self.wr_borrow_mut().await;
     wr.shutdown().await?;
     Ok(())
@@ -107,6 +99,18 @@ pub type TcpStreamResource =
 impl Resource for TcpStreamResource {
   fn name(&self) -> Cow<str> {
     "tcpStream".into()
+  }
+
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
+  }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.write(buf))
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(self.shutdown())
   }
 
   fn close(self: Rc<Self>) {
@@ -124,15 +128,18 @@ pub struct UnixStreamResource;
 #[cfg(not(unix))]
 impl UnixStreamResource {
   pub async fn read(
-    self: &Rc<Self>,
-    _buf: &mut [u8],
+    self: Rc<Self>,
+    _buf: ZeroCopyBuf,
   ) -> Result<usize, AnyError> {
     unreachable!()
   }
-  pub async fn write(self: &Rc<Self>, _buf: &[u8]) -> Result<usize, AnyError> {
+  pub async fn write(
+    self: Rc<Self>,
+    _buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
     unreachable!()
   }
-  pub async fn shutdown(self: &Rc<Self>) -> Result<(), AnyError> {
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
     unreachable!()
   }
   pub fn cancel_read_ops(&self) {
@@ -145,61 +152,19 @@ impl Resource for UnixStreamResource {
     "unixStream".into()
   }
 
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
+  }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.write(buf))
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(self.shutdown())
+  }
+
   fn close(self: Rc<Self>) {
     self.cancel_read_ops();
   }
-}
-
-async fn op_read_async(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  mut buf: ZeroCopyBuf,
-) -> Result<u32, AnyError> {
-  let resource = state.borrow().resource_table.get_any(rid)?;
-  let nread = if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.read(&mut buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.read(&mut buf).await?
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.read(&mut buf).await?
-  } else {
-    return Err(not_supported());
-  };
-  Ok(nread as u32)
-}
-
-async fn op_write_async(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  buf: ZeroCopyBuf,
-) -> Result<u32, AnyError> {
-  let resource = state.borrow().resource_table.get_any(rid)?;
-  let nwritten = if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.write(&buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.write(&buf).await?
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.write(&buf).await?
-  } else {
-    return Err(not_supported());
-  };
-  Ok(nwritten as u32)
-}
-
-async fn op_shutdown(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  _: (),
-) -> Result<(), AnyError> {
-  let resource = state.borrow().resource_table.get_any(rid)?;
-  if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.shutdown().await?;
-  } else {
-    return Err(not_supported());
-  }
-  Ok(())
 }

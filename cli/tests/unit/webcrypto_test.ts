@@ -513,6 +513,31 @@ unitTest(async function testHkdfDeriveBits() {
   assertEquals(result.byteLength, 128 / 8);
 });
 
+unitTest(async function testHkdfDeriveBitsWithLargeKeySize() {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array([0x00]),
+    "HKDF",
+    false,
+    ["deriveBits"],
+  );
+  assertRejects(
+    () =>
+      crypto.subtle.deriveBits(
+        {
+          name: "HKDF",
+          hash: "SHA-1",
+          salt: new Uint8Array(),
+          info: new Uint8Array(),
+        },
+        key,
+        ((20 * 255) << 3) + 8,
+      ),
+    DOMException,
+    "The length provided for HKDF is too large",
+  );
+});
+
 unitTest(async function testDeriveKey() {
   // Test deriveKey
   const rawKey = await crypto.getRandomValues(new Uint8Array(16));

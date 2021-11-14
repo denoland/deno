@@ -7,6 +7,7 @@ import {
   assert,
   assertEquals,
   assertRejects,
+  assertStrictEquals,
   assertThrows,
   deferred,
   delay,
@@ -386,7 +387,7 @@ unitTest(
         Deno.errors.Http,
         "connection closed",
       );
-      // The error from `op_http_request_next` reroutes to `respondWith()`.
+      // The error from `op_http_accept` reroutes to `respondWith()`.
       assertEquals(await nextRequestPromise, null);
       listener.close();
     })();
@@ -865,6 +866,7 @@ unitTest(
     const writer = writable.getWriter();
 
     async function writeResponse() {
+      await delay(50);
       await writer.write(
         new TextEncoder().encode(
           "written to the writable side of a TransformStream",
@@ -997,5 +999,107 @@ unitTest(
     }
 
     await Promise.all([server(), client()]);
+  },
+);
+
+// https://github.com/denoland/deno/issues/12193
+unitTest(
+  { permissions: { net: true } },
+  async function httpConnConcurrentNextRequestCalls() {
+    const hostname = "localhost";
+    const port = 4501;
+
+    async function server() {
+      const listener = Deno.listen({ hostname, port });
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+      const promises = new Array(10).fill(null).map(async (_, i) => {
+        const event = await httpConn.nextRequest();
+        assert(event);
+        const { pathname } = new URL(event.request.url);
+        assertStrictEquals(pathname, `/${i}`);
+        const response = new Response(`Response #${i}`);
+        await event.respondWith(response);
+      });
+      await Promise.all(promises);
+      httpConn.close();
+      listener.close();
+    }
+
+    async function client() {
+      for (let i = 0; i < 10; i++) {
+        const response = await fetch(`http://${hostname}:${port}/${i}`);
+        const body = await response.text();
+        assertStrictEquals(body, `Response #${i}`);
+      }
+    }
+
+    await Promise.all([server(), delay(100).then(client)]);
+  },
+);
+
+// https://github.com/denoland/deno/pull/12704
+// https://github.com/denoland/deno/pull/12732
+unitTest(
+  { permissions: { net: true } },
+  async function httpConnAutoCloseDelayedOnUpgrade() {
+    const hostname = "localhost";
+    const port = 4501;
+
+    async function server() {
+      const listener = Deno.listen({ hostname, port });
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+
+      const event1 = await httpConn.nextRequest() as Deno.RequestEvent;
+      const event2Promise = httpConn.nextRequest();
+
+      const { socket, response } = Deno.upgradeWebSocket(event1.request);
+      socket.onmessage = (event) => socket.send(event.data);
+      event1.respondWith(response);
+
+      const event2 = await event2Promise;
+      assertStrictEquals(event2, null);
+
+      listener.close();
+    }
+
+    async function client() {
+      const socket = new WebSocket(`ws://${hostname}:${port}/`);
+      socket.onopen = () => socket.send("bla bla");
+      const { data } = await new Promise((res) => socket.onmessage = res);
+      assertStrictEquals(data, "bla bla");
+      socket.close();
+    }
+
+    await Promise.all([server(), client()]);
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function httpServerRespondNonAsciiUint8Array() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      const httpConn = Deno.serveHttp(conn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+      assertEquals(request.body, null);
+      await respondWith(
+        new Response(new Uint8Array([128]), {}),
+      );
+      httpConn.close();
+    })();
+
+    const resp = await fetch("http://localhost:4501/");
+    console.log(resp.headers);
+    assertEquals(resp.status, 200);
+    const body = await resp.arrayBuffer();
+    assertEquals(new Uint8Array(body), new Uint8Array([128]));
+
+    await promise;
   },
 );

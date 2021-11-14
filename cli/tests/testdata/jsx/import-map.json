@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "jsx/jsx-runtime": "http://localhost:4545/jsx/jsx-runtime/index.ts",
+    "jsx/jsx-dev-runtime": "http://localhost:4545/jsx/jsx-dev-runtime/index.ts"
+  }
+}

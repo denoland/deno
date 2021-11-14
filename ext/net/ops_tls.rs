@@ -28,6 +28,7 @@ use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpPair;
@@ -35,6 +36,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
@@ -715,24 +717,27 @@ impl TlsStreamResource {
   }
 
   pub async fn read(
-    self: &Rc<Self>,
-    buf: &mut [u8],
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
   ) -> Result<usize, AnyError> {
-    let mut rd = RcRef::map(self, |r| &r.rd).borrow_mut().await;
-    let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
-    let nread = rd.read(buf).try_or_cancel(cancel_handle).await?;
+    let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
+    let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+    let nread = rd.read(&mut buf).try_or_cancel(cancel_handle).await?;
     Ok(nread)
   }
 
-  pub async fn write(self: &Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+  pub async fn write(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
     self.handshake().await?;
     let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
-    let nwritten = wr.write(buf).await?;
+    let nwritten = wr.write(&buf).await?;
     wr.flush().await?;
     Ok(nwritten)
   }
 
-  pub async fn shutdown(self: &Rc<Self>) -> Result<(), AnyError> {
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
     self.handshake().await?;
     let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
     wr.shutdown().await?;
@@ -755,6 +760,18 @@ impl Resource for TlsStreamResource {
     "tlsStream".into()
   }
 
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
+  }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.write(buf))
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(self.shutdown())
+  }
+
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel();
   }
@@ -774,13 +791,13 @@ pub struct ConnectTlsArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StartTlsArgs {
+pub struct StartTlsArgs {
   rid: ResourceId,
   ca_certs: Vec<String>,
   hostname: String,
 }
 
-async fn op_tls_start<NP>(
+pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
   _: (),
@@ -1013,7 +1030,7 @@ pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-fn op_tls_listen<NP>(
+pub fn op_tls_listen<NP>(
   state: &mut OpState,
   args: ListenTlsArgs,
   _: (),
@@ -1073,7 +1090,7 @@ where
   })
 }
 
-async fn op_tls_accept(
+pub async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),
@@ -1123,7 +1140,7 @@ async fn op_tls_accept(
   })
 }
 
-async fn op_tls_handshake(
+pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),

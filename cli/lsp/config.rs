@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::tokio_util::create_basic_runtime;
-
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
@@ -11,6 +9,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
 use lsp::WorkspaceFolder;
 use lspower::lsp;
