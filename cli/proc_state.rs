@@ -162,15 +162,16 @@ impl ProcState {
       eprintln!("{}", colors::yellow(msg));
     }
 
-    let cache_usage = if flags.cached_only {
-      CacheSetting::Only
-    } else if !flags.cache_blocklist.is_empty() {
-      CacheSetting::ReloadSome(flags.cache_blocklist.clone())
-    } else if flags.reload {
-      CacheSetting::ReloadAll
-    } else {
-      CacheSetting::Use
-    };
+    let cache_usage =
+      if flags.cached_only || env::var("DENO_CACHED_ONLY").is_ok() {
+        CacheSetting::Only
+      } else if !flags.cache_blocklist.is_empty() {
+        CacheSetting::ReloadSome(flags.cache_blocklist.clone())
+      } else if flags.reload {
+        CacheSetting::ReloadAll
+      } else {
+        CacheSetting::Use
+      };
 
     let blob_store = BlobStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();

@@ -2159,3 +2159,37 @@ fn issue12453() {
     .unwrap();
   assert!(status.success());
 }
+
+#[test]
+fn cached_only_env() {
+  let _g = util::http_server();
+  let deno_dir = util::new_deno_dir();
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .env("DENO_CACHED_ONLY", "1")
+    .arg("run")
+    .arg("--reload")
+    .arg("http://127.0.0.1:4545/019_media_types.ts")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  assert!(stderr.contains("Specifier not found in cache"));
+
+  // Same but without DENO_CACHED_ONLY is ok.
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--reload")
+    .arg("http://127.0.0.1:4545/019_media_types.ts")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}

@@ -350,13 +350,7 @@ impl FileFetcher {
     }
 
     if self.cache_setting == CacheSetting::Only {
-      return Err(custom_error(
-        "NotFound",
-        format!(
-          "Specifier not found in cache: \"{}\", --cached-only is specified.",
-          specifier
-        ),
-      ));
+      return Err(cached_only_error(&specifier));
     }
 
     let (source, content_type) = get_source_from_data_url(specifier)?;
@@ -399,13 +393,7 @@ impl FileFetcher {
     }
 
     if self.cache_setting == CacheSetting::Only {
-      return Err(custom_error(
-        "NotFound",
-        format!(
-          "Specifier not found in cache: \"{}\", --cached-only is specified.",
-          specifier
-        ),
-      ));
+      return Err(cached_only_error(&specifier));
     }
 
     let blob = {
@@ -483,14 +471,7 @@ impl FileFetcher {
     }
 
     if self.cache_setting == CacheSetting::Only {
-      return futures::future::err(custom_error(
-        "NotFound",
-        format!(
-          "Specifier not found in cache: \"{}\", --cached-only is specified.",
-          specifier
-        ),
-      ))
-      .boxed();
+      return futures::future::err(cached_only_error(&specifier)).boxed();
     }
 
     info!("{} {}", colors::green("Download"), specifier);
@@ -613,6 +594,16 @@ impl FileFetcher {
   pub fn insert_cached(&self, file: File) -> Option<File> {
     self.cache.insert(file.specifier.clone(), file)
   }
+}
+
+fn cached_only_error(specifier: &ModuleSpecifier) -> AnyError {
+  custom_error(
+    "NotFound",
+    format!(
+      "Specifier not found in cache: \"{}\", --cached-only or DENO_CACHED_ONLY specified.",
+      specifier
+    ),
+  )
 }
 
 #[cfg(test)]
