@@ -639,9 +639,8 @@ mod tests {
     cache_setting: CacheSetting,
     maybe_temp_dir: Option<Rc<TempDir>>,
   ) -> (FileFetcher, Rc<TempDir>, BlobStore) {
-    let temp_dir = maybe_temp_dir.unwrap_or_else(|| {
-      Rc::new(TempDir::new().expect("failed to create temp directory"))
-    });
+    let temp_dir =
+      maybe_temp_dir.unwrap_or_else(|| Rc::new(TempDir::new().unwrap()));
     let location = temp_dir.path().join("deps");
     let blob_store = BlobStore::default();
     let file_fetcher = FileFetcher::new(
@@ -652,7 +651,7 @@ mod tests {
       blob_store.clone(),
       None,
     )
-    .expect("setup failed");
+    .unwrap();
     (file_fetcher, temp_dir, blob_store)
   }
 
@@ -1097,7 +1096,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("setup failed");
+    .unwrap();
     let result = file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
       .await;
@@ -1123,7 +1122,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let specifier =
       resolve_url("http://localhost:4545/subdir/mismatch_ext.ts").unwrap();
     let cache_filename = file_fetcher_01
@@ -1138,8 +1137,7 @@ mod tests {
 
     let metadata_filename =
       crate::http_cache::Metadata::filename(&cache_filename);
-    let metadata_file =
-      fs::File::open(metadata_filename).expect("could not open metadata file");
+    let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
 
@@ -1151,7 +1149,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let result = file_fetcher_02
       .fetch(&specifier, &mut Permissions::allow_all())
       .await;
@@ -1159,8 +1157,7 @@ mod tests {
 
     let metadata_filename =
       crate::http_cache::Metadata::filename(&cache_filename);
-    let metadata_file =
-      fs::File::open(metadata_filename).expect("could not open metadata file");
+    let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
 
@@ -1198,10 +1195,7 @@ mod tests {
       "",
       "redirected files should have empty cached contents"
     );
-    let (_, headers) = file_fetcher
-      .http_cache
-      .get(&specifier)
-      .expect("could not get file");
+    let (_, headers) = file_fetcher.http_cache.get(&specifier).unwrap();
     assert_eq!(
       headers.get("location").unwrap(),
       "http://localhost:4545/subdir/redirects/redirect1.js"
@@ -1211,10 +1205,8 @@ mod tests {
       fs::read_to_string(redirected_cached_filename).unwrap(),
       "export const redirect = 1;\n"
     );
-    let (_, headers) = file_fetcher
-      .http_cache
-      .get(&redirected_specifier)
-      .expect("could not get file");
+    let (_, headers) =
+      file_fetcher.http_cache.get(&redirected_specifier).unwrap();
     assert!(headers.get("location").is_none());
   }
 
@@ -1256,10 +1248,7 @@ mod tests {
       "",
       "redirected files should have empty cached contents"
     );
-    let (_, headers) = file_fetcher
-      .http_cache
-      .get(&specifier)
-      .expect("could not get file");
+    let (_, headers) = file_fetcher.http_cache.get(&specifier).unwrap();
     assert_eq!(
       headers.get("location").unwrap(),
       "http://localhost:4546/subdir/redirects/redirect1.js"
@@ -1273,7 +1262,7 @@ mod tests {
     let (_, headers) = file_fetcher
       .http_cache
       .get(&redirected_01_specifier)
-      .expect("could not get file");
+      .unwrap();
     assert_eq!(
       headers.get("location").unwrap(),
       "http://localhost:4545/subdir/redirects/redirect1.js"
@@ -1286,7 +1275,7 @@ mod tests {
     let (_, headers) = file_fetcher
       .http_cache
       .get(&redirected_02_specifier)
-      .expect("could not get file");
+      .unwrap();
     assert!(headers.get("location").is_none());
   }
 
@@ -1303,7 +1292,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let specifier =
       resolve_url("http://localhost:4548/subdir/mismatch_ext.ts").unwrap();
     let redirected_specifier =
@@ -1320,8 +1309,7 @@ mod tests {
 
     let metadata_filename =
       crate::http_cache::Metadata::filename(&redirected_cache_filename);
-    let metadata_file =
-      fs::File::open(metadata_filename).expect("could not open metadata file");
+    let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
 
@@ -1333,7 +1321,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let result = file_fetcher_02
       .fetch(&redirected_specifier, &mut Permissions::allow_all())
       .await;
@@ -1341,8 +1329,7 @@ mod tests {
 
     let metadata_filename =
       crate::http_cache::Metadata::filename(&redirected_cache_filename);
-    let metadata_file =
-      fs::File::open(metadata_filename).expect("could not open metadata file");
+    let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
 
@@ -1406,10 +1393,7 @@ mod tests {
       "",
       "redirected files should have empty cached contents"
     );
-    let (_, headers) = file_fetcher
-      .http_cache
-      .get(&specifier)
-      .expect("could not get file");
+    let (_, headers) = file_fetcher.http_cache.get(&specifier).unwrap();
     assert_eq!(
       headers.get("location").unwrap(),
       "/subdir/redirects/redirect1.js"
@@ -1419,10 +1403,8 @@ mod tests {
       fs::read_to_string(redirected_cached_filename).unwrap(),
       "export const redirect = 1;\n"
     );
-    let (_, headers) = file_fetcher
-      .http_cache
-      .get(&redirected_specifier)
-      .expect("could not get file");
+    let (_, headers) =
+      file_fetcher.http_cache.get(&redirected_specifier).unwrap();
     assert!(headers.get("location").is_none());
   }
 
@@ -1439,7 +1421,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
 
     let result = file_fetcher
@@ -1464,7 +1446,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let file_fetcher_02 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Use,
@@ -1473,7 +1455,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
@@ -1501,8 +1483,7 @@ mod tests {
     let fixture_path = temp_dir.path().join("mod.ts");
     let specifier =
       resolve_url_or_path(&fixture_path.to_string_lossy()).unwrap();
-    fs::write(fixture_path.clone(), r#"console.log("hello deno");"#)
-      .expect("could not write file");
+    fs::write(fixture_path.clone(), r#"console.log("hello deno");"#).unwrap();
     let result = file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
       .await;
@@ -1510,8 +1491,7 @@ mod tests {
     let file = result.unwrap();
     assert_eq!(file.source.as_str(), r#"console.log("hello deno");"#);
 
-    fs::write(fixture_path, r#"console.log("goodbye deno");"#)
-      .expect("could not write file");
+    fs::write(fixture_path, r#"console.log("goodbye deno");"#).unwrap();
     let result = file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
       .await;
