@@ -45,6 +45,21 @@ declare namespace Deno {
      */
     function tryClose(rid: number): void;
 
+    /**
+     * Read from a (stream) resource that implements read()
+     */
+    function read(rid: number, buf: Uint8Array): Promise<number>;
+
+    /**
+     * Write to a (stream) resource that implements write()
+     */
+    function write(rid: number, buf: Uint8Array): Promise<number>;
+
+    /**
+     * Shutdown a resource
+     */
+    function shutdown(rid: number): Promise<void>;
+
     /** Get heap stats for current isolate/worker */
     function heapStats(): Record<string, number>;
 

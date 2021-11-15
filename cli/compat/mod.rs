@@ -15,7 +15,7 @@ pub(crate) use esm_resolver::NodeEsmResolver;
 // each release, a better mechanism is preferable, but it's a quick and dirty
 // solution to avoid printing `X-Deno-Warning` headers when the compat layer is
 // downloaded
-static STD_URL_STR: &str = "https://deno.land/std@0.113.0/";
+static STD_URL_STR: &str = "https://deno.land/std@0.114.0/";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",

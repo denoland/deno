@@ -363,7 +363,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
-    DENO_TLS_CA_STORE    Comma-seperated list of order dependent certificate stores
+    DENO_TLS_CA_STORE    Comma-separated list of order dependent certificate stores
                          (system, mozilla)
                          (defaults to mozilla)
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces

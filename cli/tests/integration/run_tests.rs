@@ -1215,6 +1215,118 @@ itest!(jsx_import_from_ts {
   output: "jsx_import_from_ts.ts.out",
 });
 
+itest!(jsx_import_source_pragma {
+  args: "run --reload jsx_import_source_pragma.tsx",
+  output: "jsx_import_source.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_with_config {
+  args: "run --reload --config jsx/deno-jsx.jsonc jsx_import_source_pragma.tsx",
+  output: "jsx_import_source.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_with_dev_config {
+  args:
+    "run --reload --config jsx/deno-jsxdev.jsonc jsx_import_source_pragma.tsx",
+  output: "jsx_import_source_dev.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_no_pragma {
+  args:
+    "run --reload --config jsx/deno-jsx.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_no_pragma_dev {
+  args: "run --reload --config jsx/deno-jsxdev.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_dev.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_import_map {
+  args: "run --reload --import-map jsx/import-map.json jsx_import_source_pragma_import_map.tsx",
+  output: "jsx_import_source_import_map.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_import_map_dev {
+  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc jsx_import_source_pragma_import_map.tsx",
+  output: "jsx_import_source_import_map_dev.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_import_map {
+  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_import_map.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_import_map_dev {
+  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_import_map_dev.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_no_check {
+  args: "run --reload --no-check jsx_import_source_pragma.tsx",
+  output: "jsx_import_source.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_with_config_no_check {
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-check jsx_import_source_pragma.tsx",
+  output: "jsx_import_source.out",
+  http_server: true,
+});
+
+// itest!(jsx_import_source_pragma_with_dev_config_no_check {
+//   args:
+//     "run --reload --config jsx/deno-jsxdev.jsonc --no-check jsx_import_source_pragma.tsx",
+//   output: "jsx_import_source_dev.out",
+//   http_server: true,
+// });
+
+itest!(jsx_import_source_no_pragma_no_check {
+  args:
+    "run --reload --config jsx/deno-jsx.jsonc --no-check jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source.out",
+  http_server: true,
+});
+
+// itest!(jsx_import_source_no_pragma_dev_no_check {
+//   args: "run --reload --config jsx/deno-jsxdev.jsonc --no-check jsx_import_source_no_pragma.tsx",
+//   output: "jsx_import_source_dev.out",
+//   http_server: true,
+// });
+
+itest!(jsx_import_source_pragma_import_map_no_check {
+  args: "run --reload --import-map jsx/import-map.json --no-check jsx_import_source_pragma_import_map.tsx",
+  output: "jsx_import_source_import_map.out",
+  http_server: true,
+});
+
+// itest!(jsx_import_source_pragma_import_map_dev_no_check {
+//   args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc --no-check jsx_import_source_pragma_import_map.tsx",
+//   output: "jsx_import_source_import_map_dev.out",
+//   http_server: true,
+// });
+
+itest!(jsx_import_source_import_map_no_check {
+  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc --no-check jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_import_map.out",
+  http_server: true,
+});
+
+// itest!(jsx_import_source_import_map_dev_no_check {
+//   args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc --no-check jsx_import_source_no_pragma.tsx",
+//   output: "jsx_import_source_import_map_dev.out",
+//   http_server: true,
+// });
+
 // TODO(#11128): Flaky. Re-enable later.
 // itest!(single_compile_with_reload {
 //   args: "run --reload --allow-read single_compile_with_reload.ts",

@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::language_server;
 use super::path_to_regex::parse;
 use super::path_to_regex::string_to_regex;
 use super::path_to_regex::Compiler;
@@ -382,10 +381,20 @@ impl ModuleRegistry {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
-    let file = self
+    let fetch_result = self
       .file_fetcher
       .fetch(specifier, &mut Permissions::allow_all())
-      .await?;
+      .await;
+    // if there is an error fetching, we will cache an empty file, so that
+    // subsequent requests they are just an empty doc which will error without
+    // needing to connect to the remote URL
+    if fetch_result.is_err() {
+      self
+        .file_fetcher
+        .http_cache
+        .set(specifier, HashMap::default(), &[])?;
+    }
+    let file = fetch_result?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
     validate_config(&config)?;
     Ok(config.registries)
@@ -429,7 +438,7 @@ impl ModuleRegistry {
     current_specifier: &str,
     offset: usize,
     range: &lsp::Range,
-    state_snapshot: &language_server::StateSnapshot,
+    specifier_exists: impl Fn(&ModuleSpecifier) -> bool,
   ) -> Option<Vec<lsp::CompletionItem>> {
     if let Ok(specifier) = Url::parse(current_specifier) {
       let origin = base_url(&specifier);
@@ -519,9 +528,7 @@ impl ModuleRegistry {
                             },
                           ));
                           let command = if key.name == last_key_name
-                            && !state_snapshot
-                              .documents
-                              .contains_specifier(&item_specifier)
+                            && !specifier_exists(&item_specifier)
                           {
                             Some(lsp::Command {
                               title: "".to_string(),
@@ -609,9 +616,7 @@ impl ModuleRegistry {
                               }),
                             );
                             let command = if k.name == last_key_name
-                              && !state_snapshot
-                                .documents
-                                .contains_specifier(&item_specifier)
+                              && !specifier_exists(&item_specifier)
                             {
                               Some(lsp::Command {
                                 title: "".to_string(),
@@ -761,37 +766,7 @@ impl ModuleRegistry {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::lsp::documents::Documents;
   use tempfile::TempDir;
-
-  fn mock_state_snapshot(
-    source_fixtures: &[(&str, &str)],
-    location: &Path,
-  ) -> language_server::StateSnapshot {
-    let documents = Documents::new(location);
-    let http_cache = HttpCache::new(location);
-    for (specifier, source) in source_fixtures {
-      let specifier =
-        resolve_url(specifier).expect("failed to create specifier");
-      http_cache
-        .set(&specifier, HashMap::default(), source.as_bytes())
-        .expect("could not cache file");
-      assert!(
-        documents.content(&specifier).is_some(),
-        "source could not be setup"
-      );
-    }
-    language_server::StateSnapshot {
-      documents,
-      ..Default::default()
-    }
-  }
-
-  fn setup(sources: &[(&str, &str)]) -> language_server::StateSnapshot {
-    let temp_dir = TempDir::new().expect("could not create temp dir");
-    let location = temp_dir.path().join("deps");
-    mock_state_snapshot(sources, &location)
-  }
 
   #[test]
   fn test_validate_registry_configuration() {
@@ -910,9 +885,8 @@ mod tests {
         character: 21,
       },
     };
-    let state_snapshot = setup(&[]);
     let completions = module_registry
-      .get_completions("h", 1, &range, &state_snapshot)
+      .get_completions("h", 1, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -936,7 +910,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions("http://localhost", 16, &range, &state_snapshot)
+      .get_completions("http://localhost", 16, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -961,7 +935,6 @@ mod tests {
       .enable("http://localhost:4545/")
       .await
       .expect("could not enable");
-    let state_snapshot = setup(&[]);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -973,7 +946,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions("http://localhost:4545", 21, &range, &state_snapshot)
+      .get_completions("http://localhost:4545", 21, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -997,7 +970,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions("http://localhost:4545/", 22, &range, &state_snapshot)
+      .get_completions("http://localhost:4545/", 22, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1021,7 +994,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions("http://localhost:4545/x/", 24, &range, &state_snapshot)
+      .get_completions("http://localhost:4545/x/", 24, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1039,12 +1012,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions(
-        "http://localhost:4545/x/a@",
-        26,
-        &range,
-        &state_snapshot,
-      )
+      .get_completions("http://localhost:4545/x/a@", 26, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1060,12 +1028,9 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions(
-        "http://localhost:4545/x/a@v1.0.0/",
-        33,
-        &range,
-        &state_snapshot,
-      )
+      .get_completions("http://localhost:4545/x/a@v1.0.0/", 33, &range, |_| {
+        false
+      })
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1088,7 +1053,6 @@ mod tests {
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
       .expect("could not enable");
-    let state_snapshot = setup(&[]);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1100,7 +1064,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions("http://localhost:4545/", 22, &range, &state_snapshot)
+      .get_completions("http://localhost:4545/", 22, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1129,12 +1093,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions(
-        "http://localhost:4545/cde@",
-        26,
-        &range,
-        &state_snapshot,
-      )
+      .get_completions("http://localhost:4545/cde@", 26, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1163,7 +1122,6 @@ mod tests {
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
       .expect("could not enable");
-    let state_snapshot = setup(&[]);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1175,7 +1133,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions("http://localhost:4545/", 22, &range, &state_snapshot)
+      .get_completions("http://localhost:4545/", 22, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1202,5 +1160,36 @@ mod tests {
     assert_eq!(actual.len(), 2);
     assert!(actual.contains(&"module".to_owned()));
     assert!(actual.contains(&"version".to_owned()));
+  }
+
+  #[tokio::test]
+  async fn test_check_origin_supported() {
+    let _g = test_util::http_server();
+    let temp_dir = TempDir::new().expect("could not create tmp");
+    let location = temp_dir.path().join("registries");
+    let module_registry = ModuleRegistry::new(&location);
+    let result = module_registry.check_origin("http://localhost:4545").await;
+    assert!(result.is_ok());
+  }
+
+  #[tokio::test]
+  async fn test_check_origin_not_supported() {
+    let _g = test_util::http_server();
+    let temp_dir = TempDir::new().expect("could not create tmp");
+    let location = temp_dir.path().join("registries");
+    let module_registry = ModuleRegistry::new(&location);
+    let result = module_registry.check_origin("https://deno.com").await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err
+      .contains("https://deno.com/.well-known/deno-import-intellisense.json"));
+
+    // because we are caching an empty file when we hit an error with import
+    // detection when fetching the config file, we should have an error now that
+    // indicates trying to parse an empty file.
+    let result = module_registry.check_origin("https://deno.com").await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("EOF while parsing a value at line 1 column 0"));
   }
 }

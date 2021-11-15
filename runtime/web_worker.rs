@@ -4,7 +4,7 @@ use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::ops;
 use crate::permissions::Permissions;
-use crate::tokio_util::create_basic_runtime;
+use crate::tokio_util::run_basic;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
@@ -545,8 +545,6 @@ pub fn run_web_worker(
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
 
-  let rt = create_basic_runtime();
-
   // TODO(bartlomieju): run following block using "select!"
   // with terminate
 
@@ -587,6 +585,5 @@ pub fn run_web_worker(
     debug!("Worker thread shuts down {}", &name);
     result
   };
-
-  rt.block_on(fut)
+  run_basic(fut)
 }
