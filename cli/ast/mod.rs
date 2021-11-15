@@ -457,31 +457,28 @@ fn fold_program(
   });
 
   let diagnostics = diagnostics_cell.borrow();
-  if let Some(fatal_diagnostic) = get_first_fatal_diagnostic(&diagnostics) {
+  if let Some(diagnostic) = diagnostics.iter().find(|d| is_fatal_diagnostic(d))
+  {
     Err(anyhow!(
       "{}",
-      format_swc_diagnostic(&source_map, fatal_diagnostic)
+      format_swc_diagnostic(&source_map, diagnostic)
     ))
   } else {
     Ok(result)
   }
 }
 
-fn get_first_fatal_diagnostic(
-  diagnostics: &[SwcDiagnostic],
-) -> Option<&SwcDiagnostic> {
-  diagnostics.iter().find(|d| {
-    use deno_ast::swc::common::errors::Level;
-    match d.level {
-      Level::Bug
-      | Level::Cancelled
-      | Level::FailureNote
-      | Level::Fatal
-      | Level::PhaseFatal
-      | Level::Error => true,
-      Level::Help | Level::Note | Level::Warning => false,
-    }
-  })
+fn is_fatal_diagnostic(diagnostic: &SwcDiagnostic) -> bool {
+  use deno_ast::swc::common::errors::Level;
+  match diagnostic.level {
+    Level::Bug
+    | Level::Cancelled
+    | Level::FailureNote
+    | Level::Fatal
+    | Level::PhaseFatal
+    | Level::Error => true,
+    Level::Help | Level::Note | Level::Warning => false,
+  }
 }
 
 fn format_swc_diagnostic(
