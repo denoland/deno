@@ -692,13 +692,13 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
 
 fn binary_env_var(name: &str) -> bool {
   if let Ok(v) = env::var(name) {
-    if v == "1" || v == "true" {
+    if v == "1" {
       true
-    } else if v == "0" || v == "false" {
+    } else if v == "0" {
       false
     } else {
       eprintln!(
-        "env var '{}' has a bad value '{}'. Use '1', '0', 'true', or 'false'.",
+        "env var '{}' has a bad value '{}'. Use '1' or '0'.",
         name, v
       );
       std::process::exit(1);

@@ -350,7 +350,7 @@ impl FileFetcher {
     }
 
     if self.cache_setting == CacheSetting::Only {
-      return Err(cached_only_error(&specifier));
+      return Err(cached_only_error(specifier));
     }
 
     let (source, content_type) = get_source_from_data_url(specifier)?;
@@ -393,7 +393,7 @@ impl FileFetcher {
     }
 
     if self.cache_setting == CacheSetting::Only {
-      return Err(cached_only_error(&specifier));
+      return Err(cached_only_error(specifier));
     }
 
     let blob = {
@@ -471,7 +471,7 @@ impl FileFetcher {
     }
 
     if self.cache_setting == CacheSetting::Only {
-      return futures::future::err(cached_only_error(&specifier)).boxed();
+      return futures::future::err(cached_only_error(specifier)).boxed();
     }
 
     info!("{} {}", colors::green("Download"), specifier);
