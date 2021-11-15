@@ -107,6 +107,6 @@ failures:
 	parallel steps when second has sanitizer
 	parallel steps where only inner tests have sanitizers
 
-test result: FAILED. 0 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+test result: FAILED. 0 passed (4 steps); 7 failed (10 steps); 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
 error: Test failed
