@@ -164,16 +164,16 @@ impl ProcState {
       eprintln!("{}", colors::yellow(msg));
     }
 
-    let cache_usage =
-      if flags.cached_only || env::var("DENO_CACHED_ONLY").is_ok() {
-        CacheSetting::Only
-      } else if !flags.cache_blocklist.is_empty() {
-        CacheSetting::ReloadSome(flags.cache_blocklist.clone())
-      } else if flags.reload {
-        CacheSetting::ReloadAll
-      } else {
-        CacheSetting::Use
-      };
+    let cache_usage = if flags.cached_only || binary_env_var("DENO_CACHED_ONLY")
+    {
+      CacheSetting::Only
+    } else if !flags.cache_blocklist.is_empty() {
+      CacheSetting::ReloadSome(flags.cache_blocklist.clone())
+    } else if flags.reload {
+      CacheSetting::ReloadAll
+    } else {
+      CacheSetting::Use
+    };
 
     let blob_store = BlobStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();
@@ -687,5 +687,23 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
     }
   } else {
     None
+  }
+}
+
+fn binary_env_var(name: &str) -> bool {
+  if let Ok(v) = env::var(name) {
+    if v == "1" || v == "true" {
+      true
+    } else if v == "0" || v == "false" {
+      false
+    } else {
+      eprintln!(
+        "env var '{}' has a bad value '{}'. Use '1', '0', 'true', or 'false'.",
+        name, v
+      );
+      std::process::exit(1);
+    }
+  } else {
+    false
   }
 }
