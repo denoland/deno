@@ -160,6 +160,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_nexttick_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
@@ -365,6 +366,7 @@ impl JsRuntime {
       js_recv_cb: None,
       js_sync_cb: None,
       js_macrotask_cb: None,
+      js_nexttick_cb: None,
       js_wasm_streaming_cb: None,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
@@ -774,6 +776,7 @@ impl JsRuntime {
     // Ops
     {
       self.resolve_async_ops(cx)?;
+      self.drain_nexttick()?;
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
     }
@@ -1582,6 +1585,30 @@ impl JsRuntime {
       if is_done.is_true() {
         break;
       }
+    }
+
+    Ok(())
+  }
+
+  fn drain_nexttick(&mut self) -> Result<(), AnyError> {
+    let js_nexttick_cb_handle =
+      match &Self::state(self.v8_isolate()).borrow().js_nexttick_cb {
+        Some(handle) => handle.clone(),
+        None => return Ok(()),
+      };
+
+    let scope = &mut self.handle_scope();
+    let js_nexttick_cb = js_nexttick_cb_handle.open(scope);
+
+    // Repeatedly invoke macrotask callback until it returns true (done),
+    // such that ready microtasks would be automatically run before
+    // next macrotask is processed.
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let this = v8::undefined(tc_scope).into();
+    js_nexttick_cb.call(tc_scope, this, &[]);
+
+    if let Some(exception) = tc_scope.exception() {
+      return exception_to_err_result(tc_scope, exception, false);
     }
 
     Ok(())

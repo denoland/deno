@@ -39,6 +39,9 @@ lazy_static::lazy_static! {
         function: set_macrotask_callback.map_fn_to()
       },
       v8::ExternalReference {
+        function: set_nexttick_callback.map_fn_to()
+      },
+      v8::ExternalReference {
         function: eval_context.map_fn_to()
       },
       v8::ExternalReference {
@@ -144,6 +147,12 @@ pub fn initialize_context<'s>(
     core_val,
     "setMacrotaskCallback",
     set_macrotask_callback,
+  );
+  set_func(
+    scope,
+    core_val,
+    "nextNextTickCallback",
+    set_nexttick_callback,
   );
   set_func(scope, core_val, "evalContext", eval_context);
   set_func(scope, core_val, "encode", encode);
@@ -436,6 +445,35 @@ fn opcall_async<'s>(
       throw_type_error(scope, format!("Unknown op id: {}", op_id));
     }
   }
+}
+
+fn set_nexttick_callback(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
+    Ok(cb) => cb,
+    Err(err) => return throw_type_error(scope, err.to_string()),
+  };
+
+  // TODO(bartlomieju): this might be problematic if
+  // multiple versions of `deno_std` are pulled and polyfill
+  // `process.nextTick()`
+  let slot = match &mut state.js_nexttick_cb {
+    slot @ None => slot,
+    _ => {
+      return throw_type_error(
+        scope,
+        "Deno.core.nextTickCallback() already called",
+      );
+    }
+  };
+
+  slot.replace(v8::Global::new(scope, cb));
 }
 
 fn set_macrotask_callback(
