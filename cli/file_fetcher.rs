@@ -35,7 +35,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
-static DENO_AUTH_TOKENS: &str = "DENO_AUTH_TOKENS";
 pub const SUPPORTED_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
 
@@ -247,7 +246,7 @@ impl FileFetcher {
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
-      auth_tokens: AuthTokens::new(env::var(DENO_AUTH_TOKENS).ok()),
+      auth_tokens: AuthTokens::new(env::var("DENO_AUTH_TOKENS").ok()),
       allow_remote,
       cache: Default::default(),
       cache_setting,
