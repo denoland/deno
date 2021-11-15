@@ -470,20 +470,18 @@ fn fold_program(
 fn get_first_fatal_diagnostic(
   diagnostics: &[SwcDiagnostic],
 ) -> Option<&SwcDiagnostic> {
-  diagnostics
-    .iter()
-    .find(|d| {
-      use deno_ast::swc::common::errors::Level;
-      match d.level {
-        Level::Bug
-        | Level::Cancelled
-        | Level::FailureNote
-        | Level::Fatal
-        | Level::PhaseFatal
-        | Level::Error => true,
-        Level::Help | Level::Note | Level::Warning => false,
-      }
-    })
+  diagnostics.iter().find(|d| {
+    use deno_ast::swc::common::errors::Level;
+    match d.level {
+      Level::Bug
+      | Level::Cancelled
+      | Level::FailureNote
+      | Level::Fatal
+      | Level::PhaseFatal
+      | Level::Error => true,
+      Level::Help | Level::Note | Level::Warning => false,
+    }
+  })
 }
 
 fn format_swc_diagnostic(
