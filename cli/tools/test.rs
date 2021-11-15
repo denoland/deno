@@ -732,6 +732,7 @@ async fn check_specifiers(
       lib.clone(),
       Permissions::allow_all(),
       permissions.clone(),
+      false,
     )
     .await?;
   }
@@ -753,6 +754,7 @@ async fn check_specifiers(
     lib,
     Permissions::allow_all(),
     permissions,
+    true,
   )
   .await?;
 
