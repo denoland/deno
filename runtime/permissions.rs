@@ -1114,7 +1114,7 @@ impl Default for Permissions {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Default, Serialize)]
 pub struct PermissionsOptions {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
@@ -1124,6 +1124,156 @@ pub struct PermissionsOptions {
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
   pub prompt: bool,
+}
+
+impl<'de> Deserialize<'de> for PermissionsOptions {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct UnaryPermissionsOptions(Option<Vec<String>>);
+    impl<'de> Deserialize<'de> for UnaryPermissionsOptions {
+      fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+      where
+        D: Deserializer<'de>,
+      {
+        struct UnaryPermissionsOptionsVisitor;
+        impl<'de> de::Visitor<'de> for UnaryPermissionsOptionsVisitor {
+          type Value = Option<Vec<String>>;
+
+          fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("boolean or string[]")
+          }
+
+          fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+          where
+            E: de::Error,
+          {
+            if v {
+              Ok(Some(vec![]))
+            } else {
+              Ok(None)
+            }
+          }
+
+          fn visit_seq<V>(self, mut v: V) -> Result<Self::Value, V::Error>
+          where
+            V: de::SeqAccess<'de>,
+          {
+            let mut granted_list = vec![];
+            while let Some(value) = v.next_element::<String>()? {
+              granted_list.push(value);
+            }
+            Ok(Some(granted_list))
+          }
+        }
+
+        deserializer
+          .deserialize_any(UnaryPermissionsOptionsVisitor)
+          .map(UnaryPermissionsOptions)
+      }
+    }
+
+    struct PermissionsOptionsVisitor;
+    impl<'de> de::Visitor<'de> for PermissionsOptionsVisitor {
+      type Value = PermissionsOptions;
+
+      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("boolean or object")
+      }
+
+      fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+      where
+        E: de::Error,
+      {
+        if v {
+          Ok(PermissionsOptions {
+            allow_env: Some(vec![]),
+            allow_hrtime: true,
+            allow_net: Some(vec![]),
+            allow_ffi: Some(vec![]),
+            allow_read: Some(vec![]),
+            allow_run: Some(vec![]),
+            allow_write: Some(vec![]),
+            prompt: false,
+          })
+        } else {
+          Ok(PermissionsOptions::default())
+        }
+      }
+
+      fn visit_map<V>(self, mut v: V) -> Result<Self::Value, V::Error>
+      where
+        V: de::MapAccess<'de>,
+      {
+        let mut permissions = PermissionsOptions::default();
+        while let Some((key, value)) =
+          v.next_entry::<String, serde_json::Value>()?
+        {
+          if key == "env" {
+            let arg = UnaryPermissionsOptions::deserialize(value);
+            permissions.allow_env = arg
+              .map_err(|e| {
+                de::Error::custom(format!("(deno.permissions.env) {}", e))
+              })?
+              .0;
+          } else if key == "hrtime" {
+            let arg = serde_json::from_value::<bool>(value);
+            permissions.allow_hrtime = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.hrtime) {}", e))
+            })?;
+          } else if key == "net" {
+            let arg = UnaryPermissionsOptions::deserialize(value);
+            permissions.allow_net = arg
+              .map_err(|e| {
+                de::Error::custom(format!("(deno.permissions.net) {}", e))
+              })?
+              .0;
+          } else if key == "ffi" {
+            let arg = UnaryPermissionsOptions::deserialize(value);
+            permissions.allow_ffi = arg
+              .map_err(|e| {
+                de::Error::custom(format!("(deno.permissions.ffi) {}", e))
+              })?
+              .0
+              .map(|v| v.into_iter().map(PathBuf::from).collect());
+          } else if key == "read" {
+            let arg = UnaryPermissionsOptions::deserialize(value);
+            permissions.allow_read = arg
+              .map_err(|e| {
+                de::Error::custom(format!("(deno.permissions.read) {}", e))
+              })?
+              .0
+              .map(|v| v.into_iter().map(PathBuf::from).collect());
+          } else if key == "run" {
+            let arg = UnaryPermissionsOptions::deserialize(value);
+            permissions.allow_run = arg
+              .map_err(|e| {
+                de::Error::custom(format!("(deno.permissions.run) {}", e))
+              })?
+              .0;
+          } else if key == "write" {
+            let arg = UnaryPermissionsOptions::deserialize(value);
+            permissions.allow_write = arg
+              .map_err(|e| {
+                de::Error::custom(format!("(deno.permissions.write) {}", e))
+              })?
+              .0
+              .map(|v| v.into_iter().map(PathBuf::from).collect());
+          } else if key == "prompt" {
+            let arg = serde_json::from_value::<bool>(value);
+            permissions.prompt = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.prompt) {}", e))
+            })?;
+          } else {
+            return Err(de::Error::custom("unknown permission name"));
+          }
+        }
+        Ok(permissions)
+      }
+    }
+    deserializer.deserialize_any(PermissionsOptionsVisitor)
+  }
 }
 
 impl Permissions {

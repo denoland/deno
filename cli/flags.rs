@@ -338,9 +338,17 @@ impl Flags {
   }
 }
 
-impl From<Flags> for PermissionsOptions {
-  fn from(flags: Flags) -> Self {
-    Self {
+impl TryFrom<Flags> for PermissionsOptions {
+  type Error = deno_core::error::AnyError;
+
+  fn try_from(flags: Flags) -> Result<Self, Self::Error> {
+    let config = if let Some(path) = flags.config_path.as_ref() {
+      super::config_file::ConfigFile::read(path)?.to_permissions_options()?
+    } else {
+      None
+    };
+
+    Ok(config.unwrap_or(Self {
       allow_env: flags.allow_env,
       allow_hrtime: flags.allow_hrtime,
       allow_net: flags.allow_net,
@@ -349,7 +357,7 @@ impl From<Flags> for PermissionsOptions {
       allow_run: flags.allow_run,
       allow_write: flags.allow_write,
       prompt: flags.prompt,
-    }
+    }))
   }
 }
 

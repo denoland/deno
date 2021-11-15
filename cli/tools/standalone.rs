@@ -98,7 +98,7 @@ pub fn create_standalone_binary(
     unstable: flags.unstable,
     seed: flags.seed,
     location: flags.location.clone(),
-    permissions: flags.clone().into(),
+    permissions: flags.clone().try_into()?,
     v8_flags: flags.v8_flags.clone(),
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors

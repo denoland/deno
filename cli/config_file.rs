@@ -329,6 +329,7 @@ pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
   pub lint: Option<Value>,
   pub fmt: Option<Value>,
+  pub permissions: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -405,6 +406,20 @@ impl ConfigFile {
       let lint_config: LintConfig = serde_json::from_value(config)
         .context("Failed to parse \"lint\" configuration")?;
       Ok(Some(lint_config))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn to_permissions_options(
+    &self,
+  ) -> Result<Option<deno_runtime::permissions::PermissionsOptions>, AnyError>
+  {
+    if let Some(config) = self.json.permissions.clone() {
+      let permissions: deno_runtime::permissions::PermissionsOptions =
+        serde_json::from_value(config)
+          .context("Failed to parse \"permissions\" configuration")?;
+      Ok(Some(permissions))
     } else {
       Ok(None)
     }

@@ -300,6 +300,77 @@
           }
         }
       }
+    },
+    "permissions": {
+      "description": "permissions configuration",
+      "type": ["boolean", "object"],
+      "default": false,
+      "properties": {
+        "env": {
+          "description": "Allow environment access",
+          "type": ["boolean", "array"],
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": false
+        },
+        "ffi": {
+          "description": "Allow loading dynamic libraries",
+          "type": ["boolean", "array"],
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": false
+        },
+        "hr-time": {
+          "description": "Allow high resolution time measurement",
+          "type": "boolean",
+          "default": false
+        },
+        "net": {
+          "description": "Allow network access",
+          "type": ["boolean", "array"],
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": false
+        },
+        "read": {
+          "description": "Allow file system read access",
+          "type": ["boolean", "array"],
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": false
+        },
+        "run": {
+          "description": "Allow running subprocesses",
+          "type": ["boolean", "array"],
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": false
+        },
+        "write": {
+          "description": "Allow file system write access",
+          "type": ["boolean", "array"],
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": false
+        },
+        "prompt": {
+          "description": "Fallback to prompt if required permission wasn't passed",
+          "type": "boolean",
+          "default": false
+        }
+      }
     }
   }
 }

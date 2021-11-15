@@ -974,7 +974,7 @@ pub async fn run_tests(
   concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
+  let permissions = Permissions::from_options(&flags.clone().try_into()?);
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     ps.clone(),
     include.unwrap_or_else(|| vec![".".to_string()]),
@@ -1032,7 +1032,7 @@ pub async fn run_tests_with_watch(
   concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
+  let permissions = Permissions::from_options(&flags.clone().try_into()?);
 
   let lib = if flags.unstable {
     emit::TypeLib::UnstableDenoWindow

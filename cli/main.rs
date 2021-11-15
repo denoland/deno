@@ -516,7 +516,8 @@ async fn install_command(
   let mut preload_flags = flags.clone();
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
-  let permissions = Permissions::from_options(&preload_flags.clone().into());
+  let permissions =
+    Permissions::from_options(&preload_flags.clone().try_into()?);
   let ps = ProcState::build(preload_flags).await?;
   let main_module = resolve_url_or_path(&install_flags.module_url)?;
   let mut worker =
@@ -600,7 +601,7 @@ async fn eval_command(
   // type, and so our "fake" specifier needs to have the proper extension.
   let main_module =
     resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext)).unwrap();
-  let permissions = Permissions::from_options(&flags.clone().into());
+  let permissions = Permissions::from_options(&flags.clone().try_into()?);
   let ps = ProcState::build(flags.clone()).await?;
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions, None);
@@ -931,7 +932,7 @@ async fn format_command(
 
 async fn run_repl(flags: Flags, repl_flags: ReplFlags) -> Result<(), AnyError> {
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
-  let permissions = Permissions::from_options(&flags.clone().into());
+  let permissions = Permissions::from_options(&flags.clone().try_into()?);
   let ps = ProcState::build(flags.clone()).await?;
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions, None);
@@ -945,7 +946,7 @@ async fn run_repl(flags: Flags, repl_flags: ReplFlags) -> Result<(), AnyError> {
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
+  let permissions = Permissions::from_options(&flags.clone().try_into()?);
   let main_module = resolve_url_or_path("./$deno$stdin.ts").unwrap();
   let mut worker =
     create_main_worker(&ps.clone(), main_module.clone(), permissions, None);
@@ -1128,8 +1129,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
 
   let operation = |(ps, main_module): (ProcState, ModuleSpecifier)| {
     let flags = flags.clone();
-    let permissions = Permissions::from_options(&flags.clone().into());
     async move {
+      let permissions = Permissions::from_options(&flags.clone().try_into()?);
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
       let mut executor = FileWatcherModuleExecutor::new(
@@ -1166,7 +1167,7 @@ async fn run_command(
   // probably call `ProcState::resolve` instead
   let main_module = resolve_url_or_path(&run_flags.script)?;
   let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
+  let permissions = Permissions::from_options(&flags.clone().try_into()?);
   let mut worker =
     create_main_worker(&ps, main_module.clone(), permissions, None);
 
