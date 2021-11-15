@@ -1485,7 +1485,9 @@ mod tests {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(get_custom_error_class(&err), Some("NotFound"));
-    assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/002_hello.ts\", --cached-only is specified.");
+    assert!(err.to_string().contains(
+      "Specifier not found in cache: \"http://localhost:4545/002_hello.ts\""
+    ));
 
     let result = file_fetcher_02
       .fetch(&specifier, &mut Permissions::allow_all())
