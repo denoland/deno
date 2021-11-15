@@ -186,7 +186,7 @@ impl AssetOrDocument {
     self.document().map(|d| d.maybe_parsed_source()).flatten()
   }
 
-  pub fn document_version(&self) -> Option<i32> {
+  pub fn document_lsp_version(&self) -> Option<i32> {
     self.document().map(|d| d.maybe_lsp_version()).flatten()
   }
 }
@@ -1066,17 +1066,24 @@ impl DocumentsInner {
     self.dirty = true;
   }
 
-  fn set_navigation_tree(
+  fn try_set_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
+    script_version: &str,
     navigation_tree: Arc<tsc::NavigationTree>,
   ) -> Result<(), AnyError> {
     if let Some(doc) = self.open_docs.get_mut(specifier) {
-      *doc = doc.with_navigation_tree(navigation_tree);
+      if doc.script_version() == script_version {
+        *doc = doc.with_navigation_tree(navigation_tree);
+      }
     } else {
       let mut file_system_docs = self.file_system_docs.lock();
       if let Some(doc) = file_system_docs.docs.get_mut(specifier) {
-        *doc = doc.with_navigation_tree(navigation_tree);
+        // ensure we are updating the same document
+        // that the navigation tree was created for
+        if doc.script_version() == script_version {
+          *doc = doc.with_navigation_tree(navigation_tree);
+        }
       } else {
         return Err(custom_error(
           "NotFound",
@@ -1253,13 +1260,17 @@ impl Documents {
     self.0.set_location(location)
   }
 
-  /// Set a navigation tree that is associated with the provided specifier.
-  pub fn set_navigation_tree(
+  /// Tries to set a navigation tree that is associated with the provided specifier
+  /// if the document stored has the same script version.
+  pub fn try_set_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
+    script_version: &str,
     navigation_tree: Arc<tsc::NavigationTree>,
   ) -> Result<(), AnyError> {
-    self.0.set_navigation_tree(specifier, navigation_tree)
+    self
+      .0
+      .try_set_navigation_tree(specifier, script_version, navigation_tree)
   }
 
   pub fn update_config(

@@ -890,7 +890,7 @@ impl RenameLocations {
           lsp::TextDocumentEdit {
             text_document: lsp::OptionalVersionedTextDocumentIdentifier {
               uri: uri.clone(),
-              version: asset_or_doc.document_version(),
+              version: asset_or_doc.document_lsp_version(),
             },
             edits:
               Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(),
@@ -1056,7 +1056,7 @@ impl FileTextChanges {
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
-        version: asset_or_doc.document_version(),
+        version: asset_or_doc.document_lsp_version(),
       },
       edits,
     })
@@ -1102,7 +1102,7 @@ impl FileTextChanges {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
         version: maybe_asset_or_document
-          .map(|d| d.document_version())
+          .map(|d| d.document_lsp_version())
           .flatten(),
       },
       edits,
