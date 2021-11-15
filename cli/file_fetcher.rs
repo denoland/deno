@@ -1113,10 +1113,8 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_uses_cache() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new()
-      .expect("could not create temp dir")
-      .into_path();
-    let location = temp_dir.join("deps");
+    let temp_dir = TempDir::new().unwrap();
+    let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Use,
@@ -1167,9 +1165,6 @@ mod tests {
     let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
 
     assert_eq!(metadata_file_modified_01, metadata_file_modified_02);
-    // because we converted to a "fixed" directory, we need to cleanup after
-    // ourselves.
-    let _ = fs::remove_dir_all(temp_dir);
   }
 
   #[tokio::test]
@@ -1298,10 +1293,8 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_uses_cache_with_redirects() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new()
-      .expect("could not create temp dir")
-      .into_path();
-    let location = temp_dir.join("deps");
+    let temp_dir = TempDir::new().unwrap();
+    let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Use,
@@ -1354,9 +1347,6 @@ mod tests {
     let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
 
     assert_eq!(metadata_file_modified_01, metadata_file_modified_02);
-    // because we converted to a "fixed" directory, we need to cleanup after
-    // ourselves.
-    let _ = fs::remove_dir_all(temp_dir);
   }
 
   #[tokio::test]
@@ -1439,7 +1429,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_no_remote() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create temp dir");
+    let temp_dir = TempDir::new().unwrap();
     let location = temp_dir.path().join("deps");
     let file_fetcher = FileFetcher::new(
       HttpCache::new(&location),
@@ -1464,10 +1454,8 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_cache_only() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new()
-      .expect("could not create temp dir")
-      .into_path();
-    let location = temp_dir.join("deps");
+    let temp_dir = TempDir::new().unwrap();
+    let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Only,
@@ -1505,10 +1493,6 @@ mod tests {
       .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
-
-    // because we converted to a "fixed" directory, we need to cleanup after
-    // ourselves.
-    let _ = fs::remove_dir_all(temp_dir);
   }
 
   #[tokio::test]
