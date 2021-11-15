@@ -590,7 +590,7 @@ fn extract_files_from_source_comments(
     scope_analysis: false,
   })?;
   let comments = parsed_source.comments().get_vec();
-  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 
   let files = comments
@@ -630,7 +630,7 @@ fn extract_files_from_fenced_blocks(
     col: 0,
   };
 
-  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
