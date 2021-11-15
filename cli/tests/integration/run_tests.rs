@@ -920,6 +920,19 @@ itest!(no_check_decorators {
   output: "no_check_decorators.ts.out",
 });
 
+itest!(check_remote {
+  args: "run --quiet --reload no_check_remote.ts",
+  output: "no_check_remote.ts.disabled.out",
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(no_check_remote {
+  args: "run --quiet --reload --no-check=remote no_check_remote.ts",
+  output: "no_check_remote.ts.enabled.out",
+  http_server: true,
+});
+
 itest!(runtime_decorators {
   args: "run --quiet --reload --no-check runtime_decorators.ts",
   output: "runtime_decorators.ts.out",
