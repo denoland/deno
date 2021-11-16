@@ -539,7 +539,7 @@ pub struct TextSpan {
 }
 
 impl TextSpan {
-  pub fn to_range(&self, line_index: Arc<LineIndex>) -> lsp::Range {
+  pub fn to_range(&self, line_index: &LineIndex) -> lsp::Range {
     lsp::Range {
       start: line_index.position_tsc(self.start.into()),
       end: line_index.position_tsc(TextSize::from(self.start + self.length)),
@@ -573,7 +573,7 @@ pub struct QuickInfo {
 }
 
 impl QuickInfo {
-  pub fn to_hover(&self, line_index: Arc<LineIndex>) -> lsp::Hover {
+  pub fn to_hover(&self, line_index: &LineIndex) -> lsp::Hover {
     let mut contents = Vec::<lsp::MarkedString>::new();
     if let Some(display_string) = self
       .display_parts
@@ -626,7 +626,7 @@ pub struct DocumentSpan {
 impl DocumentSpan {
   pub(crate) async fn to_link(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = normalize_specifier(&self.file_name).ok()?;
@@ -642,13 +642,13 @@ impl DocumentSpan {
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
         (
-          context_span.to_range(target_line_index.clone()),
-          self.text_span.to_range(target_line_index),
+          context_span.to_range(target_line_index.as_ref()),
+          self.text_span.to_range(target_line_index.as_ref()),
         )
       } else {
         (
-          self.text_span.to_range(target_line_index.clone()),
-          self.text_span.to_range(target_line_index),
+          self.text_span.to_range(target_line_index.as_ref()),
+          self.text_span.to_range(target_line_index.as_ref()),
         )
       };
     let origin_selection_range =
@@ -684,7 +684,7 @@ pub struct NavigationTree {
 impl NavigationTree {
   pub fn to_code_lens(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     specifier: &ModuleSpecifier,
     source: &code_lens::CodeLensSource,
   ) -> lsp::CodeLens {
@@ -708,7 +708,7 @@ impl NavigationTree {
 
   pub fn collect_document_symbols(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     document_symbols: &mut Vec<lsp::DocumentSymbol>,
   ) -> bool {
     let mut should_include = self.should_include_entry();
@@ -734,8 +734,8 @@ impl NavigationTree {
           })
           .any(|child_range| range.intersect(child_range).is_some());
         if should_traverse_child {
-          let included_child = child
-            .collect_document_symbols(line_index.clone(), &mut symbol_children);
+          let included_child =
+            child.collect_document_symbols(line_index, &mut symbol_children);
           should_include = should_include || included_child;
         }
       }
@@ -769,8 +769,8 @@ impl NavigationTree {
         document_symbols.push(lsp::DocumentSymbol {
           name: self.text.clone(),
           kind: self.kind.clone().into(),
-          range: span.to_range(line_index.clone()),
-          selection_range: selection_span.to_range(line_index.clone()),
+          range: span.to_range(line_index),
+          selection_range: selection_span.to_range(line_index),
           tags,
           children,
           detail: None,
@@ -828,7 +828,7 @@ pub struct ImplementationLocation {
 impl ImplementationLocation {
   pub(crate) fn to_location(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     language_server: &mut language_server::Inner,
   ) -> lsp::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
@@ -845,7 +845,7 @@ impl ImplementationLocation {
 
   pub(crate) async fn to_link(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     self
@@ -904,7 +904,7 @@ impl RenameLocations {
         range: location
           .document_span
           .text_span
-          .to_range(asset_or_doc.line_index()),
+          .to_range(asset_or_doc.line_index().as_ref()),
         new_text: new_name.to_string(),
       }));
     }
@@ -963,16 +963,14 @@ pub struct DefinitionInfoAndBoundSpan {
 impl DefinitionInfoAndBoundSpan {
   pub(crate) async fn to_definition(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::GotoDefinitionResponse> {
     if let Some(definitions) = &self.definitions {
       let mut location_links = Vec::<lsp::LocationLink>::new();
       for di in definitions {
-        if let Some(link) = di
-          .document_span
-          .to_link(line_index.clone(), language_server)
-          .await
+        if let Some(link) =
+          di.document_span.to_link(line_index, language_server).await
         {
           location_links.push(link);
         }
@@ -994,13 +992,13 @@ pub struct DocumentHighlights {
 impl DocumentHighlights {
   pub fn to_highlight(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
   ) -> Vec<lsp::DocumentHighlight> {
     self
       .highlight_spans
       .iter()
       .map(|hs| lsp::DocumentHighlight {
-        range: hs.text_span.to_range(line_index.clone()),
+        range: hs.text_span.to_range(line_index),
         kind: match hs.kind {
           HighlightSpanKind::WrittenReference => {
             Some(lsp::DocumentHighlightKind::Write)
@@ -1022,7 +1020,7 @@ pub struct TextChange {
 impl TextChange {
   pub fn as_text_edit(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
   ) -> lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit> {
     lsp::OneOf::Left(lsp::TextEdit {
       range: self.span.to_range(line_index),
@@ -1051,7 +1049,7 @@ impl FileTextChanges {
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_edit(asset_or_doc.line_index()))
+      .map(|tc| tc.as_text_edit(asset_or_doc.line_index().as_ref()))
       .collect();
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
@@ -1096,7 +1094,7 @@ impl FileTextChanges {
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_edit(line_index.clone()))
+      .map(|tc| tc.as_text_edit(line_index.as_ref()))
       .collect();
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
@@ -1121,7 +1119,7 @@ pub struct Classifications {
 impl Classifications {
   pub fn to_semantic_tokens(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
   ) -> lsp::SemanticTokens {
     let token_count = self.spans.len() / 3;
     let mut builder = SemanticTokensBuilder::new();
@@ -1354,7 +1352,7 @@ pub struct ReferenceEntry {
 impl ReferenceEntry {
   pub(crate) fn to_location(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     language_server: &mut language_server::Inner,
   ) -> lsp::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
@@ -1397,7 +1395,7 @@ impl CallHierarchyItem {
       .ok()?;
 
     Some(self.to_call_hierarchy_item(
-      target_asset_or_doc.line_index(),
+      target_asset_or_doc.line_index().as_ref(),
       language_server,
       maybe_root_path,
     ))
@@ -1405,7 +1403,7 @@ impl CallHierarchyItem {
 
   pub(crate) fn to_call_hierarchy_item(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     language_server: &mut language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> lsp::CallHierarchyItem {
@@ -1465,7 +1463,7 @@ impl CallHierarchyItem {
       uri,
       detail: Some(detail),
       kind: self.kind.clone().into(),
-      range: self.span.to_range(line_index.clone()),
+      range: self.span.to_range(line_index),
       selection_range: self.selection_span.to_range(line_index),
       data: None,
     }
@@ -1499,14 +1497,14 @@ impl CallHierarchyIncomingCall {
 
     Some(lsp::CallHierarchyIncomingCall {
       from: self.from.to_call_hierarchy_item(
-        target_asset_or_doc.line_index(),
+        target_asset_or_doc.line_index().as_ref(),
         language_server,
         maybe_root_path,
       ),
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(target_asset_or_doc.line_index()))
+        .map(|span| span.to_range(target_asset_or_doc.line_index().as_ref()))
         .collect(),
     })
   }
@@ -1522,7 +1520,7 @@ pub struct CallHierarchyOutgoingCall {
 impl CallHierarchyOutgoingCall {
   pub(crate) async fn try_resolve_call_hierarchy_outgoing_call(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     language_server: &mut language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
@@ -1534,14 +1532,14 @@ impl CallHierarchyOutgoingCall {
 
     Some(lsp::CallHierarchyOutgoingCall {
       to: self.to.to_call_hierarchy_item(
-        target_asset_or_doc.line_index(),
+        target_asset_or_doc.line_index().as_ref(),
         language_server,
         maybe_root_path,
       ),
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(line_index.clone()))
+        .map(|span| span.to_range(line_index))
         .collect(),
     })
   }
@@ -1615,7 +1613,7 @@ pub struct CompletionInfo {
 impl CompletionInfo {
   pub fn as_completion_response(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     settings: &config::CompletionSettings,
     specifier: &ModuleSpecifier,
     position: u32,
@@ -1624,13 +1622,8 @@ impl CompletionInfo {
       .entries
       .iter()
       .map(|entry| {
-        entry.as_completion_item(
-          line_index.clone(),
-          self,
-          settings,
-          specifier,
-          position,
-        )
+        entry
+          .as_completion_item(line_index, self, settings, specifier, position)
       })
       .collect();
     let is_incomplete = self
@@ -1771,7 +1764,7 @@ impl CompletionEntry {
 
   pub fn as_completion_item(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     info: &CompletionInfo,
     settings: &config::CompletionSettings,
     specifier: &ModuleSpecifier,
@@ -1897,11 +1890,11 @@ const FOLD_END_PAIR_CHARACTERS: &[u8] = &[b'}', b']', b')', b'`'];
 impl OutliningSpan {
   pub fn to_folding_range(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     content: &[u8],
     line_folding_only: bool,
   ) -> lsp::FoldingRange {
-    let range = self.text_span.to_range(line_index.clone());
+    let range = self.text_span.to_range(line_index);
     lsp::FoldingRange {
       start_line: range.start.line,
       start_character: if line_folding_only {
@@ -1927,7 +1920,7 @@ impl OutliningSpan {
   fn adjust_folding_end_line(
     &self,
     range: &lsp::Range,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     content: &[u8],
     line_folding_only: bool,
   ) -> u32 {
@@ -2059,10 +2052,10 @@ pub struct SelectionRange {
 impl SelectionRange {
   pub fn to_selection_range(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
   ) -> lsp::SelectionRange {
     lsp::SelectionRange {
-      range: self.text_span.to_range(line_index.clone()),
+      range: self.text_span.to_range(line_index),
       parent: self.parent.as_ref().map(|parent_selection| {
         Box::new(parent_selection.to_selection_range(line_index))
       }),

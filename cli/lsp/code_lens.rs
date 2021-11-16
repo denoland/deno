@@ -25,7 +25,6 @@ use regex::Regex;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
-use std::sync::Arc;
 
 lazy_static::lazy_static! {
   static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
@@ -222,7 +221,7 @@ async fn resolve_implementation_code_lens(
 ) -> Result<lsp::CodeLens, AnyError> {
   let asset_or_doc =
     language_server.get_cached_asset_or_document(&data.specifier)?;
-  let line_index = asset_or_doc.line_index();
+  let line_index = (*asset_or_doc.line_index()).clone();
   let req = tsc::RequestMethod::GetImplementation((
     data.specifier.clone(),
     line_index.offset_tsc(code_lens.range.start)?,
@@ -236,7 +235,7 @@ async fn resolve_implementation_code_lens(
       let implementation_specifier =
         resolve_url(&implementation.document_span.file_name)?;
       let implementation_location =
-        implementation.to_location(line_index.clone(), language_server);
+        implementation.to_location(&line_index, language_server);
       if !(implementation_specifier == data.specifier
         && implementation_location.range.start == code_lens.range.start)
       {
@@ -311,7 +310,8 @@ async fn resolve_references_code_lens(
         .get_asset_or_document(&reference_specifier)
         .await?;
       locations.push(
-        reference.to_location(asset_or_doc.line_index(), language_server),
+        reference
+          .to_location(asset_or_doc.line_index().as_ref(), language_server),
       );
     }
     let command = if !locations.is_empty() {
@@ -375,7 +375,7 @@ pub(crate) async fn collect(
   specifier: &ModuleSpecifier,
   parsed_source: Option<ParsedSource>,
   config: &Config,
-  line_index: Arc<LineIndex>,
+  line_index: &LineIndex,
   navigation_tree: &NavigationTree,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   let mut code_lenses = collect_test(specifier, parsed_source, config)?;
@@ -417,7 +417,7 @@ fn collect_test(
 async fn collect_tsc(
   specifier: &ModuleSpecifier,
   workspace_settings: &WorkspaceSettings,
-  line_index: Arc<LineIndex>,
+  line_index: &LineIndex,
   navigation_tree: &NavigationTree,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   let code_lenses = Rc::new(RefCell::new(Vec::new()));
@@ -429,11 +429,7 @@ async fn collect_tsc(
       let source = CodeLensSource::Implementations;
       match i.kind {
         tsc::ScriptElementKind::InterfaceElement => {
-          code_lenses.push(i.to_code_lens(
-            line_index.clone(),
-            specifier,
-            &source,
-          ));
+          code_lenses.push(i.to_code_lens(line_index, specifier, &source));
         }
         tsc::ScriptElementKind::ClassElement
         | tsc::ScriptElementKind::MemberFunctionElement
@@ -441,11 +437,7 @@ async fn collect_tsc(
         | tsc::ScriptElementKind::MemberGetAccessorElement
         | tsc::ScriptElementKind::MemberSetAccessorElement => {
           if ABSTRACT_MODIFIER.is_match(&i.kind_modifiers) {
-            code_lenses.push(i.to_code_lens(
-              line_index.clone(),
-              specifier,
-              &source,
-            ));
+            code_lenses.push(i.to_code_lens(line_index, specifier, &source));
           }
         }
         _ => (),
@@ -457,51 +449,31 @@ async fn collect_tsc(
       let source = CodeLensSource::References;
       if let Some(parent) = &mp {
         if parent.kind == tsc::ScriptElementKind::EnumElement {
-          code_lenses.push(i.to_code_lens(
-            line_index.clone(),
-            specifier,
-            &source,
-          ));
+          code_lenses.push(i.to_code_lens(line_index, specifier, &source));
         }
       }
       match i.kind {
         tsc::ScriptElementKind::FunctionElement => {
           if workspace_settings.code_lens.references_all_functions {
-            code_lenses.push(i.to_code_lens(
-              line_index.clone(),
-              specifier,
-              &source,
-            ));
+            code_lenses.push(i.to_code_lens(line_index, specifier, &source));
           }
         }
         tsc::ScriptElementKind::ConstElement
         | tsc::ScriptElementKind::LetElement
         | tsc::ScriptElementKind::VariableElement => {
           if EXPORT_MODIFIER.is_match(&i.kind_modifiers) {
-            code_lenses.push(i.to_code_lens(
-              line_index.clone(),
-              specifier,
-              &source,
-            ));
+            code_lenses.push(i.to_code_lens(line_index, specifier, &source));
           }
         }
         tsc::ScriptElementKind::ClassElement => {
           if i.text != "<class>" {
-            code_lenses.push(i.to_code_lens(
-              line_index.clone(),
-              specifier,
-              &source,
-            ));
+            code_lenses.push(i.to_code_lens(line_index, specifier, &source));
           }
         }
         tsc::ScriptElementKind::InterfaceElement
         | tsc::ScriptElementKind::TypeElement
         | tsc::ScriptElementKind::EnumElement => {
-          code_lenses.push(i.to_code_lens(
-            line_index.clone(),
-            specifier,
-            &source,
-          ));
+          code_lenses.push(i.to_code_lens(line_index, specifier, &source));
         }
         tsc::ScriptElementKind::LocalFunctionElement
         | tsc::ScriptElementKind::MemberGetAccessorElement
@@ -514,11 +486,8 @@ async fn collect_tsc(
                 tsc::ScriptElementKind::ClassElement
                 | tsc::ScriptElementKind::InterfaceElement
                 | tsc::ScriptElementKind::TypeElement => {
-                  code_lenses.push(i.to_code_lens(
-                    line_index.clone(),
-                    specifier,
-                    &source,
-                  ));
+                  code_lenses
+                    .push(i.to_code_lens(line_index, specifier, &source));
                 }
                 _ => (),
               }
@@ -536,6 +505,7 @@ async fn collect_tsc(
 mod tests {
   use deno_ast::MediaType;
   use deno_ast::SourceTextInfo;
+  use std::sync::Arc;
 
   use super::*;
 

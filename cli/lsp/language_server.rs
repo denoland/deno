@@ -985,28 +985,28 @@ impl Inner {
 
     let mark = self.performance.mark("document_symbol", Some(&params));
     let asset_or_document = self.get_cached_asset_or_document(&specifier)?;
-    let line_index = asset_or_document.line_index();
-
-    let req = tsc::RequestMethod::GetNavigationTree(specifier);
-    let navigation_tree: tsc::NavigationTree = self
-      .ts_server
-      .request(self.snapshot()?, req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
+    // we need to clone the line index _before_ the async process of grabbing
+    // the nav tree, as the line index could change
+    let line_index = (*asset_or_document.line_index()).clone();
+    let navigation_tree =
+      self.get_navigation_tree(&specifier).await.map_err(|err| {
+        error!(
+          "Error getting document symbols for \"{}\": {}",
+          specifier, err
+        );
+        LspError::internal_error()
       })?;
 
-    let response = if let Some(child_items) = navigation_tree.child_items {
+    let response = if let Some(child_items) = &navigation_tree.child_items {
       let mut document_symbols = Vec::<DocumentSymbol>::new();
       for item in child_items {
-        item
-          .collect_document_symbols(line_index.clone(), &mut document_symbols);
+        item.collect_document_symbols(&line_index, &mut document_symbols);
       }
       Some(DocumentSymbolResponse::Nested(document_symbols))
     } else {
       None
     };
+
     self.performance.measure(mark);
     Ok(response)
   }
@@ -1131,7 +1131,7 @@ impl Inner {
         range: Some(to_lsp_range(&range)),
       })
     } else {
-      let line_index = asset_or_doc.line_index();
+      let line_index = (*asset_or_doc.line_index()).clone();
       let req = tsc::RequestMethod::GetQuickInfo((
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
@@ -1144,7 +1144,7 @@ impl Inner {
           error!("Unable to get quick info: {}", err);
           LspError::internal_error()
         })?;
-      maybe_quick_info.map(|qi| qi.to_hover(line_index))
+      maybe_quick_info.map(|qi| qi.to_hover(&line_index))
     };
     self.performance.measure(mark);
     Ok(hover)
@@ -1435,6 +1435,9 @@ impl Inner {
 
     let mark = self.performance.mark("code_lens", Some(&params));
     let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    // we need to clone the line index _before_ the async process of grabbing
+    // the nav tree, as the line index could change
+    let line_index = (*asset_or_doc.line_index()).clone();
     let navigation_tree =
       self.get_navigation_tree(&specifier).await.map_err(|err| {
         error!("Error getting code lenses for \"{}\": {}", specifier, err);
@@ -1442,12 +1445,11 @@ impl Inner {
       })?;
     let parsed_source =
       asset_or_doc.maybe_parsed_source().map(|r| r.ok()).flatten();
-    let line_index = asset_or_doc.line_index();
     let code_lenses = code_lens::collect(
       &specifier,
       parsed_source,
       &self.config,
-      line_index,
+      &line_index,
       &navigation_tree,
     )
     .await
@@ -1496,7 +1498,7 @@ impl Inner {
 
     let mark = self.performance.mark("document_highlight", Some(&params));
     let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
-    let line_index = asset_or_doc.line_index();
+    let line_index = (*asset_or_doc.line_index()).clone();
     let files_to_search = vec![specifier.clone()];
     let req = tsc::RequestMethod::GetDocumentHighlights((
       specifier,
@@ -1515,7 +1517,7 @@ impl Inner {
     if let Some(document_highlights) = maybe_document_highlights {
       let result = document_highlights
         .into_iter()
-        .map(|dh| dh.to_highlight(line_index.clone()))
+        .map(|dh| dh.to_highlight(&line_index))
         .flatten()
         .collect();
       self.performance.measure(mark);
@@ -1541,10 +1543,11 @@ impl Inner {
 
     let mark = self.performance.mark("references", Some(&params));
     let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
-    let line_index = asset_or_doc.line_index();
     let req = tsc::RequestMethod::GetReferences((
       specifier,
-      line_index.offset_tsc(params.text_document_position.position)?,
+      asset_or_doc
+        .line_index()
+        .offset_tsc(params.text_document_position.position)?,
     ));
     let maybe_references: Option<Vec<tsc::ReferenceEntry>> = self
       .ts_server
@@ -1565,7 +1568,9 @@ impl Inner {
           resolve_url(&reference.document_span.file_name).unwrap();
         let asset_or_doc =
           self.get_asset_or_document(&reference_specifier).await?;
-        results.push(reference.to_location(asset_or_doc.line_index(), self));
+        results.push(
+          reference.to_location(asset_or_doc.line_index().as_ref(), self),
+        );
       }
 
       self.performance.measure(mark);
@@ -1591,7 +1596,7 @@ impl Inner {
 
     let mark = self.performance.mark("goto_definition", Some(&params));
     let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
-    let line_index = asset_or_doc.line_index();
+    let line_index = (*asset_or_doc.line_index()).clone();
     let req = tsc::RequestMethod::GetDefinition((
       specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
@@ -1606,7 +1611,7 @@ impl Inner {
       })?;
 
     if let Some(definition) = maybe_definition {
-      let results = definition.to_definition(line_index, self).await;
+      let results = definition.to_definition(&line_index, self).await;
       self.performance.measure(mark);
       Ok(results)
     } else {
@@ -1644,7 +1649,7 @@ impl Inner {
     {
       Some(response)
     } else {
-      let line_index = asset_or_doc.line_index();
+      let line_index = (*asset_or_doc.line_index()).clone();
       let trigger_character = if let Some(context) = &params.context {
         context.trigger_character.clone()
       } else {
@@ -1678,7 +1683,7 @@ impl Inner {
 
       if let Some(completions) = maybe_completion_info {
         let results = completions.as_completion_response(
-          line_index,
+          &line_index,
           &self.config.get_workspace_settings().suggest,
           &specifier,
           position,
@@ -1748,7 +1753,7 @@ impl Inner {
 
     let mark = self.performance.mark("goto_implementation", Some(&params));
     let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
-    let line_index = asset_or_doc.line_index();
+    let line_index = (*asset_or_doc.line_index()).clone();
 
     let req = tsc::RequestMethod::GetImplementation((
       specifier,
@@ -1766,9 +1771,7 @@ impl Inner {
     let result = if let Some(implementations) = maybe_implementations {
       let mut links = Vec::new();
       for implementation in implementations {
-        if let Some(link) =
-          implementation.to_link(line_index.clone(), self).await
-        {
+        if let Some(link) = implementation.to_link(&line_index, self).await {
           links.push(link)
         }
       }
@@ -1794,6 +1797,10 @@ impl Inner {
 
     let mark = self.performance.mark("folding_range", Some(&params));
     let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    // we need to clone the line index and content so it is correct between when
+    // we call tsc and we get a response back
+    let line_index = (*asset_or_doc.line_index()).clone();
+    let content = asset_or_doc.text().as_str().to_string();
 
     let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
     let outlining_spans: Vec<tsc::OutliningSpan> = self
@@ -1811,8 +1818,8 @@ impl Inner {
           .iter()
           .map(|span| {
             span.to_folding_range(
-              asset_or_doc.line_index(),
-              asset_or_doc.text().as_str().as_bytes(),
+              &line_index,
+              content.as_bytes(),
               self.config.client_capabilities.line_folding_only,
             )
           })
@@ -1887,7 +1894,7 @@ impl Inner {
 
     let mark = self.performance.mark("outgoing_calls", Some(&params));
     let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
-    let line_index = asset_or_doc.line_index();
+    let line_index = (*asset_or_doc.line_index()).clone();
 
     let req = tsc::RequestMethod::ProvideCallHierarchyOutgoingCalls((
       specifier.clone(),
@@ -1911,7 +1918,7 @@ impl Inner {
     for item in outgoing_calls.iter() {
       if let Some(resolved) = item
         .try_resolve_call_hierarchy_outgoing_call(
-          line_index.clone(),
+          &line_index,
           self,
           maybe_root_path_owned.as_deref(),
         )
@@ -2101,7 +2108,7 @@ impl Inner {
 
     let mark = self.performance.mark("selection_range", Some(&params));
     let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
-    let line_index = asset_or_doc.line_index();
+    let line_index = (*asset_or_doc.line_index()).clone();
 
     let mut selection_ranges = Vec::<SelectionRange>::new();
     for position in params.positions {
@@ -2119,8 +2126,7 @@ impl Inner {
           LspError::invalid_request()
         })?;
 
-      selection_ranges
-        .push(selection_range.to_selection_range(line_index.clone()));
+      selection_ranges.push(selection_range.to_selection_range(&line_index));
     }
     self.performance.measure(mark);
     Ok(Some(selection_ranges))
@@ -2139,7 +2145,7 @@ impl Inner {
 
     let mark = self.performance.mark("semantic_tokens_full", Some(&params));
     let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
-    let line_index = asset_or_doc.line_index();
+    let line_index = (*asset_or_doc.line_index()).clone();
 
     let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
       specifier.clone(),
@@ -2158,7 +2164,7 @@ impl Inner {
       })?;
 
     let semantic_tokens: SemanticTokens =
-      semantic_classification.to_semantic_tokens(line_index);
+      semantic_classification.to_semantic_tokens(&line_index);
     let response = if !semantic_tokens.data.is_empty() {
       Some(SemanticTokensResult::Tokens(semantic_tokens))
     } else {
@@ -2183,7 +2189,7 @@ impl Inner {
       .performance
       .mark("semantic_tokens_range", Some(&params));
     let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
-    let line_index = asset_or_doc.line_index();
+    let line_index = (*asset_or_doc.line_index()).clone();
 
     let start = line_index.offset_tsc(params.range.start)?;
     let length = line_index.offset_tsc(params.range.end)? - start;
@@ -2201,7 +2207,7 @@ impl Inner {
       })?;
 
     let semantic_tokens: SemanticTokens =
-      semantic_classification.to_semantic_tokens(line_index);
+      semantic_classification.to_semantic_tokens(&line_index);
     let response = if !semantic_tokens.data.is_empty() {
       Some(SemanticTokensRangeResult::Tokens(semantic_tokens))
     } else {
