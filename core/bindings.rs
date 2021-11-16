@@ -482,12 +482,7 @@ fn set_has_tick_scheduled(
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  let value = match v8::Local::<v8::Boolean>::try_from(args.get(0)) {
-    Ok(cb) => cb,
-    Err(err) => return throw_type_error(scope, err.to_string()),
-  };
-
-  state.has_tick_scheduled = value.is_true();
+  state.has_tick_scheduled = args.get(0).is_true();
 }
 
 fn run_microtasks(
