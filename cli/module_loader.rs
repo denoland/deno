@@ -1,8 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::emit;
 use crate::emit::TypeLib;
 use crate::proc_state::ProcState;
 
+use crate::errors::get_error_class_name;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
@@ -12,24 +15,30 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_graph::Dependency;
+use deno_graph::ModuleGraphError;
+use deno_graph::Range;
 use deno_runtime::permissions::Permissions;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
 
 #[derive(Default)]
-struct GraphData {
-  modules: HashMap<ModuleSpecifier, Result<ModuleSource, ModuleGraphError>>,
-  dependency_map: HashMap<ModuleSpecifier, BTreeMap<String, Dependency>>,
+pub struct GraphData {
+  pub modules: HashMap<ModuleSpecifier, Result<ModuleSource, ModuleGraphError>>,
+  pub dependency_map: HashMap<ModuleSpecifier, BTreeMap<String, Dependency>>,
   /// A set of type libs that each module has passed a type check with this
   /// session. This would consist of window, worker or both.
-  checked_libs_map: HashMap<ModuleSpecifier, HashSet<emit::TypeLib>>,
+  pub(crate) checked_libs_map: HashMap<ModuleSpecifier, HashSet<emit::TypeLib>>,
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
-  referrer_map: HashMap<ModuleSpecifier, Range>,
+  pub referrer_map: HashMap<ModuleSpecifier, Range>,
 }
 
 impl GraphData {
@@ -37,7 +46,7 @@ impl GraphData {
   /// prepared. Returns `Some(Err(_))` if there is a known module graph error
   /// statically reachable from `roots`. Returns `None` if sufficient graph data
   /// is yet to supplied.
-  fn check_if_prepared(
+  pub(crate) fn check_if_prepared(
     &self,
     roots: &[ModuleSpecifier],
   ) -> Option<Result<(), AnyError>> {
