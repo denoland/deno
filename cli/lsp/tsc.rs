@@ -38,6 +38,8 @@ use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::warn;
+use lspower::jsonrpc::Error as LspError;
+use lspower::jsonrpc::Result as LspResult;
 use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
@@ -1122,7 +1124,7 @@ impl Classifications {
   pub fn to_semantic_tokens(
     &self,
     line_index: Arc<LineIndex>,
-  ) -> lsp::SemanticTokens {
+  ) -> LspResult<lsp::SemanticTokens> {
     let token_count = self.spans.len() / 3;
     let mut builder = SemanticTokensBuilder::new();
     for i in 0..token_count {
@@ -1157,9 +1159,10 @@ impl Classifications {
           start_pos,
           end_pos
         );
+        return Err(LspError::internal_error());
       }
     }
-    builder.build(None)
+    Ok(builder.build(None))
   }
 
   fn get_token_type_from_classification(ts_classification: u32) -> u32 {

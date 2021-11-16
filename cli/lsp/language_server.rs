@@ -2162,7 +2162,7 @@ impl Inner {
       })?;
 
     let semantic_tokens =
-      semantic_classification.to_semantic_tokens(line_index);
+      semantic_classification.to_semantic_tokens(line_index)?;
     let response = if !semantic_tokens.data.is_empty() {
       Some(SemanticTokensResult::Tokens(semantic_tokens))
     } else {
@@ -2205,7 +2205,7 @@ impl Inner {
       })?;
 
     let semantic_tokens =
-      semantic_classification.to_semantic_tokens(line_index);
+      semantic_classification.to_semantic_tokens(line_index)?;
     let response = if !semantic_tokens.data.is_empty() {
       Some(SemanticTokensRangeResult::Tokens(semantic_tokens))
     } else {
