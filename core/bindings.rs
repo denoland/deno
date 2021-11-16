@@ -519,7 +519,7 @@ fn set_nexttick_callback(
     _ => {
       return throw_type_error(
         scope,
-        "Deno.core.nextTickCallback() already called",
+        "Deno.core.setNextTickCallback() already called",
       );
     }
   };
