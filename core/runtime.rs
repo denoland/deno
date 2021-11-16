@@ -158,7 +158,9 @@ pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
+  pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
+  pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
@@ -363,7 +365,9 @@ impl JsRuntime {
       dyn_module_evaluate_idle_counter: 0,
       js_recv_cb: None,
       js_sync_cb: None,
-      js_macrotask_cb: None,
+      js_macrotask_cbs: vec![],
+      js_nexttick_cbs: vec![],
+      has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
@@ -773,6 +777,7 @@ impl JsRuntime {
     // Ops
     {
       self.resolve_async_ops(cx)?;
+      self.drain_nexttick()?;
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
     }
@@ -1549,34 +1554,73 @@ impl JsRuntime {
   }
 
   fn drain_macrotasks(&mut self) -> Result<(), Error> {
-    let js_macrotask_cb_handle =
-      match &Self::state(self.v8_isolate()).borrow().js_macrotask_cb {
-        Some(handle) => handle.clone(),
-        None => return Ok(()),
-      };
+    let state = Self::state(self.v8_isolate());
 
+    if state.borrow().js_macrotask_cbs.is_empty() {
+      return Ok(());
+    }
+
+    let js_macrotask_cb_handles = state.borrow().js_macrotask_cbs.clone();
     let scope = &mut self.handle_scope();
-    let js_macrotask_cb = js_macrotask_cb_handle.open(scope);
 
-    // Repeatedly invoke macrotask callback until it returns true (done),
-    // such that ready microtasks would be automatically run before
-    // next macrotask is processed.
-    let tc_scope = &mut v8::TryCatch::new(scope);
-    let this = v8::undefined(tc_scope).into();
-    loop {
-      let is_done = js_macrotask_cb.call(tc_scope, this, &[]);
+    for js_macrotask_cb_handle in js_macrotask_cb_handles {
+      let js_macrotask_cb = js_macrotask_cb_handle.open(scope);
+
+      // Repeatedly invoke macrotask callback until it returns true (done),
+      // such that ready microtasks would be automatically run before
+      // next macrotask is processed.
+      let tc_scope = &mut v8::TryCatch::new(scope);
+      let this = v8::undefined(tc_scope).into();
+      loop {
+        let is_done = js_macrotask_cb.call(tc_scope, this, &[]);
+
+        if let Some(exception) = tc_scope.exception() {
+          return exception_to_err_result(tc_scope, exception, false);
+        }
+
+        if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+          return Ok(());
+        }
+
+        let is_done = is_done.unwrap();
+        if is_done.is_true() {
+          break;
+        }
+      }
+    }
+
+    Ok(())
+  }
+
+  fn drain_nexttick(&mut self) -> Result<(), Error> {
+    let state = Self::state(self.v8_isolate());
+
+    if state.borrow().js_nexttick_cbs.is_empty() {
+      return Ok(());
+    }
+
+    if !state.borrow().has_tick_scheduled {
+      let scope = &mut self.handle_scope();
+      scope.perform_microtask_checkpoint();
+    }
+
+    // TODO(bartlomieju): Node also checks for absence of "rejection_to_warn"
+    if !state.borrow().has_tick_scheduled {
+      return Ok(());
+    }
+
+    let js_nexttick_cb_handles = state.borrow().js_nexttick_cbs.clone();
+    let scope = &mut self.handle_scope();
+
+    for js_nexttick_cb_handle in js_nexttick_cb_handles {
+      let js_nexttick_cb = js_nexttick_cb_handle.open(scope);
+
+      let tc_scope = &mut v8::TryCatch::new(scope);
+      let this = v8::undefined(tc_scope).into();
+      js_nexttick_cb.call(tc_scope, this, &[]);
 
       if let Some(exception) = tc_scope.exception() {
         return exception_to_err_result(tc_scope, exception, false);
-      }
-
-      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
-        break;
-      }
-
-      let is_done = is_done.unwrap();
-      if is_done.is_true() {
-        break;
       }
     }
 
@@ -2346,5 +2390,78 @@ assertEquals(1, notify_return_value);
       )
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
+  }
+
+  #[tokio::test]
+  async fn test_set_macrotask_callback_set_next_tick_callback() {
+    async fn op_async_sleep(
+      _op_state: Rc<RefCell<OpState>>,
+      _: (),
+      _: (),
+    ) -> Result<(), Error> {
+      // Future must be Poll::Pending on first call
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+      Ok(())
+    }
+
+    let extension = Extension::builder()
+      .ops(vec![("op_async_sleep", op_async(op_async_sleep))])
+      .build();
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "macrotasks_and_nextticks.js",
+        r#"
+        (async function () {
+          const results = [];
+          Deno.core.setMacrotaskCallback(() => {
+            results.push("macrotask");
+            return true;
+          });
+          Deno.core.setNextTickCallback(() => {
+            results.push("nextTick");
+            Deno.core.setHasTickScheduled(false);
+          });
+
+          Deno.core.setHasTickScheduled(true);
+          await Deno.core.opAsync('op_async_sleep');
+          if (results[0] != "nextTick") {
+            throw new Error(`expected nextTick, got: ${results[0]}`);
+          }
+          if (results[1] != "macrotask") {
+            throw new Error(`expected macrotask, got: ${results[1]}`);
+          }
+        })();
+        "#,
+      )
+      .unwrap();
+    runtime.run_event_loop(false).await.unwrap();
+  }
+
+  #[tokio::test]
+  async fn test_set_macrotask_callback_set_next_tick_callback_multiple() {
+    let mut runtime = JsRuntime::new(Default::default());
+
+    runtime
+      .execute_script(
+        "multiple_macrotasks_and_nextticks.js",
+        r#"
+        Deno.core.setMacrotaskCallback(() => { return true; });
+        Deno.core.setMacrotaskCallback(() => { return true; });
+        Deno.core.setNextTickCallback(() => {});
+        Deno.core.setNextTickCallback(() => {});
+        "#,
+      )
+      .unwrap();
+    let isolate = runtime.v8_isolate();
+    let state_rc = JsRuntime::state(isolate);
+    let state = state_rc.borrow();
+    assert_eq!(state.js_macrotask_cbs.len(), 2);
+    assert_eq!(state.js_nexttick_cbs.len(), 2);
   }
 }
