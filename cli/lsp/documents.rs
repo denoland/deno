@@ -245,6 +245,8 @@ impl SyntheticModule {
 }
 #[derive(Debug, Clone)]
 struct DocumentInner {
+  /// contains the last-known-good set of dependencies from parsing the module
+  dependencies: Arc<BTreeMap<String, deno_graph::Dependency>>,
   fs_version: String,
   line_index: Arc<LineIndex>,
   maybe_language_id: Option<LanguageId>,
@@ -282,9 +284,15 @@ impl Document {
       maybe_resolver,
       Some(&parser),
     ));
+    let dependencies = if let Some(Ok(module)) = &maybe_module {
+      Arc::new(module.dependencies.clone())
+    } else {
+      Arc::new(BTreeMap::new())
+    };
     let text_info = SourceTextInfo::new(content);
     let line_index = Arc::new(LineIndex::new(text_info.text_str()));
     Self(Arc::new(DocumentInner {
+      dependencies,
       fs_version,
       line_index,
       maybe_language_id: None,
@@ -317,9 +325,15 @@ impl Document {
     } else {
       None
     };
+    let dependencies = if let Some(Ok(module)) = &maybe_module {
+      Arc::new(module.dependencies.clone())
+    } else {
+      Arc::new(BTreeMap::new())
+    };
     let source = SourceTextInfo::new(content);
     let line_index = Arc::new(LineIndex::new(source.text_str()));
     Self(Arc::new(DocumentInner {
+      dependencies,
       fs_version: "1".to_string(),
       line_index,
       maybe_language_id: Some(language_id),
@@ -379,14 +393,20 @@ impl Document {
     } else {
       None
     };
-    let source = SourceTextInfo::new(content);
+    let dependencies = if let Some(Ok(module)) = &maybe_module {
+      Arc::new(module.dependencies.clone())
+    } else {
+      self.0.dependencies.clone()
+    };
+    let text_info = SourceTextInfo::new(content);
     let line_index = if index_valid == IndexValid::All {
       line_index
     } else {
-      Arc::new(LineIndex::new(source.text_str()))
+      Arc::new(LineIndex::new(text_info.text_str()))
     };
     Ok(Document(Arc::new(DocumentInner {
-      text_info: source,
+      dependencies,
+      text_info,
       line_index,
       maybe_module,
       maybe_lsp_version: Some(version),
@@ -499,15 +519,13 @@ impl Document {
     self.0.maybe_warning.clone()
   }
 
-  pub fn dependencies(&self) -> Option<Vec<(String, deno_graph::Dependency)>> {
-    let module = self.maybe_module()?.as_ref().ok()?;
-    Some(
-      module
-        .dependencies
-        .iter()
-        .map(|(s, d)| (s.clone(), d.clone()))
-        .collect(),
-    )
+  pub fn dependencies(&self) -> Vec<(String, deno_graph::Dependency)> {
+    self
+      .0
+      .dependencies
+      .iter()
+      .map(|(s, d)| (s.clone(), d.clone()))
+      .collect()
   }
 
   /// If the supplied position is within a dependency range, return the resolved
@@ -911,35 +929,32 @@ impl DocumentsInner {
     specifiers: Vec<String>,
     referrer: &ModuleSpecifier,
   ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
-    let doc = self.get(referrer)?;
+    let dependencies = self.get(referrer)?.0.dependencies.clone();
     let mut results = Vec::new();
-    if let Some(Ok(module)) = doc.maybe_module() {
-      let dependencies = module.dependencies.clone();
-      for specifier in specifiers {
-        if specifier.starts_with("asset:") {
-          if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
-            let media_type = MediaType::from(&specifier);
-            results.push(Some((specifier, media_type)));
-          } else {
-            results.push(None);
-          }
-        } else if let Some(dep) = dependencies.get(&specifier) {
-          if let Some(Ok((specifier, _))) = &dep.maybe_type {
-            results.push(self.resolve_dependency(specifier));
-          } else if let Some(Ok((specifier, _))) = &dep.maybe_code {
-            results.push(self.resolve_dependency(specifier));
-          } else {
-            results.push(None);
-          }
-        } else if let Some(Some(Ok((specifier, _)))) =
-          self.resolve_imports_dependency(&specifier)
-        {
-          // clone here to avoid double borrow of self
-          let specifier = specifier.clone();
-          results.push(self.resolve_dependency(&specifier));
+    for specifier in specifiers {
+      if specifier.starts_with("asset:") {
+        if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
+          let media_type = MediaType::from(&specifier);
+          results.push(Some((specifier, media_type)));
         } else {
           results.push(None);
         }
+      } else if let Some(dep) = dependencies.get(&specifier) {
+        if let Some(Ok((specifier, _))) = &dep.maybe_type {
+          results.push(self.resolve_dependency(specifier));
+        } else if let Some(Ok((specifier, _))) = &dep.maybe_code {
+          results.push(self.resolve_dependency(specifier));
+        } else {
+          results.push(None);
+        }
+      } else if let Some(Some(Ok((specifier, _)))) =
+        self.resolve_imports_dependency(&specifier)
+      {
+        // clone here to avoid double borrow of self
+        let specifier = specifier.clone();
+        results.push(self.resolve_dependency(&specifier));
+      } else {
+        results.push(None);
       }
     }
     Some(results)
