@@ -1613,9 +1613,6 @@ impl JsRuntime {
     let scope = &mut self.handle_scope();
     let js_nexttick_cb = js_nexttick_cb_handle.open(scope);
 
-    // Repeatedly invoke macrotask callback until it returns true (done),
-    // such that ready microtasks would be automatically run before
-    // next macrotask is processed.
     let tc_scope = &mut v8::TryCatch::new(scope);
     let this = v8::undefined(tc_scope).into();
     js_nexttick_cb.call(tc_scope, this, &[]);
