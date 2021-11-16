@@ -6,36 +6,95 @@ use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::parking_lot::Mutex;
 use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
+use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 use std::sync::Arc;
-use std::collections::HashMap;
-use deno_core::ModuleSource;
-use deno_core::parking_lot::Mutex;
 
 #[derive(Default)]
-pub struct GraphData {
-  pub modules: HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>,
-  // because the graph detects resolution issues early, but is build and dropped
-  // during the `prepare_module_load` method, we need to extract out the module
-  // resolution map so that those errors can be surfaced at the appropriate time
-  pub resolution_map:
-    HashMap<ModuleSpecifier, HashMap<String, deno_graph::Resolved>>,
-  // in some cases we want to provide the range where the resolution error
-  // occurred but need to surface it on load, but on load we don't know who the
-  // referrer and span was, so we need to cache those
-  pub resolved_map: HashMap<ModuleSpecifier, deno_graph::Range>,
-  // deno_graph detects all sorts of issues at build time (prepare_module_load)
-  // but if they are errors at that stage, the don't cause the correct behaviors
-  // so we cache the error and then surface it when appropriate (e.g. load)
-  pub maybe_graph_error: Option<deno_graph::ModuleGraphError>,
+struct GraphData {
+  modules: HashMap<ModuleSpecifier, Result<ModuleSource, ModuleGraphError>>,
+  dependency_map: HashMap<ModuleSpecifier, BTreeMap<String, Dependency>>,
+  /// A set of type libs that each module has passed a type check with this
+  /// session. This would consist of window, worker or both.
+  checked_libs_map: HashMap<ModuleSpecifier, HashSet<emit::TypeLib>>,
+  /// Map of first known referrer locations for each module. Used to enhance
+  /// error messages.
+  referrer_map: HashMap<ModuleSpecifier, Range>,
+}
+
+impl GraphData {
+  /// Check if `roots` are ready to be loaded by V8. Returns `Some(Ok(()))` if
+  /// prepared. Returns `Some(Err(_))` if there is a known module graph error
+  /// statically reachable from `roots`. Returns `None` if sufficient graph data
+  /// is yet to supplied.
+  fn check_if_prepared(
+    &self,
+    roots: &[ModuleSpecifier],
+  ) -> Option<Result<(), AnyError>> {
+    let mut seen = HashSet::<&ModuleSpecifier>::new();
+    let mut visiting = VecDeque::<&ModuleSpecifier>::new();
+    for root in roots {
+      visiting.push_back(root);
+    }
+    while let Some(specifier) = visiting.pop_front() {
+      match self.modules.get(specifier) {
+        Some(Ok(_)) => {
+          let deps = self.dependency_map.get(specifier).unwrap();
+          for (_, dep) in deps.iter().rev() {
+            for resolved in [&dep.maybe_code, &dep.maybe_type] {
+              if !dep.is_dynamic {
+                match resolved {
+                  Some(Ok((dep_specifier, _))) => {
+                    if !dep.is_dynamic && !seen.contains(dep_specifier) {
+                      seen.insert(dep_specifier);
+                      visiting.push_front(dep_specifier);
+                    }
+                  }
+                  Some(Err(error)) => {
+                    let range = error.range();
+                    if !range.specifier.as_str().contains("$deno") {
+                      return Some(Err(custom_error(
+                        get_error_class_name(&error.clone().into()),
+                        format!("{}\n    at {}", error.to_string(), range),
+                      )));
+                    }
+                    return Some(Err(error.clone().into()));
+                  }
+                  None => {}
+                }
+              }
+            }
+          }
+        }
+        Some(Err(error)) => {
+          if !roots.contains(specifier) {
+            if let Some(range) = self.referrer_map.get(specifier) {
+              if !range.specifier.as_str().contains("$deno") {
+                let message = error.to_string();
+                return Some(Err(custom_error(
+                  get_error_class_name(&error.clone().into()),
+                  format!("{}\n    at {}", message, range),
+                )));
+              }
+            }
+          }
+          return Some(Err(error.clone().into()));
+        }
+        None => return None,
+      }
+    }
+    Some(Ok(()))
+  }
 }
 
 pub(crate) struct CliModuleLoader {
@@ -87,7 +146,9 @@ impl ModuleLoader for CliModuleLoader {
     referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    self.ps.resolve(specifier, referrer, self.graph_data.clone())
+    self
+      .ps
+      .resolve(specifier, referrer, self.graph_data.clone())
   }
 
   fn load(
@@ -144,6 +205,7 @@ impl ModuleLoader for CliModuleLoader {
         root_permissions,
         dynamic_permissions,
         graph_data,
+        false,
       )
       .await
     }

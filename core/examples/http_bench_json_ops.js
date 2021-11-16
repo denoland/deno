@@ -19,28 +19,11 @@ function accept(serverRid) {
   return Deno.core.opAsync("accept", serverRid);
 }
 
-/**
- * Reads a packet from the rid, presumably an http request. data is ignored.
- * Returns bytes read.
- */
-function read(rid, data) {
-  return Deno.core.opAsync("read", rid, data);
-}
-
-/** Writes a fixed HTTP response to the socket rid. Returns bytes written. */
-function write(rid, data) {
-  return Deno.core.opAsync("write", rid, data);
-}
-
-function close(rid) {
-  Deno.core.opSync("close", rid);
-}
-
 async function serve(rid) {
   try {
     while (true) {
-      await read(rid, requestBuf);
-      await write(rid, responseBuf);
+      await Deno.core.read(rid, requestBuf);
+      await Deno.core.write(rid, responseBuf);
     }
   } catch (e) {
     if (
@@ -50,7 +33,7 @@ async function serve(rid) {
       throw e;
     }
   }
-  close(rid);
+  Deno.core.close(rid);
 }
 
 async function main() {

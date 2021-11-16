@@ -8,7 +8,7 @@ use crate::tools::lint::create_linter;
 use crate::tools::lint::get_configured_rules;
 
 use deno_ast::SourceTextInfo;
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;

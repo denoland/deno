@@ -67,33 +67,35 @@ cut.**
 
 10. Use the output of the above command to update `Releases.md`
 
-11. Create a PR for these changes.
+11. Update link in `cli/compat/mod.rs` with the released version of `deno_std`.
 
-12. Make sure CI pipeline passes.
+12. Create a PR for these changes.
 
-13. Publish `cli` crate to `crates.io`
+13. Make sure CI pipeline passes.
 
-14. Merge the PR.
+14. Publish `cli` crate to `crates.io`
 
-15. Create a tag with the version number (with `v` prefix).
+15. Merge the PR.
 
-16. Wait for CI pipeline on the created tag branch to pass.
+16. Create a tag with the version number (with `v` prefix).
+
+17. Wait for CI pipeline on the created tag branch to pass.
 
     The CI pipeline will create a release draft on GitHub
     (https://github.com/denoland/deno/releases).
 
-17. Upload Apple M1 build to the release draft & to dl.deno.land.
+18. Upload Apple M1 build to the release draft & to dl.deno.land.
 
-18. Publish the release on Github
+19. Publish the release on Github
 
-19. Update the Deno version on the website by updating
+20. Update the Deno version on the website by updating
     https://github.com/denoland/dotland/blob/main/versions.json.
 
-20. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
+21. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
     must match the CLI tag; you don't need to create dedicated commit for that
     purpose, it's enough to tag the latest commit in that repo.
 
-21. For minor releases: make sure https://github.com/mdn/browser-compat-data has
+22. For minor releases: make sure https://github.com/mdn/browser-compat-data has
     been updated to reflect Web API changes in this release. Usually done ahead
     of time by @lucacasonato.
 

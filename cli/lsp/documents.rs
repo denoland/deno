@@ -2,6 +2,7 @@
 
 use super::text::LineIndex;
 use super::tsc;
+use super::tsc::AssetDocument;
 
 use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
@@ -134,6 +135,62 @@ impl IndexValid {
   }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum AssetOrDocument {
+  Document(Document),
+  Asset(AssetDocument),
+}
+
+impl AssetOrDocument {
+  pub fn document(&self) -> Option<&Document> {
+    match self {
+      AssetOrDocument::Asset(_) => None,
+      AssetOrDocument::Document(doc) => Some(doc),
+    }
+  }
+
+  pub fn text(&self) -> Arc<String> {
+    match self {
+      AssetOrDocument::Asset(a) => a.text(),
+      AssetOrDocument::Document(d) => d.0.text_info.text(),
+    }
+  }
+
+  pub fn line_index(&self) -> Arc<LineIndex> {
+    match self {
+      AssetOrDocument::Asset(a) => a.line_index(),
+      AssetOrDocument::Document(d) => d.line_index(),
+    }
+  }
+
+  pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
+    match self {
+      AssetOrDocument::Asset(a) => a.maybe_navigation_tree(),
+      AssetOrDocument::Document(d) => d.maybe_navigation_tree(),
+    }
+  }
+
+  pub fn get_maybe_dependency(
+    &self,
+    position: &lsp::Position,
+  ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
+    self
+      .document()
+      .map(|d| d.get_maybe_dependency(position))
+      .flatten()
+  }
+
+  pub fn maybe_parsed_source(
+    &self,
+  ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
+    self.document().map(|d| d.maybe_parsed_source()).flatten()
+  }
+
+  pub fn document_version(&self) -> Option<i32> {
+    self.document().map(|d| d.maybe_lsp_version()).flatten()
+  }
+}
+
 // TODO(@kitsonk) expose the synthetic module from deno_graph
 #[derive(Debug)]
 struct SyntheticModule {
@@ -186,9 +243,9 @@ impl SyntheticModule {
     }
   }
 }
-
-#[derive(Debug)]
-pub(crate) struct Document {
+#[derive(Debug, Clone)]
+struct DocumentInner {
+  fs_version: String,
   line_index: Arc<LineIndex>,
   maybe_language_id: Option<LanguageId>,
   maybe_lsp_version: Option<i32>,
@@ -196,15 +253,17 @@ pub(crate) struct Document {
     Option<Result<deno_graph::Module, deno_graph::ModuleGraphError>>,
   maybe_navigation_tree: Option<Arc<tsc::NavigationTree>>,
   maybe_warning: Option<String>,
-  source: SourceTextInfo,
   specifier: ModuleSpecifier,
-  version: String,
+  text_info: SourceTextInfo,
 }
+
+#[derive(Debug, Clone)]
+pub(crate) struct Document(Arc<DocumentInner>);
 
 impl Document {
   fn new(
     specifier: ModuleSpecifier,
-    version: String,
+    fs_version: String,
     maybe_headers: Option<&HashMap<String, String>>,
     content: Arc<String>,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
@@ -223,115 +282,19 @@ impl Document {
       maybe_resolver,
       Some(&parser),
     ));
-    let source = SourceTextInfo::new(content);
-    let line_index = Arc::new(LineIndex::new(source.text_str()));
-    Self {
+    let text_info = SourceTextInfo::new(content);
+    let line_index = Arc::new(LineIndex::new(text_info.text_str()));
+    Self(Arc::new(DocumentInner {
+      fs_version,
       line_index,
       maybe_language_id: None,
       maybe_lsp_version: None,
       maybe_module,
       maybe_navigation_tree: None,
       maybe_warning,
-      source,
+      text_info,
       specifier,
-      version,
-    }
-  }
-
-  fn change(
-    &mut self,
-    version: i32,
-    changes: Vec<lsp::TextDocumentContentChangeEvent>,
-    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
-  ) -> Result<(), AnyError> {
-    let mut content = self.source.text_str().to_string();
-    let mut line_index = self.line_index.clone();
-    let mut index_valid = IndexValid::All;
-    for change in changes {
-      if let Some(range) = change.range {
-        if !index_valid.covers(range.start.line) {
-          line_index = Arc::new(LineIndex::new(&content));
-        }
-        index_valid = IndexValid::UpTo(range.start.line);
-        let range = line_index.get_text_range(range)?;
-        content.replace_range(Range::<usize>::from(range), &change.text);
-      } else {
-        content = change.text;
-        index_valid = IndexValid::UpTo(0);
-      }
-    }
-    let content = Arc::new(content);
-    if self
-      .maybe_language_id
-      .as_ref()
-      .map(|li| li.is_diagnosable())
-      .unwrap_or(false)
-    {
-      let maybe_headers = self
-        .maybe_language_id
-        .as_ref()
-        .map(|li| li.as_headers())
-        .flatten();
-      let parser = SourceParser::default();
-      self.maybe_module = Some(deno_graph::parse_module(
-        &self.specifier,
-        maybe_headers,
-        content.clone(),
-        maybe_resolver,
-        Some(&parser),
-      ));
-    } else {
-      self.maybe_module = None;
-    }
-    self.source = SourceTextInfo::new(content);
-    self.line_index = if index_valid == IndexValid::All {
-      line_index
-    } else {
-      Arc::new(LineIndex::new(self.source.text_str()))
-    };
-    self.maybe_lsp_version = Some(version);
-    self.maybe_navigation_tree = None;
-    Ok(())
-  }
-
-  fn close(&mut self) {
-    self.maybe_lsp_version = None;
-    self.maybe_language_id = None;
-  }
-
-  fn content(&self) -> Arc<String> {
-    self.source.text()
-  }
-
-  fn is_diagnosable(&self) -> bool {
-    matches!(
-      self.media_type(),
-      // todo(#12410): Update with new media types for TS 4.5
-      MediaType::JavaScript
-        | MediaType::Jsx
-        | MediaType::TypeScript
-        | MediaType::Tsx
-        | MediaType::Dts
-    )
-  }
-
-  fn is_open(&self) -> bool {
-    self.maybe_lsp_version.is_some()
-  }
-
-  fn maybe_types_dependency(&self) -> deno_graph::Resolved {
-    let module_result = self.maybe_module.as_ref()?;
-    let module = module_result.as_ref().ok()?;
-    let (_, maybe_dep) = module.maybe_types_dependency.as_ref()?;
-    maybe_dep.clone()
-  }
-
-  fn media_type(&self) -> MediaType {
-    if let Some(Ok(module)) = &self.maybe_module {
-      module.media_type
-    } else {
-      MediaType::from(&self.specifier)
-    }
+    }))
   }
 
   fn open(
@@ -356,17 +319,214 @@ impl Document {
     };
     let source = SourceTextInfo::new(content);
     let line_index = Arc::new(LineIndex::new(source.text_str()));
-    Self {
+    Self(Arc::new(DocumentInner {
+      fs_version: "1".to_string(),
       line_index,
       maybe_language_id: Some(language_id),
       maybe_lsp_version: Some(version),
       maybe_module,
       maybe_navigation_tree: None,
       maybe_warning: None,
-      source,
+      text_info: source,
       specifier,
-      version: "1".to_string(),
+    }))
+  }
+
+  fn with_change(
+    &self,
+    version: i32,
+    changes: Vec<lsp::TextDocumentContentChangeEvent>,
+    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
+  ) -> Result<Document, AnyError> {
+    let mut content = self.0.text_info.text_str().to_string();
+    let mut line_index = self.0.line_index.clone();
+    let mut index_valid = IndexValid::All;
+    for change in changes {
+      if let Some(range) = change.range {
+        if !index_valid.covers(range.start.line) {
+          line_index = Arc::new(LineIndex::new(&content));
+        }
+        index_valid = IndexValid::UpTo(range.start.line);
+        let range = line_index.get_text_range(range)?;
+        content.replace_range(Range::<usize>::from(range), &change.text);
+      } else {
+        content = change.text;
+        index_valid = IndexValid::UpTo(0);
+      }
     }
+    let content = Arc::new(content);
+    let maybe_module = if self
+      .0
+      .maybe_language_id
+      .as_ref()
+      .map(|li| li.is_diagnosable())
+      .unwrap_or(false)
+    {
+      let maybe_headers = self
+        .0
+        .maybe_language_id
+        .as_ref()
+        .map(|li| li.as_headers())
+        .flatten();
+      let parser = SourceParser::default();
+      Some(deno_graph::parse_module(
+        &self.0.specifier,
+        maybe_headers,
+        content.clone(),
+        maybe_resolver,
+        Some(&parser),
+      ))
+    } else {
+      None
+    };
+    let source = SourceTextInfo::new(content);
+    let line_index = if index_valid == IndexValid::All {
+      line_index
+    } else {
+      Arc::new(LineIndex::new(source.text_str()))
+    };
+    Ok(Document(Arc::new(DocumentInner {
+      text_info: source,
+      line_index,
+      maybe_module,
+      maybe_lsp_version: Some(version),
+      maybe_navigation_tree: None,
+      ..(*self.0).clone()
+    })))
+  }
+
+  fn with_closed(&self) -> Document {
+    Document(Arc::new(DocumentInner {
+      maybe_lsp_version: None,
+      maybe_language_id: None,
+      ..(*self.0).clone()
+    }))
+  }
+
+  fn with_navigation_tree(
+    &self,
+    navigation_tree: Arc<tsc::NavigationTree>,
+  ) -> Document {
+    Document(Arc::new(DocumentInner {
+      maybe_navigation_tree: Some(navigation_tree),
+      ..(*self.0).clone()
+    }))
+  }
+
+  pub fn specifier(&self) -> &ModuleSpecifier {
+    &self.0.specifier
+  }
+
+  pub fn content(&self) -> Arc<String> {
+    self.0.text_info.text()
+  }
+
+  pub fn text_info(&self) -> SourceTextInfo {
+    self.0.text_info.clone()
+  }
+
+  pub fn line_index(&self) -> Arc<LineIndex> {
+    self.0.line_index.clone()
+  }
+
+  fn fs_version(&self) -> &str {
+    self.0.fs_version.as_str()
+  }
+
+  pub fn script_version(&self) -> String {
+    self
+      .maybe_lsp_version()
+      .map_or_else(|| self.fs_version().to_string(), |v| v.to_string())
+  }
+
+  pub fn is_diagnosable(&self) -> bool {
+    matches!(
+      self.media_type(),
+      // todo(#12410): Update with new media types for TS 4.5
+      MediaType::JavaScript
+        | MediaType::Jsx
+        | MediaType::TypeScript
+        | MediaType::Tsx
+        | MediaType::Dts
+    )
+  }
+
+  pub fn is_open(&self) -> bool {
+    self.0.maybe_lsp_version.is_some()
+  }
+
+  pub fn maybe_types_dependency(&self) -> deno_graph::Resolved {
+    let module_result = self.0.maybe_module.as_ref()?;
+    let module = module_result.as_ref().ok()?;
+    let (_, maybe_dep) = module.maybe_types_dependency.as_ref()?;
+    maybe_dep.clone()
+  }
+
+  pub fn media_type(&self) -> MediaType {
+    if let Some(Ok(module)) = &self.0.maybe_module {
+      module.media_type
+    } else {
+      MediaType::from(&self.0.specifier)
+    }
+  }
+
+  /// Returns the current language server client version if any.
+  pub fn maybe_lsp_version(&self) -> Option<i32> {
+    self.0.maybe_lsp_version
+  }
+
+  fn maybe_module(
+    &self,
+  ) -> Option<&Result<deno_graph::Module, deno_graph::ModuleGraphError>> {
+    self.0.maybe_module.as_ref()
+  }
+
+  pub fn maybe_parsed_source(
+    &self,
+  ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
+    self.maybe_module().map(|r| {
+      r.as_ref()
+        .map(|m| m.parsed_source.clone())
+        .map_err(|err| err.clone())
+    })
+  }
+
+  pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
+    self.0.maybe_navigation_tree.clone()
+  }
+
+  pub fn maybe_warning(&self) -> Option<String> {
+    self.0.maybe_warning.clone()
+  }
+
+  pub fn dependencies(&self) -> Option<Vec<(String, deno_graph::Dependency)>> {
+    let module = self.maybe_module()?.as_ref().ok()?;
+    Some(
+      module
+        .dependencies
+        .iter()
+        .map(|(s, d)| (s.clone(), d.clone()))
+        .collect(),
+    )
+  }
+
+  /// If the supplied position is within a dependency range, return the resolved
+  /// string specifier for the dependency, the resolved dependency and the range
+  /// in the source document of the specifier.
+  pub fn get_maybe_dependency(
+    &self,
+    position: &lsp::Position,
+  ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
+    let module = self.maybe_module()?.as_ref().ok()?;
+    let position = deno_graph::Position {
+      line: position.line as usize,
+      character: position.character as usize,
+    };
+    module.dependencies.iter().find_map(|(s, dep)| {
+      dep
+        .includes(&position)
+        .map(|r| (s.clone(), dep.clone(), r.clone()))
+    })
   }
 }
 
@@ -446,7 +606,7 @@ fn recurse_dependents(
 }
 
 #[derive(Debug, Default)]
-struct Inner {
+struct DocumentsInner {
   /// The DENO_DIR that the documents looks for non-file based modules.
   cache: HttpCache,
   /// A flag that indicates that stated data is potentially invalid and needs to
@@ -468,7 +628,7 @@ struct Inner {
   redirects: HashMap<ModuleSpecifier, ModuleSpecifier>,
 }
 
-impl Inner {
+impl DocumentsInner {
   fn new(location: &Path) -> Self {
     Self {
       cache: HttpCache::new(location),
@@ -484,7 +644,7 @@ impl Inner {
 
   /// Adds a document by reading the document from the file system.
   fn add(&mut self, specifier: ModuleSpecifier) -> Option<Document> {
-    let version = self.calculate_version(&specifier)?;
+    let fs_version = self.calculate_fs_version(&specifier)?;
     let path = self.get_path(&specifier)?;
     let bytes = fs::read(path).ok()?;
     let doc = if specifier.scheme() == "file" {
@@ -493,7 +653,7 @@ impl Inner {
       let content = Arc::new(get_source_from_bytes(bytes, maybe_charset).ok()?);
       Document::new(
         specifier.clone(),
-        version,
+        fs_version,
         None,
         content,
         self.get_maybe_resolver(),
@@ -507,7 +667,7 @@ impl Inner {
       let content = Arc::new(get_source_from_bytes(bytes, maybe_charset).ok()?);
       Document::new(
         specifier.clone(),
-        version,
+        fs_version,
         maybe_headers,
         content,
         self.get_maybe_resolver(),
@@ -524,7 +684,7 @@ impl Inner {
     let mut dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>> =
       HashMap::new();
     for (specifier, doc) in &self.docs {
-      if let Some(Ok(module)) = &doc.maybe_module {
+      if let Some(Ok(module)) = doc.maybe_module() {
         for dependency in module.dependencies.values() {
           if let Some(dep) = dependency.get_code() {
             dependents_map
@@ -550,7 +710,10 @@ impl Inner {
     self.dependents_map = dependents_map;
   }
 
-  fn calculate_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  fn calculate_fs_version(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
     let path = self.get_path(specifier)?;
     let metadata = fs::metadata(path).ok()?;
     if let Ok(modified) = metadata.modified() {
@@ -569,16 +732,8 @@ impl Inner {
     specifier: &ModuleSpecifier,
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
-  ) -> Result<(), AnyError> {
-    // this duplicates the .get_resolver() method, because there is no easy
-    // way to avoid the double borrow of self that occurs here with getting the
-    // mut doc out.
-    let maybe_resolver = if self.maybe_jsx_resolver.is_some() {
-      self.maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-    } else {
-      self.maybe_import_map.as_ref().map(|im| im.as_resolver())
-    };
-    let doc = self.docs.get_mut(specifier).map_or_else(
+  ) -> Result<Document, AnyError> {
+    let doc = self.docs.get(specifier).map_or_else(
       || {
         Err(custom_error(
           "NotFound",
@@ -588,7 +743,9 @@ impl Inner {
       Ok,
     )?;
     self.dirty = true;
-    doc.change(version, changes, maybe_resolver)
+    let doc = doc.with_change(version, changes, self.get_maybe_resolver())?;
+    self.docs.insert(doc.specifier().clone(), doc.clone());
+    Ok(doc)
   }
 
   fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
@@ -601,7 +758,7 @@ impl Inner {
       },
       Ok,
     )?;
-    doc.close();
+    *doc = doc.with_closed();
     self.dirty = true;
     Ok(())
   }
@@ -634,25 +791,6 @@ impl Inner {
     self.docs.contains_key(&specifier)
   }
 
-  fn content(&mut self, specifier: &ModuleSpecifier) -> Option<Arc<String>> {
-    self.get(specifier).map(|d| d.content())
-  }
-
-  fn dependencies(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Vec<(String, deno_graph::Dependency)>> {
-    let doc = self.get(specifier)?;
-    let module = doc.maybe_module.as_ref()?.as_ref().ok()?;
-    Some(
-      module
-        .dependencies
-        .iter()
-        .map(|(s, d)| (s.clone(), d.clone()))
-        .collect(),
-    )
-  }
-
   fn dependents(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -678,22 +816,13 @@ impl Inner {
     self.docs.get(&specifier)
   }
 
-  fn get_maybe_dependency(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    position: &lsp::Position,
-  ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
-    let doc = self.get(specifier)?;
-    let module = doc.maybe_module.as_ref()?.as_ref().ok()?;
-    let position = deno_graph::Position {
-      line: position.line as usize,
-      character: position.character as usize,
-    };
-    module.dependencies.iter().find_map(|(s, dep)| {
-      dep
-        .includes(&position)
-        .map(|r| (s.clone(), dep.clone(), r.clone()))
-    })
+  fn get_cached(&mut self, specifier: &ModuleSpecifier) -> Option<&Document> {
+    let specifier = self
+      .resolve_specifier(specifier)
+      .unwrap_or_else(|| specifier.clone());
+    // this does not use `self.get` since that lazily adds documents, and we
+    // only care about documents already in the cache.
+    self.docs.get(&specifier)
   }
 
   fn get_maybe_resolver(&self) -> Option<&dyn deno_graph::source::Resolver> {
@@ -702,26 +831,6 @@ impl Inner {
     } else {
       self.maybe_import_map.as_ref().map(|im| im.as_resolver())
     }
-  }
-
-  fn get_maybe_types_for_dependency(
-    &mut self,
-    dependency: &deno_graph::Dependency,
-  ) -> deno_graph::Resolved {
-    let code_dep = dependency.maybe_code.as_ref()?;
-    let (specifier, _) = code_dep.as_ref().ok()?;
-    let doc = self.get(specifier)?;
-    doc.maybe_types_dependency()
-  }
-
-  fn get_navigation_tree(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Arc<tsc::NavigationTree>> {
-    self
-      .get(specifier)
-      .map(|d| d.maybe_navigation_tree.clone())
-      .flatten()
   }
 
   fn get_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
@@ -737,66 +846,24 @@ impl Inner {
     }
   }
 
-  fn is_diagnosable(&mut self, specifier: &ModuleSpecifier) -> bool {
-    if let Some(doc) = self.get(specifier) {
-      doc.is_diagnosable()
-    } else {
-      false
-    }
-  }
-
-  fn is_formattable(&mut self, specifier: &ModuleSpecifier) -> bool {
-    // currently any document that is open in the language server is formattable
-    self.is_open(specifier)
-  }
-
-  fn is_open(&mut self, specifier: &ModuleSpecifier) -> bool {
-    let specifier = self
-      .resolve_specifier(specifier)
-      .unwrap_or_else(|| specifier.clone());
-    // this does not use `self.get` since that lazily adds documents, and we
-    // only care about documents already in the cache.
-    if let Some(doc) = self.docs.get(&specifier) {
-      doc.is_open()
-    } else {
-      false
-    }
-  }
-
   fn is_valid(&mut self, specifier: &ModuleSpecifier) -> bool {
-    if self.is_open(specifier) {
+    if self
+      .get_cached(specifier)
+      .map(|d| d.is_open())
+      .unwrap_or(false)
+    {
       true
     } else if let Some(specifier) = self.resolve_specifier(specifier) {
-      self.docs.get(&specifier).map(|d| d.version.clone())
-        == self.calculate_version(&specifier)
+      self
+        .docs
+        .get(&specifier)
+        .map(|d| d.fs_version().to_string())
+        == self.calculate_fs_version(&specifier)
     } else {
       // even though it isn't valid, it just can't exist, so we will say it is
       // valid
       true
     }
-  }
-
-  fn line_index(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Arc<LineIndex>> {
-    let specifier = self.resolve_specifier(specifier)?;
-    self.docs.get(&specifier).map(|doc| doc.line_index.clone())
-  }
-
-  fn lsp_version(&self, specifier: &ModuleSpecifier) -> Option<i32> {
-    self
-      .docs
-      .get(specifier)
-      .map(|doc| doc.maybe_lsp_version)
-      .flatten()
-  }
-
-  fn maybe_warning(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
-    self
-      .get(specifier)
-      .map(|d| d.maybe_warning.clone())
-      .flatten()
   }
 
   fn open(
@@ -805,33 +872,38 @@ impl Inner {
     version: i32,
     language_id: LanguageId,
     content: Arc<String>,
-  ) {
+  ) -> Document {
     let maybe_resolver = self.get_maybe_resolver();
-    let document_data = Document::open(
+    let document = Document::open(
       specifier.clone(),
       version,
       language_id,
       content,
       maybe_resolver,
     );
-    self.docs.insert(specifier, document_data);
+    self.docs.insert(specifier, document.clone());
     self.dirty = true;
+    document
   }
 
-  fn parsed_source(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
+  fn documents(
+    &self,
+    open_only: bool,
+    diagnosable_only: bool,
+  ) -> Vec<Document> {
     self
-      .get(specifier)
-      .map(|doc| {
-        doc.maybe_module.as_ref().map(|r| {
-          r.as_ref()
-            .map(|m| m.parsed_source.clone())
-            .map_err(|err| err.clone())
-        })
+      .docs
+      .values()
+      .filter_map(|doc| {
+        let open = open_only && doc.is_open();
+        let diagnosable = diagnosable_only && doc.is_diagnosable();
+        if (!open_only || open) && (!diagnosable_only || diagnosable) {
+          Some(doc.clone())
+        } else {
+          None
+        }
       })
-      .flatten()
+      .collect()
   }
 
   fn resolve(
@@ -841,7 +913,7 @@ impl Inner {
   ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
     let doc = self.get(referrer)?;
     let mut results = Vec::new();
-    if let Some(Ok(module)) = &doc.maybe_module {
+    if let Some(Ok(module)) = doc.maybe_module() {
       let dependencies = module.dependencies.clone();
       for specifier in specifiers {
         if specifier.starts_with("asset:") {
@@ -878,8 +950,7 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let doc = self.get(specifier)?;
-    let maybe_module =
-      doc.maybe_module.as_ref().map(|r| r.as_ref().ok()).flatten();
+    let maybe_module = doc.maybe_module().map(|r| r.as_ref().ok()).flatten();
     let maybe_types_dependency = maybe_module
       .map(|m| {
         m.maybe_types_dependency
@@ -969,35 +1040,8 @@ impl Inner {
     let doc = self.docs.get_mut(specifier).ok_or_else(|| {
       custom_error("NotFound", format!("Specifier not found {}", specifier))
     })?;
-    doc.maybe_navigation_tree = Some(navigation_tree);
+    *doc = doc.with_navigation_tree(navigation_tree);
     Ok(())
-  }
-
-  fn specifiers(
-    &self,
-    open_only: bool,
-    diagnosable_only: bool,
-  ) -> Vec<ModuleSpecifier> {
-    self
-      .docs
-      .iter()
-      .filter_map(|(specifier, doc)| {
-        let open = open_only && doc.is_open();
-        let diagnosable = diagnosable_only && doc.is_diagnosable();
-        if (!open_only || open) && (!diagnosable_only || diagnosable) {
-          Some(specifier.clone())
-        } else {
-          None
-        }
-      })
-      .collect()
-  }
-
-  fn text_info(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<SourceTextInfo> {
-    self.get(specifier).map(|d| d.source.clone())
   }
 
   fn update_config(
@@ -1029,21 +1073,28 @@ impl Inner {
     }
     self.dirty = true;
   }
-
-  fn version(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.get(specifier).map(|d| {
-      d.maybe_lsp_version
-        .map_or_else(|| d.version.clone(), |v| v.to_string())
-    })
-  }
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Documents(Arc<Mutex<Inner>>);
+pub(crate) struct Documents(Arc<Mutex<DocumentsInner>>);
 
 impl Documents {
   pub fn new(location: &Path) -> Self {
-    Self(Arc::new(Mutex::new(Inner::new(location))))
+    Self(Arc::new(Mutex::new(DocumentsInner::new(location))))
+  }
+
+  /// "Open" a document from the perspective of the editor, meaning that
+  /// requests for information from the document will come from the in-memory
+  /// representation received from the language server client, versus reading
+  /// information from the disk.
+  pub fn open(
+    &self,
+    specifier: ModuleSpecifier,
+    version: i32,
+    language_id: LanguageId,
+    content: Arc<String>,
+  ) -> Document {
+    self.0.lock().open(specifier, version, language_id, content)
   }
 
   /// Apply language server content changes to an open document.
@@ -1052,7 +1103,7 @@ impl Documents {
     specifier: &ModuleSpecifier,
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<Document, AnyError> {
     self.0.lock().change(specifier, version, changes)
   }
 
@@ -1078,20 +1129,6 @@ impl Documents {
     self.0.lock().contains_specifier(specifier)
   }
 
-  /// If the specifier can be resolved to a document, return its current
-  /// content, otherwise none.
-  pub fn content(&self, specifier: &ModuleSpecifier) -> Option<Arc<String>> {
-    self.0.lock().content(specifier)
-  }
-
-  /// Return an optional vector of dependencies for a given specifier.
-  pub fn dependencies(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Vec<(String, deno_graph::Dependency)>> {
-    self.0.lock().dependencies(specifier)
-  }
-
   /// Return an array of specifiers, if any, that are dependent upon the
   /// supplied specifier. This is used to determine invalidation of diagnostics
   /// when a module has been changed.
@@ -1102,85 +1139,21 @@ impl Documents {
     self.0.lock().dependents(specifier)
   }
 
-  /// If the supplied position is within a dependency range, return the resolved
-  /// string specifier for the dependency, the resolved dependency and the range
-  /// in the source document of the specifier.
-  pub fn get_maybe_dependency(
+  /// Return a vector of documents that are contained in the document store,
+  /// where `open_only` flag would provide only those documents currently open
+  /// in the editor and `diagnosable_only` would provide only those documents
+  /// that the language server can provide diagnostics for.
+  pub fn documents(
     &self,
-    specifier: &ModuleSpecifier,
-    position: &lsp::Position,
-  ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
-    self.0.lock().get_maybe_dependency(specifier, position)
+    open_only: bool,
+    diagnosable_only: bool,
+  ) -> Vec<Document> {
+    self.0.lock().documents(open_only, diagnosable_only)
   }
 
-  /// For a given dependency, try to resolve the maybe_types_dependency for the
-  /// dependency. This covers modules that assert their own types, like via the
-  /// triple-slash reference, or the `X-TypeScript-Types` header.
-  pub fn get_maybe_types_for_dependency(
-    &self,
-    dependency: &deno_graph::Dependency,
-  ) -> deno_graph::Resolved {
-    self.0.lock().get_maybe_types_for_dependency(dependency)
-  }
-
-  /// Get a reference to the navigation tree stored for a given specifier, if
-  /// any.
-  pub fn get_navigation_tree(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Arc<tsc::NavigationTree>> {
-    self.0.lock().get_navigation_tree(specifier)
-  }
-
-  /// Indicates that a specifier is able to be diagnosed by the language server
-  pub fn is_diagnosable(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.lock().is_diagnosable(specifier)
-  }
-
-  /// Indicates that a specifier is formattable.
-  pub fn is_formattable(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.lock().is_formattable(specifier)
-  }
-
-  /// Return a reference to the line index for a given specifiers, if any.
-  pub fn line_index(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Arc<LineIndex>> {
-    self.0.lock().line_index(specifier)
-  }
-
-  /// Return the current language server client version for a given specifier,
-  /// if any.
-  pub fn lsp_version(&self, specifier: &ModuleSpecifier) -> Option<i32> {
-    self.0.lock().lsp_version(specifier)
-  }
-
-  /// Return a warning header for a given specifier, if present.
-  pub fn maybe_warning(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.0.lock().maybe_warning(specifier)
-  }
-
-  /// "Open" a document from the perspective of the editor, meaning that
-  /// requests for information from the document will come from the in-memory
-  /// representation received from the language server client, versus reading
-  /// information from the disk.
-  pub fn open(
-    &self,
-    specifier: ModuleSpecifier,
-    version: i32,
-    language_id: LanguageId,
-    content: Arc<String>,
-  ) {
-    self.0.lock().open(specifier, version, language_id, content)
-  }
-
-  /// Return the parsed source or the module graph error for a given specifier.
-  pub fn parsed_source(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
-    self.0.lock().parsed_source(specifier)
+  /// Return a document for the specifier.
+  pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
+    self.0.lock().get(specifier).cloned()
   }
 
   /// For a given set of string specifiers, resolve each one from the graph,
@@ -1211,26 +1184,6 @@ impl Documents {
       .set_navigation_tree(specifier, navigation_tree)
   }
 
-  /// Return a vector of specifiers that are contained in the document store,
-  /// where `open_only` flag would provide only those documents currently open
-  /// in the editor and `diagnosable_only` would provide only those documents
-  /// that the language server can provide diagnostics for.
-  pub fn specifiers(
-    &self,
-    open_only: bool,
-    diagnosable_only: bool,
-  ) -> Vec<ModuleSpecifier> {
-    self.0.lock().specifiers(open_only, diagnosable_only)
-  }
-
-  /// Return the current text info for a given specifier.
-  pub fn text_info(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<SourceTextInfo> {
-    self.0.lock().text_info(specifier)
-  }
-
   pub fn update_config(
     &self,
     maybe_import_map: Option<Arc<import_map::ImportMap>>,
@@ -1240,11 +1193,6 @@ impl Documents {
       .0
       .lock()
       .update_config(maybe_import_map, maybe_config_file)
-  }
-
-  /// Return the version of a document in the document cache.
-  pub fn version(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.0.lock().version(specifier)
   }
 }
 
@@ -1270,15 +1218,10 @@ console.log(b);
 "#
       .to_string(),
     );
-    documents.open(
-      specifier.clone(),
-      1,
-      "javascript".parse().unwrap(),
-      content,
-    );
-    assert!(documents.is_formattable(&specifier));
-    assert!(documents.is_diagnosable(&specifier));
-    assert!(documents.line_index(&specifier).is_some());
+    let document =
+      documents.open(specifier, 1, "javascript".parse().unwrap(), content);
+    assert!(document.is_open());
+    assert!(document.is_diagnosable());
   }
 
   #[test]
@@ -1318,7 +1261,7 @@ console.log(b);
       )
       .unwrap();
     assert_eq!(
-      documents.content(&specifier).unwrap().as_str(),
+      documents.get(&specifier).unwrap().content().as_str(),
       r#"import * as b from "./b.ts";
 console.log(b, "hello deno");
 "#

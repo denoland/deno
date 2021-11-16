@@ -3,7 +3,6 @@
 use crate::bindings;
 use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
-use crate::error::AnyError;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
 use crate::inspector::JsRuntimeInspector;
@@ -20,6 +19,7 @@ use crate::OpPayload;
 use crate::OpResult;
 use crate::OpState;
 use crate::PromiseId;
+use anyhow::Error;
 use futures::channel::oneshot;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
@@ -47,10 +47,9 @@ pub enum Snapshot {
   Boxed(Box<[u8]>),
 }
 
-pub type JsErrorCreateFn = dyn Fn(JsError) -> AnyError;
+pub type JsErrorCreateFn = dyn Fn(JsError) -> Error;
 
-pub type GetErrorClassFn =
-  &'static dyn for<'e> Fn(&'e AnyError) -> &'static str;
+pub type GetErrorClassFn = &'static dyn for<'e> Fn(&'e Error) -> &'static str;
 
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
@@ -91,7 +90,7 @@ struct DynImportModEvaluate {
 
 struct ModEvaluate {
   promise: v8::Global<v8::Promise>,
-  sender: oneshot::Sender<Result<(), AnyError>>,
+  sender: oneshot::Sender<Result<(), Error>>,
 }
 
 pub struct CrossIsolateStore<T>(Arc<Mutex<CrossIsolateStoreInner<T>>>);
@@ -450,7 +449,7 @@ impl JsRuntime {
   }
 
   /// Initializes JS of provided Extensions
-  fn init_extension_js(&mut self) -> Result<(), AnyError> {
+  fn init_extension_js(&mut self) -> Result<(), Error> {
     // Take extensions to avoid double-borrow
     let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
     for m in extensions.iter_mut() {
@@ -468,7 +467,7 @@ impl JsRuntime {
   }
 
   /// Initializes ops of provided Extensions
-  fn init_extension_ops(&mut self) -> Result<(), AnyError> {
+  fn init_extension_ops(&mut self) -> Result<(), Error> {
     let op_state = self.op_state();
     // Take extensions to avoid double-borrow
     let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
@@ -552,14 +551,14 @@ impl JsRuntime {
   ///
   /// The same `name` value can be used for multiple executions.
   ///
-  /// `AnyError` can be downcast to a type that exposes additional information
+  /// `Error` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn execute_script(
     &mut self,
     name: &str,
     source_code: &str,
-  ) -> Result<v8::Global<v8::Value>, AnyError> {
+  ) -> Result<v8::Global<v8::Value>, Error> {
     let scope = &mut self.handle_scope();
 
     let source = v8::String::new(scope, source_code).unwrap();
@@ -592,7 +591,7 @@ impl JsRuntime {
   /// Takes a snapshot. The isolate should have been created with will_snapshot
   /// set to true.
   ///
-  /// `AnyError` can be downcast to a type that exposes additional information
+  /// `Error` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   pub fn snapshot(&mut self) -> v8::StartupData {
@@ -702,7 +701,7 @@ impl JsRuntime {
   pub async fn resolve_value(
     &mut self,
     global: v8::Global<v8::Value>,
-  ) -> Result<v8::Global<v8::Value>, AnyError> {
+  ) -> Result<v8::Global<v8::Value>, Error> {
     poll_fn(|cx| {
       let state = self.poll_event_loop(cx, false);
 
@@ -746,7 +745,7 @@ impl JsRuntime {
   pub async fn run_event_loop(
     &mut self,
     wait_for_inspector: bool,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), Error> {
     poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
   }
 
@@ -758,7 +757,7 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
     wait_for_inspector: bool,
-  ) -> Poll<Result<(), AnyError>> {
+  ) -> Poll<Result<(), Error>> {
     // We always poll the inspector first
     let _ = self.inspector().poll_unpin(cx);
 
@@ -902,7 +901,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
   scope: &mut v8::HandleScope<'s>,
   exception: v8::Local<v8::Value>,
   in_promise: bool,
-) -> Result<T, AnyError> {
+) -> Result<T, Error> {
   let is_terminating_exception = scope.is_execution_terminating();
   let mut exception = exception;
 
@@ -943,7 +942,7 @@ impl JsRuntime {
   pub(crate) fn instantiate_module(
     &mut self,
     id: ModuleId,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -981,7 +980,7 @@ impl JsRuntime {
     &mut self,
     load_id: ModuleLoadId,
     id: ModuleId,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), Error> {
     let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
 
@@ -1058,7 +1057,7 @@ impl JsRuntime {
   /// Implementors must manually call `run_event_loop()` to drive module
   /// evaluation future.
   ///
-  /// `AnyError` can be downcast to a type that exposes additional information
+  /// `Error` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   ///
@@ -1066,7 +1065,7 @@ impl JsRuntime {
   pub fn mod_evaluate(
     &mut self,
     id: ModuleId,
-  ) -> oneshot::Receiver<Result<(), AnyError>> {
+  ) -> oneshot::Receiver<Result<(), Error>> {
     let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
@@ -1130,7 +1129,7 @@ impl JsRuntime {
     receiver
   }
 
-  fn dynamic_import_reject(&mut self, id: ModuleLoadId, err: AnyError) {
+  fn dynamic_import_reject(&mut self, id: ModuleLoadId, err: Error) {
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
@@ -1193,7 +1192,7 @@ impl JsRuntime {
   fn prepare_dyn_imports(
     &mut self,
     cx: &mut Context,
-  ) -> Poll<Result<(), AnyError>> {
+  ) -> Poll<Result<(), Error>> {
     let module_map_rc = Self::module_map(self.v8_isolate());
 
     if module_map_rc.borrow().preparing_dynamic_imports.is_empty() {
@@ -1230,10 +1229,7 @@ impl JsRuntime {
     }
   }
 
-  fn poll_dyn_imports(
-    &mut self,
-    cx: &mut Context,
-  ) -> Poll<Result<(), AnyError>> {
+  fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), Error>> {
     let module_map_rc = Self::module_map(self.v8_isolate());
 
     if module_map_rc.borrow().pending_dynamic_imports.is_empty() {
@@ -1408,7 +1404,7 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
     code: Option<String>,
-  ) -> Result<ModuleId, AnyError> {
+  ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
       module_map_rc.borrow_mut().new_module(
@@ -1445,7 +1441,7 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
     code: Option<String>,
-  ) -> Result<ModuleId, AnyError> {
+  ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
       module_map_rc.borrow_mut().new_module(
@@ -1471,7 +1467,7 @@ impl JsRuntime {
     Ok(root_id)
   }
 
-  fn check_promise_exceptions(&mut self) -> Result<(), AnyError> {
+  fn check_promise_exceptions(&mut self) -> Result<(), Error> {
     let state_rc = Self::state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
 
@@ -1496,7 +1492,7 @@ impl JsRuntime {
   }
 
   // Send finished responses to JS
-  fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), AnyError> {
+  fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
     let state_rc = Self::state(self.v8_isolate());
 
     let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
@@ -1552,7 +1548,7 @@ impl JsRuntime {
     }
   }
 
-  fn drain_macrotasks(&mut self) -> Result<(), AnyError> {
+  fn drain_macrotasks(&mut self) -> Result<(), Error> {
     let js_macrotask_cb_handle =
       match &Self::state(self.v8_isolate()).borrow().js_macrotask_cb {
         Some(handle) => handle.clone(),
@@ -1909,11 +1905,11 @@ pub mod tests {
 
   #[test]
   fn test_error_builder() {
-    fn op_err(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
+    fn op_err(_: &mut OpState, _: (), _: ()) -> Result<(), Error> {
       Err(custom_error("DOMExceptionOperationError", "abc"))
     }
 
-    pub fn get_error_class_name(_: &AnyError) -> &'static str {
+    pub fn get_error_class_name(_: &Error) -> &'static str {
       "DOMExceptionOperationError"
     }
 
@@ -2077,7 +2073,7 @@ pub mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, AnyError> {
+      ) -> Result<ModuleSpecifier, Error> {
         assert_eq!(specifier, "file:///main.js");
         assert_eq!(referrer, ".");
         let s = crate::resolve_import(specifier, referrer).unwrap();
@@ -2316,7 +2312,7 @@ assertEquals(1, notify_return_value);
       op_state: Rc<RefCell<OpState>>,
       _: (),
       _: (),
-    ) -> Result<(), AnyError> {
+    ) -> Result<(), Error> {
       let n = {
         let op_state = op_state.borrow();
         let inner_state = op_state.borrow::<InnerState>();

@@ -583,11 +583,9 @@ async fn cache_command(
       Permissions::allow_all(),
       Permissions::allow_all(),
       ps.graph_data.clone(),
+      false,
     )
     .await?;
-    if let Some(graph_error) = ps.take_graph_error() {
-      return Err(graph_error.into());
-    }
   }
 
   Ok(())
