@@ -15,9 +15,9 @@ use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::http_cache::HttpCache;
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;

@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 pub use deno_core::normalize_path;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
