@@ -2391,4 +2391,77 @@ assertEquals(1, notify_return_value);
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
   }
+
+  #[tokio::test]
+  async fn test_set_macrotask_callback_set_next_tick_callback() {
+    async fn op_async_sleep(
+      _op_state: Rc<RefCell<OpState>>,
+      _: (),
+      _: (),
+    ) -> Result<(), Error> {
+      // Future must be Poll::Pending on first call
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+      Ok(())
+    }
+
+    let extension = Extension::builder()
+      .ops(vec![("op_async_sleep", op_async(op_async_sleep))])
+      .build();
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "macrotasks_and_nextticks.js",
+        r#"
+        (async function () {
+          const results = [];
+          Deno.core.setMacrotaskCallback(() => {
+            results.push("macrotask");
+            return true;
+          });
+          Deno.core.setNextTickCallback(() => {
+            results.push("nextTick");
+            Deno.core.setHasTickScheduled(false);
+          });
+
+          Deno.core.setHasTickScheduled(true);
+          await Deno.core.opAsync('op_async_sleep');
+          if (results[0] != "nextTick") {
+            throw new Error(`expected nextTick, got: ${results[0]}`);
+          }
+          if (results[1] != "macrotask") {
+            throw new Error(`expected macrotask, got: ${results[1]}`);
+          }
+        })();
+        "#,
+      )
+      .unwrap();
+    runtime.run_event_loop(false).await.unwrap();
+  }
+
+  #[tokio::test]
+  async fn test_set_macrotask_callback_set_next_tick_callback_multiple() {
+    let mut runtime = JsRuntime::new(Default::default());
+
+    runtime
+      .execute_script(
+        "multiple_macrotasks_and_nextticks.js",
+        r#"
+        Deno.core.setMacrotaskCallback(() => { return true; });
+        Deno.core.setMacrotaskCallback(() => { return true; });
+        Deno.core.setNextTickCallback(() => {});
+        Deno.core.setNextTickCallback(() => {});
+        "#,
+      )
+      .unwrap();
+    let isolate = runtime.v8_isolate();
+    let state_rc = JsRuntime::state(isolate);
+    let state = state_rc.borrow();
+    assert_eq!(state.js_macrotask_cbs.len(), 2);
+    assert_eq!(state.js_nexttick_cbs.len(), 2);
+  }
 }
