@@ -693,6 +693,7 @@ pub async fn cover_files(
       emit::TypeLib::UnstableDenoWindow,
       Permissions::allow_all(),
       Permissions::allow_all(),
+      false,
     )
     .await?;
 

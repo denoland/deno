@@ -1066,6 +1066,136 @@ fn lsp_hover_dependency() {
   );
 }
 
+// Regression test for #12753
+#[test]
+#[ignore]
+fn lsp_hover_keep_type_info_after_invalid_syntax_change() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file1.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export type Foo = { bar(): string };\n"
+      }
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file2.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import { Foo } from './file1.ts'; declare const f: Foo; f\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_error) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file2.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 56
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_error.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "const f: Foo",
+        },
+        ""
+      ],
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 56,
+        },
+        "end": {
+          "line": 0,
+          "character": 57,
+        }
+      }
+    }))
+  );
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file2.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 57
+              },
+              "end": {
+                "line": 0,
+                "character": 58
+              }
+            },
+            "text": "."
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  let (maybe_res, maybe_error) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file2.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 56
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_error.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "const f: Foo",
+        },
+        ""
+      ],
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 56,
+        },
+        "end": {
+          "line": 0,
+          "character": 57,
+        }
+      }
+    }))
+  );
+  shutdown(&mut client);
+}
+
 #[test]
 fn lsp_hover_typescript_types() {
   let _g = http_server();

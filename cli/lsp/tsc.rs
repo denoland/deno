@@ -19,7 +19,7 @@ use crate::config_file::TsConfig;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;

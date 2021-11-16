@@ -19,6 +19,7 @@ mod resources;
 mod runtime;
 
 // Re-exports
+pub use anyhow;
 pub use futures;
 pub use parking_lot;
 pub use serde;

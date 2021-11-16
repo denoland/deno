@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
-use crate::error::AnyError;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
@@ -12,6 +11,7 @@ use crate::OpResult;
 use crate::OpTable;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
+use anyhow::Error;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
@@ -348,7 +348,7 @@ fn opcall_sync<'s>(
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
     .map(|l| l.value() as OpId)
-    .map_err(AnyError::from)
+    .map_err(Error::from)
   {
     Ok(op_id) => op_id,
     Err(err) => {
@@ -405,7 +405,7 @@ fn opcall_async<'s>(
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
     .map(|l| l.value() as OpId)
-    .map_err(AnyError::from)
+    .map_err(Error::from)
   {
     Ok(op_id) => op_id,
     Err(err) => {
@@ -418,7 +418,7 @@ fn opcall_async<'s>(
   let arg1 = args.get(1);
   let promise_id = v8::Local::<v8::Integer>::try_from(arg1)
     .map(|l| l.value() as PromiseId)
-    .map_err(AnyError::from);
+    .map_err(Error::from);
   // Fail if promise id invalid (not an int)
   let promise_id: PromiseId = match promise_id {
     Ok(promise_id) => promise_id,
