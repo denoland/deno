@@ -659,7 +659,7 @@ impl DocumentsInner {
         self.get_maybe_resolver(),
       )
     } else {
-      let cache_filename = self.cache.get_cache_filename(&specifier)?;
+      let cache_filename = self.cache.get_cache_filename(&specifier).ok()?;
       let metadata = http_cache::Metadata::read(&cache_filename).ok()?;
       let maybe_content_type = metadata.headers.get("content-type").cloned();
       let maybe_headers = Some(&metadata.headers);
@@ -837,7 +837,7 @@ impl DocumentsInner {
     if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
     } else {
-      let path = self.cache.get_cache_filename(specifier)?;
+      let path = self.cache.get_cache_filename(specifier).ok()?;
       if path.is_file() {
         Some(path)
       } else {
@@ -989,7 +989,7 @@ impl DocumentsInner {
     specifier: &ModuleSpecifier,
     redirect_limit: usize,
   ) -> Option<ModuleSpecifier> {
-    let cache_filename = self.cache.get_cache_filename(specifier)?;
+    let cache_filename = self.cache.get_cache_filename(specifier).ok()?;
     if redirect_limit > 0 && cache_filename.is_file() {
       let headers = http_cache::Metadata::read(&cache_filename)
         .ok()

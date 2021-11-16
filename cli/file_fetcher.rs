@@ -270,13 +270,7 @@ impl FileFetcher {
     bytes: Vec<u8>,
     headers: &HashMap<String, String>,
   ) -> Result<File, AnyError> {
-    let local =
-      self
-        .http_cache
-        .get_cache_filename(specifier)
-        .ok_or_else(|| {
-          generic_error("Cannot convert specifier to cached filename.")
-        })?;
+    let local = self.http_cache.get_cache_filename(specifier)?;
     let maybe_content_type = headers.get("content-type").cloned();
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
@@ -362,13 +356,7 @@ impl FileFetcher {
     let (media_type, _) =
       map_content_type(specifier, Some(content_type.clone()));
 
-    let local =
-      self
-        .http_cache
-        .get_cache_filename(specifier)
-        .ok_or_else(|| {
-          generic_error("Cannot convert specifier to cached filename.")
-        })?;
+    let local = self.http_cache.get_cache_filename(specifier)?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
     self
@@ -426,13 +414,7 @@ impl FileFetcher {
       map_content_type(specifier, Some(content_type.clone()));
     let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
 
-    let local =
-      self
-        .http_cache
-        .get_cache_filename(specifier)
-        .ok_or_else(|| {
-          generic_error("Cannot convert specifier to cached filename.")
-        })?;
+    let local = self.http_cache.get_cache_filename(specifier)?;
     let mut headers = HashMap::new();
     headers.insert("content-type".to_string(), content_type);
     self
@@ -577,9 +559,12 @@ impl FileFetcher {
     }
   }
 
-  pub fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+  pub fn get_local_path(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<PathBuf, AnyError> {
     if specifier.scheme() == "file" {
-      specifier.to_file_path().ok()
+      Ok(specifier.to_file_path().unwrap())
     } else {
       self.http_cache.get_cache_filename(specifier)
     }

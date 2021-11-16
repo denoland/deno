@@ -90,7 +90,8 @@ impl FetchCacher {
   ) -> Option<EmitMetadata> {
     let filename = self
       .disk_cache
-      .get_cache_filename_with_extension(specifier, "meta")?;
+      .get_cache_filename_with_extension(specifier, "meta")
+      .ok()?;
     let bytes = self.disk_cache.get(&filename).ok()?;
     serde_json::from_slice(&bytes).ok()
   }
@@ -111,17 +112,19 @@ impl FetchCacher {
 
 impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
-    let local = self.file_fetcher.get_local_path(specifier)?;
+    let local = self.file_fetcher.get_local_path(specifier).ok()?;
     if local.is_file() {
       let location = &self.disk_cache.location;
       let emit = self
         .disk_cache
         .get_cache_filename_with_extension(specifier, "js")
+        .ok()
         .map(|p| location.join(p))
         .filter(|p| p.is_file());
       let map = self
         .disk_cache
         .get_cache_filename_with_extension(specifier, "js.map")
+        .ok()
         .map(|p| location.join(p))
         .filter(|p| p.is_file());
       Some(CacheInfo {
@@ -192,7 +195,8 @@ impl Cacher for FetchCacher {
     };
     let filename = self
       .disk_cache
-      .get_cache_filename_with_extension(specifier, extension)?;
+      .get_cache_filename_with_extension(specifier, extension)
+      .ok()?;
     self
       .disk_cache
       .get(&filename)

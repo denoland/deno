@@ -2,7 +2,9 @@
 
 use crate::fs_util;
 use crate::http_cache::url_to_filename;
-use deno_core::url::{Host, Url};
+use deno_core::error::AnyError;
+use deno_core::url::Host;
+use deno_core::url::Url;
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
@@ -46,7 +48,7 @@ impl DiskCache {
     })
   }
 
-  fn get_cache_filename(&self, url: &Url) -> Option<PathBuf> {
+  fn get_cache_filename(&self, url: &Url) -> Result<PathBuf, AnyError> {
     let mut out = PathBuf::new();
 
     let scheme = url.scheme();
@@ -67,12 +69,8 @@ impl DiskCache {
           out.push(path_seg);
         }
       }
-      "http" | "https" | "data" | "blob" => out = url_to_filename(url)?,
       "file" => {
-        let path = match url.to_file_path() {
-          Ok(path) => path,
-          Err(_) => return None,
-        };
+        let path = url.to_file_path().unwrap();
         let mut path_components = path.components();
 
         if cfg!(target_os = "windows") {
@@ -108,25 +106,25 @@ impl DiskCache {
 
         out = out.join(remaining_components);
       }
-      _ => return None,
+      _ => out = url_to_filename(url)?,
     };
 
-    Some(out)
+    Ok(out)
   }
 
   pub fn get_cache_filename_with_extension(
     &self,
     url: &Url,
     extension: &str,
-  ) -> Option<PathBuf> {
+  ) -> Result<PathBuf, AnyError> {
     let base = self.get_cache_filename(url)?;
 
     match base.extension() {
-      None => Some(base.with_extension(extension)),
+      None => Ok(base.with_extension(extension)),
       Some(ext) => {
         let original_extension = OsStr::to_str(ext).unwrap();
         let final_extension = format!("{}.{}", original_extension, extension);
-        Some(base.with_extension(final_extension))
+        Ok(base.with_extension(final_extension))
       }
     }
   }
@@ -229,9 +227,10 @@ mod tests {
     }
 
     for test_case in &test_cases {
-      let cache_filename =
-        cache.get_cache_filename(&Url::parse(test_case.0).unwrap());
-      assert_eq!(cache_filename, Some(PathBuf::from(test_case.1)));
+      let cache_filename = cache
+        .get_cache_filename(&Url::parse(test_case.0).unwrap())
+        .unwrap();
+      assert_eq!(cache_filename, PathBuf::from(test_case.1));
     }
   }
 
@@ -273,11 +272,13 @@ mod tests {
 
     for test_case in &test_cases {
       assert_eq!(
-        cache.get_cache_filename_with_extension(
-          &Url::parse(test_case.0).unwrap(),
-          test_case.1
-        ),
-        Some(PathBuf::from(test_case.2))
+        cache
+          .get_cache_filename_with_extension(
+            &Url::parse(test_case.0).unwrap(),
+            test_case.1
+          )
+          .unwrap(),
+        PathBuf::from(test_case.2)
       )
     }
   }
@@ -300,9 +301,9 @@ mod tests {
     }
 
     for test_case in &test_cases {
-      let cache_filename =
-        cache.get_cache_filename(&Url::parse(test_case).unwrap());
-      assert_eq!(cache_filename, None);
+      assert!(cache
+        .get_cache_filename(&Url::parse(test_case).unwrap())
+        .is_err());
     }
   }
 }

@@ -674,11 +674,13 @@ impl ProcState {
     let emit_path = self
       .dir
       .gen_cache
-      .get_cache_filename_with_extension(url, "js")?;
+      .get_cache_filename_with_extension(url, "js")
+      .ok()?;
     let emit_map_path = self
       .dir
       .gen_cache
-      .get_cache_filename_with_extension(url, "js.map")?;
+      .get_cache_filename_with_extension(url, "js.map")
+      .ok()?;
     if let Ok(code) = self.dir.gen_cache.get(&emit_path) {
       let maybe_map = if let Ok(map) = self.dir.gen_cache.get(&emit_map_path) {
         Some(map)
