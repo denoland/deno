@@ -27,7 +27,15 @@
     return core.opAsync("op_tls_handshake", rid);
   }
 
+  function opTlsGetAlpnProtocol(rid) {
+    return core.opAsync("op_tls_get_alpn_protocol", rid);
+  }
+
   class TlsConn extends Conn {
+    getAgreedAlpnProtocol() {
+      return opTlsGetAlpnProtocol(this.rid);
+    }
+
     handshake() {
       return opTlsHandshake(this.rid);
     }
@@ -41,6 +49,7 @@
     caCerts = [],
     certChain = undefined,
     privateKey = undefined,
+    alpnProtocols,
   }) {
     const res = await opConnectTls({
       port,
@@ -50,6 +59,7 @@
       caCerts,
       certChain,
       privateKey,
+      alpnProtocols,
     });
     return new TlsConn(res.rid, res.remoteAddr, res.localAddr);
   }

@@ -190,6 +190,13 @@ impl TlsStream {
   fn poll_handshake(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
     self.inner_mut().poll_handshake(cx)
   }
+
+  fn get_alpn_protocol(&mut self) -> Option<String> {
+    match self.inner_mut().tls.get_alpn_protocol() {
+      None => None,
+      Some(s) => Some(std::str::from_utf8(s).unwrap().to_string())
+    }
+  }
 }
 
 impl AsyncRead for TlsStream {
@@ -517,6 +524,10 @@ impl ReadHalf {
       .tls_stream
       .into_inner()
   }
+
+  fn get_alpn_protocol(&mut self) -> Option<String> {
+    self.shared.get_alpn_protocol()
+  }
 }
 
 impl AsyncRead for ReadHalf {
@@ -658,6 +669,11 @@ impl Shared {
   fn drop_shared_waker(self_ptr: *const ()) {
     let _ = unsafe { Weak::from_raw(self_ptr as *const Self) };
   }
+
+  fn get_alpn_protocol(self: &Arc<Self>) -> Option<String> {
+    let mut tls_stream = self.tls_stream.lock();
+    return tls_stream.get_alpn_protocol();
+  }
 }
 
 struct ImplementReadTrait<'a, T>(&'a mut T);
@@ -691,6 +707,7 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
     ("op_tls_listen", op_sync(op_tls_listen::<P>)),
     ("op_tls_accept", op_async(op_tls_accept)),
     ("op_tls_handshake", op_async(op_tls_handshake)),
+    ("op_tls_get_alpn_protocol", op_async(op_tls_get_alpn_protocol)),
   ]
 }
 
@@ -753,6 +770,13 @@ impl TlsStreamResource {
     }
     Ok(())
   }
+
+  pub async fn get_alpn_protocol(self: &Rc<Self>) ->
+    Result<Option<String>, AnyError>
+  {
+    let mut rd = RcRef::map(self, |r| &r.rd).borrow_mut().await;
+    Ok(rd.get_alpn_protocol())
+  }
 }
 
 impl Resource for TlsStreamResource {
@@ -787,6 +811,7 @@ pub struct ConnectTlsArgs {
   ca_certs: Vec<String>,
   cert_chain: Option<String>,
   private_key: Option<String>,
+  alpn_protocols: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -947,6 +972,12 @@ where
     ca_certs,
     unsafely_ignore_certificate_errors,
   )?;
+
+  if let Some(alpn_protocols) = args.alpn_protocols {
+    super::check_unstable2(&state, "Deno.connectTls#alpnProtocols");
+    tls_config.alpn_protocols =
+      alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
+  }
 
   if args.cert_chain.is_some() || args.private_key.is_some() {
     let cert_chain = args
@@ -1150,4 +1181,16 @@ pub async fn op_tls_handshake(
     .resource_table
     .get::<TlsStreamResource>(rid)?;
   resource.handshake().await
+}
+
+pub async fn op_tls_get_alpn_protocol(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  _: (),
+) -> Result<Option<String>, AnyError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<TlsStreamResource>(rid)?;
+  resource.get_alpn_protocol().await
 }

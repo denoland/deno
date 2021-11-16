@@ -935,6 +935,22 @@ declare namespace Deno {
     certChain?: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey?: string;
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Application-Layer Protocol Negotiation (ALPN) protocols supported by
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
+  }
+
+  export interface TlsConn extends Conn {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Returns the ALPN protocol selected during negotiation with the server.
+     * If no ALPN protocol selected, returns `null`.
+     */
+    getAgreedAlpnProtocol(): Promise<string | null>;
   }
 
   /** **UNSTABLE** New API, yet to be vetted.
