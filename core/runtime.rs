@@ -159,8 +159,8 @@ pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_macrotask_cb: Vec<v8::Global<v8::Function>>,
-  pub(crate) js_nexttick_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
+  pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -366,8 +366,8 @@ impl JsRuntime {
       dyn_module_evaluate_idle_counter: 0,
       js_recv_cb: None,
       js_sync_cb: None,
-      js_macrotask_cb: vec![],
-      js_nexttick_cb: None,
+      js_macrotask_cbs: vec![],
+      js_nexttick_cbs: vec![],
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       js_error_create_fn,
@@ -1560,11 +1560,11 @@ impl JsRuntime {
   fn drain_macrotasks(&mut self) -> Result<(), AnyError> {
     let state = Self::state(self.v8_isolate());
 
-    if state.borrow().js_macrotask_cb.is_empty() {
+    if state.borrow().js_macrotask_cbs.is_empty() {
       return Ok(());
     }
 
-    let js_macrotask_cb_handles = state.borrow().js_macrotask_cb.clone();
+    let js_macrotask_cb_handles = state.borrow().js_macrotask_cbs.clone();
     let scope = &mut self.handle_scope();
 
     for js_macrotask_cb_handle in js_macrotask_cb_handles {
@@ -1599,10 +1599,9 @@ impl JsRuntime {
   fn drain_nexttick(&mut self) -> Result<(), AnyError> {
     let state = Self::state(self.v8_isolate());
 
-    let js_nexttick_cb_handle = match &state.borrow().js_nexttick_cb {
-      Some(handle) => handle.clone(),
-      None => return Ok(()),
-    };
+    if state.borrow().js_nexttick_cbs.is_empty() {
+      return Ok(());
+    }
 
     if !state.borrow().has_tick_scheduled {
       let scope = &mut self.handle_scope();
@@ -1614,15 +1613,19 @@ impl JsRuntime {
       return Ok(());
     }
 
+    let js_nexttick_cb_handles = state.borrow().js_nexttick_cbs.clone();
     let scope = &mut self.handle_scope();
-    let js_nexttick_cb = js_nexttick_cb_handle.open(scope);
 
-    let tc_scope = &mut v8::TryCatch::new(scope);
-    let this = v8::undefined(tc_scope).into();
-    js_nexttick_cb.call(tc_scope, this, &[]);
+    for js_nexttick_cb_handle in js_nexttick_cb_handles {
+      let js_nexttick_cb = js_nexttick_cb_handle.open(scope);
 
-    if let Some(exception) = tc_scope.exception() {
-      return exception_to_err_result(tc_scope, exception, false);
+      let tc_scope = &mut v8::TryCatch::new(scope);
+      let this = v8::undefined(tc_scope).into();
+      js_nexttick_cb.call(tc_scope, this, &[]);
+
+      if let Some(exception) = tc_scope.exception() {
+        return exception_to_err_result(tc_scope, exception, false);
+      }
     }
 
     Ok(())

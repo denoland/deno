@@ -86,5 +86,26 @@ declare namespace Deno {
     function setWasmStreamingCallback(
       cb: (source: any, rid: number) => void,
     ): void;
+
+    /**
+     * Set a callback that will be called after resolving ops and before resolving
+     * macrotasks.
+     */
+    function setNextTickCallback(
+      cb: () => void,
+    ): void;
+
+    /** Check if there's a scheduled "next tick". */
+    function hasNextTickScheduled(): bool;
+
+    /** Set a value telling the runtime if there are "next ticks" scheduled */
+    function setHasNextTickScheduled(value: bool): void;
+
+    /**
+     * Set a callback that will be called after resolving ops and "next ticks".
+     */
+    function setMacrotaskCallback(
+      cb: () => bool,
+    ): void;
   }
 }

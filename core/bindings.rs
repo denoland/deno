@@ -511,20 +511,7 @@ fn set_nexttick_callback(
     Err(err) => return throw_type_error(scope, err.to_string()),
   };
 
-  // TODO(bartlomieju): this might be problematic if
-  // multiple versions of `deno_std` are pulled and polyfill
-  // `process.nextTick()`
-  let slot = match &mut state.js_nexttick_cb {
-    slot @ None => slot,
-    _ => {
-      return throw_type_error(
-        scope,
-        "Deno.core.setNextTickCallback() already called",
-      );
-    }
-  };
-
-  slot.replace(v8::Global::new(scope, cb));
+  state.js_nexttick_cbs.push(v8::Global::new(scope, cb));
 }
 
 fn set_macrotask_callback(
@@ -540,7 +527,7 @@ fn set_macrotask_callback(
     Err(err) => return throw_type_error(scope, err.to_string()),
   };
 
-  state.js_macrotask_cb.push(v8::Global::new(scope, cb));
+  state.js_macrotask_cbs.push(v8::Global::new(scope, cb));
 }
 
 fn eval_context(
