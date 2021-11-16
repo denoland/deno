@@ -62,9 +62,9 @@ pub struct File {
 /// Simple struct implementing in-process caching to prevent multiple
 /// fs reads/net fetches for same file.
 #[derive(Debug, Clone, Default)]
-struct FileCache(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
+struct MemoryCache(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
 
-impl FileCache {
+impl MemoryCache {
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<File> {
     let cache = self.0.lock();
     cache.get(specifier).cloned()
@@ -229,7 +229,7 @@ fn strip_shebang(mut value: String) -> String {
 pub struct FileFetcher {
   auth_tokens: AuthTokens,
   allow_remote: bool,
-  cache: FileCache,
+  cache: MemoryCache,
   cache_setting: CacheSetting,
   pub(crate) http_cache: HttpCache,
   http_client: reqwest::Client,
