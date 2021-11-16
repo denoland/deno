@@ -8,7 +8,7 @@ use super::tsc;
 
 use crate::diagnostics;
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde_json::json;

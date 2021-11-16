@@ -1,11 +1,12 @@
-use crate::error::AnyError;
-use crate::{OpFn, OpState};
+use crate::OpFn;
+use crate::OpState;
+use anyhow::Error;
 
 pub type SourcePair = (&'static str, Box<SourceLoadFn>);
-pub type SourceLoadFn = dyn Fn() -> Result<String, AnyError>;
+pub type SourceLoadFn = dyn Fn() -> Result<String, Error>;
 pub type OpPair = (&'static str, Box<OpFn>);
 pub type OpMiddlewareFn = dyn Fn(&'static str, Box<OpFn>) -> Box<OpFn>;
-pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), AnyError>;
+pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
 
 #[derive(Default)]
 pub struct Extension {
@@ -44,7 +45,7 @@ impl Extension {
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
-  pub fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
+  pub fn init_state(&self, state: &mut OpState) -> Result<(), Error> {
     match &self.opstate_fn {
       Some(ofn) => ofn(state),
       None => Ok(()),
@@ -79,7 +80,7 @@ impl ExtensionBuilder {
 
   pub fn state<F>(&mut self, opstate_fn: F) -> &mut Self
   where
-    F: Fn(&mut OpState) -> Result<(), AnyError> + 'static,
+    F: Fn(&mut OpState) -> Result<(), Error> + 'static,
   {
     self.state = Some(Box::new(opstate_fn));
     self

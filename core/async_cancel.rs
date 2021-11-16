@@ -537,7 +537,7 @@ mod internal {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::error::AnyError;
+  use anyhow::Error;
   use futures::future::pending;
   use futures::future::poll_fn;
   use futures::future::ready;
@@ -652,7 +652,7 @@ mod tests {
       // Cancel a spawned task before it actually runs.
       let cancel_handle = Rc::new(CancelHandle::new());
       let future = spawn(async { panic!("the task should not be spawned") })
-        .map_err(AnyError::from)
+        .map_err(Error::from)
         .try_or_cancel(&cancel_handle);
       cancel_handle.cancel();
       let error = future.await.unwrap_err();
