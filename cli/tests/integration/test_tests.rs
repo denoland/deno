@@ -85,6 +85,12 @@ itest!(markdown {
   output: "test/markdown.out",
 });
 
+itest!(markdown_windows {
+  args: "test --doc --allow-all test/markdown_windows.md",
+  exit_code: 1,
+  output: "test/markdown_windows.out",
+});
+
 itest!(text {
   args: "test --doc --allow-all test/text.md",
   exit_code: 0,
