@@ -274,9 +274,9 @@ impl Inner {
         match asset_or_doc {
           AssetOrDocument::Asset(_) => self
             .assets
-            .set_navigation_tree(specifier, navigation_tree.clone())?,
+            .cache_navigation_tree(specifier, navigation_tree.clone())?,
           AssetOrDocument::Document(doc) => {
-            self.documents.try_set_navigation_tree(
+            self.documents.try_cache_navigation_tree(
               specifier,
               &doc.script_version(),
               navigation_tree.clone(),

@@ -209,7 +209,7 @@ impl Assets {
     self.0.insert(k, v)
   }
 
-  pub fn set_navigation_tree(
+  pub fn cache_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
     navigation_tree: Arc<NavigationTree>,

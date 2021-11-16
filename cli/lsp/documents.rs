@@ -679,8 +679,8 @@ impl FileSystemDocuments {
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
     specifier: ModuleSpecifier,
   ) -> Option<Document> {
-    let fs_version = calculate_fs_version(cache, &specifier)?;
-    let path = get_path(cache, &specifier)?;
+    let path = get_document_path(cache, &specifier)?;
+    let fs_version = calculate_fs_version(&path)?;
     let bytes = fs::read(path).ok()?;
     let doc = if specifier.scheme() == "file" {
       let maybe_charset =
@@ -887,10 +887,11 @@ impl DocumentsInner {
     let specifier = self.specifier_resolver.resolve(specifier)?;
     if let Some(document) = self.open_docs.get(&specifier) {
       Some(document.clone())
-    } else if let Some(specifier) = self.specifier_resolver.resolve(&specifier)
-    {
+    } else {
       let mut file_system_docs = self.file_system_docs.lock();
-      let fs_version = calculate_fs_version(&self.cache, &specifier);
+      let fs_version = get_document_path(&self.cache, &specifier)
+        .map(|path| calculate_fs_version(&path))
+        .flatten();
       if file_system_docs
         .docs
         .get(&specifier)
@@ -905,8 +906,6 @@ impl DocumentsInner {
         );
       }
       file_system_docs.docs.get(&specifier).cloned()
-    } else {
-      None
     }
   }
 
@@ -1066,7 +1065,7 @@ impl DocumentsInner {
     self.dirty = true;
   }
 
-  fn try_set_navigation_tree(
+  fn try_cache_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
     script_version: &str,
@@ -1132,11 +1131,7 @@ impl DocumentsInner {
   }
 }
 
-fn calculate_fs_version(
-  cache: &HttpCache,
-  specifier: &ModuleSpecifier,
-) -> Option<String> {
-  let path = get_path(cache, specifier)?;
+fn calculate_fs_version(path: &Path) -> Option<String> {
   let metadata = fs::metadata(path).ok()?;
   if let Ok(modified) = metadata.modified() {
     if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
@@ -1149,7 +1144,10 @@ fn calculate_fs_version(
   }
 }
 
-fn get_path(cache: &HttpCache, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+fn get_document_path(
+  cache: &HttpCache,
+  specifier: &ModuleSpecifier,
+) -> Option<PathBuf> {
   if specifier.scheme() == "file" {
     specifier.to_file_path().ok()
   } else {
@@ -1260,9 +1258,9 @@ impl Documents {
     self.0.set_location(location)
   }
 
-  /// Tries to set a navigation tree that is associated with the provided specifier
+  /// Tries to cache a navigation tree that is associated with the provided specifier
   /// if the document stored has the same script version.
-  pub fn try_set_navigation_tree(
+  pub fn try_cache_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
     script_version: &str,
@@ -1270,7 +1268,7 @@ impl Documents {
   ) -> Result<(), AnyError> {
     self
       .0
-      .try_set_navigation_tree(specifier, script_version, navigation_tree)
+      .try_cache_navigation_tree(specifier, script_version, navigation_tree)
   }
 
   pub fn update_config(
