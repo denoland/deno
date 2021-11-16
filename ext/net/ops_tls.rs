@@ -4,6 +4,7 @@ use crate::io::TcpStreamResource;
 use crate::ops::IpAddr;
 use crate::ops::OpAddr;
 use crate::ops::OpConn;
+use crate::ops::TlsHandshakeInfo;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::DefaultTlsOptions;
@@ -29,6 +30,7 @@ use deno_core::op_sync;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpPair;
@@ -191,11 +193,12 @@ impl TlsStream {
     self.inner_mut().poll_handshake(cx)
   }
 
-  fn get_alpn_protocol(&mut self) -> Option<String> {
-    match self.inner_mut().tls.get_alpn_protocol() {
-      None => None,
-      Some(s) => Some(std::str::from_utf8(s).unwrap().to_string())
-    }
+  fn get_alpn_protocol(&mut self) -> Option<ByteString> {
+    self
+      .inner_mut()
+      .tls
+      .get_alpn_protocol()
+      .map(|s| ByteString(s.to_owned()))
   }
 }
 
@@ -525,7 +528,7 @@ impl ReadHalf {
       .into_inner()
   }
 
-  fn get_alpn_protocol(&mut self) -> Option<String> {
+  fn get_alpn_protocol(&mut self) -> Option<ByteString> {
     self.shared.get_alpn_protocol()
   }
 }
@@ -670,9 +673,9 @@ impl Shared {
     let _ = unsafe { Weak::from_raw(self_ptr as *const Self) };
   }
 
-  fn get_alpn_protocol(self: &Arc<Self>) -> Option<String> {
+  fn get_alpn_protocol(self: &Arc<Self>) -> Option<ByteString> {
     let mut tls_stream = self.tls_stream.lock();
-    return tls_stream.get_alpn_protocol();
+    tls_stream.get_alpn_protocol()
   }
 }
 
@@ -707,7 +710,6 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
     ("op_tls_listen", op_sync(op_tls_listen::<P>)),
     ("op_tls_accept", op_async(op_tls_accept)),
     ("op_tls_handshake", op_async(op_tls_handshake)),
-    ("op_tls_get_alpn_protocol", op_async(op_tls_get_alpn_protocol)),
   ]
 }
 
@@ -771,9 +773,9 @@ impl TlsStreamResource {
     Ok(())
   }
 
-  pub async fn get_alpn_protocol(self: &Rc<Self>) ->
-    Result<Option<String>, AnyError>
-  {
+  pub async fn get_alpn_protocol(
+    self: &Rc<Self>,
+  ) -> Result<Option<ByteString>, AnyError> {
     let mut rd = RcRef::map(self, |r| &r.rd).borrow_mut().await;
     Ok(rd.get_alpn_protocol())
   }
@@ -820,6 +822,7 @@ pub struct StartTlsArgs {
   rid: ResourceId,
   ca_certs: Vec<String>,
   hostname: String,
+  alpn_protocols: Option<Vec<String>>,
 }
 
 pub async fn op_tls_start<NP>(
@@ -876,11 +879,20 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let tls_config = Arc::new(create_client_config(
+  let mut tls_config = create_client_config(
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-  )?);
+  )?;
+
+  if let Some(alpn_protocols) = args.alpn_protocols {
+    super::check_unstable2(&state, "Deno.startTls#alpnProtocols");
+    tls_config.alpn_protocols =
+      alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
+  }
+
+  let tls_config = Arc::new(tls_config);
+
   let tls_stream =
     TlsStream::new_client_side(tcp_stream, &tls_config, hostname_dns);
 
@@ -1175,22 +1187,15 @@ pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<TlsHandshakeInfo, AnyError> {
   let resource = state
     .borrow()
     .resource_table
     .get::<TlsStreamResource>(rid)?;
-  resource.handshake().await
-}
 
-pub async fn op_tls_get_alpn_protocol(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  _: (),
-) -> Result<Option<String>, AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<TlsStreamResource>(rid)?;
-  resource.get_alpn_protocol().await
+  resource.handshake().await?;
+
+  let alpn_protocol = resource.get_alpn_protocol().await?;
+
+  Ok(TlsHandshakeInfo { alpn_protocol })
 }

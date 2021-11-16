@@ -27,15 +27,7 @@
     return core.opAsync("op_tls_handshake", rid);
   }
 
-  function opTlsGetAlpnProtocol(rid) {
-    return core.opAsync("op_tls_get_alpn_protocol", rid);
-  }
-
   class TlsConn extends Conn {
-    getAgreedAlpnProtocol() {
-      return opTlsGetAlpnProtocol(this.rid);
-    }
-
     handshake() {
       return opTlsHandshake(this.rid);
     }
@@ -49,7 +41,7 @@
     caCerts = [],
     certChain = undefined,
     privateKey = undefined,
-    alpnProtocols,
+    alpnProtocols = undefined,
   }) {
     const res = await opConnectTls({
       port,
@@ -77,7 +69,7 @@
     keyFile,
     hostname = "0.0.0.0",
     transport = "tcp",
-    alpnProtocols,
+    alpnProtocols = undefined,
   }) {
     const res = opListenTls({
       port,
@@ -92,13 +84,19 @@
 
   async function startTls(
     conn,
-    { hostname = "127.0.0.1", certFile = undefined, caCerts = [] } = {},
+    {
+      hostname = "127.0.0.1",
+      certFile = undefined,
+      caCerts = [],
+      alpnProtocols = undefined,
+    } = {},
   ) {
     const res = await opStartTls({
       rid: conn.rid,
       hostname,
       certFile,
       caCerts,
+      alpnProtocols,
     });
     return new TlsConn(res.rid, res.remoteAddr, res.localAddr);
   }
