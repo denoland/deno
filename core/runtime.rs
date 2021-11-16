@@ -159,7 +159,7 @@ pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_macrotask_cb: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
@@ -366,7 +366,7 @@ impl JsRuntime {
       dyn_module_evaluate_idle_counter: 0,
       js_recv_cb: None,
       js_sync_cb: None,
-      js_macrotask_cb: None,
+      js_macrotask_cb: vec![],
       js_nexttick_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
@@ -1558,34 +1558,38 @@ impl JsRuntime {
   }
 
   fn drain_macrotasks(&mut self) -> Result<(), AnyError> {
-    let js_macrotask_cb_handle =
-      match &Self::state(self.v8_isolate()).borrow().js_macrotask_cb {
-        Some(handle) => handle.clone(),
-        None => return Ok(()),
-      };
+    let state = Self::state(self.v8_isolate());
 
+    if state.borrow().js_macrotask_cb.is_empty() {
+      return Ok(());
+    }
+
+    let js_macrotask_cb_handles = state.borrow().js_macrotask_cb.clone();
     let scope = &mut self.handle_scope();
-    let js_macrotask_cb = js_macrotask_cb_handle.open(scope);
 
-    // Repeatedly invoke macrotask callback until it returns true (done),
-    // such that ready microtasks would be automatically run before
-    // next macrotask is processed.
-    let tc_scope = &mut v8::TryCatch::new(scope);
-    let this = v8::undefined(tc_scope).into();
-    loop {
-      let is_done = js_macrotask_cb.call(tc_scope, this, &[]);
+    for js_macrotask_cb_handle in js_macrotask_cb_handles {
+      let js_macrotask_cb = js_macrotask_cb_handle.open(scope);
 
-      if let Some(exception) = tc_scope.exception() {
-        return exception_to_err_result(tc_scope, exception, false);
-      }
+      // Repeatedly invoke macrotask callback until it returns true (done),
+      // such that ready microtasks would be automatically run before
+      // next macrotask is processed.
+      let tc_scope = &mut v8::TryCatch::new(scope);
+      let this = v8::undefined(tc_scope).into();
+      loop {
+        let is_done = js_macrotask_cb.call(tc_scope, this, &[]);
 
-      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
-        break;
-      }
+        if let Some(exception) = tc_scope.exception() {
+          return exception_to_err_result(tc_scope, exception, false);
+        }
 
-      let is_done = is_done.unwrap();
-      if is_done.is_true() {
-        break;
+        if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+          return Ok(());
+        }
+
+        let is_done = is_done.unwrap();
+        if is_done.is_true() {
+          break;
+        }
       }
     }
 

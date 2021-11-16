@@ -540,17 +540,7 @@ fn set_macrotask_callback(
     Err(err) => return throw_type_error(scope, err.to_string()),
   };
 
-  let slot = match &mut state.js_macrotask_cb {
-    slot @ None => slot,
-    _ => {
-      return throw_type_error(
-        scope,
-        "Deno.core.setMacrotaskCallback() already called",
-      );
-    }
-  };
-
-  slot.replace(v8::Global::new(scope, cb));
+  state.js_macrotask_cb.push(v8::Global::new(scope, cb));
 }
 
 fn eval_context(
