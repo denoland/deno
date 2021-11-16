@@ -161,6 +161,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
@@ -367,6 +368,7 @@ impl JsRuntime {
       js_sync_cb: None,
       js_macrotask_cb: None,
       js_nexttick_cb: None,
+      has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
@@ -1591,11 +1593,22 @@ impl JsRuntime {
   }
 
   fn drain_nexttick(&mut self) -> Result<(), AnyError> {
-    let js_nexttick_cb_handle =
-      match &Self::state(self.v8_isolate()).borrow().js_nexttick_cb {
-        Some(handle) => handle.clone(),
-        None => return Ok(()),
-      };
+    let state = Self::state(self.v8_isolate());
+
+    let js_nexttick_cb_handle = match &state.borrow().js_nexttick_cb {
+      Some(handle) => handle.clone(),
+      None => return Ok(()),
+    };
+
+    if !state.borrow().has_tick_scheduled {
+      let scope = &mut self.handle_scope();
+      scope.perform_microtask_checkpoint();
+    }
+
+    // TODO(bartlomieju): Node also checks for absence of "rejection_to_warn"
+    if !state.borrow().has_tick_scheduled {
+      return Ok(());
+    }
 
     let scope = &mut self.handle_scope();
     let js_nexttick_cb = js_nexttick_cb_handle.open(scope);

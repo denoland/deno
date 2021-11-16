@@ -42,6 +42,15 @@ lazy_static::lazy_static! {
         function: set_nexttick_callback.map_fn_to()
       },
       v8::ExternalReference {
+        function: run_microtasks.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: has_tick_scheduled.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: set_has_tick_scheduled.map_fn_to()
+      },
+      v8::ExternalReference {
         function: eval_context.map_fn_to()
       },
       v8::ExternalReference {
@@ -151,8 +160,16 @@ pub fn initialize_context<'s>(
   set_func(
     scope,
     core_val,
-    "nextNextTickCallback",
+    "setNextTickCallback",
     set_nexttick_callback,
+  );
+  set_func(scope, core_val, "runMicrotasks", run_microtasks);
+  set_func(scope, core_val, "hasTickScheduled", has_tick_scheduled);
+  set_func(
+    scope,
+    core_val,
+    "setHasTickScheduled",
+    set_has_tick_scheduled,
   );
   set_func(scope, core_val, "evalContext", eval_context);
   set_func(scope, core_val, "encode", encode);
@@ -445,6 +462,40 @@ fn opcall_async<'s>(
       throw_type_error(scope, format!("Unknown op id: {}", op_id));
     }
   }
+}
+
+fn has_tick_scheduled(
+  scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
+  rv.set(to_v8(scope, state.has_tick_scheduled).unwrap());
+}
+
+fn set_has_tick_scheduled(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let value = match v8::Local::<v8::Boolean>::try_from(args.get(0)) {
+    Ok(cb) => cb,
+    Err(err) => return throw_type_error(scope, err.to_string()),
+  };
+
+  state.has_tick_scheduled = value.is_true();
+}
+
+fn run_microtasks(
+  scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  scope.perform_microtask_checkpoint();
 }
 
 fn set_nexttick_callback(
