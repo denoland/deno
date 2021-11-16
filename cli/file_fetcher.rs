@@ -581,11 +581,8 @@ impl FileFetcher {
   pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<File> {
     let maybe_file = self.cache.get(specifier);
     if maybe_file.is_none() {
-      let is_local = specifier.scheme() == "file";
-      if is_local {
-        if let Ok(file) = fetch_local(specifier) {
-          return Some(file);
-        }
+      if specifier.scheme() == "file" {
+        return fetch_local(specifier).ok();
       }
       None
     } else {

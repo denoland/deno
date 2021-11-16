@@ -1417,11 +1417,7 @@ impl CallHierarchyItem {
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
 
     let use_file_name = self.is_source_file_item();
-    let maybe_file_path = if uri.scheme() == "file" {
-      uri.to_file_path().ok()
-    } else {
-      None
-    };
+    let maybe_file_path = uri.to_file_path().ok();
     let name = if use_file_name {
       if let Some(file_path) = maybe_file_path.as_ref() {
         file_path.file_name().unwrap().to_string_lossy().to_string()
