@@ -492,19 +492,17 @@ async fn generate_deps_diagnostics(
         .get_version(document.specifier(), &DiagnosticSource::Deno);
       if version != current_version {
         let mut diagnostics = Vec::new();
-        if let Some(dependencies) = document.dependencies() {
-          for (_, dependency) in dependencies {
-            diagnose_dependency(
-              &mut diagnostics,
-              &documents,
-              &dependency.maybe_code,
-            );
-            diagnose_dependency(
-              &mut diagnostics,
-              &documents,
-              &dependency.maybe_type,
-            );
-          }
+        for (_, dependency) in document.dependencies() {
+          diagnose_dependency(
+            &mut diagnostics,
+            &documents,
+            &dependency.maybe_code,
+          );
+          diagnose_dependency(
+            &mut diagnostics,
+            &documents,
+            &dependency.maybe_type,
+          );
         }
         diagnostics_vec.push((
           document.specifier().clone(),

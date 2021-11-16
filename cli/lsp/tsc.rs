@@ -1141,14 +1141,23 @@ impl Classifications {
       let start_pos = line_index.position_tsc(offset.into());
       let end_pos = line_index.position_tsc(TextSize::from(offset + length));
 
-      // start_pos.line == end_pos.line is always true as there are no multiline tokens
-      builder.push(
-        start_pos.line,
-        start_pos.character,
-        end_pos.character - start_pos.character,
-        token_type,
-        token_modifiers,
-      );
+      if start_pos.line == end_pos.line
+        && start_pos.character <= end_pos.character
+      {
+        builder.push(
+          start_pos.line,
+          start_pos.character,
+          end_pos.character - start_pos.character,
+          token_type,
+          token_modifiers,
+        );
+      } else {
+        log::error!(
+          "unexpected positions\nstart_pos: {:?}\nend_pos: {:?}",
+          start_pos,
+          end_pos
+        );
+      }
     }
     builder.build(None)
   }

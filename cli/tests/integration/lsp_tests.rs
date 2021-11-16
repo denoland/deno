@@ -1066,10 +1066,10 @@ fn lsp_hover_dependency() {
   );
 }
 
-// Regression test for #12753
+// This tests for a regression covered by denoland/deno#12753 where the lsp was
+// unable to resolve dependencies when there was an invalid syntax in the module
 #[test]
-#[ignore]
-fn lsp_hover_keep_type_info_after_invalid_syntax_change() {
+fn lsp_hover_deps_preserved_when_invalid_parse() {
   let mut client = init("initialize_params.json");
   did_open(
     &mut client,
