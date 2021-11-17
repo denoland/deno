@@ -3718,6 +3718,120 @@ fn lsp_configuration_did_change() {
 }
 
 #[test]
+fn lsp_workspace_symbol() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export class A {\n  fieldA: string;\n  fieldB: string;\n}\n",
+      }
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export class B {\n  fieldC: string;\n  fieldD: string;\n}\n",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "workspace/symbol",
+      json!({
+        "query": "field"
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!([
+      {
+        "name": "fieldA",
+        "kind": 8,
+        "location": {
+          "uri": "file:///a/file.ts",
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 2
+            },
+            "end": {
+              "line": 1,
+              "character": 17
+            }
+          }
+        },
+        "containerName": "A"
+      },
+      {
+        "name": "fieldB",
+        "kind": 8,
+        "location": {
+          "uri": "file:///a/file.ts",
+          "range": {
+            "start": {
+              "line": 2,
+              "character": 2
+            },
+            "end": {
+              "line": 2,
+              "character": 17
+            }
+          }
+        },
+        "containerName": "A"
+      },
+      {
+        "name": "fieldC",
+        "kind": 8,
+        "location": {
+          "uri": "file:///a/file_01.ts",
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 2
+            },
+            "end": {
+              "line": 1,
+              "character": 17
+            }
+          }
+        },
+        "containerName": "B"
+      },
+      {
+        "name": "fieldD",
+        "kind": 8,
+        "location": {
+          "uri": "file:///a/file_01.ts",
+          "range": {
+            "start": {
+              "line": 2,
+              "character": 2
+            },
+            "end": {
+              "line": 2,
+              "character": 17
+            }
+          }
+        },
+        "containerName": "B"
+      }
+    ]))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_code_actions_ignore_lint() {
   let mut client = init("initialize_params.json");
   did_open(

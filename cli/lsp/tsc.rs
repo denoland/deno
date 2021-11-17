@@ -9,8 +9,8 @@ use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::refactor::EXTRACT_CONSTANT;
 use super::refactor::EXTRACT_INTERFACE;
 use super::refactor::EXTRACT_TYPE;
+use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
-use super::semantic_tokens::TsTokenEncodingConsts;
 use super::text;
 use super::text::LineIndex;
 use super::urls::INVALID_SPECIFIER;
@@ -507,6 +507,9 @@ impl From<ScriptElementKind> for lsp::SymbolKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
       ScriptElementKind::ModuleElement => Self::Module,
+      // this is only present in `getSymbolKind` in `workspaceSymbols` in
+      // vscode, but seems strange it isn't consistent.
+      ScriptElementKind::TypeElement => Self::Class,
       ScriptElementKind::ClassElement => Self::Class,
       ScriptElementKind::EnumElement => Self::Enum,
       ScriptElementKind::EnumMemberElement => Self::EnumMember,
@@ -514,9 +517,12 @@ impl From<ScriptElementKind> for lsp::SymbolKind {
       ScriptElementKind::IndexSignatureElement => Self::Method,
       ScriptElementKind::CallSignatureElement => Self::Method,
       ScriptElementKind::MemberFunctionElement => Self::Method,
-      ScriptElementKind::MemberVariableElement => Self::Property,
-      ScriptElementKind::MemberGetAccessorElement => Self::Property,
-      ScriptElementKind::MemberSetAccessorElement => Self::Property,
+      // workspaceSymbols in vscode treats them as fields, which does seem more
+      // semantically correct while `fromProtocolScriptElementKind` treats them
+      // as properties.
+      ScriptElementKind::MemberVariableElement => Self::Field,
+      ScriptElementKind::MemberGetAccessorElement => Self::Field,
+      ScriptElementKind::MemberSetAccessorElement => Self::Field,
       ScriptElementKind::VariableElement => Self::Variable,
       ScriptElementKind::LetElement => Self::Variable,
       ScriptElementKind::ConstElement => Self::Variable,
@@ -673,6 +679,71 @@ impl DocumentSpan {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub enum MatchKind {
+  #[serde(rename = "exact")]
+  Exact,
+  #[serde(rename = "prefix")]
+  Prefix,
+  #[serde(rename = "substring")]
+  Substring,
+  #[serde(rename = "camelCase")]
+  CamelCase,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavigateToItem {
+  name: String,
+  kind: ScriptElementKind,
+  kind_modifiers: String,
+  match_kind: MatchKind,
+  is_case_sensitive: bool,
+  file_name: String,
+  text_span: TextSpan,
+  container_name: Option<String>,
+  container_kind: ScriptElementKind,
+}
+
+impl NavigateToItem {
+  pub(crate) async fn to_symbol_information(
+    &self,
+    language_server: &mut language_server::Inner,
+  ) -> Option<lsp::SymbolInformation> {
+    let specifier = normalize_specifier(&self.file_name).ok()?;
+    let asset_or_doc = language_server
+      .get_asset_or_document(&specifier)
+      .await
+      .ok()?;
+    let line_index = asset_or_doc.line_index();
+    let uri = language_server
+      .url_map
+      .normalize_specifier(&specifier)
+      .ok()?;
+    let range = self.text_span.to_range(line_index);
+    let location = lsp::Location { uri, range };
+
+    let mut tags: Option<Vec<lsp::SymbolTag>> = None;
+    let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
+    if kind_modifiers.contains("deprecated") {
+      tags = Some(vec![lsp::SymbolTag::Deprecated]);
+    }
+
+    // The field `deprecated` is deprecated but SymbolInformation does not have
+    // a default, therefore we have to supply the deprecated deprecated
+    // field. It is like a bad version of Inception.
+    #[allow(deprecated)]
+    Some(lsp::SymbolInformation {
+      name: self.name.clone(),
+      kind: self.kind.clone().into(),
+      tags,
+      deprecated: None,
+      location,
+      container_name: self.container_name.clone(),
+    })
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NavigationTree {
   pub text: String,
@@ -752,6 +823,16 @@ impl NavigationTree {
           }
         }
 
+        let name = match self.kind {
+          ScriptElementKind::MemberGetAccessorElement => {
+            format!("(get) {}", self.text)
+          }
+          ScriptElementKind::MemberSetAccessorElement => {
+            format!("(set) {}", self.text)
+          }
+          _ => self.text.clone(),
+        };
+
         let mut tags: Option<Vec<lsp::SymbolTag>> = None;
         let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
         if kind_modifiers.contains("deprecated") {
@@ -769,7 +850,7 @@ impl NavigationTree {
         // field. It is like a bad version of Inception.
         #[allow(deprecated)]
         document_symbols.push(lsp::DocumentSymbol {
-          name: self.text.clone(),
+          name,
           kind: self.kind.clone().into(),
           range: span.to_range(line_index.clone()),
           selection_range: selection_span.to_range(line_index.clone()),
@@ -1166,11 +1247,12 @@ impl Classifications {
   }
 
   fn get_token_type_from_classification(ts_classification: u32) -> u32 {
-    (ts_classification >> (TsTokenEncodingConsts::TypeOffset as u32)) - 1
+    assert!(ts_classification > semantic_tokens::MODIFIER_MASK);
+    (ts_classification >> semantic_tokens::TYPE_OFFSET) - 1
   }
 
   fn get_token_modifier_from_classification(ts_classification: u32) -> u32 {
-    ts_classification & (TsTokenEncodingConsts::ModifierMask as u32)
+    ts_classification & semantic_tokens::MODIFIER_MASK
   }
 }
 
@@ -2667,6 +2749,12 @@ pub enum RequestMethod {
   GetEncodedSemanticClassifications((ModuleSpecifier, TextSpan)),
   /// Get implementation information for a specific position.
   GetImplementation((ModuleSpecifier, u32)),
+  /// Get "navigate to" items, which are converted to workspace symbols
+  GetNavigateToItems {
+    search: String,
+    max_result_count: Option<u32>,
+    file: Option<String>,
+  },
   /// Get a "navigation tree" for a specifier.
   GetNavigationTree(ModuleSpecifier),
   /// Get outlining spans for a specifier.
@@ -2807,6 +2895,17 @@ impl RequestMethod {
         "method": "getImplementation",
         "specifier": state.denormalize_specifier(specifier),
         "position": position,
+      }),
+      RequestMethod::GetNavigateToItems {
+        search,
+        max_result_count,
+        file,
+      } => json!({
+        "id": id,
+        "method": "getNavigateToItems",
+        "search": search,
+        "maxResultCount": max_result_count,
+        "file": file,
       }),
       RequestMethod::GetNavigationTree(specifier) => json!({
         "id": id,

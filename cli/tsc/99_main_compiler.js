@@ -743,6 +743,16 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getNavigateToItems": {
+        return respond(
+          id,
+          languageService.getNavigateToItems(
+            request.search,
+            request.maxResultCount,
+            request.fileName,
+          ),
+        );
+      }
       case "getNavigationTree": {
         return respond(
           id,

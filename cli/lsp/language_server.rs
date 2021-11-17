@@ -2266,6 +2266,44 @@ impl Inner {
       Ok(None)
     }
   }
+
+  async fn symbol(
+    &mut self,
+    params: WorkspaceSymbolParams,
+  ) -> LspResult<Option<Vec<SymbolInformation>>> {
+    let mark = self.performance.mark("symbol", Some(&params));
+
+    let req = tsc::RequestMethod::GetNavigateToItems {
+      search: params.query,
+      // this matches vscode's hard coded result count
+      max_result_count: Some(256),
+      file: None,
+    };
+
+    let navigate_to_items: Vec<tsc::NavigateToItem> = self
+      .ts_server
+      .request(self.snapshot()?, req)
+      .await
+      .map_err(|err| {
+        error!("Failed request to tsserver: {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let maybe_symbol_information = if navigate_to_items.is_empty() {
+      None
+    } else {
+      let mut symbol_information = Vec::new();
+      for item in navigate_to_items {
+        if let Some(info) = item.to_symbol_information(self).await {
+          symbol_information.push(info);
+        }
+      }
+      Some(symbol_information)
+    };
+
+    self.performance.measure(mark);
+    Ok(maybe_symbol_information)
+  }
 }
 
 #[lspower::async_trait]
@@ -2476,6 +2514,13 @@ impl lspower::LanguageServer for LanguageServer {
     params: SignatureHelpParams,
   ) -> LspResult<Option<SignatureHelp>> {
     self.0.lock().await.signature_help(params).await
+  }
+
+  async fn symbol(
+    &self,
+    params: WorkspaceSymbolParams,
+  ) -> LspResult<Option<Vec<SymbolInformation>>> {
+    self.0.lock().await.symbol(params).await
   }
 }
 
