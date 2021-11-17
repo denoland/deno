@@ -185,6 +185,10 @@
     // 4.
     let algName = initialAlg.name;
 
+    if (op === "digest" && "MD5" === StringPrototypeToUpperCase(algName)) {
+      return { name: "MD5" };
+    }
+
     // 5.
     let desiredType = undefined;
     for (const key in registeredAlgorithms) {
@@ -429,11 +433,16 @@
 
       algorithm = normalizeAlgorithm(algorithm, "digest");
 
-      const result = await core.opAsync(
-        "op_crypto_subtle_digest",
-        algorithm.name,
-        data,
-      );
+      let result;
+      if (algorithm.name === "MD5") {
+        result = await core.opAsync("op_crypto_subtle_digest_md5", null, data);
+      } else {
+        result = await core.opAsync(
+          "op_crypto_subtle_digest",
+          algorithm.name,
+          data,
+        );
+      }
 
       return result.buffer;
     }

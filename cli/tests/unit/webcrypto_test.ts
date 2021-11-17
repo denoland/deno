@@ -1,5 +1,62 @@
 import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
+unitTest(async function testDigest() {
+  const subtle = window.crypto.subtle;
+  assert(subtle);
+
+  {
+    const result = await subtle.digest({ name: "MD5" }, new Uint8Array([42]));
+    const actual = [...new Uint8Array(result)];
+    const expected = [
+      0x33,
+      0x89,
+      0xda,
+      0xe3,
+      0x61,
+      0xaf,
+      0x79,
+      0xb0,
+      0x4c,
+      0x9c,
+      0x8e,
+      0x70,
+      0x57,
+      0xf6,
+      0x0c,
+      0xc6,
+    ];
+    assertEquals(actual, expected);
+  }
+
+  {
+    const result = await subtle.digest({ name: "SHA-1" }, new Uint8Array([42]));
+    const actual = [...new Uint8Array(result)];
+    const expected = [
+      0xdf,
+      0x58,
+      0x24,
+      0x8c,
+      0x41,
+      0x4f,
+      0x34,
+      0x2c,
+      0x81,
+      0xe0,
+      0x56,
+      0xb4,
+      0x0b,
+      0xee,
+      0x12,
+      0xd1,
+      0x7a,
+      0x08,
+      0xbf,
+      0x61,
+    ];
+    assertEquals(actual, expected);
+  }
+});
+
 // https://github.com/denoland/deno/issues/11664
 Deno.test(async function testImportArrayBufferKey() {
   const subtle = window.crypto.subtle;

@@ -117,6 +117,10 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_encrypt_key", op_async(op_crypto_encrypt_key)),
       ("op_crypto_decrypt_key", op_async(op_crypto_decrypt_key)),
       ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
+      (
+        "op_crypto_subtle_digest_md5",
+        op_async(op_crypto_subtle_digest_md5),
+      ),
       ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
     ])
     .state(move |state| {
@@ -1677,6 +1681,18 @@ pub async fn op_crypto_subtle_digest(
       .into()
   })
   .await?;
+
+  Ok(output)
+}
+
+pub async fn op_crypto_subtle_digest_md5(
+  _state: Rc<RefCell<OpState>>,
+  _: (),
+  data: ZeroCopyBuf,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let output =
+    tokio::task::spawn_blocking(move || md5::compute(&data).to_vec().into())
+      .await?;
 
   Ok(output)
 }
