@@ -1022,8 +1022,8 @@ fn typecheck_declarations_ns() {
     .arg(util::root_path().join("cli/dts/lib.deno.ns.d.ts"))
     .output()
     .unwrap();
-  println!("stdout: {}", output.stdout);
-  println!("stderr: {}", output.stderr);
+  println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
+  println!("stderr: {}", String::from_utf8(output.stderr).unwrap());
   assert!(output.status.success());
 }
 
@@ -1036,8 +1036,8 @@ fn typecheck_declarations_unstable() {
     .arg(util::root_path().join("cli/dts/lib.deno.unstable.d.ts"))
     .output()
     .unwrap();
-  println!("stdout: {}", output.stdout);
-  println!("stderr: {}", output.stderr);
+  println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
+  println!("stderr: {}", String::from_utf8(output.stderr).unwrap());
   assert!(output.status.success());
 }
 
