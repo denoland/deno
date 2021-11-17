@@ -8537,5 +8537,14 @@
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []"
     ]
+  },
+  "service-workers": {
+    "idlharness.https.any.html": false,
+    "idlharness.https.any.worker.html": false,
+    "service-worker": {
+      "fetch-request-xhr-sync-error.https.window.html": false,
+      "ready.https.window.html": false,
+      "xhr-content-length.https.window.html": false
+    }
   }
 }
