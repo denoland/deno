@@ -527,10 +527,6 @@ impl ReadHalf {
       .tls_stream
       .into_inner()
   }
-
-  fn get_alpn_protocol(&mut self) -> Option<ByteString> {
-    self.shared.get_alpn_protocol()
-  }
 }
 
 impl AsyncRead for ReadHalf {
@@ -562,6 +558,10 @@ impl WriteHalf {
         })
     })
     .await
+  }
+
+  fn get_alpn_protocol(&mut self) -> Option<ByteString> {
+    self.shared.get_alpn_protocol()
   }
 }
 
@@ -766,22 +766,16 @@ impl TlsStreamResource {
   pub async fn handshake(
     self: &Rc<Self>,
   ) -> Result<TlsHandshakeInfo, AnyError> {
+    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
+
     if !self.handshake_done.get() {
-      let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
       let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
       wr.handshake().try_or_cancel(cancel_handle).await?;
       self.handshake_done.set(true);
     }
 
-    let alpn_protocol = self.get_alpn_protocol().await?;
+    let alpn_protocol = wr.get_alpn_protocol();
     Ok(TlsHandshakeInfo { alpn_protocol })
-  }
-
-  async fn get_alpn_protocol(
-    self: &Rc<Self>,
-  ) -> Result<Option<ByteString>, AnyError> {
-    let mut rd = RcRef::map(self, |r| &r.rd).borrow_mut().await;
-    Ok(rd.get_alpn_protocol())
   }
 }
 
