@@ -441,15 +441,6 @@
     return V instanceof SharedArrayBuffer;
   }
 
-  function isArrayBufferDetached(V) {
-    try {
-      new Uint8Array(V);
-      return false;
-    } catch {
-      return true;
-    }
-  }
-
   converters.ArrayBuffer = (V, opts = {}) => {
     if (!isNonSharedArrayBuffer(V)) {
       if (opts.allowShared && !isSharedArrayBuffer(V)) {
@@ -460,9 +451,6 @@
         );
       }
       throw makeException(TypeError, "is not an ArrayBuffer", opts);
-    }
-    if (isArrayBufferDetached(V)) {
-      throw makeException(TypeError, "is a detached ArrayBuffer", opts);
     }
 
     return V;
@@ -477,13 +465,6 @@
       throw makeException(
         TypeError,
         "is backed by a SharedArrayBuffer, which is not allowed",
-        opts,
-      );
-    }
-    if (isArrayBufferDetached(V.buffer)) {
-      throw makeException(
-        TypeError,
-        "is backed by a detached ArrayBuffer",
         opts,
       );
     }
@@ -529,13 +510,6 @@
             opts,
           );
         }
-        if (isArrayBufferDetached(V.buffer)) {
-          throw makeException(
-            TypeError,
-            "is a view on a detached ArrayBuffer",
-            opts,
-          );
-        }
 
         return V;
       };
@@ -561,13 +535,6 @@
       );
     }
 
-    if (isArrayBufferDetached(V.buffer)) {
-      throw makeException(
-        TypeError,
-        "is a view on a detached ArrayBuffer",
-        opts,
-      );
-    }
     return V;
   };
 
@@ -581,13 +548,6 @@
         );
       }
 
-      if (isArrayBufferDetached(V.buffer)) {
-        throw makeException(
-          TypeError,
-          "is a view on a detached ArrayBuffer",
-          opts,
-        );
-      }
       return V;
     }
 
@@ -608,9 +568,6 @@
         "is not an ArrayBuffer, SharedArrayBuffer, or a view on one",
         opts,
       );
-    }
-    if (isArrayBufferDetached(V)) {
-      throw makeException(TypeError, "is a detached ArrayBuffer", opts);
     }
 
     return V;

@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::analysis::ResolvedDependency;
-use super::analysis::ResolvedDependencyErr;
 use super::code_lens;
 use super::config;
 use super::language_server;
@@ -18,12 +16,10 @@ use super::text::LineIndex;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::TsConfig;
-use crate::tokio_util::create_basic_runtime;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 
-use deno_ast::MediaType;
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -40,7 +36,10 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
+use deno_runtime::tokio_util::create_basic_runtime;
 use log::warn;
+use lspower::jsonrpc::Error as LspError;
+use lspower::jsonrpc::Result as LspResult;
 use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
@@ -106,7 +105,7 @@ impl TsServer {
     Self(tx)
   }
 
-  pub async fn request<R>(
+  pub(crate) async fn request<R>(
     &self,
     snapshot: StateSnapshot,
     req: RequestMethod,
@@ -122,25 +121,58 @@ impl TsServer {
   }
 }
 
+#[derive(Debug, Clone)]
+struct AssetDocumentInner {
+  text: Arc<String>,
+  length: usize,
+  line_index: Arc<LineIndex>,
+  maybe_navigation_tree: Option<Arc<NavigationTree>>,
+}
+
 /// An lsp representation of an asset in memory, that has either been retrieved
 /// from static assets built into Rust, or static assets built into tsc.
 #[derive(Debug, Clone)]
-pub struct AssetDocument {
-  pub text: Arc<String>,
-  pub length: usize,
-  pub line_index: LineIndex,
-  pub maybe_navigation_tree: Option<NavigationTree>,
-}
+pub struct AssetDocument(Arc<AssetDocumentInner>);
 
 impl AssetDocument {
-  pub fn new<T: AsRef<str>>(text: T) -> Self {
+  pub fn new(text: impl AsRef<str>) -> Self {
     let text = text.as_ref();
-    Self {
+    Self(Arc::new(AssetDocumentInner {
       text: Arc::new(text.to_string()),
       length: text.encode_utf16().count(),
-      line_index: LineIndex::new(text),
+      line_index: Arc::new(LineIndex::new(text)),
       maybe_navigation_tree: None,
-    }
+    }))
+  }
+
+  pub fn with_navigation_tree(
+    &self,
+    tree: Arc<NavigationTree>,
+  ) -> AssetDocument {
+    AssetDocument(Arc::new(AssetDocumentInner {
+      maybe_navigation_tree: Some(tree),
+      ..(*self.0).clone()
+    }))
+  }
+
+  pub fn text(&self) -> Arc<String> {
+    self.0.text.clone()
+  }
+
+  pub fn text_str(&self) -> &str {
+    self.0.text.as_str()
+  }
+
+  pub fn length(&self) -> usize {
+    self.0.length
+  }
+
+  pub fn line_index(&self) -> Arc<LineIndex> {
+    self.0.line_index.clone()
+  }
+
+  pub fn maybe_navigation_tree(&self) -> Option<Arc<NavigationTree>> {
+    self.0.maybe_navigation_tree.clone()
   }
 }
 
@@ -182,7 +214,7 @@ impl Assets {
   pub fn set_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
-    navigation_tree: NavigationTree,
+    navigation_tree: Arc<NavigationTree>,
   ) -> Result<(), AnyError> {
     let maybe_doc = self
       .0
@@ -191,7 +223,7 @@ impl Assets {
     let doc = maybe_doc
       .as_mut()
       .ok_or_else(|| anyhow!("Cannot get doc mutable"))?;
-    doc.maybe_navigation_tree = Some(navigation_tree);
+    *doc = doc.with_navigation_tree(navigation_tree);
     Ok(())
   }
 }
@@ -199,7 +231,7 @@ impl Assets {
 /// Optionally returns an internal asset, first checking for any static assets
 /// in Rust, then checking any previously retrieved static assets from the
 /// isolate, and then finally, the tsc isolate itself.
-pub async fn get_asset(
+pub(crate) async fn get_asset(
   specifier: &ModuleSpecifier,
   ts_server: &TsServer,
   state_snapshot: StateSnapshot,
@@ -405,6 +437,12 @@ pub enum ScriptElementKind {
   JsxAttribute,
   #[serde(rename = "string")]
   String,
+  #[serde(rename = "link")]
+  Link,
+  #[serde(rename = "link name")]
+  LinkName,
+  #[serde(rename = "link test")]
+  LinkText,
 }
 
 impl Default for ScriptElementKind {
@@ -413,6 +451,7 @@ impl Default for ScriptElementKind {
   }
 }
 
+/// This mirrors the method `convertKind` in `completions.ts` in vscode
 impl From<ScriptElementKind> for lsp::CompletionItemKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
@@ -463,29 +502,33 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
   }
 }
 
+/// This mirrors `fromProtocolScriptElementKind` in vscode
 impl From<ScriptElementKind> for lsp::SymbolKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
-      ScriptElementKind::ModuleElement => lsp::SymbolKind::Module,
-      ScriptElementKind::ClassElement => lsp::SymbolKind::Class,
-      ScriptElementKind::EnumElement => lsp::SymbolKind::Enum,
-      ScriptElementKind::InterfaceElement => lsp::SymbolKind::Interface,
-      ScriptElementKind::MemberFunctionElement => lsp::SymbolKind::Method,
-      ScriptElementKind::MemberVariableElement => lsp::SymbolKind::Property,
-      ScriptElementKind::MemberGetAccessorElement => lsp::SymbolKind::Property,
-      ScriptElementKind::MemberSetAccessorElement => lsp::SymbolKind::Property,
-      ScriptElementKind::VariableElement => lsp::SymbolKind::Variable,
-      ScriptElementKind::ConstElement => lsp::SymbolKind::Variable,
-      ScriptElementKind::LocalVariableElement => lsp::SymbolKind::Variable,
-      ScriptElementKind::FunctionElement => lsp::SymbolKind::Function,
-      ScriptElementKind::LocalFunctionElement => lsp::SymbolKind::Function,
-      ScriptElementKind::ConstructSignatureElement => {
-        lsp::SymbolKind::Constructor
-      }
-      ScriptElementKind::ConstructorImplementationElement => {
-        lsp::SymbolKind::Constructor
-      }
-      _ => lsp::SymbolKind::Variable,
+      ScriptElementKind::ModuleElement => Self::Module,
+      ScriptElementKind::ClassElement => Self::Class,
+      ScriptElementKind::EnumElement => Self::Enum,
+      ScriptElementKind::EnumMemberElement => Self::EnumMember,
+      ScriptElementKind::InterfaceElement => Self::Interface,
+      ScriptElementKind::IndexSignatureElement => Self::Method,
+      ScriptElementKind::CallSignatureElement => Self::Method,
+      ScriptElementKind::MemberFunctionElement => Self::Method,
+      ScriptElementKind::MemberVariableElement => Self::Property,
+      ScriptElementKind::MemberGetAccessorElement => Self::Property,
+      ScriptElementKind::MemberSetAccessorElement => Self::Property,
+      ScriptElementKind::VariableElement => Self::Variable,
+      ScriptElementKind::LetElement => Self::Variable,
+      ScriptElementKind::ConstElement => Self::Variable,
+      ScriptElementKind::LocalVariableElement => Self::Variable,
+      ScriptElementKind::Alias => Self::Variable,
+      ScriptElementKind::FunctionElement => Self::Function,
+      ScriptElementKind::LocalFunctionElement => Self::Function,
+      ScriptElementKind::ConstructSignatureElement => Self::Constructor,
+      ScriptElementKind::ConstructorImplementationElement => Self::Constructor,
+      ScriptElementKind::TypeParameterElement => Self::TypeParameter,
+      ScriptElementKind::String => Self::String,
+      _ => Self::Variable,
     }
   }
 }
@@ -498,7 +541,7 @@ pub struct TextSpan {
 }
 
 impl TextSpan {
-  pub fn to_range(&self, line_index: &LineIndex) -> lsp::Range {
+  pub fn to_range(&self, line_index: Arc<LineIndex>) -> lsp::Range {
     lsp::Range {
       start: line_index.position_tsc(self.start.into()),
       end: line_index.position_tsc(TextSize::from(self.start + self.length)),
@@ -532,7 +575,7 @@ pub struct QuickInfo {
 }
 
 impl QuickInfo {
-  pub fn to_hover(&self, line_index: &LineIndex) -> lsp::Hover {
+  pub fn to_hover(&self, line_index: Arc<LineIndex>) -> lsp::Hover {
     let mut contents = Vec::<lsp::MarkedString>::new();
     if let Some(display_string) = self
       .display_parts
@@ -585,14 +628,15 @@ pub struct DocumentSpan {
 impl DocumentSpan {
   pub(crate) async fn to_link(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = normalize_specifier(&self.file_name).ok()?;
-    let target_line_index = language_server
-      .get_line_index(target_specifier.clone())
+    let target_asset_or_doc = language_server
+      .get_asset_or_document(&target_specifier)
       .await
       .ok()?;
+    let target_line_index = target_asset_or_doc.line_index();
     let target_uri = language_server
       .url_map
       .normalize_specifier(&target_specifier)
@@ -600,13 +644,13 @@ impl DocumentSpan {
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
         (
-          context_span.to_range(&target_line_index),
-          self.text_span.to_range(&target_line_index),
+          context_span.to_range(target_line_index.clone()),
+          self.text_span.to_range(target_line_index),
         )
       } else {
         (
-          self.text_span.to_range(&target_line_index),
-          self.text_span.to_range(&target_line_index),
+          self.text_span.to_range(target_line_index.clone()),
+          self.text_span.to_range(target_line_index),
         )
       };
     let origin_selection_range =
@@ -642,7 +686,7 @@ pub struct NavigationTree {
 impl NavigationTree {
   pub fn to_code_lens(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     specifier: &ModuleSpecifier,
     source: &code_lens::CodeLensSource,
   ) -> lsp::CodeLens {
@@ -666,7 +710,7 @@ impl NavigationTree {
 
   pub fn collect_document_symbols(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     document_symbols: &mut Vec<lsp::DocumentSymbol>,
   ) -> bool {
     let mut should_include = self.should_include_entry();
@@ -692,8 +736,8 @@ impl NavigationTree {
           })
           .any(|child_range| range.intersect(child_range).is_some());
         if should_traverse_child {
-          let included_child =
-            child.collect_document_symbols(line_index, &mut symbol_children);
+          let included_child = child
+            .collect_document_symbols(line_index.clone(), &mut symbol_children);
           should_include = should_include || included_child;
         }
       }
@@ -727,8 +771,8 @@ impl NavigationTree {
         document_symbols.push(lsp::DocumentSymbol {
           name: self.text.clone(),
           kind: self.kind.clone().into(),
-          range: span.to_range(line_index),
-          selection_range: selection_span.to_range(line_index),
+          range: span.to_range(line_index.clone()),
+          selection_range: selection_span.to_range(line_index.clone()),
           tags,
           children,
           detail: None,
@@ -786,7 +830,7 @@ pub struct ImplementationLocation {
 impl ImplementationLocation {
   pub(crate) fn to_location(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     language_server: &mut language_server::Inner,
   ) -> lsp::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
@@ -803,7 +847,7 @@ impl ImplementationLocation {
 
   pub(crate) async fn to_link(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     self
@@ -838,6 +882,8 @@ impl RenameLocations {
     for location in self.locations.iter() {
       let specifier = normalize_specifier(&location.document_span.file_name)?;
       let uri = language_server.url_map.normalize_specifier(&specifier)?;
+      let asset_or_doc =
+        language_server.get_asset_or_document(&specifier).await?;
 
       // ensure TextDocumentEdit for `location.file_name`.
       if text_document_edit_map.get(&uri).is_none() {
@@ -846,7 +892,7 @@ impl RenameLocations {
           lsp::TextDocumentEdit {
             text_document: lsp::OptionalVersionedTextDocumentIdentifier {
               uri: uri.clone(),
-              version: language_server.document_version(specifier.clone()),
+              version: asset_or_doc.document_version(),
             },
             edits:
               Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(),
@@ -860,7 +906,7 @@ impl RenameLocations {
         range: location
           .document_span
           .text_span
-          .to_range(&language_server.get_line_index(specifier.clone()).await?),
+          .to_range(asset_or_doc.line_index()),
         new_text: new_name.to_string(),
       }));
     }
@@ -919,14 +965,16 @@ pub struct DefinitionInfoAndBoundSpan {
 impl DefinitionInfoAndBoundSpan {
   pub(crate) async fn to_definition(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::GotoDefinitionResponse> {
     if let Some(definitions) = &self.definitions {
       let mut location_links = Vec::<lsp::LocationLink>::new();
       for di in definitions {
-        if let Some(link) =
-          di.document_span.to_link(line_index, language_server).await
+        if let Some(link) = di
+          .document_span
+          .to_link(line_index.clone(), language_server)
+          .await
         {
           location_links.push(link);
         }
@@ -948,13 +996,13 @@ pub struct DocumentHighlights {
 impl DocumentHighlights {
   pub fn to_highlight(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
   ) -> Vec<lsp::DocumentHighlight> {
     self
       .highlight_spans
       .iter()
       .map(|hs| lsp::DocumentHighlight {
-        range: hs.text_span.to_range(line_index),
+        range: hs.text_span.to_range(line_index.clone()),
         kind: match hs.kind {
           HighlightSpanKind::WrittenReference => {
             Some(lsp::DocumentHighlightKind::Write)
@@ -976,7 +1024,7 @@ pub struct TextChange {
 impl TextChange {
   pub fn as_text_edit(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
   ) -> lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit> {
     lsp::OneOf::Left(lsp::TextEdit {
       range: self.span.to_range(line_index),
@@ -1000,16 +1048,17 @@ impl FileTextChanges {
     language_server: &mut language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
     let specifier = normalize_specifier(&self.file_name)?;
-    let line_index = language_server.get_line_index(specifier.clone()).await?;
+    let asset_or_doc =
+      language_server.get_asset_or_document(&specifier).await?;
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_edit(&line_index))
+      .map(|tc| tc.as_text_edit(asset_or_doc.line_index()))
       .collect();
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
-        version: language_server.document_version(specifier),
+        version: asset_or_doc.document_version(),
       },
       edits,
     })
@@ -1021,11 +1070,17 @@ impl FileTextChanges {
   ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
     let specifier = normalize_specifier(&self.file_name)?;
-    let line_index = if !self.is_new_file.unwrap_or(false) {
-      language_server.get_line_index(specifier.clone()).await?
+    let maybe_asset_or_document = if !self.is_new_file.unwrap_or(false) {
+      let asset_or_doc =
+        language_server.get_asset_or_document(&specifier).await?;
+      Some(asset_or_doc)
     } else {
-      LineIndex::new("")
+      None
     };
+    let line_index = maybe_asset_or_document
+      .as_ref()
+      .map(|d| d.line_index())
+      .unwrap_or_else(|| Arc::new(LineIndex::new("")));
 
     if self.is_new_file.unwrap_or(false) {
       ops.push(lsp::DocumentChangeOperation::Op(lsp::ResourceOp::Create(
@@ -1043,12 +1098,14 @@ impl FileTextChanges {
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_edit(&line_index))
+      .map(|tc| tc.as_text_edit(line_index.clone()))
       .collect();
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
-        version: language_server.document_version(specifier),
+        version: maybe_asset_or_document
+          .map(|d| d.document_version())
+          .flatten(),
       },
       edits,
     }));
@@ -1066,8 +1123,8 @@ pub struct Classifications {
 impl Classifications {
   pub fn to_semantic_tokens(
     &self,
-    line_index: &LineIndex,
-  ) -> lsp::SemanticTokens {
+    line_index: Arc<LineIndex>,
+  ) -> LspResult<lsp::SemanticTokens> {
     let token_count = self.spans.len() / 3;
     let mut builder = SemanticTokensBuilder::new();
     for i in 0..token_count {
@@ -1086,16 +1143,26 @@ impl Classifications {
       let start_pos = line_index.position_tsc(offset.into());
       let end_pos = line_index.position_tsc(TextSize::from(offset + length));
 
-      // start_pos.line == end_pos.line is always true as there are no multiline tokens
-      builder.push(
-        start_pos.line,
-        start_pos.character,
-        end_pos.character - start_pos.character,
-        token_type,
-        token_modifiers,
-      );
+      if start_pos.line == end_pos.line
+        && start_pos.character <= end_pos.character
+      {
+        builder.push(
+          start_pos.line,
+          start_pos.character,
+          end_pos.character - start_pos.character,
+          token_type,
+          token_modifiers,
+        );
+      } else {
+        log::error!(
+          "unexpected positions\nstart_pos: {:?}\nend_pos: {:?}",
+          start_pos,
+          end_pos
+        );
+        return Err(LspError::internal_error());
+      }
     }
-    builder.build(None)
+    Ok(builder.build(None))
   }
 
   fn get_token_type_from_classification(ts_classification: u32) -> u32 {
@@ -1299,7 +1366,7 @@ pub struct ReferenceEntry {
 impl ReferenceEntry {
   pub(crate) fn to_location(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     language_server: &mut language_server::Inner,
   ) -> lsp::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
@@ -1336,13 +1403,13 @@ impl CallHierarchyItem {
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
     let target_specifier = normalize_specifier(&self.file).ok()?;
-    let target_line_index = language_server
-      .get_line_index(target_specifier)
+    let target_asset_or_doc = language_server
+      .get_asset_or_document(&target_specifier)
       .await
       .ok()?;
 
     Some(self.to_call_hierarchy_item(
-      &target_line_index,
+      target_asset_or_doc.line_index(),
       language_server,
       maybe_root_path,
     ))
@@ -1350,7 +1417,7 @@ impl CallHierarchyItem {
 
   pub(crate) fn to_call_hierarchy_item(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     language_server: &mut language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> lsp::CallHierarchyItem {
@@ -1410,7 +1477,7 @@ impl CallHierarchyItem {
       uri,
       detail: Some(detail),
       kind: self.kind.clone().into(),
-      range: self.span.to_range(line_index),
+      range: self.span.to_range(line_index.clone()),
       selection_range: self.selection_span.to_range(line_index),
       data: None,
     }
@@ -1437,21 +1504,21 @@ impl CallHierarchyIncomingCall {
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
     let target_specifier = normalize_specifier(&self.from.file).ok()?;
-    let target_line_index = language_server
-      .get_line_index(target_specifier)
+    let target_asset_or_doc = language_server
+      .get_asset_or_document(&target_specifier)
       .await
       .ok()?;
 
     Some(lsp::CallHierarchyIncomingCall {
       from: self.from.to_call_hierarchy_item(
-        &target_line_index,
+        target_asset_or_doc.line_index(),
         language_server,
         maybe_root_path,
       ),
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(&target_line_index))
+        .map(|span| span.to_range(target_asset_or_doc.line_index()))
         .collect(),
     })
   }
@@ -1467,26 +1534,26 @@ pub struct CallHierarchyOutgoingCall {
 impl CallHierarchyOutgoingCall {
   pub(crate) async fn try_resolve_call_hierarchy_outgoing_call(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     language_server: &mut language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
     let target_specifier = normalize_specifier(&self.to.file).ok()?;
-    let target_line_index = language_server
-      .get_line_index(target_specifier)
+    let target_asset_or_doc = language_server
+      .get_asset_or_document(&target_specifier)
       .await
       .ok()?;
 
     Some(lsp::CallHierarchyOutgoingCall {
       to: self.to.to_call_hierarchy_item(
-        &target_line_index,
+        target_asset_or_doc.line_index(),
         language_server,
         maybe_root_path,
       ),
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(line_index))
+        .map(|span| span.to_range(line_index.clone()))
         .collect(),
     })
   }
@@ -1560,7 +1627,7 @@ pub struct CompletionInfo {
 impl CompletionInfo {
   pub fn as_completion_response(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     settings: &config::CompletionSettings,
     specifier: &ModuleSpecifier,
     position: u32,
@@ -1569,8 +1636,13 @@ impl CompletionInfo {
       .entries
       .iter()
       .map(|entry| {
-        entry
-          .as_completion_item(line_index, self, settings, specifier, position)
+        entry.as_completion_item(
+          line_index.clone(),
+          self,
+          settings,
+          specifier,
+          position,
+        )
       })
       .collect();
     let is_incomplete = self
@@ -1711,7 +1783,7 @@ impl CompletionEntry {
 
   pub fn as_completion_item(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     info: &CompletionInfo,
     settings: &config::CompletionSettings,
     specifier: &ModuleSpecifier,
@@ -1837,11 +1909,11 @@ const FOLD_END_PAIR_CHARACTERS: &[u8] = &[b'}', b']', b')', b'`'];
 impl OutliningSpan {
   pub fn to_folding_range(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     content: &[u8],
     line_folding_only: bool,
   ) -> lsp::FoldingRange {
-    let range = self.text_span.to_range(line_index);
+    let range = self.text_span.to_range(line_index.clone());
     lsp::FoldingRange {
       start_line: range.start.line,
       start_character: if line_folding_only {
@@ -1867,7 +1939,7 @@ impl OutliningSpan {
   fn adjust_folding_end_line(
     &self,
     range: &lsp::Range,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
     content: &[u8],
     line_folding_only: bool,
   ) -> u32 {
@@ -1941,11 +2013,15 @@ impl SignatureHelpItem {
       .collect::<Vec<String>>()
       .join(", ");
     let suffix_text = display_parts_to_string(&self.suffix_display_parts);
+    let documentation = display_parts_to_string(&self.documentation);
     lsp::SignatureInformation {
       label: format!("{}{}{}", prefix_text, params_text, suffix_text),
-      documentation: Some(lsp::Documentation::String(display_parts_to_string(
-        &self.documentation,
-      ))),
+      documentation: Some(lsp::Documentation::MarkupContent(
+        lsp::MarkupContent {
+          kind: lsp::MarkupKind::Markdown,
+          value: documentation,
+        },
+      )),
       parameters: Some(
         self
           .parameters
@@ -1969,13 +2045,17 @@ pub struct SignatureHelpParameter {
 
 impl SignatureHelpParameter {
   pub fn into_parameter_information(self) -> lsp::ParameterInformation {
+    let documentation = display_parts_to_string(&self.documentation);
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
       )),
-      documentation: Some(lsp::Documentation::String(display_parts_to_string(
-        &self.documentation,
-      ))),
+      documentation: Some(lsp::Documentation::MarkupContent(
+        lsp::MarkupContent {
+          kind: lsp::MarkupKind::Markdown,
+          value: documentation,
+        },
+      )),
     }
   }
 }
@@ -1991,10 +2071,10 @@ pub struct SelectionRange {
 impl SelectionRange {
   pub fn to_selection_range(
     &self,
-    line_index: &LineIndex,
+    line_index: Arc<LineIndex>,
   ) -> lsp::SelectionRange {
     lsp::SelectionRange {
-      range: self.text_span.to_range(line_index),
+      range: self.text_span.to_range(line_index.clone()),
       parent: self.parent.as_ref().map(|parent_selection| {
         Box::new(parent_selection.to_selection_range(line_index))
       }),
@@ -2065,19 +2145,14 @@ fn cache_snapshot(
     .snapshots
     .contains_key(&(specifier.clone(), version.clone().into()))
   {
-    let content = if state.state_snapshot.documents.contains_key(specifier) {
-      state
-        .state_snapshot
-        .documents
-        .content(specifier)
-        .ok_or_else(|| {
-          anyhow!("Specifier unexpectedly doesn't have content: {}", specifier)
-        })?
-    } else {
-      state.state_snapshot.sources.get_source(specifier).ok_or_else(|| {
-        anyhow!("Specifier (\"{}\") is not an in memory document or on disk resource.", specifier)
+    let content = state
+      .state_snapshot
+      .documents
+      .get(specifier)
+      .ok_or_else(|| {
+        anyhow!("Specifier unexpectedly doesn't exist: {}", specifier)
       })?
-    };
+      .content();
     state
       .snapshots
       .insert((specifier.clone(), version.into()), content.to_string());
@@ -2140,7 +2215,10 @@ fn op_exists(state: &mut State, args: SpecifierArgs) -> Result<bool, AnyError> {
     .performance
     .mark("op_exists", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let result = state.state_snapshot.sources.contains_key(&specifier);
+  let result = state
+    .state_snapshot
+    .documents
+    .contains_specifier(&specifier);
   state.state_snapshot.performance.measure(mark);
   Ok(result)
 }
@@ -2214,7 +2292,7 @@ fn op_get_length(
   let specifier = state.normalize_specifier(args.specifier)?;
   let r = if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier)
   {
-    Ok(asset.length)
+    Ok(asset.length())
   } else {
     cache_snapshot(state, &specifier, args.version.clone())?;
     let content = state
@@ -2247,7 +2325,7 @@ fn op_get_text(
   let specifier = state.normalize_specifier(args.specifier)?;
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
-      content.text.as_str()
+      content.text_str()
     } else {
       cache_snapshot(state, &specifier, args.version.clone())?;
       state
@@ -2268,9 +2346,9 @@ fn op_load(
     .performance
     .mark("op_load", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let result = state.state_snapshot.sources.get_source(&specifier);
+  let document = state.state_snapshot.documents.get(&specifier);
   state.state_snapshot.performance.measure(mark);
-  Ok(result.map(|t| t.to_string()))
+  Ok(document.map(|d| d.content().to_string()))
 }
 
 fn op_resolve(
@@ -2281,89 +2359,33 @@ fn op_resolve(
     .state_snapshot
     .performance
     .mark("op_resolve", Some(&args));
-  let mut resolved = Vec::new();
   let referrer = state.normalize_specifier(&args.base)?;
-  let sources = &mut state.state_snapshot.sources;
 
-  if state.state_snapshot.documents.contains_key(&referrer) {
-    if let Some(dependencies) =
-      state.state_snapshot.documents.dependencies(&referrer)
-    {
-      for specifier in &args.specifiers {
-        if specifier.starts_with("asset:///") {
-          resolved.push(Some((
-            specifier.clone(),
-            MediaType::from(specifier).as_ts_extension().into(),
-          )))
-        } else if let Some(dependency) = dependencies.get(specifier) {
-          let resolved_import =
-            if let Some(resolved_import) = &dependency.maybe_type {
-              resolved_import.clone()
-            } else if let Some(resolved_import) = &dependency.maybe_code {
-              resolved_import.clone()
-            } else {
-              ResolvedDependency::Err(ResolvedDependencyErr::Missing)
-            };
-          if let ResolvedDependency::Resolved(resolved_specifier) =
-            resolved_import
-          {
-            if state
-              .state_snapshot
-              .documents
-              .contains_key(&resolved_specifier)
-            {
-              let media_type = MediaType::from(&resolved_specifier);
-              resolved.push(Some((
-                resolved_specifier.to_string(),
-                media_type.as_ts_extension().into(),
-              )));
-            } else if sources.contains_key(&resolved_specifier) {
-              let media_type = if let Some(media_type) =
-                sources.get_media_type(&resolved_specifier)
-              {
-                media_type
-              } else {
-                MediaType::from(&resolved_specifier)
-              };
-              resolved.push(Some((
-                resolved_specifier.to_string(),
-                media_type.as_ts_extension().into(),
-              )));
-            } else {
-              resolved.push(None);
-            }
-          } else {
-            resolved.push(None);
-          }
-        }
-      }
-    }
-  } else if sources.contains_key(&referrer) {
-    for specifier in &args.specifiers {
-      if let Some((resolved_specifier, media_type)) =
-        sources.resolve_import(specifier, &referrer)
-      {
-        resolved.push(Some((
-          resolved_specifier.to_string(),
-          media_type.as_ts_extension().into(),
-        )));
-      } else {
-        resolved.push(None);
-      }
-    }
+  let result = if let Some(resolved) = state
+    .state_snapshot
+    .documents
+    .resolve(args.specifiers, &referrer)
+  {
+    Ok(
+      resolved
+        .into_iter()
+        .map(|o| {
+          o.map(|(s, mt)| (s.to_string(), mt.as_ts_extension().to_string()))
+        })
+        .collect(),
+    )
   } else {
-    state.state_snapshot.performance.measure(mark);
-    return Err(custom_error(
+    Err(custom_error(
       "NotFound",
       format!(
-        "the referring ({}) specifier is unexpectedly missing",
-        referrer
+        "Error resolving. Referring specifier \"{}\" was not found.",
+        args.base
       ),
-    ));
-  }
+    ))
+  };
 
   state.state_snapshot.performance.measure(mark);
-  Ok(resolved)
+  result
 }
 
 fn op_respond(state: &mut State, args: Response) -> Result<bool, AnyError> {
@@ -2379,9 +2401,9 @@ fn op_script_names(
     state
       .state_snapshot
       .documents
-      .open_specifiers()
+      .documents(true, true)
       .into_iter()
-      .cloned()
+      .map(|d| d.specifier().clone())
       .collect(),
   )
 }
@@ -2407,17 +2429,13 @@ fn op_script_version(
     } else {
       Ok(None)
     }
-  } else if let Some(version) =
-    state.state_snapshot.documents.version(&specifier)
-  {
-    Ok(Some(version.to_string()))
   } else {
-    let sources = &mut state.state_snapshot.sources;
-    if let Some(version) = sources.get_script_version(&specifier) {
-      Ok(Some(version))
-    } else {
-      Ok(None)
-    }
+    let script_version = state
+      .state_snapshot
+      .documents
+      .get(&specifier)
+      .map(|d| d.script_version());
+    Ok(script_version)
   };
 
   state.state_snapshot.performance.measure(mark);
@@ -2868,7 +2886,7 @@ impl RequestMethod {
 }
 
 /// Send a request into a runtime and return the JSON value of the response.
-pub fn request(
+pub(crate) fn request(
   runtime: &mut JsRuntime,
   state_snapshot: StateSnapshot,
   method: RequestMethod,
@@ -2908,10 +2926,8 @@ mod tests {
   use super::*;
   use crate::http_cache::HttpCache;
   use crate::http_util::HeadersMap;
-  use crate::lsp::analysis;
-  use crate::lsp::documents::DocumentCache;
+  use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
-  use crate::lsp::sources::Sources;
   use crate::lsp::text::LineIndex;
   use std::path::Path;
   use std::path::PathBuf;
@@ -2921,37 +2937,19 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let mut documents = DocumentCache::default();
+    let documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(
         specifier.clone(),
         *version,
-        *language_id,
+        language_id.clone(),
         Arc::new(source.to_string()),
       );
-      let media_type = MediaType::from(&specifier);
-      if let Some(Ok(parsed_module)) =
-        documents.get(&specifier).unwrap().source().module()
-      {
-        let (deps, _) = analysis::analyze_dependencies(
-          &specifier,
-          media_type,
-          parsed_module,
-          &None,
-        );
-        let dep_ranges =
-          analysis::analyze_dependency_ranges(parsed_module).ok();
-        documents
-          .set_dependencies(&specifier, Some(deps), dep_ranges)
-          .unwrap();
-      }
     }
-    let sources = Sources::new(location);
     StateSnapshot {
       documents,
-      sources,
       ..Default::default()
     }
   }

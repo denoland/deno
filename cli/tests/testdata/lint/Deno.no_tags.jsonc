@@ -1,0 +1,17 @@
+{
+  "lint": {
+    "files": {
+      "include": [
+        "lint/with_config/"
+      ],
+      "exclude": [
+        "lint/with_config/b.ts"
+      ]
+    },
+    "rules": {
+      "include": [
+        "ban-untagged-todo"
+      ]
+    }
+  }
+}

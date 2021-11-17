@@ -18,40 +18,40 @@
     if (buffer.length === 0) {
       return 0;
     }
-    const nread = await core.opAsync("op_net_read_async", rid, buffer);
+    const nread = await core.read(rid, buffer);
     return nread === 0 ? null : nread;
   }
 
   async function write(rid, data) {
-    return await core.opAsync("op_net_write_async", rid, data);
+    return await core.write(rid, data);
   }
 
   function shutdown(rid) {
-    return core.opAsync("op_net_shutdown", rid);
+    return core.shutdown(rid);
   }
 
   function opAccept(rid, transport) {
-    return core.opAsync("op_accept", { rid, transport });
+    return core.opAsync("op_net_accept", { rid, transport });
   }
 
   function opListen(args) {
-    return core.opSync("op_listen", args);
+    return core.opSync("op_net_listen", args);
   }
 
   function opConnect(args) {
-    return core.opAsync("op_connect", args);
+    return core.opAsync("op_net_connect", args);
   }
 
   function opReceive(rid, transport, zeroCopy) {
     return core.opAsync(
-      "op_datagram_receive",
+      "op_dgram_recv",
       { rid, transport },
       zeroCopy,
     );
   }
 
   function opSend(args, zeroCopy) {
-    return core.opAsync("op_datagram_send", args, zeroCopy);
+    return core.opAsync("op_dgram_send", args, zeroCopy);
   }
 
   function resolveDns(query, recordType, options) {

@@ -3,6 +3,7 @@ mod async_cancel;
 mod async_cell;
 mod bindings;
 pub mod error;
+mod error_codes;
 mod extensions;
 mod flags;
 mod gotham_state;
@@ -18,9 +19,9 @@ mod resources;
 mod runtime;
 
 // Re-exports
+pub use anyhow;
 pub use futures;
 pub use parking_lot;
-pub use rusty_v8 as v8;
 pub use serde;
 pub use serde_json;
 pub use serde_v8;
@@ -28,6 +29,7 @@ pub use serde_v8::Buffer as ZeroCopyBuf;
 pub use serde_v8::ByteString;
 pub use serde_v8::StringOrBuffer;
 pub use url;
+pub use v8;
 
 pub use crate::async_cancel::CancelFuture;
 pub use crate::async_cancel::CancelHandle;
@@ -85,6 +87,7 @@ pub use crate::ops_json::op_async_unref;
 pub use crate::ops_json::op_sync;
 pub use crate::ops_json::void_op_async;
 pub use crate::ops_json::void_op_sync;
+pub use crate::resources::AsyncResult;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
 pub use crate::resources::ResourceTable;

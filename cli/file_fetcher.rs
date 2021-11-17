@@ -35,7 +35,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
-static DENO_AUTH_TOKENS: &str = "DENO_AUTH_TOKENS";
 pub const SUPPORTED_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
 
@@ -232,7 +231,7 @@ pub struct FileFetcher {
   allow_remote: bool,
   cache: FileCache,
   cache_setting: CacheSetting,
-  http_cache: HttpCache,
+  pub(crate) http_cache: HttpCache,
   http_client: reqwest::Client,
   blob_store: BlobStore,
 }
@@ -247,7 +246,7 @@ impl FileFetcher {
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
-      auth_tokens: AuthTokens::new(env::var(DENO_AUTH_TOKENS).ok()),
+      auth_tokens: AuthTokens::new(env::var("DENO_AUTH_TOKENS").ok()),
       allow_remote,
       cache: Default::default(),
       cache_setting,
@@ -283,9 +282,10 @@ impl FileFetcher {
       map_content_type(specifier, maybe_content_type);
     let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
     let maybe_types = match media_type {
-      MediaType::JavaScript | MediaType::Jsx => {
-        headers.get("x-typescript-types").cloned()
-      }
+      MediaType::JavaScript
+      | MediaType::Cjs
+      | MediaType::Mjs
+      | MediaType::Jsx => headers.get("x-typescript-types").cloned(),
       _ => None,
     };
 
@@ -638,9 +638,8 @@ mod tests {
     cache_setting: CacheSetting,
     maybe_temp_dir: Option<Rc<TempDir>>,
   ) -> (FileFetcher, Rc<TempDir>, BlobStore) {
-    let temp_dir = maybe_temp_dir.unwrap_or_else(|| {
-      Rc::new(TempDir::new().expect("failed to create temp directory"))
-    });
+    let temp_dir =
+      maybe_temp_dir.unwrap_or_else(|| Rc::new(TempDir::new().unwrap()));
     let location = temp_dir.path().join("deps");
     let blob_store = BlobStore::default();
     let file_fetcher = FileFetcher::new(
@@ -651,7 +650,7 @@ mod tests {
       blob_store.clone(),
       None,
     )
-    .expect("setup failed");
+    .unwrap();
     (file_fetcher, temp_dir, blob_store)
   }
 
@@ -745,13 +744,17 @@ mod tests {
       // Extension only
       (file_url!("/foo/bar.ts"), None, MediaType::TypeScript, None),
       (file_url!("/foo/bar.tsx"), None, MediaType::Tsx, None),
+      (file_url!("/foo/bar.d.cts"), None, MediaType::Dcts, None),
+      (file_url!("/foo/bar.d.mts"), None, MediaType::Dmts, None),
       (file_url!("/foo/bar.d.ts"), None, MediaType::Dts, None),
       (file_url!("/foo/bar.js"), None, MediaType::JavaScript, None),
       (file_url!("/foo/bar.jsx"), None, MediaType::Jsx, None),
       (file_url!("/foo/bar.json"), None, MediaType::Json, None),
       (file_url!("/foo/bar.wasm"), None, MediaType::Wasm, None),
-      (file_url!("/foo/bar.cjs"), None, MediaType::JavaScript, None),
-      (file_url!("/foo/bar.mjs"), None, MediaType::JavaScript, None),
+      (file_url!("/foo/bar.cjs"), None, MediaType::Cjs, None),
+      (file_url!("/foo/bar.mjs"), None, MediaType::Mjs, None),
+      (file_url!("/foo/bar.cts"), None, MediaType::Cts, None),
+      (file_url!("/foo/bar.mts"), None, MediaType::Mts, None),
       (file_url!("/foo/bar"), None, MediaType::Unknown, None),
       // Media type no extension
       (
@@ -884,7 +887,7 @@ mod tests {
       (
         "https://deno.land/x/mod.d.ts",
         Some("application/javascript".to_string()),
-        MediaType::JavaScript,
+        MediaType::Dts,
         None,
       ),
       (
@@ -1092,7 +1095,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("setup failed");
+    .unwrap();
     let result = file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
       .await;
@@ -1108,10 +1111,8 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_uses_cache() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new()
-      .expect("could not create temp dir")
-      .into_path();
-    let location = temp_dir.join("deps");
+    let temp_dir = TempDir::new().unwrap();
+    let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Use,
@@ -1120,7 +1121,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let specifier =
       resolve_url("http://localhost:4545/subdir/mismatch_ext.ts").unwrap();
     let cache_filename = file_fetcher_01
@@ -1135,8 +1136,7 @@ mod tests {
 
     let metadata_filename =
       crate::http_cache::Metadata::filename(&cache_filename);
-    let metadata_file =
-      fs::File::open(metadata_filename).expect("could not open metadata file");
+    let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
 
@@ -1148,7 +1148,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let result = file_fetcher_02
       .fetch(&specifier, &mut Permissions::allow_all())
       .await;
@@ -1156,15 +1156,11 @@ mod tests {
 
     let metadata_filename =
       crate::http_cache::Metadata::filename(&cache_filename);
-    let metadata_file =
-      fs::File::open(metadata_filename).expect("could not open metadata file");
+    let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
 
     assert_eq!(metadata_file_modified_01, metadata_file_modified_02);
-    // because we converted to a "fixed" directory, we need to cleanup after
-    // ourselves.
-    let _ = fs::remove_dir_all(temp_dir);
   }
 
   #[tokio::test]
@@ -1198,10 +1194,7 @@ mod tests {
       "",
       "redirected files should have empty cached contents"
     );
-    let (_, headers) = file_fetcher
-      .http_cache
-      .get(&specifier)
-      .expect("could not get file");
+    let (_, headers) = file_fetcher.http_cache.get(&specifier).unwrap();
     assert_eq!(
       headers.get("location").unwrap(),
       "http://localhost:4545/subdir/redirects/redirect1.js"
@@ -1211,10 +1204,8 @@ mod tests {
       fs::read_to_string(redirected_cached_filename).unwrap(),
       "export const redirect = 1;\n"
     );
-    let (_, headers) = file_fetcher
-      .http_cache
-      .get(&redirected_specifier)
-      .expect("could not get file");
+    let (_, headers) =
+      file_fetcher.http_cache.get(&redirected_specifier).unwrap();
     assert!(headers.get("location").is_none());
   }
 
@@ -1256,10 +1247,7 @@ mod tests {
       "",
       "redirected files should have empty cached contents"
     );
-    let (_, headers) = file_fetcher
-      .http_cache
-      .get(&specifier)
-      .expect("could not get file");
+    let (_, headers) = file_fetcher.http_cache.get(&specifier).unwrap();
     assert_eq!(
       headers.get("location").unwrap(),
       "http://localhost:4546/subdir/redirects/redirect1.js"
@@ -1273,7 +1261,7 @@ mod tests {
     let (_, headers) = file_fetcher
       .http_cache
       .get(&redirected_01_specifier)
-      .expect("could not get file");
+      .unwrap();
     assert_eq!(
       headers.get("location").unwrap(),
       "http://localhost:4545/subdir/redirects/redirect1.js"
@@ -1286,17 +1274,15 @@ mod tests {
     let (_, headers) = file_fetcher
       .http_cache
       .get(&redirected_02_specifier)
-      .expect("could not get file");
+      .unwrap();
     assert!(headers.get("location").is_none());
   }
 
   #[tokio::test]
   async fn test_fetch_uses_cache_with_redirects() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new()
-      .expect("could not create temp dir")
-      .into_path();
-    let location = temp_dir.join("deps");
+    let temp_dir = TempDir::new().unwrap();
+    let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Use,
@@ -1305,7 +1291,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let specifier =
       resolve_url("http://localhost:4548/subdir/mismatch_ext.ts").unwrap();
     let redirected_specifier =
@@ -1322,8 +1308,7 @@ mod tests {
 
     let metadata_filename =
       crate::http_cache::Metadata::filename(&redirected_cache_filename);
-    let metadata_file =
-      fs::File::open(metadata_filename).expect("could not open metadata file");
+    let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
 
@@ -1335,7 +1320,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let result = file_fetcher_02
       .fetch(&redirected_specifier, &mut Permissions::allow_all())
       .await;
@@ -1343,15 +1328,11 @@ mod tests {
 
     let metadata_filename =
       crate::http_cache::Metadata::filename(&redirected_cache_filename);
-    let metadata_file =
-      fs::File::open(metadata_filename).expect("could not open metadata file");
+    let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
 
     assert_eq!(metadata_file_modified_01, metadata_file_modified_02);
-    // because we converted to a "fixed" directory, we need to cleanup after
-    // ourselves.
-    let _ = fs::remove_dir_all(temp_dir);
   }
 
   #[tokio::test]
@@ -1411,10 +1392,7 @@ mod tests {
       "",
       "redirected files should have empty cached contents"
     );
-    let (_, headers) = file_fetcher
-      .http_cache
-      .get(&specifier)
-      .expect("could not get file");
+    let (_, headers) = file_fetcher.http_cache.get(&specifier).unwrap();
     assert_eq!(
       headers.get("location").unwrap(),
       "/subdir/redirects/redirect1.js"
@@ -1424,17 +1402,15 @@ mod tests {
       fs::read_to_string(redirected_cached_filename).unwrap(),
       "export const redirect = 1;\n"
     );
-    let (_, headers) = file_fetcher
-      .http_cache
-      .get(&redirected_specifier)
-      .expect("could not get file");
+    let (_, headers) =
+      file_fetcher.http_cache.get(&redirected_specifier).unwrap();
     assert!(headers.get("location").is_none());
   }
 
   #[tokio::test]
   async fn test_fetch_no_remote() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create temp dir");
+    let temp_dir = TempDir::new().unwrap();
     let location = temp_dir.path().join("deps");
     let file_fetcher = FileFetcher::new(
       HttpCache::new(&location),
@@ -1444,7 +1420,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
 
     let result = file_fetcher
@@ -1459,10 +1435,8 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_cache_only() {
     let _http_server_guard = test_util::http_server();
-    let temp_dir = TempDir::new()
-      .expect("could not create temp dir")
-      .into_path();
-    let location = temp_dir.join("deps");
+    let temp_dir = TempDir::new().unwrap();
+    let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Only,
@@ -1471,7 +1445,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let file_fetcher_02 = FileFetcher::new(
       HttpCache::new(&location),
       CacheSetting::Use,
@@ -1480,7 +1454,7 @@ mod tests {
       BlobStore::default(),
       None,
     )
-    .expect("could not create file fetcher");
+    .unwrap();
     let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
@@ -1500,10 +1474,6 @@ mod tests {
       .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
-
-    // because we converted to a "fixed" directory, we need to cleanup after
-    // ourselves.
-    let _ = fs::remove_dir_all(temp_dir);
   }
 
   #[tokio::test]
@@ -1512,8 +1482,7 @@ mod tests {
     let fixture_path = temp_dir.path().join("mod.ts");
     let specifier =
       resolve_url_or_path(&fixture_path.to_string_lossy()).unwrap();
-    fs::write(fixture_path.clone(), r#"console.log("hello deno");"#)
-      .expect("could not write file");
+    fs::write(fixture_path.clone(), r#"console.log("hello deno");"#).unwrap();
     let result = file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
       .await;
@@ -1521,8 +1490,7 @@ mod tests {
     let file = result.unwrap();
     assert_eq!(file.source.as_str(), r#"console.log("hello deno");"#);
 
-    fs::write(fixture_path, r#"console.log("goodbye deno");"#)
-      .expect("could not write file");
+    fs::write(fixture_path, r#"console.log("goodbye deno");"#).unwrap();
     let result = file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
       .await;

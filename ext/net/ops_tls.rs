@@ -28,6 +28,7 @@ use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpPair;
@@ -35,6 +36,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
@@ -684,10 +686,10 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
 
 pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
   vec![
-    ("op_start_tls", op_async(op_start_tls::<P>)),
-    ("op_connect_tls", op_async(op_connect_tls::<P>)),
-    ("op_listen_tls", op_sync(op_listen_tls::<P>)),
-    ("op_accept_tls", op_async(op_accept_tls)),
+    ("op_tls_start", op_async(op_tls_start::<P>)),
+    ("op_tls_connect", op_async(op_tls_connect::<P>)),
+    ("op_tls_listen", op_sync(op_tls_listen::<P>)),
+    ("op_tls_accept", op_async(op_tls_accept)),
     ("op_tls_handshake", op_async(op_tls_handshake)),
   ]
 }
@@ -715,24 +717,27 @@ impl TlsStreamResource {
   }
 
   pub async fn read(
-    self: &Rc<Self>,
-    buf: &mut [u8],
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
   ) -> Result<usize, AnyError> {
-    let mut rd = RcRef::map(self, |r| &r.rd).borrow_mut().await;
-    let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
-    let nread = rd.read(buf).try_or_cancel(cancel_handle).await?;
+    let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
+    let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+    let nread = rd.read(&mut buf).try_or_cancel(cancel_handle).await?;
     Ok(nread)
   }
 
-  pub async fn write(self: &Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+  pub async fn write(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
     self.handshake().await?;
     let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
-    let nwritten = wr.write(buf).await?;
+    let nwritten = wr.write(&buf).await?;
     wr.flush().await?;
     Ok(nwritten)
   }
 
-  pub async fn shutdown(self: &Rc<Self>) -> Result<(), AnyError> {
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
     self.handshake().await?;
     let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
     wr.shutdown().await?;
@@ -755,6 +760,18 @@ impl Resource for TlsStreamResource {
     "tlsStream".into()
   }
 
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
+  }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.write(buf))
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(self.shutdown())
+  }
+
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel();
   }
@@ -774,14 +791,13 @@ pub struct ConnectTlsArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StartTlsArgs {
+pub struct StartTlsArgs {
   rid: ResourceId,
-  cert_file: Option<String>,
   ca_certs: Vec<String>,
   hostname: String,
 }
 
-async fn op_start_tls<NP>(
+pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
   _: (),
@@ -794,28 +810,18 @@ where
     "" => "localhost",
     n => n,
   };
-  let cert_file = args.cert_file.as_deref();
+
   {
-    super::check_unstable2(&state, "Deno.startTls");
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
     permissions.check_net(&(hostname, Some(0)))?;
-    if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path))?;
-    }
   }
 
-  let mut ca_certs = args
+  let ca_certs = args
     .ca_certs
     .into_iter()
     .map(|s| s.into_bytes())
     .collect::<Vec<_>>();
-
-  if let Some(path) = cert_file {
-    let mut buf = Vec::new();
-    File::open(path)?.read_to_end(&mut buf)?;
-    ca_certs.push(buf);
-  };
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
     .map_err(|_| invalid_hostname(hostname))?;
@@ -873,7 +879,7 @@ where
   })
 }
 
-pub async fn op_connect_tls<NP>(
+pub async fn op_tls_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
   _: (),
@@ -1024,7 +1030,7 @@ pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-fn op_listen_tls<NP>(
+pub fn op_tls_listen<NP>(
   state: &mut OpState,
   args: ListenTlsArgs,
   _: (),
@@ -1084,7 +1090,7 @@ where
   })
 }
 
-async fn op_accept_tls(
+pub async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),
@@ -1134,7 +1140,7 @@ async fn op_accept_tls(
   })
 }
 
-async fn op_tls_handshake(
+pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),

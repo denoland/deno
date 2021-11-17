@@ -1,11 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::error::AnyError;
 use crate::ops::OpCall;
 use crate::serialize_op_result;
 use crate::Op;
 use crate::OpFn;
 use crate::OpState;
+use anyhow::Error;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::RefCell;
@@ -51,7 +51,7 @@ pub fn void_op_async() -> Box<OpFn> {
 /// A more complete example is available in the examples directory.
 pub fn op_sync<F, A, B, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut OpState, A, B) -> Result<R, AnyError> + 'static,
+  F: Fn(&mut OpState, A, B) -> Result<R, Error> + 'static,
   A: DeserializeOwned,
   B: DeserializeOwned,
   R: Serialize + 'static,
@@ -96,7 +96,7 @@ where
   F: Fn(Rc<RefCell<OpState>>, A, B) -> R + 'static,
   A: DeserializeOwned,
   B: DeserializeOwned,
-  R: Future<Output = Result<RV, AnyError>> + 'static,
+  R: Future<Output = Result<RV, Error>> + 'static,
   RV: Serialize + 'static,
 {
   Box::new(move |state, payload| -> Op {
@@ -106,7 +106,7 @@ where
     let args = match payload.deserialize() {
       Ok(args) => args,
       Err(err) => {
-        return Op::Sync(serialize_op_result(Err::<(), AnyError>(err), state))
+        return Op::Sync(serialize_op_result(Err::<(), Error>(err), state))
       }
     };
     let (a, b) = args;
@@ -128,7 +128,7 @@ where
   F: Fn(Rc<RefCell<OpState>>, A, B) -> R + 'static,
   A: DeserializeOwned,
   B: DeserializeOwned,
-  R: Future<Output = Result<RV, AnyError>> + 'static,
+  R: Future<Output = Result<RV, Error>> + 'static,
   RV: Serialize + 'static,
 {
   Box::new(move |state, payload| -> Op {
@@ -138,7 +138,7 @@ where
     let args = match payload.deserialize() {
       Ok(args) => args,
       Err(err) => {
-        return Op::Sync(serialize_op_result(Err::<(), AnyError>(err), state))
+        return Op::Sync(serialize_op_result(Err::<(), Error>(err), state))
       }
     };
     let (a, b) = args;
@@ -162,7 +162,7 @@ mod tests {
       _state: Rc<RefCell<OpState>>,
       msg: Option<String>,
       _: (),
-    ) -> Result<(), AnyError> {
+    ) -> Result<(), Error> {
       assert_eq!(msg.unwrap(), "hello");
       Err(crate::error::generic_error("foo"))
     }

@@ -47,7 +47,7 @@ unitTest({ permissions: { read: true } }, async function resourcesFile() {
     Object.keys(resourcesBefore).length + 1,
   );
   const newRid = +Object.keys(resourcesAfter).find((rid): boolean => {
-    return !resourcesBefore.hasOwnProperty(rid);
+    return !Object.prototype.hasOwnProperty.call(resourcesBefore, rid);
   })!;
   assertEquals(resourcesAfter[newRid], "fsFile");
 });

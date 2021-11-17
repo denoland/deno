@@ -16,17 +16,15 @@ use crate::tsc;
 use crate::version;
 
 use deno_ast::swc;
-use deno_core::error::anyhow;
-use deno_core::error::custom_error;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
@@ -43,7 +41,7 @@ use std::time::Instant;
 /// Represents the "default" type library that should be used when type
 /// checking the code in the module graph.  Note that a user provided config
 /// of `"lib"` would override this value.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub(crate) enum TypeLib {
   DenoWindow,
   DenoWorker,
@@ -75,8 +73,6 @@ impl Serialize for TypeLib {
     Serialize::serialize(&value, serializer)
   }
 }
-
-type Modules = HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>;
 
 /// A structure representing stats from an emit operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -184,7 +180,6 @@ pub(crate) fn get_ts_config(
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
-      // TODO(@kitsonk) make this actually work when https://github.com/swc-project/swc/issues/2218 addressed.
       "inlineSources": true,
       "sourceMap": false,
       "jsx": "react",
@@ -285,8 +280,12 @@ fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
 /// Determine if a given media type is emittable or not.
 fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
   match &media_type {
-    MediaType::TypeScript | MediaType::Tsx | MediaType::Jsx => true,
-    MediaType::JavaScript => include_js,
+    MediaType::TypeScript
+    | MediaType::Mts
+    | MediaType::Cts
+    | MediaType::Tsx
+    | MediaType::Jsx => true,
+    MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => include_js,
     _ => false,
   }
 }
@@ -380,12 +379,17 @@ pub(crate) fn check_and_maybe_emit(
         // Sometimes if `tsc` sees a CommonJS file it will _helpfully_ output it
         // to ESM, which we don't really want to do unless someone has enabled
         // check_js.
-        if !check_js && *media_type == MediaType::JavaScript {
+        if !check_js
+          && matches!(
+            media_type,
+            MediaType::JavaScript | MediaType::Cjs | MediaType::Mjs
+          )
+        {
           log::debug!("skipping emit for {}", specifier);
           continue;
         }
         match emit.media_type {
-          MediaType::JavaScript => {
+          MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
             let version = get_version(source.as_bytes(), &config_bytes);
             cache.set(CacheType::Version, &specifier, version)?;
             cache.set(CacheType::Emit, &specifier, emit.data)?;
@@ -395,7 +399,7 @@ pub(crate) fn check_and_maybe_emit(
           }
           // this only occurs with the runtime emit, but we are using the same
           // code paths, so we handle it here.
-          MediaType::Dts => {
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
             cache.set(CacheType::Declaration, &specifier, emit.data)?;
           }
           _ => unreachable!(),
@@ -519,6 +523,9 @@ pub(crate) fn bundle(
   let globals = swc::common::Globals::new();
   deno_ast::swc::common::GLOBALS.set(&globals, || {
     let emit_options: ast::EmitOptions = options.ts_config.into();
+    let source_map_config = ast::SourceMapConfig {
+      inline_sources: emit_options.inline_sources,
+    };
 
     let cm = Rc::new(swc::common::SourceMap::new(
       swc::common::FilePathMapping::empty(),
@@ -577,7 +584,7 @@ pub(crate) fn bundle(
     let mut maybe_map: Option<String> = None;
     {
       let mut buf = Vec::new();
-      cm.build_source_map_from(&mut srcmap, None)
+      cm.build_source_map_with_config(&mut srcmap, None, source_map_config)
         .to_writer(&mut buf)?;
       if emit_options.inline_source_map {
         let encoded_map = format!(
@@ -679,10 +686,12 @@ pub(crate) fn valid_emit(
     .specifiers()
     .iter()
     .filter(|(_, r)| match r {
-      Ok((_, MediaType::TypeScript))
+      Ok((_, MediaType::TypeScript | MediaType::Mts | MediaType::Cts))
       | Ok((_, MediaType::Tsx))
       | Ok((_, MediaType::Jsx)) => true,
-      Ok((_, MediaType::JavaScript)) => emit_js,
+      Ok((_, MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs)) => {
+        emit_js
+      }
       _ => false,
     })
     .all(|(_, r)| {
@@ -758,9 +767,13 @@ pub(crate) fn to_file_map(
         if let Some(map) = cache.get(CacheType::SourceMap, &specifier) {
           files.insert(format!("{}.js.map", specifier), map);
         }
-      } else if media_type == MediaType::JavaScript
-        || media_type == MediaType::Unknown
-      {
+      } else if matches!(
+        media_type,
+        MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
+          | MediaType::Unknown
+      ) {
         if let Some(module) = graph.get(&specifier) {
           files.insert(specifier.to_string(), module.source.to_string());
         }
@@ -773,156 +786,22 @@ pub(crate) fn to_file_map(
   files
 }
 
-/// Convert a module graph to a map of module sources, which are used by
-/// `deno_core` to load modules into V8.
-pub(crate) fn to_module_sources(
-  graph: &ModuleGraph,
-  cache: &dyn Cacher,
-) -> Modules {
-  graph
-    .specifiers()
-    .into_iter()
-    .map(|(requested_specifier, r)| match r {
-      Err(err) => (requested_specifier, Err(err.into())),
-      Ok((found_specifier, media_type)) => {
-        // First we check to see if there is an emitted file in the cache.
-        if let Some(code) = cache.get(CacheType::Emit, &found_specifier) {
-          (
-            requested_specifier.clone(),
-            Ok(ModuleSource {
-              code,
-              module_url_found: found_specifier.to_string(),
-              module_url_specified: requested_specifier.to_string(),
-            }),
-          )
-        // Then if the file is JavaScript (or unknown) and wasn't emitted, we
-        // will load the original source code in the module.
-        } else if media_type == MediaType::JavaScript
-          || media_type == MediaType::Unknown
-        {
-          if let Some(module) = graph.get(&found_specifier) {
-            (
-              requested_specifier.clone(),
-              Ok(ModuleSource {
-                code: module.source.as_str().to_string(),
-                module_url_found: module.specifier.to_string(),
-                module_url_specified: requested_specifier.to_string(),
-              }),
-            )
-          } else {
-            unreachable!(
-              "unexpected module missing from graph: {}",
-              found_specifier
-            )
-          }
-        // Otherwise we will add a not found error.
-        } else {
-          (
-            requested_specifier.clone(),
-            Err(custom_error(
-              "NotFound",
-              format!(
-                "Emitted code for \"{}\" not found.",
-                requested_specifier
-              ),
-            )),
-          )
-        }
-      }
-    })
-    .collect()
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cache::MemoryCacher;
 
   #[test]
   fn test_is_emittable() {
     assert!(is_emittable(&MediaType::TypeScript, false));
     assert!(!is_emittable(&MediaType::Dts, false));
+    assert!(!is_emittable(&MediaType::Dcts, false));
+    assert!(!is_emittable(&MediaType::Dmts, false));
     assert!(is_emittable(&MediaType::Tsx, false));
     assert!(!is_emittable(&MediaType::JavaScript, false));
+    assert!(!is_emittable(&MediaType::Cjs, false));
+    assert!(!is_emittable(&MediaType::Mjs, false));
     assert!(is_emittable(&MediaType::JavaScript, true));
     assert!(is_emittable(&MediaType::Jsx, false));
     assert!(!is_emittable(&MediaType::Json, false));
-  }
-
-  async fn setup<S: AsRef<str>>(
-    root: S,
-    sources: Vec<(S, S)>,
-  ) -> (ModuleGraph, MemoryCacher) {
-    let roots = vec![ModuleSpecifier::parse(root.as_ref()).unwrap()];
-    let sources = sources
-      .into_iter()
-      .map(|(s, c)| (s.as_ref().to_string(), Arc::new(c.as_ref().to_string())))
-      .collect();
-    let mut cache = MemoryCacher::new(sources);
-    let graph = deno_graph::create_graph(
-      roots, false, None, &mut cache, None, None, None,
-    )
-    .await;
-    (graph, cache)
-  }
-
-  #[tokio::test]
-  async fn test_to_module_sources_emitted() {
-    let (graph, mut cache) = setup(
-      "https://example.com/a.ts",
-      vec![("https://example.com/a.ts", r#"console.log("hello deno");"#)],
-    )
-    .await;
-    let (ts_config, _) = get_ts_config(ConfigType::Emit, None, None).unwrap();
-    emit(
-      &graph,
-      &mut cache,
-      EmitOptions {
-        ts_config,
-        reload_exclusions: HashSet::default(),
-        reload: false,
-      },
-    )
-    .unwrap();
-    let modules = to_module_sources(&graph, &cache);
-    assert_eq!(modules.len(), 1);
-    let root = ModuleSpecifier::parse("https://example.com/a.ts").unwrap();
-    let maybe_result = modules.get(&root);
-    assert!(maybe_result.is_some());
-    let result = maybe_result.unwrap();
-    assert!(result.is_ok());
-    let module_source = result.as_ref().unwrap();
-    assert!(module_source
-      .code
-      .starts_with(r#"console.log("hello deno");"#));
-  }
-
-  #[tokio::test]
-  async fn test_to_module_sources_not_emitted() {
-    let (graph, mut cache) = setup(
-      "https://example.com/a.js",
-      vec![("https://example.com/a.js", r#"console.log("hello deno");"#)],
-    )
-    .await;
-    let (ts_config, _) = get_ts_config(ConfigType::Emit, None, None).unwrap();
-    emit(
-      &graph,
-      &mut cache,
-      EmitOptions {
-        ts_config,
-        reload_exclusions: HashSet::default(),
-        reload: false,
-      },
-    )
-    .unwrap();
-    let modules = to_module_sources(&graph, &cache);
-    assert_eq!(modules.len(), 1);
-    let root = ModuleSpecifier::parse("https://example.com/a.js").unwrap();
-    let maybe_result = modules.get(&root);
-    assert!(maybe_result.is_some());
-    let result = maybe_result.unwrap();
-    assert!(result.is_ok());
-    let module_source = result.as_ref().unwrap();
-    assert_eq!(module_source.code, r#"console.log("hello deno");"#);
   }
 }

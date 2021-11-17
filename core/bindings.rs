@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
-use crate::error::AnyError;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
@@ -12,14 +11,12 @@ use crate::OpResult;
 use crate::OpTable;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
+use anyhow::Error;
 use log::debug;
-use rusty_v8 as v8;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
 use std::cell::RefCell;
-use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::option::Option;
 use url::Url;
 use v8::HandleScope;
@@ -40,6 +37,18 @@ lazy_static::lazy_static! {
       },
       v8::ExternalReference {
         function: set_macrotask_callback.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: set_nexttick_callback.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: run_microtasks.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: has_tick_scheduled.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: set_has_tick_scheduled.map_fn_to()
       },
       v8::ExternalReference {
         function: eval_context.map_fn_to()
@@ -148,6 +157,20 @@ pub fn initialize_context<'s>(
     "setMacrotaskCallback",
     set_macrotask_callback,
   );
+  set_func(
+    scope,
+    core_val,
+    "setNextTickCallback",
+    set_nexttick_callback,
+  );
+  set_func(scope, core_val, "runMicrotasks", run_microtasks);
+  set_func(scope, core_val, "hasTickScheduled", has_tick_scheduled);
+  set_func(
+    scope,
+    core_val,
+    "setHasTickScheduled",
+    set_has_tick_scheduled,
+  );
   set_func(scope, core_val, "evalContext", eval_context);
   set_func(scope, core_val, "encode", encode);
   set_func(scope, core_val, "decode", decode);
@@ -247,6 +270,11 @@ pub extern "C" fn host_import_module_dynamically_callback(
         let message = arg.get(scope, message_key.into()).unwrap();
         let exception =
           v8::Exception::type_error(scope, message.try_into().unwrap());
+        let code_key = v8::String::new(scope, "code").unwrap();
+        let code_value =
+          v8::String::new(scope, "ERR_MODULE_NOT_FOUND").unwrap();
+        let exception_obj = exception.to_object(scope).unwrap();
+        exception_obj.set(scope, code_key.into(), code_value.into());
         scope.throw_exception(exception);
         return;
       }
@@ -320,7 +348,7 @@ fn opcall_sync<'s>(
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
     .map(|l| l.value() as OpId)
-    .map_err(AnyError::from)
+    .map_err(Error::from)
   {
     Ok(op_id) => op_id,
     Err(err) => {
@@ -351,7 +379,7 @@ fn opcall_sync<'s>(
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {
     Op::Sync(result) => {
-      state.op_state.borrow_mut().tracker.track_sync(op_id);
+      state.op_state.borrow().tracker.track_sync(op_id);
       rv.set(result.to_v8(scope).unwrap());
     }
     Op::NotFound => {
@@ -377,7 +405,7 @@ fn opcall_async<'s>(
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
     .map(|l| l.value() as OpId)
-    .map_err(AnyError::from)
+    .map_err(Error::from)
   {
     Ok(op_id) => op_id,
     Err(err) => {
@@ -390,7 +418,7 @@ fn opcall_async<'s>(
   let arg1 = args.get(1);
   let promise_id = v8::Local::<v8::Integer>::try_from(arg1)
     .map(|l| l.value() as PromiseId)
-    .map_err(AnyError::from);
+    .map_err(Error::from);
   // Fail if promise id invalid (not an int)
   let promise_id: PromiseId = match promise_id {
     Ok(promise_id) => promise_id,
@@ -421,12 +449,12 @@ fn opcall_async<'s>(
       OpResult::Err(_) => rv.set(result.to_v8(scope).unwrap()),
     },
     Op::Async(fut) => {
-      state.op_state.borrow_mut().tracker.track_async(op_id);
+      state.op_state.borrow().tracker.track_async(op_id);
       state.pending_ops.push(fut);
       state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {
-      state.op_state.borrow_mut().tracker.track_unref(op_id);
+      state.op_state.borrow().tracker.track_unref(op_id);
       state.pending_unref_ops.push(fut);
       state.have_unpolled_ops = true;
     }
@@ -434,6 +462,51 @@ fn opcall_async<'s>(
       throw_type_error(scope, format!("Unknown op id: {}", op_id));
     }
   }
+}
+
+fn has_tick_scheduled(
+  scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
+  rv.set(to_v8(scope, state.has_tick_scheduled).unwrap());
+}
+
+fn set_has_tick_scheduled(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  state.has_tick_scheduled = args.get(0).is_true();
+}
+
+fn run_microtasks(
+  scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  scope.perform_microtask_checkpoint();
+}
+
+fn set_nexttick_callback(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
+    Ok(cb) => cb,
+    Err(err) => return throw_type_error(scope, err.to_string()),
+  };
+
+  state.js_nexttick_cbs.push(v8::Global::new(scope, cb));
 }
 
 fn set_macrotask_callback(
@@ -449,17 +522,7 @@ fn set_macrotask_callback(
     Err(err) => return throw_type_error(scope, err.to_string()),
   };
 
-  let slot = match &mut state.js_macrotask_cb {
-    slot @ None => slot,
-    _ => {
-      return throw_type_error(
-        scope,
-        "Deno.core.setMacrotaskCallback() already called",
-      );
-    }
-  };
-
-  slot.replace(v8::Global::new(scope, cb));
+  state.js_macrotask_cbs.push(v8::Global::new(scope, cb));
 }
 
 fn eval_context(
@@ -633,7 +696,7 @@ fn set_wasm_streaming_callback(
     let undefined = v8::undefined(scope);
     let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
     cb_handle
-      .get(scope)
+      .open(scope)
       .call(scope, undefined.into(), &[arg, rid]);
   });
 }

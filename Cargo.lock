@@ -624,7 +624,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.15.2"
+version = "1.16.2"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -694,31 +694,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno-libffi"
-version = "0.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8c576e40bd48d120b433ee248e221a89f6c2556d580e409aeede79c5c899c86"
-dependencies = [
- "abort_on_panic",
- "deno-libffi-sys",
- "libc",
-]
-
-[[package]]
-name = "deno-libffi-sys"
-version = "0.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d17b3e8597c2424b077029461fae4f24e1c01b2073cf91ae2a13412d676181b8"
-dependencies = [
- "cc",
- "make-cmd",
-]
-
-[[package]]
 name = "deno_ast"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e23902664e99dc1e0f7186ddd26dbf31fc2ab934ef86593700d43052f5ad43bf"
+checksum = "2ee37af956e0efce7863828eb055208965be06f47959b73c47466e0b5f9a1a9e"
 dependencies = [
  "data-url",
  "dprint-swc-ecma-ast-view",
@@ -733,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.16.0"
+version = "0.20.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -742,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.16.0"
+version = "0.20.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -752,33 +731,34 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.22.0"
+version = "0.26.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.104.0"
+version = "0.108.0"
 dependencies = [
  "anyhow",
  "futures",
  "indexmap",
  "lazy_static",
+ "libc",
  "log",
  "parking_lot",
  "pin-project",
- "rusty_v8",
  "serde",
  "serde_json",
  "serde_v8",
  "tokio",
  "url",
+ "v8",
 ]
 
 [[package]]
 name = "deno_crypto"
-version = "0.36.0"
+version = "0.40.0"
 dependencies = [
  "aes",
  "block-modes",
@@ -802,9 +782,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.17.1"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96b60f0447a17ed4fc413bd7abad29e7d31e76f13422813f2e7978b0c4bdca7a"
+checksum = "075b0c1b454eaf90cea9c6efc72ff946aa6c855c85a4209cb717c01424b37e5e"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
@@ -819,7 +799,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.45.0"
+version = "0.49.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -835,11 +815,11 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.9.0"
+version = "0.13.0"
 dependencies = [
- "deno-libffi",
  "deno_core",
  "dlopen",
+ "libffi",
  "serde",
  "tokio",
  "winapi 0.3.9",
@@ -847,9 +827,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.8.2"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3d7197f490abd2a1e7d1edc3a1c4db1f4e294d7067dbbf65c4714932c7c3c70"
+checksum = "9ee63197c67746c40911cb3082ca13a29cc5adae1ff1b706397b44f7155d7c57"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -857,7 +837,7 @@ dependencies = [
  "deno_ast",
  "futures",
  "lazy_static",
- "parking_lot_core",
+ "parking_lot",
  "regex",
  "ring",
  "serde",
@@ -868,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.14.0"
+version = "0.18.0"
 dependencies = [
  "base64 0.13.0",
  "bytes",
@@ -883,9 +863,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.18.1"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dce18a8ca950791a5aa75f6dbd64d3a49a9cb7339877c557ca2df7eb9dba0c5e"
+checksum = "7c031711a48a3c5ea4ca6103c6d6df456ba3b0bb048fb551f07da4f704e1d844"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -900,7 +880,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.14.0"
+version = "0.18.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -913,7 +893,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.30.0"
+version = "0.34.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
@@ -958,7 +938,7 @@ dependencies = [
 
 [[package]]
 name = "deno_timers"
-version = "0.20.0"
+version = "0.24.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -970,7 +950,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.9.0"
+version = "0.13.0"
 dependencies = [
  "deno_core",
  "lazy_static",
@@ -984,7 +964,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.22.0"
+version = "0.26.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -996,7 +976,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.53.0"
+version = "0.57.0"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
@@ -1009,7 +989,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.23.0"
+version = "0.27.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -1020,14 +1000,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.22.0"
+version = "0.26.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.27.0"
+version = "0.31.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1041,7 +1021,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.17.0"
+version = "0.21.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -1118,9 +1098,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-core"
-version = "0.46.4"
+version = "0.47.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df98b7d98583d9d57311b9df81f571f35a6ca3e8675d0128333b2e923dc85bcd"
+checksum = "6400fcb8f2d6d4a231d2fc374edd1cf0e3713439e781a680b4b4f2afe2d31c7e"
 dependencies = [
  "bumpalo",
  "rustc-hash",
@@ -1129,9 +1109,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.13.0"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a32a4eef2c639055370f16a359f0278025058e63193f0ad2340f30bf7ca8361"
+checksum = "7aba7fe282566c4f217295b19d69ddaee7a4e179a6ea63f28efc7cc7b9fd766c"
 dependencies = [
  "dprint-core",
  "jsonc-parser",
@@ -1140,9 +1120,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.10.0"
+version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48b364aed2db4ccf8747dc1d9c7eb52a5e981a705c7aadfddd297fc4c3310772"
+checksum = "438806cf4483652c45f81d05666fd66906f215aa3347cfe8bd0a4f640cc41442"
 dependencies = [
  "dprint-core",
  "pulldown-cmark",
@@ -1152,9 +1132,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.58.1"
+version = "0.59.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5749ee5f8d448912fdab331a1535ac29364fc0f94e5c540532a6fa60178ba06"
+checksum = "d31e6e48fb130f8baeaf8efc6fb9820012b4f5a281860c84b7a9375bf0c7fd11"
 dependencies = [
  "deno_ast",
  "dprint-core",
@@ -1214,9 +1194,9 @@ dependencies = [
 
 [[package]]
 name = "encoding_rs"
-version = "0.8.28"
+version = "0.8.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80df024fbc5ac80f87dfef0d9f5209a252f2a497f7f42944cff24d8253cac065"
+checksum = "a74ea89a0a1b98f6332de42c95baff457ada66d1cb4030f9ff151b2041a1c746"
 dependencies = [
  "cfg-if 1.0.0",
 ]
@@ -1908,6 +1888,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "716d3d89f35ac6a34fd0eed635395f4c3b76fa889338a4632e5231a8684216bd"
 dependencies = [
  "cfg-if 1.0.0",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -2039,9 +2022,29 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.103"
+version = "0.2.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd8f7255a17a627354f321ef0055d63b898c6fb27eff628af4d1b66b7331edf6"
+checksum = "a60553f9a9e039a333b4e9b20573b9e9b9c0bb3a11e201ccc48ef4283456d673"
+
+[[package]]
+name = "libffi"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a1a541960580e84812cac19ec26926e883520bda211397a1f8c223993be6f20"
+dependencies = [
+ "abort_on_panic",
+ "libc",
+ "libffi-sys",
+]
+
+[[package]]
+name = "libffi-sys"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78a343392242972b1b7ac640de99f9abcb10ca42adcd996f6016514071cdbcc6"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "libloading"
@@ -2153,12 +2156,6 @@ dependencies = [
  "quote 1.0.10",
  "syn 1.0.65",
 ]
-
-[[package]]
-name = "make-cmd"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8ca8afbe8af1785e09636acb5a41e08a765f5f0340568716c18a8700ba3c0d3"
 
 [[package]]
 name = "malloc_buf"
@@ -3122,19 +3119,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusty_v8"
-version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2b311db3661f6b7631f94ad431133ff0f299c423e6bcc35b748ad0d57d6e604"
-dependencies = [
- "bitflags",
- "fslock",
- "lazy_static",
- "libc",
- "which",
-]
-
-[[package]]
 name = "rustyline"
 version = "9.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3280,6 +3264,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_bytes"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16ae07dd2f88a366f15bd0632ba725227018c69a1c8550a927324f8eb8368bb9"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.130"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3327,12 +3320,13 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.15.0"
+version = "0.19.0"
 dependencies = [
  "bencher",
- "rusty_v8",
  "serde",
+ "serde_bytes",
  "serde_json",
+ "v8",
 ]
 
 [[package]]
@@ -4542,6 +4536,19 @@ checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
  "getrandom 0.2.3",
  "serde",
+]
+
+[[package]]
+name = "v8"
+version = "0.34.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "102e1d6d3654edf9624ad2b05458bb2e91c05c9275ec92b2a282b18cc840620b"
+dependencies = [
+ "bitflags",
+ "fslock",
+ "lazy_static",
+ "libc",
+ "which",
 ]
 
 [[package]]

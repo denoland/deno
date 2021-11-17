@@ -1100,7 +1100,7 @@ fn basic_auth_tokens() {
   eprintln!("{}", stderr_str);
 
   assert!(stderr_str.contains(
-    "Import 'http://127.0.0.1:4554/001_hello.js' failed: 404 Not Found"
+    "Import 'http://127.0.0.1:4554/001_hello.js' failed, not found."
   ));
 
   let output = util::deno_cmd()

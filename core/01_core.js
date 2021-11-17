@@ -119,6 +119,10 @@
       const err = errorBuilder ? errorBuilder(res.message) : new Error(
         `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
       );
+      // Set .code if error was a known OS error, see error_codes.rs
+      if (res.code) {
+        err.code = res.code;
+      }
       // Strip unwrapOpResult() and errorBuilder() calls from stack trace
       ErrorCaptureStackTrace(err, unwrapOpResult);
       throw err;
@@ -140,6 +144,18 @@
 
   function resources() {
     return ObjectFromEntries(opSync("op_resources"));
+  }
+
+  function read(rid, buf) {
+    return opAsync("op_read", rid, buf);
+  }
+
+  function write(rid, buf) {
+    return opAsync("op_write", rid, buf);
+  }
+
+  function shutdown(rid) {
+    return opAsync("op_shutdown", rid);
   }
 
   function close(rid) {
@@ -187,6 +203,9 @@
     ops,
     close,
     tryClose,
+    read,
+    write,
+    shutdown,
     print,
     resources,
     metrics,

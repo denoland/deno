@@ -1997,17 +1997,21 @@ fn permission_prompt(_message: &str) -> bool {
 }
 
 #[cfg(test)]
-lazy_static::lazy_static! {
-  /// Lock this when you use `set_prompt_result` in a test case.
-  static ref PERMISSION_PROMPT_GUARD: Mutex<()> = Mutex::new(());
-}
-
-#[cfg(test)]
 static STUB_PROMPT_VALUE: AtomicBool = AtomicBool::new(true);
 
 #[cfg(test)]
-fn set_prompt_result(value: bool) {
-  STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
+lazy_static::lazy_static! {
+  static ref PERMISSION_PROMPT_STUB_VALUE_SETTER: Mutex<PermissionPromptStubValueSetter> = Mutex::new(PermissionPromptStubValueSetter);
+}
+
+#[cfg(test)]
+struct PermissionPromptStubValueSetter;
+
+#[cfg(test)]
+impl PermissionPromptStubValueSetter {
+  pub fn set(&self, value: bool) {
+    STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
+  }
 }
 
 #[cfg(test)]
@@ -2390,39 +2394,39 @@ mod tests {
     let mut perms: Permissions = Default::default();
     #[rustfmt::skip]
     {
-      let _guard = PERMISSION_PROMPT_GUARD.lock();
-      set_prompt_result(true);
+      let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+      prompt_value.set(true);
       assert_eq!(perms.read.request(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms.read.query(None), PermissionState::Prompt);
-      set_prompt_result(false);
+      prompt_value.set(false);
       assert_eq!(perms.read.request(Some(Path::new("/foo/bar"))), PermissionState::Granted);
-      set_prompt_result(false);
+      prompt_value.set(false);
       assert_eq!(perms.write.request(Some(Path::new("/foo"))), PermissionState::Denied);
       assert_eq!(perms.write.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
-      set_prompt_result(true);
+      prompt_value.set(true);
       assert_eq!(perms.write.request(None), PermissionState::Denied);
-      set_prompt_result(true);
+      prompt_value.set(true);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", None))), PermissionState::Granted);
-      set_prompt_result(false);
+      prompt_value.set(false);
       assert_eq!(perms.net.request(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
-      set_prompt_result(true);
+      prompt_value.set(true);
       assert_eq!(perms.env.request(Some(&"HOME".to_string())), PermissionState::Granted);
       assert_eq!(perms.env.query(None), PermissionState::Prompt);
-      set_prompt_result(false);
+      prompt_value.set(false);
       assert_eq!(perms.env.request(Some(&"HOME".to_string())), PermissionState::Granted);
-      set_prompt_result(true);
+      prompt_value.set(true);
       assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
       assert_eq!(perms.run.query(None), PermissionState::Prompt);
-      set_prompt_result(false);
+      prompt_value.set(false);
       assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
-      set_prompt_result(true);
+      prompt_value.set(true);
       assert_eq!(perms.ffi.request(Some(Path::new("deno"))), PermissionState::Granted);
       assert_eq!(perms.ffi.query(None), PermissionState::Prompt);
-      set_prompt_result(false);
+      prompt_value.set(false);
       assert_eq!(perms.ffi.request(Some(Path::new("deno"))), PermissionState::Granted);
-      set_prompt_result(false);
+      prompt_value.set(false);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
-      set_prompt_result(true);
+      prompt_value.set(true);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
     };
   }
@@ -2498,44 +2502,44 @@ mod tests {
       hrtime: Permissions::new_hrtime(false, true),
     };
 
-    let _guard = PERMISSION_PROMPT_GUARD.lock();
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.read.check(Path::new("/foo")).is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.read.check(Path::new("/foo")).is_ok());
     assert!(perms.read.check(Path::new("/bar")).is_err());
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.write.check(Path::new("/foo")).is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.write.check(Path::new("/foo")).is_ok());
     assert!(perms.write.check(Path::new("/bar")).is_err());
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_ok());
     assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_err());
     assert!(perms.net.check(&("127.0.0.1", None)).is_err());
     assert!(perms.net.check(&("deno.land", Some(8000))).is_err());
     assert!(perms.net.check(&("deno.land", None)).is_err());
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.run.check("cat").is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.run.check("cat").is_ok());
     assert!(perms.run.check("ls").is_err());
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.env.check("HOME").is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.env.check("HOME").is_ok());
     assert!(perms.env.check("PATH").is_err());
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.hrtime.check().is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.hrtime.check().is_ok());
   }
 
@@ -2551,68 +2555,69 @@ mod tests {
       hrtime: Permissions::new_hrtime(false, true),
     };
 
-    let _guard = PERMISSION_PROMPT_GUARD.lock();
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
 
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.read.check(Path::new("/foo")).is_err());
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.read.check(Path::new("/foo")).is_err());
     assert!(perms.read.check(Path::new("/bar")).is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.read.check(Path::new("/bar")).is_ok());
 
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.write.check(Path::new("/foo")).is_err());
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.write.check(Path::new("/foo")).is_err());
     assert!(perms.write.check(Path::new("/bar")).is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.write.check(Path::new("/bar")).is_ok());
 
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
     assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_ok());
     assert!(perms.net.check(&("deno.land", Some(8000))).is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_ok());
     assert!(perms.net.check(&("deno.land", Some(8000))).is_ok());
 
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.run.check("cat").is_err());
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.run.check("cat").is_err());
     assert!(perms.run.check("ls").is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.run.check("ls").is_ok());
 
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.env.check("HOME").is_err());
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.env.check("HOME").is_err());
     assert!(perms.env.check("PATH").is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.env.check("PATH").is_ok());
 
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.hrtime.check().is_err());
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.hrtime.check().is_err());
   }
 
   #[test]
   #[cfg(windows)]
   fn test_env_windows() {
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
     let mut perms = Permissions::allow_all();
     perms.env = UnaryPermission {
       global_state: PermissionState::Prompt,
       ..Permissions::new_env(&Some(svec!["HOME"]), false)
     };
 
-    set_prompt_result(true);
+    prompt_value.set(true);
     assert!(perms.env.check("HOME").is_ok());
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(perms.env.check("HOME").is_ok());
     assert!(perms.env.check("hOmE").is_ok());
 
@@ -2815,12 +2820,12 @@ mod tests {
 
   #[test]
   fn test_create_child_permissions_with_prompt() {
-    let _guard = PERMISSION_PROMPT_GUARD.lock();
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
     let mut main_perms = Permissions::from_options(&PermissionsOptions {
       prompt: true,
       ..Default::default()
     });
-    set_prompt_result(true);
+    prompt_value.set(true);
     let worker_perms = create_child_permissions(
       &mut main_perms,
       ChildPermissionsArg {
@@ -2836,12 +2841,12 @@ mod tests {
 
   #[test]
   fn test_create_child_permissions_with_inherited_denied_list() {
-    let _guard = PERMISSION_PROMPT_GUARD.lock();
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
     let mut main_perms = Permissions::from_options(&PermissionsOptions {
       prompt: true,
       ..Default::default()
     });
-    set_prompt_result(false);
+    prompt_value.set(false);
     assert!(main_perms.write.check(&PathBuf::from("foo")).is_err());
     let worker_perms = create_child_permissions(
       &mut main_perms.clone(),

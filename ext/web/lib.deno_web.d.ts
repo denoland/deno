@@ -258,7 +258,7 @@ declare class AbortController {
   readonly signal: AbortSignal;
   /** Invoking this method will set this object's AbortSignal's aborted flag and
    * signal to any observers that the associated activity is to be aborted. */
-  abort(): void;
+  abort(reason?: any): void;
 }
 
 interface AbortSignalEventMap {
@@ -271,6 +271,7 @@ interface AbortSignal extends EventTarget {
   /** Returns true if this AbortSignal's AbortController has signaled to abort,
    * and false otherwise. */
   readonly aborted: boolean;
+  readonly reason?: unknown;
   onabort: ((this: AbortSignal, ev: Event) => any) | null;
   addEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
@@ -297,6 +298,7 @@ interface AbortSignal extends EventTarget {
 declare var AbortSignal: {
   prototype: AbortSignal;
   new (): AbortSignal;
+  abort(reason?: any): AbortSignal;
 };
 
 interface FileReaderEventMap {
@@ -416,6 +418,35 @@ interface ReadableStreamDefaultReader<R = any> {
   releaseLock(): void;
 }
 
+interface ReadableStreamBYOBReadDoneResult<V extends ArrayBufferView> {
+  done: true;
+  value?: V;
+}
+
+interface ReadableStreamBYOBReadValueResult<V extends ArrayBufferView> {
+  done: false;
+  value: V;
+}
+
+type ReadableStreamBYOBReadResult<V extends ArrayBufferView> =
+  | ReadableStreamBYOBReadDoneResult<V>
+  | ReadableStreamBYOBReadValueResult<V>;
+
+interface ReadableStreamBYOBReader {
+  readonly closed: Promise<void>;
+  cancel(reason?: any): Promise<void>;
+  read<V extends ArrayBufferView>(
+    view: V,
+  ): Promise<ReadableStreamBYOBReadResult<V>>;
+  releaseLock(): void;
+}
+
+interface ReadableStreamBYOBRequest {
+  readonly view: ArrayBufferView | null;
+  respond(bytesWritten: number): void;
+  respondWithNewView(view: ArrayBufferView): void;
+}
+
 declare var ReadableStreamDefaultReader: {
   prototype: ReadableStreamDefaultReader;
   new <R>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
@@ -480,7 +511,7 @@ declare var ReadableStreamDefaultController: {
 };
 
 interface ReadableByteStreamController {
-  readonly byobRequest: undefined;
+  readonly byobRequest: ReadableStreamBYOBRequest | null;
   readonly desiredSize: number | null;
   close(): void;
   enqueue(chunk: ArrayBufferView): void;
@@ -536,13 +567,8 @@ declare var ByteLengthQueuingStrategy: {
 interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
-  /**
-   * @deprecated This is no longer part of the Streams standard and the async
-   *             iterable should be obtained by just using the stream as an
-   *             async iterator.
-   */
-  getIterator(options?: { preventCancel?: boolean }): AsyncIterableIterator<R>;
-  getReader(): ReadableStreamDefaultReader<R>;
+  getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
+  getReader(options?: { mode?: undefined }): ReadableStreamDefaultReader<R>;
   pipeThrough<T>(
     { writable, readable }: {
       writable: WritableStream<R>;
@@ -611,6 +637,7 @@ declare var WritableStream: {
  * sink is given a corresponding WritableStreamDefaultController instance to
  * manipulate. */
 interface WritableStreamDefaultController {
+  signal: AbortSignal;
   error(error?: any): void;
 }
 
