@@ -2408,7 +2408,7 @@
       const result = await this.importKey(
         format,
         bytes,
-        unwrappedKeyAlgorithm,
+        normalizedKeyAlgorithm,
         extractable,
         keyUsages,
       );
