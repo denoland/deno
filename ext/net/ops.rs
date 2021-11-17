@@ -85,7 +85,7 @@ pub struct OpPacket {
   pub remote_addr: OpAddr,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TlsHandshakeInfo {
   pub alpn_protocol: Option<ByteString>,

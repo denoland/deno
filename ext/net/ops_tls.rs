@@ -56,7 +56,6 @@ use io::Read;
 use io::Write;
 use serde::Deserialize;
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::cell::RefCell;
 use std::convert::From;
 use std::fs::File;
@@ -717,7 +716,7 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
 pub struct TlsStreamResource {
   rd: AsyncRefCell<ReadHalf>,
   wr: AsyncRefCell<WriteHalf>,
-  handshake_done: Cell<bool>,
+  handshake_done: RefCell<Option<TlsHandshakeInfo>>,
   cancel_handle: CancelHandle, // Only read and handshake ops get canceled.
 }
 
@@ -726,7 +725,7 @@ impl TlsStreamResource {
     Self {
       rd: rd.into(),
       wr: wr.into(),
-      handshake_done: Cell::new(false),
+      handshake_done: RefCell::new(None),
       cancel_handle: Default::default(),
     }
   }
@@ -766,16 +765,18 @@ impl TlsStreamResource {
   pub async fn handshake(
     self: &Rc<Self>,
   ) -> Result<TlsHandshakeInfo, AnyError> {
-    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
-
-    if !self.handshake_done.get() {
-      let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
-      wr.handshake().try_or_cancel(cancel_handle).await?;
-      self.handshake_done.set(true);
+    if let Some(tls_info) = &*self.handshake_done.borrow() {
+      return Ok(tls_info.clone());
     }
 
+    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
+    let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
+    wr.handshake().try_or_cancel(cancel_handle).await?;
+
     let alpn_protocol = wr.get_alpn_protocol();
-    Ok(TlsHandshakeInfo { alpn_protocol })
+    let tls_info = TlsHandshakeInfo { alpn_protocol };
+    self.handshake_done.replace(Some(tls_info.clone()));
+    Ok(tls_info)
   }
 }
 
