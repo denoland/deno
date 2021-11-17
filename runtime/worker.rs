@@ -110,6 +110,7 @@ impl MainWorker {
         file_fetch_handler: Box::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
+      deno_cache::init(),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
         options.root_cert_store.clone(),

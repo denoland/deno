@@ -729,6 +729,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_cache"
+version = "0.0.0"
+dependencies = [
+ "deno_core",
+]
+
+[[package]]
 name = "deno_console"
 version = "0.27.0"
 dependencies = [
@@ -897,6 +904,7 @@ version = "0.35.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
+ "deno_cache",
  "deno_console",
  "deno_core",
  "deno_crypto",

@@ -122,6 +122,7 @@ mod not_docs {
       deno_tls::init(),
       deno_web::init(deno_web::BlobStore::default(), Default::default()),
       deno_fetch::init::<Permissions>(Default::default()),
+      deno_cache::init(),
       deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),
       deno_crypto::init(None),

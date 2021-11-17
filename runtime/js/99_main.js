@@ -62,6 +62,7 @@ delete Object.prototype.__proto__;
   const { defineEventHandler } = window.__bootstrap.event;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
+  const cache = window.__bootstrap.cache;
 
   let windowIsClosing = false;
 
@@ -438,6 +439,9 @@ delete Object.prototype.__proto__;
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
     structuredClone: util.writable(messagePort.structuredClone),
+    caches: util.nonEnumerable(
+      new cache.Caches(new cache.NaiveEngine()),
+    ),
   };
 
   const unstableWindowOrWorkerGlobalScope = {
