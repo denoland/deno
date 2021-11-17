@@ -21,10 +21,10 @@ use crate::resolver::JsxResolver;
 use crate::source_maps::SourceMapGetter;
 use crate::version;
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::url::Url;

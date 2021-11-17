@@ -6,6 +6,15 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.16.2 / 2021.11.17
+
+- feat(unstable/test): include test step pass/fail/ignore counts in final report
+  (#12432)
+- fix(cli): short-circuit in prepare_module_load() (#12604)
+- fix(lsp): retain module dependencies when parse is invalid (#12782)
+- fix(test): support typechecking docs with CRLF line endings (#12748)
+- fix(transpile): do not panic on `swc_ecma_utils::HANDLER` diagnostics (#12773)
+
 ### 1.16.1 / 2021.11.11
 
 - feat(core): streams (#12596)

@@ -6,7 +6,7 @@ pub use rustls_native_certs;
 pub use webpki;
 pub use webpki_roots;
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;

@@ -16,9 +16,9 @@ use crate::tsc;
 use crate::version;
 
 use deno_ast::swc;
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
