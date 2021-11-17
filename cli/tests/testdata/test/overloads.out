@@ -7,5 +7,5 @@ test test3 ... ok ([WILDCARD])
 test test4 ... ok ([WILDCARD])
 test test5 ... ignored ([WILDCARD])
 
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
