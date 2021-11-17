@@ -716,7 +716,8 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
 pub struct TlsStreamResource {
   rd: AsyncRefCell<ReadHalf>,
   wr: AsyncRefCell<WriteHalf>,
-  handshake_done: RefCell<Option<TlsHandshakeInfo>>,
+  // `None` when a TLS handshake hasn't been done.
+  handshake_info: RefCell<Option<TlsHandshakeInfo>>,
   cancel_handle: CancelHandle, // Only read and handshake ops get canceled.
 }
 
@@ -725,7 +726,7 @@ impl TlsStreamResource {
     Self {
       rd: rd.into(),
       wr: wr.into(),
-      handshake_done: RefCell::new(None),
+      handshake_info: RefCell::new(None),
       cancel_handle: Default::default(),
     }
   }
@@ -765,7 +766,7 @@ impl TlsStreamResource {
   pub async fn handshake(
     self: &Rc<Self>,
   ) -> Result<TlsHandshakeInfo, AnyError> {
-    if let Some(tls_info) = &*self.handshake_done.borrow() {
+    if let Some(tls_info) = &*self.handshake_info.borrow() {
       return Ok(tls_info.clone());
     }
 
@@ -775,7 +776,7 @@ impl TlsStreamResource {
 
     let alpn_protocol = wr.get_alpn_protocol();
     let tls_info = TlsHandshakeInfo { alpn_protocol };
-    self.handshake_done.replace(Some(tls_info.clone()));
+    self.handshake_info.replace(Some(tls_info.clone()));
     Ok(tls_info)
   }
 }
