@@ -573,6 +573,16 @@ itest!(import_type_no_check {
   output: "import_type.ts.out",
 });
 
+itest!(private_field_presence {
+  args: "run --reload private_field_presence.ts",
+  output: "private_field_presence.ts.out",
+});
+
+itest!(private_field_presence_no_check {
+  args: "run --reload --no-check private_field_presence.ts",
+  output: "private_field_presence.ts.out",
+});
+
 itest!(lock_write_requires_lock {
   args: "run --lock-write some_file.ts",
   output: "lock_write_requires_lock.out",
