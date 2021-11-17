@@ -98,7 +98,7 @@ Deno.test({ permissions: { net: true } }, async function fetchJsonSuccess() {
   assertEquals(json.name, "deno");
 });
 
-Deno.test(async function fetchPerm() {
+Deno.test({ permissions: { net: false } }, async function fetchPerm() {
   await assertRejects(async () => {
     await fetch("http://localhost:4545/fixture.json");
   }, Deno.errors.PermissionDenied);
@@ -1361,17 +1361,20 @@ Deno.test(
   },
 );
 
-Deno.test(async function fetchFilePerm() {
+Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
   await assertRejects(async () => {
     await fetch(new URL("../testdata/subdir/json_1.json", import.meta.url));
   }, Deno.errors.PermissionDenied);
 });
 
-Deno.test(async function fetchFilePermDoesNotExist() {
-  await assertRejects(async () => {
-    await fetch(new URL("./bad.json", import.meta.url));
-  }, Deno.errors.PermissionDenied);
-});
+Deno.test(
+  { permissions: { read: false } },
+  async function fetchFilePermDoesNotExist() {
+    await assertRejects(async () => {
+      await fetch(new URL("./bad.json", import.meta.url));
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
 Deno.test(
   { permissions: { read: true } },

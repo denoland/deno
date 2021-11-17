@@ -25,7 +25,7 @@ async function getUidAndGid(): Promise<{ uid: number; gid: number }> {
 }
 
 Deno.test(
-  { ignore: Deno.build.os == "windows" },
+  { ignore: Deno.build.os == "windows", permissions: { write: false } },
   async function chownNoWritePermission() {
     const filePath = "chown_test_file.txt";
     await assertRejects(async () => {

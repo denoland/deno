@@ -39,11 +39,14 @@ Deno.test(
   },
 );
 
-Deno.test(function symlinkSyncPerm() {
-  assertThrows(() => {
-    Deno.symlinkSync("oldbaddir", "newbaddir");
-  }, Deno.errors.PermissionDenied);
-});
+Deno.test(
+  { permissions: { read: false, write: false } },
+  function symlinkSyncPerm() {
+    assertThrows(() => {
+      Deno.symlinkSync("oldbaddir", "newbaddir");
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
 Deno.test(
   { permissions: { read: true, write: true } },

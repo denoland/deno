@@ -24,7 +24,7 @@ function unreachable(): never {
   throw new Error("Unreachable code reached");
 }
 
-Deno.test(async function connectTLSNoPerm() {
+Deno.test({ permissions: { net: false } }, async function connectTLSNoPerm() {
   await assertRejects(async () => {
     await Deno.connectTls({ hostname: "deno.land", port: 443 });
   }, Deno.errors.PermissionDenied);
@@ -48,15 +48,18 @@ Deno.test(
   },
 );
 
-Deno.test(async function connectTLSCertFileNoReadPerm() {
-  await assertRejects(async () => {
-    await Deno.connectTls({
-      hostname: "deno.land",
-      port: 443,
-      certFile: "cli/tests/testdata/tls/RootCA.crt",
-    });
-  }, Deno.errors.PermissionDenied);
-});
+Deno.test(
+  { permissions: { net: true, read: false } },
+  async function connectTLSCertFileNoReadPerm() {
+    await assertRejects(async () => {
+      await Deno.connectTls({
+        hostname: "deno.land",
+        port: 443,
+        certFile: "cli/tests/testdata/tls/RootCA.crt",
+      });
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
 Deno.test(
   { permissions: { read: true, net: true } },
@@ -84,16 +87,19 @@ Deno.test(
   },
 );
 
-Deno.test({ permissions: { net: true } }, function listenTLSNoReadPerm() {
-  assertThrows(() => {
-    Deno.listenTls({
-      hostname: "localhost",
-      port: 3500,
-      certFile: "cli/tests/testdata/tls/localhost.crt",
-      keyFile: "cli/tests/testdata/tls/localhost.key",
-    });
-  }, Deno.errors.PermissionDenied);
-});
+Deno.test(
+  { permissions: { net: true, read: false } },
+  function listenTLSNoReadPerm() {
+    assertThrows(() => {
+      Deno.listenTls({
+        hostname: "localhost",
+        port: 3500,
+        certFile: "cli/tests/testdata/tls/localhost.crt",
+        keyFile: "cli/tests/testdata/tls/localhost.key",
+      });
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
 Deno.test(
   {

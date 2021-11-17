@@ -77,7 +77,10 @@ Deno.test(
 );
 
 Deno.test(
-  { ignore: Deno.build.os === "windows", permissions: { read: true } },
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: false },
+  },
   function netUnixListenWritePermission() {
     assertThrows(() => {
       const filePath = Deno.makeTempFileSync();
@@ -93,7 +96,10 @@ Deno.test(
 );
 
 Deno.test(
-  { ignore: Deno.build.os === "windows", permissions: { read: true } },
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: false },
+  },
   function netUnixPacketListenWritePermission() {
     assertThrows(() => {
       const filePath = Deno.makeTempFileSync();

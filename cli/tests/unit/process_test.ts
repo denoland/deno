@@ -6,11 +6,16 @@ import {
   assertThrows,
 } from "./test_util.ts";
 
-Deno.test({ permissions: { read: true } }, function runPermissions() {
-  assertThrows(() => {
-    Deno.run({ cmd: [Deno.execPath(), "eval", "console.log('hello world')"] });
-  }, Deno.errors.PermissionDenied);
-});
+Deno.test(
+  { permissions: { read: true, run: false } },
+  function runPermissions() {
+    assertThrows(() => {
+      Deno.run({
+        cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
+      });
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
 Deno.test(
   { permissions: { run: true, read: true } },
@@ -460,7 +465,7 @@ Deno.test(
   },
 );
 
-Deno.test(function killPermissions() {
+Deno.test({ permissions: { run: false } }, function killPermissions() {
   assertThrows(() => {
     // Unlike the other test cases, we don't have permission to spawn a
     // subprocess we can safely kill. Instead we send SIGCONT to the current

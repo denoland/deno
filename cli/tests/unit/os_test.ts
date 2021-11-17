@@ -41,13 +41,13 @@ Deno.test({ permissions: { env: true } }, function avoidEmptyNamedEnv() {
   assertThrows(() => Deno.env.delete("a\0a"), TypeError);
 });
 
-Deno.test(function envPermissionDenied1() {
+Deno.test({ permissions: { env: false } }, function envPermissionDenied1() {
   assertThrows(() => {
     Deno.env.toObject();
   }, Deno.errors.PermissionDenied);
 });
 
-Deno.test(function envPermissionDenied2() {
+Deno.test({ permissions: { env: false } }, function envPermissionDenied2() {
   assertThrows(() => {
     Deno.env.get("PATH");
   }, Deno.errors.PermissionDenied);
