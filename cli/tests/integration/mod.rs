@@ -1016,29 +1016,29 @@ async fn test_resolve_dns() {
 
 #[test]
 fn typecheck_declarations_ns() {
-  let status = util::deno_cmd()
+  let output = util::deno_cmd()
     .arg("test")
     .arg("--doc")
     .arg(util::root_path().join("cli/dts/lib.deno.ns.d.ts"))
-    .spawn()
-    .unwrap()
-    .wait()
+    .output()
     .unwrap();
-  assert!(status.success());
+  println!("stdout: {}", output.stdout);
+  println!("stderr: {}", output.stderr);
+  assert!(output.status.success());
 }
 
 #[test]
 fn typecheck_declarations_unstable() {
-  let status = util::deno_cmd()
+  let output = util::deno_cmd()
     .arg("test")
     .arg("--doc")
     .arg("--unstable")
     .arg(util::root_path().join("cli/dts/lib.deno.unstable.d.ts"))
-    .spawn()
-    .unwrap()
-    .wait()
+    .output()
     .unwrap();
-  assert!(status.success());
+  println!("stdout: {}", output.stdout);
+  println!("stderr: {}", output.stderr);
+  assert!(output.status.success());
 }
 
 #[test]
