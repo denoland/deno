@@ -763,17 +763,21 @@ impl TlsStreamResource {
     Ok(())
   }
 
-  pub async fn handshake(self: &Rc<Self>) -> Result<(), AnyError> {
+  pub async fn handshake(
+    self: &Rc<Self>,
+  ) -> Result<TlsHandshakeInfo, AnyError> {
     if !self.handshake_done.get() {
       let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
       let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
       wr.handshake().try_or_cancel(cancel_handle).await?;
       self.handshake_done.set(true);
     }
-    Ok(())
+
+    let alpn_protocol = self.get_alpn_protocol().await?;
+    Ok(TlsHandshakeInfo { alpn_protocol })
   }
 
-  pub async fn get_alpn_protocol(
+  async fn get_alpn_protocol(
     self: &Rc<Self>,
   ) -> Result<Option<ByteString>, AnyError> {
     let mut rd = RcRef::map(self, |r| &r.rd).borrow_mut().await;
@@ -1192,10 +1196,5 @@ pub async fn op_tls_handshake(
     .borrow()
     .resource_table
     .get::<TlsStreamResource>(rid)?;
-
-  resource.handshake().await?;
-
-  let alpn_protocol = resource.get_alpn_protocol().await?;
-
-  Ok(TlsHandshakeInfo { alpn_protocol })
+  resource.handshake().await
 }
