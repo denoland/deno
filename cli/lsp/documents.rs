@@ -731,8 +731,37 @@ impl FileSystemDocuments {
   }
 }
 
+fn calculate_fs_version(path: &Path) -> Option<String> {
+  let metadata = fs::metadata(path).ok()?;
+  if let Ok(modified) = metadata.modified() {
+    if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+      Some(n.as_millis().to_string())
+    } else {
+      Some("1".to_string())
+    }
+  } else {
+    Some("1".to_string())
+  }
+}
+
+fn get_document_path(
+  cache: &HttpCache,
+  specifier: &ModuleSpecifier,
+) -> Option<PathBuf> {
+  if specifier.scheme() == "file" {
+    specifier.to_file_path().ok()
+  } else {
+    let path = cache.get_cache_filename(specifier)?;
+    if path.is_file() {
+      Some(path)
+    } else {
+      None
+    }
+  }
+}
+
 #[derive(Debug, Clone, Default)]
-struct DocumentsInner {
+pub(crate) struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
   cache: HttpCache,
   /// A flag that indicates that stated data is potentially invalid and needs to
@@ -741,7 +770,7 @@ struct DocumentsInner {
   /// A map where the key is a specifier and the value is a set of specifiers
   /// that depend on the key.
   dependents_map: Arc<HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>>,
-  /// A map of documents that can either be "open" in the language server.
+  /// A map of documents that are "open" in the language server.
   open_docs: HashMap<ModuleSpecifier, Document>,
   /// Documents stored on the file system.
   file_system_docs: Arc<Mutex<FileSystemDocuments>>,
@@ -756,8 +785,8 @@ struct DocumentsInner {
   specifier_resolver: Arc<SpecifierResolver>,
 }
 
-impl DocumentsInner {
-  fn new(location: &Path) -> Self {
+impl Documents {
+  pub fn new(location: &Path) -> Self {
     Self {
       cache: HttpCache::new(location),
       dirty: true,
@@ -769,6 +798,316 @@ impl DocumentsInner {
       maybe_jsx_resolver: None,
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
     }
+  }
+
+  /// "Open" a document from the perspective of the editor, meaning that
+  /// requests for information from the document will come from the in-memory
+  /// representation received from the language server client, versus reading
+  /// information from the disk.
+  pub fn open(
+    &mut self,
+    specifier: ModuleSpecifier,
+    version: i32,
+    language_id: LanguageId,
+    content: Arc<String>,
+  ) -> Document {
+    let maybe_resolver = self.get_maybe_resolver();
+    let document = Document::open(
+      specifier.clone(),
+      version,
+      language_id,
+      content,
+      maybe_resolver,
+    );
+    let mut file_system_docs = self.file_system_docs.lock();
+    file_system_docs.docs.remove(&specifier);
+    file_system_docs.dirty = true;
+    self.open_docs.insert(specifier, document.clone());
+    self.dirty = true;
+    document
+  }
+
+  /// Apply language server content changes to an open document.
+  pub fn change(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    version: i32,
+    changes: Vec<lsp::TextDocumentContentChangeEvent>,
+  ) -> Result<Document, AnyError> {
+    let doc = self
+      .open_docs
+      .get(specifier)
+      .cloned()
+      .or_else(|| {
+        let mut file_system_docs = self.file_system_docs.lock();
+        file_system_docs.docs.remove(specifier)
+      })
+      .map_or_else(
+        || {
+          Err(custom_error(
+            "NotFound",
+            format!("The specifier \"{}\" was not found.", specifier),
+          ))
+        },
+        Ok,
+      )?;
+    self.dirty = true;
+    let doc = doc.with_change(version, changes, self.get_maybe_resolver())?;
+    self.open_docs.insert(doc.specifier().clone(), doc.clone());
+    Ok(doc)
+  }
+
+  /// Close an open document, this essentially clears any editor state that is
+  /// being held, and the document store will revert to the file system if
+  /// information about the document is required.
+  pub fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
+    let mut file_system_docs = self.file_system_docs.lock();
+    let doc = self
+      .open_docs
+      .remove(specifier)
+      .or_else(|| file_system_docs.docs.remove(specifier))
+      .map_or_else(
+        || {
+          Err(custom_error(
+            "NotFound",
+            format!("The specifier \"{}\" was not found.", specifier),
+          ))
+        },
+        Ok,
+      )?;
+    file_system_docs
+      .docs
+      .insert(doc.specifier().clone(), doc.with_closed());
+    file_system_docs.dirty = true;
+    self.dirty = true;
+    Ok(())
+  }
+
+  /// Return `true` if the provided specifier can be resolved to a document,
+  /// otherwise `false`.
+  pub fn contains_import(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+  ) -> bool {
+    let maybe_resolver = self.get_maybe_resolver();
+    let maybe_specifier = if let Some(resolver) = maybe_resolver {
+      resolver.resolve(specifier, referrer).ok()
+    } else {
+      deno_core::resolve_import(specifier, referrer.as_str()).ok()
+    };
+    if let Some(import_specifier) = maybe_specifier {
+      self.contains_specifier(&import_specifier)
+    } else {
+      false
+    }
+  }
+
+  /// Return `true` if the specifier can be resolved to a document.
+  pub fn contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
+    self.get(specifier).is_some()
+  }
+
+  /// Return an array of specifiers, if any, that are dependent upon the
+  /// supplied specifier. This is used to determine invalidation of diagnostics
+  /// when a module has been changed.
+  pub fn dependents(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Vec<ModuleSpecifier> {
+    self.calculate_dependents_if_dirty();
+    let mut dependents = HashSet::new();
+    if let Some(specifier) = self.specifier_resolver.resolve(specifier) {
+      recurse_dependents(&specifier, &self.dependents_map, &mut dependents);
+      dependents.into_iter().collect()
+    } else {
+      vec![]
+    }
+  }
+
+  /// Return a document for the specifier.
+  pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
+    let specifier = self.specifier_resolver.resolve(specifier)?;
+    if let Some(document) = self.open_docs.get(&specifier) {
+      Some(document.clone())
+    } else {
+      let mut file_system_docs = self.file_system_docs.lock();
+      let fs_version = get_document_path(&self.cache, &specifier)
+        .map(|path| calculate_fs_version(&path))
+        .flatten();
+      if file_system_docs
+        .docs
+        .get(&specifier)
+        .map(|d| d.fs_version().to_string())
+        != fs_version
+      {
+        // attempt to update the file on the file system
+        file_system_docs.refresh_document(
+          &self.cache,
+          self.get_maybe_resolver(),
+          specifier.clone(),
+        );
+      }
+      file_system_docs.docs.get(&specifier).cloned()
+    }
+  }
+
+  /// Return a vector of documents that are contained in the document store,
+  /// where `open_only` flag would provide only those documents currently open
+  /// in the editor and `diagnosable_only` would provide only those documents
+  /// that the language server can provide diagnostics for.
+  pub fn documents(
+    &self,
+    open_only: bool,
+    diagnosable_only: bool,
+  ) -> Vec<Document> {
+    if open_only {
+      self
+        .open_docs
+        .values()
+        .filter_map(|doc| {
+          if !diagnosable_only || doc.is_diagnosable() {
+            Some(doc.clone())
+          } else {
+            None
+          }
+        })
+        .collect()
+    } else {
+      // it is technically possible for a Document to end up in both the open
+      // and closed documents so we need to ensure we don't return duplicates
+      let mut seen_documents = HashSet::new();
+      let file_system_docs = self.file_system_docs.lock();
+      self
+        .open_docs
+        .values()
+        .chain(file_system_docs.docs.values())
+        .filter_map(|doc| {
+          // this prefers the open documents
+          if seen_documents.insert(doc.specifier().clone())
+            && (!diagnosable_only || doc.is_diagnosable())
+          {
+            Some(doc.clone())
+          } else {
+            None
+          }
+        })
+        .collect()
+    }
+  }
+
+  /// For a given set of string specifiers, resolve each one from the graph,
+  /// for a given referrer. This is used to provide resolution information to
+  /// tsc when type checking.
+  pub fn resolve(
+    &self,
+    specifiers: Vec<String>,
+    referrer: &ModuleSpecifier,
+  ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
+    let dependencies = self.get(referrer)?.0.dependencies.clone();
+    let mut results = Vec::new();
+    for specifier in specifiers {
+      if specifier.starts_with("asset:") {
+        if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
+          let media_type = MediaType::from(&specifier);
+          results.push(Some((specifier, media_type)));
+        } else {
+          results.push(None);
+        }
+      } else if let Some(dep) = dependencies.get(&specifier) {
+        if let Some(Ok((specifier, _))) = &dep.maybe_type {
+          results.push(self.resolve_dependency(specifier));
+        } else if let Some(Ok((specifier, _))) = &dep.maybe_code {
+          results.push(self.resolve_dependency(specifier));
+        } else {
+          results.push(None);
+        }
+      } else if let Some(Some(Ok((specifier, _)))) =
+        self.resolve_imports_dependency(&specifier)
+      {
+        // clone here to avoid double borrow of self
+        let specifier = specifier.clone();
+        results.push(self.resolve_dependency(&specifier));
+      } else {
+        results.push(None);
+      }
+    }
+    Some(results)
+  }
+
+  /// Update the location of the on disk cache for the document store.
+  pub fn set_location(&mut self, location: PathBuf) {
+    // TODO update resolved dependencies?
+    self.cache = HttpCache::new(&location);
+    self.specifier_resolver = Arc::new(SpecifierResolver::new(&location));
+    self.dirty = true;
+  }
+
+  /// Tries to cache a navigation tree that is associated with the provided specifier
+  /// if the document stored has the same script version.
+  pub fn try_cache_navigation_tree(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    script_version: &str,
+    navigation_tree: Arc<tsc::NavigationTree>,
+  ) -> Result<(), AnyError> {
+    if let Some(doc) = self.open_docs.get_mut(specifier) {
+      if doc.script_version() == script_version {
+        *doc = doc.with_navigation_tree(navigation_tree);
+      }
+    } else {
+      let mut file_system_docs = self.file_system_docs.lock();
+      if let Some(doc) = file_system_docs.docs.get_mut(specifier) {
+        // ensure we are updating the same document
+        // that the navigation tree was created for
+        if doc.script_version() == script_version {
+          *doc = doc.with_navigation_tree(navigation_tree);
+        }
+      } else {
+        return Err(custom_error(
+          "NotFound",
+          format!("Specifier not found {}", specifier),
+        ));
+      }
+    }
+    Ok(())
+  }
+
+  pub fn update_config(
+    &mut self,
+    maybe_import_map: Option<Arc<import_map::ImportMap>>,
+    maybe_config_file: Option<&ConfigFile>,
+  ) {
+    // TODO(@kitsonk) update resolved dependencies?
+    self.maybe_import_map = maybe_import_map.map(ImportMapResolver::new);
+    self.maybe_jsx_resolver = maybe_config_file
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, self.maybe_import_map.clone()))
+      })
+      .flatten();
+    self.imports = Arc::new(
+      if let Some(Ok(Some(imports))) =
+        maybe_config_file.map(|cf| cf.to_maybe_imports())
+      {
+        imports
+          .into_iter()
+          .map(|(referrer, dependencies)| {
+            let dependencies =
+              dependencies.into_iter().map(|s| (s, None)).collect();
+            let module = SyntheticModule::new(
+              referrer.clone(),
+              dependencies,
+              self.get_maybe_resolver(),
+            );
+            (referrer, module)
+          })
+          .collect()
+      } else {
+        HashMap::new()
+      },
+    );
+    self.dirty = true;
   }
 
   /// Iterate through the documents, building a map where the key is a unique
@@ -813,225 +1152,12 @@ impl DocumentsInner {
     file_system_docs.dirty = false;
   }
 
-  fn change(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    version: i32,
-    changes: Vec<lsp::TextDocumentContentChangeEvent>,
-  ) -> Result<Document, AnyError> {
-    let doc = self
-      .open_docs
-      .get(specifier)
-      .cloned()
-      .or_else(|| {
-        let mut file_system_docs = self.file_system_docs.lock();
-        file_system_docs.docs.remove(specifier)
-      })
-      .map_or_else(
-        || {
-          Err(custom_error(
-            "NotFound",
-            format!("The specifier \"{}\" was not found.", specifier),
-          ))
-        },
-        Ok,
-      )?;
-    self.dirty = true;
-    let doc = doc.with_change(version, changes, self.get_maybe_resolver())?;
-    self.open_docs.insert(doc.specifier().clone(), doc.clone());
-    Ok(doc)
-  }
-
-  fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
-    let mut file_system_docs = self.file_system_docs.lock();
-    let doc = self
-      .open_docs
-      .remove(specifier)
-      .or_else(|| file_system_docs.docs.remove(specifier))
-      .map_or_else(
-        || {
-          Err(custom_error(
-            "NotFound",
-            format!("The specifier \"{}\" was not found.", specifier),
-          ))
-        },
-        Ok,
-      )?;
-    file_system_docs
-      .docs
-      .insert(doc.specifier().clone(), doc.with_closed());
-    file_system_docs.dirty = true;
-    self.dirty = true;
-    Ok(())
-  }
-
-  fn contains_import(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-  ) -> bool {
-    let maybe_resolver = self.get_maybe_resolver();
-    let maybe_specifier = if let Some(resolver) = maybe_resolver {
-      resolver.resolve(specifier, referrer).ok()
-    } else {
-      deno_core::resolve_import(specifier, referrer.as_str()).ok()
-    };
-    if let Some(import_specifier) = maybe_specifier {
-      self.contains_specifier(&import_specifier)
-    } else {
-      false
-    }
-  }
-
-  fn contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
-    self.get(specifier).is_some()
-  }
-
-  fn dependents(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Vec<ModuleSpecifier> {
-    self.calculate_dependents_if_dirty();
-    let mut dependents = HashSet::new();
-    if let Some(specifier) = self.specifier_resolver.resolve(specifier) {
-      recurse_dependents(&specifier, &self.dependents_map, &mut dependents);
-      dependents.into_iter().collect()
-    } else {
-      vec![]
-    }
-  }
-
-  fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
-    let specifier = self.specifier_resolver.resolve(specifier)?;
-    if let Some(document) = self.open_docs.get(&specifier) {
-      Some(document.clone())
-    } else {
-      let mut file_system_docs = self.file_system_docs.lock();
-      let fs_version = get_document_path(&self.cache, &specifier)
-        .map(|path| calculate_fs_version(&path))
-        .flatten();
-      if file_system_docs
-        .docs
-        .get(&specifier)
-        .map(|d| d.fs_version().to_string())
-        != fs_version
-      {
-        // attempt to update the file on the file system
-        file_system_docs.refresh_document(
-          &self.cache,
-          self.get_maybe_resolver(),
-          specifier.clone(),
-        );
-      }
-      file_system_docs.docs.get(&specifier).cloned()
-    }
-  }
-
   fn get_maybe_resolver(&self) -> Option<&dyn deno_graph::source::Resolver> {
     if self.maybe_jsx_resolver.is_some() {
       self.maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
     } else {
       self.maybe_import_map.as_ref().map(|im| im.as_resolver())
     }
-  }
-
-  fn open(
-    &mut self,
-    specifier: ModuleSpecifier,
-    version: i32,
-    language_id: LanguageId,
-    content: Arc<String>,
-  ) -> Document {
-    let maybe_resolver = self.get_maybe_resolver();
-    let document = Document::open(
-      specifier.clone(),
-      version,
-      language_id,
-      content,
-      maybe_resolver,
-    );
-    let mut file_system_docs = self.file_system_docs.lock();
-    file_system_docs.docs.remove(&specifier);
-    file_system_docs.dirty = true;
-    self.open_docs.insert(specifier, document.clone());
-    self.dirty = true;
-    document
-  }
-
-  fn documents(
-    &self,
-    open_only: bool,
-    diagnosable_only: bool,
-  ) -> Vec<Document> {
-    if open_only {
-      self
-        .open_docs
-        .values()
-        .filter_map(|doc| {
-          if !diagnosable_only || doc.is_diagnosable() {
-            Some(doc.clone())
-          } else {
-            None
-          }
-        })
-        .collect()
-    } else {
-      // it is technically possible for a Document to end up in both the open
-      // and closed documents so we need to ensure we don't return duplicates
-      let mut seen_documents = HashSet::new();
-      let file_system_docs = self.file_system_docs.lock();
-      self
-        .open_docs
-        .values()
-        .chain(file_system_docs.docs.values())
-        .filter_map(|doc| {
-          // this prefers the open documents
-          if seen_documents.insert(doc.specifier().clone())
-            && (!diagnosable_only || doc.is_diagnosable())
-          {
-            Some(doc.clone())
-          } else {
-            None
-          }
-        })
-        .collect()
-    }
-  }
-
-  fn resolve(
-    &self,
-    specifiers: Vec<String>,
-    referrer: &ModuleSpecifier,
-  ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
-    let dependencies = self.get(referrer)?.0.dependencies.clone();
-    let mut results = Vec::new();
-    for specifier in specifiers {
-      if specifier.starts_with("asset:") {
-        if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
-          let media_type = MediaType::from(&specifier);
-          results.push(Some((specifier, media_type)));
-        } else {
-          results.push(None);
-        }
-      } else if let Some(dep) = dependencies.get(&specifier) {
-        if let Some(Ok((specifier, _))) = &dep.maybe_type {
-          results.push(self.resolve_dependency(specifier));
-        } else if let Some(Ok((specifier, _))) = &dep.maybe_code {
-          results.push(self.resolve_dependency(specifier));
-        } else {
-          results.push(None);
-        }
-      } else if let Some(Some(Ok((specifier, _)))) =
-        self.resolve_imports_dependency(&specifier)
-      {
-        // clone here to avoid double borrow of self
-        let specifier = specifier.clone();
-        results.push(self.resolve_dependency(&specifier));
-      } else {
-        results.push(None);
-      }
-    }
-    Some(results)
   }
 
   fn resolve_dependency(
@@ -1071,227 +1197,6 @@ impl DocumentsInner {
       }
     }
     None
-  }
-
-  fn set_location(&mut self, location: PathBuf) {
-    // TODO update resolved dependencies?
-    self.cache = HttpCache::new(&location);
-    self.specifier_resolver = Arc::new(SpecifierResolver::new(&location));
-    self.dirty = true;
-  }
-
-  fn try_cache_navigation_tree(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    script_version: &str,
-    navigation_tree: Arc<tsc::NavigationTree>,
-  ) -> Result<(), AnyError> {
-    if let Some(doc) = self.open_docs.get_mut(specifier) {
-      if doc.script_version() == script_version {
-        *doc = doc.with_navigation_tree(navigation_tree);
-      }
-    } else {
-      let mut file_system_docs = self.file_system_docs.lock();
-      if let Some(doc) = file_system_docs.docs.get_mut(specifier) {
-        // ensure we are updating the same document
-        // that the navigation tree was created for
-        if doc.script_version() == script_version {
-          *doc = doc.with_navigation_tree(navigation_tree);
-        }
-      } else {
-        return Err(custom_error(
-          "NotFound",
-          format!("Specifier not found {}", specifier),
-        ));
-      }
-    }
-    Ok(())
-  }
-
-  fn update_config(
-    &mut self,
-    maybe_import_map: Option<Arc<import_map::ImportMap>>,
-    maybe_config_file: Option<&ConfigFile>,
-  ) {
-    // TODO(@kitsonk) update resolved dependencies?
-    self.maybe_import_map = maybe_import_map.map(ImportMapResolver::new);
-    self.maybe_jsx_resolver = maybe_config_file
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, self.maybe_import_map.clone()))
-      })
-      .flatten();
-    self.imports = Arc::new(
-      if let Some(Ok(Some(imports))) =
-        maybe_config_file.map(|cf| cf.to_maybe_imports())
-      {
-        imports
-          .into_iter()
-          .map(|(referrer, dependencies)| {
-            let dependencies =
-              dependencies.into_iter().map(|s| (s, None)).collect();
-            let module = SyntheticModule::new(
-              referrer.clone(),
-              dependencies,
-              self.get_maybe_resolver(),
-            );
-            (referrer, module)
-          })
-          .collect()
-      } else {
-        HashMap::new()
-      },
-    );
-    self.dirty = true;
-  }
-}
-
-fn calculate_fs_version(path: &Path) -> Option<String> {
-  let metadata = fs::metadata(path).ok()?;
-  if let Ok(modified) = metadata.modified() {
-    if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
-      Some(n.as_millis().to_string())
-    } else {
-      Some("1".to_string())
-    }
-  } else {
-    Some("1".to_string())
-  }
-}
-
-fn get_document_path(
-  cache: &HttpCache,
-  specifier: &ModuleSpecifier,
-) -> Option<PathBuf> {
-  if specifier.scheme() == "file" {
-    specifier.to_file_path().ok()
-  } else {
-    let path = cache.get_cache_filename(specifier)?;
-    if path.is_file() {
-      Some(path)
-    } else {
-      None
-    }
-  }
-}
-
-// todo(in this PR): collapse DocumentsInner into Documents after initial review
-#[derive(Debug, Clone, Default)]
-pub(crate) struct Documents(DocumentsInner);
-
-impl Documents {
-  pub fn new(location: &Path) -> Self {
-    Self(DocumentsInner::new(location))
-  }
-
-  /// "Open" a document from the perspective of the editor, meaning that
-  /// requests for information from the document will come from the in-memory
-  /// representation received from the language server client, versus reading
-  /// information from the disk.
-  pub fn open(
-    &mut self,
-    specifier: ModuleSpecifier,
-    version: i32,
-    language_id: LanguageId,
-    content: Arc<String>,
-  ) -> Document {
-    self.0.open(specifier, version, language_id, content)
-  }
-
-  /// Apply language server content changes to an open document.
-  pub fn change(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    version: i32,
-    changes: Vec<lsp::TextDocumentContentChangeEvent>,
-  ) -> Result<Document, AnyError> {
-    self.0.change(specifier, version, changes)
-  }
-
-  /// Close an open document, this essentially clears any editor state that is
-  /// being held, and the document store will revert to the file system if
-  /// information about the document is required.
-  pub fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
-    self.0.close(specifier)
-  }
-
-  /// Return `true` if the provided specifier can be resolved to a document,
-  /// otherwise `false`.
-  pub fn contains_import(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-  ) -> bool {
-    self.0.contains_import(specifier, referrer)
-  }
-
-  /// Return `true` if the specifier can be resolved to a document.
-  pub fn contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.contains_specifier(specifier)
-  }
-
-  /// Return an array of specifiers, if any, that are dependent upon the
-  /// supplied specifier. This is used to determine invalidation of diagnostics
-  /// when a module has been changed.
-  pub fn dependents(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> Vec<ModuleSpecifier> {
-    self.0.dependents(specifier)
-  }
-
-  /// Return a vector of documents that are contained in the document store,
-  /// where `open_only` flag would provide only those documents currently open
-  /// in the editor and `diagnosable_only` would provide only those documents
-  /// that the language server can provide diagnostics for.
-  pub fn documents(
-    &self,
-    open_only: bool,
-    diagnosable_only: bool,
-  ) -> Vec<Document> {
-    self.0.documents(open_only, diagnosable_only)
-  }
-
-  /// Return a document for the specifier.
-  pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
-    self.0.get(specifier)
-  }
-
-  /// For a given set of string specifiers, resolve each one from the graph,
-  /// for a given referrer. This is used to provide resolution information to
-  /// tsc when type checking.
-  pub fn resolve(
-    &self,
-    specifiers: Vec<String>,
-    referrer: &ModuleSpecifier,
-  ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
-    self.0.resolve(specifiers, referrer)
-  }
-
-  /// Update the location of the on disk cache for the document store.
-  pub fn set_location(&mut self, location: PathBuf) {
-    self.0.set_location(location)
-  }
-
-  /// Tries to cache a navigation tree that is associated with the provided specifier
-  /// if the document stored has the same script version.
-  pub fn try_cache_navigation_tree(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    script_version: &str,
-    navigation_tree: Arc<tsc::NavigationTree>,
-  ) -> Result<(), AnyError> {
-    self
-      .0
-      .try_cache_navigation_tree(specifier, script_version, navigation_tree)
-  }
-
-  pub fn update_config(
-    &mut self,
-    maybe_import_map: Option<Arc<import_map::ImportMap>>,
-    maybe_config_file: Option<&ConfigFile>,
-  ) {
-    self.0.update_config(maybe_import_map, maybe_config_file)
   }
 }
 
