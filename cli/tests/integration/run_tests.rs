@@ -563,6 +563,16 @@ itest!(fetch_response_finalization {
   exit_code: 0,
 });
 
+itest!(import_type {
+  args: "run --reload import_type.ts",
+  output: "import_type.ts.out",
+});
+
+itest!(import_type_no_check {
+  args: "run --reload --no-check import_type.ts",
+  output: "import_type.ts.out",
+});
+
 itest!(lock_write_requires_lock {
   args: "run --lock-write some_file.ts",
   output: "lock_write_requires_lock.out",
