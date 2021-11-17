@@ -342,7 +342,7 @@ declare namespace Deno {
    *   assertEquals("hello", "hello");
    * });
    *
-   * Deno.test(async function myOtherTestName(): Promise<void> => {
+   * Deno.test(async function myOtherTestName(): Promise<void> {
    *   const decoder = new TextDecoder("utf-8");
    *   const data = await Deno.readFile("hello_world.txt");
    *   assertEquals(decoder.decode(data), "Hello world");
@@ -371,7 +371,7 @@ declare namespace Deno {
    */
   export function test(
     name: string,
-    options: Omit<TestDefinition, "fn">,
+    options: Omit<TestDefinition, "fn" | "name">,
     fn: (t: TestContext) => void | Promise<void>,
   ): void;
 
@@ -394,7 +394,7 @@ declare namespace Deno {
    * ```
    */
   export function test(
-    options: Omit<TestDefinition, "fn" | "name">,
+    options: Omit<TestDefinition, "fn">,
     fn: (t: TestContext) => void | Promise<void>,
   ): void;
 
@@ -409,7 +409,7 @@ declare namespace Deno {
    *   assertEquals("hello", "hello");
    * });
    *
-   * Deno.test({ permissions: { read: false } }, function myOtherTestName(): Promise<void> {
+   * Deno.test({ permissions: { read: false } }, async function myOtherTestName(): Promise<void> {
    *   const decoder = new TextDecoder("utf-8");
    *   const data = await Deno.readFile("hello_world.txt");
    *   assertEquals(decoder.decode(data), "Hello world");
