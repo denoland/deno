@@ -138,6 +138,10 @@ pub struct TestSummary {
   pub passed: usize,
   pub failed: usize,
   pub ignored: usize,
+  pub passed_steps: usize,
+  pub failed_steps: usize,
+  pub pending_steps: usize,
+  pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
   pub failures: Vec<(TestDescription, String)>,
@@ -150,6 +154,10 @@ impl TestSummary {
       passed: 0,
       failed: 0,
       ignored: 0,
+      passed_steps: 0,
+      failed_steps: 0,
+      pending_steps: 0,
+      ignored_steps: 0,
       filtered_out: 0,
       measured: 0,
       failures: Vec::new(),
@@ -398,12 +406,24 @@ impl TestReporter for PrettyTestReporter {
       colors::green("ok").to_string()
     };
 
+    let get_steps_text = |count: usize| -> String {
+      if count == 0 {
+        String::new()
+      } else if count == 1 {
+        " (1 step)".to_string()
+      } else {
+        format!(" ({} steps)", count)
+      }
+    };
     println!(
-      "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
       status,
       summary.passed,
+      get_steps_text(summary.passed_steps),
       summary.failed,
+      get_steps_text(summary.failed_steps + summary.pending_steps),
       summary.ignored,
+      get_steps_text(summary.ignored_steps),
       summary.measured,
       summary.filtered_out,
       colors::gray(human_elapsed(elapsed.as_millis())),
@@ -590,7 +610,7 @@ fn extract_files_from_source_comments(
     scope_analysis: false,
   })?;
   let comments = parsed_source.comments().get_vec();
-  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 
   let files = comments
@@ -630,7 +650,7 @@ fn extract_files_from_fenced_blocks(
     col: 0,
   };
 
-  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
@@ -712,6 +732,7 @@ async fn check_specifiers(
       lib.clone(),
       Permissions::allow_all(),
       permissions.clone(),
+      false,
     )
     .await?;
   }
@@ -733,6 +754,7 @@ async fn check_specifiers(
     lib,
     Permissions::allow_all(),
     permissions,
+    true,
   )
   .await?;
 
@@ -846,6 +868,21 @@ async fn test_specifiers(
           }
 
           TestEvent::StepResult(description, result, duration) => {
+            match &result {
+              TestStepResult::Ok => {
+                summary.passed_steps += 1;
+              }
+              TestStepResult::Ignored => {
+                summary.ignored_steps += 1;
+              }
+              TestStepResult::Failed(_) => {
+                summary.failed_steps += 1;
+              }
+              TestStepResult::Pending(_) => {
+                summary.pending_steps += 1;
+              }
+            }
+
             reporter.report_step_result(&description, &result, duration);
           }
         }

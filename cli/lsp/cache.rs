@@ -8,7 +8,7 @@ use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;

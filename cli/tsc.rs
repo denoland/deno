@@ -5,9 +5,9 @@ use crate::diagnostics::Diagnostics;
 use crate::emit;
 
 use deno_ast::MediaType;
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::located_script_name;
 use deno_core::op_sync;
 use deno_core::resolve_url_or_path;
