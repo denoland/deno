@@ -342,7 +342,7 @@ declare namespace Deno {
    *   assertEquals("hello", "hello");
    * });
    *
-   * Deno.test(async function myOtherTestName(): Promise<void> => {
+   * Deno.test(async function myOtherTestName(): Promise<void> {
    *   const decoder = new TextDecoder("utf-8");
    *   const data = await Deno.readFile("hello_world.txt");
    *   assertEquals(decoder.decode(data), "Hello world");
