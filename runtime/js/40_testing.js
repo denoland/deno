@@ -277,12 +277,15 @@ finishing test case.`;
         if (!maybeFn || typeof maybeFn !== "function") {
           throw new TypeError("Missing test function");
         }
-        // TODO(bartlomieju):
         if (optionsOrFn.fn != undefined) {
-          throw new TypeError("Missing test function");
+          throw new TypeError(
+            "Unexpected 'fn' field in options, test function is already provided as the third argument.",
+          );
         }
         if (optionsOrFn.name != undefined) {
-          throw new TypeError("Missing test function");
+          throw new TypeError(
+            "Unexpected 'fn' field in options, test name is already provided as the first argument.",
+          );
         }
         testDef = {
           ...defaults,
@@ -295,12 +298,11 @@ finishing test case.`;
       if (!nameOrFnOrOptions.name) {
         throw new TypeError("The test function must have a name");
       }
-      // TODO(bartlomieju):
       if (optionsOrFn != undefined) {
-        throw new TypeError("Missing test function");
+        throw new TypeError("Unexpected second argument to Deno.test()");
       }
       if (maybeFn != undefined) {
-        throw new TypeError("Missing test function");
+        throw new TypeError("Unexpected third argument to Deno.test()");
       }
       testDef = {
         ...defaults,
@@ -309,11 +311,15 @@ finishing test case.`;
       };
     } else {
       let fn;
+      let name;
       if (typeof optionsOrFn === "function") {
         fn = optionsOrFn;
         if (nameOrFnOrOptions.fn != undefined) {
-          throw new TypeError("Missing test function");
+          throw new TypeError(
+            "Unexpected 'fn' field in options, test function is already provided as the second argument.",
+          );
         }
+        name = nameOrFnOrOptions.name ?? fn.name;
       } else {
         if (!nameOrFnOrOptions.fn) {
           throw new TypeError("Missing test function");
@@ -322,11 +328,12 @@ finishing test case.`;
           throw new TypeError("'fn' must be a function");
         }
         fn = nameOrFnOrOptions.fn;
+        name = nameOrFnOrOptions.name ?? fn.name;
       }
-      if (!nameOrFnOrOptions.name) {
+      if (!name) {
         throw new TypeError("The test name can't be empty");
       }
-      testDef = { ...defaults, ...nameOrFnOrOptions, fn };
+      testDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
     testDef.fn = wrapTestFnWithSanitizers(testDef.fn, testDef);
