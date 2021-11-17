@@ -800,6 +800,15 @@ delete Object.prototype.__proto__;
           ts.getSupportedCodeFixes(),
         );
       }
+      case "getTypeDefinition": {
+        return respond(
+          id,
+          languageService.getTypeDefinitionAtPosition(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
       case "prepareCallHierarchy": {
         return respond(
           id,

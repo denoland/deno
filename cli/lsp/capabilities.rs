@@ -26,6 +26,7 @@ use lspower::lsp::SignatureHelpOptions;
 use lspower::lsp::TextDocumentSyncCapability;
 use lspower::lsp::TextDocumentSyncKind;
 use lspower::lsp::TextDocumentSyncOptions;
+use lspower::lsp::TypeDefinitionProviderCapability;
 use lspower::lsp::WorkDoneProgressOptions;
 use lspower::lsp::WorkspaceFoldersServerCapabilities;
 use lspower::lsp::WorkspaceServerCapabilities;
@@ -108,7 +109,9 @@ pub fn server_capabilities(
     }),
     declaration_provider: None,
     definition_provider: Some(OneOf::Left(true)),
-    type_definition_provider: None,
+    type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(
+      true,
+    )),
     implementation_provider: Some(ImplementationProviderCapability::Simple(
       true,
     )),

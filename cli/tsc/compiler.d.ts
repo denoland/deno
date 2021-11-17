@@ -65,6 +65,7 @@ declare global {
     | GetSignatureHelpItemsRequest
     | GetSmartSelectionRange
     | GetSupportedCodeFixes
+    | GetTypeDefinitionRequest
     | PrepareCallHierarchy
     | ProvideCallHierarchyIncomingCalls
     | ProvideCallHierarchyOutgoingCalls;
@@ -210,6 +211,12 @@ declare global {
 
   interface GetSupportedCodeFixes extends BaseLanguageServerRequest {
     method: "getSupportedCodeFixes";
+  }
+
+  interface GetTypeDefinitionRequest extends BaseLanguageServerRequest {
+    method: "getTypeDefinition";
+    specifier: string;
+    position: number;
   }
 
   interface PrepareCallHierarchy extends BaseLanguageServerRequest {

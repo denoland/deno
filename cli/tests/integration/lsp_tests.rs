@@ -1267,6 +1267,66 @@ fn lsp_hover_typescript_types() {
 }
 
 #[test]
+fn lsp_goto_type_definition() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "interface A {\n  a: string;\n}\n\nexport class B implements A {\n  a = \"a\";\n  log() {\n    console.log(this.a);\n  }\n}\n\nconst b = new B();\nb;\n",
+      }
+    }),
+  );
+  let (maybe_res, maybe_error) = client
+    .write_request::<_, _, Value>(
+      "textDocument/typeDefinition",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 12,
+          "character": 1
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_error.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!([
+      {
+        "targetUri": "file:///a/file.ts",
+        "targetRange": {
+          "start": {
+            "line": 4,
+            "character": 0
+          },
+          "end": {
+            "line": 9,
+            "character": 1
+          }
+        },
+        "targetSelectionRange": {
+          "start": {
+            "line": 4,
+            "character": 13
+          },
+          "end": {
+            "line": 4,
+            "character": 14
+          }
+        }
+      }
+    ]))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_call_hierarchy() {
   let mut client = init("initialize_params.json");
   did_open(
