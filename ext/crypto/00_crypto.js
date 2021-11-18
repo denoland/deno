@@ -2395,7 +2395,7 @@
       }
 
       // 14.
-      let bytes = key;
+      const bytes = key;
       if (format == "jwk") {
         // TODO(@littledivy): Implement JWK.
         throw new DOMException(
