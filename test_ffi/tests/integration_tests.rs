@@ -49,6 +49,8 @@ fn basic() {
     579\n\
     579.9119873046875\n\
     579.912\n\
+    false\n\
+    true\n\
     Before\n\
     true\n\
     After\n\

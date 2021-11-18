@@ -40,6 +40,10 @@ const dylib = Deno.dlopen(libPath, {
     result: "void",
     nonblocking: true,
   },
+  "is_nullptr": {
+    parameters: ["buffer"],
+    result: "void",
+  },
 });
 
 dylib.symbols.print_something();
@@ -95,6 +99,9 @@ dylib.symbols.nonblocking_buffer(buffer3, buffer3.length).then(() => {
   promise.resolve();
 });
 await promise;
+
+console.log(dylib.symbols.is_nullptr(new Uint8Array()));
+console.log(dylib.symbols.is_nullptr(null));
 
 const start = performance.now();
 dylib.symbols.sleep_blocking(100).then(() => {

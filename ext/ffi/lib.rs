@@ -407,9 +407,13 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     .zip(args.parameters.into_iter())
     .map(|(&native_type, value)| {
       if let NativeType::Buffer = native_type {
-        let idx: usize = value_as_uint(value);
-        let ptr = buffers[idx].as_ptr();
-        NativeValue::buffer(ptr)
+        if value.is_null() {
+          NativeValue::buffer(std::ptr::null())
+        } else {
+          let idx: usize = value_as_uint(value);
+          let ptr = buffers[idx].as_ptr();
+          NativeValue::buffer(ptr)
+        }
       } else {
         NativeValue::new(native_type, value)
       }
