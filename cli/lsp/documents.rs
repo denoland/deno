@@ -415,14 +415,6 @@ impl Document {
     })))
   }
 
-  fn with_closed(&self) -> Document {
-    Document(Arc::new(DocumentInner {
-      maybe_lsp_version: None,
-      maybe_language_id: None,
-      ..(*self.0).clone()
-    }))
-  }
-
   fn with_navigation_tree(
     &self,
     navigation_tree: Arc<tsc::NavigationTree>,
@@ -861,25 +853,20 @@ impl Documents {
   /// being held, and the document store will revert to the file system if
   /// information about the document is required.
   pub fn close(&mut self, specifier: &ModuleSpecifier) -> Result<(), AnyError> {
-    let mut file_system_docs = self.file_system_docs.lock();
-    let doc = self
-      .open_docs
-      .remove(specifier)
-      .or_else(|| file_system_docs.docs.remove(specifier))
-      .map_or_else(
-        || {
-          Err(custom_error(
-            "NotFound",
-            format!("The specifier \"{}\" was not found.", specifier),
-          ))
-        },
-        Ok,
-      )?;
-    file_system_docs
-      .docs
-      .insert(doc.specifier().clone(), doc.with_closed());
-    file_system_docs.dirty = true;
-    self.dirty = true;
+    if self.open_docs.remove(specifier).is_some() {
+      self.dirty = true;
+    } else {
+      let mut file_system_docs = self.file_system_docs.lock();
+      if file_system_docs.docs.remove(specifier).is_some() {
+        file_system_docs.dirty = true;
+      } else {
+        return Err(custom_error(
+          "NotFound",
+          format!("The specifier \"{}\" was not found.", specifier),
+        ));
+      }
+    }
+
     Ok(())
   }
 
