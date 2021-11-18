@@ -93,5 +93,5 @@ pub extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn is_nullptr(ptr: *const u8) -> bool {
-  ptr == std::ptr::null()
+  ptr.is_null()
 }
