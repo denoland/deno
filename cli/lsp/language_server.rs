@@ -70,7 +70,7 @@ const CACHE_PATH: &str = "deps";
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct StateSnapshot {
   pub assets: Assets,
   pub config: ConfigSnapshot,
@@ -271,14 +271,17 @@ impl Inner {
           )
           .await?;
         let navigation_tree = Arc::new(navigation_tree);
-        if specifier.scheme() == "asset" {
-          self
+        match asset_or_doc {
+          AssetOrDocument::Asset(_) => self
             .assets
-            .set_navigation_tree(specifier, navigation_tree.clone())?;
-        } else {
-          self
-            .documents
-            .set_navigation_tree(specifier, navigation_tree.clone())?;
+            .cache_navigation_tree(specifier, navigation_tree.clone())?,
+          AssetOrDocument::Document(doc) => {
+            self.documents.try_cache_navigation_tree(
+              specifier,
+              &doc.script_version(),
+              navigation_tree.clone(),
+            )?
+          }
         }
         navigation_tree
       };
@@ -368,8 +371,8 @@ impl Inner {
     Ok(())
   }
 
-  pub(crate) fn snapshot(&self) -> LspResult<StateSnapshot> {
-    Ok(StateSnapshot {
+  pub(crate) fn snapshot(&self) -> LspResult<Arc<StateSnapshot>> {
+    Ok(Arc::new(StateSnapshot {
       assets: self.assets.clone(),
       config: self.config.snapshot().map_err(|err| {
         error!("{}", err);
@@ -382,7 +385,7 @@ impl Inner {
       module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       url_map: self.url_map.clone(),
-    })
+    }))
   }
 
   pub fn update_cache(&mut self) -> Result<(), AnyError> {
@@ -1638,10 +1641,11 @@ impl Inner {
     // completions, we will use internal logic and if there are completions
     // for imports, we will return those and not send a message into tsc, where
     // other completions come from.
+    let snapshot = self.snapshot()?;
     let response = if let Some(response) = completions::get_import_completions(
       &specifier,
       &params.text_document_position.position,
-      &self.snapshot()?,
+      &snapshot,
       self.client.clone(),
     )
     .await

@@ -175,7 +175,7 @@ impl DiagnosticsServer {
               update_diagnostics(
                 &client,
                 collection.clone(),
-                &snapshot,
+                snapshot,
                 &ts_server
               ).await;
             }
@@ -352,7 +352,7 @@ async fn generate_lint_diagnostics(
 }
 
 async fn generate_ts_diagnostics(
-  snapshot: &language_server::StateSnapshot,
+  snapshot: Arc<language_server::StateSnapshot>,
   collection: Arc<Mutex<DiagnosticCollection>>,
   ts_server: &tsc::TsServer,
 ) -> Result<DiagnosticVec, AnyError> {
@@ -474,16 +474,14 @@ fn diagnose_dependency(
 /// Generate diagnostics for dependencies of a module, attempting to resolve
 /// dependencies on the local file system or in the DENO_DIR cache.
 async fn generate_deps_diagnostics(
-  snapshot: &language_server::StateSnapshot,
+  snapshot: Arc<language_server::StateSnapshot>,
   collection: Arc<Mutex<DiagnosticCollection>>,
 ) -> Result<DiagnosticVec, AnyError> {
-  let config = snapshot.config.clone();
-  let documents = snapshot.documents.clone();
   tokio::task::spawn(async move {
     let mut diagnostics_vec = Vec::new();
 
-    for document in documents.documents(true, true) {
-      if !config.specifier_enabled(document.specifier()) {
+    for document in snapshot.documents.documents(true, true) {
+      if !snapshot.config.specifier_enabled(document.specifier()) {
         continue;
       }
       let version = document.maybe_lsp_version();
@@ -496,12 +494,12 @@ async fn generate_deps_diagnostics(
         for (_, dependency) in document.dependencies() {
           diagnose_dependency(
             &mut diagnostics,
-            &documents,
+            &snapshot.documents,
             &dependency.maybe_code,
           );
           diagnose_dependency(
             &mut diagnostics,
-            &documents,
+            &snapshot.documents,
             &dependency.maybe_type,
           );
         }
@@ -563,7 +561,7 @@ async fn publish_diagnostics(
 async fn update_diagnostics(
   client: &lspower::Client,
   collection: Arc<Mutex<DiagnosticCollection>>,
-  snapshot: &language_server::StateSnapshot,
+  snapshot: Arc<language_server::StateSnapshot>,
   ts_server: &tsc::TsServer,
 ) {
   let mark = snapshot.performance.mark("update_diagnostics", None::<()>);
@@ -573,7 +571,7 @@ async fn update_diagnostics(
       .performance
       .mark("update_diagnostics_lint", None::<()>);
     let collection = collection.clone();
-    let diagnostics = generate_lint_diagnostics(snapshot, collection.clone())
+    let diagnostics = generate_lint_diagnostics(&snapshot, collection.clone())
       .await
       .map_err(|err| {
         error!("Error generating lint diagnostics: {}", err);
@@ -585,7 +583,7 @@ async fn update_diagnostics(
         collection.set(DiagnosticSource::DenoLint, diagnostic_record);
       }
     }
-    publish_diagnostics(client, collection, snapshot).await;
+    publish_diagnostics(client, collection, &snapshot).await;
     snapshot.performance.measure(mark);
   };
 
@@ -595,7 +593,7 @@ async fn update_diagnostics(
       .mark("update_diagnostics_ts", None::<()>);
     let collection = collection.clone();
     let diagnostics =
-      generate_ts_diagnostics(snapshot, collection.clone(), ts_server)
+      generate_ts_diagnostics(snapshot.clone(), collection.clone(), ts_server)
         .await
         .map_err(|err| {
           error!("Error generating TypeScript diagnostics: {}", err);
@@ -607,7 +605,7 @@ async fn update_diagnostics(
         collection.set(DiagnosticSource::TypeScript, diagnostic_record);
       }
     }
-    publish_diagnostics(client, collection, snapshot).await;
+    publish_diagnostics(client, collection, &snapshot).await;
     snapshot.performance.measure(mark);
   };
 
@@ -616,19 +614,20 @@ async fn update_diagnostics(
       .performance
       .mark("update_diagnostics_deps", None::<()>);
     let collection = collection.clone();
-    let diagnostics = generate_deps_diagnostics(snapshot, collection.clone())
-      .await
-      .map_err(|err| {
-        error!("Error generating Deno diagnostics: {}", err);
-      })
-      .unwrap_or_default();
+    let diagnostics =
+      generate_deps_diagnostics(snapshot.clone(), collection.clone())
+        .await
+        .map_err(|err| {
+          error!("Error generating Deno diagnostics: {}", err);
+        })
+        .unwrap_or_default();
     {
       let mut collection = collection.lock().await;
       for diagnostic_record in diagnostics {
         collection.set(DiagnosticSource::Deno, diagnostic_record);
       }
     }
-    publish_diagnostics(client, collection, snapshot).await;
+    publish_diagnostics(client, collection, &snapshot).await;
     snapshot.performance.measure(mark);
   };
 
@@ -652,7 +651,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let documents = Documents::new(location);
+    let mut documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
