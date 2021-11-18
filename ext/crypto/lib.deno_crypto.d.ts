@@ -257,7 +257,25 @@ interface SubtleCrypto {
     wrappingKey: CryptoKey,
     wrapAlgorithm: AlgorithmIdentifier | RsaOaepParams,
   ): Promise<ArrayBuffer>;
-  unwrapKey(format: KeyFormat, wrappedKey: BufferSource, unwrappingKey: CryptoKey, unwrapAlgorithm: AlgorithmIdentifier | RsaOaepParams | AesCtrParams | AesCbcParams | AesGcmParams, unwrappedKeyAlgorithm: AlgorithmIdentifier | RsaHashedImportParams | EcKeyImportParams | HmacImportParams | AesKeyAlgorithm, extractable: boolean, keyUsages: KeyUsage[]): Promise<CryptoKey>;
+  unwrapKey(
+    format: KeyFormat,
+    wrappedKey: BufferSource,
+    unwrappingKey: CryptoKey,
+    unwrapAlgorithm:
+      | AlgorithmIdentifier
+      | RsaOaepParams
+      | AesCtrParams
+      | AesCbcParams
+      | AesGcmParams,
+    unwrappedKeyAlgorithm:
+      | AlgorithmIdentifier
+      | RsaHashedImportParams
+      | EcKeyImportParams
+      | HmacImportParams
+      | AesKeyAlgorithm,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
 }
 
 declare interface Crypto {
