@@ -3015,6 +3015,64 @@ fn lsp_diagnostics_warn() {
 }
 
 #[test]
+fn lsp_diagnostics_deprecated() {
+  let mut client = init("initialize_params.json");
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "/** @deprecated */\nexport const a = \"a\";\n\na;\n",
+      },
+    }),
+  );
+  assert_eq!(
+    json!(diagnostics),
+    json!([
+      {
+        "uri": "file:///a/file.ts",
+        "diagnostics": [],
+        "version": 1
+      },
+      {
+        "uri": "file:///a/file.ts",
+        "diagnostics": [],
+        "version": 1
+      },
+      {
+        "uri": "file:///a/file.ts",
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 3,
+                "character": 0
+              },
+              "end": {
+                "line": 3,
+                "character": 1
+              }
+            },
+            "severity": 4,
+            "code": 6385,
+            "source": "deno-ts",
+            "message": "'a' is deprecated.",
+            "relatedInformation": [],
+            "tags": [
+              2
+            ]
+          }
+        ],
+        "version": 1
+      }
+    ])
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_diagnostics_deno_types() {
   let mut client = init("initialize_params.json");
   client
