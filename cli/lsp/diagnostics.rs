@@ -285,9 +285,10 @@ fn ts_json_to_diagnostics(
           ),
           tags: match d.code {
             // These are codes that indicate the variable is unused.
-            2695 | 6133 | 6138 | 6192 | 6196 | 6198 | 6199 | 7027 | 7028 => {
-              Some(vec![lsp::DiagnosticTag::Unnecessary])
-            }
+            2695 | 6133 | 6138 | 6192 | 6196 | 6198 | 6199 | 6205 | 7027
+            | 7028 => Some(vec![lsp::DiagnosticTag::Unnecessary]),
+            // These are codes that indicated the variable is deprecated.
+            2789 | 6385 | 6387 => Some(vec![lsp::DiagnosticTag::Deprecated]),
             _ => None,
           },
           data: None,
