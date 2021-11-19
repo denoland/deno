@@ -83,7 +83,12 @@ detest!(de_unit_null, (), "null", ());
 detest!(de_unit_undefined, (), "undefined", ());
 detest!(de_bool, bool, "true", true);
 detest!(de_u64, u64, "32", 32);
-detest!(de_u64_bigint, u64, "0xFFFFFFFFFFFFFFFFn", 0xFFFFFFFFFFFFFFFF);
+detest!(
+  de_u64_bigint,
+  u64,
+  "0xFFFFFFFFFFFFFFFFn",
+  0xFFFFFFFFFFFFFFFF
+);
 detest!(de_string, String, "'Hello'", "Hello".to_owned());
 detest!(de_vec_u64, Vec<u64>, "[1,2,3,4,5]", vec![1, 2, 3, 4, 5]);
 detest!(
