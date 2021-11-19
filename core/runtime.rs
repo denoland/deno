@@ -2464,4 +2464,47 @@ assertEquals(1, notify_return_value);
     assert_eq!(state.js_macrotask_cbs.len(), 2);
     assert_eq!(state.js_nexttick_cbs.len(), 2);
   }
+
+  #[tokio::test]
+  async fn test_has_tick_scheduled() {
+    let macrotask = Arc::new(AtomicUsize::default());
+    let macrotask_ = Arc::clone(&macrotask);
+
+    let next_tick = Arc::new(AtomicUsize::default());
+    let next_tick_ = Arc::clone(&next_tick);
+
+    let op_macrotask = move |_: &mut OpState, _: (), _: ()| {
+      macrotask_.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    };
+
+    let op_next_tick = move |_: &mut OpState, _: (), _: ()| {
+      next_tick_.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    };
+
+    let extension = Extension::builder()
+      .ops(vec![("op_macrotask", op_sync(op_macrotask))])
+      .ops(vec![("op_next_tick", op_sync(op_next_tick))])
+      .build();
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "has_tick_scheduled.js",
+        r#"
+        Deno.core.setMacrotaskCallback(() => Deno.core.opSync("op_macrotask"));
+        Deno.core.setNextTickCallback(() => Deno.core.opSync("op_next_tick"));
+        Deno.core.setHasTickScheduled(true);
+        "#,
+      )
+      .unwrap();
+    runtime.run_event_loop(false).await.unwrap();
+    assert_eq!(1, macrotask.load(Ordering::Relaxed));
+    assert_eq!(1, next_tick.load(Ordering::Relaxed));
+  }
 }
