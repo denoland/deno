@@ -129,6 +129,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       ValueType::String => self.deserialize_string(visitor),
       ValueType::Array => self.deserialize_seq(visitor),
       ValueType::Object => self.deserialize_map(visitor),
+      ValueType::BigInt => self.deserialize_u64(visitor),
       // Map to Vec<u8> when deserialized via deserialize_any
       // e.g: for untagged enums or StringOrBuffer
       ValueType::ArrayBufferView => {

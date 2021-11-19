@@ -13,6 +13,7 @@ pub enum ValueType {
   Array,
   ArrayBufferView,
   Object,
+  BigInt,
 }
 
 impl ValueType {
@@ -31,6 +32,8 @@ impl ValueType {
       return Self::Object;
     } else if v.is_null_or_undefined() {
       return Self::Null;
+    } else if v.is_big_int() {
+      return Self::BigInt;
     }
     panic!("serde_v8: unknown ValueType for v8::Value")
   }

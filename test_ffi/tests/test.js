@@ -50,6 +50,7 @@ dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
 console.log(dylib.symbols.add_u32(123, 456));
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(123, 456));
+console.log(dylib.symbols.add_u64(2n ** 50n, 1));
 console.log(dylib.symbols.add_i64(123, 456));
 console.log(dylib.symbols.add_usize(123, 456));
 console.log(dylib.symbols.add_isize(123, 456));
