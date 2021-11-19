@@ -802,13 +802,13 @@ impl JsRuntime {
     let module_map = module_map_rc.borrow();
 
     let has_pending_ops = !state.pending_ops.is_empty();
-
     let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
     let has_pending_dyn_module_evaluation =
       !state.pending_dyn_mod_evaluate.is_empty();
     let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
     let has_pending_background_tasks =
       self.v8_isolate().has_pending_background_tasks();
+    let has_tick_scheduled = state.has_tick_scheduled;
     let inspector_has_active_sessions = self
       .inspector
       .as_ref()
@@ -820,6 +820,7 @@ impl JsRuntime {
       && !has_pending_dyn_module_evaluation
       && !has_pending_module_evaluation
       && !has_pending_background_tasks
+      && !has_tick_scheduled
     {
       if wait_for_inspector && inspector_has_active_sessions {
         return Poll::Pending;
@@ -2463,5 +2464,66 @@ assertEquals(1, notify_return_value);
     let state = state_rc.borrow();
     assert_eq!(state.js_macrotask_cbs.len(), 2);
     assert_eq!(state.js_nexttick_cbs.len(), 2);
+  }
+
+  #[tokio::test]
+  async fn test_has_tick_scheduled() {
+    run_in_task(|cx| {
+      let macrotask = Arc::new(AtomicUsize::default());
+      let macrotask_ = Arc::clone(&macrotask);
+
+      let next_tick = Arc::new(AtomicUsize::default());
+      let next_tick_ = Arc::clone(&next_tick);
+
+      let op_macrotask = move |_: &mut OpState, _: (), _: ()| {
+        macrotask_.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+      };
+
+      let op_next_tick = move |_: &mut OpState, _: (), _: ()| {
+        next_tick_.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+      };
+
+      let extension = Extension::builder()
+        .ops(vec![("op_macrotask", op_sync(op_macrotask))])
+        .ops(vec![("op_next_tick", op_sync(op_next_tick))])
+        .build();
+
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        extensions: vec![extension],
+        ..Default::default()
+      });
+
+      runtime
+        .execute_script(
+          "has_tick_scheduled.js",
+          r#"
+          Deno.core.setMacrotaskCallback(() => {
+            Deno.core.opSync("op_macrotask");
+            return true; // We're done.
+          });
+          Deno.core.setNextTickCallback(() => Deno.core.opSync("op_next_tick"));
+          Deno.core.setHasTickScheduled(true);
+          "#,
+        )
+        .unwrap();
+      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+      assert_eq!(1, macrotask.load(Ordering::Relaxed));
+      assert_eq!(1, next_tick.load(Ordering::Relaxed));
+      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+      let state_rc = JsRuntime::state(runtime.v8_isolate());
+      state_rc.borrow_mut().has_tick_scheduled = false;
+      assert!(matches!(
+        runtime.poll_event_loop(cx, false),
+        Poll::Ready(Ok(()))
+      ));
+      assert!(matches!(
+        runtime.poll_event_loop(cx, false),
+        Poll::Ready(Ok(()))
+      ));
+    });
   }
 }
