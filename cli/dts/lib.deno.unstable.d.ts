@@ -851,6 +851,15 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
   }
 
+  export interface UdpConn extends DatagramConn {
+    readonly broadcast: boolean;
+    /**
+     * 
+     * @param flag True to set the SO_BROADCAST flag
+     */
+    setBroadcast(flag: boolean);
+  }
+
   export interface UnixListenOptions {
     /** A Path to the Unix Socket. */
     path: string;
@@ -883,18 +892,12 @@ declare namespace Deno {
    *   port: 80,
    *   transport: "udp"
    * });
-   * const listener3 = Deno.listenDatagram({
-   *   hostname: "0.0.0.0",
-   *   port: 50000,
-   *   transport: "udp",
-   *   broadcast: true
-   * });
    * ```
    *
    * Requires `allow-net` permission. */
   export function listenDatagram(
-    options: ListenOptions & { transport: "udp"; broadcast?: boolean; },
-  ): DatagramConn;
+    options: ListenOptions & { transport: "udp"; },
+  ): UdpConn;
 
   /** **UNSTABLE**: new API, yet to be vetted
    *
