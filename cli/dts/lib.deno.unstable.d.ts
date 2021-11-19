@@ -883,11 +883,17 @@ declare namespace Deno {
    *   port: 80,
    *   transport: "udp"
    * });
+   * const listener3 = Deno.listenDatagram({
+   *   hostname: "0.0.0.0",
+   *   port: 50000,
+   *   transport: "udp",
+   *   broadcast: true
+   * });
    * ```
    *
    * Requires `allow-net` permission. */
   export function listenDatagram(
-    options: ListenOptions & { transport: "udp" },
+    options: ListenOptions & { transport: "udp"; broadcast?: boolean; },
   ): DatagramConn;
 
   /** **UNSTABLE**: new API, yet to be vetted

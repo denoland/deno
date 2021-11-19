@@ -23,6 +23,7 @@
       res = net.opListen({
         transport: "udp",
         hostname: "127.0.0.1",
+        broadcast: false,
         ...options,
       });
     }

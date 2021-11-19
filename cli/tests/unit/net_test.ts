@@ -327,6 +327,38 @@ unitTest(
 
 unitTest(
   { permissions: { net: true } },
+  async function netUdpSendReceiveBroadcast() {
+    const alice = Deno.listenDatagram({ port: 3500, transport: "udp", broadcast: true });
+    assert(alice.addr.transport === "udp");
+    assertEquals(alice.addr.port, 3500);
+    assertEquals(alice.addr.hostname, "127.0.0.1");
+
+    const bob = Deno.listenDatagram({ port: 4501, transport: "udp", broadcast: true });
+    assert(bob.addr.transport === "udp");
+    assertEquals(bob.addr.port, 4501);
+    assertEquals(bob.addr.hostname, "127.0.0.1");
+
+    const broadcastBob = { ...bob, hostname: "127.0.0.255"};
+
+    const sent = new Uint8Array([1, 2, 3]);
+    const byteLength = await alice.send(sent, broadcastBob.addr);
+
+    assertEquals(byteLength, 3);
+
+    const [recvd, remote] = await bob.receive();
+    assert(remote.transport === "udp");
+    assertEquals(remote.port, 3500);
+    assertEquals(recvd.length, 3);
+    assertEquals(1, recvd[0]);
+    assertEquals(2, recvd[1]);
+    assertEquals(3, recvd[2]);
+    alice.close();
+    bob.close();
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
   async function netUdpBorrowMutError() {
     const socket = Deno.listenDatagram({
       port: 4501,

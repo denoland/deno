@@ -393,6 +393,7 @@ impl Resource for UdpSocketResource {
 struct IpListenArgs {
   hostname: String,
   port: u16,
+  broadcast: bool,
 }
 
 #[derive(Deserialize)]
@@ -430,8 +431,12 @@ fn listen_tcp(
 fn listen_udp(
   state: &mut OpState,
   addr: SocketAddr,
+  broadcast: bool,
 ) -> Result<(u32, SocketAddr), AnyError> {
   let std_socket = std::net::UdpSocket::bind(&addr)?;
+  if broadcast {
+    std_socket.set_broadcast(true)?;
+  }
   std_socket.set_nonblocking(true)?;
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
@@ -471,7 +476,7 @@ where
       let (rid, local_addr) = if transport == "tcp" {
         listen_tcp(state, addr)?
       } else {
-        listen_udp(state, addr)?
+        listen_udp(state, addr, args.broadcast)?
       };
       debug!(
         "New listener {} {}:{}",
