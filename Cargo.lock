@@ -1120,9 +1120,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.11.2"
+version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "438806cf4483652c45f81d05666fd66906f215aa3347cfe8bd0a4f640cc41442"
+checksum = "9b28f3f469ccd62d6e93fec9926dae032b8e8e05ffc20217c05e80b27ed372e3"
 dependencies = [
  "dprint-core",
  "pulldown-cmark",
@@ -1132,9 +1132,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.59.1"
+version = "0.59.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d31e6e48fb130f8baeaf8efc6fb9820012b4f5a281860c84b7a9375bf0c7fd11"
+checksum = "c7eb0e9b299253bcdef030e1df70ee820b13faebee9175b35d78de0bc99c1c9a"
 dependencies = [
  "deno_ast",
  "dprint-core",
