@@ -517,6 +517,19 @@ async fn generate_deps_diagnostics(
   .unwrap()
 }
 
+/// Converts relative paths of ignored files/folders to Url format.
+fn get_ignore_specifiers(
+  root: &ModuleSpecifier,
+  ignore: &[String],
+) -> Vec<ModuleSpecifier> {
+  // FIXME: `root_uri` from `ConfigSnapshot` are without a trailing slash,
+  // so `Url::join` treats the root as a file, not a directory, and erases the folder name.
+  // To fix that behaviour we just parsing `root_uri` again.
+  let root =
+    ModuleSpecifier::from_directory_path(root.to_file_path().unwrap()).unwrap();
+  ignore.iter().filter_map(|i| root.join(i).ok()).collect()
+}
+
 /// Publishes diagnostics to the client.
 async fn publish_diagnostics(
   client: &lspower::Client,
@@ -524,35 +537,59 @@ async fn publish_diagnostics(
   snapshot: &language_server::StateSnapshot,
 ) {
   let mut collection = collection.lock().await;
-  if let Some(changes) = collection.take_changes() {
-    for specifier in changes {
-      let mut diagnostics: Vec<lsp::Diagnostic> =
-        if snapshot.config.settings.workspace.lint {
-          collection
-            .get(&specifier, DiagnosticSource::DenoLint)
-            .cloned()
-            .collect()
-        } else {
-          Vec::new()
-        };
-      if snapshot.config.specifier_enabled(&specifier) {
-        diagnostics.extend(
-          collection
-            .get(&specifier, DiagnosticSource::TypeScript)
-            .cloned(),
-        );
-        diagnostics
-          .extend(collection.get(&specifier, DiagnosticSource::Deno).cloned());
+
+  let ignore_specifiers =
+    match (&snapshot.config.root_uri, &snapshot.maybe_lint_config) {
+      (Some(root), Some(lint_config)) => {
+        get_ignore_specifiers(root, &lint_config.files.exclude)
       }
-      let version = snapshot
-        .documents
-        .get(&specifier)
-        .map(|d| d.maybe_lsp_version())
-        .flatten();
-      client
-        .publish_diagnostics(specifier.clone(), diagnostics, version)
-        .await;
+      _ => Vec::new(),
+    };
+
+  let mut changes = match collection.take_changes() {
+    None => return,
+    Some(changes) => changes,
+  };
+
+  // Exclude diagnostics from ignored files.
+  changes.retain(|change| {
+    let change_path = change.path();
+
+    !ignore_specifiers
+      .iter()
+      .any(|i| change_path.starts_with(i.path()))
+  });
+
+  for specifier in changes {
+    let mut diagnostics: Vec<lsp::Diagnostic> =
+      if snapshot.config.settings.workspace.lint {
+        collection
+          .get(&specifier, DiagnosticSource::DenoLint)
+          .cloned()
+          .collect()
+      } else {
+        Vec::new()
+      };
+
+    if snapshot.config.specifier_enabled(&specifier) {
+      diagnostics.extend(
+        collection
+          .get(&specifier, DiagnosticSource::TypeScript)
+          .cloned(),
+      );
+      diagnostics
+        .extend(collection.get(&specifier, DiagnosticSource::Deno).cloned());
     }
+
+    let version = snapshot
+      .documents
+      .get(&specifier)
+      .map(|d| d.maybe_lsp_version())
+      .flatten();
+
+    client
+      .publish_diagnostics(specifier.clone(), diagnostics, version)
+      .await;
   }
 }
 
