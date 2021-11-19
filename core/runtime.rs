@@ -2497,7 +2497,10 @@ assertEquals(1, notify_return_value);
       .execute_script(
         "has_tick_scheduled.js",
         r#"
-        Deno.core.setMacrotaskCallback(() => Deno.core.opSync("op_macrotask"));
+        Deno.core.setMacrotaskCallback(() => {
+          Deno.core.opSync("op_macrotask");
+          return true; // We're done.
+        });
         Deno.core.setNextTickCallback(() => Deno.core.opSync("op_next_tick"));
         Deno.core.setHasTickScheduled(true);
         "#,
