@@ -121,6 +121,43 @@ declare namespace Deno {
 
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction {
+    /**
+     * Foreign Function paramter types also support `buffer` type which is essentially
+     * a pointer to a JS `Uint8Array`. It can even be mutated from native code.
+     * 
+     * For example, take the following Rust code,
+     * 
+     * ```rs
+     * #[no_mangle]
+     * pub unsafe extern "C" fn print_buffer(buffer: *const u8, size: usize) {
+     *   println!("{:?}", std::slice::from_raw_parts(buffer, size));
+     * }
+     * ```
+     * 
+     * Compile using `rustc --crate-type cdylib filename.rs`
+     * 
+     * From Deno, you'd use the dynamic library like,
+     * 
+     * ```ts
+     * const lib = Deno.dlopen("./path/to/lib", {
+     *   print_buffer: {
+     *     parameters: ["buffer", "usize"],
+     *     result: "void",
+     *   },
+     * });
+     * 
+     * const buffer = new Uint8Array([1, 2, 3]);
+     * lib.symbols.print_buffer(buffer, buffer.byteLength);
+     * // [1, 2, 3]
+     * ```
+     * 
+     * The `buffer` argument type supports passing `null` value which
+     * becomes the null pointer (0) in FFI, accessing that pointer memory
+     * may cause segmentation faults in some cases.
+     * 
+     * In this case, Rust's `slice::from_raw_parts` handles null pointers safely,
+     * and returns empty slice.
+     */
     parameters: (NativeType | "buffer")[];
     result: NativeType;
     /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
