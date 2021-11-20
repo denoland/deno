@@ -550,17 +550,14 @@ fn op_udp_setbroadcast(
   _: (),
 ) -> Result<(), AnyError> {
   let resource = state
-    .borrow()
     .resource_table
     .get::<UdpSocketResource>(args.rid)
     .map_err(|_| bad_resource("Socket has been closed"))?;
-  match RcRef::map(&resource, |r| &r.socket).try_borrow_mut() {
-    Some(socket) => {
-      socket.set_broadcast(args.flag)?;
-      Ok(())
-    }
-    _ => Err(type_error("Socket resource busy! Couldn't borrow")),
-  }
+  let socket = RcRef::map(&resource, |r| &r.socket)
+    .try_borrow()
+    .ok_or_else(|| custom_error("Busy", "Socket is in currently in use"))?;
+  socket.set_broadcast(args.flag)?;
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -574,18 +571,15 @@ fn op_udp_getbroadcast(
   _: (),
 ) -> Result<bool, AnyError> {
   let resource = state
-    .borrow()
     .resource_table
     .get::<UdpSocketResource>(args.rid)
     .map_err(|_| bad_resource("Socket has been closed"))?;
-    match RcRef::map(&resource, |r| &r.socket).try_borrow_mut() {
-      Some(socket) => {
-        let broadcast_flag = socket.broadcast()?;
-        println!("Broadcast flag is {}", broadcast_flag);
-        Ok(broadcast_flag)
-      }
-      _ => Err(type_error("Socket resource busy! Couldn't borrow")),
-    }
+  let socket = RcRef::map(&resource, |r| &r.socket)
+    .try_borrow()
+    .ok_or_else(|| custom_error("Busy", "Socket is in currently in use"))?;
+  let broadcast_flag = socket.broadcast()?;
+  println!("Broadcast flag is {}", broadcast_flag);
+  Ok(broadcast_flag)
 }
 
 #[derive(Serialize, PartialEq, Debug)]

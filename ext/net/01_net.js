@@ -55,11 +55,11 @@
   }
 
   function opGetBroadcast(args) {
-    return core.opAsync("op_udp_getbroadcast", args);
+    return core.opSync("op_udp_getbroadcast", args);
   }
 
   function opSetBroadcast(args) {
-    return core.opAsync("op_udp_setbroadcast", args);
+    return core.opSync("op_udp_setbroadcast", args);
   }
 
   function resolveDns(query, recordType, options) {

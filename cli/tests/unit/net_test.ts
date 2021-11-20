@@ -339,14 +339,15 @@ unitTest(
     assert(alice.broadcast);
 
     const bob = Deno.listenDatagram({ port: 4501, transport: "udp" });
+    bob.setBroadcast(true);
     assert(bob.addr.transport === "udp");
     assertEquals(bob.addr.port, 4501);
     assertEquals(bob.addr.hostname, "127.0.0.1");
 
-    const broadcastBob = { ...bob, hostname: "127.0.0.255"};
+    const broadcastAddr = { ...bob.addr, hostname: "127.0.0.255"};
 
     const sent = new Uint8Array([1, 2, 3]);
-    const byteLength = await alice.send(sent, broadcastBob.addr);
+    const byteLength = await alice.send(sent, broadcastAddr);
 
     assertEquals(byteLength, 3);
 
