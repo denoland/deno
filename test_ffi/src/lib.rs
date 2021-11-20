@@ -29,6 +29,12 @@ pub extern "C" fn print_buffer2(
 }
 
 #[no_mangle]
+pub extern "C" fn return_ptr() -> *const u8 {
+  let val = vec![1, 2, 3, 4, 5, 6, 7, 8];
+  val.as_ptr()
+}
+
+#[no_mangle]
 pub extern "C" fn add_u32(a: u32, b: u32) -> u32 {
   a + b
 }
@@ -88,10 +94,4 @@ pub extern "C" fn fill_buffer(value: u8, buf: *mut u8, len: usize) {
 pub extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) {
   let buf = unsafe { std::slice::from_raw_parts(ptr, len) };
   assert_eq!(buf, vec![1, 2, 3, 4, 5, 6, 7, 8]);
-}
-
-#[no_mangle]
-pub extern "C" fn return_ptr() -> *const u8 {
-  let val = vec![1, 2, 3, 4, 5, 6, 7, 8];
-  val.as_ptr()
 }
