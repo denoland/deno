@@ -42,7 +42,7 @@ const dylib = Deno.dlopen(libPath, {
   },
   "is_nullptr": {
     parameters: ["buffer"],
-    result: "void",
+    result: "bool",
   },
 });
 
