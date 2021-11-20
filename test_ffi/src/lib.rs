@@ -3,6 +3,8 @@
 use std::thread::sleep;
 use std::time::Duration;
 
+static BUFFER: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+
 #[no_mangle]
 pub extern "C" fn print_something() {
   println!("something");
@@ -29,9 +31,8 @@ pub extern "C" fn print_buffer2(
 }
 
 #[no_mangle]
-pub extern "C" fn return_ptr() -> *const u8 {
-  let val = vec![1, 2, 3, 4, 5, 6, 7, 8];
-  val.as_ptr()
+pub extern "C" fn return_buffer() -> *const u8 {
+  BUFFER.as_ptr()
 }
 
 #[no_mangle]

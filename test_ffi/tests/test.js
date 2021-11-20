@@ -25,7 +25,7 @@ const dylib = Deno.dlopen(libPath, {
     parameters: ["buffer", "usize", "buffer", "usize"],
     result: "void",
   },
-  "return_ptr": { parameters: [], result: "buffer" },
+  "return_buffer": { parameters: [], result: "buffer" },
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "add_i32": { parameters: ["i32", "i32"], result: "i32" },
   "add_u64": { parameters: ["u64", "u64"], result: "u64" },
@@ -48,7 +48,7 @@ const buffer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 const buffer2 = new Uint8Array([9, 10]);
 dylib.symbols.print_buffer(buffer, buffer.length);
 dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
-const ptr = dylib.symbols.return_ptr();
+const ptr = dylib.symbols.return_buffer();
 dylib.symbols.print_buffer(ptr, 8);
 console.log(dylib.symbols.add_u32(123, 456));
 console.log(dylib.symbols.add_i32(123, 456));
