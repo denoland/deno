@@ -332,24 +332,33 @@ unitTest(
   async function netUdpSendReceiveBroadcast() {
     const alice = Deno.listenDatagram({ port: 3500, transport: "udp" });
     assert(!alice.broadcast);
-    alice.setBroadcast(false);
-    assert(!alice.broadcast);
-    alice.setBroadcast(true);
-    assert(alice.broadcast);
 
     const bob = Deno.listenDatagram({ port: 4501, transport: "udp", hostname: '0.0.0.0'});
-    bob.setBroadcast(true);
     assert(bob.addr.transport === "udp");
     assertEquals(bob.addr.port, 4501);
-    assertEquals(bob.addr.hostname, "0.0.0.0");
+    assertEquals(bob.addr.hostname, '0.0.0.0');
 
     const broadcastAddr = { ...bob.addr, hostname: "255.255.255.255"};
 
     const sent = new Uint8Array([1, 2, 3]);
+
+    let acceptErrCount = 0;
+    const checkErr = (e: Error) => {
+      if (e.message === "Permission denied (os error 13)") {
+        acceptErrCount++;
+      } else {
+        throw new Error("Unexpected error message");
+      }
+    };
+    // Sending to the broadcast addr without broadcast flag should result in error.
+    await alice.send(sent, broadcastAddr).catch(checkErr);
+
+    alice.setBroadcast(true);
+    assert(alice.broadcast);
     const byteLength = await alice.send(sent, broadcastAddr);
 
-    assertEquals(byteLength, 3);
 
+    assertEquals(byteLength, 3);
     const [recvd, remote] = await bob.receive();
     assert(remote.transport === "udp");
     assertEquals(remote.port, 3500);
@@ -357,6 +366,7 @@ unitTest(
     assertEquals(1, recvd[0]);
     assertEquals(2, recvd[1]);
     assertEquals(3, recvd[2]);
+    assertEquals(acceptErrCount, 1);
     alice.close();
     bob.close();
   },
