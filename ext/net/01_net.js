@@ -54,6 +54,14 @@
     return core.opAsync("op_dgram_send", args, zeroCopy);
   }
 
+  function opGetBroadcast(args) {
+    return core.opAsync("op_udp_getbroadcast", args);
+  }
+
+  function opSetBroadcast(args) {
+    return core.opAsync("op_udp_setbroadcast", args);
+  }
+
   function resolveDns(query, recordType, options) {
     return core.opAsync("op_dns_resolve", { query, recordType, options });
   }
@@ -200,6 +208,15 @@
     }
   }
 
+  class UdpDatagram extends Datagram {
+    setBroadcast(flag) {
+      return opSetBroadcast({ rid: this.rid, flag });
+    }
+    get broadcast() {
+      return opGetBroadcast({ rid: this.rid });
+    }
+  }
+
   function listen({ hostname, ...options }) {
     const res = opListen({
       transport: "tcp",
@@ -235,6 +252,7 @@
     Listener,
     shutdown,
     Datagram,
+    UdpDatagram,
     resolveDns,
   };
 })(this);

@@ -275,11 +275,14 @@ unitTest(
   { permissions: { net: true } },
   async function netUdpSendReceive() {
     const alice = Deno.listenDatagram({ port: 3500, transport: "udp" });
+    console.log(`bcast status ${alice.broadcast}`);
+    assert(!alice.broadcast)
     assert(alice.addr.transport === "udp");
     assertEquals(alice.addr.port, 3500);
     assertEquals(alice.addr.hostname, "127.0.0.1");
 
     const bob = Deno.listenDatagram({ port: 4501, transport: "udp" });
+    assert(!alice.broadcast)
     assert(bob.addr.transport === "udp");
     assertEquals(bob.addr.port, 4501);
     assertEquals(bob.addr.hostname, "127.0.0.1");
@@ -328,12 +331,14 @@ unitTest(
 unitTest(
   { permissions: { net: true } },
   async function netUdpSendReceiveBroadcast() {
-    const alice = Deno.listenDatagram({ port: 3500, transport: "udp", broadcast: true });
-    assert(alice.addr.transport === "udp");
-    assertEquals(alice.addr.port, 3500);
-    assertEquals(alice.addr.hostname, "127.0.0.1");
+    const alice = Deno.listenDatagram({ port: 3500, transport: "udp" });
+    assert(!alice.broadcast);
+    alice.setBroadcast(false);
+    assert(!alice.broadcast);
+    alice.setBroadcast(true);
+    assert(alice.broadcast);
 
-    const bob = Deno.listenDatagram({ port: 4501, transport: "udp", broadcast: true });
+    const bob = Deno.listenDatagram({ port: 4501, transport: "udp" });
     assert(bob.addr.transport === "udp");
     assertEquals(bob.addr.port, 4501);
     assertEquals(bob.addr.hostname, "127.0.0.1");

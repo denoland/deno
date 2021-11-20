@@ -53,6 +53,8 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
     ("op_net_listen", op_sync(op_net_listen::<P>)),
     ("op_dgram_recv", op_async(op_dgram_recv)),
     ("op_dgram_send", op_async(op_dgram_send::<P>)),
+    ("op_udp_setbroadcast", op_sync(op_udp_setbroadcast)),
+    ("op_udp_getbroadcast", op_sync(op_udp_getbroadcast)),
     ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
   ]
 }
@@ -393,7 +395,6 @@ impl Resource for UdpSocketResource {
 struct IpListenArgs {
   hostname: String,
   port: u16,
-  broadcast: bool,
 }
 
 #[derive(Deserialize)]
@@ -431,12 +432,8 @@ fn listen_tcp(
 fn listen_udp(
   state: &mut OpState,
   addr: SocketAddr,
-  broadcast: bool,
 ) -> Result<(u32, SocketAddr), AnyError> {
   let std_socket = std::net::UdpSocket::bind(&addr)?;
-  if broadcast {
-    std_socket.set_broadcast(true)?;
-  }
   std_socket.set_nonblocking(true)?;
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
@@ -476,7 +473,7 @@ where
       let (rid, local_addr) = if transport == "tcp" {
         listen_tcp(state, addr)?
       } else {
-        listen_udp(state, addr, args.broadcast)?
+        listen_udp(state, addr)?
       };
       debug!(
         "New listener {} {}:{}",
@@ -539,6 +536,56 @@ where
     #[cfg(unix)]
     _ => Err(type_error("Wrong argument format!")),
   }
+}
+
+#[derive(Deserialize)]
+struct SetBroadcastArgs {
+  rid: ResourceId,
+  flag: bool,
+}
+
+fn op_udp_setbroadcast(
+  state: &mut OpState,
+  args: SetBroadcastArgs,
+  _: (),
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<UdpSocketResource>(args.rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+  match RcRef::map(&resource, |r| &r.socket).try_borrow_mut() {
+    Some(socket) => {
+      socket.set_broadcast(args.flag)?;
+      Ok(())
+    }
+    _ => Err(type_error("Socket resource busy! Couldn't borrow")),
+  }
+}
+
+#[derive(Deserialize)]
+struct GetBroadcastArgs {
+  rid: ResourceId,
+}
+
+fn op_udp_getbroadcast(
+  state: &mut OpState,
+  args: GetBroadcastArgs,
+  _: (),
+) -> Result<bool, AnyError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<UdpSocketResource>(args.rid)
+    .map_err(|_| bad_resource("Socket has been closed"))?;
+    match RcRef::map(&resource, |r| &r.socket).try_borrow_mut() {
+      Some(socket) => {
+        let broadcast_flag = socket.broadcast()?;
+        println!("Broadcast flag is {}", broadcast_flag);
+        Ok(broadcast_flag)
+      }
+      _ => Err(type_error("Socket resource busy! Couldn't borrow")),
+    }
 }
 
 #[derive(Serialize, PartialEq, Debug)]

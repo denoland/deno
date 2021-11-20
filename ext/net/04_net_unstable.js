@@ -16,19 +16,18 @@
   function listenDatagram(
     options,
   ) {
-    let res;
     if (options.transport === "unixpacket") {
-      res = net.opListen(options);
+      const res = net.opListen(options);
+      return new net.Datagram(res.rid, res.localAddr);
     } else {
-      res = net.opListen({
+      const res = net.opListen({
         transport: "udp",
         hostname: "127.0.0.1",
         broadcast: false,
         ...options,
       });
+      return new net.UdpDatagram(res.rid, res.localAddr);
     }
-
-    return new net.Datagram(res.rid, res.localAddr);
   }
 
   async function connect(

@@ -851,13 +851,20 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
   }
 
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * A transport listener for UDP messages. */
   export interface UdpConn extends DatagramConn {
+    /**
+     * Gets the value of the SO_BROADCAST option for this socket.
+     */
     readonly broadcast: boolean;
     /**
-     * 
-     * @param flag True to set the SO_BROADCAST flag
+     * Sets the value of the SO_BROADCAST option for this socket.
+     * When enabled, this socket is allowed to send packets to a broadcast address.
+     * @param flag True to set the SO_BROADCAST flag on the socket, false to unset the flag.
      */
-    setBroadcast(flag: boolean);
+    setBroadcast(flag: boolean): void;
   }
 
   export interface UnixListenOptions {
