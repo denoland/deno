@@ -26,6 +26,7 @@ const dylib = Deno.dlopen(libPath, {
     result: "void",
   },
   "return_buffer": { parameters: [], result: "buffer" },
+  "is_null_ptr": { parameters: ["buffer"], result: "u8" },
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "add_i32": { parameters: ["i32", "i32"], result: "i32" },
   "add_u64": { parameters: ["u64", "u64"], result: "u64" },
@@ -50,6 +51,9 @@ dylib.symbols.print_buffer(buffer, buffer.length);
 dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
 const ptr = dylib.symbols.return_buffer();
 dylib.symbols.print_buffer(ptr, 8);
+console.log(Boolean(dylib.symbols.is_null_ptr(ptr)));
+console.log(Boolean(dylib.symbols.is_null_ptr(0)));
+console.log(Boolean(dylib.symbols.is_null_ptr(1)));
 console.log(dylib.symbols.add_u32(123, 456));
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(123, 456));

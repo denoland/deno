@@ -16,18 +16,27 @@
 
       for (const symbol in symbols) {
         const isNonBlocking = symbols[symbol].nonblocking;
+        const types = symbols[symbol].parameters;
 
         this.symbols[symbol] = (...args) => {
           const parameters = [];
           const buffers = [];
 
-          for (const arg of args) {
-            if (
-              arg?.buffer instanceof ArrayBuffer &&
-              arg.byteLength !== undefined
-            ) {
-              parameters.push(buffers.length);
-              buffers.push(arg);
+          for (let i = 0; i < types.length; i++) {
+            const type = types[i];
+            const arg = args[i];
+
+            if (type === "buffer") {
+              if (
+                arg?.buffer instanceof ArrayBuffer &&
+                arg.byteLength !== undefined
+              ) {
+                parameters.push(buffers.length);
+                buffers.push(arg);
+              } else {
+                parameters.push(arg);
+                buffers.push(undefined);
+              }
             } else {
               parameters.push(arg);
             }

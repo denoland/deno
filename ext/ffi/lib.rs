@@ -396,12 +396,18 @@ struct FfiCallArgs {
   rid: ResourceId,
   symbol: String,
   parameters: Vec<Value>,
-  buffers: Vec<ZeroCopyBuf>,
+  buffers: Vec<Option<ZeroCopyBuf>>,
 }
 
 fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
-  let buffers: Vec<&[u8]> =
-    args.buffers.iter().map(|buffer| &buffer[..]).collect();
+  let buffers: Vec<Option<&[u8]>> = args
+    .buffers
+    .iter()
+    .map(|buffer| match buffer {
+      Some(buffer) => Some(&buffer[..]),
+      None => None,
+    })
+    .collect();
 
   let native_values = symbol
     .parameter_types
@@ -410,7 +416,7 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     .map(|(&native_type, value)| {
       if let NativeType::Buffer = native_type {
         if let Some(idx) = value.as_u64() {
-          if let Some(&buf) = buffers.get(idx as usize) {
+          if let Some(&Some(buf)) = buffers.get(idx as usize) {
             return NativeValue::buffer(buf.as_ptr());
           }
         }
