@@ -117,11 +117,12 @@ declare namespace Deno {
     | "usize"
     | "isize"
     | "f32"
-    | "f64";
+    | "f64"
+    | "buffer";
 
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction {
-    parameters: (NativeType | "buffer")[];
+    parameters: NativeType[];
     result: NativeType;
     /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
     nonblocking?: boolean;

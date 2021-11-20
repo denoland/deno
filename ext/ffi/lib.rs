@@ -215,7 +215,9 @@ impl NativeValue {
       NativeType::F64 => Self {
         f64_value: value_as_f64(value),
       },
-      NativeType::Buffer => unreachable!(),
+      NativeType::Buffer => Self {
+        buffer: value_as_f64(value).to_bits() as *const u8,
+      },
     }
   }
 
@@ -407,12 +409,14 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     .zip(args.parameters.into_iter())
     .map(|(&native_type, value)| {
       if let NativeType::Buffer = native_type {
-        let idx: usize = value_as_uint(value);
-        let ptr = buffers[idx].as_ptr();
-        NativeValue::buffer(ptr)
-      } else {
-        NativeValue::new(native_type, value)
+        if let Some(idx) = value.as_u64() {
+          if let Some(&buf) = buffers.get(idx as usize) {
+            return NativeValue::buffer(buf.as_ptr());
+          }
+        }
       }
+
+      NativeValue::new(native_type, value)
     })
     .collect::<Vec<_>>();
 
@@ -465,7 +469,11 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     NativeType::F64 => {
       json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
     }
-    NativeType::Buffer => unreachable!(),
+    NativeType::Buffer => {
+      json!(f64::from_bits(unsafe {
+        symbol.cif.call::<*const u8>(symbol.ptr, &call_args)
+      } as u64))
+    }
   })
 }
 

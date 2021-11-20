@@ -40,6 +40,7 @@ const dylib = Deno.dlopen(libPath, {
     result: "void",
     nonblocking: true,
   },
+  "return_ptr": { parameters: [], result: "buffer" },
 });
 
 dylib.symbols.print_something();
@@ -105,6 +106,10 @@ dylib.symbols.sleep_blocking(100).then(() => {
 });
 console.log("Before");
 console.log(performance.now() - start < 100);
+
+const ptr = dylib.symbols.return_ptr();
+console.log(ptr);
+dylib.symbols.print_buffer(ptr, 8);
 
 function cleanup() {
   dylib.close();
