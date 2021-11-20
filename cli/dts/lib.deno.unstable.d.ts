@@ -122,8 +122,9 @@ declare namespace Deno {
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction {
     /**
-     * Foreign Function paramter types also support `buffer` type which is essentially
-     * a pointer to a JS `Uint8Array`. It can even be mutated from native code.
+     * Foreign Function parameter types also support `buffer` type which is 
+     * essentially a pointer to a JS `Uint8Array`. It can even be mutated 
+     * from native code.
      * 
      * For example, take the following Rust code,
      * 
