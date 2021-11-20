@@ -275,7 +275,6 @@ unitTest(
   { permissions: { net: true } },
   async function netUdpSendReceive() {
     const alice = Deno.listenDatagram({ port: 3500, transport: "udp" });
-    console.log(`bcast status ${alice.broadcast}`);
     assert(!alice.broadcast)
     assert(alice.addr.transport === "udp");
     assertEquals(alice.addr.port, 3500);
@@ -338,13 +337,13 @@ unitTest(
     alice.setBroadcast(true);
     assert(alice.broadcast);
 
-    const bob = Deno.listenDatagram({ port: 4501, transport: "udp" });
+    const bob = Deno.listenDatagram({ port: 4501, transport: "udp", hostname: '0.0.0.0'});
     bob.setBroadcast(true);
     assert(bob.addr.transport === "udp");
     assertEquals(bob.addr.port, 4501);
-    assertEquals(bob.addr.hostname, "127.0.0.1");
+    assertEquals(bob.addr.hostname, "0.0.0.0");
 
-    const broadcastAddr = { ...bob.addr, hostname: "127.0.0.255"};
+    const broadcastAddr = { ...bob.addr, hostname: "255.255.255.255"};
 
     const sent = new Uint8Array([1, 2, 3]);
     const byteLength = await alice.send(sent, broadcastAddr);

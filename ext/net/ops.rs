@@ -578,7 +578,6 @@ fn op_udp_getbroadcast(
     .try_borrow()
     .ok_or_else(|| custom_error("Busy", "Socket is in currently in use"))?;
   let broadcast_flag = socket.broadcast()?;
-  println!("Broadcast flag is {}", broadcast_flag);
   Ok(broadcast_flag)
 }
 
