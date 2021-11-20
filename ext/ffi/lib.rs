@@ -403,10 +403,7 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
   let buffers: Vec<Option<&[u8]>> = args
     .buffers
     .iter()
-    .map(|buffer| match buffer {
-      Some(buffer) => Some(&buffer[..]),
-      None => None,
-    })
+    .map(|buffer| buffer.as_ref().map(|buffer| &buffer[..]))
     .collect();
 
   let native_values = symbol
