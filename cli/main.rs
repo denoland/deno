@@ -724,6 +724,7 @@ async fn create_graph_and_maybe_check(
         emit_with_diagnostics: false,
         maybe_config_specifier,
         ts_config,
+        reload: ps.flags.reload,
       },
     )?;
     debug!("{}", check_result.stats);
