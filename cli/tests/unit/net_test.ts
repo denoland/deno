@@ -348,10 +348,11 @@ unitTest(
 
     let acceptErrCount = 0;
     const checkErr = (e: Error) => {
-      if (e.message === "Permission denied (os error 13)") {
+      if (e instanceof Deno.errors.PermissionDenied) {
+        // Broadcasting without SO_BROADCAST set should result in a permissions error.
         acceptErrCount++;
       } else {
-        throw new Error("Unexpected error message");
+        throw new Error("Unexpected error message: " + e.message)
       }
     };
     // Sending to the broadcast addr without broadcast flag should result in error.
