@@ -552,7 +552,7 @@ impl WebWorker {
     match self.js_runtime.poll_event_loop(cx, wait_for_inspector) {
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok
-        if self.internal_handle.is_terminated() {
+        if self.internal_handle.terminate_if_needed() {
           return Poll::Ready(Ok(()));
         }
 
