@@ -239,8 +239,12 @@ impl WebWorkerHandle {
     self.port.disentangle();
 
     if schedule_termination && !self.has_terminated.load(Ordering::SeqCst) {
+      // Wake up the worker's event loop so it can terminate.
+      self.terminate_waker.wake();
+
       let has_terminated = self.has_terminated.clone();
 
+      // Schedule to terminate the isolate's execution.
       spawn(move || {
         sleep(Duration::from_secs(2));
 
