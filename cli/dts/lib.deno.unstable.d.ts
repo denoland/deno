@@ -903,7 +903,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission. */
   export function listenDatagram(
-    options: ListenOptions & { transport: "udp"; },
+    options: ListenOptions & { transport: "udp" },
   ): UdpConn;
 
   /** **UNSTABLE**: new API, yet to be vetted
