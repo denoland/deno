@@ -6,6 +6,9 @@
   const __bootstrap = window.__bootstrap;
   const {
     ArrayBuffer,
+    BigInt,
+    Number,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   function unpackPointer([hi, lo]) {
@@ -79,7 +82,7 @@
                 parameters.push(packPointer(arg.value));
                 buffers.push(undefined);
               } else {
-                throw new Error(
+                throw new TypeError(
                   "Invalid ffi arg value, expected TypedArray or UnsafePointer",
                 );
               }
