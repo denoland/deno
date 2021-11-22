@@ -2189,7 +2189,7 @@
       let bytes;
       // 13.
       if (format !== "jwk") {
-        bytes = exportedKey;
+        bytes = new Uint8Array(exportedKey);
       } else {
         // TODO(@littledivy): Implement JWK.
         throw new DOMException(
