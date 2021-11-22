@@ -472,6 +472,22 @@
       // 3.
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "encrypt");
 
+      // 8.
+      if (normalizedAlgorithm.name !== key[_algorithm].name) {
+        throw new DOMException(
+          "Encryption algorithm doesn't match key algorithm.",
+          "InvalidAccessError",
+        );
+      }
+
+      // 9.
+      if (!ArrayPrototypeIncludes(key[_usages], "encrypt")) {
+        throw new DOMException(
+          "Key does not support the 'encrypt' operation.",
+          "InvalidAccessError",
+        );
+      }
+
       const handle = key[_handle];
       const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
@@ -589,6 +605,22 @@
 
       // 3.
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "decrypt");
+
+      // 8.
+      if (normalizedAlgorithm.name !== key[_algorithm].name) {
+        throw new DOMException(
+          "Decryption algorithm doesn't match key algorithm.",
+          "OperationError",
+        );
+      }
+
+      // 9.
+      if (!ArrayPrototypeIncludes(key[_usages], "decrypt")) {
+        throw new DOMException(
+          "Key does not support the 'decrypt' operation.",
+          "InvalidAccessError",
+        );
+      }
 
       const handle = key[_handle];
       const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
@@ -1415,7 +1447,7 @@
 
           // 4-7.
           const algorithm = {
-            name: "AES-CBC",
+            name: "AES-CTR",
             length: keyData.byteLength * 8,
           };
 
@@ -1471,7 +1503,7 @@
 
           // 4-7.
           const algorithm = {
-            name: "AES-CTR",
+            name: "AES-CBC",
             length: keyData.byteLength * 8,
           };
 
