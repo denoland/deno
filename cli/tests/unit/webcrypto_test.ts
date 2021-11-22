@@ -643,7 +643,7 @@ unitTest(async function testWrapKey() {
       hash: "SHA-256",
     },
     true,
-    ["wrapKey", "unwrapKey"],
+    ["wrapKey", "unwrapKey", "encrypt", "decrypt"],
   );
 
   const hmacKey = await crypto.subtle.generateKey(
