@@ -1018,8 +1018,9 @@ impl JsRuntime {
     // https://github.com/denoland/deno/issues/4908
     // https://v8.dev/features/top-level-await#module-execution-order
     let scope = &mut self.handle_scope();
-    let module = v8::Local::new(scope, &module_handle);
-    let maybe_value = module.evaluate(scope);
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let module = v8::Local::new(tc_scope, &module_handle);
+    let maybe_value = module.evaluate(tc_scope);
 
     // Update status after evaluating.
     let status = module.get_status();
@@ -1034,12 +1035,12 @@ impl JsRuntime {
       let empty_fn = |_scope: &mut v8::HandleScope,
                       _args: v8::FunctionCallbackArguments,
                       _rv: v8::ReturnValue| {};
-      let empty_fn = v8::FunctionTemplate::new(scope, empty_fn);
-      let empty_fn = empty_fn.get_function(scope).unwrap();
-      promise.catch(scope, empty_fn);
+      let empty_fn = v8::FunctionTemplate::new(tc_scope, empty_fn);
+      let empty_fn = empty_fn.get_function(tc_scope).unwrap();
+      promise.catch(tc_scope, empty_fn);
       let mut state = state_rc.borrow_mut();
-      let promise_global = v8::Global::new(scope, promise);
-      let module_global = v8::Global::new(scope, module);
+      let promise_global = v8::Global::new(tc_scope, promise);
+      let module_global = v8::Global::new(tc_scope, module);
 
       let dyn_import_mod_evaluate = DynImportModEvaluate {
         load_id,
@@ -1049,6 +1050,10 @@ impl JsRuntime {
       };
 
       state.pending_dyn_mod_evaluate.push(dyn_import_mod_evaluate);
+    } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+      return Err(
+        generic_error("Cannot evaluate dynamically imported module, because JavaScript execution has been terminated.")
+      );
     } else {
       assert!(status == v8::ModuleStatus::Errored);
     }
@@ -1075,11 +1080,12 @@ impl JsRuntime {
     let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
+    let tc_scope = &mut v8::TryCatch::new(scope);
 
     let module = module_map_rc
       .borrow()
       .get_handle(id)
-      .map(|handle| v8::Local::new(scope, handle))
+      .map(|handle| v8::Local::new(tc_scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
     assert_eq!(status, v8::ModuleStatus::Instantiated);
@@ -1102,7 +1108,7 @@ impl JsRuntime {
     // For more details see:
     // https://github.com/denoland/deno/issues/4908
     // https://v8.dev/features/top-level-await#module-execution-order
-    let maybe_value = module.evaluate(scope);
+    let maybe_value = module.evaluate(tc_scope);
 
     // Update status after evaluating.
     status = module.get_status();
@@ -1114,10 +1120,10 @@ impl JsRuntime {
       );
       let promise = v8::Local::<v8::Promise>::try_from(value)
         .expect("Expected to get promise as module evaluation result");
-      let promise_global = v8::Global::new(scope, promise);
+      let promise_global = v8::Global::new(tc_scope, promise);
       let mut state = state_rc.borrow_mut();
       state.pending_promise_exceptions.remove(&promise_global);
-      let promise_global = v8::Global::new(scope, promise);
+      let promise_global = v8::Global::new(tc_scope, promise);
       assert!(
         state.pending_mod_evaluate.is_none(),
         "There is already pending top level module evaluation"
@@ -1127,7 +1133,11 @@ impl JsRuntime {
         promise: promise_global,
         sender,
       });
-      scope.perform_microtask_checkpoint();
+      tc_scope.perform_microtask_checkpoint();
+    } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+      sender.send(Err(
+        generic_error("Cannot evaluate module, because JavaScript execution has been terminated.")
+      )).expect("Failed to send module evaluation error.");
     } else {
       assert!(status == v8::ModuleStatus::Errored);
     }
@@ -1633,6 +1643,7 @@ impl JsRuntime {
 pub mod tests {
   use super::*;
   use crate::error::custom_error;
+  use crate::modules::ModuleSource;
   use crate::modules::ModuleSourceFuture;
   use crate::op_async;
   use crate::op_sync;
@@ -2525,5 +2536,64 @@ assertEquals(1, notify_return_value);
         Poll::Ready(Ok(()))
       ));
     });
+  }
+
+  #[test]
+  fn terminate_during_module_eval() {
+    #[derive(Default)]
+    struct ModsLoader;
+
+    impl ModuleLoader for ModsLoader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, Error> {
+        assert_eq!(specifier, "file:///main.js");
+        assert_eq!(referrer, ".");
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        async move {
+          Ok(ModuleSource {
+            code: "console.log('hello world');".to_string(),
+            module_url_specified: "file:///main.js".to_string(),
+            module_url_found: "file:///main.js".to_string(),
+          })
+        }
+        .boxed_local()
+      }
+    }
+
+    let loader = std::rc::Rc::new(ModsLoader::default());
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    let specifier = crate::resolve_url("file:///main.js").unwrap();
+    let source_code = "Deno.core.print('hello\\n')".to_string();
+
+    let module_id = futures::executor::block_on(
+      runtime.load_main_module(&specifier, Some(source_code)),
+    )
+    .unwrap();
+
+    runtime.v8_isolate().terminate_execution();
+
+    let mod_result =
+      futures::executor::block_on(runtime.mod_evaluate(module_id)).unwrap();
+    assert!(mod_result
+      .unwrap_err()
+      .to_string()
+      .contains("JavaScript execution has been terminated"));
   }
 }
