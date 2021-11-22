@@ -352,7 +352,7 @@ unitTest(
         // Broadcasting without SO_BROADCAST set should result in a permissions error.
         acceptErrCount++;
       } else {
-        throw new Error("Unexpected error message: " + e.message)
+        throw new Error("Unexpected error message: " + e.message);
       }
     };
     // Sending to the broadcast addr without broadcast flag should result in error.
