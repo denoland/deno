@@ -80,10 +80,9 @@ impl From<NotifyEvent> for FsEvent {
       EventKind::Remove(_) => "remove",
       EventKind::Other => "other",
     };
-    let flag = match e.flag() {
-      Some(notify::event::Flag::Rescan) => Some("rescan"),
-      None => None,
-    };
+    let flag = e.flag().map(|f| match f {
+      notify::event::Flag::Rescan => "rescan",
+    });
     FsEvent {
       kind,
       paths: e.paths,
