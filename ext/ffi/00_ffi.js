@@ -7,6 +7,48 @@
   const {
     ArrayBuffer,
   } = window.__bootstrap.primordials;
+
+  function unpackPointer([hi, lo]) {
+    return BigInt(hi) << 32n | BigInt(lo);
+  }
+
+  function packPointer(value) {
+    return [Number(value >> 32n), Number(value & 0xFFFFFFFFn)];
+  }
+
+  class UnsafePointer {
+    value;
+
+    constructor(value) {
+      this.value = value;
+    }
+
+    static null() {
+      return new UnsafePointer(0n);
+    }
+
+    static of(typedArray) {
+      return new UnsafePointer(
+        unpackPointer(core.opSync("op_ffi_ptr_of", typedArray)),
+      );
+    }
+
+    read(into, offset = 0) {
+      core.opSync("op_ffi_buf_read_into", [
+        packPointer(this.value + BigInt(offset)),
+        into,
+        into.byteLength,
+      ]);
+    }
+
+    readCString(offset = 0) {
+      return core.opSync(
+        "op_ffi_cstr_read",
+        packPointer(this.value + BigInt(offset)),
+      );
+    }
+  }
+
   class DynamicLibrary {
     #rid;
     symbols = {};
@@ -33,9 +75,13 @@
               ) {
                 parameters.push(buffers.length);
                 buffers.push(arg);
-              } else {
-                parameters.push(arg);
+              } else if (arg instanceof UnsafePointer) {
+                parameters.push(packPointer(arg.value));
                 buffers.push(undefined);
+              } else {
+                throw new Error(
+                  "Invalid ffi arg value, expected TypedArray or UnsafePointer",
+                );
               }
             } else {
               parameters.push(arg);
@@ -43,19 +89,33 @@
           }
 
           if (isNonBlocking) {
-            return core.opAsync("op_ffi_call_nonblocking", {
+            const promise = core.opAsync("op_ffi_call_nonblocking", {
               rid: this.#rid,
               symbol,
               parameters,
               buffers,
             });
+
+            if (symbols[symbol].result === "buffer") {
+              return promise.then((value) =>
+                new UnsafePointer(unpackPointer(value))
+              );
+            }
+
+            return promise;
           } else {
-            return core.opSync("op_ffi_call", {
+            const result = core.opSync("op_ffi_call", {
               rid: this.#rid,
               symbol,
               parameters,
               buffers,
             });
+
+            if (symbols[symbol].result === "buffer") {
+              return new UnsafePointer(unpackPointer(result));
+            }
+
+            return result;
           }
         };
       }
@@ -72,5 +132,5 @@
     return new DynamicLibrary(pathFromURL(path), symbols);
   }
 
-  window.__bootstrap.ffi = { dlopen };
+  window.__bootstrap.ffi = { dlopen, UnsafePointer };
 })(this);

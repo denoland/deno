@@ -5,6 +5,7 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
+use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::Extension;
@@ -15,12 +16,15 @@ use deno_core::ZeroCopyBuf;
 use dlopen::raw::Library;
 use libffi::middle::Arg;
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::ffi::CStr;
 use std::path::Path;
 use std::path::PathBuf;
+use std::ptr;
 use std::rc::Rc;
 
 pub struct Unstable(pub bool);
@@ -108,6 +112,9 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       ("op_ffi_load", op_sync(op_ffi_load::<P>)),
       ("op_ffi_call", op_sync(op_ffi_call)),
       ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
+      ("op_ffi_ptr_of", op_sync(op_ffi_ptr_of)),
+      ("op_ffi_buf_read_into", op_sync(op_ffi_buf_read_into)),
+      ("op_ffi_cstr_read", op_sync(op_ffi_cstr_read)),
     ])
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
@@ -216,7 +223,10 @@ impl NativeValue {
         f64_value: value_as_f64(value),
       },
       NativeType::Buffer => Self {
-        buffer: value_as_f64(value).to_bits() as *const u8,
+        buffer: u64::from(
+          serde_json::from_value::<PointerValue>(value)
+          .expect("Expected ffi arg value to be a tuple of the low and high bits of a pointer address")
+        ) as *const u8,
       },
     }
   }
@@ -267,6 +277,21 @@ fn value_as_f64(value: Value) -> f64 {
   value
     .as_f64()
     .expect("Expected ffi arg value to be a float")
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct PointerValue(u32, u32);
+
+impl From<u64> for PointerValue {
+  fn from(value: u64) -> Self {
+    PointerValue((value >> 32) as u32, value as u32)
+  }
+}
+
+impl From<PointerValue> for u64 {
+  fn from(value: PointerValue) -> Self {
+    (value.0 as u64) << 32 | value.1 as u64
+  }
 }
 
 #[derive(Deserialize, Debug)]
@@ -473,7 +498,7 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
       json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
     }
     NativeType::Buffer => {
-      json!(f64::from_bits(unsafe {
+      json!(PointerValue::from(unsafe {
         symbol.cif.call::<*const u8>(symbol.ptr, &call_args)
       } as u64))
     }
@@ -516,6 +541,33 @@ async fn op_ffi_call_nonblocking(
   tokio::task::spawn_blocking(move || ffi_call(args, &symbol))
     .await
     .unwrap()
+}
+
+fn op_ffi_ptr_of(
+  _state: &mut deno_core::OpState,
+  buf: ZeroCopyBuf,
+  _: (),
+) -> Result<PointerValue, AnyError> {
+  Ok(PointerValue::from(buf.as_ptr() as u64))
+}
+
+fn op_ffi_buf_read_into(
+  _state: &mut deno_core::OpState,
+  (src, mut dst, count): (PointerValue, ZeroCopyBuf, usize),
+  _: (),
+) -> Result<(), AnyError> {
+  let src = u64::from(src) as *const u8;
+  unsafe { ptr::copy(src, dst.as_mut_ptr(), count) };
+  Ok(())
+}
+
+fn op_ffi_cstr_read(
+  _state: &mut deno_core::OpState,
+  ptr: PointerValue,
+  _: (),
+) -> Result<String, AnyError> {
+  let ptr = u64::from(ptr) as *const i8;
+  Ok(unsafe { CStr::from_ptr(ptr) }.to_str()?.to_string())
 }
 
 #[cfg(test)]

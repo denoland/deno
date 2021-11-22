@@ -135,6 +135,7 @@
     createHttpClient: __bootstrap.fetch.createHttpClient,
     http: __bootstrap.http,
     dlopen: __bootstrap.ffi.dlopen,
+    UnsafePointer: __bootstrap.ffi.UnsafePointer,
     flock: __bootstrap.fs.flock,
     flockSync: __bootstrap.fs.flockSync,
     funlock: __bootstrap.fs.funlock,

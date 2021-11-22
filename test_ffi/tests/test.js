@@ -51,9 +51,26 @@ dylib.symbols.print_buffer(buffer, buffer.length);
 dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
 const ptr = dylib.symbols.return_buffer();
 dylib.symbols.print_buffer(ptr, 8);
+const into = new Uint8Array(8);
+const into2 = new Uint8Array(4);
+const into2ptr = Deno.UnsafePointer.of(into2);
+const into3 = new Uint8Array(4);
+ptr.read(into);
+console.log(into);
+ptr.read(into2, 4);
+console.log(into2);
+into2ptr.read(into3);
+console.log(into3);
+const string = new Uint8Array([
+  ...new TextEncoder().encode("Hello from pointer!"),
+  0,
+]);
+const stringPtr = Deno.UnsafePointer.of(string);
+console.log(stringPtr.readCString());
+console.log(stringPtr.readCString(11));
 console.log(Boolean(dylib.symbols.is_null_ptr(ptr)));
-console.log(Boolean(dylib.symbols.is_null_ptr(0)));
-console.log(Boolean(dylib.symbols.is_null_ptr(1)));
+console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.null())));
+console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
 console.log(dylib.symbols.add_u32(123, 456));
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(123, 456));
