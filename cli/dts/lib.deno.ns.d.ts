@@ -2007,9 +2007,23 @@ declare namespace Deno {
    */
   export function resources(): ResourceMap;
 
+  /** 
+   * Additional information for FsEvent objects with the "other" kind.
+   * 
+   * - "rescan": rescan notices indicate either a lapse in the events or a
+   *    change in the filesystem such that events received so far can no longer
+   *    be relied on to represent the state of the filesystem now. An
+   *    application that simply reacts to file changes may not care about this.
+   *    An application that keeps an in-memory representation of the filesystem
+   *    will need to care, and will need to refresh that representation directly
+   *    from the filesystem.
+   */
+  export type FsEventFlag = "rescan";
+
   export interface FsEvent {
-    kind: "any" | "access" | "create" | "modify" | "remove";
+    kind: "any" | "access" | "create" | "modify" | "remove" | "other";
     paths: string[];
+    flag?: FsEventFlag;
   }
 
   /**
