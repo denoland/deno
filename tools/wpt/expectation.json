@@ -4271,15 +4271,9 @@
     "historical.any.html": false,
     "historical.any.worker.html": false,
     "idlharness.https.any.html": [
-      "SubtleCrypto interface: operation unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
-      "SubtleCrypto interface: crypto.subtle must inherit property \"unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>)\" with the proper type",
-      "SubtleCrypto interface: calling unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>) on crypto.subtle with too few arguments must throw TypeError",
       "Window interface: attribute crypto"
     ],
     "idlharness.https.any.worker.html": [
-      "SubtleCrypto interface: operation unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
-      "SubtleCrypto interface: crypto.subtle must inherit property \"unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>)\" with the proper type",
-      "SubtleCrypto interface: calling unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>) on crypto.subtle with too few arguments must throw TypeError",
       "WorkerGlobalScope interface: attribute crypto"
     ],
     "import_export": {
