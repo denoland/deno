@@ -51,16 +51,16 @@ dylib.symbols.print_buffer(buffer, buffer.length);
 dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
 const ptr = dylib.symbols.return_buffer();
 dylib.symbols.print_buffer(ptr, 8);
-const into = new Uint8Array(8);
-const into2 = new Uint8Array(4);
+const into = new Uint8Array(6);
+const into2 = new Uint8Array(3);
 const into2ptr = Deno.UnsafePointer.of(into2);
-const into3 = new Uint8Array(4);
+const into3 = new Uint8Array(3);
 ptr.read(into);
-console.log(into);
-ptr.read(into2, 4);
-console.log(into2);
+console.log([...into]);
+ptr.read(into2, 3);
+console.log([...into2]);
 into2ptr.read(into3);
-console.log(into3);
+console.log([...into3]);
 const string = new Uint8Array([
   ...new TextEncoder().encode("Hello from pointer!"),
   0,
