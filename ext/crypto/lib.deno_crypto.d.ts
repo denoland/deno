@@ -264,13 +264,10 @@ interface SubtleCrypto {
     unwrapAlgorithm:
       | AlgorithmIdentifier
       | RsaOaepParams
-      | AesCtrParams
-      | AesCbcParams
-      | AesGcmParams,
+      | AesCbcParams,
     unwrappedKeyAlgorithm:
       | AlgorithmIdentifier
       | RsaHashedImportParams
-      | EcKeyImportParams
       | HmacImportParams
       | AesKeyAlgorithm,
     extractable: boolean,
