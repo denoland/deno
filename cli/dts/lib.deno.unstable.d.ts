@@ -862,9 +862,9 @@ declare namespace Deno {
     /** **UNSTABLE**: new API, yet to be vetted.
      * Sets the value of the SO_BROADCAST option for this socket.
      * When enabled, this socket is allowed to send packets to a broadcast address.
-     * @param flag True to set the SO_BROADCAST flag on the socket, false to unset the flag.
+     * @param enable True to set the SO_BROADCAST flag on the socket, false to unset the flag.
      */
-    setBroadcast(flag: boolean): void;
+    setBroadcast(enable: boolean): void;
   }
 
   export interface UnixListenOptions {

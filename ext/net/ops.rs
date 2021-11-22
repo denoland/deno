@@ -541,7 +541,7 @@ where
 #[derive(Deserialize)]
 struct SetBroadcastArgs {
   rid: ResourceId,
-  flag: bool,
+  enable: bool,
 }
 
 fn op_udp_set_broadcast(
@@ -556,7 +556,7 @@ fn op_udp_set_broadcast(
   let socket = RcRef::map(&resource, |r| &r.socket)
     .try_borrow()
     .ok_or_else(|| custom_error("Busy", "Socket is in currently in use"))?;
-  socket.set_broadcast(args.flag)?;
+  socket.set_broadcast(args.enable)?;
   Ok(())
 }
 

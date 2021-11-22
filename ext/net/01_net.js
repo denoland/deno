@@ -209,8 +209,8 @@
   }
 
   class UdpDatagram extends Datagram {
-    setBroadcast(flag) {
-      opSetBroadcast({ rid: this.rid, flag });
+    setBroadcast(enable) {
+      opSetBroadcast({ rid: this.rid, enable });
     }
     get broadcast() {
       return opGetBroadcast({ rid: this.rid });
