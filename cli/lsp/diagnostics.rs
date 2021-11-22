@@ -311,7 +311,7 @@ fn get_root_specifier(
   // FIXME: `root_uri` from `ConfigSnapshot` are without a trailing slash,
   // so `Url::join` treats the root as a file, not a directory, and erases the folder name.
   // To fix that behaviour we just parsing `root_uri` again.
-  return ModuleSpecifier::from_directory_path(root).ok();
+  ModuleSpecifier::from_directory_path(root).ok()
 }
 
 // Filters documents according to the `include` and the `exclude` lists (from `StateSnapshot::maybe_lint_config`).
@@ -362,7 +362,7 @@ fn filter_documents(
       return false;
     }
 
-    return true;
+    true
   });
 }
 
