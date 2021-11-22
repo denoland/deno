@@ -185,6 +185,22 @@ unitTest(function consoleTestStringifyLongStrings() {
   assertEquals(actual, veryLongString);
 });
 
+unitTest(function consoleTestStringifyLoongStringNoSurrogatesFromTruncation() {
+  const veryLongString = "a".repeat(99) + "🌎";
+  let actual = stringify({ veryLongString });
+  assert(actual.includes("..."));
+  assert(!actual.includes("\ud83c"));
+  assert(!actual.includes("🌎"));
+
+  const aLongString = "a".repeat(98) + "🌎";
+  actual = stringify({ aLongString });
+  assert(actual.includes("🌎"));
+
+  const aDifferentVeryLongString = "a".repeat(96) + "🌎" + "aaa";
+  actual = stringify({ aDifferentVeryLongString });
+  assert(actual.includes("🌎..."));
+});
+
 unitTest(function consoleTestStringifyCircular() {
   class Base {
     a = 1;

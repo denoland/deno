@@ -739,6 +739,40 @@
     );
   }
 
+  // Multi byte character aware string truncation
+  // Taken from https://github.com/lautis/unicode-substring/blob/master/index.js
+  // MIT License. Thanks @lautis.
+  function multibyteAwareTruncate(string, end) {
+    function charAt(string, index) {
+      const first = string.charCodeAt(index);
+      let second;
+      if (first >= 0xD800 && first <= 0xDBFF && string.length > index + 1) {
+        second = string.charCodeAt(index + 1);
+        if (second >= 0xDC00 && second <= 0xDFFF) {
+          return string.substring(index, index + 2);
+        }
+      }
+      return string[index];
+    }
+
+    let accumulator = "";
+    let character;
+    let stringIndex = 0;
+    let unicodeIndex = 0;
+    const length = string.length;
+
+    while (stringIndex < length) {
+      character = charAt(string, stringIndex);
+      if (unicodeIndex < end) {
+        accumulator += character;
+      }
+      stringIndex += character.length;
+      unicodeIndex += 1;
+    }
+
+    return accumulator;
+  }
+
   // Print strings when they are inside of arrays or objects with quotes
   function inspectValueWithQuotes(
     value,
@@ -748,10 +782,13 @@
     const green = maybeColor(colors.green, inspectOptions);
     switch (typeof value) {
       case "string": {
-        const trunc = value.length > STR_ABBREVIATE_SIZE
-          ? StringPrototypeSlice(value, 0, STR_ABBREVIATE_SIZE) + "..."
-          : value;
-        return green(quoteString(trunc)); // Quoted strings are green
+        if (value.length > STR_ABBREVIATE_SIZE) {
+          const trunc = multibyteAwareTruncate(value, STR_ABBREVIATE_SIZE - 3);
+          if (value !== trunc) {
+            value = trunc + "...";
+          }
+        }
+        return green(quoteString(value)); // Quoted strings are green
       }
       default:
         return inspectValue(value, level, inspectOptions);
