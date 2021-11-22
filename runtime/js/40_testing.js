@@ -284,7 +284,7 @@ finishing test case.`;
         }
         if (optionsOrFn.name != undefined) {
           throw new TypeError(
-            "Unexpected 'fn' field in options, test name is already provided as the first argument.",
+            "Unexpected 'name' field in options, test name is already provided as the first argument.",
           );
         }
         testDef = {
