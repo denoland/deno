@@ -186,26 +186,29 @@ declare interface TextDecodeOptions {
   stream?: boolean;
 }
 
-declare class TextDecoder {
-  constructor(label?: string, options?: TextDecoderOptions);
-
+interface TextDecoder {
   /** Returns encoding's name, lowercased. */
   readonly encoding: string;
   /** Returns `true` if error mode is "fatal", and `false` otherwise. */
   readonly fatal: boolean;
   /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-  readonly ignoreBOM = false;
+  readonly ignoreBOM: boolean;
 
   /** Returns the result of running encoding's decoder. */
   decode(input?: BufferSource, options?: TextDecodeOptions): string;
 }
+
+declare var TextDecoder: {
+  prototype: TextDecoder;
+  new (label?: string, options?: TextDecoderOptions): TextDecoder;
+};
 
 declare interface TextEncoderEncodeIntoResult {
   read: number;
   written: number;
 }
 
-declare class TextEncoder {
+interface TextEncoder {
   /** Returns "utf-8". */
   readonly encoding: "utf-8";
   /** Returns the result of running UTF-8's encoder. */
@@ -213,26 +216,40 @@ declare class TextEncoder {
   encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
 }
 
-declare class TextDecoderStream {
+declare var TextEncoder: {
+  prototype: TextEncoder;
+  new (): TextEncoder;
+};
+
+interface TextDecoderStream {
   /** Returns encoding's name, lowercased. */
   readonly encoding: string;
   /** Returns `true` if error mode is "fatal", and `false` otherwise. */
   readonly fatal: boolean;
   /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-  readonly ignoreBOM = false;
-  constructor(label?: string, options?: TextDecoderOptions);
+  readonly ignoreBOM: boolean;
   readonly readable: ReadableStream<string>;
   readonly writable: WritableStream<BufferSource>;
   readonly [Symbol.toStringTag]: string;
 }
 
-declare class TextEncoderStream {
+declare var TextDecoderStream: {
+  prototype: TextDecoderStream;
+  new (label?: string, options?: TextDecoderOptions): TextDecoderStream;
+};
+
+interface TextEncoderStream {
   /** Returns "utf-8". */
   readonly encoding: "utf-8";
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<string>;
   readonly [Symbol.toStringTag]: string;
 }
+
+declare var TextEncoderStream: {
+  prototype: TextEncoderStream;
+  new (): TextEncoderStream;
+};
 
 /** A controller object that allows you to abort one or more DOM requests as and
  * when desired. */
@@ -241,7 +258,7 @@ declare class AbortController {
   readonly signal: AbortSignal;
   /** Invoking this method will set this object's AbortSignal's aborted flag and
    * signal to any observers that the associated activity is to be aborted. */
-  abort(): void;
+  abort(reason?: any): void;
 }
 
 interface AbortSignalEventMap {
@@ -254,6 +271,7 @@ interface AbortSignal extends EventTarget {
   /** Returns true if this AbortSignal's AbortController has signaled to abort,
    * and false otherwise. */
   readonly aborted: boolean;
+  readonly reason?: unknown;
   onabort: ((this: AbortSignal, ev: Event) => any) | null;
   addEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
@@ -280,6 +298,7 @@ interface AbortSignal extends EventTarget {
 declare var AbortSignal: {
   prototype: AbortSignal;
   new (): AbortSignal;
+  abort(reason?: any): AbortSignal;
 };
 
 interface FileReaderEventMap {
@@ -399,6 +418,35 @@ interface ReadableStreamDefaultReader<R = any> {
   releaseLock(): void;
 }
 
+interface ReadableStreamBYOBReadDoneResult<V extends ArrayBufferView> {
+  done: true;
+  value?: V;
+}
+
+interface ReadableStreamBYOBReadValueResult<V extends ArrayBufferView> {
+  done: false;
+  value: V;
+}
+
+type ReadableStreamBYOBReadResult<V extends ArrayBufferView> =
+  | ReadableStreamBYOBReadDoneResult<V>
+  | ReadableStreamBYOBReadValueResult<V>;
+
+interface ReadableStreamBYOBReader {
+  readonly closed: Promise<void>;
+  cancel(reason?: any): Promise<void>;
+  read<V extends ArrayBufferView>(
+    view: V,
+  ): Promise<ReadableStreamBYOBReadResult<V>>;
+  releaseLock(): void;
+}
+
+interface ReadableStreamBYOBRequest {
+  readonly view: ArrayBufferView | null;
+  respond(bytesWritten: number): void;
+  respondWithNewView(view: ArrayBufferView): void;
+}
+
 declare var ReadableStreamDefaultReader: {
   prototype: ReadableStreamDefaultReader;
   new <R>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
@@ -463,7 +511,7 @@ declare var ReadableStreamDefaultController: {
 };
 
 interface ReadableByteStreamController {
-  readonly byobRequest: undefined;
+  readonly byobRequest: ReadableStreamBYOBRequest | null;
   readonly desiredSize: number | null;
   close(): void;
   enqueue(chunk: ArrayBufferView): void;
@@ -493,18 +541,25 @@ interface QueuingStrategy<T = any> {
 
 /** This Streams API interface provides a built-in byte length queuing strategy
  * that can be used when constructing streams. */
-declare class CountQueuingStrategy implements QueuingStrategy {
-  constructor(options: { highWaterMark: number });
+interface CountQueuingStrategy extends QueuingStrategy {
   highWaterMark: number;
   size(chunk: any): 1;
 }
 
-declare class ByteLengthQueuingStrategy
-  implements QueuingStrategy<ArrayBufferView> {
-  constructor(options: { highWaterMark: number });
+declare var CountQueuingStrategy: {
+  prototype: CountQueuingStrategy;
+  new (options: { highWaterMark: number }): CountQueuingStrategy;
+};
+
+interface ByteLengthQueuingStrategy extends QueuingStrategy<ArrayBufferView> {
   highWaterMark: number;
   size(chunk: ArrayBufferView): number;
 }
+
+declare var ByteLengthQueuingStrategy: {
+  prototype: ByteLengthQueuingStrategy;
+  new (options: { highWaterMark: number }): ByteLengthQueuingStrategy;
+};
 
 /** This Streams API interface represents a readable stream of byte data. The
  * Fetch API offers a concrete instance of a ReadableStream through the body
@@ -512,13 +567,8 @@ declare class ByteLengthQueuingStrategy
 interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
-  /**
-   * @deprecated This is no longer part of the Streams standard and the async
-   *             iterable should be obtained by just using the stream as an
-   *             async iterator.
-   */
-  getIterator(options?: { preventCancel?: boolean }): AsyncIterableIterator<R>;
-  getReader(): ReadableStreamDefaultReader<R>;
+  getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
+  getReader(options?: { mode?: undefined }): ReadableStreamDefaultReader<R>;
   pipeThrough<T>(
     { writable, readable }: {
       writable: WritableStream<R>;
@@ -587,8 +637,11 @@ declare var WritableStream: {
  * sink is given a corresponding WritableStreamDefaultController instance to
  * manipulate. */
 interface WritableStreamDefaultController {
+  signal: AbortSignal;
   error(error?: any): void;
 }
+
+declare var WritableStreamDefaultController: WritableStreamDefaultController;
 
 /** This Streams API interface is the object returned by
  * WritableStream.getWriter() and once created locks the < writer to the
@@ -629,6 +682,8 @@ interface TransformStreamDefaultController<O = any> {
   error(reason?: any): void;
   terminate(): void;
 }
+
+declare var TransformStreamDefaultController: TransformStreamDefaultController;
 
 interface Transformer<I = any, O = any> {
   flush?: TransformStreamDefaultControllerCallback<O>;

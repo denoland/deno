@@ -26,7 +26,7 @@
 // THE SOFTWARE.
 //
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use fancy_regex::Regex as FancyRegex;
 use regex::Regex;

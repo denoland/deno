@@ -9,6 +9,8 @@ unitTest(function typeCheckingEsNextArrayString() {
   assertEquals(a.at(-1), "f");
   const b = ["a", "b", "c", "d", "e", "f"];
   assertEquals(b.at(-1), "f");
+  assertEquals(b.findLast((val) => typeof val === "string"), "f");
+  assertEquals(b.findLastIndex((val) => typeof val === "string"), 5);
 });
 
 unitTest(function objectHasOwn() {

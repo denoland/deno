@@ -7,7 +7,6 @@ use crate::NetPermissions;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
-use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op_async;
@@ -36,6 +35,7 @@ use trust_dns_proto::rr::record_type::RecordType;
 use trust_dns_resolver::config::NameServerConfigGroup;
 use trust_dns_resolver::config::ResolverConfig;
 use trust_dns_resolver::config::ResolverOpts;
+use trust_dns_resolver::error::ResolveErrorKind;
 use trust_dns_resolver::system_conf;
 use trust_dns_resolver::AsyncResolver;
 
@@ -48,11 +48,11 @@ use std::path::Path;
 
 pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
   vec![
-    ("op_accept", op_async(op_accept)),
-    ("op_connect", op_async(op_connect::<P>)),
-    ("op_listen", op_sync(op_listen::<P>)),
-    ("op_datagram_receive", op_async(op_datagram_receive)),
-    ("op_datagram_send", op_async(op_datagram_send::<P>)),
+    ("op_net_accept", op_async(op_net_accept)),
+    ("op_net_connect", op_async(op_net_connect::<P>)),
+    ("op_net_listen", op_sync(op_net_listen::<P>)),
+    ("op_dgram_recv", op_async(op_dgram_recv)),
+    ("op_dgram_send", op_async(op_dgram_send::<P>)),
     ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
   ]
 }
@@ -141,7 +141,7 @@ async fn accept_tcp(
   })
 }
 
-async fn op_accept(
+async fn op_net_accept(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
   _: (),
@@ -167,9 +167,8 @@ pub(crate) struct ReceiveArgs {
 async fn receive_udp(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<OpPacket, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let mut zero_copy = zero_copy.clone();
 
   let rid = args.rid;
@@ -194,10 +193,10 @@ async fn receive_udp(
   })
 }
 
-async fn op_datagram_receive(
+async fn op_dgram_recv(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<OpPacket, AnyError> {
   match args.transport.as_str() {
     "udp" => receive_udp(state, args, zero_copy).await,
@@ -215,15 +214,14 @@ struct SendArgs {
   transport_args: ArgsEnum,
 }
 
-async fn op_datagram_send<NP>(
+async fn op_dgram_send<NP>(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: ZeroCopyBuf,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,
 {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let zero_copy = zero_copy.clone();
 
   match args {
@@ -284,7 +282,7 @@ pub struct ConnectArgs {
   transport_args: ArgsEnum,
 }
 
-pub async fn op_connect<NP>(
+pub async fn op_net_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
   _: (),
@@ -446,7 +444,7 @@ fn listen_udp(
   Ok((rid, local_addr))
 }
 
-fn op_listen<NP>(
+fn op_net_listen<NP>(
   state: &mut OpState,
   args: ListenArgs,
   _: (),
@@ -540,7 +538,7 @@ where
 
 #[derive(Serialize, PartialEq, Debug)]
 #[serde(untagged)]
-enum DnsReturnRecord {
+pub enum DnsReturnRecord {
   A(String),
   Aaaa(String),
   Aname(String),
@@ -585,7 +583,7 @@ pub struct NameServer {
   port: u16,
 }
 
-async fn op_dns_resolve<NP>(
+pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
   _: (),
@@ -633,7 +631,19 @@ where
   let results = resolver
     .lookup(query, record_type, Default::default())
     .await
-    .map_err(|e| generic_error(format!("{}", e)))?
+    .map_err(|e| {
+      let message = format!("{}", e);
+      match e.kind() {
+        ResolveErrorKind::NoRecordsFound { .. } => {
+          custom_error("NotFound", message)
+        }
+        ResolveErrorKind::Message("No connections available") => {
+          custom_error("NotConnected", message)
+        }
+        ResolveErrorKind::Timeout => custom_error("TimedOut", message),
+        _ => generic_error(message),
+      }
+    })?
     .iter()
     .filter_map(rdata_to_return_record(record_type))
     .collect();

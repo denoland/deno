@@ -83,7 +83,10 @@ mod not_docs {
   }
 
   impl deno_ffi::FfiPermissions for Permissions {
-    fn check(&mut self, _path: &str) -> Result<(), deno_core::error::AnyError> {
+    fn check(
+      &mut self,
+      _path: &Path,
+    ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
   }
@@ -118,13 +121,14 @@ mod not_docs {
       deno_url::init(),
       deno_tls::init(),
       deno_web::init(deno_web::BlobStore::default(), Default::default()),
-      deno_fetch::init::<Permissions>(
+      deno_fetch::init::<Permissions, deno_fetch::DefaultFileFetchHandler>(
         "".to_owned(),
         None,
         None,
         None,
         None,
         None,
+        deno_fetch::DefaultFileFetchHandler, // No enable_file_fetch
       ),
       deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),

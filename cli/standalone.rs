@@ -6,10 +6,10 @@ use crate::flags::Flags;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::version;
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::resolve_url;
@@ -26,9 +26,9 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
+use deno_runtime::BootstrapOptions;
 use deno_tls::create_default_root_cert_store;
 use log::Level;
-use std::convert::TryInto;
 use std::env::current_exe;
 use std::fs::File;
 use std::io::BufReader;
@@ -229,12 +229,20 @@ pub async fn run(
   }
 
   let options = WorkerOptions {
-    apply_source_maps: false,
-    args: metadata.argv,
-    debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
+    bootstrap: BootstrapOptions {
+      apply_source_maps: false,
+      args: metadata.argv,
+      cpu_count: num_cpus::get(),
+      debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
+      enable_testing_features: false,
+      location: metadata.location,
+      no_color: !colors::use_color(),
+      runtime_version: version::deno(),
+      ts_version: version::TYPESCRIPT.to_string(),
+      unstable: metadata.unstable,
+    },
+    extensions: vec![],
     user_agent: version::get_user_agent(),
-    unstable: metadata.unstable,
-    enable_testing_features: false,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
     root_cert_store: Some(root_cert_store),
@@ -244,20 +252,19 @@ pub async fn run(
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     module_loader,
-    runtime_version: version::deno(),
-    ts_version: version::TYPESCRIPT.to_string(),
-    no_color: !colors::use_color(),
     get_error_class_fn: Some(&get_error_class_name),
-    location: metadata.location,
     origin_storage_dir: None,
     blob_store,
     broadcast_channel,
     shared_array_buffer_store: None,
     compiled_wasm_module_store: None,
-    cpu_count: num_cpus::get(),
   };
-  let mut worker =
-    MainWorker::from_options(main_module.clone(), permissions, &options);
+  let mut worker = MainWorker::bootstrap_from_options(
+    main_module.clone(),
+    permissions,
+    options,
+  );
+  // TODO(@AaronO): move to a JsRuntime Extension passed into options
   {
     let js_runtime = &mut worker.js_runtime;
     js_runtime
@@ -268,7 +275,6 @@ pub async fn run(
     ops::runtime_compiler::init(js_runtime);
     js_runtime.sync_ops_cache();
   }
-  worker.bootstrap(&options);
   worker.execute_main_module(&main_module).await?;
   worker.execute_script(
     &located_script_name!(),

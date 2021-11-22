@@ -1,8 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast::Location;
+use crate::cache;
+use crate::cache::CacherLoader;
 use crate::colors;
 use crate::create_main_worker;
+use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
@@ -11,15 +14,13 @@ use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
 use crate::located_script_name;
-use crate::module_graph;
-use crate::module_graph::GraphBuilder;
-use crate::module_graph::Module;
-use crate::module_graph::TypeLib;
+use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
-use crate::tokio_util;
+use crate::resolver::ImportMapResolver;
+use crate::resolver::JsxResolver;
 use crate::tools::coverage::CoverageCollector;
-use crate::FetchHandler;
+
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
@@ -28,18 +29,20 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::tokio_util::run_basic;
 use log::Level;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::collections::HashSet;
+use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
@@ -60,7 +63,7 @@ enum TestMode {
   Both,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
   pub origin: String,
@@ -84,6 +87,33 @@ pub enum TestResult {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TestStepDescription {
+  pub test: TestDescription,
+  pub level: usize,
+  pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TestStepResult {
+  Ok,
+  Ignored,
+  Failed(Option<String>),
+  Pending(Option<String>),
+}
+
+impl TestStepResult {
+  fn error(&self) -> Option<&str> {
+    match self {
+      TestStepResult::Failed(Some(text)) => Some(text.as_str()),
+      TestStepResult::Pending(Some(text)) => Some(text.as_str()),
+      _ => None,
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestPlan {
   pub origin: String,
   pub total: usize,
@@ -98,6 +128,8 @@ pub enum TestEvent {
   Wait(TestDescription),
   Output(TestOutput),
   Result(TestDescription, TestResult, u64),
+  StepWait(TestStepDescription),
+  StepResult(TestStepDescription, TestStepResult, u64),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -106,6 +138,10 @@ pub struct TestSummary {
   pub passed: usize,
   pub failed: usize,
   pub ignored: usize,
+  pub passed_steps: usize,
+  pub failed_steps: usize,
+  pub pending_steps: usize,
+  pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
   pub failures: Vec<(TestDescription, String)>,
@@ -118,6 +154,10 @@ impl TestSummary {
       passed: 0,
       failed: 0,
       ignored: 0,
+      passed_steps: 0,
+      failed_steps: 0,
+      pending_steps: 0,
+      ignored_steps: 0,
       filtered_out: 0,
       measured: 0,
       failures: Vec::new(),
@@ -143,12 +183,26 @@ trait TestReporter {
     result: &TestResult,
     elapsed: u64,
   );
+  fn report_step_wait(&mut self, description: &TestStepDescription);
+  fn report_step_result(
+    &mut self,
+    description: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
+  );
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration);
+}
+
+enum DeferredStepOutput {
+  StepWait(TestStepDescription),
+  StepResult(TestStepDescription, TestStepResult, u64),
 }
 
 struct PrettyTestReporter {
   concurrent: bool,
   echo_output: bool,
+  deferred_step_output: HashMap<TestDescription, Vec<DeferredStepOutput>>,
+  last_wait_output_level: usize,
 }
 
 impl PrettyTestReporter {
@@ -156,8 +210,79 @@ impl PrettyTestReporter {
     PrettyTestReporter {
       concurrent,
       echo_output,
+      deferred_step_output: HashMap::new(),
+      last_wait_output_level: 0,
     }
   }
+
+  fn force_report_wait(&mut self, description: &TestDescription) {
+    print!("test {} ...", description.name);
+    // flush for faster feedback when line buffered
+    std::io::stdout().flush().unwrap();
+    self.last_wait_output_level = 0;
+  }
+
+  fn force_report_step_wait(&mut self, description: &TestStepDescription) {
+    if self.last_wait_output_level < description.level {
+      println!();
+    }
+    print!(
+      "{}test {} ...",
+      "  ".repeat(description.level),
+      description.name
+    );
+    // flush for faster feedback when line buffered
+    std::io::stdout().flush().unwrap();
+    self.last_wait_output_level = description.level;
+  }
+
+  fn force_report_step_result(
+    &mut self,
+    description: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
+  ) {
+    let status = match result {
+      TestStepResult::Ok => colors::green("ok").to_string(),
+      TestStepResult::Ignored => colors::yellow("ignored").to_string(),
+      TestStepResult::Pending(_) => colors::gray("pending").to_string(),
+      TestStepResult::Failed(_) => colors::red("FAILED").to_string(),
+    };
+
+    if self.last_wait_output_level == description.level {
+      print!(" ");
+    } else {
+      print!("{}", "  ".repeat(description.level));
+    }
+
+    println!(
+      "{} {}",
+      status,
+      colors::gray(human_elapsed(elapsed.into())).to_string()
+    );
+
+    if let Some(error_text) = result.error() {
+      for line in error_text.lines() {
+        println!("{}{}", "  ".repeat(description.level + 1), line);
+      }
+    }
+  }
+}
+
+/// A function that converts a milisecond elapsed time to a string that
+/// represents a human readable version of that time.
+fn human_elapsed(elapsed: u128) -> String {
+  if elapsed < 1_000 {
+    return format!("({}ms)", elapsed);
+  }
+  if elapsed < 1_000 * 60 {
+    return format!("({}s)", elapsed / 1000);
+  }
+
+  let seconds = elapsed / 1_000;
+  let minutes = seconds / 60;
+  let seconds_remainder = seconds % 60;
+  format!("({}m{}s)", minutes, seconds_remainder)
 }
 
 impl TestReporter for PrettyTestReporter {
@@ -168,7 +293,7 @@ impl TestReporter for PrettyTestReporter {
 
   fn report_wait(&mut self, description: &TestDescription) {
     if !self.concurrent {
-      print!("test {} ...", description.name);
+      self.force_report_wait(description);
     }
   }
 
@@ -187,7 +312,27 @@ impl TestReporter for PrettyTestReporter {
     elapsed: u64,
   ) {
     if self.concurrent {
-      print!("test {} ...", description.name);
+      self.force_report_wait(description);
+
+      if let Some(step_outputs) = self.deferred_step_output.remove(description)
+      {
+        for step_output in step_outputs {
+          match step_output {
+            DeferredStepOutput::StepWait(description) => {
+              self.force_report_step_wait(&description)
+            }
+            DeferredStepOutput::StepResult(
+              step_description,
+              step_result,
+              elapsed,
+            ) => self.force_report_step_result(
+              &step_description,
+              &step_result,
+              elapsed,
+            ),
+          }
+        }
+      }
     }
 
     let status = match result {
@@ -196,11 +341,48 @@ impl TestReporter for PrettyTestReporter {
       TestResult::Failed(_) => colors::red("FAILED").to_string(),
     };
 
+    if self.last_wait_output_level == 0 {
+      print!(" ");
+    }
+
     println!(
-      " {} {}",
+      "{} {}",
       status,
-      colors::gray(format!("({}ms)", elapsed)).to_string()
+      colors::gray(human_elapsed(elapsed.into())).to_string()
     );
+  }
+
+  fn report_step_wait(&mut self, description: &TestStepDescription) {
+    if self.concurrent {
+      self
+        .deferred_step_output
+        .entry(description.test.to_owned())
+        .or_insert_with(Vec::new)
+        .push(DeferredStepOutput::StepWait(description.clone()));
+    } else {
+      self.force_report_step_wait(description);
+    }
+  }
+
+  fn report_step_result(
+    &mut self,
+    description: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
+  ) {
+    if self.concurrent {
+      self
+        .deferred_step_output
+        .entry(description.test.to_owned())
+        .or_insert_with(Vec::new)
+        .push(DeferredStepOutput::StepResult(
+          description.clone(),
+          result.clone(),
+          elapsed,
+        ));
+    } else {
+      self.force_report_step_result(description, result, elapsed);
+    }
   }
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
@@ -224,15 +406,27 @@ impl TestReporter for PrettyTestReporter {
       colors::green("ok").to_string()
     };
 
+    let get_steps_text = |count: usize| -> String {
+      if count == 0 {
+        String::new()
+      } else if count == 1 {
+        " (1 step)".to_string()
+      } else {
+        format!(" ({} steps)", count)
+      }
+    };
     println!(
-      "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
       status,
       summary.passed,
+      get_steps_text(summary.passed_steps),
       summary.failed,
+      get_steps_text(summary.failed_steps + summary.pending_steps),
       summary.ignored,
+      get_steps_text(summary.ignored_steps),
       summary.measured,
       summary.filtered_out,
-      colors::gray(format!("({}ms)", elapsed.as_millis())),
+      colors::gray(human_elapsed(elapsed.as_millis())),
     );
   }
 }
@@ -342,8 +536,12 @@ fn extract_files_from_regex_blocks(
 
         match attributes.get(0) {
           Some(&"js") => MediaType::JavaScript,
+          Some(&"mjs") => MediaType::Mjs,
+          Some(&"cjs") => MediaType::Cjs,
           Some(&"jsx") => MediaType::Jsx,
           Some(&"ts") => MediaType::TypeScript,
+          Some(&"mts") => MediaType::Mts,
+          Some(&"cts") => MediaType::Cts,
           Some(&"tsx") => MediaType::Tsx,
           Some(&"") => media_type,
           _ => MediaType::Unknown,
@@ -409,9 +607,10 @@ fn extract_files_from_source_comments(
     media_type,
     capture_tokens: false,
     maybe_syntax: None,
+    scope_analysis: false,
   })?;
   let comments = parsed_source.comments().get_vec();
-  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 
   let files = comments
@@ -451,7 +650,7 @@ fn extract_files_from_fenced_blocks(
     col: 0,
   };
 
-  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
@@ -500,7 +699,7 @@ async fn check_specifiers(
   ps: ProcState,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
-  lib: TypeLib,
+  lib: emit::TypeLib,
 ) -> Result<(), AnyError> {
   let inline_files = fetch_inline_files(
     ps.clone(),
@@ -527,12 +726,13 @@ async fn check_specifiers(
       ps.file_fetcher.insert_cached(file);
     }
 
-    ps.prepare_module_graph(
+    ps.prepare_module_load(
       specifiers,
+      false,
       lib.clone(),
       Permissions::allow_all(),
       permissions.clone(),
-      ps.maybe_import_map.clone(),
+      false,
     )
     .await?;
   }
@@ -548,12 +748,13 @@ async fn check_specifiers(
     })
     .collect();
 
-  ps.prepare_module_graph(
+  ps.prepare_module_load(
     module_specifiers,
+    false,
     lib,
     Permissions::allow_all(),
     permissions,
-    ps.maybe_import_map.clone(),
+    true,
   )
   .await?;
 
@@ -604,7 +805,7 @@ async fn test_specifiers(
             sender,
           );
 
-          tokio_util::run_basic(future)
+          run_basic(future)
         });
 
         join_handle.join().unwrap()
@@ -650,11 +851,9 @@ async fn test_specifiers(
               TestResult::Ok => {
                 summary.passed += 1;
               }
-
               TestResult::Ignored => {
                 summary.ignored += 1;
               }
-
               TestResult::Failed(error) => {
                 summary.failed += 1;
                 summary.failures.push((description.clone(), error.clone()));
@@ -662,6 +861,29 @@ async fn test_specifiers(
             }
 
             reporter.report_result(&description, &result, elapsed);
+          }
+
+          TestEvent::StepWait(description) => {
+            reporter.report_step_wait(&description);
+          }
+
+          TestEvent::StepResult(description, result, duration) => {
+            match &result {
+              TestStepResult::Ok => {
+                summary.passed_steps += 1;
+              }
+              TestStepResult::Ignored => {
+                summary.ignored_steps += 1;
+              }
+              TestStepResult::Failed(_) => {
+                summary.failed_steps += 1;
+              }
+              TestStepResult::Pending(_) => {
+                summary.pending_steps += 1;
+              }
+            }
+
+            reporter.report_step_result(&description, &result, duration);
           }
         }
 
@@ -743,11 +965,14 @@ fn collect_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
-/// Collects module and document specifiers with test modes via `collect_specifiers_with_test_mode`
-/// which are then pre-fetched and adjusted based on the media type.
+/// Collects module and document specifiers with test modes via
+/// `collect_specifiers_with_test_mode` which are then pre-fetched and adjusted
+/// based on the media type.
 ///
-/// Specifiers that do not have a known media type that can be executed as a module are marked as
-/// `TestMode::Documentation`.
+/// Specifiers that do not have a known media type that can be executed as a
+/// module are marked as `TestMode::Documentation`. Type definition files
+/// cannot be run, and therefore need to be marked as `TestMode::Documentation`
+/// as well.
 async fn fetch_specifiers_with_test_mode(
   ps: ProcState,
   include: Vec<String>,
@@ -762,7 +987,9 @@ async fn fetch_specifiers_with_test_mode(
       .fetch(specifier, &mut Permissions::allow_all())
       .await?;
 
-    if file.media_type == MediaType::Unknown {
+    if file.media_type == MediaType::Unknown
+      || file.media_type == MediaType::Dts
+    {
       *mode = TestMode::Documentation
     }
   }
@@ -798,9 +1025,9 @@ pub async fn run_tests(
   }
 
   let lib = if flags.unstable {
-    TypeLib::UnstableDenoWindow
+    emit::TypeLib::UnstableDenoWindow
   } else {
-    TypeLib::DenoWindow
+    emit::TypeLib::DenoWindow
   };
 
   check_specifiers(
@@ -845,26 +1072,40 @@ pub async fn run_tests_with_watch(
   let permissions = Permissions::from_options(&flags.clone().into());
 
   let lib = if flags.unstable {
-    TypeLib::UnstableDenoWindow
+    emit::TypeLib::UnstableDenoWindow
   } else {
-    TypeLib::DenoWindow
+    emit::TypeLib::DenoWindow
   };
-
-  let handler = Arc::new(Mutex::new(FetchHandler::new(
-    &ps,
-    Permissions::allow_all(),
-    Permissions::allow_all(),
-  )?));
 
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
+    let mut cache = cache::FetchCacher::new(
+      ps.dir.gen_cache.clone(),
+      ps.file_fetcher.clone(),
+      Permissions::allow_all(),
+      Permissions::allow_all(),
+    );
+
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
-    let handler = handler.clone();
-    let ps = ps.clone();
+    let maybe_import_map_resolver =
+      ps.maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      })
+      .flatten();
+    let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
+    let maybe_imports = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| cf.to_maybe_imports());
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
@@ -885,62 +1126,63 @@ pub async fn run_tests_with_watch(
           .filter_map(|url| deno_core::resolve_url(url.as_str()).ok())
           .collect()
       };
+      let maybe_imports = if let Some(result) = maybe_imports {
+        result?
+      } else {
+        None
+      };
+      let maybe_resolver = if maybe_jsx_resolver.is_some() {
+        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+      } else {
+        maybe_import_map_resolver
+          .as_ref()
+          .map(|im| im.as_resolver())
+      };
+      let graph = deno_graph::create_graph(
+        test_modules.clone(),
+        false,
+        maybe_imports,
+        cache.as_mut_loader(),
+        maybe_resolver,
+        maybe_locker,
+        None,
+      )
+      .await;
+      graph.valid()?;
 
-      let mut builder = GraphBuilder::new(
-        handler,
-        ps.maybe_import_map.clone(),
-        ps.lockfile.clone(),
-      );
-      for specifier in test_modules.iter() {
-        builder.add(specifier, false).await?;
-      }
-      builder.analyze_config_file(&ps.maybe_config_file).await?;
-      let graph = builder.get_graph();
-
+      // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
         fn get_dependencies<'a>(
-          graph: &'a module_graph::Graph,
-          module: &'a Module,
+          graph: &'a deno_graph::ModuleGraph,
+          maybe_module: Option<&'a deno_graph::Module>,
           // This needs to be accessible to skip getting dependencies if they're already there,
           // otherwise this will cause a stack overflow with circular dependencies
           output: &mut HashSet<&'a ModuleSpecifier>,
-        ) -> Result<(), AnyError> {
-          for dep in module.dependencies.values() {
-            if let Some(specifier) = &dep.maybe_code {
-              if !output.contains(specifier) {
-                output.insert(specifier);
+        ) {
+          if let Some(module) = maybe_module {
+            for dep in module.dependencies.values() {
+              if let Some(specifier) = &dep.get_code() {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
 
-                get_dependencies(
-                  graph,
-                  graph.get_specifier(specifier)?,
-                  output,
-                )?;
+                  get_dependencies(graph, graph.get(specifier), output);
+                }
               }
-            }
-            if let Some(specifier) = &dep.maybe_type {
-              if !output.contains(specifier) {
-                output.insert(specifier);
+              if let Some(specifier) = &dep.get_type() {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
 
-                get_dependencies(
-                  graph,
-                  graph.get_specifier(specifier)?,
-                  output,
-                )?;
+                  get_dependencies(graph, graph.get(specifier), output);
+                }
               }
             }
           }
-
-          Ok(())
         }
 
         // This test module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
-        get_dependencies(
-          &graph,
-          graph.get_specifier(&specifier)?,
-          &mut modules,
-        )?;
+        get_dependencies(&graph, graph.get(&specifier), &mut modules);
 
         paths_to_watch.extend(
           modules
@@ -1035,4 +1277,20 @@ pub async fn run_tests_with_watch(
   file_watcher::watch_func(resolver, operation, "Test").await?;
 
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_human_elapsed() {
+    assert_eq!(human_elapsed(1), "(1ms)");
+    assert_eq!(human_elapsed(256), "(256ms)");
+    assert_eq!(human_elapsed(1000), "(1s)");
+    assert_eq!(human_elapsed(1001), "(1s)");
+    assert_eq!(human_elapsed(1020), "(1s)");
+    assert_eq!(human_elapsed(70 * 1000), "(1m10s)");
+    assert_eq!(human_elapsed(86 * 1000 + 100), "(1m26s)");
+  }
 }

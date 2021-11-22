@@ -1,25 +1,30 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::cache;
+use crate::cache::Cacher;
 use crate::colors;
+use crate::compat;
+use crate::compat::NodeEsmResolver;
 use crate::config_file::ConfigFile;
+use crate::config_file::MaybeImportsResult;
 use crate::deno_dir;
+use crate::emit;
+use crate::errors::get_error_class_name;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
 use crate::http_cache;
+use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
-use crate::module_graph::CheckOptions;
-use crate::module_graph::GraphBuilder;
-use crate::module_graph::TranspileOptions;
-use crate::module_graph::TypeLib;
+use crate::resolver::ImportMapResolver;
+use crate::resolver::JsxResolver;
 use crate::source_maps::SourceMapGetter;
-use crate::specifier_handler::FetchHandler;
 use crate::version;
 
-use deno_core::error::anyhow;
-use deno_core::error::get_custom_error_class;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::url::Url;
@@ -27,6 +32,11 @@ use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::SharedArrayBufferStore;
+use deno_graph::create_graph;
+use deno_graph::Dependency;
+use deno_graph::MediaType;
+use deno_graph::ModuleGraphError;
+use deno_graph::Range;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
@@ -35,11 +45,10 @@ use deno_tls::rustls::RootCertStore;
 use deno_tls::rustls_native_certs::load_native_certs;
 use deno_tls::webpki_roots::TLS_SERVER_ROOTS;
 use import_map::ImportMap;
-use log::debug;
-use log::info;
-use log::warn;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
@@ -52,17 +61,93 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct ProcState(Arc<Inner>);
 
+#[derive(Default)]
+struct GraphData {
+  modules: HashMap<ModuleSpecifier, Result<ModuleSource, ModuleGraphError>>,
+  dependency_map: HashMap<ModuleSpecifier, BTreeMap<String, Dependency>>,
+  /// A set of type libs that each module has passed a type check with this
+  /// session. This would consist of window, worker or both.
+  checked_libs_map: HashMap<ModuleSpecifier, HashSet<emit::TypeLib>>,
+  /// Map of first known referrer locations for each module. Used to enhance
+  /// error messages.
+  referrer_map: HashMap<ModuleSpecifier, Range>,
+}
+
+impl GraphData {
+  /// Check if `roots` are ready to be loaded by V8. Returns `Some(Ok(()))` if
+  /// prepared. Returns `Some(Err(_))` if there is a known module graph error
+  /// statically reachable from `roots`. Returns `None` if sufficient graph data
+  /// is yet to supplied.
+  fn check_if_prepared(
+    &self,
+    roots: &[ModuleSpecifier],
+  ) -> Option<Result<(), AnyError>> {
+    let mut seen = HashSet::<&ModuleSpecifier>::new();
+    let mut visiting = VecDeque::<&ModuleSpecifier>::new();
+    for root in roots {
+      visiting.push_back(root);
+    }
+    while let Some(specifier) = visiting.pop_front() {
+      match self.modules.get(specifier) {
+        Some(Ok(_)) => {
+          let deps = self.dependency_map.get(specifier).unwrap();
+          for (_, dep) in deps.iter().rev() {
+            for resolved in [&dep.maybe_code, &dep.maybe_type] {
+              if !dep.is_dynamic {
+                match resolved {
+                  Some(Ok((dep_specifier, _))) => {
+                    if !dep.is_dynamic && !seen.contains(dep_specifier) {
+                      seen.insert(dep_specifier);
+                      visiting.push_front(dep_specifier);
+                    }
+                  }
+                  Some(Err(error)) => {
+                    let range = error.range();
+                    if !range.specifier.as_str().contains("$deno") {
+                      return Some(Err(custom_error(
+                        get_error_class_name(&error.clone().into()),
+                        format!("{}\n    at {}", error.to_string(), range),
+                      )));
+                    }
+                    return Some(Err(error.clone().into()));
+                  }
+                  None => {}
+                }
+              }
+            }
+          }
+        }
+        Some(Err(error)) => {
+          if !roots.contains(specifier) {
+            if let Some(range) = self.referrer_map.get(specifier) {
+              if !range.specifier.as_str().contains("$deno") {
+                let message = error.to_string();
+                return Some(Err(custom_error(
+                  get_error_class_name(&error.clone().into()),
+                  format!("{}\n    at {}", message, range),
+                )));
+              }
+            }
+          }
+          return Some(Err(error.clone().into()));
+        }
+        None => return None,
+      }
+    }
+    Some(Ok(()))
+  }
+}
+
 pub struct Inner {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
-  pub modules:
-    Arc<Mutex<HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>>>,
+  graph_data: Arc<Mutex<GraphData>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_config_file: Option<ConfigFile>,
-  pub maybe_import_map: Option<ImportMap>,
+  pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub root_cert_store: Option<RootCertStore>,
   pub blob_store: BlobStore,
@@ -183,7 +268,7 @@ impl ProcState {
         None
       };
 
-    let mut maybe_import_map: Option<ImportMap> =
+    let maybe_import_map: Option<Arc<ImportMap>> =
       match flags.import_map_path.as_ref() {
         None => None,
         Some(import_map_url) => {
@@ -201,35 +286,9 @@ impl ProcState {
             ))?;
           let import_map =
             ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
-          Some(import_map)
+          Some(Arc::new(import_map))
         }
       };
-
-    if flags.compat {
-      let mut import_map = match maybe_import_map {
-        Some(import_map) => import_map,
-        None => {
-          // INFO: we're creating an empty import map, with its specifier pointing
-          // to `CWD/node_import_map.json` to make sure the map still works as expected.
-          let import_map_specifier =
-            std::env::current_dir()?.join("node_import_map.json");
-          ImportMap::from_json(import_map_specifier.to_str().unwrap(), "{}")
-            .unwrap()
-        }
-      };
-      let node_builtins = crate::compat::get_mapped_node_builtins();
-      let diagnostics = import_map.update_imports(node_builtins)?;
-
-      if !diagnostics.is_empty() {
-        info!("Some Node built-ins were not added to the import map:");
-        for diagnostic in diagnostics {
-          info!("  - {}", diagnostic);
-        }
-        info!("If you want to use Node built-ins provided by Deno remove listed specifiers from \"imports\" mapping in the import map file.");
-      }
-
-      maybe_import_map = Some(import_map);
-    }
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
     let maybe_inspector_server = maybe_inspect_host.map(|host| {
@@ -246,7 +305,7 @@ impl ProcState {
       coverage_dir,
       flags,
       file_fetcher,
-      modules: Default::default(),
+      graph_data: Default::default(),
       lockfile,
       maybe_config_file,
       maybe_import_map,
@@ -259,72 +318,275 @@ impl ProcState {
     })))
   }
 
-  /// Prepares a set of module specifiers for loading in one shot.
-  pub async fn prepare_module_graph(
+  /// Return any imports that should be brought into the scope of the module
+  /// graph.
+  fn get_maybe_imports(&self) -> MaybeImportsResult {
+    let mut imports = Vec::new();
+    if let Some(config_file) = &self.maybe_config_file {
+      if let Some(config_imports) = config_file.to_maybe_imports()? {
+        imports.extend(config_imports);
+      }
+    }
+    if self.flags.compat {
+      imports.extend(compat::get_node_imports());
+    }
+    if imports.is_empty() {
+      Ok(None)
+    } else {
+      Ok(Some(imports))
+    }
+  }
+
+  /// This method must be called for a module or a static importer of that
+  /// module before attempting to `load()` it from a `JsRuntime`. It will
+  /// populate `self.graph_data` in memory with the necessary source code or
+  /// report any module graph / type checking errors.
+  pub(crate) async fn prepare_module_load(
     &self,
-    specifiers: Vec<ModuleSpecifier>,
-    lib: TypeLib,
+    roots: Vec<ModuleSpecifier>,
+    is_dynamic: bool,
+    lib: emit::TypeLib,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
-    maybe_import_map: Option<ImportMap>,
+    reload_on_watch: bool,
   ) -> Result<(), AnyError> {
-    let handler = Arc::new(Mutex::new(FetchHandler::new(
-      self,
-      root_permissions,
-      dynamic_permissions,
-    )?));
-
-    let mut builder =
-      GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
-
-    for specifier in specifiers {
-      builder.add(&specifier, false).await?;
-    }
-    builder.analyze_config_file(&self.maybe_config_file).await?;
-
-    let mut graph = builder.get_graph();
-    let debug = self.flags.log_level == Some(log::Level::Debug);
-    let maybe_config_file = self.maybe_config_file.clone();
-    let reload_exclusions = {
-      let modules = self.modules.lock();
-      modules.keys().cloned().collect::<HashSet<_>>()
-    };
-
-    let result_modules = if self.flags.no_check {
-      let result_info = graph.transpile(TranspileOptions {
-        debug,
-        maybe_config_file,
-        reload: self.flags.reload,
-        reload_exclusions,
-      })?;
-      debug!("{}", result_info.stats);
-      if let Some(ignored_options) = result_info.maybe_ignored_options {
-        warn!("{}", ignored_options);
-      }
-      result_info.loadable_modules
+    // TODO(bartlomieju): this is very make-shift, is there an existing API
+    // that we could include it like with "maybe_imports"?
+    let roots = if self.flags.compat {
+      let mut r = vec![compat::GLOBAL_URL.clone()];
+      r.extend(roots);
+      r
     } else {
-      let result_info = graph.check(CheckOptions {
-        debug,
-        emit: true,
-        lib,
-        maybe_config_file,
-        reload: self.flags.reload,
-        reload_exclusions,
-      })?;
+      roots
+    };
+    if !reload_on_watch {
+      let graph_data = self.graph_data.lock();
+      if self.flags.no_check
+        || roots.iter().all(|root| {
+          graph_data
+            .checked_libs_map
+            .get(root)
+            .map_or(false, |checked_libs| checked_libs.contains(&lib))
+        })
+      {
+        if let Some(result) = graph_data.check_if_prepared(&roots) {
+          return result;
+        }
+      }
+    }
+    let mut cache = cache::FetchCacher::new(
+      self.dir.gen_cache.clone(),
+      self.file_fetcher.clone(),
+      root_permissions.clone(),
+      dynamic_permissions.clone(),
+    );
+    let maybe_locker = as_maybe_locker(self.lockfile.clone());
+    let maybe_imports = self.get_maybe_imports()?;
+    let node_resolver = NodeEsmResolver::new(
+      self.maybe_import_map.clone().map(ImportMapResolver::new),
+    );
+    let maybe_import_map_resolver =
+      self.maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = self
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      })
+      .flatten();
+    let maybe_resolver = if self.flags.compat {
+      Some(node_resolver.as_resolver())
+    } else if maybe_jsx_resolver.is_some() {
+      // the JSX resolver offloads to the import map if present, otherwise uses
+      // the default Deno explicit import resolution.
+      maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+    } else {
+      maybe_import_map_resolver
+        .as_ref()
+        .map(|im| im.as_resolver())
+    };
+    let graph = create_graph(
+      roots.clone(),
+      is_dynamic,
+      maybe_imports,
+      &mut cache,
+      maybe_resolver,
+      maybe_locker,
+      None,
+    )
+    .await;
+    // If there was a locker, validate the integrity of all the modules in the
+    // locker.
+    emit::lock(&graph);
 
-      debug!("{}", result_info.stats);
-      if let Some(ignored_options) = result_info.maybe_ignored_options {
-        eprintln!("{}", ignored_options);
-      }
-      if !result_info.diagnostics.is_empty() {
-        return Err(anyhow!(result_info.diagnostics));
-      }
-      result_info.loadable_modules
+    // Determine any modules that have already been emitted this session and
+    // should be skipped.
+    let reload_exclusions: HashSet<ModuleSpecifier> = {
+      let graph_data = self.graph_data.lock();
+      graph_data.modules.keys().cloned().collect()
     };
 
-    let mut loadable_modules = self.modules.lock();
-    loadable_modules.extend(result_modules);
+    let config_type = if self.flags.no_check {
+      emit::ConfigType::Emit
+    } else {
+      emit::ConfigType::Check {
+        tsc_emit: true,
+        lib: lib.clone(),
+      }
+    };
 
+    let (ts_config, maybe_ignored_options) =
+      emit::get_ts_config(config_type, self.maybe_config_file.as_ref(), None)?;
+    let graph = Arc::new(graph);
+
+    let mut type_check_result = Ok(());
+
+    if emit::valid_emit(
+      graph.as_ref(),
+      &cache,
+      &ts_config,
+      self.flags.reload,
+      &reload_exclusions,
+    ) {
+      if let Some(root) = graph.roots.get(0) {
+        log::debug!("specifier \"{}\" and dependencies have valid emit, skipping checking and emitting", root);
+      } else {
+        log::debug!("rootless graph, skipping checking and emitting");
+      }
+    } else {
+      if let Some(ignored_options) = maybe_ignored_options {
+        log::warn!("{}", ignored_options);
+      }
+      let emit_result = if self.flags.no_check {
+        let options = emit::EmitOptions {
+          ts_config,
+          reload_exclusions,
+          reload: self.flags.reload,
+        };
+        emit::emit(graph.as_ref(), &mut cache, options)?
+      } else {
+        // here, we are type checking, so we want to error here if any of the
+        // type only dependencies are missing or we have other errors with them
+        // where as if we are not type checking, we shouldn't care about these
+        // errors, and they don't get returned in `graph.valid()` above.
+        graph.valid_types_only()?;
+
+        let maybe_config_specifier = self
+          .maybe_config_file
+          .as_ref()
+          .map(|cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
+        let options = emit::CheckOptions {
+          debug: self.flags.log_level == Some(log::Level::Debug),
+          emit_with_diagnostics: false,
+          maybe_config_specifier,
+          ts_config,
+        };
+        for root in &graph.roots {
+          let root_str = root.to_string();
+          // `$deno` specifiers are internal specifiers, printing out that
+          // they are being checked is confusing to a user, since they don't
+          // actually exist, so we will simply indicate that a generated module
+          // is being checked instead of the cryptic internal module
+          if !root_str.contains("$deno") {
+            log::info!("{} {}", colors::green("Check"), root);
+          } else {
+            log::info!("{} a generated module", colors::green("Check"))
+          }
+        }
+        emit::check_and_maybe_emit(graph.clone(), &mut cache, options)?
+      };
+      log::debug!("{}", emit_result.stats);
+      if !emit_result.diagnostics.is_empty() {
+        type_check_result = Err(anyhow!(emit_result.diagnostics));
+      }
+    }
+
+    {
+      let mut graph_data = self.graph_data.lock();
+      let mut specifiers = graph.specifiers();
+      // Set specifier results for redirects.
+      // TODO(nayeemrmn): This should be done in `ModuleGraph::specifiers()`.
+      for (specifier, found) in &graph.redirects {
+        let actual = specifiers.get(found).unwrap().clone();
+        specifiers.insert(specifier.clone(), actual);
+      }
+      for (specifier, result) in &specifiers {
+        match result {
+          Ok((found_specifier, media_type)) => {
+            let module = graph.get(found_specifier).unwrap();
+            // If there was a type check error, supply dummy code. It shouldn't
+            // be used since preparation will fail.
+            let code = if type_check_result.is_err() {
+              "".to_string()
+            // Check to see if there is an emitted file in the cache.
+            } else if let Some(code) =
+              cache.get(cache::CacheType::Emit, found_specifier)
+            {
+              code
+            // Then if the file is JavaScript (or unknown) and wasn't emitted,
+            // we will load the original source code in the module.
+            } else if matches!(
+              media_type,
+              MediaType::JavaScript
+                | MediaType::Unknown
+                | MediaType::Cjs
+                | MediaType::Mjs
+            ) {
+              module.source.as_str().to_string()
+            // The emit may also be missing when a `.dts` file is in the
+            // graph. There shouldn't be any runtime statements in the source
+            // file and if there was, users would be shown a `TS1036`
+            // diagnostic. So just return an empty emit.
+            } else if media_type == &MediaType::Dts {
+              "".to_string()
+            } else {
+              unreachable!("unexpected missing emit: {}", found_specifier)
+            };
+            graph_data.modules.insert(
+              specifier.clone(),
+              Ok(ModuleSource {
+                code,
+                module_url_found: found_specifier.to_string(),
+                module_url_specified: specifier.to_string(),
+              }),
+            );
+            graph_data
+              .dependency_map
+              .insert(specifier.clone(), module.dependencies.clone());
+            for dep in module.dependencies.values() {
+              #[allow(clippy::manual_flatten)]
+              for resolved in [&dep.maybe_code, &dep.maybe_type] {
+                if let Some(Ok((specifier, referrer_range))) = resolved {
+                  let entry = graph_data.referrer_map.entry(specifier.clone());
+                  entry.or_insert_with(|| referrer_range.clone());
+                }
+              }
+            }
+          }
+          Err(error) => {
+            graph_data
+              .modules
+              .insert(specifier.clone(), Err(error.clone()));
+          }
+        }
+      }
+
+      graph_data.check_if_prepared(&roots).unwrap()?;
+      type_check_result?;
+
+      if !self.flags.no_check {
+        for specifier in specifiers.keys() {
+          let checked_libs = graph_data
+            .checked_libs_map
+            .entry(specifier.clone())
+            .or_default();
+          checked_libs.insert(lib.clone());
+        }
+      }
+    }
+
+    // any updates to the lockfile should be updated now
     if let Some(ref lockfile) = self.lockfile {
       let g = lockfile.lock();
       g.write()?;
@@ -333,138 +595,82 @@ impl ProcState {
     Ok(())
   }
 
-  /// This function is called when new module load is initialized by the JsRuntime. Its
-  /// resposibility is to collect all dependencies and if it is required then also perform TS
-  /// typecheck and traspilation.
-  pub async fn prepare_module_load(
+  pub(crate) fn resolve(
     &self,
-    specifier: ModuleSpecifier,
-    lib: TypeLib,
-    root_permissions: Permissions,
-    dynamic_permissions: Permissions,
-    is_dynamic: bool,
-    maybe_import_map: Option<ImportMap>,
-  ) -> Result<(), AnyError> {
-    let specifier = specifier.clone();
-    let handler = Arc::new(Mutex::new(FetchHandler::new(
-      self,
-      root_permissions,
-      dynamic_permissions,
-    )?));
-    let mut builder =
-      GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
-    builder.add(&specifier, is_dynamic).await?;
-    builder.analyze_config_file(&self.maybe_config_file).await?;
-    let mut graph = builder.get_graph();
-    let debug = self.flags.log_level == Some(log::Level::Debug);
-    let maybe_config_file = self.maybe_config_file.clone();
-    let reload_exclusions = {
-      let modules = self.modules.lock();
-      modules.keys().cloned().collect::<HashSet<_>>()
-    };
+    specifier: &str,
+    referrer: &str,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    if let Ok(s) = deno_core::resolve_url_or_path(referrer) {
+      let maybe_resolved = {
+        let graph_data = self.graph_data.lock();
+        graph_data
+          .dependency_map
+          .get(&s)
+          .and_then(|map| map.get(specifier))
+          .map(|dep| dep.maybe_code.clone())
+      };
 
-    let result_modules = if self.flags.no_check {
-      let result_info = graph.transpile(TranspileOptions {
-        debug,
-        maybe_config_file,
-        reload: self.flags.reload,
-        reload_exclusions,
-      })?;
-      debug!("{}", result_info.stats);
-      if let Some(ignored_options) = result_info.maybe_ignored_options {
-        warn!("{}", ignored_options);
+      if let Some(resolved) = maybe_resolved {
+        match resolved {
+          Some(Ok((specifier, _))) => {
+            return Ok(specifier);
+          }
+          Some(Err(err)) => {
+            return Err(custom_error(
+              "TypeError",
+              format!("{}\n", err.to_string_with_range()),
+            ))
+          }
+          _ => (),
+        }
       }
-      result_info.loadable_modules
-    } else {
-      let result_info = graph.check(CheckOptions {
-        debug,
-        emit: true,
-        lib,
-        maybe_config_file,
-        reload: self.flags.reload,
-        reload_exclusions,
-      })?;
-
-      debug!("{}", result_info.stats);
-      if let Some(ignored_options) = result_info.maybe_ignored_options {
-        eprintln!("{}", ignored_options);
-      }
-      if !result_info.diagnostics.is_empty() {
-        return Err(anyhow!(result_info.diagnostics));
-      }
-      result_info.loadable_modules
-    };
-
-    let mut loadable_modules = self.modules.lock();
-    loadable_modules.extend(result_modules);
-
-    if let Some(ref lockfile) = self.lockfile {
-      let g = lockfile.lock();
-      g.write()?;
     }
 
-    Ok(())
+    // FIXME(bartlomieju): hacky way to provide compatibility with repl
+    let referrer = if referrer.is_empty() && self.flags.repl {
+      deno_core::DUMMY_SPECIFIER
+    } else {
+      referrer
+    };
+    if let Some(import_map) = &self.maybe_import_map {
+      import_map
+        .resolve(specifier, referrer)
+        .map_err(|err| err.into())
+    } else {
+      deno_core::resolve_import(specifier, referrer).map_err(|err| err.into())
+    }
   }
 
   pub fn load(
     &self,
     specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
+    is_dynamic: bool,
   ) -> Result<ModuleSource, AnyError> {
-    let modules = self.modules.lock();
-    modules
-      .get(&specifier)
-      .map(|r| match r {
-        Ok(module_source) => Ok(module_source.clone()),
-        Err(err) => {
-          // TODO(@kitsonk) this feels a bit hacky but it works, without
-          // introducing another enum to have to try to deal with.
-          if get_custom_error_class(err) == Some("NotFound") {
-            let message = if let Some(referrer) = &maybe_referrer {
-              format!("{}\n  From: {}\n    If the source module contains only types, use `import type` and `export type` to import it instead.", err, referrer)
-            } else {
-              format!("{}\n  If the source module contains only types, use `import type` and `export type` to import it instead.", err)
-            };
-            warn!("{}: {}", crate::colors::yellow("warning"), message);
-            Ok(ModuleSource {
-              code: "".to_string(),
-              module_type: deno_core::ModuleType::JavaScript,
-              module_url_found: specifier.to_string(),
-              module_url_specified: specifier.to_string(),
-            })
-          } else {
-            // anyhow errors don't support cloning, so we have to manage this
-            // ourselves
-            Err(anyhow!(err.to_string()))
-          }
-        },
-      })
-      .unwrap_or_else(|| {
-        if let Some(referrer) = maybe_referrer {
-          Err(anyhow!(
-            "Module \"{}\" is missing from the graph.\n  From: {}",
-            specifier,
-            referrer
-          ))
-        } else {
-          Err(anyhow!(
-            "Module \"{}\" is missing from the graph.",
-            specifier
-          ))
-        }
-      })
+    log::debug!(
+      "specifier: {} maybe_referrer: {} is_dynamic: {}",
+      specifier,
+      maybe_referrer
+        .as_ref()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "<none>".to_string()),
+      is_dynamic
+    );
+
+    let graph_data = self.graph_data.lock();
+    match graph_data.modules.get(&specifier) {
+      Some(Ok(module_source)) => Ok(module_source.clone()),
+      // This is an edge case usually hit when loading source lines for error
+      // stacks with synthetic locations. Users shouldn't see this error.
+      _ => Err(anyhow!(
+        "Loading unprepared module: {}",
+        specifier.to_string()
+      )),
+    }
   }
 
   // TODO(@kitsonk) this should be refactored to get it from the module graph
   fn get_emit(&self, url: &Url) -> Option<(Vec<u8>, Option<Vec<u8>>)> {
-    match url.scheme() {
-      // we should only be looking for emits for schemes that denote external
-      // modules, which the disk_cache supports
-      "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
-      _ => {
-        return None;
-      }
-    }
     let emit_path = self
       .dir
       .gen_cache
@@ -491,10 +697,16 @@ impl ProcState {
 impl SourceMapGetter for ProcState {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     if let Ok(specifier) = resolve_url(file_name) {
+      match specifier.scheme() {
+        // we should only be looking for emits for schemes that denote external
+        // modules, which the disk_cache supports
+        "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
+        _ => return None,
+      }
       if let Some((code, maybe_map)) = self.get_emit(&specifier) {
         let code = String::from_utf8(code).unwrap();
         source_map_from_code(code).or(maybe_map)
-      } else if let Ok(source) = self.load(specifier, None) {
+      } else if let Ok(source) = self.load(specifier, None, false) {
         source_map_from_code(source.code)
       } else {
         None
@@ -514,8 +726,14 @@ impl SourceMapGetter for ProcState {
         // Do NOT use .lines(): it skips the terminating empty line.
         // (due to internally using .split_terminator() instead of .split())
         let lines: Vec<&str> = out.source.split('\n').collect();
-        assert!(lines.len() > line_number);
-        lines[line_number].to_string()
+        if line_number >= lines.len() {
+          format!(
+            "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
+            crate::colors::yellow("Warning"), line_number + 1,
+          )
+        } else {
+          lines[line_number].to_string()
+        }
       })
     } else {
       None

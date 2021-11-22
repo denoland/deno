@@ -320,7 +320,7 @@
     "children": [
       {
         "name": "value1",
-        "kind": 13,
+        "kind": 22,
         "range": {
           "start": {
             "line": 15,
@@ -344,7 +344,7 @@
       },
       {
         "name": "value2",
-        "kind": 13,
+        "kind": 22,
         "range": {
           "start": {
             "line": 15,

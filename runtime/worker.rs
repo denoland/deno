@@ -2,16 +2,13 @@
 
 use crate::inspector_server::InspectorServer;
 use crate::js;
-use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
+use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
@@ -26,7 +23,6 @@ use deno_core::SharedArrayBufferStore;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
-use std::env;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -46,12 +42,8 @@ pub struct MainWorker {
 }
 
 pub struct WorkerOptions {
-  pub apply_source_maps: bool,
-  /// Sets `Deno.args` in JS runtime.
-  pub args: Vec<String>,
-  pub debug_flag: bool,
-  pub unstable: bool,
-  pub enable_testing_features: bool,
+  pub bootstrap: BootstrapOptions,
+  pub extensions: Vec<Extension>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
@@ -62,31 +54,34 @@ pub struct WorkerOptions {
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
-  /// Sets `Deno.version.deno` in JS runtime.
-  pub runtime_version: String,
-  /// Sets `Deno.version.typescript` in JS runtime.
-  pub ts_version: String,
-  /// Sets `Deno.noColor` in JS runtime.
-  pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
-  pub location: Option<Url>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
-  pub cpu_count: usize,
 }
 
 impl MainWorker {
+  pub fn bootstrap_from_options(
+    main_module: ModuleSpecifier,
+    permissions: Permissions,
+    options: WorkerOptions,
+  ) -> Self {
+    let bootstrap_options = options.bootstrap.clone();
+    let mut worker = Self::from_options(main_module, permissions, options);
+    worker.bootstrap(&bootstrap_options);
+    worker
+  }
+
   pub fn from_options(
     main_module: ModuleSpecifier,
     permissions: Permissions,
-    options: &WorkerOptions,
+    mut options: WorkerOptions,
   ) -> Self {
     // Permissions: many ops depend on this
-    let unstable = options.unstable;
-    let enable_testing_features = options.enable_testing_features;
+    let unstable = options.bootstrap.unstable;
+    let enable_testing_features = options.bootstrap.enable_testing_features;
     let perm_ext = Extension::builder()
       .state(move |state| {
         state.put::<Permissions>(permissions.clone());
@@ -97,19 +92,23 @@ impl MainWorker {
       .build();
 
     // Internal modules
-    let extensions: Vec<Extension> = vec![
+    let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init(options.blob_store.clone(), options.location.clone()),
-      deno_fetch::init::<Permissions>(
+      deno_web::init(
+        options.blob_store.clone(),
+        options.bootstrap.location.clone(),
+      ),
+      deno_fetch::init::<Permissions, deno_fetch::FsFetchHandler>(
         options.user_agent.clone(),
         options.root_cert_store.clone(),
         None,
         None,
         options.unsafely_ignore_certificate_errors.clone(),
         None,
+        deno_fetch::FsFetchHandler,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
@@ -118,16 +117,11 @@ impl MainWorker {
       ),
       deno_webstorage::init(options.origin_storage_dir.clone()),
       deno_crypto::init(options.seed),
-      deno_broadcast_channel::init(
-        options.broadcast_channel.clone(),
-        options.unstable,
-      ),
-      deno_webgpu::init(options.unstable),
+      deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
+      deno_webgpu::init(unstable),
       deno_timers::init::<Permissions>(),
       // ffi
-      deno_ffi::init::<Permissions>(options.unstable),
-      // Metrics
-      metrics::init(),
+      deno_ffi::init::<Permissions>(unstable),
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(options.create_web_worker_cb.clone()),
@@ -138,7 +132,7 @@ impl MainWorker {
       deno_tls::init(),
       deno_net::init::<Permissions>(
         options.root_cert_store.clone(),
-        options.unstable,
+        unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       ops::os::init(),
@@ -151,6 +145,7 @@ impl MainWorker {
       // Permissions ext (worker specific state)
       perm_ext,
     ];
+    extensions.extend(std::mem::take(&mut options.extensions));
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -173,27 +168,8 @@ impl MainWorker {
     }
   }
 
-  pub fn bootstrap(&mut self, options: &WorkerOptions) {
-    let runtime_options = json!({
-      "args": options.args,
-      "applySourceMaps": options.apply_source_maps,
-      "debugFlag": options.debug_flag,
-      "denoVersion": options.runtime_version,
-      "noColor": options.no_color,
-      "pid": std::process::id(),
-      "ppid": ops::runtime::ppid(),
-      "target": env!("TARGET"),
-      "tsVersion": options.ts_version,
-      "unstableFlag": options.unstable,
-      "v8Version": deno_core::v8_version(),
-      "location": options.location,
-      "cpuCount": options.cpu_count,
-    });
-
-    let script = format!(
-      "bootstrap.mainRuntime({})",
-      serde_json::to_string_pretty(&runtime_options).unwrap()
-    );
+  pub fn bootstrap(&mut self, options: &BootstrapOptions) {
+    let script = format!("bootstrap.mainRuntime({})", options.as_json());
     self
       .execute_script(&located_script_name!(), &script)
       .expect("Failed to execute bootstrap script");
@@ -325,12 +301,20 @@ mod tests {
     let permissions = Permissions::default();
 
     let options = WorkerOptions {
-      apply_source_maps: false,
+      bootstrap: BootstrapOptions {
+        apply_source_maps: false,
+        args: vec![],
+        cpu_count: 1,
+        debug_flag: false,
+        enable_testing_features: false,
+        location: None,
+        no_color: true,
+        runtime_version: "x".to_string(),
+        ts_version: "x".to_string(),
+        unstable: false,
+      },
+      extensions: vec![],
       user_agent: "x".to_string(),
-      args: vec![],
-      debug_flag: false,
-      unstable: false,
-      enable_testing_features: false,
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
       seed: None,
@@ -339,20 +323,15 @@ mod tests {
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
       module_loader: Rc::new(deno_core::FsModuleLoader),
-      runtime_version: "x".to_string(),
-      ts_version: "x".to_string(),
-      no_color: true,
       get_error_class_fn: None,
-      location: None,
       origin_storage_dir: None,
       blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
       shared_array_buffer_store: None,
       compiled_wasm_module_store: None,
-      cpu_count: 1,
     };
 
-    MainWorker::from_options(main_module, permissions, &options)
+    MainWorker::bootstrap_from_options(main_module, permissions, options)
   }
 
   #[tokio::test]

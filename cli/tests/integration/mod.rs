@@ -925,7 +925,6 @@ async fn test_resolve_dns() {
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
@@ -951,7 +950,6 @@ async fn test_resolve_dns() {
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net=127.0.0.1:4553")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
@@ -977,7 +975,6 @@ async fn test_resolve_dns() {
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net=deno.land")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
@@ -999,7 +996,6 @@ async fn test_resolve_dns() {
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
       .arg("run")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
@@ -1104,7 +1100,7 @@ fn basic_auth_tokens() {
   eprintln!("{}", stderr_str);
 
   assert!(stderr_str.contains(
-    "Import 'http://127.0.0.1:4554/001_hello.js' failed: 404 Not Found"
+    "Import 'http://127.0.0.1:4554/001_hello.js' failed, not found."
   ));
 
   let output = util::deno_cmd()

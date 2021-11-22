@@ -11,14 +11,16 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ZeroCopyBuf;
 use dlopen::raw::Library;
 use libffi::middle::Arg;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::ffi::c_void;
+use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 pub struct Unstable(pub bool);
@@ -36,7 +38,7 @@ fn check_unstable(state: &OpState, api_name: &str) {
 }
 
 pub trait FfiPermissions {
-  fn check(&mut self, path: &str) -> Result<(), AnyError>;
+  fn check(&mut self, path: &Path) -> Result<(), AnyError>;
 }
 
 #[derive(Clone)]
@@ -131,6 +133,7 @@ enum NativeType {
   ISize,
   F32,
   F64,
+  Buffer,
 }
 
 impl From<NativeType> for libffi::middle::Type {
@@ -149,6 +152,7 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::ISize => libffi::middle::Type::isize(),
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
+      NativeType::Buffer => libffi::middle::Type::pointer(),
     }
   }
 }
@@ -168,6 +172,7 @@ union NativeValue {
   isize_value: isize,
   f32_value: f32,
   f64_value: f64,
+  buffer: *const u8,
 }
 
 impl NativeValue {
@@ -210,7 +215,12 @@ impl NativeValue {
       NativeType::F64 => Self {
         f64_value: value_as_f64(value),
       },
+      NativeType::Buffer => unreachable!(),
     }
+  }
+
+  fn buffer(ptr: *const u8) -> Self {
+    Self { buffer: ptr }
   }
 
   unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
@@ -228,6 +238,7 @@ impl NativeValue {
       NativeType::ISize => Arg::new(&self.isize_value),
       NativeType::F32 => Arg::new(&self.f32_value),
       NativeType::F64 => Arg::new(&self.f64_value),
+      NativeType::Buffer => Arg::new(&self.buffer),
     }
   }
 }
@@ -257,6 +268,7 @@ fn value_as_f64(value: Value) -> f64 {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct ForeignFunction {
   parameters: Vec<NativeType>,
   result: NativeType,
@@ -268,6 +280,81 @@ struct FfiLoadArgs {
   symbols: HashMap<String, ForeignFunction>,
 }
 
+// `path` is only used on Windows.
+#[allow(unused_variables)]
+pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
+  match e {
+    #[cfg(target_os = "windows")]
+    // This calls FormatMessageW with library path
+    // as replacement for the insert sequences.
+    // Unlike libstd which passes the FORMAT_MESSAGE_IGNORE_INSERTS
+    // flag without any arguments.
+    //
+    // https://github.com/denoland/deno/issues/11632
+    dlopen::Error::OpeningLibraryError(e) => {
+      use std::ffi::OsStr;
+      use std::os::windows::ffi::OsStrExt;
+      use winapi::shared::minwindef::DWORD;
+      use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
+      use winapi::um::errhandlingapi::GetLastError;
+      use winapi::um::winbase::FormatMessageW;
+      use winapi::um::winbase::FORMAT_MESSAGE_ARGUMENT_ARRAY;
+      use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
+      use winapi::um::winnt::LANG_SYSTEM_DEFAULT;
+      use winapi::um::winnt::MAKELANGID;
+      use winapi::um::winnt::SUBLANG_SYS_DEFAULT;
+
+      let err_num = match e.raw_os_error() {
+        Some(err_num) => err_num,
+        // This should never hit unless dlopen changes its error type.
+        None => return e.to_string(),
+      };
+
+      // Language ID (0x0800)
+      let lang_id =
+        MAKELANGID(LANG_SYSTEM_DEFAULT, SUBLANG_SYS_DEFAULT) as DWORD;
+
+      let mut buf = vec![0; 500];
+
+      let path = OsStr::new(&path)
+        .encode_wide()
+        .chain(Some(0).into_iter())
+        .collect::<Vec<_>>();
+
+      let arguments = [path.as_ptr()];
+
+      loop {
+        unsafe {
+          let length = FormatMessageW(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY,
+            std::ptr::null_mut(),
+            err_num as DWORD,
+            lang_id as DWORD,
+            buf.as_mut_ptr(),
+            buf.len() as DWORD,
+            arguments.as_ptr() as _,
+          );
+
+          if length == 0 {
+            let err_num = GetLastError();
+            if err_num == ERROR_INSUFFICIENT_BUFFER {
+              buf.resize(buf.len() * 2, 0);
+              continue;
+            }
+
+            // Something went wrong, just return the original error.
+            return e.to_string();
+          }
+
+          let msg = String::from_utf16_lossy(&buf[..length as usize]);
+          return msg;
+        }
+      }
+    }
+    _ => e.to_string(),
+  }
+}
+
 fn op_ffi_load<FP>(
   state: &mut deno_core::OpState,
   args: FfiLoadArgs,
@@ -276,11 +363,19 @@ fn op_ffi_load<FP>(
 where
   FP: FfiPermissions + 'static,
 {
+  let path = args.path;
+
   check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(&args.path)?;
+  permissions.check(&PathBuf::from(&path))?;
 
-  let lib = Library::open(args.path)?;
+  let lib = Library::open(&path).map_err(|e| {
+    dlopen::Error::OpeningLibraryError(std::io::Error::new(
+      std::io::ErrorKind::Other,
+      format_error(e, path),
+    ))
+  })?;
+
   let mut resource = DynamicLibraryResource {
     lib,
     symbols: HashMap::new(),
@@ -293,20 +388,32 @@ where
   Ok(state.resource_table.add(resource))
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FfiCallArgs {
   rid: ResourceId,
   symbol: String,
   parameters: Vec<Value>,
+  buffers: Vec<ZeroCopyBuf>,
 }
 
 fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
+  let buffers: Vec<&[u8]> =
+    args.buffers.iter().map(|buffer| &buffer[..]).collect();
+
   let native_values = symbol
     .parameter_types
     .iter()
     .zip(args.parameters.into_iter())
-    .map(|(&native_type, value)| NativeValue::new(native_type, value))
+    .map(|(&native_type, value)| {
+      if let NativeType::Buffer = native_type {
+        let idx: usize = value_as_uint(value);
+        let ptr = buffers[idx].as_ptr();
+        NativeValue::buffer(ptr)
+      } else {
+        NativeValue::new(native_type, value)
+      }
+    })
     .collect::<Vec<_>>();
 
   let call_args = symbol
@@ -358,6 +465,7 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     NativeType::F64 => {
       json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
     }
+    NativeType::Buffer => unreachable!(),
   })
 }
 
@@ -397,4 +505,22 @@ async fn op_ffi_call_nonblocking(
   tokio::task::spawn_blocking(move || ffi_call(args, &symbol))
     .await
     .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+  #[cfg(target_os = "windows")]
+  #[test]
+  fn test_format_error() {
+    use super::format_error;
+
+    // BAD_EXE_FORMAT
+    let err = dlopen::Error::OpeningLibraryError(
+      std::io::Error::from_raw_os_error(0x000000C1),
+    );
+    assert_eq!(
+      format_error(err, "foo.dll".to_string()),
+      "foo.dll is not a valid Win32 application.\r\n".to_string(),
+    );
+  }
 }

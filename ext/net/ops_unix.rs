@@ -8,7 +8,6 @@ use crate::ops::OpPacket;
 use crate::ops::ReceiveArgs;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
-use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -114,10 +113,8 @@ pub(crate) async fn accept_unix(
 pub(crate) async fn receive_unix_packet(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
-  buf: Option<ZeroCopyBuf>,
+  mut buf: ZeroCopyBuf,
 ) -> Result<OpPacket, AnyError> {
-  let mut buf = buf.ok_or_else(null_opbuf)?;
-
   let rid = args.rid;
 
   let resource = state

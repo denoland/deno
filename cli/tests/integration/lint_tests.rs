@@ -95,6 +95,12 @@ itest!(lint_with_config_and_flags {
   exit_code: 1,
 });
 
+itest!(lint_with_config_without_tags {
+  args: "lint --config lint/Deno.no_tags.jsonc lint/with_config/",
+  output: "lint/with_config_without_tags.out",
+  exit_code: 1,
+});
+
 itest!(lint_with_malformed_config {
   args: "lint --config lint/Deno.malformed.jsonc",
   output: "lint/with_malformed_config.out",

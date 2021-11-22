@@ -121,9 +121,9 @@ pub struct LintFlags {
   pub files: Vec<PathBuf>,
   pub ignore: Vec<PathBuf>,
   pub rules: bool,
-  pub rules_tags: Vec<String>,
-  pub rules_include: Vec<String>,
-  pub rules_exclude: Vec<String>,
+  pub maybe_rules_tags: Option<Vec<String>>,
+  pub maybe_rules_include: Option<Vec<String>>,
+  pub maybe_rules_exclude: Option<Vec<String>>,
   pub json: bool,
 }
 
@@ -198,7 +198,7 @@ pub struct Flags {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
-  pub allow_ffi: Option<Vec<String>>,
+  pub allow_ffi: Option<Vec<PathBuf>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
@@ -324,7 +324,7 @@ impl Flags {
         args.push("--allow-ffi".to_string());
       }
       Some(ffi_allowlist) => {
-        let s = format!("--allow-ffi={}", ffi_allowlist.join(","));
+        let s = format!("--allow-ffi={}", join_paths(ffi_allowlist, ","));
         args.push(s);
       }
       _ => {}
@@ -358,7 +358,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          hostnames to use when fetching remote modules from
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
-    DENO_TLS_CA_STORE    Comma-seperated list of order dependent certificate stores
+    DENO_TLS_CA_STORE    Comma-separated list of order dependent certificate stores
                          (system, mozilla)
                          (defaults to mozilla)
     DENO_CERT            Load certificate authority from PEM encoded file
@@ -1140,6 +1140,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .multiple(true)
         .required(false),
     )
+    .arg(watch_arg())
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1626,7 +1627,8 @@ fn seed_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn compat_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("compat")
     .long("compat")
-    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs'.")
+    .requires("unstable")
+    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs' and globals like 'process'.")
 }
 
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -1683,10 +1685,10 @@ fn config_arg<'a, 'b>() -> Arg<'a, 'b> {
     .long_help(
       "Load configuration file.
 Before 1.14 Deno only supported loading tsconfig.json that allowed
-to customise TypeScript compiler settings. 
+to customise TypeScript compiler settings.
 
-Starting with 1.14 configuration file can be used to configure different 
-subcommands like `deno lint` or `deno fmt`. 
+Starting with 1.14 configuration file can be used to configure different
+subcommands like `deno lint` or `deno fmt`.
 
 It's recommended to use `deno.json` or `deno.jsonc` as a filename.",
     )
@@ -1964,6 +1966,7 @@ fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
+  flags.watch = matches.is_present("watch");
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -1973,25 +1976,25 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None => vec![],
   };
   let rules = matches.is_present("rules");
-  let rules_tags = match matches.values_of("rules-tags") {
-    Some(f) => f.map(String::from).collect(),
-    None => vec![],
-  };
-  let rules_include = match matches.values_of("rules-include") {
-    Some(f) => f.map(String::from).collect(),
-    None => vec![],
-  };
-  let rules_exclude = match matches.values_of("rules-exclude") {
-    Some(f) => f.map(String::from).collect(),
-    None => vec![],
-  };
+  let maybe_rules_tags = matches
+    .values_of("rules-tags")
+    .map(|f| f.map(String::from).collect());
+
+  let maybe_rules_include = matches
+    .values_of("rules-include")
+    .map(|f| f.map(String::from).collect());
+
+  let maybe_rules_exclude = matches
+    .values_of("rules-exclude")
+    .map(|f| f.map(String::from).collect());
+
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files,
     rules,
-    rules_tags,
-    rules_include,
-    rules_exclude,
+    maybe_rules_tags,
+    maybe_rules_include,
+    maybe_rules_exclude,
     ignore,
     json,
   });
@@ -2199,7 +2202,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 
   if let Some(ffi_wl) = matches.values_of("allow-ffi") {
-    let ffi_allowlist: Vec<String> = ffi_wl.map(ToString::to_string).collect();
+    let ffi_allowlist: Vec<PathBuf> = ffi_wl.map(PathBuf::from).collect();
     flags.allow_ffi = Some(ffi_allowlist);
     debug!("ffi allowlist: {:#?}", &flags.allow_ffi);
   }
@@ -2823,9 +2826,9 @@ mod tests {
             PathBuf::from("script_2.ts")
           ],
           rules: false,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: false,
           ignore: vec![],
         }),
@@ -2841,9 +2844,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![],
           rules: false,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: false,
           ignore: vec![
             PathBuf::from("script_1.ts"),
@@ -2861,9 +2864,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![],
           rules: true,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: false,
           ignore: vec![],
         }),
@@ -2884,9 +2887,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![],
           rules: false,
-          rules_tags: svec![""],
-          rules_include: svec!["ban-untagged-todo", "no-undef"],
-          rules_exclude: svec!["no-const-assign"],
+          maybe_rules_tags: Some(svec![""]),
+          maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
+          maybe_rules_exclude: Some(svec!["no-const-assign"]),
           json: false,
           ignore: vec![],
         }),
@@ -2901,9 +2904,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![PathBuf::from("script_1.ts")],
           rules: false,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: true,
           ignore: vec![],
         }),
@@ -2925,9 +2928,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![PathBuf::from("script_1.ts")],
           rules: false,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: true,
           ignore: vec![],
         }),
@@ -4451,7 +4454,8 @@ mod tests {
 
   #[test]
   fn compat() {
-    let r = flags_from_vec(svec!["deno", "run", "--compat", "foo.js"]);
+    let r =
+      flags_from_vec(svec!["deno", "run", "--compat", "--unstable", "foo.js"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4459,6 +4463,7 @@ mod tests {
           script: "foo.js".to_string(),
         }),
         compat: true,
+        unstable: true,
         ..Flags::default()
       }
     );

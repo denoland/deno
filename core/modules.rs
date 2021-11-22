@@ -1,13 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use rusty_v8 as v8;
-
 use crate::bindings;
 use crate::error::generic_error;
-use crate::error::AnyError;
 use crate::module_specifier::ModuleSpecifier;
 use crate::runtime::exception_to_err_result;
 use crate::OpState;
+use anyhow::Error;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
@@ -18,7 +16,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::convert::TryFrom;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -67,9 +64,8 @@ pub struct ModuleSource {
 }
 
 pub type PrepareLoadFuture =
-  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, AnyError>)>;
-pub type ModuleSourceFuture =
-  dyn Future<Output = Result<ModuleSource, AnyError>>;
+  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, Error>)>;
+pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, Error>>;
 
 pub trait ModuleLoader {
   /// Returns an absolute URL.
@@ -84,7 +80,7 @@ pub trait ModuleLoader {
     specifier: &str,
     referrer: &str,
     _is_main: bool,
-  ) -> Result<ModuleSpecifier, AnyError>;
+  ) -> Result<ModuleSpecifier, Error>;
 
   /// Given ModuleSpecifier, load its source code.
   ///
@@ -112,7 +108,7 @@ pub trait ModuleLoader {
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
-  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
     async { Ok(()) }.boxed_local()
   }
 }
@@ -127,7 +123,7 @@ impl ModuleLoader for NoopModuleLoader {
     _specifier: &str,
     _referrer: &str,
     _is_main: bool,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, Error> {
     Err(generic_error("Module loading is not supported"))
   }
 
@@ -155,7 +151,7 @@ impl ModuleLoader for FsModuleLoader {
     specifier: &str,
     referrer: &str,
     _is_main: bool,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, Error> {
     Ok(crate::resolve_import(specifier, referrer)?)
   }
 
@@ -277,7 +273,7 @@ impl RecursiveModuleLoad {
     load
   }
 
-  pub fn resolve_root(&self) -> Result<ModuleSpecifier, AnyError> {
+  pub fn resolve_root(&self) -> Result<ModuleSpecifier, Error> {
     match self.init {
       LoadInit::Main(ref specifier) => {
         self.loader.resolve(specifier, ".", true)
@@ -291,7 +287,7 @@ impl RecursiveModuleLoad {
     }
   }
 
-  pub async fn prepare(&self) -> Result<(), AnyError> {
+  pub async fn prepare(&self) -> Result<(), Error> {
     let op_state = self.op_state.clone();
     let (module_specifier, maybe_referrer) = match self.init {
       LoadInit::Main(ref specifier) => {
@@ -330,7 +326,7 @@ impl RecursiveModuleLoad {
     &mut self,
     scope: &mut v8::HandleScope,
     module_source: &ModuleSource,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), Error> {
     // Register the module in the module map unless it's already there. If the
     // specified URL and the "true" URL are different, register the alias.
     if module_source.module_url_specified != module_source.module_url_found {
@@ -412,7 +408,7 @@ impl RecursiveModuleLoad {
 }
 
 impl Stream for RecursiveModuleLoad {
-  type Item = Result<ModuleSource, AnyError>;
+  type Item = Result<ModuleSource, Error>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -552,7 +548,7 @@ impl ModuleMap {
     main: bool,
     name: &str,
     source: &str,
-  ) -> Result<ModuleId, AnyError> {
+  ) -> Result<ModuleId, Error> {
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
 
@@ -660,7 +656,7 @@ impl ModuleMap {
   pub async fn load_main(
     module_map_rc: Rc<RefCell<ModuleMap>>,
     specifier: &str,
-  ) -> Result<RecursiveModuleLoad, AnyError> {
+  ) -> Result<RecursiveModuleLoad, Error> {
     let load = RecursiveModuleLoad::main(specifier, module_map_rc.clone());
     load.prepare().await?;
     Ok(load)
@@ -669,7 +665,7 @@ impl ModuleMap {
   pub async fn load_side(
     module_map_rc: Rc<RefCell<ModuleMap>>,
     specifier: &str,
-  ) -> Result<RecursiveModuleLoad, AnyError> {
+  ) -> Result<RecursiveModuleLoad, Error> {
     let load = RecursiveModuleLoad::side(specifier, module_map_rc.clone());
     load.prepare().await?;
     Ok(load)
@@ -742,6 +738,7 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::ops::OpCall;
   use crate::serialize_op_result;
   use crate::JsRuntime;
   use crate::Op;
@@ -749,7 +746,6 @@ mod tests {
   use crate::RuntimeOptions;
   use futures::future::FutureExt;
   use parking_lot::Mutex;
-  use std::error::Error;
   use std::fmt;
   use std::future::Future;
   use std::io;
@@ -813,8 +809,8 @@ mod tests {
     }
   }
 
-  impl Error for MockError {
-    fn cause(&self) -> Option<&dyn Error> {
+  impl std::error::Error for MockError {
+    fn cause(&self) -> Option<&dyn std::error::Error> {
       unimplemented!()
     }
   }
@@ -825,7 +821,7 @@ mod tests {
   }
 
   impl Future for DelayedSourceCodeFuture {
-    type Output = Result<ModuleSource, AnyError>;
+    type Output = Result<ModuleSource, Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
       let inner = self.get_mut();
@@ -857,7 +853,7 @@ mod tests {
       specifier: &str,
       referrer: &str,
       _is_root: bool,
-    ) -> Result<ModuleSpecifier, AnyError> {
+    ) -> Result<ModuleSpecifier, Error> {
       let referrer = if referrer == "." {
         "file:///"
       } else {
@@ -1001,7 +997,7 @@ mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, AnyError> {
+      ) -> Result<ModuleSpecifier, Error> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.js");
         assert_eq!(referrer, "file:///a.js");
@@ -1029,8 +1025,8 @@ mod tests {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       let (control, _): (u8, ()) = payload.deserialize().unwrap();
       assert_eq!(control, 42);
-      let resp = (0, serialize_op_result(Ok(43), state));
-      Op::Async(Box::pin(futures::future::ready(resp)))
+      let resp = (0, 1, serialize_op_result(Ok(43), state));
+      Op::Async(OpCall::ready(resp))
     };
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -1119,7 +1115,7 @@ mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, AnyError> {
+      ) -> Result<ModuleSpecifier, Error> {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "/foo.js");
         assert_eq!(referrer, "file:///dyn_import2.js");
@@ -1179,7 +1175,7 @@ mod tests {
       specifier: &str,
       referrer: &str,
       _is_main: bool,
-    ) -> Result<ModuleSpecifier, AnyError> {
+    ) -> Result<ModuleSpecifier, Error> {
       let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
       assert!(c < 7);
       assert_eq!(specifier, "./b.js");
@@ -1211,7 +1207,7 @@ mod tests {
       _module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<String>,
       _is_dyn_import: bool,
-    ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
       self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
       async { Ok(()) }.boxed_local()
     }
@@ -1316,7 +1312,7 @@ mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, AnyError> {
+      ) -> Result<ModuleSpecifier, Error> {
         self.resolve_count.fetch_add(1, Ordering::Relaxed);
         let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
@@ -1659,7 +1655,7 @@ mod tests {
         specifier: &str,
         referrer: &str,
         _is_main: bool,
-      ) -> Result<ModuleSpecifier, AnyError> {
+      ) -> Result<ModuleSpecifier, Error> {
         let s = crate::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }

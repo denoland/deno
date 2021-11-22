@@ -540,7 +540,7 @@ impl ReplSession {
           Some(diagnostic) => Ok(EvaluationOutput::Error(format!(
             "{}: {} at {}:{}",
             colors::red("parse error"),
-            diagnostic.message,
+            diagnostic.message(),
             diagnostic.display_position.line_number,
             diagnostic.display_position.column_number,
           ))),
@@ -655,6 +655,7 @@ impl ReplSession {
       media_type: deno_ast::MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
+      scope_analysis: false,
     })?;
 
     let transpiled_src = transpile(
@@ -667,8 +668,11 @@ impl ReplSession {
         imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
         // JSX is not supported in the REPL
         transform_jsx: false,
+        jsx_automatic: false,
+        jsx_development: false,
         jsx_factory: "React.createElement".into(),
         jsx_fragment_factory: "React.Fragment".into(),
+        jsx_import_source: None,
         repl_imports: true,
       },
     )?
