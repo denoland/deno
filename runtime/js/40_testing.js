@@ -9,6 +9,7 @@
   const { serializePermissions } = window.__bootstrap.permissions;
   const { assert } = window.__bootstrap.util;
   const {
+    AggregateError,
     ArrayPrototypeFilter,
     ArrayPrototypePush,
     ArrayPrototypeSome,
@@ -297,7 +298,7 @@ finishing test case.`;
   }
 
   function formatError(error) {
-    if (error.errors) {
+    if (error instanceof AggregateError) {
       const message = error
         .errors
         .map((error) =>
