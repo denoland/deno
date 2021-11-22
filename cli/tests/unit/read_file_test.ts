@@ -105,15 +105,10 @@ unitTest(
 );
 
 unitTest(
-  { permissions: { read: true } },
-  async function readTextileWithAbortSignal() {
-    const ac = new AbortController();
-    queueMicrotask(() => ac.abort());
-    await assertRejects(async () => {
-      await Deno.readTextFile("cli/tests/testdata/fixture.json", {
-        signal: ac.signal,
-      });
-    });
+  { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
+  async function readFileProcFs() {
+    const data = await Deno.readFile("/proc/self/stat");
+    assert(data.byteLength > 0);
   },
 );
 

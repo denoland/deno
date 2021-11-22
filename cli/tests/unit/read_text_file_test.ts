@@ -83,3 +83,24 @@ unitTest(
     assertEquals(resourcesBefore, Deno.resources());
   },
 );
+
+unitTest(
+  { permissions: { read: true } },
+  async function readTextFileWithAbortSignal() {
+    const ac = new AbortController();
+    queueMicrotask(() => ac.abort());
+    await assertRejects(async () => {
+      await Deno.readFile("cli/tests/testdata/fixture.json", {
+        signal: ac.signal,
+      });
+    });
+  },
+);
+
+unitTest(
+  { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
+  async function readTextFileProcFs() {
+    const data = await Deno.readTextFile("/proc/self/stat");
+    assert(data.length > 0);
+  },
+);
