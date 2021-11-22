@@ -53,8 +53,8 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
     ("op_net_listen", op_sync(op_net_listen::<P>)),
     ("op_dgram_recv", op_async(op_dgram_recv)),
     ("op_dgram_send", op_async(op_dgram_send::<P>)),
-    ("op_udp_setbroadcast", op_sync(op_udp_setbroadcast)),
-    ("op_udp_getbroadcast", op_sync(op_udp_getbroadcast)),
+    ("op_udp_set_broadcast", op_sync(op_udp_set_broadcast)),
+    ("op_udp_get_broadcast", op_sync(op_udp_get_broadcast)),
     ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
   ]
 }
@@ -544,7 +544,7 @@ struct SetBroadcastArgs {
   flag: bool,
 }
 
-fn op_udp_setbroadcast(
+fn op_udp_set_broadcast(
   state: &mut OpState,
   args: SetBroadcastArgs,
   _: (),
@@ -565,7 +565,7 @@ struct GetBroadcastArgs {
   rid: ResourceId,
 }
 
-fn op_udp_getbroadcast(
+fn op_udp_get_broadcast(
   state: &mut OpState,
   args: GetBroadcastArgs,
   _: (),
