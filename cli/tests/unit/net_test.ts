@@ -330,7 +330,13 @@ unitTest(
 unitTest(
   { permissions: { net: true } },
   async function netUdpSendReceiveBroadcast() {
-    const alice = Deno.listenDatagram({ port: 3500, transport: "udp" });
+    // Must bind sender to an address that can send to the broadcast address on MacOS.
+    // Macos will give us error 49 when sending the broadcast packet if we omit hostname here.
+    const alice = Deno.listenDatagram({
+      port: 3500,
+      transport: "udp",
+      hostname: "0.0.0.0",
+    });
     assert(!alice.broadcast);
 
     const bob = Deno.listenDatagram({
