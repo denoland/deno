@@ -8,6 +8,7 @@ use super::language_server;
 use super::tsc;
 
 use crate::diagnostics;
+use crate::fs_util::specifier_to_file_path;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -314,7 +315,7 @@ fn filter_lint_documents(
   };
 
   documents.retain(|doc| {
-    let path = if let Ok(file_path) = doc.specifier().to_file_path() {
+    let path = if let Ok(file_path) = specifier_to_file_path(doc.specifier()) {
       file_path
     } else {
       return false;
