@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::fs_util::canonicalize_path;
+use crate::fs_util::specifier_to_file_path;
 
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
@@ -313,6 +314,33 @@ impl SerializedFilesConfig {
 pub struct FilesConfig {
   pub include: Vec<PathBuf>,
   pub exclude: Vec<PathBuf>,
+}
+
+impl FilesConfig {
+  /// Gets if the provided specifier is allowed based on the includes
+  /// and excludes in the configuration file.
+  pub fn matches_specifier(&self, specifier: &ModuleSpecifier) -> bool {
+    let path = if let Ok(file_path) = specifier_to_file_path(specifier) {
+      file_path
+    } else {
+      return false;
+    };
+
+    self.matches_path(path)
+  }
+
+  /// Gets if the provided path is allowed based on the includes
+  /// and excludes in the configuration file.
+  pub fn matches_path(&self, path: impl AsRef<Path>) -> bool {
+    // Skip files which is in the exclude list.
+    if self.exclude.iter().any(|i| path.as_ref().starts_with(i)) {
+      return false;
+    }
+
+    // Ignore files not in the include list if it's not empty.
+    self.include.is_empty()
+      || self.include.iter().any(|i| path.as_ref().starts_with(i))
+  }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

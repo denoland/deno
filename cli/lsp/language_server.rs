@@ -1019,6 +1019,10 @@ impl Inner {
       })?;
 
     let fmt_options = if let Some(fmt_config) = self.maybe_fmt_config.as_ref() {
+      // skip formatting any files ignored by the config file
+      if !fmt_config.files.matches_path(&file_path) {
+        return Ok(None);
+      }
       fmt_config.options.clone()
     } else {
       Default::default()
