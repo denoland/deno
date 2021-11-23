@@ -4,10 +4,9 @@ import {
   assertEquals,
   assertRejects,
   assertThrows,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function linkSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
@@ -46,7 +45,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function linkSyncExists() {
     const testDir = Deno.makeTempDirSync();
@@ -66,7 +65,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function linkSyncNotFound() {
     const testDir = Deno.makeTempDirSync();
@@ -83,7 +82,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: false, write: true } },
   function linkSyncReadPerm() {
     assertThrows(() => {
@@ -92,7 +91,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: false } },
   function linkSyncWritePerm() {
     assertThrows(() => {
@@ -101,7 +100,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function linkSuccess() {
     const testDir = Deno.makeTempDirSync();
@@ -140,7 +139,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function linkExists() {
     const testDir = Deno.makeTempDirSync();
@@ -160,7 +159,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function linkNotFound() {
     const testDir = Deno.makeTempDirSync();
@@ -177,7 +176,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: false, write: true } },
   async function linkReadPerm() {
     await assertRejects(async () => {
@@ -186,7 +185,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: false } },
   async function linkWritePerm() {
     await assertRejects(async () => {

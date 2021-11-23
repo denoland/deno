@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertMatch, unitTest } from "./test_util.ts";
+import { assert, assertEquals, assertMatch } from "./test_util.ts";
 
-unitTest(function errorStackMessageLine() {
+Deno.test(function errorStackMessageLine() {
   const e1 = new Error();
   e1.name = "Foo";
   e1.message = "bar";
@@ -41,7 +41,7 @@ unitTest(function errorStackMessageLine() {
   assertMatch(e6.stack!, /^null: null\n/);
 });
 
-unitTest(function captureStackTrace() {
+Deno.test(function captureStackTrace() {
   function foo() {
     const error = new Error();
     const stack1 = error.stack!;
@@ -55,7 +55,7 @@ unitTest(function captureStackTrace() {
 
 // FIXME(bartlomieju): no longer works after migrating
 // to JavaScript runtime code
-unitTest({ ignore: true }, function applySourceMap() {
+Deno.test({ ignore: true }, function applySourceMap() {
   const result = Deno.applySourceMap({
     fileName: "CLI_SNAPSHOT.js",
     lineNumber: 23,

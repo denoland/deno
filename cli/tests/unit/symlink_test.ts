@@ -4,10 +4,9 @@ import {
   assertRejects,
   assertThrows,
   pathToAbsoluteFileUrl,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function symlinkSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
@@ -22,7 +21,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function symlinkSyncURL() {
     const testDir = Deno.makeTempDirSync();
@@ -40,13 +39,16 @@ unitTest(
   },
 );
 
-unitTest(function symlinkSyncPerm() {
-  assertThrows(() => {
-    Deno.symlinkSync("oldbaddir", "newbaddir");
-  }, Deno.errors.PermissionDenied);
-});
+Deno.test(
+  { permissions: { read: false, write: false } },
+  function symlinkSyncPerm() {
+    assertThrows(() => {
+      Deno.symlinkSync("oldbaddir", "newbaddir");
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function symlinkSyncAlreadyExist() {
     const existingFile = Deno.makeTempFileSync();
@@ -61,7 +63,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function symlinkSuccess() {
     const testDir = Deno.makeTempDirSync();
@@ -76,7 +78,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function symlinkURL() {
     const testDir = Deno.makeTempDirSync();
@@ -94,7 +96,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function symlinkAlreadyExist() {
     const existingFile = Deno.makeTempFileSync();
@@ -109,7 +111,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: ["."] } },
   async function symlinkNoFullWritePermissions() {
     await assertRejects(
@@ -123,7 +125,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: ["."], write: true } },
   async function symlinkNoFullReadPermissions() {
     await assertRejects(
