@@ -71,21 +71,11 @@ pub async fn lint(
 
   if let Some(lint_config) = maybe_lint_config.as_ref() {
     if include_files.is_empty() {
-      include_files = lint_config
-        .files
-        .include
-        .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+      include_files = lint_config.files.include.clone();
     }
 
     if exclude_files.is_empty() {
-      exclude_files = lint_config
-        .files
-        .exclude
-        .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+      exclude_files = lint_config.files.exclude.clone();
     }
   }
 

@@ -60,6 +60,7 @@ use crate::config_file::TsConfig;
 use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
+use crate::fs_util::specifier_to_file_path;
 use crate::logger;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -303,9 +304,7 @@ impl Inner {
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
           Ok(url)
         } else if let Some(root_uri) = maybe_root_uri {
-          let root_path = root_uri
-            .to_file_path()
-            .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
+          let root_path = specifier_to_file_path(&root_uri)?;
           let config_path = root_path.join(config_str);
           Url::from_file_path(config_path).map_err(|_| {
             anyhow!("Bad file path for configuration file: \"{}\"", config_str)
@@ -319,9 +318,7 @@ impl Inner {
         info!("  Resolved configuration file: \"{}\"", config_url);
 
         let config_file = {
-          let buffer = config_url
-            .to_file_path()
-            .map_err(|_| anyhow!("Bad uri: \"{}\"", config_url))?;
+          let buffer = specifier_to_file_path(&config_url)?;
           let path = buffer
             .to_str()
             .ok_or_else(|| anyhow!("Bad uri: \"{}\"", config_url))?;
@@ -404,9 +401,7 @@ impl Inner {
       let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
         Ok(url)
       } else if let Some(root_uri) = &maybe_root_uri {
-        let root_path = root_uri
-          .to_file_path()
-          .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
+        let root_path = specifier_to_file_path(root_uri)?;
         let cache_path = root_path.join(cache_str);
         Url::from_file_path(cache_path).map_err(|_| {
           anyhow!("Bad file path for import path: {:?}", cache_str)
@@ -417,9 +412,7 @@ impl Inner {
           cache_str
         ))
       }?;
-      let cache_path = cache_url.to_file_path().map_err(|_| {
-        anyhow!("Cannot convert \"{}\" into a file path.", cache_url)
-      })?;
+      let cache_path = specifier_to_file_path(&cache_url)?;
       info!(
         "  Resolved cache path: \"{}\"",
         cache_path.to_string_lossy()
@@ -464,9 +457,7 @@ impl Inner {
           anyhow!("Bad data url for import map: {:?}", import_map_str)
         })
       } else if let Some(root_uri) = &maybe_root_uri {
-        let root_path = root_uri
-          .to_file_path()
-          .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
+        let root_path = specifier_to_file_path(root_uri)?;
         let import_map_path = root_path.join(import_map_str);
         Url::from_file_path(import_map_path).map_err(|_| {
           anyhow!("Bad file path for import map: {:?}", import_map_str)
@@ -481,9 +472,7 @@ impl Inner {
       let import_map_json = if import_map_url.scheme() == "data" {
         get_source_from_data_url(&import_map_url)?.0
       } else {
-        let import_map_path = import_map_url.to_file_path().map_err(|_| {
-          anyhow!("Cannot convert \"{}\" into a file path.", import_map_url)
-        })?;
+        let import_map_path = specifier_to_file_path(&import_map_url)?;
         info!(
           "  Resolved import map: \"{}\"",
           import_map_path.to_string_lossy()
@@ -941,9 +930,15 @@ impl Inner {
       .performance
       .mark("did_change_watched_files", Some(&params));
     let mut touched = false;
+    let changes: Vec<Url> = params
+      .changes
+      .iter()
+      .map(|f| self.url_map.normalize_url(&f.uri))
+      .collect();
+
     // if the current import map has changed, we need to reload it
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
-      if params.changes.iter().any(|fe| *import_map_uri == fe.uri) {
+      if changes.iter().any(|uri| import_map_uri == uri) {
         if let Err(err) = self.update_import_map().await {
           self.client.show_message(MessageType::Warning, err).await;
         }
@@ -952,7 +947,7 @@ impl Inner {
     }
     // if the current tsconfig has changed, we need to reload it
     if let Some(config_uri) = &self.maybe_config_uri {
-      if params.changes.iter().any(|fe| *config_uri == fe.uri) {
+      if changes.iter().any(|uri| config_uri == uri) {
         if let Err(err) = self.update_config_file() {
           self.client.show_message(MessageType::Warning, err).await;
         }
@@ -1024,11 +1019,10 @@ impl Inner {
     };
     let mark = self.performance.mark("formatting", Some(&params));
     let file_path =
-      if let Ok(file_path) = params.text_document.uri.to_file_path() {
-        file_path
-      } else {
-        PathBuf::from(params.text_document.uri.path())
-      };
+      specifier_to_file_path(&params.text_document.uri).map_err(|err| {
+        error!("{}", err);
+        LspError::invalid_request()
+      })?;
 
     let fmt_options = if let Some(fmt_config) = self.maybe_fmt_config.as_ref() {
       fmt_config.options.clone()
@@ -1622,6 +1616,54 @@ impl Inner {
     }
   }
 
+  async fn goto_type_definition(
+    &mut self,
+    params: GotoTypeDefinitionParams,
+  ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
+    if !self.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
+      return Ok(None);
+    }
+
+    let mark = self.performance.mark("goto_definition", Some(&params));
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
+    let req = tsc::RequestMethod::GetTypeDefinition {
+      specifier,
+      position: line_index
+        .offset_tsc(params.text_document_position_params.position)?,
+    };
+    let maybe_definition_info: Option<Vec<tsc::DefinitionInfo>> = self
+      .ts_server
+      .request(self.snapshot()?, req)
+      .await
+      .map_err(|err| {
+        error!("Unable to get type definition from TypeScript: {}", err);
+        LspError::internal_error()
+      })?;
+
+    let response = if let Some(definition_info) = maybe_definition_info {
+      let mut location_links = Vec::new();
+      for info in definition_info {
+        if let Some(link) =
+          info.document_span.to_link(line_index.clone(), self).await
+        {
+          location_links.push(link);
+        }
+      }
+      Some(GotoTypeDefinitionResponse::Link(location_links))
+    } else {
+      None
+    };
+
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
   async fn completion(
     &mut self,
     params: CompletionParams,
@@ -1865,7 +1907,7 @@ impl Inner {
       .config
       .root_uri
       .as_ref()
-      .and_then(|uri| uri.to_file_path().ok());
+      .and_then(|uri| specifier_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyIncomingCall>::new();
     for item in incoming_calls.iter() {
       if let Some(resolved) = item
@@ -1914,7 +1956,7 @@ impl Inner {
       .config
       .root_uri
       .as_ref()
-      .and_then(|uri| uri.to_file_path().ok());
+      .and_then(|uri| specifier_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyOutgoingCall>::new();
     for item in outgoing_calls.iter() {
       if let Some(resolved) = item
@@ -1970,7 +2012,7 @@ impl Inner {
         .config
         .root_uri
         .as_ref()
-        .and_then(|uri| uri.to_file_path().ok());
+        .and_then(|uri| specifier_to_file_path(uri).ok());
       let mut resolved_items = Vec::<CallHierarchyItem>::new();
       match one_or_many {
         tsc::OneOrMany::One(item) => {
@@ -2270,6 +2312,44 @@ impl Inner {
       Ok(None)
     }
   }
+
+  async fn symbol(
+    &mut self,
+    params: WorkspaceSymbolParams,
+  ) -> LspResult<Option<Vec<SymbolInformation>>> {
+    let mark = self.performance.mark("symbol", Some(&params));
+
+    let req = tsc::RequestMethod::GetNavigateToItems {
+      search: params.query,
+      // this matches vscode's hard coded result count
+      max_result_count: Some(256),
+      file: None,
+    };
+
+    let navigate_to_items: Vec<tsc::NavigateToItem> = self
+      .ts_server
+      .request(self.snapshot()?, req)
+      .await
+      .map_err(|err| {
+        error!("Failed request to tsserver: {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let maybe_symbol_information = if navigate_to_items.is_empty() {
+      None
+    } else {
+      let mut symbol_information = Vec::new();
+      for item in navigate_to_items {
+        if let Some(info) = item.to_symbol_information(self).await {
+          symbol_information.push(info);
+        }
+      }
+      Some(symbol_information)
+    };
+
+    self.performance.measure(mark);
+    Ok(maybe_symbol_information)
+  }
 }
 
 #[lspower::async_trait]
@@ -2390,6 +2470,13 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.goto_definition(params).await
   }
 
+  async fn goto_type_definition(
+    &self,
+    params: GotoTypeDefinitionParams,
+  ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
+    self.0.lock().await.goto_type_definition(params).await
+  }
+
   async fn completion(
     &self,
     params: CompletionParams,
@@ -2480,6 +2567,13 @@ impl lspower::LanguageServer for LanguageServer {
     params: SignatureHelpParams,
   ) -> LspResult<Option<SignatureHelp>> {
     self.0.lock().await.signature_help(params).await
+  }
+
+  async fn symbol(
+    &self,
+    params: WorkspaceSymbolParams,
+  ) -> LspResult<Option<Vec<SymbolInformation>>> {
+    self.0.lock().await.symbol(params).await
   }
 }
 

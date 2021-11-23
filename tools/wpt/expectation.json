@@ -3098,16 +3098,7 @@
         "AES-CBC 256-bit key with mismatched key and algorithm",
         "AES-CBC 128-bit key without decrypt usage",
         "AES-CBC 192-bit key without decrypt usage",
-        "AES-CBC 256-bit key without decrypt usage",
-        "AES-CBC 128-bit key, zeroPadChar",
-        "AES-CBC 128-bit key, bigPadChar",
-        "AES-CBC 128-bit key, inconsistentPadChars",
-        "AES-CBC 192-bit key, zeroPadChar",
-        "AES-CBC 192-bit key, bigPadChar",
-        "AES-CBC 192-bit key, inconsistentPadChars",
-        "AES-CBC 256-bit key, zeroPadChar",
-        "AES-CBC 256-bit key, bigPadChar",
-        "AES-CBC 256-bit key, inconsistentPadChars"
+        "AES-CBC 256-bit key without decrypt usage"
       ],
       "aes_cbc.https.any.worker.html": [
         "AES-CBC 128-bit key without encrypt usage",
@@ -3118,16 +3109,7 @@
         "AES-CBC 256-bit key with mismatched key and algorithm",
         "AES-CBC 128-bit key without decrypt usage",
         "AES-CBC 192-bit key without decrypt usage",
-        "AES-CBC 256-bit key without decrypt usage",
-        "AES-CBC 128-bit key, zeroPadChar",
-        "AES-CBC 128-bit key, bigPadChar",
-        "AES-CBC 128-bit key, inconsistentPadChars",
-        "AES-CBC 192-bit key, zeroPadChar",
-        "AES-CBC 192-bit key, bigPadChar",
-        "AES-CBC 192-bit key, inconsistentPadChars",
-        "AES-CBC 256-bit key, zeroPadChar",
-        "AES-CBC 256-bit key, bigPadChar",
-        "AES-CBC 256-bit key, inconsistentPadChars"
+        "AES-CBC 256-bit key without decrypt usage"
       ],
       "aes_ctr.https.any.html": [
         "AES-CTR 128-bit key",

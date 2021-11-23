@@ -5,10 +5,9 @@ import {
   assertRejects,
   assertThrows,
   pathToAbsoluteFileUrl,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest({ permissions: { read: true } }, function fstatSyncSuccess() {
+Deno.test({ permissions: { read: true } }, function fstatSyncSuccess() {
   const file = Deno.openSync("README.md");
   const fileInfo = Deno.fstatSync(file.rid);
   assert(fileInfo.isFile);
@@ -23,7 +22,7 @@ unitTest({ permissions: { read: true } }, function fstatSyncSuccess() {
   Deno.close(file.rid);
 });
 
-unitTest({ permissions: { read: true } }, async function fstatSuccess() {
+Deno.test({ permissions: { read: true } }, async function fstatSuccess() {
   const file = await Deno.open("README.md");
   const fileInfo = await Deno.fstat(file.rid);
   assert(fileInfo.isFile);
@@ -38,7 +37,7 @@ unitTest({ permissions: { read: true } }, async function fstatSuccess() {
   Deno.close(file.rid);
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function statSyncSuccess() {
     const readmeInfo = Deno.statSync("README.md");
@@ -101,13 +100,13 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { read: false } }, function statSyncPerm() {
+Deno.test({ permissions: { read: false } }, function statSyncPerm() {
   assertThrows(() => {
     Deno.statSync("README.md");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { read: true } }, function statSyncNotFound() {
+Deno.test({ permissions: { read: true } }, function statSyncNotFound() {
   assertThrows(
     () => {
       Deno.statSync("bad_file_name");
@@ -117,7 +116,7 @@ unitTest({ permissions: { read: true } }, function statSyncNotFound() {
   );
 });
 
-unitTest({ permissions: { read: true } }, function lstatSyncSuccess() {
+Deno.test({ permissions: { read: true } }, function lstatSyncSuccess() {
   const packageInfo = Deno.lstatSync("README.md");
   assert(packageInfo.isFile);
   assert(!packageInfo.isSymlink);
@@ -145,13 +144,13 @@ unitTest({ permissions: { read: true } }, function lstatSyncSuccess() {
   assert(!coreInfoByUrl.isSymlink);
 });
 
-unitTest({ permissions: { read: false } }, function lstatSyncPerm() {
+Deno.test({ permissions: { read: false } }, function lstatSyncPerm() {
   assertThrows(() => {
     Deno.lstatSync("hello.txt");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { read: true } }, function lstatSyncNotFound() {
+Deno.test({ permissions: { read: true } }, function lstatSyncNotFound() {
   assertThrows(
     () => {
       Deno.lstatSync("bad_file_name");
@@ -161,7 +160,7 @@ unitTest({ permissions: { read: true } }, function lstatSyncNotFound() {
   );
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function statSuccess() {
     const readmeInfo = await Deno.stat("README.md");
@@ -227,13 +226,13 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { read: false } }, async function statPerm() {
+Deno.test({ permissions: { read: false } }, async function statPerm() {
   await assertRejects(async () => {
     await Deno.stat("README.md");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { read: true } }, async function statNotFound() {
+Deno.test({ permissions: { read: true } }, async function statNotFound() {
   await assertRejects(
     async () => {
       await Deno.stat("bad_file_name");
@@ -243,7 +242,7 @@ unitTest({ permissions: { read: true } }, async function statNotFound() {
   );
 });
 
-unitTest({ permissions: { read: true } }, async function lstatSuccess() {
+Deno.test({ permissions: { read: true } }, async function lstatSuccess() {
   const readmeInfo = await Deno.lstat("README.md");
   assert(readmeInfo.isFile);
   assert(!readmeInfo.isSymlink);
@@ -271,13 +270,13 @@ unitTest({ permissions: { read: true } }, async function lstatSuccess() {
   assert(!coreInfoByUrl.isSymlink);
 });
 
-unitTest({ permissions: { read: false } }, async function lstatPerm() {
+Deno.test({ permissions: { read: false } }, async function lstatPerm() {
   await assertRejects(async () => {
     await Deno.lstat("README.md");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { read: true } }, async function lstatNotFound() {
+Deno.test({ permissions: { read: true } }, async function lstatNotFound() {
   await assertRejects(
     async () => {
       await Deno.lstat("bad_file_name");
@@ -287,7 +286,7 @@ unitTest({ permissions: { read: true } }, async function lstatNotFound() {
   );
 });
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os !== "windows",
     permissions: { read: true, write: true },
@@ -311,7 +310,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },

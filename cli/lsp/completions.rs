@@ -5,6 +5,7 @@ use super::lsp_custom;
 use super::tsc;
 
 use crate::fs_util::is_supported_ext;
+use crate::fs_util::specifier_to_file_path;
 
 use deno_core::normalize_path;
 use deno_core::resolve_path;
@@ -180,7 +181,7 @@ fn get_local_completions(
     return None;
   }
 
-  let mut base_path = base.to_file_path().ok()?;
+  let mut base_path = specifier_to_file_path(base).ok()?;
   base_path.pop();
   let mut current_path = normalize_path(base_path.join(current));
   // if the current text does not end in a `/` then we are still selecting on
@@ -340,7 +341,10 @@ fn relative_specifier(
     || specifier.port_or_known_default() != base.port_or_known_default()
   {
     if specifier.scheme() == "file" {
-      specifier.to_file_path().unwrap().to_string_lossy().into()
+      specifier_to_file_path(specifier)
+        .unwrap()
+        .to_string_lossy()
+        .into()
     } else {
       specifier.as_str().into()
     }

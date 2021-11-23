@@ -1,13 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
-unitTest(function resourcesCloseBadArgs() {
+Deno.test(function resourcesCloseBadArgs() {
   assertThrows(() => {
     Deno.close((null as unknown) as number);
   }, TypeError);
 });
 
-unitTest(function resourcesStdio() {
+Deno.test(function resourcesStdio() {
   const res = Deno.resources();
 
   assertEquals(res[0], "stdin");
@@ -15,7 +15,7 @@ unitTest(function resourcesStdio() {
   assertEquals(res[2], "stderr");
 });
 
-unitTest({ permissions: { net: true } }, async function resourcesNet() {
+Deno.test({ permissions: { net: true } }, async function resourcesNet() {
   const listener = Deno.listen({ port: 4501 });
   const dialerConn = await Deno.connect({ port: 4501 });
   const listenerConn = await listener.accept();
@@ -35,7 +35,7 @@ unitTest({ permissions: { net: true } }, async function resourcesNet() {
   listener.close();
 });
 
-unitTest({ permissions: { read: true } }, async function resourcesFile() {
+Deno.test({ permissions: { read: true } }, async function resourcesFile() {
   const resourcesBefore = Deno.resources();
   const f = await Deno.open("cli/tests/testdata/hello.txt");
   const resourcesAfter = Deno.resources();

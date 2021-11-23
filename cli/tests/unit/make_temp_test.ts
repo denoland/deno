@@ -4,10 +4,9 @@ import {
   assertEquals,
   assertRejects,
   assertThrows,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest({ permissions: { write: true } }, function makeTempDirSyncSuccess() {
+Deno.test({ permissions: { write: true } }, function makeTempDirSyncSuccess() {
   const dir1 = Deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
   const dir2 = Deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
   // Check that both dirs are different.
@@ -28,7 +27,7 @@ unitTest({ permissions: { write: true } }, function makeTempDirSyncSuccess() {
   }, Deno.errors.NotFound);
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function makeTempDirSyncMode() {
     const path = Deno.makeTempDirSync();
@@ -39,14 +38,14 @@ unitTest(
   },
 );
 
-unitTest(function makeTempDirSyncPerm() {
+Deno.test({ permissions: { write: false } }, function makeTempDirSyncPerm() {
   // makeTempDirSync should require write permissions (for now).
   assertThrows(() => {
     Deno.makeTempDirSync({ dir: "/baddir" });
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest(
+Deno.test(
   { permissions: { write: true } },
   async function makeTempDirSuccess() {
     const dir1 = await Deno.makeTempDir({ prefix: "hello", suffix: "world" });
@@ -70,7 +69,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function makeTempDirMode() {
     const path = await Deno.makeTempDir();
@@ -81,7 +80,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { write: true } }, function makeTempFileSyncSuccess() {
+Deno.test({ permissions: { write: true } }, function makeTempFileSyncSuccess() {
   const file1 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
   const file2 = Deno.makeTempFileSync({ prefix: "hello", suffix: "world" });
   // Check that both dirs are different.
@@ -103,7 +102,7 @@ unitTest({ permissions: { write: true } }, function makeTempFileSyncSuccess() {
   }, Deno.errors.NotFound);
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function makeTempFileSyncMode() {
     const path = Deno.makeTempFileSync();
@@ -114,14 +113,14 @@ unitTest(
   },
 );
 
-unitTest(function makeTempFileSyncPerm() {
+Deno.test({ permissions: { write: false } }, function makeTempFileSyncPerm() {
   // makeTempFileSync should require write permissions (for now).
   assertThrows(() => {
     Deno.makeTempFileSync({ dir: "/baddir" });
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest(
+Deno.test(
   { permissions: { write: true } },
   async function makeTempFileSuccess() {
     const file1 = await Deno.makeTempFile({ prefix: "hello", suffix: "world" });
@@ -146,7 +145,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function makeTempFileMode() {
     const path = await Deno.makeTempFile();

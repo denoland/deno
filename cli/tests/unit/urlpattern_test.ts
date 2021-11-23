@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
-unitTest(function urlPatternFromString() {
+Deno.test(function urlPatternFromString() {
   const pattern = new URLPattern("https://deno.land/foo/:bar");
   assertEquals(pattern.protocol, "https");
   assertEquals(pattern.hostname, "deno.land");
@@ -15,7 +15,7 @@ unitTest(function urlPatternFromString() {
   assertEquals(match.pathname.groups, { bar: "x" });
 });
 
-unitTest(function urlPatternFromStringWithBase() {
+Deno.test(function urlPatternFromStringWithBase() {
   const pattern = new URLPattern("/foo/:bar", "https://deno.land");
   assertEquals(pattern.protocol, "https");
   assertEquals(pattern.hostname, "deno.land");
@@ -29,7 +29,7 @@ unitTest(function urlPatternFromStringWithBase() {
   assertEquals(match.pathname.groups, { bar: "x" });
 });
 
-unitTest(function urlPatternFromInit() {
+Deno.test(function urlPatternFromInit() {
   const pattern = new URLPattern({
     pathname: "/foo/:bar",
   });

@@ -1,11 +1,6 @@
-import {
-  assert,
-  assertStringIncludes,
-  unitTest,
-  unreachable,
-} from "./test_util.ts";
+import { assert, assertStringIncludes, unreachable } from "./test_util.ts";
 
-unitTest(async function sendAsyncStackTrace() {
+Deno.test(async function sendAsyncStackTrace() {
   const buf = new Uint8Array(10);
   const rid = 10;
   try {
@@ -32,7 +27,7 @@ declare global {
   }
 }
 
-unitTest(async function opsAsyncBadResource() {
+Deno.test(async function opsAsyncBadResource() {
   try {
     const nonExistingRid = 9999;
     await Deno.core.read(
@@ -46,7 +41,7 @@ unitTest(async function opsAsyncBadResource() {
   }
 });
 
-unitTest(function opsSyncBadResource() {
+Deno.test(function opsSyncBadResource() {
   try {
     const nonExistingRid = 9999;
     Deno.core.opSync("op_read_sync", nonExistingRid, new Uint8Array(0));

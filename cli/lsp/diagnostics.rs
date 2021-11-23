@@ -2,11 +2,13 @@
 
 use super::analysis;
 use super::documents;
+use super::documents::Document;
 use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
 use crate::diagnostics;
+use crate::fs_util::specifier_to_file_path;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -300,13 +302,59 @@ fn ts_json_to_diagnostics(
     .collect()
 }
 
+// Filters documents according to the `include` and the `exclude` lists (from `StateSnapshot::maybe_lint_config`).
+// If a document is in the `exclude` list - then it be removed.
+// If the `include` list is not empty, and a document is not in - then it be removed too.
+fn filter_lint_documents(
+  snapshot: &language_server::StateSnapshot,
+  documents: &mut Vec<Document>,
+) {
+  let lint_config = match &snapshot.maybe_lint_config {
+    Some(config) => config,
+    None => return,
+  };
+
+  documents.retain(|doc| {
+    let path = if let Ok(file_path) = specifier_to_file_path(doc.specifier()) {
+      file_path
+    } else {
+      return false;
+    };
+
+    // Skip files which is in the exclude list.
+    if lint_config
+      .files
+      .exclude
+      .iter()
+      .any(|i| path.starts_with(i))
+    {
+      return false;
+    }
+
+    // Early return if the include list is empty.
+    if lint_config.files.include.is_empty() {
+      return true;
+    }
+
+    // Ignore files not in the include list.
+    lint_config
+      .files
+      .include
+      .iter()
+      .any(|i| path.starts_with(i))
+  });
+}
+
 async fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
   collection: Arc<Mutex<DiagnosticCollection>>,
 ) -> Result<DiagnosticVec, AnyError> {
-  let documents = snapshot.documents.documents(true, true);
+  let mut documents = snapshot.documents.documents(true, true);
   let workspace_settings = snapshot.config.settings.workspace.clone();
   let maybe_lint_config = snapshot.maybe_lint_config.clone();
+
+  filter_lint_documents(snapshot, &mut documents);
+
   tokio::task::spawn(async move {
     let mut diagnostics_vec = Vec::new();
     if workspace_settings.lint {
