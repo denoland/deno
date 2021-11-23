@@ -83,7 +83,7 @@ Deno.test(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true } },
   async function readTextFileWithAbortSignal() {
     const ac = new AbortController();
@@ -96,7 +96,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
   async function readTextFileProcFs() {
     const data = await Deno.readTextFile("/proc/self/stat");
