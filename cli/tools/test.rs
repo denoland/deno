@@ -18,7 +18,7 @@ use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
-use crate::tokio_util;
+use crate::resolver::JsxResolver;
 use crate::tools::coverage::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
@@ -33,6 +33,7 @@ use deno_core::serde_json::json;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::tokio_util::run_basic;
 use log::Level;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
@@ -137,6 +138,10 @@ pub struct TestSummary {
   pub passed: usize,
   pub failed: usize,
   pub ignored: usize,
+  pub passed_steps: usize,
+  pub failed_steps: usize,
+  pub pending_steps: usize,
+  pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
   pub failures: Vec<(TestDescription, String)>,
@@ -149,6 +154,10 @@ impl TestSummary {
       passed: 0,
       failed: 0,
       ignored: 0,
+      passed_steps: 0,
+      failed_steps: 0,
+      pending_steps: 0,
+      ignored_steps: 0,
       filtered_out: 0,
       measured: 0,
       failures: Vec::new(),
@@ -397,12 +406,24 @@ impl TestReporter for PrettyTestReporter {
       colors::green("ok").to_string()
     };
 
+    let get_steps_text = |count: usize| -> String {
+      if count == 0 {
+        String::new()
+      } else if count == 1 {
+        " (1 step)".to_string()
+      } else {
+        format!(" ({} steps)", count)
+      }
+    };
     println!(
-      "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+      "\ntest result: {}. {} passed{}; {} failed{}; {} ignored{}; {} measured; {} filtered out {}\n",
       status,
       summary.passed,
+      get_steps_text(summary.passed_steps),
       summary.failed,
+      get_steps_text(summary.failed_steps + summary.pending_steps),
       summary.ignored,
+      get_steps_text(summary.ignored_steps),
       summary.measured,
       summary.filtered_out,
       colors::gray(human_elapsed(elapsed.as_millis())),
@@ -589,7 +610,7 @@ fn extract_files_from_source_comments(
     scope_analysis: false,
   })?;
   let comments = parsed_source.comments().get_vec();
-  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 
   let files = comments
@@ -629,7 +650,7 @@ fn extract_files_from_fenced_blocks(
     col: 0,
   };
 
-  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
@@ -711,6 +732,7 @@ async fn check_specifiers(
       lib.clone(),
       Permissions::allow_all(),
       permissions.clone(),
+      false,
     )
     .await?;
   }
@@ -732,6 +754,7 @@ async fn check_specifiers(
     lib,
     Permissions::allow_all(),
     permissions,
+    true,
   )
   .await?;
 
@@ -782,7 +805,7 @@ async fn test_specifiers(
             sender,
           );
 
-          tokio_util::run_basic(future)
+          run_basic(future)
         });
 
         join_handle.join().unwrap()
@@ -845,6 +868,21 @@ async fn test_specifiers(
           }
 
           TestEvent::StepResult(description, result, duration) => {
+            match &result {
+              TestStepResult::Ok => {
+                summary.passed_steps += 1;
+              }
+              TestStepResult::Ignored => {
+                summary.ignored_steps += 1;
+              }
+              TestStepResult::Failed(_) => {
+                summary.failed_steps += 1;
+              }
+              TestStepResult::Pending(_) => {
+                summary.pending_steps += 1;
+              }
+            }
+
             reporter.report_step_result(&description, &result, duration);
           }
         }
@@ -1053,14 +1091,21 @@ pub async fn run_tests_with_watch(
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
-    let maybe_resolver =
-      ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
+    let maybe_import_map_resolver =
+      ps.maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      })
+      .flatten();
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
     let maybe_imports = ps
       .maybe_config_file
       .as_ref()
-      .map(|cf| cf.to_maybe_imports())
-      .flatten();
+      .map(|cf| cf.to_maybe_imports());
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
@@ -1081,13 +1126,24 @@ pub async fn run_tests_with_watch(
           .filter_map(|url| deno_core::resolve_url(url.as_str()).ok())
           .collect()
       };
-
+      let maybe_imports = if let Some(result) = maybe_imports {
+        result?
+      } else {
+        None
+      };
+      let maybe_resolver = if maybe_jsx_resolver.is_some() {
+        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+      } else {
+        maybe_import_map_resolver
+          .as_ref()
+          .map(|im| im.as_resolver())
+      };
       let graph = deno_graph::create_graph(
         test_modules.clone(),
         false,
         maybe_imports,
         cache.as_mut_loader(),
-        maybe_resolver.as_ref().map(|r| r.as_resolver()),
+        maybe_resolver,
         maybe_locker,
         None,
       )

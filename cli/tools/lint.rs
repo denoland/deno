@@ -14,7 +14,10 @@ use crate::fs_util::{collect_files, is_supported_ext};
 use crate::tools::fmt::run_parallelized;
 use crate::{colors, file_watcher};
 use deno_ast::MediaType;
-use deno_core::error::{anyhow, generic_error, AnyError, JsStackFrame};
+use deno_core::anyhow::anyhow;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
+use deno_core::error::JsStackFrame;
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
@@ -530,7 +533,7 @@ pub(crate) fn get_configured_rules(
   };
 
   let configured_rules = rules::get_filtered_rules(
-    maybe_configured_tags,
+    maybe_configured_tags.or_else(|| Some(vec!["recommended".to_string()])),
     maybe_configured_exclude,
     maybe_configured_include,
   );
@@ -540,4 +543,37 @@ pub(crate) fn get_configured_rules(
   }
 
   Ok(configured_rules)
+}
+
+#[cfg(test)]
+mod test {
+  use deno_lint::rules::get_recommended_rules;
+
+  use super::*;
+  use crate::config_file::LintRulesConfig;
+
+  #[test]
+  fn recommended_rules_when_no_tags_in_config() {
+    let lint_config = LintConfig {
+      rules: LintRulesConfig {
+        exclude: Some(vec!["no-debugger".to_string()]),
+        ..Default::default()
+      },
+      ..Default::default()
+    };
+    let rules =
+      get_configured_rules(Some(&lint_config), None, None, None).unwrap();
+    let mut rule_names = rules
+      .into_iter()
+      .map(|r| r.code().to_string())
+      .collect::<Vec<_>>();
+    rule_names.sort();
+    let mut recommended_rule_names = get_recommended_rules()
+      .into_iter()
+      .map(|r| r.code().to_string())
+      .filter(|n| n != "no-debugger")
+      .collect::<Vec<_>>();
+    recommended_rule_names.sort();
+    assert_eq!(rule_names, recommended_rule_names);
+  }
 }

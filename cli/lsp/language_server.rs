@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::MediaType;
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde_json;
@@ -39,6 +39,7 @@ use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
+use super::documents::AssetOrDocument;
 use super::documents::Documents;
 use super::documents::LanguageId;
 use super::lsp_custom;
@@ -47,7 +48,6 @@ use super::performance::Performance;
 use super::refactor;
 use super::registries;
 use super::text;
-use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
 use super::tsc::Assets;
@@ -70,7 +70,7 @@ const CACHE_PATH: &str = "deps";
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct StateSnapshot {
   pub assets: Assets,
   pub config: ConfigSnapshot,
@@ -116,7 +116,7 @@ pub(crate) struct Inner {
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
   /// An optional import map which is used to resolve modules.
-  pub(crate) maybe_import_map: Option<ImportMap>,
+  pub(crate) maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// A collection of measurements which instrument that performance of the LSP.
@@ -171,71 +171,82 @@ impl Inner {
     }
   }
 
-  /// Searches assets, open documents and external sources for a line_index,
-  /// which might be performed asynchronously, hydrating in memory caches for
-  /// subsequent requests.
-  pub(crate) async fn get_line_index(
+  /// Searches assets and open documents which might be performed asynchronously,
+  /// hydrating in memory caches for subsequent requests.
+  pub(crate) async fn get_asset_or_document(
     &mut self,
-    specifier: ModuleSpecifier,
-  ) -> Result<Arc<LineIndex>, AnyError> {
-    let mark = self
-      .performance
-      .mark("get_line_index", Some(json!({ "specifier": specifier })));
-    let result = if specifier.scheme() == "asset" {
-      if let Some(asset) = self.get_asset(&specifier).await? {
-        Ok(asset.line_index)
-      } else {
-        Err(anyhow!("asset is missing: {}", specifier))
-      }
-    } else if let Some(line_index) = self.documents.line_index(&specifier) {
-      Ok(line_index)
-    } else {
-      Err(anyhow!("Unable to find line index for: {}", specifier))
-    };
-    self.performance.measure(mark);
-    result
+    specifier: &ModuleSpecifier,
+  ) -> LspResult<AssetOrDocument> {
+    self
+      .get_maybe_asset_or_document(specifier)
+      .await?
+      .map_or_else(
+        || {
+          Err(LspError::invalid_params(format!(
+            "Unable to find asset or document for: {}",
+            specifier
+          )))
+        },
+        Ok,
+      )
   }
 
-  /// Only searches already cached assets and documents for a line index.  If
-  /// the line index cannot be found, `None` is returned.
-  pub fn get_line_index_sync(
-    &self,
+  /// Searches assets and open documents which might be performed asynchronously,
+  /// hydrating in memory caches for subsequent requests.
+  pub(crate) async fn get_maybe_asset_or_document(
+    &mut self,
     specifier: &ModuleSpecifier,
-  ) -> Option<Arc<LineIndex>> {
+  ) -> LspResult<Option<AssetOrDocument>> {
     let mark = self.performance.mark(
-      "get_line_index_sync",
+      "get_maybe_asset_or_document",
       Some(json!({ "specifier": specifier })),
     );
-    let maybe_line_index = if specifier.scheme() == "asset" {
-      if let Some(Some(asset)) = self.assets.get(specifier) {
-        Some(asset.line_index.clone())
-      } else {
-        None
-      }
+    let result = if specifier.scheme() == "asset" {
+      self.get_asset(specifier).await?.map(AssetOrDocument::Asset)
     } else {
-      self.documents.line_index(specifier)
+      self.documents.get(specifier).map(AssetOrDocument::Document)
     };
     self.performance.measure(mark);
-    maybe_line_index
+    Ok(result)
   }
 
-  // TODO(@kitsonk) we really should find a better way to just return the
-  // content as a `&str`, or be able to get the byte at a particular offset
-  // which is all that this API that is consuming it is trying to do at the
-  // moment
-  /// Searches already cached assets and documents and returns its text
-  /// content. If not found, `None` is returned.
-  pub(crate) fn get_text_content(
+  /// Only searches already cached assets and documents. If
+  /// the asset or document cannot be found an error is returned.
+  pub(crate) fn get_cached_asset_or_document(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Option<Arc<String>> {
+  ) -> LspResult<AssetOrDocument> {
+    self
+      .get_maybe_cached_asset_or_document(specifier)
+      .map_or_else(
+        || {
+          Err(LspError::invalid_params(format!(
+            "An unexpected specifier ({}) was provided.",
+            specifier
+          )))
+        },
+        Ok,
+      )
+  }
+
+  /// Only searches already cached assets and documents. If
+  /// the asset or document cannot be found, `None` is returned.
+  pub(crate) fn get_maybe_cached_asset_or_document(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<AssetOrDocument> {
     if specifier.scheme() == "asset" {
       self
         .assets
         .get(specifier)
-        .map(|o| o.clone().map(|a| a.text))?
+        .map(|maybe_asset| {
+          maybe_asset
+            .as_ref()
+            .map(|asset| AssetOrDocument::Asset(asset.clone()))
+        })
+        .flatten()
     } else {
-      self.documents.content(specifier)
+      self.documents.get(specifier).map(AssetOrDocument::Document)
     }
   }
 
@@ -247,33 +258,33 @@ impl Inner {
       "get_navigation_tree",
       Some(json!({ "specifier": specifier })),
     );
-    let maybe_navigation_tree = if specifier.scheme() == "asset" {
-      self.assets.get_navigation_tree(specifier)
-    } else {
-      self.documents.get_navigation_tree(specifier)
-    };
-    let navigation_tree = if let Some(navigation_tree) = maybe_navigation_tree {
-      navigation_tree
-    } else {
-      let navigation_tree: tsc::NavigationTree = self
-        .ts_server
-        .request(
-          self.snapshot()?,
-          tsc::RequestMethod::GetNavigationTree(specifier.clone()),
-        )
-        .await?;
-      let navigation_tree = Arc::new(navigation_tree);
-      if specifier.scheme() == "asset" {
-        self
-          .assets
-          .set_navigation_tree(specifier, navigation_tree.clone())?;
+    let asset_or_doc = self.get_cached_asset_or_document(specifier)?;
+    let navigation_tree =
+      if let Some(navigation_tree) = asset_or_doc.maybe_navigation_tree() {
+        navigation_tree
       } else {
-        self
-          .documents
-          .set_navigation_tree(specifier, navigation_tree.clone())?;
-      }
-      navigation_tree
-    };
+        let navigation_tree: tsc::NavigationTree = self
+          .ts_server
+          .request(
+            self.snapshot()?,
+            tsc::RequestMethod::GetNavigationTree(specifier.clone()),
+          )
+          .await?;
+        let navigation_tree = Arc::new(navigation_tree);
+        match asset_or_doc {
+          AssetOrDocument::Asset(_) => self
+            .assets
+            .cache_navigation_tree(specifier, navigation_tree.clone())?,
+          AssetOrDocument::Document(doc) => {
+            self.documents.try_cache_navigation_tree(
+              specifier,
+              &doc.script_version(),
+              navigation_tree.clone(),
+            )?
+          }
+        }
+        navigation_tree
+      };
     self.performance.measure(mark);
     Ok(navigation_tree)
   }
@@ -335,7 +346,11 @@ impl Inner {
           | MediaType::Dts
       )
     } else {
-      self.documents.is_diagnosable(specifier)
+      self
+        .documents
+        .get(specifier)
+        .map(|d| d.is_diagnosable())
+        .unwrap_or(false)
     }
   }
 
@@ -356,8 +371,8 @@ impl Inner {
     Ok(())
   }
 
-  pub(crate) fn snapshot(&self) -> LspResult<StateSnapshot> {
-    Ok(StateSnapshot {
+  pub(crate) fn snapshot(&self) -> LspResult<Arc<StateSnapshot>> {
+    Ok(Arc::new(StateSnapshot {
       assets: self.assets.clone(),
       config: self.config.snapshot().map_err(|err| {
         error!("{}", err);
@@ -370,7 +385,7 @@ impl Inner {
       module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       url_map: self.url_map.clone(),
-    })
+    }))
   }
 
   pub fn update_cache(&mut self) -> Result<(), AnyError> {
@@ -481,13 +496,13 @@ impl Inner {
           )
         })?
       };
-      let import_map =
-        ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
+      let import_map = Arc::new(ImportMap::from_json(
+        &import_map_url.to_string(),
+        &import_map_json,
+      )?);
       self.maybe_import_map_uri = Some(import_map_url);
-      self.maybe_import_map = Some(import_map.clone());
-      self.documents.set_import_map(Some(Arc::new(import_map)));
+      self.maybe_import_map = Some(import_map);
     } else {
-      self.documents.set_import_map(None);
       self.maybe_import_map = None;
     }
     self.performance.measure(mark);
@@ -594,22 +609,20 @@ impl Inner {
     Ok(())
   }
 
-  pub(crate) fn document_version(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<i32> {
-    self.documents.lsp_version(specifier)
-  }
-
   async fn get_asset(
     &mut self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<AssetDocument>, AnyError> {
+  ) -> LspResult<Option<AssetDocument>> {
     if let Some(maybe_asset) = self.assets.get(specifier) {
       Ok(maybe_asset.clone())
     } else {
       let maybe_asset =
-        tsc::get_asset(specifier, &self.ts_server, self.snapshot()?).await?;
+        tsc::get_asset(specifier, &self.ts_server, self.snapshot()?)
+          .await
+          .map_err(|err| {
+            error!("Error getting asset {}: {}", specifier, err);
+            LspError::internal_error()
+          })?;
       self.assets.insert(specifier.clone(), maybe_asset.clone());
       Ok(maybe_asset)
     }
@@ -700,6 +713,10 @@ impl Inner {
     if let Err(err) = self.update_registries().await {
       self.client.show_message(MessageType::Warning, err).await;
     }
+    self.documents.update_config(
+      self.maybe_import_map.clone(),
+      self.maybe_config_file.as_ref(),
+    );
 
     self.performance.measure(mark);
     Ok(InitializeResult {
@@ -779,14 +796,14 @@ impl Inner {
       );
     }
     let content = Arc::new(params.text_document.text);
-    self.documents.open(
+    let document = self.documents.open(
       specifier.clone(),
       params.text_document.version,
       params.text_document.language_id.parse().unwrap(),
       content,
     );
 
-    if self.is_diagnosable(&specifier) {
+    if document.is_diagnosable() {
       self
         .diagnostics_server
         .invalidate(self.documents.dependents(&specifier))
@@ -807,8 +824,8 @@ impl Inner {
       params.text_document.version,
       params.content_changes,
     ) {
-      Ok(()) => {
-        if self.is_diagnosable(&specifier) {
+      Ok(document) => {
+        if document.is_diagnosable() {
           self
             .diagnostics_server
             .invalidate(self.documents.dependents(&specifier))
@@ -908,6 +925,10 @@ impl Inner {
     if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
     }
+    self.documents.update_config(
+      self.maybe_import_map.clone(),
+      self.maybe_config_file.as_ref(),
+    );
 
     self.performance.measure(mark);
   }
@@ -942,6 +963,10 @@ impl Inner {
       }
     }
     if touched {
+      self.documents.update_config(
+        self.maybe_import_map.clone(),
+        self.maybe_config_file.as_ref(),
+      );
       self.diagnostics_server.invalidate_all().await;
       if let Err(err) = self.diagnostics_server.update() {
         error!("Cannot update diagnostics: {}", err);
@@ -962,28 +987,19 @@ impl Inner {
     }
 
     let mark = self.performance.mark("document_symbol", Some(&params));
+    let asset_or_document = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_document.line_index();
 
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
-
-    let req = tsc::RequestMethod::GetNavigationTree(specifier);
-    let navigation_tree: tsc::NavigationTree = self
-      .ts_server
-      .request(self.snapshot()?, req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
+    let navigation_tree =
+      self.get_navigation_tree(&specifier).await.map_err(|err| {
+        error!(
+          "Error getting document symbols for \"{}\": {}",
+          specifier, err
+        );
+        LspError::internal_error()
       })?;
 
-    let response = if let Some(child_items) = navigation_tree.child_items {
+    let response = if let Some(child_items) = &navigation_tree.child_items {
       let mut document_symbols = Vec::<DocumentSymbol>::new();
       for item in child_items {
         item
@@ -1002,9 +1018,10 @@ impl Inner {
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.documents.is_formattable(&specifier) {
-      return Ok(None);
-    }
+    let document = match self.documents.get(&specifier) {
+      Some(doc) if doc.is_open() => doc,
+      _ => return Ok(None),
+    };
     let mark = self.performance.mark("formatting", Some(&params));
     let file_path =
       if let Ok(file_path) = params.text_document.uri.to_file_path() {
@@ -1019,34 +1036,23 @@ impl Inner {
       Default::default()
     };
 
-    let content = self.documents.content(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(
-          "The specified file could not be found in memory.",
-        ))
-      },
-      Ok,
-    )?;
-    let line_index = self.documents.line_index(&specifier).unwrap();
-    let maybe_parsed_source = self.documents.parsed_source(&specifier);
-
     let text_edits = tokio::task::spawn_blocking(move || {
-      let format_result = match maybe_parsed_source {
+      let format_result = match document.maybe_parsed_source() {
         Some(Ok(parsed_source)) => {
           format_parsed_source(&parsed_source, fmt_options)
         }
         Some(Err(err)) => Err(err.to_string()),
         None => {
           // it's not a js/ts file, so attempt to format its contents
-          format_file(&file_path, content.as_str(), fmt_options)
+          format_file(&file_path, document.content().as_str(), fmt_options)
         }
       };
 
       match format_result {
         Ok(new_text) => Some(text::get_edits(
-          content.as_str(),
+          document.content().as_str(),
           &new_text,
-          line_index.as_ref(),
+          document.line_index().as_ref(),
         )),
         Err(err) => {
           // TODO(lucacasonato): handle error properly
@@ -1082,14 +1088,17 @@ impl Inner {
     }
 
     let mark = self.performance.mark("hover", Some(&params));
-    let hover = if let Some((_, dep, range)) =
-      self.documents.get_maybe_dependency(
-        &specifier,
-        &params.text_document_position_params.position,
-      ) {
-      let maybe_types_dependency =
-        self.documents.get_maybe_types_for_dependency(&dep);
-      let value = match (&dep.maybe_code, &dep.maybe_type, &maybe_types_dependency) {
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let hover = if let Some((_, dep, range)) = asset_or_doc
+      .get_maybe_dependency(&params.text_document_position_params.position)
+    {
+      let dep_maybe_types_dependency = dep
+        .get_code()
+        .map(|s| self.documents.get(s))
+        .flatten()
+        .map(|d| d.maybe_types_dependency())
+        .flatten();
+      let value = match (&dep.maybe_code, &dep.maybe_type, &dep_maybe_types_dependency) {
         (Some(code_dep), Some(type_dep), None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
           to_hover_text(code_dep),
@@ -1124,15 +1133,7 @@ impl Inner {
         range: Some(to_lsp_range(&range)),
       })
     } else {
-      let line_index = self.get_line_index_sync(&specifier).map_or_else(
-        || {
-          Err(LspError::invalid_params(format!(
-            "An unexpected specifier ({}) was provided.",
-            specifier
-          )))
-        },
-        Ok,
-      )?;
+      let line_index = asset_or_doc.line_index();
       let req = tsc::RequestMethod::GetQuickInfo((
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
@@ -1164,7 +1165,8 @@ impl Inner {
 
     let mark = self.performance.mark("code_action", Some(&params));
     let mut all_actions = CodeActionResponse::new();
-    let line_index = self.get_line_index_sync(&specifier).unwrap();
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
 
     // QuickFix
     let fixable_diagnostics: Vec<&Diagnostic> = params
@@ -1254,12 +1256,8 @@ impl Inner {
             .add_deno_lint_ignore_action(
               &specifier,
               diagnostic,
-              self.documents.text_info(&specifier),
-              self
-                .documents
-                .parsed_source(&specifier)
-                .map(|r| r.ok())
-                .flatten(),
+              asset_or_doc.document().map(|d| d.text_info()),
+              asset_or_doc.maybe_parsed_source().map(|r| r.ok()).flatten(),
             )
             .map_err(|err| {
               error!("Unable to fix lint error: {}", err);
@@ -1388,8 +1386,9 @@ impl Inner {
           error!("Unable to decode code action data: {}", err);
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
-      let line_index =
-        self.get_line_index_sync(&action_data.specifier).unwrap();
+      let asset_or_doc =
+        self.get_cached_asset_or_document(&action_data.specifier)?;
+      let line_index = asset_or_doc.line_index();
       let start = line_index.offset_tsc(action_data.range.start)?;
       let length = line_index.offset_tsc(action_data.range.end)? - start;
       let req = tsc::RequestMethod::GetEditsForRefactor((
@@ -1437,25 +1436,15 @@ impl Inner {
     }
 
     let mark = self.performance.mark("code_lens", Some(&params));
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
     let navigation_tree =
       self.get_navigation_tree(&specifier).await.map_err(|err| {
         error!("Error getting code lenses for \"{}\": {}", specifier, err);
         LspError::internal_error()
       })?;
-    let parsed_source = self
-      .documents
-      .parsed_source(&specifier)
-      .map(|r| r.ok())
-      .flatten();
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let parsed_source =
+      asset_or_doc.maybe_parsed_source().map(|r| r.ok()).flatten();
+    let line_index = asset_or_doc.line_index();
     let code_lenses = code_lens::collect(
       &specifier,
       parsed_source,
@@ -1508,15 +1497,8 @@ impl Inner {
     }
 
     let mark = self.performance.mark("document_highlight", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
     let files_to_search = vec![specifier.clone()];
     let req = tsc::RequestMethod::GetDocumentHighlights((
       specifier,
@@ -1560,17 +1542,10 @@ impl Inner {
     }
 
     let mark = self.performance.mark("references", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
     let req = tsc::RequestMethod::GetReferences((
-      specifier,
+      specifier.clone(),
       line_index.offset_tsc(params.text_document_position.position)?,
     ));
     let maybe_references: Option<Vec<tsc::ReferenceEntry>> = self
@@ -1590,10 +1565,14 @@ impl Inner {
         }
         let reference_specifier =
           resolve_url(&reference.document_span.file_name).unwrap();
-        // TODO(lucacasonato): handle error correctly
-        let line_index =
-          self.get_line_index(reference_specifier).await.unwrap();
-        results.push(reference.to_location(line_index, self));
+        let reference_line_index = if reference_specifier == specifier {
+          line_index.clone()
+        } else {
+          let asset_or_doc =
+            self.get_asset_or_document(&reference_specifier).await?;
+          asset_or_doc.line_index()
+        };
+        results.push(reference.to_location(reference_line_index, self));
       }
 
       self.performance.measure(mark);
@@ -1618,15 +1597,8 @@ impl Inner {
     }
 
     let mark = self.performance.mark("goto_definition", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
     let req = tsc::RequestMethod::GetDefinition((
       specifier,
       line_index.offset_tsc(params.text_document_position_params.position)?,
@@ -1664,29 +1636,23 @@ impl Inner {
     }
 
     let mark = self.performance.mark("completion", Some(&params));
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
     // Import specifiers are something wholly internal to Deno, so for
     // completions, we will use internal logic and if there are completions
     // for imports, we will return those and not send a message into tsc, where
     // other completions come from.
+    let snapshot = self.snapshot()?;
     let response = if let Some(response) = completions::get_import_completions(
       &specifier,
       &params.text_document_position.position,
-      &self.snapshot()?,
+      &snapshot,
       self.client.clone(),
     )
     .await
     {
       Some(response)
     } else {
-      let line_index = self.get_line_index_sync(&specifier).map_or_else(
-        || {
-          Err(LspError::invalid_params(format!(
-            "An unexpected specifier ({}) was provided.",
-            specifier
-          )))
-        },
-        Ok,
-      )?;
+      let line_index = asset_or_doc.line_index();
       let trigger_character = if let Some(context) = &params.context {
         context.trigger_character.clone()
       } else {
@@ -1789,15 +1755,8 @@ impl Inner {
     }
 
     let mark = self.performance.mark("goto_implementation", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::GetImplementation((
       specifier,
@@ -1842,15 +1801,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark("folding_range", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
 
     let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
     let outlining_spans: Vec<tsc::OutliningSpan> = self
@@ -1863,20 +1814,13 @@ impl Inner {
       })?;
 
     let response = if !outlining_spans.is_empty() {
-      let text_content =
-        self.get_text_content(&specifier).ok_or_else(|| {
-          LspError::invalid_params(format!(
-            "An unexpected specifier ({}) was provided.",
-            specifier
-          ))
-        })?;
       Some(
         outlining_spans
           .iter()
           .map(|span| {
             span.to_folding_range(
-              line_index.clone(),
-              text_content.as_str().as_bytes(),
+              asset_or_doc.line_index(),
+              asset_or_doc.text().as_str().as_bytes(),
               self.config.client_capabilities.line_folding_only,
             )
           })
@@ -1901,15 +1845,8 @@ impl Inner {
     }
 
     let mark = self.performance.mark("incoming_calls", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::ProvideCallHierarchyIncomingCalls((
       specifier.clone(),
@@ -1957,15 +1894,8 @@ impl Inner {
     }
 
     let mark = self.performance.mark("outgoing_calls", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::ProvideCallHierarchyOutgoingCalls((
       specifier.clone(),
@@ -2018,15 +1948,8 @@ impl Inner {
     let mark = self
       .performance
       .mark("prepare_call_hierarchy", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::PrepareCallHierarchy((
       specifier.clone(),
@@ -2097,15 +2020,8 @@ impl Inner {
     }
 
     let mark = self.performance.mark("rename", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::FindRenameLocations {
       specifier,
@@ -2192,15 +2108,8 @@ impl Inner {
     }
 
     let mark = self.performance.mark("selection_range", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
 
     let mut selection_ranges = Vec::<SelectionRange>::new();
     for position in params.positions {
@@ -2237,15 +2146,8 @@ impl Inner {
     }
 
     let mark = self.performance.mark("semantic_tokens_full", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
 
     let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
       specifier.clone(),
@@ -2263,8 +2165,8 @@ impl Inner {
         LspError::invalid_request()
       })?;
 
-    let semantic_tokens: SemanticTokens =
-      semantic_classification.to_semantic_tokens(line_index);
+    let semantic_tokens =
+      semantic_classification.to_semantic_tokens(line_index)?;
     let response = if !semantic_tokens.data.is_empty() {
       Some(SemanticTokensResult::Tokens(semantic_tokens))
     } else {
@@ -2288,15 +2190,8 @@ impl Inner {
     let mark = self
       .performance
       .mark("semantic_tokens_range", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
 
     let start = line_index.offset_tsc(params.range.start)?;
     let length = line_index.offset_tsc(params.range.end)? - start;
@@ -2313,8 +2208,8 @@ impl Inner {
         LspError::invalid_request()
       })?;
 
-    let semantic_tokens: SemanticTokens =
-      semantic_classification.to_semantic_tokens(line_index);
+    let semantic_tokens =
+      semantic_classification.to_semantic_tokens(line_index)?;
     let response = if !semantic_tokens.data.is_empty() {
       Some(SemanticTokensRangeResult::Tokens(semantic_tokens))
     } else {
@@ -2338,15 +2233,8 @@ impl Inner {
     }
 
     let mark = self.performance.mark("signature_help", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).map_or_else(
-      || {
-        Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )))
-      },
-      Ok,
-    )?;
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
     let options = if let Some(context) = params.context {
       tsc::SignatureHelpItemsOptions {
         trigger_reason: Some(tsc::SignatureHelpTriggerReason {
@@ -2624,6 +2512,7 @@ impl Inner {
         CacheServer::new(
           self.maybe_cache_path.clone(),
           self.maybe_import_map.clone(),
+          self.maybe_config_file.clone(),
         )
         .await,
       );
@@ -2676,7 +2565,12 @@ impl Inner {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let contents = if specifier.as_str() == "deno:/status.md" {
       let mut contents = String::new();
-      let mut documents_specifiers = self.documents.specifiers(false, false);
+      let mut documents_specifiers = self
+        .documents
+        .documents(false, false)
+        .into_iter()
+        .map(|d| d.specifier().clone())
+        .collect::<Vec<_>>();
       documents_specifiers.sort();
       let measures = self.performance.to_vec();
       let workspace_settings = self.config.get_workspace_settings();
@@ -2730,27 +2624,15 @@ impl Inner {
       }
       Some(contents)
     } else {
-      match specifier.scheme() {
-        "asset" => {
-          if let Some(asset) = self
-            .get_asset(&specifier)
-            .await
-            .map_err(|_| LspError::internal_error())?
-          {
-            Some(asset.text.to_string())
-          } else {
-            error!("Missing asset: {}", specifier);
-            None
-          }
-        }
-        _ => {
-          if let Some(source) = self.documents.content(&specifier) {
-            Some(source.to_string())
-          } else {
-            error!("The cached source was not found: {}", specifier);
-            None
-          }
-        }
+      let asset_or_doc = self
+        .get_maybe_asset_or_document(&specifier)
+        .await
+        .map_err(|_| LspError::internal_error())?;
+      if let Some(asset_or_doc) = asset_or_doc {
+        Some(asset_or_doc.text().to_string())
+      } else {
+        error!("The source was not found: {}", specifier);
+        None
       }
     };
     self.performance.measure(mark);

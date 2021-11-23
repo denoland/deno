@@ -16,11 +16,10 @@ use super::text::LineIndex;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::TsConfig;
-use crate::tokio_util::create_basic_runtime;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -37,7 +36,10 @@ use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
+use deno_runtime::tokio_util::create_basic_runtime;
 use log::warn;
+use lspower::jsonrpc::Error as LspError;
+use lspower::jsonrpc::Result as LspResult;
 use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
@@ -69,7 +71,7 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
 
 type Request = (
   RequestMethod,
-  StateSnapshot,
+  Arc<StateSnapshot>,
   oneshot::Sender<Result<Value, AnyError>>,
 );
 
@@ -105,7 +107,7 @@ impl TsServer {
 
   pub(crate) async fn request<R>(
     &self,
-    snapshot: StateSnapshot,
+    snapshot: Arc<StateSnapshot>,
     req: RequestMethod,
   ) -> Result<R, AnyError>
   where
@@ -119,25 +121,58 @@ impl TsServer {
   }
 }
 
+#[derive(Debug, Clone)]
+struct AssetDocumentInner {
+  text: Arc<String>,
+  length: usize,
+  line_index: Arc<LineIndex>,
+  maybe_navigation_tree: Option<Arc<NavigationTree>>,
+}
+
 /// An lsp representation of an asset in memory, that has either been retrieved
 /// from static assets built into Rust, or static assets built into tsc.
 #[derive(Debug, Clone)]
-pub struct AssetDocument {
-  pub text: Arc<String>,
-  pub length: usize,
-  pub line_index: Arc<LineIndex>,
-  pub maybe_navigation_tree: Option<Arc<NavigationTree>>,
-}
+pub struct AssetDocument(Arc<AssetDocumentInner>);
 
 impl AssetDocument {
-  pub fn new<T: AsRef<str>>(text: T) -> Self {
+  pub fn new(text: impl AsRef<str>) -> Self {
     let text = text.as_ref();
-    Self {
+    Self(Arc::new(AssetDocumentInner {
       text: Arc::new(text.to_string()),
       length: text.encode_utf16().count(),
       line_index: Arc::new(LineIndex::new(text)),
       maybe_navigation_tree: None,
-    }
+    }))
+  }
+
+  pub fn with_navigation_tree(
+    &self,
+    tree: Arc<NavigationTree>,
+  ) -> AssetDocument {
+    AssetDocument(Arc::new(AssetDocumentInner {
+      maybe_navigation_tree: Some(tree),
+      ..(*self.0).clone()
+    }))
+  }
+
+  pub fn text(&self) -> Arc<String> {
+    self.0.text.clone()
+  }
+
+  pub fn text_str(&self) -> &str {
+    self.0.text.as_str()
+  }
+
+  pub fn length(&self) -> usize {
+    self.0.length
+  }
+
+  pub fn line_index(&self) -> Arc<LineIndex> {
+    self.0.line_index.clone()
+  }
+
+  pub fn maybe_navigation_tree(&self) -> Option<Arc<NavigationTree>> {
+    self.0.maybe_navigation_tree.clone()
   }
 }
 
@@ -176,15 +211,7 @@ impl Assets {
     self.0.insert(k, v)
   }
 
-  pub fn get_navigation_tree(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Arc<NavigationTree>> {
-    let doc = self.0.get(specifier).map(|v| v.as_ref()).flatten()?;
-    doc.maybe_navigation_tree.as_ref().cloned()
-  }
-
-  pub fn set_navigation_tree(
+  pub fn cache_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
     navigation_tree: Arc<NavigationTree>,
@@ -196,7 +223,7 @@ impl Assets {
     let doc = maybe_doc
       .as_mut()
       .ok_or_else(|| anyhow!("Cannot get doc mutable"))?;
-    doc.maybe_navigation_tree = Some(navigation_tree);
+    *doc = doc.with_navigation_tree(navigation_tree);
     Ok(())
   }
 }
@@ -207,7 +234,7 @@ impl Assets {
 pub(crate) async fn get_asset(
   specifier: &ModuleSpecifier,
   ts_server: &TsServer,
-  state_snapshot: StateSnapshot,
+  state_snapshot: Arc<StateSnapshot>,
 ) -> Result<Option<AssetDocument>, AnyError> {
   let specifier_str = specifier.to_string().replace("asset:///", "");
   if let Some(text) = tsc::get_asset(&specifier_str) {
@@ -410,6 +437,12 @@ pub enum ScriptElementKind {
   JsxAttribute,
   #[serde(rename = "string")]
   String,
+  #[serde(rename = "link")]
+  Link,
+  #[serde(rename = "link name")]
+  LinkName,
+  #[serde(rename = "link test")]
+  LinkText,
 }
 
 impl Default for ScriptElementKind {
@@ -418,6 +451,7 @@ impl Default for ScriptElementKind {
   }
 }
 
+/// This mirrors the method `convertKind` in `completions.ts` in vscode
 impl From<ScriptElementKind> for lsp::CompletionItemKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
@@ -468,29 +502,33 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
   }
 }
 
+/// This mirrors `fromProtocolScriptElementKind` in vscode
 impl From<ScriptElementKind> for lsp::SymbolKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
-      ScriptElementKind::ModuleElement => lsp::SymbolKind::Module,
-      ScriptElementKind::ClassElement => lsp::SymbolKind::Class,
-      ScriptElementKind::EnumElement => lsp::SymbolKind::Enum,
-      ScriptElementKind::InterfaceElement => lsp::SymbolKind::Interface,
-      ScriptElementKind::MemberFunctionElement => lsp::SymbolKind::Method,
-      ScriptElementKind::MemberVariableElement => lsp::SymbolKind::Property,
-      ScriptElementKind::MemberGetAccessorElement => lsp::SymbolKind::Property,
-      ScriptElementKind::MemberSetAccessorElement => lsp::SymbolKind::Property,
-      ScriptElementKind::VariableElement => lsp::SymbolKind::Variable,
-      ScriptElementKind::ConstElement => lsp::SymbolKind::Variable,
-      ScriptElementKind::LocalVariableElement => lsp::SymbolKind::Variable,
-      ScriptElementKind::FunctionElement => lsp::SymbolKind::Function,
-      ScriptElementKind::LocalFunctionElement => lsp::SymbolKind::Function,
-      ScriptElementKind::ConstructSignatureElement => {
-        lsp::SymbolKind::Constructor
-      }
-      ScriptElementKind::ConstructorImplementationElement => {
-        lsp::SymbolKind::Constructor
-      }
-      _ => lsp::SymbolKind::Variable,
+      ScriptElementKind::ModuleElement => Self::Module,
+      ScriptElementKind::ClassElement => Self::Class,
+      ScriptElementKind::EnumElement => Self::Enum,
+      ScriptElementKind::EnumMemberElement => Self::EnumMember,
+      ScriptElementKind::InterfaceElement => Self::Interface,
+      ScriptElementKind::IndexSignatureElement => Self::Method,
+      ScriptElementKind::CallSignatureElement => Self::Method,
+      ScriptElementKind::MemberFunctionElement => Self::Method,
+      ScriptElementKind::MemberVariableElement => Self::Property,
+      ScriptElementKind::MemberGetAccessorElement => Self::Property,
+      ScriptElementKind::MemberSetAccessorElement => Self::Property,
+      ScriptElementKind::VariableElement => Self::Variable,
+      ScriptElementKind::LetElement => Self::Variable,
+      ScriptElementKind::ConstElement => Self::Variable,
+      ScriptElementKind::LocalVariableElement => Self::Variable,
+      ScriptElementKind::Alias => Self::Variable,
+      ScriptElementKind::FunctionElement => Self::Function,
+      ScriptElementKind::LocalFunctionElement => Self::Function,
+      ScriptElementKind::ConstructSignatureElement => Self::Constructor,
+      ScriptElementKind::ConstructorImplementationElement => Self::Constructor,
+      ScriptElementKind::TypeParameterElement => Self::TypeParameter,
+      ScriptElementKind::String => Self::String,
+      _ => Self::Variable,
     }
   }
 }
@@ -594,10 +632,11 @@ impl DocumentSpan {
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = normalize_specifier(&self.file_name).ok()?;
-    let target_line_index = language_server
-      .get_line_index(target_specifier.clone())
+    let target_asset_or_doc = language_server
+      .get_asset_or_document(&target_specifier)
       .await
       .ok()?;
+    let target_line_index = target_asset_or_doc.line_index();
     let target_uri = language_server
       .url_map
       .normalize_specifier(&target_specifier)
@@ -843,6 +882,8 @@ impl RenameLocations {
     for location in self.locations.iter() {
       let specifier = normalize_specifier(&location.document_span.file_name)?;
       let uri = language_server.url_map.normalize_specifier(&specifier)?;
+      let asset_or_doc =
+        language_server.get_asset_or_document(&specifier).await?;
 
       // ensure TextDocumentEdit for `location.file_name`.
       if text_document_edit_map.get(&uri).is_none() {
@@ -851,7 +892,7 @@ impl RenameLocations {
           lsp::TextDocumentEdit {
             text_document: lsp::OptionalVersionedTextDocumentIdentifier {
               uri: uri.clone(),
-              version: language_server.document_version(&specifier),
+              version: asset_or_doc.document_lsp_version(),
             },
             edits:
               Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(),
@@ -865,7 +906,7 @@ impl RenameLocations {
         range: location
           .document_span
           .text_span
-          .to_range(language_server.get_line_index(specifier.clone()).await?),
+          .to_range(asset_or_doc.line_index()),
         new_text: new_name.to_string(),
       }));
     }
@@ -1007,16 +1048,17 @@ impl FileTextChanges {
     language_server: &mut language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
     let specifier = normalize_specifier(&self.file_name)?;
-    let line_index = language_server.get_line_index(specifier.clone()).await?;
+    let asset_or_doc =
+      language_server.get_asset_or_document(&specifier).await?;
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_edit(line_index.clone()))
+      .map(|tc| tc.as_text_edit(asset_or_doc.line_index()))
       .collect();
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
-        version: language_server.document_version(&specifier),
+        version: asset_or_doc.document_lsp_version(),
       },
       edits,
     })
@@ -1028,11 +1070,17 @@ impl FileTextChanges {
   ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
     let specifier = normalize_specifier(&self.file_name)?;
-    let line_index = if !self.is_new_file.unwrap_or(false) {
-      language_server.get_line_index(specifier.clone()).await?
+    let maybe_asset_or_document = if !self.is_new_file.unwrap_or(false) {
+      let asset_or_doc =
+        language_server.get_asset_or_document(&specifier).await?;
+      Some(asset_or_doc)
     } else {
-      Arc::new(LineIndex::new(""))
+      None
     };
+    let line_index = maybe_asset_or_document
+      .as_ref()
+      .map(|d| d.line_index())
+      .unwrap_or_else(|| Arc::new(LineIndex::new("")));
 
     if self.is_new_file.unwrap_or(false) {
       ops.push(lsp::DocumentChangeOperation::Op(lsp::ResourceOp::Create(
@@ -1055,7 +1103,9 @@ impl FileTextChanges {
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
-        version: language_server.document_version(&specifier),
+        version: maybe_asset_or_document
+          .map(|d| d.document_lsp_version())
+          .flatten(),
       },
       edits,
     }));
@@ -1074,7 +1124,7 @@ impl Classifications {
   pub fn to_semantic_tokens(
     &self,
     line_index: Arc<LineIndex>,
-  ) -> lsp::SemanticTokens {
+  ) -> LspResult<lsp::SemanticTokens> {
     let token_count = self.spans.len() / 3;
     let mut builder = SemanticTokensBuilder::new();
     for i in 0..token_count {
@@ -1093,16 +1143,26 @@ impl Classifications {
       let start_pos = line_index.position_tsc(offset.into());
       let end_pos = line_index.position_tsc(TextSize::from(offset + length));
 
-      // start_pos.line == end_pos.line is always true as there are no multiline tokens
-      builder.push(
-        start_pos.line,
-        start_pos.character,
-        end_pos.character - start_pos.character,
-        token_type,
-        token_modifiers,
-      );
+      if start_pos.line == end_pos.line
+        && start_pos.character <= end_pos.character
+      {
+        builder.push(
+          start_pos.line,
+          start_pos.character,
+          end_pos.character - start_pos.character,
+          token_type,
+          token_modifiers,
+        );
+      } else {
+        log::error!(
+          "unexpected positions\nstart_pos: {:?}\nend_pos: {:?}",
+          start_pos,
+          end_pos
+        );
+        return Err(LspError::internal_error());
+      }
     }
-    builder.build(None)
+    Ok(builder.build(None))
   }
 
   fn get_token_type_from_classification(ts_classification: u32) -> u32 {
@@ -1343,13 +1403,13 @@ impl CallHierarchyItem {
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
     let target_specifier = normalize_specifier(&self.file).ok()?;
-    let target_line_index = language_server
-      .get_line_index(target_specifier)
+    let target_asset_or_doc = language_server
+      .get_asset_or_document(&target_specifier)
       .await
       .ok()?;
 
     Some(self.to_call_hierarchy_item(
-      target_line_index,
+      target_asset_or_doc.line_index(),
       language_server,
       maybe_root_path,
     ))
@@ -1444,21 +1504,21 @@ impl CallHierarchyIncomingCall {
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
     let target_specifier = normalize_specifier(&self.from.file).ok()?;
-    let target_line_index = language_server
-      .get_line_index(target_specifier)
+    let target_asset_or_doc = language_server
+      .get_asset_or_document(&target_specifier)
       .await
       .ok()?;
 
     Some(lsp::CallHierarchyIncomingCall {
       from: self.from.to_call_hierarchy_item(
-        target_line_index.clone(),
+        target_asset_or_doc.line_index(),
         language_server,
         maybe_root_path,
       ),
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(target_line_index.clone()))
+        .map(|span| span.to_range(target_asset_or_doc.line_index()))
         .collect(),
     })
   }
@@ -1479,14 +1539,14 @@ impl CallHierarchyOutgoingCall {
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
     let target_specifier = normalize_specifier(&self.to.file).ok()?;
-    let target_line_index = language_server
-      .get_line_index(target_specifier)
+    let target_asset_or_doc = language_server
+      .get_asset_or_document(&target_specifier)
       .await
       .ok()?;
 
     Some(lsp::CallHierarchyOutgoingCall {
       to: self.to.to_call_hierarchy_item(
-        target_line_index,
+        target_asset_or_doc.line_index(),
         language_server,
         maybe_root_path,
       ),
@@ -2031,13 +2091,13 @@ struct Response {
 struct State<'a> {
   last_id: usize,
   response: Option<Response>,
-  state_snapshot: StateSnapshot,
+  state_snapshot: Arc<StateSnapshot>,
   snapshots: HashMap<(ModuleSpecifier, Cow<'a, str>), String>,
   specifiers: HashMap<String, String>,
 }
 
 impl<'a> State<'a> {
-  fn new(state_snapshot: StateSnapshot) -> Self {
+  fn new(state_snapshot: Arc<StateSnapshot>) -> Self {
     Self {
       last_id: 1,
       response: None,
@@ -2088,10 +2148,11 @@ fn cache_snapshot(
     let content = state
       .state_snapshot
       .documents
-      .content(specifier)
+      .get(specifier)
       .ok_or_else(|| {
-        anyhow!("Specifier unexpectedly doesn't have content: {}", specifier)
-      })?;
+        anyhow!("Specifier unexpectedly doesn't exist: {}", specifier)
+      })?
+      .content();
     state
       .snapshots
       .insert((specifier.clone(), version.into()), content.to_string());
@@ -2231,7 +2292,7 @@ fn op_get_length(
   let specifier = state.normalize_specifier(args.specifier)?;
   let r = if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier)
   {
-    Ok(asset.length)
+    Ok(asset.length())
   } else {
     cache_snapshot(state, &specifier, args.version.clone())?;
     let content = state
@@ -2264,7 +2325,7 @@ fn op_get_text(
   let specifier = state.normalize_specifier(args.specifier)?;
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
-      content.text.as_str()
+      content.text_str()
     } else {
       cache_snapshot(state, &specifier, args.version.clone())?;
       state
@@ -2285,9 +2346,9 @@ fn op_load(
     .performance
     .mark("op_load", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let result = state.state_snapshot.documents.content(&specifier);
+  let document = state.state_snapshot.documents.get(&specifier);
   state.state_snapshot.performance.measure(mark);
-  Ok(result.map(|t| t.to_string()))
+  Ok(document.map(|d| d.content().to_string()))
 }
 
 fn op_resolve(
@@ -2336,7 +2397,15 @@ fn op_script_names(
   state: &mut State,
   _args: Value,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
-  Ok(state.state_snapshot.documents.specifiers(true, true))
+  Ok(
+    state
+      .state_snapshot
+      .documents
+      .documents(true, true)
+      .into_iter()
+      .map(|d| d.specifier().clone())
+      .collect(),
+  )
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -2361,7 +2430,12 @@ fn op_script_version(
       Ok(None)
     }
   } else {
-    Ok(state.state_snapshot.documents.version(&specifier))
+    let script_version = state
+      .state_snapshot
+      .documents
+      .get(&specifier)
+      .map(|d| d.script_version());
+    Ok(script_version)
   };
 
   state.state_snapshot.performance.measure(mark);
@@ -2380,7 +2454,7 @@ fn load() -> Result<JsRuntime, AnyError> {
   {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
-    op_state.put(State::new(StateSnapshot::default()));
+    op_state.put(State::new(Arc::new(StateSnapshot::default())));
   }
 
   runtime.register_op("op_dispose", op(op_dispose));
@@ -2814,7 +2888,7 @@ impl RequestMethod {
 /// Send a request into a runtime and return the JSON value of the response.
 pub(crate) fn request(
   runtime: &mut JsRuntime,
-  state_snapshot: StateSnapshot,
+  state_snapshot: Arc<StateSnapshot>,
   method: RequestMethod,
 ) -> Result<Value, AnyError> {
   let performance = state_snapshot.performance.clone();
@@ -2863,7 +2937,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let documents = Documents::new(location);
+    let mut documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -2884,10 +2958,10 @@ mod tests {
     debug: bool,
     config: Value,
     sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (JsRuntime, StateSnapshot, PathBuf) {
+  ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
-    let state_snapshot = mock_state_snapshot(sources, &location);
+    let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let mut runtime = load().expect("could not start server");
     start(&mut runtime, debug, &state_snapshot)
       .expect("could not start server");

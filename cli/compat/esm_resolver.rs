@@ -14,12 +14,12 @@ use regex::Regex;
 use std::path::PathBuf;
 
 #[derive(Debug, Default)]
-pub(crate) struct NodeEsmResolver<'a> {
-  maybe_import_map_resolver: Option<ImportMapResolver<'a>>,
+pub(crate) struct NodeEsmResolver {
+  maybe_import_map_resolver: Option<ImportMapResolver>,
 }
 
-impl<'a> NodeEsmResolver<'a> {
-  pub fn new(maybe_import_map_resolver: Option<ImportMapResolver<'a>>) -> Self {
+impl NodeEsmResolver {
+  pub fn new(maybe_import_map_resolver: Option<ImportMapResolver>) -> Self {
     Self {
       maybe_import_map_resolver,
     }
@@ -30,7 +30,7 @@ impl<'a> NodeEsmResolver<'a> {
   }
 }
 
-impl Resolver for NodeEsmResolver<'_> {
+impl Resolver for NodeEsmResolver {
   fn resolve(
     &self,
     specifier: &str,
@@ -1197,7 +1197,7 @@ mod tests {
     let cwd = testdir("basic");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
     let expected =
-      Url::parse("https://deno.land/std@0.113.0/node/http.ts").unwrap();
+      Url::parse("https://deno.land/std@0.115.0/node/http.ts").unwrap();
 
     let actual = node_resolve("http", main.as_str(), &cwd).unwrap();
     println!("actual {}", actual);

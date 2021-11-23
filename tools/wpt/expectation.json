@@ -6056,18 +6056,8 @@
     "window-worker-timeOrigin.window.html": false
   },
   "streams": {
-    "idlharness.any.html": [
-      "WritableStreamDefaultController interface: attribute abortReason",
-      "WritableStreamDefaultController interface: attribute signal",
-      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"abortReason\" with the proper type",
-      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"signal\" with the proper type"
-    ],
-    "idlharness.any.worker.html": [
-      "WritableStreamDefaultController interface: attribute abortReason",
-      "WritableStreamDefaultController interface: attribute signal",
-      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"abortReason\" with the proper type",
-      "WritableStreamDefaultController interface: self.writableStreamDefaultController must inherit property \"signal\" with the proper type"
-    ],
+    "idlharness.any.html": true,
+    "idlharness.any.worker.html": true,
     "piping": {
       "abort.any.html": true,
       "abort.any.worker.html": true,
@@ -6169,24 +6159,8 @@
       "terminate.any.worker.html": true
     },
     "writable-streams": {
-      "aborting.any.html": [
-        "WritableStreamDefaultController.signal",
-        "the abort signal is signalled synchronously - write",
-        "the abort signal is signalled synchronously - close",
-        "the abort signal is not signalled on error",
-        "the abort signal is not signalled on write failure",
-        "the abort signal is not signalled on close failure",
-        "recursive abort() call"
-      ],
-      "aborting.any.worker.html": [
-        "WritableStreamDefaultController.signal",
-        "the abort signal is signalled synchronously - write",
-        "the abort signal is signalled synchronously - close",
-        "the abort signal is not signalled on error",
-        "the abort signal is not signalled on write failure",
-        "the abort signal is not signalled on close failure",
-        "recursive abort() call"
-      ],
+      "aborting.any.html": true,
+      "aborting.any.worker.html": true,
       "bad-strategies.any.html": true,
       "bad-strategies.any.worker.html": true,
       "bad-underlying-sinks.any.html": true,
@@ -7680,82 +7654,8 @@
         "XMLHttpRequest and duplicate Content-Length/Content-Type headers",
         "fetch() and duplicate Content-Length/Content-Type headers"
       ],
-      "parsing.window.html": [
-        "Input: \"Content-Length: aaaah\\r\\nContent-Length: aaaah\". Expected: 42.",
-        "Input: \"Content-Length: aaaah, aaaah\". Expected: 42.",
-        "Input: \"Content-Length: aaaah\". Expected: 42.",
-        "Input: \"Content-Length: 42s\". Expected: 42.",
-        "Input: \"Content-Length: 30s\". Expected: 42.",
-        "Input: \"Content-Length: -1\". Expected: 42.",
-        "Input: \"Content-Length: 0x20\". Expected: 42.",
-        "Input: \"Content-Length: 030\\r\\nContent-Length: 30\". Expected: network error.",
-        "Input: \"Content-Length: 030, 30\". Expected: network error.",
-        "Input: \"Content-Length: \\\"30\\\"\". Expected: 42.",
-        "Input: \"Content-Length: \". Expected: 42."
-      ],
       "too-long.window.html": [
         "Content-Length header value of network response exceeds response body"
-      ]
-    },
-    "content-type": {
-      "response.window.html": [
-        "<iframe>: separate response Content-Type:  text/plain",
-        "<iframe>: combined response Content-Type:  text/plain",
-        "<iframe>: separate response Content-Type: text/plain ",
-        "<iframe>: combined response Content-Type: text/plain ",
-        "<iframe>: separate response Content-Type: text/html text/plain",
-        "<iframe>: combined response Content-Type: text/html text/plain",
-        "<iframe>: separate response Content-Type: text/plain;charset=gbk text/html",
-        "<iframe>: combined response Content-Type: text/plain;charset=gbk text/html",
-        "<iframe>: separate response Content-Type: text/plain;charset=gbk text/html;charset=windows-1254",
-        "<iframe>: combined response Content-Type: text/plain;charset=gbk text/html;charset=windows-1254",
-        "<iframe>: separate response Content-Type: text/plain;charset=gbk text/plain",
-        "<iframe>: combined response Content-Type: text/plain;charset=gbk text/plain",
-        "<iframe>: separate response Content-Type: text/plain;charset=gbk text/plain;charset=windows-1252",
-        "<iframe>: combined response Content-Type: text/plain;charset=gbk text/plain;charset=windows-1252",
-        "<iframe>: separate response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
-        "<iframe>: combined response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
-        "<iframe>: separate response Content-Type: text/plain;charset=gbk;x=foo text/plain",
-        "<iframe>: combined response Content-Type: text/plain;charset=gbk;x=foo text/plain",
-        "<iframe>: separate response Content-Type: text/html;charset=gbk text/plain text/html",
-        "<iframe>: combined response Content-Type: text/html;charset=gbk text/plain text/html",
-        "<iframe>: separate response Content-Type: text/plain */*",
-        "<iframe>: combined response Content-Type: text/plain */*",
-        "<iframe>: separate response Content-Type: text/html */*",
-        "<iframe>: combined response Content-Type: text/html */*",
-        "<iframe>: separate response Content-Type: */* text/html",
-        "<iframe>: combined response Content-Type: */* text/html",
-        "<iframe>: separate response Content-Type: text/plain */*;charset=gbk",
-        "<iframe>: combined response Content-Type: text/plain */*;charset=gbk",
-        "<iframe>: separate response Content-Type: text/html */*;charset=gbk",
-        "<iframe>: combined response Content-Type: text/html */*;charset=gbk",
-        "<iframe>: separate response Content-Type: text/html;x=\" text/plain",
-        "<iframe>: combined response Content-Type: text/html;x=\" text/plain",
-        "<iframe>: separate response Content-Type: text/html;\" text/plain",
-        "<iframe>: combined response Content-Type: text/html;\" text/plain",
-        "<iframe>: separate response Content-Type: text/html;\" \\\" text/plain",
-        "<iframe>: combined response Content-Type: text/html;\" \\\" text/plain",
-        "<iframe>: separate response Content-Type: text/html;\" \\\" text/plain \";charset=GBK",
-        "<iframe>: combined response Content-Type: text/html;\" \\\" text/plain \";charset=GBK",
-        "<iframe>: separate response Content-Type: text/html;\" \" text/plain",
-        "<iframe>: combined response Content-Type: text/html;\" \" text/plain",
-        "fetch(): separate response Content-Type: text/plain;charset=gbk text/plain",
-        "fetch(): combined response Content-Type: text/plain;charset=gbk text/plain",
-        "Request: combined response Content-Type: text/plain;charset=gbk text/plain",
-        "Response: combined response Content-Type: text/plain;charset=gbk text/plain",
-        "fetch(): separate response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
-        "fetch(): combined response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
-        "Request: combined response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
-        "Response: combined response Content-Type: text/html;charset=gbk text/html;x=\",text/plain",
-        "fetch(): separate response Content-Type: text/plain;charset=gbk;x=foo text/plain",
-        "fetch(): combined response Content-Type: text/plain;charset=gbk;x=foo text/plain",
-        "Request: combined response Content-Type: text/plain;charset=gbk;x=foo text/plain",
-        "Response: combined response Content-Type: text/plain;charset=gbk;x=foo text/plain",
-        "fetch(): combined response Content-Type: text/html;x=\" text/plain",
-        "fetch(): separate response Content-Type: text/html;\" \\\" text/plain \";charset=GBK",
-        "fetch(): combined response Content-Type: text/html;\" \\\" text/plain \";charset=GBK",
-        "Request: combined response Content-Type: text/html;\" \\\" text/plain \";charset=GBK",
-        "Response: combined response Content-Type: text/html;\" \\\" text/plain \";charset=GBK"
       ]
     },
     "data-urls": {
@@ -8585,7 +8485,6 @@
         "abort.any.worker.html?wss": true,
         "backpressure-receive.any.html?wpt_flags=h2": false,
         "backpressure-receive.any.html?wss": true,
-        "backpressure-receive.any.worker.html?wpt_flags=h2": false,
         "backpressure-receive.any.worker.html?wss": true,
         "backpressure-send.any.html?wpt_flags=h2": false,
         "backpressure-send.any.html?wss": true,

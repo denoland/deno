@@ -358,7 +358,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          hostnames to use when fetching remote modules from
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
-    DENO_TLS_CA_STORE    Comma-seperated list of order dependent certificate stores
+    DENO_TLS_CA_STORE    Comma-separated list of order dependent certificate stores
                          (system, mozilla)
                          (defaults to mozilla)
     DENO_CERT            Load certificate authority from PEM encoded file
