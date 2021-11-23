@@ -16,6 +16,7 @@ use super::text::LineIndex;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::TsConfig;
+use crate::fs_util::specifier_to_file_path;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 
@@ -1512,7 +1513,7 @@ impl CallHierarchyItem {
 
     let use_file_name = self.is_source_file_item();
     let maybe_file_path = if uri.scheme() == "file" {
-      uri.to_file_path().ok()
+      specifier_to_file_path(&uri).ok()
     } else {
       None
     };

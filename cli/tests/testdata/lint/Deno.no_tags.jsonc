@@ -2,10 +2,10 @@
   "lint": {
     "files": {
       "include": [
-        "lint/with_config/"
+        "with_config/"
       ],
       "exclude": [
-        "lint/with_config/b.ts"
+        "with_config/b.ts"
       ]
     },
     "rules": {
