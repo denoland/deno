@@ -1076,6 +1076,40 @@ unitTest(
   },
 );
 
+// https://github.com/denoland/deno/issues/12741
+// https://github.com/denoland/deno/pull/12746
+// https://github.com/denoland/deno/pull/12798
+unitTest(
+  { permissions: { net: true, run: true } },
+  async function httpServerDeleteRequestHasBody() {
+    const hostname = "localhost";
+    const port = 4501;
+
+    async function server() {
+      const listener = Deno.listen({ hostname, port });
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+      const event = await httpConn.nextRequest() as Deno.RequestEvent;
+      assert(event.request.body);
+      const response = new Response();
+      await event.respondWith(response);
+      httpConn.close();
+      listener.close();
+    }
+
+    async function client() {
+      const url = `http://${hostname}:${port}/`;
+      const cmd = ["curl", "-X", "DELETE", url];
+      const proc = Deno.run({ cmd, stdout: "null", stderr: "null" });
+      const status = await proc.status();
+      assert(status.success);
+      proc.close();
+    }
+
+    await Promise.all([server(), client()]);
+  },
+);
+
 unitTest(
   { permissions: { net: true } },
   async function httpServerRespondNonAsciiUint8Array() {
@@ -1095,7 +1129,6 @@ unitTest(
     })();
 
     const resp = await fetch("http://localhost:4501/");
-    console.log(resp.headers);
     assertEquals(resp.status, 200);
     const body = await resp.arrayBuffer();
     assertEquals(new Uint8Array(body), new Uint8Array([128]));
