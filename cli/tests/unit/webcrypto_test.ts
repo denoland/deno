@@ -690,3 +690,26 @@ unitTest(async function testAesKeyGen() {
   assertEquals(algorithm.name, "AES-GCM");
   assertEquals(algorithm.length, 256);
 });
+
+unitTest(async function testDecryptWithInvalidIntializationVector() {
+  const data = new Uint8Array([42, 42, 42, 42]);
+  const key = await crypto.subtle.generateKey(
+    { name: "AES-CBC", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const initVector = crypto.getRandomValues(new Uint8Array(16));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-CBC", iv: initVector },
+    key,
+    data,
+  );
+  const initVector2 = crypto.getRandomValues(new Uint8Array(16));
+  assertRejects(async () => {
+    await crypto.subtle.decrypt(
+      { name: "AES-CBC", iv: initVector2 },
+      key,
+      encrypted,
+    );
+  }, DOMException);
+});

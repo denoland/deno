@@ -315,11 +315,11 @@ declare namespace Deno {
    * ```ts
    * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
    *
-   * Deno.test("My test description", ():void => {
+   * Deno.test("My test description", (): void => {
    *   assertEquals("hello", "hello");
    * });
    *
-   * Deno.test("My async test description", async ():Promise<void> => {
+   * Deno.test("My async test description", async (): Promise<void> => {
    *   const decoder = new TextDecoder("utf-8");
    *   const data = await Deno.readFile("hello_world.txt");
    *   assertEquals(decoder.decode(data), "Hello world");
@@ -331,6 +331,95 @@ declare namespace Deno {
     fn: (t: TestContext) => void | Promise<void>,
   ): void;
 
+  /** Register a test which will be run when `deno test` is used on the command
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required. Declared function must have a name.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.test(function myTestName(): void {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.test(async function myOtherTestName(): Promise<void> {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function test(fn: (t: TestContext) => void | Promise<void>): void;
+
+  /** Register a test which will be run when `deno test` is used on the command
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.test("My test description", { permissions: { read: true } }, (): void => {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.test("My async test description", { permissions: { read: false } }, async (): Promise<void> => {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function test(
+    name: string,
+    options: Omit<TestDefinition, "fn" | "name">,
+    fn: (t: TestContext) => void | Promise<void>,
+  ): void;
+
+  /** Register a test which will be run when `deno test` is used on the command
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.test({ name: "My test description", permissions: { read: true } }, (): void => {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.test({ name: "My async test description", permissions: { read: false } }, async (): Promise<void> => {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function test(
+    options: Omit<TestDefinition, "fn">,
+    fn: (t: TestContext) => void | Promise<void>,
+  ): void;
+
+  /** Register a test which will be run when `deno test` is used on the command
+   * line and the containing module looks like a test module.
+   * `fn` can be async if required. Declared function must have a name.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.test({ permissions: { read: true } }, function myTestName(): void {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.test({ permissions: { read: false } }, async function myOtherTestName(): Promise<void> {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   */
+  export function test(
+    options: Omit<TestDefinition, "fn" | "name">,
+    fn: (t: TestContext) => void | Promise<void>,
+  ): void;
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
    *
@@ -2007,9 +2096,23 @@ declare namespace Deno {
    */
   export function resources(): ResourceMap;
 
+  /**
+   * Additional information for FsEvent objects with the "other" kind.
+   *
+   * - "rescan": rescan notices indicate either a lapse in the events or a
+   *    change in the filesystem such that events received so far can no longer
+   *    be relied on to represent the state of the filesystem now. An
+   *    application that simply reacts to file changes may not care about this.
+   *    An application that keeps an in-memory representation of the filesystem
+   *    will need to care, and will need to refresh that representation directly
+   *    from the filesystem.
+   */
+  export type FsEventFlag = "rescan";
+
   export interface FsEvent {
-    kind: "any" | "access" | "create" | "modify" | "remove";
+    kind: "any" | "access" | "create" | "modify" | "remove" | "other";
     paths: string[];
+    flag?: FsEventFlag;
   }
 
   /**

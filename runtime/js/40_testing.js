@@ -254,8 +254,9 @@ finishing test case.`;
 
   // Main test function provided by Deno.
   function test(
-    t,
-    fn,
+    nameOrFnOrOptions,
+    optionsOrFn,
+    maybeFn,
   ) {
     let testDef;
     const defaults = {
@@ -267,22 +268,74 @@ finishing test case.`;
       permissions: null,
     };
 
-    if (typeof t === "string") {
-      if (!fn || typeof fn != "function") {
-        throw new TypeError("Missing test function");
-      }
-      if (!t) {
+    if (typeof nameOrFnOrOptions === "string") {
+      if (!nameOrFnOrOptions) {
         throw new TypeError("The test name can't be empty");
       }
-      testDef = { fn: fn, name: t, ...defaults };
+      if (typeof optionsOrFn === "function") {
+        testDef = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
+      } else {
+        if (!maybeFn || typeof maybeFn !== "function") {
+          throw new TypeError("Missing test function");
+        }
+        if (optionsOrFn.fn != undefined) {
+          throw new TypeError(
+            "Unexpected 'fn' field in options, test function is already provided as the third argument.",
+          );
+        }
+        if (optionsOrFn.name != undefined) {
+          throw new TypeError(
+            "Unexpected 'name' field in options, test name is already provided as the first argument.",
+          );
+        }
+        testDef = {
+          ...defaults,
+          ...optionsOrFn,
+          fn: maybeFn,
+          name: nameOrFnOrOptions,
+        };
+      }
+    } else if (typeof nameOrFnOrOptions === "function") {
+      if (!nameOrFnOrOptions.name) {
+        throw new TypeError("The test function must have a name");
+      }
+      if (optionsOrFn != undefined) {
+        throw new TypeError("Unexpected second argument to Deno.test()");
+      }
+      if (maybeFn != undefined) {
+        throw new TypeError("Unexpected third argument to Deno.test()");
+      }
+      testDef = {
+        ...defaults,
+        fn: nameOrFnOrOptions,
+        name: nameOrFnOrOptions.name,
+      };
     } else {
-      if (!t.fn) {
-        throw new TypeError("Missing test function");
+      let fn;
+      let name;
+      if (typeof optionsOrFn === "function") {
+        fn = optionsOrFn;
+        if (nameOrFnOrOptions.fn != undefined) {
+          throw new TypeError(
+            "Unexpected 'fn' field in options, test function is already provided as the second argument.",
+          );
+        }
+        name = nameOrFnOrOptions.name ?? fn.name;
+      } else {
+        if (
+          !nameOrFnOrOptions.fn || typeof nameOrFnOrOptions.fn !== "function"
+        ) {
+          throw new TypeError(
+            "Expected 'fn' field in the first argument to be a test function.",
+          );
+        }
+        fn = nameOrFnOrOptions.fn;
+        name = nameOrFnOrOptions.name ?? fn.name;
       }
-      if (!t.name) {
+      if (!name) {
         throw new TypeError("The test name can't be empty");
       }
-      testDef = { ...defaults, ...t };
+      testDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
     testDef.fn = wrapTestFnWithSanitizers(testDef.fn, testDef);

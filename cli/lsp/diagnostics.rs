@@ -2,6 +2,7 @@
 
 use super::analysis;
 use super::documents;
+use super::documents::Document;
 use super::documents::Documents;
 use super::language_server;
 use super::tsc;
@@ -300,13 +301,81 @@ fn ts_json_to_diagnostics(
     .collect()
 }
 
+// Returns `ConfigSnapshot::root_uri` in the correct format.
+fn get_root_specifier(
+  snapshot: &language_server::StateSnapshot,
+) -> Option<ModuleSpecifier> {
+  let root = snapshot.config.root_uri.as_ref()?;
+  let root = root.to_file_path().ok()?;
+
+  // FIXME: `root_uri` from `ConfigSnapshot` are without a trailing slash,
+  // so `Url::join` treats the root as a file, not a directory, and erases the folder name.
+  // To fix that behaviour we just parsing `root_uri` again.
+  ModuleSpecifier::from_directory_path(root).ok()
+}
+
+// Filters documents according to the `include` and the `exclude` lists (from `StateSnapshot::maybe_lint_config`).
+// If a document is in the `exclude` list - then it be removed.
+// If the `include` list is not empty, and a document is not in - then it be removed too.
+fn filter_documents(
+  snapshot: &language_server::StateSnapshot,
+  documents: &mut Vec<Document>,
+) {
+  let root_uri = match get_root_specifier(snapshot) {
+    Some(uri) => uri,
+    None => return,
+  };
+
+  let linter_config = match &snapshot.maybe_lint_config {
+    Some(config) => config,
+    None => return,
+  };
+
+  let join_specifiers = |specifiers: &Vec<String>| -> Vec<ModuleSpecifier> {
+    specifiers
+      .iter()
+      .filter_map(|i| root_uri.join(i).ok())
+      .collect()
+  };
+
+  let ignore_specifiers = join_specifiers(&linter_config.files.exclude);
+  let include_specifiers = join_specifiers(&linter_config.files.include);
+
+  documents.retain(|doc| {
+    let path = doc.specifier().path();
+
+    // Skip files which is in the exclude list.
+    if ignore_specifiers.iter().any(|i| path.starts_with(i.path())) {
+      return false;
+    }
+
+    // Early return if the include list is empty.
+    if include_specifiers.is_empty() {
+      return true;
+    }
+
+    // Ignore files which is not in the include list.
+    if !include_specifiers
+      .iter()
+      .any(|i| path.starts_with(i.path()))
+    {
+      return false;
+    }
+
+    true
+  });
+}
+
 async fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
   collection: Arc<Mutex<DiagnosticCollection>>,
 ) -> Result<DiagnosticVec, AnyError> {
-  let documents = snapshot.documents.documents(true, true);
+  let mut documents = snapshot.documents.documents(true, true);
   let workspace_settings = snapshot.config.settings.workspace.clone();
   let maybe_lint_config = snapshot.maybe_lint_config.clone();
+
+  filter_documents(snapshot, &mut documents);
+
   tokio::task::spawn(async move {
     let mut diagnostics_vec = Vec::new();
     if workspace_settings.lint {
