@@ -51,7 +51,7 @@ unitTest(function testFnOverloading() {
       Deno.test({});
     },
     TypeError,
-    "Missing test function",
+    "Expected 'fn' field in the first argument to be a test function.",
   );
   assertThrows(
     () => {
@@ -59,7 +59,7 @@ unitTest(function testFnOverloading() {
       Deno.test({ fn: "boo!" });
     },
     TypeError,
-    "'fn' must be a function",
+    "Expected 'fn' field in the first argument to be a test function.",
   );
 });
 

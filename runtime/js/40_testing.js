@@ -321,11 +321,8 @@ finishing test case.`;
         }
         name = nameOrFnOrOptions.name ?? fn.name;
       } else {
-        if (!nameOrFnOrOptions.fn) {
-          throw new TypeError("Missing test function");
-        }
-        if (typeof nameOrFnOrOptions.fn !== "function") {
-          throw new TypeError("'fn' must be a function");
+        if (!nameOrFnOrOptions.fn || typeof nameOrFnOrOptions.fn !== "function") {
+          throw new TypeError("Expected 'fn' field in the first argument to be a test function.");
         }
         fn = nameOrFnOrOptions.fn;
         name = nameOrFnOrOptions.name ?? fn.name;
