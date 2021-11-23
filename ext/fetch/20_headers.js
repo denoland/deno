@@ -114,7 +114,13 @@
 
     // 7.
     const list = headers[_headerList];
-    name = byteLowerCase(name);
+    const lowercaseName = byteLowerCase(name);
+    for (let i = 0; i < list.length; i++) {
+      if (byteLowerCase(list[i][0]) === lowercaseName) {
+        name = list[i][0];
+        break;
+      }
+    }
     ArrayPrototypePush(list, [name, value]);
   }
 
@@ -126,7 +132,10 @@
   function getHeader(list, name) {
     const lowercaseName = byteLowerCase(name);
     const entries = ArrayPrototypeMap(
-      ArrayPrototypeFilter(list, (entry) => entry[0] === lowercaseName),
+      ArrayPrototypeFilter(
+        list,
+        (entry) => byteLowerCase(entry[0]) === lowercaseName,
+      ),
       (entry) => entry[1],
     );
     if (entries.length === 0) {
@@ -196,7 +205,7 @@
       const headers = {};
       const cookies = [];
       for (const entry of list) {
-        const name = entry[0];
+        const name = byteLowerCase(entry[0]);
         const value = entry[1];
         if (value === null) throw new TypeError("Unreachable");
         // The following if statement is not spec compliant.
@@ -287,9 +296,9 @@
       }
 
       const list = this[_headerList];
-      name = byteLowerCase(name);
+      const lowercaseName = byteLowerCase(name);
       for (let i = 0; i < list.length; i++) {
-        if (list[i][0] === name) {
+        if (byteLowerCase(list[i][0]) === lowercaseName) {
           ArrayPrototypeSplice(list, i, 1);
           i--;
         }
@@ -331,9 +340,9 @@
       }
 
       const list = this[_headerList];
-      name = byteLowerCase(name);
+      const lowercaseName = byteLowerCase(name);
       for (let i = 0; i < list.length; i++) {
-        if (list[i][0] === name) {
+        if (byteLowerCase(list[i][0]) === lowercaseName) {
           return true;
         }
       }
@@ -372,10 +381,10 @@
       }
 
       const list = this[_headerList];
-      name = byteLowerCase(name);
+      const lowercaseName = byteLowerCase(name);
       let added = false;
       for (let i = 0; i < list.length; i++) {
-        if (list[i][0] === name) {
+        if (byteLowerCase(list[i][0]) === lowercaseName) {
           if (!added) {
             list[i][1] = value;
             added = true;
