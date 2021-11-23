@@ -712,6 +712,8 @@ unitTest(async function testDecryptWithInvalidIntializationVector() {
       encrypted,
     );
   }, DOMException);
+});
+
 const jwtRSAKeys = {
   "2048": {
     size: 2048,
