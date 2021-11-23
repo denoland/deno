@@ -589,10 +589,9 @@ async fn generate_deps_diagnostics(
 /// Publishes diagnostics to the client.
 async fn publish_diagnostics(
   client: &lspower::Client,
-  collection: Arc<Mutex<DiagnosticCollection>>,
+  collection: &mut DiagnosticCollection,
   snapshot: &language_server::StateSnapshot,
 ) {
-  let mut collection = collection.lock().await;
   if let Some(changes) = collection.take_changes() {
     for specifier in changes {
       let mut diagnostics: Vec<lsp::Diagnostic> =
@@ -646,13 +645,12 @@ async fn update_diagnostics(
         error!("Error generating lint diagnostics: {}", err);
       })
       .unwrap_or_default();
-    {
-      let mut collection = collection.lock().await;
-      for diagnostic_record in diagnostics {
-        collection.set(DiagnosticSource::DenoLint, diagnostic_record);
-      }
+
+    let mut collection = collection.lock().await;
+    for diagnostic_record in diagnostics {
+      collection.set(DiagnosticSource::DenoLint, diagnostic_record);
     }
-    publish_diagnostics(client, collection, &snapshot).await;
+    publish_diagnostics(client, &mut collection, &snapshot).await;
     snapshot.performance.measure(mark);
   };
 
@@ -668,13 +666,11 @@ async fn update_diagnostics(
           error!("Error generating TypeScript diagnostics: {}", err);
         })
         .unwrap_or_default();
-    {
-      let mut collection = collection.lock().await;
-      for diagnostic_record in diagnostics {
-        collection.set(DiagnosticSource::TypeScript, diagnostic_record);
-      }
+    let mut collection = collection.lock().await;
+    for diagnostic_record in diagnostics {
+      collection.set(DiagnosticSource::TypeScript, diagnostic_record);
     }
-    publish_diagnostics(client, collection, &snapshot).await;
+    publish_diagnostics(client, &mut collection, &snapshot).await;
     snapshot.performance.measure(mark);
   };
 
@@ -690,13 +686,11 @@ async fn update_diagnostics(
           error!("Error generating Deno diagnostics: {}", err);
         })
         .unwrap_or_default();
-    {
-      let mut collection = collection.lock().await;
-      for diagnostic_record in diagnostics {
-        collection.set(DiagnosticSource::Deno, diagnostic_record);
-      }
+    let mut collection = collection.lock().await;
+    for diagnostic_record in diagnostics {
+      collection.set(DiagnosticSource::Deno, diagnostic_record);
     }
-    publish_diagnostics(client, collection, &snapshot).await;
+    publish_diagnostics(client, &mut collection, &snapshot).await;
     snapshot.performance.measure(mark);
   };
 
