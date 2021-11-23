@@ -58,6 +58,7 @@ declare global {
     | GetDocumentHighlightsRequest
     | GetEncodedSemanticClassifications
     | GetImplementationRequest
+    | GetNavigateToItems
     | GetNavigationTree
     | GetOutliningSpans
     | GetQuickInfoRequest
@@ -171,6 +172,13 @@ declare global {
     method: "getImplementation";
     specifier: string;
     position: number;
+  }
+
+  interface GetNavigateToItems extends BaseLanguageServerRequest {
+    method: "getNavigateToItems";
+    search: string;
+    maxResultCount?: number;
+    fileName?: string;
   }
 
   interface GetNavigationTree extends BaseLanguageServerRequest {

@@ -12,6 +12,7 @@ use lspower::lsp::CodeActionOptions;
 use lspower::lsp::CodeActionProviderCapability;
 use lspower::lsp::CodeLensOptions;
 use lspower::lsp::CompletionOptions;
+use lspower::lsp::DocumentSymbolOptions;
 use lspower::lsp::FoldingRangeProviderCapability;
 use lspower::lsp::HoverProviderCapability;
 use lspower::lsp::ImplementationProviderCapability;
@@ -114,9 +115,13 @@ pub fn server_capabilities(
     )),
     references_provider: Some(OneOf::Left(true)),
     document_highlight_provider: Some(OneOf::Left(true)),
-    // TODO: Provide a label once https://github.com/gluon-lang/lsp-types/pull/207 is merged
-    document_symbol_provider: Some(OneOf::Left(true)),
-    workspace_symbol_provider: None,
+    document_symbol_provider: Some(OneOf::Right(DocumentSymbolOptions {
+      label: Some("Deno".to_string()),
+      work_done_progress_options: WorkDoneProgressOptions {
+        work_done_progress: None,
+      },
+    })),
+    workspace_symbol_provider: Some(OneOf::Left(true)),
     code_action_provider: Some(code_action_provider),
     code_lens_provider: Some(CodeLensOptions {
       resolve_provider: Some(true),
