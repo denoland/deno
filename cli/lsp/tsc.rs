@@ -2769,6 +2769,11 @@ pub enum RequestMethod {
   GetSmartSelectionRange((ModuleSpecifier, u32)),
   /// Get the diagnostic codes that support some form of code fix.
   GetSupportedCodeFixes,
+  /// Get the type definition information for a specific position.
+  GetTypeDefinition {
+    specifier: ModuleSpecifier,
+    position: u32,
+  },
   /// Resolve a call hierarchy item for a specific position.
   PrepareCallHierarchy((ModuleSpecifier, u32)),
   /// Resolve incoming call hierarchy items for a specific position.
@@ -2811,7 +2816,7 @@ impl RequestMethod {
         "id": id,
         "method": "getApplicableRefactors",
         "specifier": state.denormalize_specifier(specifier),
-        "range": { "pos": span.start, "end": span.start + span.length},
+        "range": { "pos": span.start, "end": span.start + span.length },
         "kind": kind,
       }),
       RequestMethod::GetEditsForRefactor((
@@ -2949,6 +2954,15 @@ impl RequestMethod {
       RequestMethod::GetSupportedCodeFixes => json!({
         "id": id,
         "method": "getSupportedCodeFixes",
+      }),
+      RequestMethod::GetTypeDefinition {
+        specifier,
+        position,
+      } => json!({
+        "id": id,
+        "method": "getTypeDefinition",
+        "specifier": state.denormalize_specifier(specifier),
+        "position": position
       }),
       RequestMethod::PrepareCallHierarchy((specifier, position)) => {
         json!({

@@ -1622,6 +1622,54 @@ impl Inner {
     }
   }
 
+  async fn goto_type_definition(
+    &mut self,
+    params: GotoTypeDefinitionParams,
+  ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
+    if !self.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
+      return Ok(None);
+    }
+
+    let mark = self.performance.mark("goto_definition", Some(&params));
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
+    let req = tsc::RequestMethod::GetTypeDefinition {
+      specifier,
+      position: line_index
+        .offset_tsc(params.text_document_position_params.position)?,
+    };
+    let maybe_definition_info: Option<Vec<tsc::DefinitionInfo>> = self
+      .ts_server
+      .request(self.snapshot()?, req)
+      .await
+      .map_err(|err| {
+        error!("Unable to get type definition from TypeScript: {}", err);
+        LspError::internal_error()
+      })?;
+
+    let response = if let Some(definition_info) = maybe_definition_info {
+      let mut location_links = Vec::new();
+      for info in definition_info {
+        if let Some(link) =
+          info.document_span.to_link(line_index.clone(), self).await
+        {
+          location_links.push(link);
+        }
+      }
+      Some(GotoTypeDefinitionResponse::Link(location_links))
+    } else {
+      None
+    };
+
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
   async fn completion(
     &mut self,
     params: CompletionParams,
@@ -2426,6 +2474,13 @@ impl lspower::LanguageServer for LanguageServer {
     params: GotoDefinitionParams,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
     self.0.lock().await.goto_definition(params).await
+  }
+
+  async fn goto_type_definition(
+    &self,
+    params: GotoTypeDefinitionParams,
+  ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
+    self.0.lock().await.goto_type_definition(params).await
   }
 
   async fn completion(
