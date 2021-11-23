@@ -286,13 +286,52 @@ pub struct LintRulesConfig {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct FilesConfig {
+struct SerializedFilesConfig {
   pub include: Vec<String>,
   pub exclude: Vec<String>,
 }
 
+impl SerializedFilesConfig {
+  pub fn into_resolved(self, config_file_path: &Path) -> FilesConfig {
+    let config_dir = config_file_path.parent().unwrap();
+    FilesConfig {
+      include: self
+        .include
+        .into_iter()
+        .map(|p| config_dir.join(p))
+        .collect(),
+      exclude: self
+        .exclude
+        .into_iter()
+        .map(|p| config_dir.join(p))
+        .collect(),
+    }
+  }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FilesConfig {
+  pub include: Vec<PathBuf>,
+  pub exclude: Vec<PathBuf>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+struct SerializedLintConfig {
+  pub rules: LintRulesConfig,
+  pub files: SerializedFilesConfig,
+}
+
+impl SerializedLintConfig {
+  pub fn into_resolved(self, config_file_path: &Path) -> LintConfig {
+    LintConfig {
+      rules: self.rules,
+      files: self.files.into_resolved(config_file_path),
+    }
+  }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct LintConfig {
   pub rules: LintRulesConfig,
   pub files: FilesConfig,
@@ -318,6 +357,21 @@ pub struct FmtOptionsConfig {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+struct SerializedFmtConfig {
+  pub options: FmtOptionsConfig,
+  pub files: SerializedFilesConfig,
+}
+
+impl SerializedFmtConfig {
+  pub fn into_resolved(self, config_file_path: &Path) -> FmtConfig {
+    FmtConfig {
+      options: self.options,
+      files: self.files.into_resolved(config_file_path),
+    }
+  }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct FmtConfig {
   pub options: FmtOptionsConfig,
   pub files: FilesConfig,
@@ -402,9 +456,9 @@ impl ConfigFile {
 
   pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
     if let Some(config) = self.json.lint.clone() {
-      let lint_config: LintConfig = serde_json::from_value(config)
+      let lint_config: SerializedLintConfig = serde_json::from_value(config)
         .context("Failed to parse \"lint\" configuration")?;
-      Ok(Some(lint_config))
+      Ok(Some(lint_config.into_resolved(&self.path)))
     } else {
       Ok(None)
     }
@@ -460,9 +514,9 @@ impl ConfigFile {
 
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
     if let Some(config) = self.json.fmt.clone() {
-      let fmt_config: FmtConfig = serde_json::from_value(config)
+      let fmt_config: SerializedFmtConfig = serde_json::from_value(config)
         .context("Failed to parse \"fmt\" configuration")?;
-      Ok(Some(fmt_config))
+      Ok(Some(fmt_config.into_resolved(&self.path)))
     } else {
       Ok(None)
     }
@@ -549,7 +603,8 @@ mod tests {
         }
       }
     }"#;
-    let config_path = PathBuf::from("/deno/tsconfig.json");
+    let config_dir = PathBuf::from("/deno");
+    let config_path = config_dir.join("tsconfig.json");
     let config_file = ConfigFile::new(config_text, &config_path).unwrap();
     let (options_value, ignored) =
       config_file.to_compiler_options().expect("error parsing");
@@ -569,8 +624,11 @@ mod tests {
       .to_lint_config()
       .expect("error parsing lint object")
       .expect("lint object should be defined");
-    assert_eq!(lint_config.files.include, vec!["src/"]);
-    assert_eq!(lint_config.files.exclude, vec!["src/testdata/"]);
+    assert_eq!(lint_config.files.include, vec![config_dir.join("src")]);
+    assert_eq!(
+      lint_config.files.exclude,
+      vec![config_dir.join("src/testdata/")]
+    );
     assert_eq!(
       lint_config.rules.include,
       Some(vec!["ban-untagged-todo".to_string()])
@@ -585,8 +643,11 @@ mod tests {
       .to_fmt_config()
       .expect("error parsing fmt object")
       .expect("fmt object should be defined");
-    assert_eq!(fmt_config.files.include, vec!["src/"]);
-    assert_eq!(fmt_config.files.exclude, vec!["src/testdata/"]);
+    assert_eq!(fmt_config.files.include, vec![config_dir.join("src")]);
+    assert_eq!(
+      fmt_config.files.exclude,
+      vec![config_dir.join("src/testdata/")]
+    );
     assert_eq!(fmt_config.options.use_tabs, Some(true));
     assert_eq!(fmt_config.options.line_width, Some(80));
     assert_eq!(fmt_config.options.indent_width, Some(4));

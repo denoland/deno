@@ -55,21 +55,11 @@ pub async fn format(
 
   if let Some(fmt_config) = maybe_fmt_config.as_ref() {
     if include_files.is_empty() {
-      include_files = fmt_config
-        .files
-        .include
-        .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+      include_files = fmt_config.files.include.clone();
     }
 
     if exclude_files.is_empty() {
-      exclude_files = fmt_config
-        .files
-        .exclude
-        .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+      exclude_files = fmt_config.files.exclude.clone();
     }
   }
 
