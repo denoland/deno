@@ -481,6 +481,7 @@ impl ProcState {
           emit_with_diagnostics: false,
           maybe_config_specifier,
           ts_config,
+          reload: self.flags.reload,
         };
         for root in &graph.roots {
           let root_str = root.to_string();
