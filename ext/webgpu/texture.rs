@@ -6,8 +6,6 @@ use deno_core::ResourceId;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
-use std::convert::TryFrom;
-use std::convert::TryInto;
 
 use super::error::WebGpuResult;
 pub(crate) struct WebGpuTexture(pub(crate) wgpu_core::id::TextureId);

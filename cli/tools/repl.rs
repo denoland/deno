@@ -3,7 +3,7 @@
 use crate::ast::transpile;
 use crate::ast::ImportsNotUsedAsValues;
 use crate::colors;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::{Token, Word};
 use deno_core::error::AnyError;
@@ -485,7 +485,7 @@ impl ReplSession {
 
   pub async fn is_closing(&mut self) -> Result<bool, AnyError> {
     let closed = self
-      .evaluate_expression("(globalThis.closed)")
+      .evaluate_expression("(this.closed)")
       .await?
       .get("result")
       .unwrap()
@@ -540,7 +540,7 @@ impl ReplSession {
           Some(diagnostic) => Ok(EvaluationOutput::Error(format!(
             "{}: {} at {}:{}",
             colors::red("parse error"),
-            diagnostic.message,
+            diagnostic.message(),
             diagnostic.display_position.line_number,
             diagnostic.display_position.column_number,
           ))),
@@ -655,6 +655,7 @@ impl ReplSession {
       media_type: deno_ast::MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
+      scope_analysis: false,
     })?;
 
     let transpiled_src = transpile(
@@ -667,8 +668,11 @@ impl ReplSession {
         imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
         // JSX is not supported in the REPL
         transform_jsx: false,
+        jsx_automatic: false,
+        jsx_development: false,
         jsx_factory: "React.createElement".into(),
         jsx_fragment_factory: "React.Fragment".into(),
+        jsx_import_source: None,
         repl_imports: true,
       },
     )?
@@ -731,7 +735,7 @@ async fn read_line_and_poll(
 }
 
 pub async fn run(
-  program_state: &ProgramState,
+  ps: &ProcState,
   worker: MainWorker,
   maybe_eval: Option<String>,
 ) -> Result<(), AnyError> {
@@ -745,7 +749,7 @@ pub async fn run(
     response_rx: RefCell::new(response_rx),
   };
 
-  let history_file_path = program_state.dir.root.join("deno_history.txt");
+  let history_file_path = ps.dir.root.join("deno_history.txt");
   let editor = ReplEditor::new(helper, history_file_path);
 
   if let Some(eval) = maybe_eval {

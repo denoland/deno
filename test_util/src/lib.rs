@@ -44,10 +44,8 @@ use tokio_rustls::rustls::{self, Session};
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
-#[cfg(unix)]
-pub use pty;
-
 pub mod lsp;
+pub mod pty;
 
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -61,7 +59,10 @@ const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const AUTH_REDIRECT_PORT: u16 = 4551;
 const TLS_CLIENT_AUTH_PORT: u16 = 4552;
 const BASIC_AUTH_REDIRECT_PORT: u16 = 4554;
+const TLS_PORT: u16 = 4557;
 const HTTPS_PORT: u16 = 5545;
+const H1_ONLY_PORT: u16 = 5546;
+const H2_ONLY_PORT: u16 = 5547;
 const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
@@ -291,10 +292,22 @@ async fn run_ws_close_server(addr: &SocketAddr) {
   }
 }
 
+enum SupportedHttpVersions {
+  All,
+  Http1Only,
+  Http2Only,
+}
+impl Default for SupportedHttpVersions {
+  fn default() -> SupportedHttpVersions {
+    SupportedHttpVersions::All
+  }
+}
+
 async fn get_tls_config(
   cert: &str,
   key: &str,
   ca: &str,
+  http_versions: SupportedHttpVersions,
 ) -> io::Result<Arc<rustls::ServerConfig>> {
   let cert_path = testdata_path().join(cert);
   let key_path = testdata_path().join(key);
@@ -337,6 +350,15 @@ async fn get_tls_config(
       let allow_client_auth =
         rustls::AllowAnyAnonymousOrAuthenticatedClient::new(root_cert_store);
       let mut config = rustls::ServerConfig::new(allow_client_auth);
+      match http_versions {
+        SupportedHttpVersions::All => {
+          config.set_protocols(&["h2".into(), "http/1.1".into()]);
+        }
+        SupportedHttpVersions::Http1Only => {}
+        SupportedHttpVersions::Http2Only => {
+          config.set_protocols(&["h2".into()]);
+        }
+      }
       config
         .set_single_cert(cert, key)
         .map_err(|e| {
@@ -355,9 +377,10 @@ async fn run_wss_server(addr: &SocketAddr) {
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
 
-  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
-    .await
-    .unwrap();
+  let tls_config =
+    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
+      .await
+      .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
   let listener = TcpListener::bind(addr).await.unwrap();
   println!("ready: wss"); // Eye catcher for HttpServerCount
@@ -397,9 +420,10 @@ async fn run_tls_client_auth_server() {
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
-    .await
-    .unwrap();
+  let tls_config =
+    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
+      .await
+      .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
 
   // Listen on ALL addresses that localhost can resolves to.
@@ -453,6 +477,63 @@ async fn run_tls_client_auth_server() {
   }
 }
 
+/// This server responds with 'PASS' if client authentication was successful. Try it by running
+/// test_server and
+///   curl --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4553/
+async fn run_tls_server() {
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  let tls_config =
+    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
+      .await
+      .unwrap();
+  let tls_acceptor = TlsAcceptor::from(tls_config);
+
+  // Listen on ALL addresses that localhost can resolves to.
+  let accept = |listener: tokio::net::TcpListener| {
+    async {
+      let result = listener.accept().await;
+      Some((result, listener))
+    }
+    .boxed()
+  };
+
+  let host_and_port = &format!("localhost:{}", TLS_PORT);
+
+  let listeners = tokio::net::lookup_host(host_and_port)
+    .await
+    .expect(host_and_port)
+    .inspect(|address| println!("{} -> {}", host_and_port, address))
+    .map(tokio::net::TcpListener::bind)
+    .collect::<futures::stream::FuturesUnordered<_>>()
+    .collect::<Vec<_>>()
+    .await
+    .into_iter()
+    .map(|s| s.unwrap())
+    .map(|listener| futures::stream::unfold(listener, accept))
+    .collect::<Vec<_>>();
+
+  println!("ready: tls"); // Eye catcher for HttpServerCount
+
+  let mut listeners = futures::stream::select_all(listeners);
+
+  while let Some(Ok((stream, _addr))) = listeners.next().await {
+    let acceptor = tls_acceptor.clone();
+    tokio::spawn(async move {
+      match acceptor.accept(stream).await {
+        Ok(mut tls_stream) => {
+          tls_stream.write_all(b"PASS").await.unwrap();
+        }
+
+        Err(e) => {
+          eprintln!("TLS accept error: {:?}", e);
+        }
+      }
+    });
+  }
+}
+
 async fn absolute_redirect(
   req: Request<Body>,
 ) -> hyper::Result<Response<Body>> {
@@ -485,7 +566,9 @@ async fn absolute_redirect(
   Ok(file_resp)
 }
 
-async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
+async fn main_server(
+  req: Request<Body>,
+) -> Result<Response<Body>, hyper::http::Error> {
   return match (req.method(), req.uri().path()) {
     (&hyper::Method::POST, "/echo_server") => {
       let (parts, body) = req.into_parts();
@@ -764,6 +847,35 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
         Ok(Response::new(Body::empty()))
       }
     }
+    (_, "/http_version") => {
+      let version = format!("{:?}", req.version());
+      Ok(Response::new(version.into()))
+    }
+    (_, "/content_length") => {
+      let content_length = format!("{:?}", req.headers().get("content-length"));
+      Ok(Response::new(content_length.into()))
+    }
+    (_, "/jsx/jsx-runtime") | (_, "/jsx/jsx-dev-runtime") => {
+      let mut res = Response::new(Body::from(
+        r#"export function jsx(
+          _type,
+          _props,
+          _key,
+          _source,
+          _self,
+        ) {}
+        export const jsxs = jsx;
+        export const jsxDEV = jsx;
+        export const Fragment = Symbol("Fragment");
+        console.log("imported", import.meta.url);
+        "#,
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      Ok(res)
+    }
     _ => {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
@@ -772,7 +884,9 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
         return Ok(file_resp);
       }
 
-      return Ok(Response::new(Body::empty()));
+      Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Body::empty())
     }
   };
 }
@@ -904,9 +1018,10 @@ async fn wrap_main_https_server() {
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
-    .await
-    .unwrap();
+  let tls_config =
+    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
+      .await
+      .unwrap();
   loop {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
@@ -938,15 +1053,106 @@ async fn wrap_main_https_server() {
   }
 }
 
+async fn wrap_https_h1_only_server() {
+  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  let tls_config = get_tls_config(
+    cert_file,
+    key_file,
+    ca_cert_file,
+    SupportedHttpVersions::Http1Only,
+  )
+  .await
+  .unwrap();
+  loop {
+    let tcp = TcpListener::bind(&main_server_https_addr)
+      .await
+      .expect("Cannot bind TCP");
+    println!("ready: https"); // Eye catcher for HttpServerCount
+    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
+    // Prepare a long-running future stream to accept and serve cients.
+    let incoming_tls_stream = async_stream::stream! {
+      loop {
+          let (socket, _) = tcp.accept().await?;
+          let stream = tls_acceptor.accept(socket);
+          yield stream.await;
+      }
+    }
+    .boxed();
+
+    let main_server_https_svc = make_service_fn(|_| async {
+      Ok::<_, Infallible>(service_fn(main_server))
+    });
+    let main_server_https = Server::builder(HyperAcceptor {
+      acceptor: incoming_tls_stream,
+    })
+    .http1_only(true)
+    .serve(main_server_https_svc);
+
+    //continue to prevent TLS error stopping the server
+    if main_server_https.await.is_err() {
+      continue;
+    }
+  }
+}
+
+async fn wrap_https_h2_only_server() {
+  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], H2_ONLY_PORT));
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  let tls_config = get_tls_config(
+    cert_file,
+    key_file,
+    ca_cert_file,
+    SupportedHttpVersions::Http2Only,
+  )
+  .await
+  .unwrap();
+  loop {
+    let tcp = TcpListener::bind(&main_server_https_addr)
+      .await
+      .expect("Cannot bind TCP");
+    println!("ready: https"); // Eye catcher for HttpServerCount
+    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
+    // Prepare a long-running future stream to accept and serve cients.
+    let incoming_tls_stream = async_stream::stream! {
+      loop {
+          let (socket, _) = tcp.accept().await?;
+          let stream = tls_acceptor.accept(socket);
+          yield stream.await;
+      }
+    }
+    .boxed();
+
+    let main_server_https_svc = make_service_fn(|_| async {
+      Ok::<_, Infallible>(service_fn(main_server))
+    });
+    let main_server_https = Server::builder(HyperAcceptor {
+      acceptor: incoming_tls_stream,
+    })
+    .http2_only(true)
+    .serve(main_server_https_svc);
+
+    //continue to prevent TLS error stopping the server
+    if main_server_https.await.is_err() {
+      continue;
+    }
+  }
+}
+
 async fn wrap_client_auth_https_server() {
   let main_server_https_addr =
     SocketAddr::from(([127, 0, 0, 1], HTTPS_CLIENT_AUTH_PORT));
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
-    .await
-    .unwrap();
+  let tls_config =
+    get_tls_config(cert_file, key_file, ca_cert_file, Default::default())
+      .await
+      .unwrap();
   loop {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
@@ -1018,16 +1224,20 @@ pub async fn run_all_servers() {
   let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
   let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
 
+  let tls_server_fut = run_tls_server();
   let tls_client_auth_server_fut = run_tls_client_auth_server();
   let client_auth_server_https_fut = wrap_client_auth_https_server();
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
+  let h1_only_server_fut = wrap_https_h1_only_server();
+  let h2_only_server_fut = wrap_https_h2_only_server();
 
   let mut server_fut = async {
     futures::join!(
       redirect_server_fut,
       ws_server_fut,
       wss_server_fut,
+      tls_server_fut,
       tls_client_auth_server_fut,
       ws_close_server_fut,
       another_redirect_server_fut,
@@ -1039,6 +1249,8 @@ pub async fn run_all_servers() {
       main_server_fut,
       main_server_https_fut,
       client_auth_server_https_fut,
+      h1_only_server_fut,
+      h2_only_server_fut
     )
   }
   .boxed();
@@ -1184,7 +1396,7 @@ impl HttpServerCount {
           if line.starts_with("ready:") {
             ready_count += 1;
           }
-          if ready_count == 5 {
+          if ready_count == 6 {
             break;
           }
         } else {
@@ -1589,60 +1801,95 @@ pub enum PtyData {
   Output(&'static str),
 }
 
-#[cfg(unix)]
 pub fn test_pty2(args: &str, data: Vec<PtyData>) {
-  use pty::fork::Fork;
   use std::io::BufRead;
 
-  let tests_path = testdata_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(master) = fork.is_parent() {
-    let mut buf_reader = std::io::BufReader::new(master);
-    for d in data {
+  with_pty(&args.split_whitespace().collect::<Vec<_>>(), |console| {
+    let mut buf_reader = std::io::BufReader::new(console);
+    for d in data.iter() {
       match d {
         PtyData::Input(s) => {
           println!("INPUT {}", s.escape_debug());
-          buf_reader.get_mut().write_all(s.as_bytes()).unwrap();
+          buf_reader.get_mut().write_text(s);
 
           // Because of tty echo, we should be able to read the same string back.
           assert!(s.ends_with('\n'));
           let mut echo = String::new();
           buf_reader.read_line(&mut echo).unwrap();
           println!("ECHO: {}", echo.escape_debug());
-          assert!(echo.starts_with(&s.trim()));
+
+          // Windows may also echo the previous line, so only check the end
+          assert!(normalize_text(&echo).ends_with(&normalize_text(s)));
         }
         PtyData::Output(s) => {
           let mut line = String::new();
           if s.ends_with('\n') {
             buf_reader.read_line(&mut line).unwrap();
           } else {
-            while s != line {
+            // assumes the buffer won't have overlapping virtual terminal sequences
+            while normalize_text(&line).len() < normalize_text(s).len() {
               let mut buf = [0; 64 * 1024];
-              let _n = buf_reader.read(&mut buf).unwrap();
+              let bytes_read = buf_reader.read(&mut buf).unwrap();
+              assert!(bytes_read > 0);
               let buf_str = std::str::from_utf8(&buf)
                 .unwrap()
                 .trim_end_matches(char::from(0));
               line += buf_str;
-              assert!(s.starts_with(&line));
             }
           }
           println!("OUTPUT {}", line.escape_debug());
-          assert_eq!(line, s);
+          assert_eq!(normalize_text(&line), normalize_text(s));
         }
       }
     }
+  });
 
-    fork.wait().unwrap();
-  } else {
-    deno_cmd()
-      .current_dir(tests_path)
-      .env("NO_COLOR", "1")
-      .args(args.split_whitespace())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
+  // This normalization function is not comprehensive
+  // and may need to updated as new scenarios emerge.
+  fn normalize_text(text: &str) -> String {
+    lazy_static! {
+      static ref MOVE_CURSOR_RIGHT_ONE_RE: Regex =
+        Regex::new(r"\x1b\[1C").unwrap();
+      static ref FOUND_SEQUENCES_RE: Regex =
+        Regex::new(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*").unwrap();
+      static ref CARRIAGE_RETURN_RE: Regex =
+        Regex::new(r"[^\n]*\r([^\n])").unwrap();
+    }
+
+    // any "move cursor right" sequences should just be a space
+    let text = MOVE_CURSOR_RIGHT_ONE_RE.replace_all(text, " ");
+    // replace additional virtual terminal sequences that strip ansi codes doesn't catch
+    let text = FOUND_SEQUENCES_RE.replace_all(&text, "");
+    // strip any ansi codes, which also strips more terminal sequences
+    let text = strip_ansi_codes(&text);
+    // get rid of any text that is overwritten with only a carriage return
+    let text = CARRIAGE_RETURN_RE.replace_all(&text, "$1");
+    // finally, trim surrounding whitespace
+    text.trim().to_string()
   }
+}
+
+pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Box<dyn pty::Pty>)) {
+  if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
+    eprintln!("Ignoring non-tty environment.");
+    return;
+  }
+
+  let deno_dir = new_deno_dir();
+  let mut env_vars = std::collections::HashMap::new();
+  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
+  env_vars.insert(
+    "DENO_DIR".to_string(),
+    deno_dir.path().to_string_lossy().to_string(),
+  );
+  let pty = pty::create_pty(
+    &deno_exe_path().to_string_lossy().to_string(),
+    deno_args,
+    testdata_path(),
+    Some(env_vars),
+  );
+
+  action(pty);
 }
 
 pub struct WrkOutput {

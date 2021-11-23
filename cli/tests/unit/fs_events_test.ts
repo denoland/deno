@@ -1,15 +1,21 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  delay,
+  unitTest,
+} from "./test_util.ts";
 
 // TODO(ry) Add more tests to specify format.
 
-unitTest({ perms: { read: false } }, function watchFsPermissions() {
+unitTest({ permissions: { read: false } }, function watchFsPermissions() {
   assertThrows(() => {
     Deno.watchFs(".");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { read: true } }, function watchFsInvalidPath() {
+unitTest({ permissions: { read: true } }, function watchFsInvalidPath() {
   if (Deno.build.os === "windows") {
     assertThrows(
       () => {
@@ -36,10 +42,18 @@ async function getTwoEvents(
   return events;
 }
 
+async function makeTempDir(): Promise<string> {
+  const testDir = await Deno.makeTempDir();
+  // The watcher sometimes witnesses the creation of it's own root
+  // directory. Delay a bit.
+  await delay(100);
+  return testDir;
+}
+
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function watchFsBasic() {
-    const testDir = await Deno.makeTempDir();
+    const testDir = await makeTempDir();
     const iter = Deno.watchFs(testDir);
 
     // Asynchornously capture two fs events.
@@ -64,9 +78,9 @@ unitTest(
 // TODO(kt3k): This test is for the backward compatibility of `.return` method.
 // This should be removed at 2.0
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function watchFsReturn() {
-    const testDir = await Deno.makeTempDir();
+    const testDir = await makeTempDir();
     const iter = Deno.watchFs(testDir);
 
     // Asynchronously loop events.
@@ -82,16 +96,16 @@ unitTest(
 );
 
 unitTest(
-  { perms: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function watchFsClose() {
-    const testDir = await Deno.makeTempDir();
+    const testDir = await makeTempDir();
     const iter = Deno.watchFs(testDir);
 
     // Asynchronously loop events.
     const eventsPromise = getTwoEvents(iter);
 
     // Close the watcher.
-    await iter.close();
+    iter.close();
 
     // Expect zero events.
     const events = await eventsPromise;

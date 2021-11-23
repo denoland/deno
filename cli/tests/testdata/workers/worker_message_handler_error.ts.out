@@ -1,0 +1,7 @@
+error: Uncaught (in worker "foo") (in promise) Error: bar
+  throw new Error("bar");
+        ^
+    at onmessage ([WILDCARD]/message_handler_error.ts:[WILDCARD])
+    at [WILDCARD]
+error: Uncaught (in promise) Error: Unhandled error event in child worker.
+    at Worker.#pollControl ([WILDCARD])

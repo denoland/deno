@@ -31,15 +31,6 @@ pub trait TimersPermission {
   fn check_unstable(&self, state: &OpState, api_name: &'static str);
 }
 
-pub struct NoTimersPermission;
-
-impl TimersPermission for NoTimersPermission {
-  fn allow_hrtime(&mut self) -> bool {
-    false
-  }
-  fn check_unstable(&self, _: &OpState, _: &'static str) {}
-}
-
 pub fn init<P: TimersPermission + 'static>() -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -102,7 +93,7 @@ impl GlobalTimer {
 
 pub fn op_global_timer_stop(
   state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   let global_timer = state.borrow_mut::<GlobalTimer>();
@@ -136,7 +127,7 @@ pub fn op_global_timer_start(
 
 pub async fn op_global_timer(
   state: Rc<RefCell<OpState>>,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   let maybe_timer_fut = {

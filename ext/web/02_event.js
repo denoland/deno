@@ -34,9 +34,6 @@
     SymbolFor,
     SymbolToStringTag,
     TypeError,
-    WeakMap,
-    WeakMapPrototypeGet,
-    WeakMapPrototypeSet,
   } = window.__bootstrap.primordials;
 
   // accessors for non runtime visible data
@@ -138,16 +135,17 @@
   const _path = Symbol("[[path]]");
 
   class Event {
-    [_attributes] = {};
-    [_canceledFlag] = false;
-    [_stopPropagationFlag] = false;
-    [_stopImmediatePropagationFlag] = false;
-    [_inPassiveListener] = false;
-    [_dispatched] = false;
-    [_isTrusted] = false;
-    [_path] = [];
-
     constructor(type, eventInitDict = {}) {
+      // TODO(lucacasonato): remove when this interface is spec aligned
+      this[SymbolToStringTag] = "Event";
+      this[_canceledFlag] = false;
+      this[_stopPropagationFlag] = false;
+      this[_stopImmediatePropagationFlag] = false;
+      this[_inPassiveListener] = false;
+      this[_dispatched] = false;
+      this[_isTrusted] = false;
+      this[_path] = [];
+
       webidl.requiredArguments(arguments.length, 1, {
         prefix: "Failed to construct 'Event'",
       });
@@ -842,32 +840,30 @@
 
   // Accessors for non-public data
 
-  const eventTargetData = new WeakMap();
+  const eventTargetData = Symbol();
 
-  function setEventTargetData(value) {
-    WeakMapPrototypeSet(eventTargetData, value, getDefaultTargetData());
+  function setEventTargetData(target) {
+    target[eventTargetData] = getDefaultTargetData();
   }
 
   function getAssignedSlot(target) {
-    return Boolean(WeakMapPrototypeGet(eventTargetData, target)?.assignedSlot);
+    return Boolean(target?.[eventTargetData]?.assignedSlot);
   }
 
   function getHasActivationBehavior(target) {
-    return Boolean(
-      WeakMapPrototypeGet(eventTargetData, target)?.hasActivationBehavior,
-    );
+    return Boolean(target?.[eventTargetData]?.hasActivationBehavior);
   }
 
   function getHost(target) {
-    return WeakMapPrototypeGet(eventTargetData, target)?.host ?? null;
+    return target?.[eventTargetData]?.host ?? null;
   }
 
   function getListeners(target) {
-    return WeakMapPrototypeGet(eventTargetData, target)?.listeners ?? {};
+    return target?.[eventTargetData]?.listeners ?? {};
   }
 
   function getMode(target) {
-    return WeakMapPrototypeGet(eventTargetData, target)?.mode ?? null;
+    return target?.[eventTargetData]?.mode ?? null;
   }
 
   function getDefaultTargetData() {
@@ -882,7 +878,7 @@
 
   class EventTarget {
     constructor() {
-      WeakMapPrototypeSet(eventTargetData, this, getDefaultTargetData());
+      this[eventTargetData] = getDefaultTargetData();
     }
 
     addEventListener(
@@ -898,10 +894,7 @@
       }
 
       options = normalizeAddEventHandlerOptions(options);
-      const { listeners } = WeakMapPrototypeGet(
-        eventTargetData,
-        this ?? globalThis,
-      );
+      const { listeners } = (this ?? globalThis)[eventTargetData];
 
       if (!(type in listeners)) {
         listeners[type] = [];
@@ -946,8 +939,7 @@
         prefix: "Failed to execute 'removeEventListener' on 'EventTarget'",
       });
 
-      const listeners =
-        WeakMapPrototypeGet(eventTargetData, this ?? globalThis).listeners;
+      const { listeners } = (this ?? globalThis)[eventTargetData];
       if (callback !== null && type in listeners) {
         listeners[type] = ArrayPrototypeFilter(
           listeners[type],
@@ -980,7 +972,7 @@
       });
       const self = this ?? globalThis;
 
-      const listeners = WeakMapPrototypeGet(eventTargetData, self).listeners;
+      const { listeners } = self[eventTargetData];
       if (!(event.type in listeners)) {
         setTarget(event, this);
         return true;
@@ -997,14 +989,12 @@
       return dispatch(self, event);
     }
 
-    get [SymbolToStringTag]() {
-      return "EventTarget";
-    }
-
     getParent(_event) {
       return null;
     }
   }
+
+  webidl.configurePrototype(EventTarget);
 
   defineEnumerableProps(EventTarget, [
     "addEventListener",
@@ -1061,10 +1051,6 @@
       this.#error = error;
     }
 
-    get [SymbolToStringTag]() {
-      return "ErrorEvent";
-    }
-
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
@@ -1079,6 +1065,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "ErrorEvent";
   }
 
   defineEnumerableProps(ErrorEvent, [
@@ -1167,6 +1156,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "CloseEvent";
   }
 
   class CustomEvent extends Event {
@@ -1185,10 +1177,6 @@
       return this.#detail;
     }
 
-    get [SymbolToStringTag]() {
-      return "CustomEvent";
-    }
-
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
@@ -1199,6 +1187,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "CustomEvent";
   }
 
   ReflectDefineProperty(CustomEvent.prototype, "detail", {
@@ -1228,40 +1219,83 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "ProgressEvent";
   }
 
   const _eventHandlers = Symbol("eventHandlers");
 
-  function makeWrappedHandler(handler) {
-    function wrappedHandler(...args) {
+  function makeWrappedHandler(handler, isSpecialErrorEventHandler) {
+    function wrappedHandler(evt) {
       if (typeof wrappedHandler.handler !== "function") {
         return;
       }
-      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
+
+      if (
+        isSpecialErrorEventHandler &&
+        evt instanceof ErrorEvent && evt.type === "error"
+      ) {
+        const ret = FunctionPrototypeCall(
+          wrappedHandler.handler,
+          this,
+          evt.message,
+          evt.filename,
+          evt.lineno,
+          evt.colno,
+          evt.error,
+        );
+        if (ret === true) {
+          evt.preventDefault();
+        }
+        return;
+      }
+
+      return FunctionPrototypeCall(wrappedHandler.handler, this, evt);
     }
     wrappedHandler.handler = handler;
     return wrappedHandler;
   }
 
-  // TODO(benjamingr) reuse this here and websocket where possible
-  function defineEventHandler(emitter, name, init) {
-    // HTML specification section 8.1.5.1
+  // `init` is an optional function that will be called the first time that the
+  // event handler property is set. It will be called with the object on which
+  // the property is set as its argument.
+  // `isSpecialErrorEventHandler` can be set to true to opt into the special
+  // behavior of event handlers for the "error" event in a global scope.
+  function defineEventHandler(
+    emitter,
+    name,
+    init = undefined,
+    isSpecialErrorEventHandler = false,
+  ) {
+    // HTML specification section 8.1.7.1
     ObjectDefineProperty(emitter, `on${name}`, {
       get() {
-        const map = this[_eventHandlers];
+        if (!this[_eventHandlers]) {
+          return null;
+        }
 
-        if (!map) return undefined;
-        return MapPrototypeGet(map, name)?.handler;
+        return MapPrototypeGet(this[_eventHandlers], name)?.handler ?? null;
       },
       set(value) {
+        // All three Web IDL event handler types are nullable callback functions
+        // with the [LegacyTreatNonObjectAsNull] extended attribute, meaning
+        // anything other than an object is treated as null.
+        if (typeof value !== "object" && typeof value !== "function") {
+          value = null;
+        }
+
         if (!this[_eventHandlers]) {
           this[_eventHandlers] = new Map();
         }
         let handlerWrapper = MapPrototypeGet(this[_eventHandlers], name);
         if (handlerWrapper) {
           handlerWrapper.handler = value;
-        } else {
-          handlerWrapper = makeWrappedHandler(value);
+        } else if (value !== null) {
+          handlerWrapper = makeWrappedHandler(
+            value,
+            isSpecialErrorEventHandler,
+          );
           this.addEventListener(name, handlerWrapper);
           init?.(this);
         }

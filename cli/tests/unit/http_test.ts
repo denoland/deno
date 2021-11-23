@@ -7,6 +7,7 @@ import {
   assert,
   assertEquals,
   assertRejects,
+  assertStrictEquals,
   assertThrows,
   deferred,
   delay,
@@ -41,7 +42,7 @@ async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
   return decoder.decode(dest.bytes());
 }
 
-unitTest({ perms: { net: true } }, async function httpServerBasic() {
+unitTest({ permissions: { net: true } }, async function httpServerBasic() {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
     for await (const conn of listener) {
@@ -68,7 +69,41 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
 });
 
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
+  async function httpServerGetRequestBody() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      const httpConn = Deno.serveHttp(conn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+      assertEquals(request.body, null);
+      await respondWith(new Response("", { headers: {} }));
+      httpConn.close();
+    })();
+
+    const conn = await Deno.connect({ port: 4501 });
+    // Send GET request with a body + content-length.
+    const encoder = new TextEncoder();
+    const body =
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nContent-Length: 5\r\n\r\n12345`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+
+    const resp = new Uint8Array(200);
+    const readResult = await conn.read(resp);
+    assertEquals(readResult, 115);
+
+    conn.close();
+
+    await promise;
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
   async function httpServerStreamResponse() {
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
@@ -97,7 +132,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function httpServerStreamRequest() {
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
@@ -135,43 +170,46 @@ unitTest(
   },
 );
 
-unitTest({ perms: { net: true } }, async function httpServerStreamDuplex() {
-  const promise = (async () => {
-    const listener = Deno.listen({ port: 4501 });
-    const conn = await listener.accept();
-    const httpConn = Deno.serveHttp(conn);
-    const evt = await httpConn.nextRequest();
-    assert(evt);
-    const { request, respondWith } = evt;
-    assert(request.body);
-    await respondWith(new Response(request.body));
-    httpConn.close();
-    listener.close();
-  })();
+unitTest(
+  { permissions: { net: true } },
+  async function httpServerStreamDuplex() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+      assert(request.body);
+      await respondWith(new Response(request.body));
+      httpConn.close();
+      listener.close();
+    })();
 
-  const ts = new TransformStream();
-  const writable = ts.writable.getWriter();
-  const resp = await fetch("http://127.0.0.1:4501/", {
-    method: "POST",
-    body: ts.readable,
-  });
-  assert(resp.body);
-  const reader = resp.body.getReader();
-  await writable.write(new Uint8Array([1]));
-  const chunk1 = await reader.read();
-  assert(!chunk1.done);
-  assertEquals(chunk1.value, new Uint8Array([1]));
-  await writable.write(new Uint8Array([2]));
-  const chunk2 = await reader.read();
-  assert(!chunk2.done);
-  assertEquals(chunk2.value, new Uint8Array([2]));
-  await writable.close();
-  const chunk3 = await reader.read();
-  assert(chunk3.done);
-  await promise;
-});
+    const ts = new TransformStream();
+    const writable = ts.writable.getWriter();
+    const resp = await fetch("http://127.0.0.1:4501/", {
+      method: "POST",
+      body: ts.readable,
+    });
+    assert(resp.body);
+    const reader = resp.body.getReader();
+    await writable.write(new Uint8Array([1]));
+    const chunk1 = await reader.read();
+    assert(!chunk1.done);
+    assertEquals(chunk1.value, new Uint8Array([1]));
+    await writable.write(new Uint8Array([2]));
+    const chunk2 = await reader.read();
+    assert(!chunk2.done);
+    assertEquals(chunk2.value, new Uint8Array([2]));
+    await writable.close();
+    const chunk3 = await reader.read();
+    assert(chunk3.done);
+    await promise;
+  },
+);
 
-unitTest({ perms: { net: true } }, async function httpServerClose() {
+unitTest({ permissions: { net: true } }, async function httpServerClose() {
   const listener = Deno.listen({ port: 4501 });
   const client = await Deno.connect({ port: 4501 });
   const httpConn = Deno.serveHttp(await listener.accept());
@@ -182,25 +220,28 @@ unitTest({ perms: { net: true } }, async function httpServerClose() {
   listener.close();
 });
 
-unitTest({ perms: { net: true } }, async function httpServerInvalidMethod() {
-  const listener = Deno.listen({ port: 4501 });
-  const client = await Deno.connect({ port: 4501 });
-  const httpConn = Deno.serveHttp(await listener.accept());
-  await client.write(new Uint8Array([1, 2, 3]));
-  await assertRejects(
-    async () => {
-      await httpConn.nextRequest();
-    },
-    Deno.errors.Http,
-    "invalid HTTP method parsed",
-  );
-  // Note httpConn is automatically closed when it errors.
-  client.close();
-  listener.close();
-});
+unitTest(
+  { permissions: { net: true } },
+  async function httpServerInvalidMethod() {
+    const listener = Deno.listen({ port: 4501 });
+    const client = await Deno.connect({ port: 4501 });
+    const httpConn = Deno.serveHttp(await listener.accept());
+    await client.write(new Uint8Array([1, 2, 3]));
+    await assertRejects(
+      async () => {
+        await httpConn.nextRequest();
+      },
+      Deno.errors.Http,
+      "invalid HTTP method parsed",
+    );
+    // Note httpConn is automatically closed when it errors.
+    client.close();
+    listener.close();
+  },
+);
 
 unitTest(
-  { perms: { read: true, net: true } },
+  { permissions: { read: true, net: true } },
   async function httpServerWithTls() {
     const hostname = "localhost";
     const port = 4501;
@@ -227,8 +268,8 @@ unitTest(
       listener.close();
     })();
 
-    const caData = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
-    const client = Deno.createHttpClient({ caData });
+    const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
     const resp = await fetch(`https://${hostname}:${port}/`, {
       client,
       headers: { "connection": "close" },
@@ -241,7 +282,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function httpServerRegressionHang() {
     const promise = (async () => {
       const listener = Deno.listen({ port: 4501 });
@@ -268,7 +309,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function httpServerCancelBodyOnResponseFailure() {
     const promise = (async () => {
       const listener = Deno.listen({ port: 4501 });
@@ -313,7 +354,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function httpServerNextRequestErrorExposedInResponse() {
     const promise = (async () => {
       const listener = Deno.listen({ port: 4501 });
@@ -346,7 +387,7 @@ unitTest(
         Deno.errors.Http,
         "connection closed",
       );
-      // The error from `op_http_request_next` reroutes to `respondWith()`.
+      // The error from `op_http_accept` reroutes to `respondWith()`.
       assertEquals(await nextRequestPromise, null);
       listener.close();
     })();
@@ -358,7 +399,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function httpServerEmptyBlobResponse() {
     const promise = (async () => {
       const listener = Deno.listen({ port: 4501 });
@@ -380,7 +421,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function httpServerNextRequestResolvesOnClose() {
     const httpConnList: Deno.HttpConn[] = [];
 
@@ -412,7 +453,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   // Issue: https://github.com/denoland/deno/issues/10870
   async function httpServerHang() {
     // Quick and dirty way to make a readable stream from a string. Alternatively,
@@ -458,7 +499,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   // Issue: https://github.com/denoland/deno/issues/10930
   async function httpServerStreamingResponse() {
     // This test enqueues a single chunk for readable
@@ -547,58 +588,61 @@ unitTest(
   },
 );
 
-unitTest({ perms: { net: true } }, async function httpRequestLatin1Headers() {
-  const promise = (async () => {
-    const listener = Deno.listen({ port: 4501 });
-    for await (const conn of listener) {
-      const httpConn = Deno.serveHttp(conn);
-      for await (const { request, respondWith } of httpConn) {
-        assertEquals(request.headers.get("X-Header-Test"), "á");
-        await respondWith(
-          new Response("", { headers: { "X-Header-Test": "Æ" } }),
-        );
-        httpConn.close();
+unitTest(
+  { permissions: { net: true } },
+  async function httpRequestLatin1Headers() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      for await (const conn of listener) {
+        const httpConn = Deno.serveHttp(conn);
+        for await (const { request, respondWith } of httpConn) {
+          assertEquals(request.headers.get("X-Header-Test"), "á");
+          await respondWith(
+            new Response("", { headers: { "X-Header-Test": "Æ" } }),
+          );
+          httpConn.close();
+        }
+        break;
       }
-      break;
+    })();
+
+    const clientConn = await Deno.connect({ port: 4501 });
+    const requestText =
+      "GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nX-Header-Test: á\r\n\r\n";
+    const requestBytes = new Uint8Array(requestText.length);
+    for (let i = 0; i < requestText.length; i++) {
+      requestBytes[i] = requestText.charCodeAt(i);
     }
-  })();
-
-  const clientConn = await Deno.connect({ port: 4501 });
-  const requestText =
-    "GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nX-Header-Test: á\r\n\r\n";
-  const requestBytes = new Uint8Array(requestText.length);
-  for (let i = 0; i < requestText.length; i++) {
-    requestBytes[i] = requestText.charCodeAt(i);
-  }
-  let written = 0;
-  while (written < requestBytes.byteLength) {
-    written += await clientConn.write(requestBytes.slice(written));
-  }
-
-  let responseText = "";
-  const buf = new Uint8Array(1024);
-  let read;
-  while ((read = await clientConn.read(buf)) !== null) {
-    for (let i = 0; i < read; i++) {
-      responseText += String.fromCharCode(buf[i]);
+    let written = 0;
+    while (written < requestBytes.byteLength) {
+      written += await clientConn.write(requestBytes.slice(written));
     }
-  }
-  clientConn.close();
 
-  assert(/\r\n[Xx]-[Hh]eader-[Tt]est: Æ\r\n/.test(responseText));
+    let responseText = "";
+    const buf = new Uint8Array(1024);
+    let read;
+    while ((read = await clientConn.read(buf)) !== null) {
+      for (let i = 0; i < read; i++) {
+        responseText += String.fromCharCode(buf[i]);
+      }
+    }
+    clientConn.close();
 
-  await promise;
-});
+    assert(/\r\n[Xx]-[Hh]eader-[Tt]est: Æ\r\n/.test(responseText));
+
+    await promise;
+  },
+);
 
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function httpServerRequestWithoutPath() {
     const promise = (async () => {
       const listener = Deno.listen({ port: 4501 });
       for await (const conn of listener) {
         const httpConn = Deno.serveHttp(conn);
         for await (const { request, respondWith } of httpConn) {
-          assertEquals(new URL(request.url).href, "http://127.0.0.1/");
+          assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
           assertEquals(await request.text(), "");
           respondWith(new Response());
         }
@@ -635,7 +679,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
+unitTest({ permissions: { net: true } }, async function httpServerWebSocket() {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
     for await (const conn of listener) {
@@ -683,18 +727,6 @@ unitTest(function httpUpgradeWebSocket() {
   );
 });
 
-unitTest(function httpUpgradeWebSocketLowercaseUpgradeHeader() {
-  const request = new Request("https://deno.land/", {
-    headers: {
-      connection: "upgrade",
-      upgrade: "websocket",
-      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
-    },
-  });
-  const { response } = Deno.upgradeWebSocket(request);
-  assertEquals(response.status, 101);
-});
-
 unitTest(function httpUpgradeWebSocketMultipleConnectionOptions() {
   const request = new Request("https://deno.land/", {
     headers: {
@@ -707,11 +739,23 @@ unitTest(function httpUpgradeWebSocketMultipleConnectionOptions() {
   assertEquals(response.status, 101);
 });
 
+unitTest(function httpUpgradeWebSocketMultipleUpgradeOptions() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "upgrade",
+      upgrade: "websocket, foo",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+});
+
 unitTest(function httpUpgradeWebSocketCaseInsensitiveUpgradeHeader() {
   const request = new Request("https://deno.land/", {
     headers: {
       connection: "upgrade",
-      upgrade: "websocket",
+      upgrade: "Websocket",
       "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
     },
   });
@@ -732,7 +776,7 @@ unitTest(function httpUpgradeWebSocketInvalidUpgradeHeader() {
       Deno.upgradeWebSocket(request);
     },
     TypeError,
-    "Invalid Header: 'upgrade' header must be 'websocket'",
+    "Invalid Header: 'upgrade' header must contain 'websocket'",
   );
 });
 
@@ -748,39 +792,42 @@ unitTest(function httpUpgradeWebSocketWithoutUpgradeHeader() {
       Deno.upgradeWebSocket(request);
     },
     TypeError,
-    "Invalid Header: 'upgrade' header must be 'websocket'",
+    "Invalid Header: 'upgrade' header must contain 'websocket'",
   );
 });
 
-unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {
-  const promise = (async () => {
-    const listener = Deno.listen({ port: 4501 });
-    for await (const conn of listener) {
-      const httpConn = Deno.serveHttp(conn);
-      for await (const { request, respondWith } of httpConn) {
-        assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
-        assertEquals(await request.text(), "");
-        assertEquals(request.headers.get("cookie"), "foo=bar; bar=foo");
-        respondWith(new Response("ok"));
+unitTest(
+  { permissions: { net: true } },
+  async function httpCookieConcatenation() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      for await (const conn of listener) {
+        const httpConn = Deno.serveHttp(conn);
+        for await (const { request, respondWith } of httpConn) {
+          assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
+          assertEquals(await request.text(), "");
+          assertEquals(request.headers.get("cookie"), "foo=bar; bar=foo");
+          respondWith(new Response("ok"));
+        }
+        break;
       }
-      break;
-    }
-  })();
+    })();
 
-  const resp = await fetch("http://127.0.0.1:4501/", {
-    headers: [
-      ["connection", "close"],
-      ["cookie", "foo=bar"],
-      ["cookie", "bar=foo"],
-    ],
-  });
-  const text = await resp.text();
-  assertEquals(text, "ok");
-  await promise;
-});
+    const resp = await fetch("http://127.0.0.1:4501/", {
+      headers: [
+        ["connection", "close"],
+        ["cookie", "foo=bar"],
+        ["cookie", "bar=foo"],
+      ],
+    });
+    const text = await resp.text();
+    assertEquals(text, "ok");
+    await promise;
+  },
+);
 
 // https://github.com/denoland/deno/issues/11651
-unitTest({ perms: { net: true } }, async function httpServerPanic() {
+unitTest({ permissions: { net: true } }, async function httpServerPanic() {
   const listener = Deno.listen({ port: 4501 });
   const client = await Deno.connect({ port: 4501 });
   const conn = await listener.accept();
@@ -801,7 +848,7 @@ unitTest({ perms: { net: true } }, async function httpServerPanic() {
 
 // https://github.com/denoland/deno/issues/11595
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function httpServerIncompleteMessage() {
     const listener = Deno.listen({ port: 4501 });
 
@@ -819,6 +866,7 @@ unitTest(
     const writer = writable.getWriter();
 
     async function writeResponse() {
+      await delay(50);
       await writer.write(
         new TextEncoder().encode(
           "written to the writable side of a TransformStream",
@@ -846,22 +894,20 @@ unitTest(
       respondPromise,
     ]);
 
+    httpConn.close();
     listener.close();
 
     assert(errors.length >= 1);
     for (const error of errors) {
       assertEquals(error.name, "Http");
-      assertEquals(
-        error.message,
-        "connection closed before message completed",
-      );
+      assert(error.message.includes("connection"));
     }
   },
 );
 
 // https://github.com/denoland/deno/issues/11743
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function httpServerDoesntLeakResources() {
     const listener = Deno.listen({ port: 4505 });
     const [conn, clientConn] = await Promise.all([
@@ -885,7 +931,7 @@ unitTest(
 
 // https://github.com/denoland/deno/issues/11926
 unitTest(
-  { perms: { net: true } },
+  { permissions: { net: true } },
   async function httpServerDoesntLeakResources2() {
     let listener: Deno.Listener;
     let httpConn: Deno.HttpConn;
@@ -921,6 +967,172 @@ unitTest(
 
     listener!.close();
     httpConn!.close();
+    await promise;
+  },
+);
+
+// https://github.com/denoland/deno/pull/12216
+unitTest(
+  { permissions: { net: true } },
+  async function droppedConnSenderNoPanic() {
+    async function server() {
+      const listener = Deno.listen({ port: 8000 });
+      const conn = await listener.accept();
+      const http = Deno.serveHttp(conn);
+      const evt = await http.nextRequest();
+      http.close();
+      try {
+        await evt!.respondWith(new Response("boom"));
+      } catch {
+        // Ignore error.
+      }
+      listener.close();
+    }
+
+    async function client() {
+      try {
+        const resp = await fetch("http://127.0.0.1:8000/");
+        await resp.body?.cancel();
+      } catch {
+        // Ignore error
+      }
+    }
+
+    await Promise.all([server(), client()]);
+  },
+);
+
+// https://github.com/denoland/deno/issues/12193
+unitTest(
+  { permissions: { net: true } },
+  async function httpConnConcurrentNextRequestCalls() {
+    const hostname = "localhost";
+    const port = 4501;
+
+    async function server() {
+      const listener = Deno.listen({ hostname, port });
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+      const promises = new Array(10).fill(null).map(async (_, i) => {
+        const event = await httpConn.nextRequest();
+        assert(event);
+        const { pathname } = new URL(event.request.url);
+        assertStrictEquals(pathname, `/${i}`);
+        const response = new Response(`Response #${i}`);
+        await event.respondWith(response);
+      });
+      await Promise.all(promises);
+      httpConn.close();
+      listener.close();
+    }
+
+    async function client() {
+      for (let i = 0; i < 10; i++) {
+        const response = await fetch(`http://${hostname}:${port}/${i}`);
+        const body = await response.text();
+        assertStrictEquals(body, `Response #${i}`);
+      }
+    }
+
+    await Promise.all([server(), delay(100).then(client)]);
+  },
+);
+
+// https://github.com/denoland/deno/pull/12704
+// https://github.com/denoland/deno/pull/12732
+unitTest(
+  { permissions: { net: true } },
+  async function httpConnAutoCloseDelayedOnUpgrade() {
+    const hostname = "localhost";
+    const port = 4501;
+
+    async function server() {
+      const listener = Deno.listen({ hostname, port });
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+
+      const event1 = await httpConn.nextRequest() as Deno.RequestEvent;
+      const event2Promise = httpConn.nextRequest();
+
+      const { socket, response } = Deno.upgradeWebSocket(event1.request);
+      socket.onmessage = (event) => socket.send(event.data);
+      event1.respondWith(response);
+
+      const event2 = await event2Promise;
+      assertStrictEquals(event2, null);
+
+      listener.close();
+    }
+
+    async function client() {
+      const socket = new WebSocket(`ws://${hostname}:${port}/`);
+      socket.onopen = () => socket.send("bla bla");
+      const { data } = await new Promise((res) => socket.onmessage = res);
+      assertStrictEquals(data, "bla bla");
+      socket.close();
+    }
+
+    await Promise.all([server(), client()]);
+  },
+);
+
+// https://github.com/denoland/deno/issues/12741
+// https://github.com/denoland/deno/pull/12746
+// https://github.com/denoland/deno/pull/12798
+unitTest(
+  { permissions: { net: true, run: true } },
+  async function httpServerDeleteRequestHasBody() {
+    const hostname = "localhost";
+    const port = 4501;
+
+    async function server() {
+      const listener = Deno.listen({ hostname, port });
+      const tcpConn = await listener.accept();
+      const httpConn = Deno.serveHttp(tcpConn);
+      const event = await httpConn.nextRequest() as Deno.RequestEvent;
+      assert(event.request.body);
+      const response = new Response();
+      await event.respondWith(response);
+      httpConn.close();
+      listener.close();
+    }
+
+    async function client() {
+      const url = `http://${hostname}:${port}/`;
+      const cmd = ["curl", "-X", "DELETE", url];
+      const proc = Deno.run({ cmd, stdout: "null", stderr: "null" });
+      const status = await proc.status();
+      assert(status.success);
+      proc.close();
+    }
+
+    await Promise.all([server(), client()]);
+  },
+);
+
+unitTest(
+  { permissions: { net: true } },
+  async function httpServerRespondNonAsciiUint8Array() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      const httpConn = Deno.serveHttp(conn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+      assertEquals(request.body, null);
+      await respondWith(
+        new Response(new Uint8Array([128]), {}),
+      );
+      httpConn.close();
+    })();
+
+    const resp = await fetch("http://localhost:4501/");
+    assertEquals(resp.status, 200);
+    const body = await resp.arrayBuffer();
+    assertEquals(new Uint8Array(body), new Uint8Array([128]));
+
     await promise;
   },
 );

@@ -1,14 +1,14 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
 
 unitTest(
-  { perms: { write: true, read: true } },
+  { permissions: { write: true, read: true } },
   function readLinkSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const target = testDir +
@@ -23,7 +23,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { write: true, read: true } },
+  { permissions: { write: true, read: true } },
   function readLinkSyncUrlSuccess() {
     const testDir = Deno.makeTempDirSync();
     const target = testDir +
@@ -37,20 +37,24 @@ unitTest(
   },
 );
 
-unitTest({ perms: { read: false } }, function readLinkSyncPerm() {
+unitTest({ permissions: { read: false } }, function readLinkSyncPerm() {
   assertThrows(() => {
     Deno.readLinkSync("/symlink");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { read: true } }, function readLinkSyncNotFound() {
-  assertThrows(() => {
-    Deno.readLinkSync("bad_filename");
-  }, Deno.errors.NotFound);
+unitTest({ permissions: { read: true } }, function readLinkSyncNotFound() {
+  assertThrows(
+    () => {
+      Deno.readLinkSync("bad_filename");
+    },
+    Deno.errors.NotFound,
+    `readlink 'bad_filename'`,
+  );
 });
 
 unitTest(
-  { perms: { write: true, read: true } },
+  { permissions: { write: true, read: true } },
   async function readLinkSuccess() {
     const testDir = Deno.makeTempDirSync();
     const target = testDir +
@@ -65,7 +69,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { write: true, read: true } },
+  { permissions: { write: true, read: true } },
   async function readLinkUrlSuccess() {
     const testDir = Deno.makeTempDirSync();
     const target = testDir +
@@ -79,8 +83,18 @@ unitTest(
   },
 );
 
-unitTest({ perms: { read: false } }, async function readLinkPerm() {
-  await assertThrowsAsync(async () => {
+unitTest({ permissions: { read: false } }, async function readLinkPerm() {
+  await assertRejects(async () => {
     await Deno.readLink("/symlink");
   }, Deno.errors.PermissionDenied);
+});
+
+unitTest({ permissions: { read: true } }, async function readLinkNotFound() {
+  await assertRejects(
+    async () => {
+      await Deno.readLink("bad_filename");
+    },
+    Deno.errors.NotFound,
+    `readlink 'bad_filename'`,
+  );
 });

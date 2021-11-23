@@ -111,13 +111,19 @@ pub struct InstallFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct UninstallFlags {
+  pub name: String,
+  pub root: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct LintFlags {
   pub files: Vec<PathBuf>,
   pub ignore: Vec<PathBuf>,
   pub rules: bool,
-  pub rules_tags: Vec<String>,
-  pub rules_include: Vec<String>,
-  pub rules_exclude: Vec<String>,
+  pub maybe_rules_tags: Option<Vec<String>>,
+  pub maybe_rules_include: Option<Vec<String>>,
+  pub maybe_rules_exclude: Option<Vec<String>>,
   pub json: bool,
 }
 
@@ -166,6 +172,7 @@ pub enum DenoSubcommand {
   Fmt(FmtFlags),
   Info(InfoFlags),
   Install(InstallFlags),
+  Uninstall(UninstallFlags),
   Lsp,
   Lint(LintFlags),
   Repl(ReplFlags),
@@ -191,7 +198,7 @@ pub struct Flags {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
-  pub allow_ffi: Option<Vec<String>>,
+  pub allow_ffi: Option<Vec<PathBuf>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
@@ -215,6 +222,9 @@ pub struct Flags {
   pub log_level: Option<Level>,
   pub no_check: bool,
   pub no_remote: bool,
+  /// If true, a list of Node built-in modules will be injected into
+  /// the import map.
+  pub compat: bool,
   pub prompt: bool,
   pub reload: bool,
   pub repl: bool,
@@ -314,7 +324,7 @@ impl Flags {
         args.push("--allow-ffi".to_string());
       }
       Some(ffi_allowlist) => {
-        let s = format!("--allow-ffi={}", ffi_allowlist.join(","));
+        let s = format!("--allow-ffi={}", join_paths(ffi_allowlist, ","));
         args.push(s);
       }
       _ => {}
@@ -348,7 +358,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          hostnames to use when fetching remote modules from
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
-    DENO_TLS_CA_STORE    Comma-seperated list of order dependent certificate stores
+    DENO_TLS_CA_STORE    Comma-separated list of order dependent certificate stores
                          (system, mozilla)
                          (defaults to mozilla)
     DENO_CERT            Load certificate authority from PEM encoded file
@@ -428,6 +438,8 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     bundle_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("install") {
     install_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("uninstall") {
+    uninstall_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("completions") {
     completions_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("test") {
@@ -499,6 +511,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
+    .subcommand(uninstall_subcommand())
     .subcommand(lsp_subcommand())
     .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
@@ -995,6 +1008,36 @@ The installation root is determined, in order of precedence:
 These must be added to the path manually if required.")
 }
 
+fn uninstall_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("uninstall")
+    .setting(AppSettings::TrailingVarArg)
+    .arg(
+      Arg::with_name("name")
+        .required(true)
+        .multiple(false)
+        .allow_hyphen_values(true))
+    .arg(
+      Arg::with_name("root")
+        .long("root")
+        .help("Installation root")
+        .takes_value(true)
+        .multiple(false))
+    .about("Uninstall a script previously installed with deno install")
+    .long_about(
+      "Uninstalls an executable script in the installation root's bin directory.
+
+  deno uninstall serve
+
+To change the installation root, use --root:
+
+  deno uninstall --root /usr/local serve
+
+The installation root is determined, in order of precedence:
+  - --root option
+  - DENO_INSTALL_ROOT environment variable
+  - $HOME/.deno")
+}
+
 fn lsp_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("lsp")
     .about("Start the language server")
@@ -1097,6 +1140,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .multiple(true)
         .required(false),
     )
+    .arg(watch_arg())
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1450,6 +1494,7 @@ fn runtime_args<'a, 'b>(
     .arg(v8_flags_arg())
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
+    .arg(compat_arg())
 }
 
 fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
@@ -1579,6 +1624,13 @@ fn seed_arg<'a, 'b>() -> Arg<'a, 'b> {
     })
 }
 
+fn compat_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("compat")
+    .long("compat")
+    .requires("unstable")
+    .help("Node compatibility mode. Currently only enables built-in node modules like 'fs' and globals like 'process'.")
+}
+
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("watch")
     .long("watch")
@@ -1633,10 +1685,10 @@ fn config_arg<'a, 'b>() -> Arg<'a, 'b> {
     .long_help(
       "Load configuration file.
 Before 1.14 Deno only supported loading tsconfig.json that allowed
-to customise TypeScript compiler settings. 
+to customise TypeScript compiler settings.
 
-Starting with 1.14 configuration file can be used to configure different 
-subcommands like `deno lint` or `deno fmt`. 
+Starting with 1.14 configuration file can be used to configure different
+subcommands like `deno lint` or `deno fmt`.
 
 It's recommended to use `deno.json` or `deno.jsonc` as a filename.",
     )
@@ -1896,12 +1948,25 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   });
 }
 
+fn uninstall_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let root = if matches.is_present("root") {
+    let install_root = matches.value_of("root").unwrap();
+    Some(PathBuf::from(install_root))
+  } else {
+    None
+  };
+
+  let name = matches.value_of("name").unwrap().to_string();
+  flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
+}
+
 fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Lsp;
 }
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
+  flags.watch = matches.is_present("watch");
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -1911,25 +1976,25 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None => vec![],
   };
   let rules = matches.is_present("rules");
-  let rules_tags = match matches.values_of("rules-tags") {
-    Some(f) => f.map(String::from).collect(),
-    None => vec![],
-  };
-  let rules_include = match matches.values_of("rules-include") {
-    Some(f) => f.map(String::from).collect(),
-    None => vec![],
-  };
-  let rules_exclude = match matches.values_of("rules-exclude") {
-    Some(f) => f.map(String::from).collect(),
-    None => vec![],
-  };
+  let maybe_rules_tags = matches
+    .values_of("rules-tags")
+    .map(|f| f.map(String::from).collect());
+
+  let maybe_rules_include = matches
+    .values_of("rules-include")
+    .map(|f| f.map(String::from).collect());
+
+  let maybe_rules_exclude = matches
+    .values_of("rules-exclude")
+    .map(|f| f.map(String::from).collect());
+
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files,
     rules,
-    rules_tags,
-    rules_include,
-    rules_exclude,
+    maybe_rules_tags,
+    maybe_rules_include,
+    maybe_rules_exclude,
     ignore,
     json,
   });
@@ -2137,7 +2202,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 
   if let Some(ffi_wl) = matches.values_of("allow-ffi") {
-    let ffi_allowlist: Vec<String> = ffi_wl.map(ToString::to_string).collect();
+    let ffi_allowlist: Vec<PathBuf> = ffi_wl.map(PathBuf::from).collect();
     flags.allow_ffi = Some(ffi_allowlist);
     debug!("ffi allowlist: {:#?}", &flags.allow_ffi);
   }
@@ -2176,6 +2241,7 @@ fn runtime_args_parse(
   location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
+  compat_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
 }
@@ -2258,6 +2324,12 @@ fn seed_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
     flags.seed = Some(seed);
 
     flags.v8_flags.push(format!("--random-seed={}", seed));
+  }
+}
+
+fn compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
+  if matches.is_present("compat") {
+    flags.compat = true;
   }
 }
 
@@ -2754,9 +2826,9 @@ mod tests {
             PathBuf::from("script_2.ts")
           ],
           rules: false,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: false,
           ignore: vec![],
         }),
@@ -2772,9 +2844,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![],
           rules: false,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: false,
           ignore: vec![
             PathBuf::from("script_1.ts"),
@@ -2792,9 +2864,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![],
           rules: true,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: false,
           ignore: vec![],
         }),
@@ -2815,9 +2887,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![],
           rules: false,
-          rules_tags: svec![""],
-          rules_include: svec!["ban-untagged-todo", "no-undef"],
-          rules_exclude: svec!["no-const-assign"],
+          maybe_rules_tags: Some(svec![""]),
+          maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
+          maybe_rules_exclude: Some(svec!["no-const-assign"]),
           json: false,
           ignore: vec![],
         }),
@@ -2832,9 +2904,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![PathBuf::from("script_1.ts")],
           rules: false,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: true,
           ignore: vec![],
         }),
@@ -2856,9 +2928,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint(LintFlags {
           files: vec![PathBuf::from("script_1.ts")],
           rules: false,
-          rules_tags: vec![],
-          rules_include: vec![],
-          rules_exclude: vec![],
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
           json: true,
           ignore: vec![],
         }),
@@ -4378,5 +4450,22 @@ mod tests {
       .unwrap_err()
       .to_string()
       .contains("Expected protocol \"http\" or \"https\""));
+  }
+
+  #[test]
+  fn compat() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--compat", "--unstable", "foo.js"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "foo.js".to_string(),
+        }),
+        compat: true,
+        unstable: true,
+        ..Flags::default()
+      }
+    );
   }
 }

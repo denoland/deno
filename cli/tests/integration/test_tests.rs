@@ -85,6 +85,12 @@ itest!(markdown {
   output: "test/markdown.out",
 });
 
+itest!(markdown_windows {
+  args: "test --doc --allow-all test/markdown_windows.md",
+  exit_code: 1,
+  output: "test/markdown_windows.out",
+});
+
 itest!(text {
   args: "test --doc --allow-all test/text.md",
   exit_code: 0,
@@ -133,6 +139,12 @@ itest!(allow_none {
   output: "test/allow_none.out",
 });
 
+itest!(ops_sanitizer_unstable {
+  args: "test --unstable test/ops_sanitizer_unstable.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_unstable.out",
+});
+
 itest!(exit_sanitizer {
   args: "test test/exit_sanitizer.ts",
   output: "test/exit_sanitizer.out",
@@ -179,4 +191,46 @@ itest!(shuffle_with_seed {
   args: "test --shuffle=42 test/shuffle",
   exit_code: 0,
   output: "test/shuffle.out",
+});
+
+itest!(aggregate_error {
+  args: "test test/aggregate_error.ts",
+  exit_code: 1,
+  output: "test/aggregate_error.out",
+});
+
+itest!(steps_passing_steps {
+  args: "test --unstable test/steps/passing_steps.ts",
+  exit_code: 0,
+  output: "test/steps/passing_steps.out",
+});
+
+itest!(steps_passing_steps_concurrent {
+  args: "test --unstable --jobs=2 test/steps/passing_steps.ts",
+  exit_code: 0,
+  output: "test/steps/passing_steps.out",
+});
+
+itest!(steps_failing_steps {
+  args: "test --unstable test/steps/failing_steps.ts",
+  exit_code: 1,
+  output: "test/steps/failing_steps.out",
+});
+
+itest!(steps_ignored_steps {
+  args: "test --unstable test/steps/ignored_steps.ts",
+  exit_code: 0,
+  output: "test/steps/ignored_steps.out",
+});
+
+itest!(steps_invalid_usage {
+  args: "test --unstable test/steps/invalid_usage.ts",
+  exit_code: 1,
+  output: "test/steps/invalid_usage.out",
+});
+
+itest!(steps_no_unstable_flag {
+  args: "test test/steps/no_unstable_flag.ts",
+  exit_code: 1,
+  output: "test/steps/no_unstable_flag.out",
 });

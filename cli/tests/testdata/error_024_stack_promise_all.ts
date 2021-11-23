@@ -9,6 +9,8 @@ const p = Promise.all([
 try {
   await p;
 } catch (error) {
-  console.log(error.stack);
+  if (error instanceof Error) {
+    console.log(error.stack);
+  }
   throw error;
 }

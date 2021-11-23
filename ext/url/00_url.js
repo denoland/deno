@@ -22,7 +22,6 @@
     Symbol,
     SymbolFor,
     SymbolIterator,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -106,8 +105,9 @@
         this[_list] = ArrayPrototypeMap(init, (pair, i) => {
           if (pair.length !== 2) {
             throw new TypeError(
-              `${prefix}: Item ${i +
-                0} in the parameter list does have length 2 exactly.`,
+              `${prefix}: Item ${
+                i + 0
+              } in the parameter list does have length 2 exactly.`,
             );
           }
           return [pair[0], pair[1]];
@@ -290,10 +290,6 @@
     toString() {
       webidl.assertBranded(this, URLSearchParams);
       return core.opSync("op_url_stringify_search_params", this[_list]);
-    }
-
-    get [SymbolToStringTag]() {
-      return "URLSearchParams";
     }
   }
 
@@ -595,10 +591,6 @@
     toJSON() {
       webidl.assertBranded(this, URL);
       return this[_url].href;
-    }
-
-    get [SymbolToStringTag]() {
-      return "URL";
     }
   }
 

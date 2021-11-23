@@ -5,13 +5,40 @@ use crate::colors::italic_bold;
 use crate::colors::red;
 use crate::colors::yellow;
 use deno_core::error::{AnyError, JsError, JsStackFrame};
+use deno_core::url::Url;
 use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
 
 const SOURCE_ABBREV_THRESHOLD: usize = 150;
+const DATA_URL_ABBREV_THRESHOLD: usize = 150;
 
-// Keep in sync with `runtime/js/40_error_stack.js`.
+pub fn format_file_name(file_name: &str) -> String {
+  if file_name.len() > DATA_URL_ABBREV_THRESHOLD {
+    if let Ok(url) = Url::parse(file_name) {
+      if url.scheme() == "data" {
+        let data_path = url.path();
+        if let Some(data_pieces) = data_path.split_once(',') {
+          let data_length = data_pieces.1.len();
+          if let Some(data_start) = data_pieces.1.get(0..20) {
+            if let Some(data_end) = data_pieces.1.get(data_length - 20..) {
+              return format!(
+                "{}:{},{}......{}",
+                url.scheme(),
+                data_pieces.0,
+                data_start,
+                data_end
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+  file_name.to_string()
+}
+
+// Keep in sync with `/core/error.js`.
 pub fn format_location(frame: &JsStackFrame) -> String {
   let _internal = frame
     .file_name
@@ -22,7 +49,7 @@ pub fn format_location(frame: &JsStackFrame) -> String {
   }
   let mut result = String::new();
   if let Some(file_name) = &frame.file_name {
-    result += &cyan(&file_name).to_string();
+    result += &cyan(&format_file_name(file_name)).to_string();
   } else {
     if frame.is_eval {
       result +=
@@ -150,12 +177,23 @@ fn format_maybe_source_line(
   if source_line.is_empty() || source_line.len() > SOURCE_ABBREV_THRESHOLD {
     return "".to_string();
   }
+  if source_line.contains("Couldn't format source line: ") {
+    return format!("\n{}", source_line);
+  }
 
   assert!(start_column.is_some());
   assert!(end_column.is_some());
   let mut s = String::new();
   let start_column = start_column.unwrap();
   let end_column = end_column.unwrap();
+
+  if start_column as usize >= source_line.len() {
+    return format!(
+      "\n{} Couldn't format source line: Column {} is out of bounds (source may have changed at runtime)",
+      crate::colors::yellow("Warning"), start_column + 1,
+    );
+  }
+
   // TypeScript uses `~` always, but V8 would utilise `^` always, even when
   // doing ranges, so here, if we only have one marker (very common with V8
   // errors) we will use `^` instead.

@@ -20,5 +20,6 @@ where
   F: std::future::Future<Output = R>,
 {
   let rt = create_basic_runtime();
-  rt.block_on(future)
+  let local = tokio::task::LocalSet::new();
+  local.block_on(&rt, future)
 }

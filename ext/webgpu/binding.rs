@@ -5,7 +5,6 @@ use deno_core::ResourceId;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
-use std::convert::{TryFrom, TryInto};
 
 use crate::texture::{GpuTextureFormat, GpuTextureViewDimension};
 

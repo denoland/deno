@@ -4,7 +4,7 @@ use crate::deno_dir::DenoDir;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use crate::flags::RunFlags;
-use deno_core::error::bail;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fetch::reqwest::Client;
@@ -227,6 +227,7 @@ pub fn compile_to_runtime_flags(
     lock: None,
     log_level: flags.log_level,
     no_check: false,
+    compat: flags.compat,
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors,
     no_remote: false,
