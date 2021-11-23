@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, deferred, unitTest } from "./test_util.ts";
+import { assertEquals, deferred } from "./test_util.ts";
 
-unitTest(
+Deno.test(
   { permissions: { env: true, read: true } },
   async function workerEnvArrayPermissions() {
     const promise = deferred<boolean[]>();

@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertRejects, unitTest } from "./test_util.ts";
+import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 // The following blob can be created by taking the following s-expr and pass
 // it through wat2wasm.
@@ -17,7 +17,7 @@ const simpleWasm = new Uint8Array([
   0x00, 0x20, 0x01, 0x6a, 0x0b
 ]);
 
-unitTest(async function wasmInstantiateWorksWithBuffer() {
+Deno.test(async function wasmInstantiateWorksWithBuffer() {
   const { module, instance } = await WebAssembly.instantiate(simpleWasm);
   assertEquals(WebAssembly.Module.exports(module), [{
     name: "add",
@@ -32,7 +32,7 @@ unitTest(async function wasmInstantiateWorksWithBuffer() {
 // V8's default implementation of `WebAssembly.instantiateStreaming()` if you
 // don't set the WASM streaming callback, is to take a byte source. Here we
 // check that our implementation of the callback disallows it.
-unitTest(
+Deno.test(
   async function wasmInstantiateStreamingFailsWithBuffer() {
     await assertRejects(async () => {
       await WebAssembly.instantiateStreaming(
@@ -43,7 +43,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   async function wasmInstantiateStreamingNoContentType() {
     await assertRejects(
       async () => {
@@ -56,7 +56,7 @@ unitTest(
   },
 );
 
-unitTest(async function wasmInstantiateStreaming() {
+Deno.test(async function wasmInstantiateStreaming() {
   let isomorphic = "";
   for (const byte of simpleWasm) {
     isomorphic += String.fromCharCode(byte);
@@ -76,7 +76,7 @@ unitTest(async function wasmInstantiateStreaming() {
   assertEquals(add(1, 3), 4);
 });
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function wasmStreamingNonTrivial() {
     // deno-dom's WASM file is a real-world non-trivial case that gave us

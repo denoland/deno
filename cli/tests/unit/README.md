@@ -4,16 +4,16 @@ Files in this directory are unit tests for Deno runtime.
 
 Testing Deno runtime code requires checking API under different runtime
 permissions. To accomplish this all tests exercised are created using
-`unitTest()` function.
+`Deno.test()` function.
 
 ```ts
-import { unitTest } from "./test_util.ts";
+import {} from "./test_util.ts";
 
-unitTest(function simpleTestFn(): void {
+Deno.test(function simpleTestFn(): void {
   // test code here
 });
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },

@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, unitTest } from "./test_util.ts";
+import { assertEquals } from "./test_util.ts";
 
-unitTest(function fileReaderConstruct() {
+Deno.test(function fileReaderConstruct() {
   const fr = new FileReader();
   assertEquals(fr.readyState, FileReader.EMPTY);
 
@@ -10,7 +10,7 @@ unitTest(function fileReaderConstruct() {
   assertEquals(FileReader.DONE, 2);
 });
 
-unitTest(async function fileReaderLoadBlob() {
+Deno.test(async function fileReaderLoadBlob() {
   await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
@@ -77,7 +77,7 @@ unitTest(async function fileReaderLoadBlob() {
   });
 });
 
-unitTest(async function fileReaderLoadBlobDouble() {
+Deno.test(async function fileReaderLoadBlobDouble() {
   // impl note from https://w3c.github.io/FileAPI/
   // Event handler for the load or error events could have started another load,
   // if that happens the loadend event for the first load is not fired
@@ -107,7 +107,7 @@ unitTest(async function fileReaderLoadBlobDouble() {
   });
 });
 
-unitTest(async function fileReaderLoadBlobArrayBuffer() {
+Deno.test(async function fileReaderLoadBlobArrayBuffer() {
   await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
@@ -129,7 +129,7 @@ unitTest(async function fileReaderLoadBlobArrayBuffer() {
   });
 });
 
-unitTest(async function fileReaderLoadBlobDataUrl() {
+Deno.test(async function fileReaderLoadBlobDataUrl() {
   await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
@@ -149,7 +149,7 @@ unitTest(async function fileReaderLoadBlobDataUrl() {
   });
 });
 
-unitTest(async function fileReaderLoadBlobAbort() {
+Deno.test(async function fileReaderLoadBlobAbort() {
   await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
@@ -184,7 +184,7 @@ unitTest(async function fileReaderLoadBlobAbort() {
   });
 });
 
-unitTest(async function fileReaderLoadBlobAbort() {
+Deno.test(async function fileReaderLoadBlobAbort() {
   await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
@@ -219,7 +219,7 @@ unitTest(async function fileReaderLoadBlobAbort() {
   });
 });
 
-unitTest(
+Deno.test(
   async function fileReaderDispatchesEventsInCorrectOrder() {
     await new Promise<void>((resolve) => {
       const fr = new FileReader();

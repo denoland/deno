@@ -4,10 +4,9 @@ import {
   assertRejects,
   assertThrows,
   pathToAbsoluteFileUrl,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest(
+Deno.test(
   { permissions: { write: true, read: true } },
   function readLinkSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
@@ -22,7 +21,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true, read: true } },
   function readLinkSyncUrlSuccess() {
     const testDir = Deno.makeTempDirSync();
@@ -37,13 +36,13 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { read: false } }, function readLinkSyncPerm() {
+Deno.test({ permissions: { read: false } }, function readLinkSyncPerm() {
   assertThrows(() => {
     Deno.readLinkSync("/symlink");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { read: true } }, function readLinkSyncNotFound() {
+Deno.test({ permissions: { read: true } }, function readLinkSyncNotFound() {
   assertThrows(
     () => {
       Deno.readLinkSync("bad_filename");
@@ -53,7 +52,7 @@ unitTest({ permissions: { read: true } }, function readLinkSyncNotFound() {
   );
 });
 
-unitTest(
+Deno.test(
   { permissions: { write: true, read: true } },
   async function readLinkSuccess() {
     const testDir = Deno.makeTempDirSync();
@@ -68,7 +67,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true, read: true } },
   async function readLinkUrlSuccess() {
     const testDir = Deno.makeTempDirSync();
@@ -83,13 +82,13 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { read: false } }, async function readLinkPerm() {
+Deno.test({ permissions: { read: false } }, async function readLinkPerm() {
   await assertRejects(async () => {
     await Deno.readLink("/symlink");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { read: true } }, async function readLinkNotFound() {
+Deno.test({ permissions: { read: true } }, async function readLinkNotFound() {
   await assertRejects(
     async () => {
       await Deno.readLink("bad_filename");
