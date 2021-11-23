@@ -930,9 +930,15 @@ impl Inner {
       .performance
       .mark("did_change_watched_files", Some(&params));
     let mut touched = false;
+    let changes: Vec<Url> = params
+      .changes
+      .iter()
+      .map(|f| self.url_map.normalize_url(&f.uri))
+      .collect();
+
     // if the current import map has changed, we need to reload it
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
-      if params.changes.iter().any(|fe| *import_map_uri == fe.uri) {
+      if changes.iter().any(|uri| import_map_uri == uri) {
         if let Err(err) = self.update_import_map().await {
           self.client.show_message(MessageType::Warning, err).await;
         }
@@ -941,7 +947,7 @@ impl Inner {
     }
     // if the current tsconfig has changed, we need to reload it
     if let Some(config_uri) = &self.maybe_config_uri {
-      if params.changes.iter().any(|fe| *config_uri == fe.uri) {
+      if changes.iter().any(|uri| config_uri == uri) {
         if let Err(err) = self.update_config_file() {
           self.client.show_message(MessageType::Warning, err).await;
         }
