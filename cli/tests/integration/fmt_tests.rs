@@ -128,12 +128,6 @@ fn fmt_ignore_unexplicit_files() {
   );
 }
 
-itest!(fmt_check_tests_dir {
-  args: "fmt --check ./ --ignore=.test_coverage,fmt/fmt_with_config/,test/markdown_windows.md",
-  output: "fmt/expected_fmt_check_tests_dir.out",
-  exit_code: 1,
-});
-
 itest!(fmt_quiet_check_fmt_dir {
   args: "fmt --check --quiet fmt/regular/",
   output_str: Some(""),
