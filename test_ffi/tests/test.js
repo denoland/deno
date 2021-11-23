@@ -69,7 +69,7 @@ const stringPtr = Deno.UnsafePointer.of(string);
 console.log(stringPtr.readCString());
 console.log(stringPtr.readCString(11));
 console.log(Boolean(dylib.symbols.is_null_ptr(ptr)));
-console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.null())));
+console.log(Boolean(dylib.symbols.is_null_ptr(null)));
 console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
 console.log(dylib.symbols.add_u32(123, 456));
 console.log(dylib.symbols.add_i32(123, 456));

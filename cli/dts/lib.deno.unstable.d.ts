@@ -128,6 +128,48 @@ declare namespace Deno {
     nonblocking?: boolean;
   }
 
+  type TypedArray =
+    | Int8Array
+    | Uint8Array
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
+    | Uint8ClampedArray
+    | Float32Array
+    | Float64Array
+    | BigInt64Array
+    | BigUint64Array;
+
+  /** An unsafe pointer to an memory location for passing and returning pointers to and from the ffi */
+  export class UnsafePointer {
+    constructor(value: bigint);
+
+    value: bigint;
+
+    /**
+     * Return the direct memory pointer to the typed array in memory
+     */
+    static of(typedArray: TypedArray): UnsafePointer;
+
+    /**
+     * Reads memory at the pointer into a typed array.
+     * Length is determined from the typed array's `byteLength`.
+     * Also takes optional offset.
+     */
+    read(destination: TypedArray, offset?: bigint | number): void;
+
+    /**
+     * Reads a C string at the pointer taking an optional offset.
+     */
+    readCString(offset?: bigint | number): string;
+
+    /**
+     * Returns the value of the pointer which is useful in certain scenarios.
+     */
+    valueOf(): bigint;
+  }
+
   /** A dynamic library resource */
   export interface DynamicLibrary<S extends Record<string, ForeignFunction>> {
     /** All of the registered symbols along with functions for calling them */

@@ -26,21 +26,17 @@
       this.value = value;
     }
 
-    static null() {
-      return new UnsafePointer(0n);
-    }
-
     static of(typedArray) {
       return new UnsafePointer(
         unpackPointer(core.opSync("op_ffi_ptr_of", typedArray)),
       );
     }
 
-    read(into, offset = 0) {
-      core.opSync("op_ffi_buf_read_into", [
+    read(destination, offset = 0) {
+      core.opSync("op_ffi_buf_read", [
         packPointer(this.value + BigInt(offset)),
-        into,
-        into.byteLength,
+        destination,
+        destination.byteLength,
       ]);
     }
 
@@ -49,6 +45,10 @@
         "op_ffi_cstr_read",
         packPointer(this.value + BigInt(offset)),
       );
+    }
+
+    valueOf() {
+      return this.value;
     }
   }
 
@@ -81,9 +81,12 @@
               } else if (arg instanceof UnsafePointer) {
                 parameters.push(packPointer(arg.value));
                 buffers.push(undefined);
+              } else if (arg === null) {
+                parameters.push(null);
+                buffers.push(undefined);
               } else {
                 throw new TypeError(
-                  "Invalid ffi arg value, expected TypedArray or UnsafePointer",
+                  "Invalid ffi arg value, expected TypedArray, UnsafePointer or null",
                 );
               }
             } else {

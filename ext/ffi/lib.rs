@@ -113,7 +113,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       ("op_ffi_call", op_sync(op_ffi_call)),
       ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
       ("op_ffi_ptr_of", op_sync(op_ffi_ptr_of)),
-      ("op_ffi_buf_read_into", op_sync(op_ffi_buf_read_into)),
+      ("op_ffi_buf_read", op_sync(op_ffi_buf_read)),
       ("op_ffi_cstr_read", op_sync(op_ffi_cstr_read)),
     ])
     .state(move |state| {
@@ -222,12 +222,20 @@ impl NativeValue {
       NativeType::F64 => Self {
         f64_value: value_as_f64(value),
       },
-      NativeType::Buffer => Self {
-        buffer: u64::from(
-          serde_json::from_value::<PointerValue>(value)
-          .expect("Expected ffi arg value to be a tuple of the low and high bits of a pointer address")
-        ) as *const u8,
-      },
+      NativeType::Buffer => {
+        if value.is_null() {
+          Self {
+            buffer: ptr::null(),
+          }
+        } else {
+          Self {
+            buffer: u64::from(
+              serde_json::from_value::<PointerValue>(value)
+              .expect("Expected ffi arg value to be a tuple of the low and high bits of a pointer address")
+            ) as *const u8,
+          }
+        }
+      }
     }
   }
 
@@ -551,7 +559,7 @@ fn op_ffi_ptr_of(
   Ok(PointerValue::from(buf.as_ptr() as u64))
 }
 
-fn op_ffi_buf_read_into(
+fn op_ffi_buf_read(
   _state: &mut deno_core::OpState,
   (src, mut dst, count): (PointerValue, ZeroCopyBuf, usize),
   _: (),
