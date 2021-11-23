@@ -691,7 +691,7 @@ Deno.test(async function testAesKeyGen() {
   assertEquals(algorithm.length, 256);
 });
 
-unitTest(async function testDecryptWithInvalidIntializationVector() {
+Deno.test(async function testDecryptWithInvalidIntializationVector() {
   const data = new Uint8Array([42, 42, 42, 42]);
   const key = await crypto.subtle.generateKey(
     { name: "AES-CBC", length: 256 },
