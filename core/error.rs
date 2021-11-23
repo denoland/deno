@@ -1,23 +1,21 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-pub use anyhow::anyhow;
-pub use anyhow::bail;
-pub use anyhow::Context;
+use anyhow::Error;
 use std::borrow::Cow;
-use std::error::Error;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
 /// A generic wrapper that can encapsulate any concrete error type.
+// TODO(ry) Deprecate AnyError and encourage deno_core::anyhow::Error instead.
 pub type AnyError = anyhow::Error;
 
 /// Creates a new error with a caller-specified error class name and message.
 pub fn custom_error(
   class: &'static str,
   message: impl Into<Cow<'static, str>>,
-) -> AnyError {
+) -> Error {
   CustomError {
     class,
     message: message.into(),
@@ -25,39 +23,39 @@ pub fn custom_error(
   .into()
 }
 
-pub fn generic_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+pub fn generic_error(message: impl Into<Cow<'static, str>>) -> Error {
   custom_error("Error", message)
 }
 
-pub fn type_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+pub fn type_error(message: impl Into<Cow<'static, str>>) -> Error {
   custom_error("TypeError", message)
 }
 
-pub fn range_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+pub fn range_error(message: impl Into<Cow<'static, str>>) -> Error {
   custom_error("RangeError", message)
 }
 
-pub fn invalid_hostname(hostname: &str) -> AnyError {
+pub fn invalid_hostname(hostname: &str) -> Error {
   type_error(format!("Invalid hostname: '{}'", hostname))
 }
 
-pub fn uri_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+pub fn uri_error(message: impl Into<Cow<'static, str>>) -> Error {
   custom_error("URIError", message)
 }
 
-pub fn bad_resource(message: impl Into<Cow<'static, str>>) -> AnyError {
+pub fn bad_resource(message: impl Into<Cow<'static, str>>) -> Error {
   custom_error("BadResource", message)
 }
 
-pub fn bad_resource_id() -> AnyError {
+pub fn bad_resource_id() -> Error {
   custom_error("BadResource", "Bad resource ID")
 }
 
-pub fn not_supported() -> AnyError {
+pub fn not_supported() -> Error {
   custom_error("NotSupported", "The operation is not supported")
 }
 
-pub fn resource_unavailable() -> AnyError {
+pub fn resource_unavailable() -> Error {
   custom_error(
     "Busy",
     "Resource is unavailable because it is in use by a promise",
@@ -66,7 +64,7 @@ pub fn resource_unavailable() -> AnyError {
 
 /// A simple error type that lets the creator specify both the error message and
 /// the error class name. This type is private; externally it only ever appears
-/// wrapped in an `AnyError`. To retrieve the error class name from a wrapped
+/// wrapped in an `anyhow::Error`. To retrieve the error class name from a wrapped
 /// `CustomError`, use the function `get_custom_error_class()`.
 #[derive(Debug)]
 struct CustomError {
@@ -80,11 +78,11 @@ impl Display for CustomError {
   }
 }
 
-impl Error for CustomError {}
+impl std::error::Error for CustomError {}
 
 /// If this error was crated with `custom_error()`, return the specified error
 /// class name. In all other cases this function returns `None`.
-pub fn get_custom_error_class(error: &AnyError) -> Option<&'static str> {
+pub fn get_custom_error_class(error: &Error) -> Option<&'static str> {
   error.downcast_ref::<CustomError>().map(|e| e.class)
 }
 
@@ -168,7 +166,7 @@ struct NativeJsError {
 }
 
 impl JsError {
-  pub(crate) fn create(js_error: Self) -> AnyError {
+  pub(crate) fn create(js_error: Self) -> Error {
     js_error.into()
   }
 
@@ -245,7 +243,7 @@ impl JsError {
   }
 }
 
-impl Error for JsError {}
+impl std::error::Error for JsError {}
 
 fn format_source_loc(
   file_name: &str,
@@ -283,9 +281,9 @@ impl Display for JsError {
 
 pub(crate) fn attach_handle_to_error(
   scope: &mut v8::Isolate,
-  err: AnyError,
+  err: Error,
   handle: v8::Local<v8::Value>,
-) -> AnyError {
+) -> Error {
   ErrWithV8Handle::new(scope, err, handle).into()
 }
 
@@ -323,14 +321,14 @@ pub(crate) fn is_instance_of_error<'s>(
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on
 // values of type v8::Global<T>.
 pub(crate) struct ErrWithV8Handle {
-  err: AnyError,
+  err: Error,
   handle: v8::Global<v8::Value>,
 }
 
 impl ErrWithV8Handle {
   pub fn new(
     scope: &mut v8::Isolate,
-    err: AnyError,
+    err: Error,
     handle: v8::Local<v8::Value>,
   ) -> Self {
     let handle = v8::Global::new(scope, handle);
@@ -348,11 +346,11 @@ impl ErrWithV8Handle {
 unsafe impl Send for ErrWithV8Handle {}
 unsafe impl Sync for ErrWithV8Handle {}
 
-impl Error for ErrWithV8Handle {}
+impl std::error::Error for ErrWithV8Handle {}
 
 impl Display for ErrWithV8Handle {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-    <AnyError as Display>::fmt(&self.err, f)
+    <Error as Display>::fmt(&self.err, f)
   }
 }
 

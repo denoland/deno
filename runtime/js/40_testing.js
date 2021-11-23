@@ -9,6 +9,7 @@
   const { serializePermissions } = window.__bootstrap.permissions;
   const { assert } = window.__bootstrap.util;
   const {
+    AggregateError,
     ArrayPrototypeFilter,
     ArrayPrototypePush,
     ArrayPrototypeSome,
@@ -284,7 +285,7 @@ finishing test case.`;
         }
         if (optionsOrFn.name != undefined) {
           throw new TypeError(
-            "Unexpected 'fn' field in options, test name is already provided as the first argument.",
+            "Unexpected 'name' field in options, test name is already provided as the first argument.",
           );
         }
         testDef = {
@@ -321,11 +322,12 @@ finishing test case.`;
         }
         name = nameOrFnOrOptions.name ?? fn.name;
       } else {
-        if (!nameOrFnOrOptions.fn) {
-          throw new TypeError("Missing test function");
-        }
-        if (typeof nameOrFnOrOptions.fn !== "function") {
-          throw new TypeError("'fn' must be a function");
+        if (
+          !nameOrFnOrOptions.fn || typeof nameOrFnOrOptions.fn !== "function"
+        ) {
+          throw new TypeError(
+            "Expected 'fn' field in the first argument to be a test function.",
+          );
         }
         fn = nameOrFnOrOptions.fn;
         name = nameOrFnOrOptions.name ?? fn.name;
@@ -349,7 +351,7 @@ finishing test case.`;
   }
 
   function formatError(error) {
-    if (error.errors) {
+    if (error instanceof AggregateError) {
       const message = error
         .errors
         .map((error) =>

@@ -148,7 +148,7 @@
       },
       {
         "name": "staticBar",
-        "kind": 7,
+        "kind": 8,
         "range": {
           "start": {
             "line": 11,
@@ -171,8 +171,8 @@
         }
       },
       {
-        "name": "value",
-        "kind": 7,
+        "name": "(get) value",
+        "kind": 8,
         "range": {
           "start": {
             "line": 9,
@@ -195,8 +195,8 @@
         }
       },
       {
-        "name": "value",
-        "kind": 7,
+        "name": "(set) value",
+        "kind": 8,
         "range": {
           "start": {
             "line": 10,
@@ -220,7 +220,7 @@
       },
       {
         "name": "x",
-        "kind": 7,
+        "kind": 8,
         "range": {
           "start": {
             "line": 5,

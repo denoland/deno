@@ -1,11 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::type_error;
-use crate::error::AnyError;
 use crate::gotham_state::GothamState;
 use crate::ops_metrics::OpsTracker;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
+use anyhow::Error;
 use futures::future::maybe_done;
 use futures::future::FusedFuture;
 use futures::future::MaybeDone;
@@ -96,13 +96,13 @@ pub struct OpPayload<'a, 'b, 'c> {
 impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
   pub fn deserialize<T: DeserializeOwned, U: DeserializeOwned>(
     self,
-  ) -> Result<(T, U), AnyError> {
+  ) -> Result<(T, U), Error> {
     let a: T = serde_v8::from_v8(self.scope, self.a)
-      .map_err(AnyError::from)
+      .map_err(Error::from)
       .map_err(|e| type_error(format!("Error parsing args: {}", e)))?;
 
     let b: U = serde_v8::from_v8(self.scope, self.b)
-      .map_err(AnyError::from)
+      .map_err(Error::from)
       .map_err(|e| type_error(format!("Error parsing args: {}", e)))?;
     Ok((a, b))
   }
@@ -144,7 +144,7 @@ pub struct OpError {
 }
 
 pub fn serialize_op_result<R: Serialize + 'static>(
-  result: Result<R, AnyError>,
+  result: Result<R, Error>,
   state: Rc<RefCell<OpState>>,
 ) -> OpResult {
   match result {

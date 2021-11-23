@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::MediaType;
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde_json;
@@ -70,7 +70,7 @@ const CACHE_PATH: &str = "deps";
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct StateSnapshot {
   pub assets: Assets,
   pub config: ConfigSnapshot,
@@ -271,14 +271,17 @@ impl Inner {
           )
           .await?;
         let navigation_tree = Arc::new(navigation_tree);
-        if specifier.scheme() == "asset" {
-          self
+        match asset_or_doc {
+          AssetOrDocument::Asset(_) => self
             .assets
-            .set_navigation_tree(specifier, navigation_tree.clone())?;
-        } else {
-          self
-            .documents
-            .set_navigation_tree(specifier, navigation_tree.clone())?;
+            .cache_navigation_tree(specifier, navigation_tree.clone())?,
+          AssetOrDocument::Document(doc) => {
+            self.documents.try_cache_navigation_tree(
+              specifier,
+              &doc.script_version(),
+              navigation_tree.clone(),
+            )?
+          }
         }
         navigation_tree
       };
@@ -368,8 +371,8 @@ impl Inner {
     Ok(())
   }
 
-  pub(crate) fn snapshot(&self) -> LspResult<StateSnapshot> {
-    Ok(StateSnapshot {
+  pub(crate) fn snapshot(&self) -> LspResult<Arc<StateSnapshot>> {
+    Ok(Arc::new(StateSnapshot {
       assets: self.assets.clone(),
       config: self.config.snapshot().map_err(|err| {
         error!("{}", err);
@@ -382,7 +385,7 @@ impl Inner {
       module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       url_map: self.url_map.clone(),
-    })
+    }))
   }
 
   pub fn update_cache(&mut self) -> Result<(), AnyError> {
@@ -987,17 +990,16 @@ impl Inner {
     let asset_or_document = self.get_cached_asset_or_document(&specifier)?;
     let line_index = asset_or_document.line_index();
 
-    let req = tsc::RequestMethod::GetNavigationTree(specifier);
-    let navigation_tree: tsc::NavigationTree = self
-      .ts_server
-      .request(self.snapshot()?, req)
-      .await
-      .map_err(|err| {
-        error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
+    let navigation_tree =
+      self.get_navigation_tree(&specifier).await.map_err(|err| {
+        error!(
+          "Error getting document symbols for \"{}\": {}",
+          specifier, err
+        );
+        LspError::internal_error()
       })?;
 
-    let response = if let Some(child_items) = navigation_tree.child_items {
+    let response = if let Some(child_items) = &navigation_tree.child_items {
       let mut document_symbols = Vec::<DocumentSymbol>::new();
       for item in child_items {
         item
@@ -1543,7 +1545,7 @@ impl Inner {
     let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let req = tsc::RequestMethod::GetReferences((
-      specifier,
+      specifier.clone(),
       line_index.offset_tsc(params.text_document_position.position)?,
     ));
     let maybe_references: Option<Vec<tsc::ReferenceEntry>> = self
@@ -1563,9 +1565,14 @@ impl Inner {
         }
         let reference_specifier =
           resolve_url(&reference.document_span.file_name).unwrap();
-        let asset_or_doc =
-          self.get_asset_or_document(&reference_specifier).await?;
-        results.push(reference.to_location(asset_or_doc.line_index(), self));
+        let reference_line_index = if reference_specifier == specifier {
+          line_index.clone()
+        } else {
+          let asset_or_doc =
+            self.get_asset_or_document(&reference_specifier).await?;
+          asset_or_doc.line_index()
+        };
+        results.push(reference.to_location(reference_line_index, self));
       }
 
       self.performance.measure(mark);
@@ -1615,6 +1622,54 @@ impl Inner {
     }
   }
 
+  async fn goto_type_definition(
+    &mut self,
+    params: GotoTypeDefinitionParams,
+  ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
+    if !self.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
+      return Ok(None);
+    }
+
+    let mark = self.performance.mark("goto_definition", Some(&params));
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
+    let req = tsc::RequestMethod::GetTypeDefinition {
+      specifier,
+      position: line_index
+        .offset_tsc(params.text_document_position_params.position)?,
+    };
+    let maybe_definition_info: Option<Vec<tsc::DefinitionInfo>> = self
+      .ts_server
+      .request(self.snapshot()?, req)
+      .await
+      .map_err(|err| {
+        error!("Unable to get type definition from TypeScript: {}", err);
+        LspError::internal_error()
+      })?;
+
+    let response = if let Some(definition_info) = maybe_definition_info {
+      let mut location_links = Vec::new();
+      for info in definition_info {
+        if let Some(link) =
+          info.document_span.to_link(line_index.clone(), self).await
+        {
+          location_links.push(link);
+        }
+      }
+      Some(GotoTypeDefinitionResponse::Link(location_links))
+    } else {
+      None
+    };
+
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
   async fn completion(
     &mut self,
     params: CompletionParams,
@@ -1634,10 +1689,11 @@ impl Inner {
     // completions, we will use internal logic and if there are completions
     // for imports, we will return those and not send a message into tsc, where
     // other completions come from.
+    let snapshot = self.snapshot()?;
     let response = if let Some(response) = completions::get_import_completions(
       &specifier,
       &params.text_document_position.position,
-      &self.snapshot()?,
+      &snapshot,
       self.client.clone(),
     )
     .await
@@ -2157,8 +2213,8 @@ impl Inner {
         LspError::invalid_request()
       })?;
 
-    let semantic_tokens: SemanticTokens =
-      semantic_classification.to_semantic_tokens(line_index);
+    let semantic_tokens =
+      semantic_classification.to_semantic_tokens(line_index)?;
     let response = if !semantic_tokens.data.is_empty() {
       Some(SemanticTokensResult::Tokens(semantic_tokens))
     } else {
@@ -2200,8 +2256,8 @@ impl Inner {
         LspError::invalid_request()
       })?;
 
-    let semantic_tokens: SemanticTokens =
-      semantic_classification.to_semantic_tokens(line_index);
+    let semantic_tokens =
+      semantic_classification.to_semantic_tokens(line_index)?;
     let response = if !semantic_tokens.data.is_empty() {
       Some(SemanticTokensRangeResult::Tokens(semantic_tokens))
     } else {
@@ -2261,6 +2317,44 @@ impl Inner {
       self.performance.measure(mark);
       Ok(None)
     }
+  }
+
+  async fn symbol(
+    &mut self,
+    params: WorkspaceSymbolParams,
+  ) -> LspResult<Option<Vec<SymbolInformation>>> {
+    let mark = self.performance.mark("symbol", Some(&params));
+
+    let req = tsc::RequestMethod::GetNavigateToItems {
+      search: params.query,
+      // this matches vscode's hard coded result count
+      max_result_count: Some(256),
+      file: None,
+    };
+
+    let navigate_to_items: Vec<tsc::NavigateToItem> = self
+      .ts_server
+      .request(self.snapshot()?, req)
+      .await
+      .map_err(|err| {
+        error!("Failed request to tsserver: {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let maybe_symbol_information = if navigate_to_items.is_empty() {
+      None
+    } else {
+      let mut symbol_information = Vec::new();
+      for item in navigate_to_items {
+        if let Some(info) = item.to_symbol_information(self).await {
+          symbol_information.push(info);
+        }
+      }
+      Some(symbol_information)
+    };
+
+    self.performance.measure(mark);
+    Ok(maybe_symbol_information)
   }
 }
 
@@ -2382,6 +2476,13 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.goto_definition(params).await
   }
 
+  async fn goto_type_definition(
+    &self,
+    params: GotoTypeDefinitionParams,
+  ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
+    self.0.lock().await.goto_type_definition(params).await
+  }
+
   async fn completion(
     &self,
     params: CompletionParams,
@@ -2472,6 +2573,13 @@ impl lspower::LanguageServer for LanguageServer {
     params: SignatureHelpParams,
   ) -> LspResult<Option<SignatureHelp>> {
     self.0.lock().await.signature_help(params).await
+  }
+
+  async fn symbol(
+    &self,
+    params: WorkspaceSymbolParams,
+  ) -> LspResult<Option<Vec<SymbolInformation>>> {
+    self.0.lock().await.symbol(params).await
   }
 }
 

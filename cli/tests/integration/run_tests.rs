@@ -2271,3 +2271,37 @@ fn issue12453() {
     .unwrap();
   assert!(status.success());
 }
+
+/// Regression test for https://github.com/denoland/deno/issues/12740.
+#[test]
+fn issue12740() {
+  let mod_dir = TempDir::new().expect("tempdir fail");
+  let mod1_path = mod_dir.path().join("mod1.ts");
+  let mod2_path = mod_dir.path().join("mod2.ts");
+  let mut deno_cmd = util::deno_cmd();
+  std::fs::write(&mod1_path, "").unwrap();
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(&mod1_path)
+    .stderr(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  std::fs::write(&mod1_path, "export { foo } from \"./mod2.ts\";").unwrap();
+  std::fs::write(&mod2_path, "(").unwrap();
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(&mod1_path)
+    .stderr(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(!status.success());
+}

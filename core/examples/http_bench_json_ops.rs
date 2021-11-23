@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::AnyError;
+use deno_core::anyhow::Error;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
@@ -12,7 +12,6 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
 use std::env;
-use std::io::Error;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use tokio::io::AsyncReadExt;
@@ -43,7 +42,7 @@ struct TcpListener {
 }
 
 impl TcpListener {
-  async fn accept(self: Rc<Self>) -> Result<TcpStream, Error> {
+  async fn accept(self: Rc<Self>) -> Result<TcpStream, std::io::Error> {
     let cancel = RcRef::map(&self, |r| &r.cancel);
     let stream = self.inner.accept().try_or_cancel(cancel).await?.0.into();
     Ok(stream)
@@ -57,7 +56,7 @@ impl Resource for TcpListener {
 }
 
 impl TryFrom<std::net::TcpListener> for TcpListener {
-  type Error = Error;
+  type Error = std::io::Error;
   fn try_from(
     std_listener: std::net::TcpListener,
   ) -> Result<Self, Self::Error> {
@@ -78,21 +77,18 @@ struct TcpStream {
 }
 
 impl TcpStream {
-  async fn read(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  async fn read(self: Rc<Self>, mut buf: ZeroCopyBuf) -> Result<usize, Error> {
     let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     let cancel = RcRef::map(self, |r| &r.cancel);
     rd.read(&mut buf)
       .try_or_cancel(cancel)
       .await
-      .map_err(AnyError::from)
+      .map_err(Error::from)
   }
 
-  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, Error> {
     let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
-    wr.write(&buf).await.map_err(AnyError::from)
+    wr.write(&buf).await.map_err(Error::from)
   }
 }
 
@@ -129,11 +125,7 @@ fn create_js_runtime() -> JsRuntime {
   runtime
 }
 
-fn op_listen(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<ResourceId, AnyError> {
+fn op_listen(state: &mut OpState, _: (), _: ()) -> Result<ResourceId, Error> {
   log::debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
@@ -147,7 +139,7 @@ async fn op_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, Error> {
   log::debug!("accept rid={}", rid);
 
   let listener = state.borrow().resource_table.get::<TcpListener>(rid)?;

@@ -9,8 +9,8 @@ use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::refactor::EXTRACT_CONSTANT;
 use super::refactor::EXTRACT_INTERFACE;
 use super::refactor::EXTRACT_TYPE;
+use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
-use super::semantic_tokens::TsTokenEncodingConsts;
 use super::text;
 use super::text::LineIndex;
 use super::urls::INVALID_SPECIFIER;
@@ -19,7 +19,7 @@ use crate::config_file::TsConfig;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -38,6 +38,8 @@ use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::warn;
+use lspower::jsonrpc::Error as LspError;
+use lspower::jsonrpc::Result as LspResult;
 use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
@@ -69,7 +71,7 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
 
 type Request = (
   RequestMethod,
-  StateSnapshot,
+  Arc<StateSnapshot>,
   oneshot::Sender<Result<Value, AnyError>>,
 );
 
@@ -105,7 +107,7 @@ impl TsServer {
 
   pub(crate) async fn request<R>(
     &self,
-    snapshot: StateSnapshot,
+    snapshot: Arc<StateSnapshot>,
     req: RequestMethod,
   ) -> Result<R, AnyError>
   where
@@ -209,7 +211,7 @@ impl Assets {
     self.0.insert(k, v)
   }
 
-  pub fn set_navigation_tree(
+  pub fn cache_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
     navigation_tree: Arc<NavigationTree>,
@@ -232,7 +234,7 @@ impl Assets {
 pub(crate) async fn get_asset(
   specifier: &ModuleSpecifier,
   ts_server: &TsServer,
-  state_snapshot: StateSnapshot,
+  state_snapshot: Arc<StateSnapshot>,
 ) -> Result<Option<AssetDocument>, AnyError> {
   let specifier_str = specifier.to_string().replace("asset:///", "");
   if let Some(text) = tsc::get_asset(&specifier_str) {
@@ -505,6 +507,9 @@ impl From<ScriptElementKind> for lsp::SymbolKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
       ScriptElementKind::ModuleElement => Self::Module,
+      // this is only present in `getSymbolKind` in `workspaceSymbols` in
+      // vscode, but seems strange it isn't consistent.
+      ScriptElementKind::TypeElement => Self::Class,
       ScriptElementKind::ClassElement => Self::Class,
       ScriptElementKind::EnumElement => Self::Enum,
       ScriptElementKind::EnumMemberElement => Self::EnumMember,
@@ -512,9 +517,12 @@ impl From<ScriptElementKind> for lsp::SymbolKind {
       ScriptElementKind::IndexSignatureElement => Self::Method,
       ScriptElementKind::CallSignatureElement => Self::Method,
       ScriptElementKind::MemberFunctionElement => Self::Method,
-      ScriptElementKind::MemberVariableElement => Self::Property,
-      ScriptElementKind::MemberGetAccessorElement => Self::Property,
-      ScriptElementKind::MemberSetAccessorElement => Self::Property,
+      // workspaceSymbols in vscode treats them as fields, which does seem more
+      // semantically correct while `fromProtocolScriptElementKind` treats them
+      // as properties.
+      ScriptElementKind::MemberVariableElement => Self::Field,
+      ScriptElementKind::MemberGetAccessorElement => Self::Field,
+      ScriptElementKind::MemberSetAccessorElement => Self::Field,
       ScriptElementKind::VariableElement => Self::Variable,
       ScriptElementKind::LetElement => Self::Variable,
       ScriptElementKind::ConstElement => Self::Variable,
@@ -671,6 +679,71 @@ impl DocumentSpan {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub enum MatchKind {
+  #[serde(rename = "exact")]
+  Exact,
+  #[serde(rename = "prefix")]
+  Prefix,
+  #[serde(rename = "substring")]
+  Substring,
+  #[serde(rename = "camelCase")]
+  CamelCase,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavigateToItem {
+  name: String,
+  kind: ScriptElementKind,
+  kind_modifiers: String,
+  match_kind: MatchKind,
+  is_case_sensitive: bool,
+  file_name: String,
+  text_span: TextSpan,
+  container_name: Option<String>,
+  container_kind: ScriptElementKind,
+}
+
+impl NavigateToItem {
+  pub(crate) async fn to_symbol_information(
+    &self,
+    language_server: &mut language_server::Inner,
+  ) -> Option<lsp::SymbolInformation> {
+    let specifier = normalize_specifier(&self.file_name).ok()?;
+    let asset_or_doc = language_server
+      .get_asset_or_document(&specifier)
+      .await
+      .ok()?;
+    let line_index = asset_or_doc.line_index();
+    let uri = language_server
+      .url_map
+      .normalize_specifier(&specifier)
+      .ok()?;
+    let range = self.text_span.to_range(line_index);
+    let location = lsp::Location { uri, range };
+
+    let mut tags: Option<Vec<lsp::SymbolTag>> = None;
+    let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
+    if kind_modifiers.contains("deprecated") {
+      tags = Some(vec![lsp::SymbolTag::Deprecated]);
+    }
+
+    // The field `deprecated` is deprecated but SymbolInformation does not have
+    // a default, therefore we have to supply the deprecated deprecated
+    // field. It is like a bad version of Inception.
+    #[allow(deprecated)]
+    Some(lsp::SymbolInformation {
+      name: self.name.clone(),
+      kind: self.kind.clone().into(),
+      tags,
+      deprecated: None,
+      location,
+      container_name: self.container_name.clone(),
+    })
+  }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NavigationTree {
   pub text: String,
@@ -750,6 +823,16 @@ impl NavigationTree {
           }
         }
 
+        let name = match self.kind {
+          ScriptElementKind::MemberGetAccessorElement => {
+            format!("(get) {}", self.text)
+          }
+          ScriptElementKind::MemberSetAccessorElement => {
+            format!("(set) {}", self.text)
+          }
+          _ => self.text.clone(),
+        };
+
         let mut tags: Option<Vec<lsp::SymbolTag>> = None;
         let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
         if kind_modifiers.contains("deprecated") {
@@ -767,7 +850,7 @@ impl NavigationTree {
         // field. It is like a bad version of Inception.
         #[allow(deprecated)]
         document_symbols.push(lsp::DocumentSymbol {
-          name: self.text.clone(),
+          name,
           kind: self.kind.clone().into(),
           range: span.to_range(line_index.clone()),
           selection_range: selection_span.to_range(line_index.clone()),
@@ -890,7 +973,7 @@ impl RenameLocations {
           lsp::TextDocumentEdit {
             text_document: lsp::OptionalVersionedTextDocumentIdentifier {
               uri: uri.clone(),
-              version: asset_or_doc.document_version(),
+              version: asset_or_doc.document_lsp_version(),
             },
             edits:
               Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(),
@@ -1056,7 +1139,7 @@ impl FileTextChanges {
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
-        version: asset_or_doc.document_version(),
+        version: asset_or_doc.document_lsp_version(),
       },
       edits,
     })
@@ -1102,7 +1185,7 @@ impl FileTextChanges {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: specifier.clone(),
         version: maybe_asset_or_document
-          .map(|d| d.document_version())
+          .map(|d| d.document_lsp_version())
           .flatten(),
       },
       edits,
@@ -1122,7 +1205,7 @@ impl Classifications {
   pub fn to_semantic_tokens(
     &self,
     line_index: Arc<LineIndex>,
-  ) -> lsp::SemanticTokens {
+  ) -> LspResult<lsp::SemanticTokens> {
     let token_count = self.spans.len() / 3;
     let mut builder = SemanticTokensBuilder::new();
     for i in 0..token_count {
@@ -1141,24 +1224,35 @@ impl Classifications {
       let start_pos = line_index.position_tsc(offset.into());
       let end_pos = line_index.position_tsc(TextSize::from(offset + length));
 
-      // start_pos.line == end_pos.line is always true as there are no multiline tokens
-      builder.push(
-        start_pos.line,
-        start_pos.character,
-        end_pos.character - start_pos.character,
-        token_type,
-        token_modifiers,
-      );
+      if start_pos.line == end_pos.line
+        && start_pos.character <= end_pos.character
+      {
+        builder.push(
+          start_pos.line,
+          start_pos.character,
+          end_pos.character - start_pos.character,
+          token_type,
+          token_modifiers,
+        );
+      } else {
+        log::error!(
+          "unexpected positions\nstart_pos: {:?}\nend_pos: {:?}",
+          start_pos,
+          end_pos
+        );
+        return Err(LspError::internal_error());
+      }
     }
-    builder.build(None)
+    Ok(builder.build(None))
   }
 
   fn get_token_type_from_classification(ts_classification: u32) -> u32 {
-    (ts_classification >> (TsTokenEncodingConsts::TypeOffset as u32)) - 1
+    assert!(ts_classification > semantic_tokens::MODIFIER_MASK);
+    (ts_classification >> semantic_tokens::TYPE_OFFSET) - 1
   }
 
   fn get_token_modifier_from_classification(ts_classification: u32) -> u32 {
-    ts_classification & (TsTokenEncodingConsts::ModifierMask as u32)
+    ts_classification & semantic_tokens::MODIFIER_MASK
   }
 }
 
@@ -2079,13 +2173,13 @@ struct Response {
 struct State<'a> {
   last_id: usize,
   response: Option<Response>,
-  state_snapshot: StateSnapshot,
+  state_snapshot: Arc<StateSnapshot>,
   snapshots: HashMap<(ModuleSpecifier, Cow<'a, str>), String>,
   specifiers: HashMap<String, String>,
 }
 
 impl<'a> State<'a> {
-  fn new(state_snapshot: StateSnapshot) -> Self {
+  fn new(state_snapshot: Arc<StateSnapshot>) -> Self {
     Self {
       last_id: 1,
       response: None,
@@ -2442,7 +2536,7 @@ fn load() -> Result<JsRuntime, AnyError> {
   {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
-    op_state.put(State::new(StateSnapshot::default()));
+    op_state.put(State::new(Arc::new(StateSnapshot::default())));
   }
 
   runtime.register_op("op_dispose", op(op_dispose));
@@ -2655,6 +2749,12 @@ pub enum RequestMethod {
   GetEncodedSemanticClassifications((ModuleSpecifier, TextSpan)),
   /// Get implementation information for a specific position.
   GetImplementation((ModuleSpecifier, u32)),
+  /// Get "navigate to" items, which are converted to workspace symbols
+  GetNavigateToItems {
+    search: String,
+    max_result_count: Option<u32>,
+    file: Option<String>,
+  },
   /// Get a "navigation tree" for a specifier.
   GetNavigationTree(ModuleSpecifier),
   /// Get outlining spans for a specifier.
@@ -2669,6 +2769,11 @@ pub enum RequestMethod {
   GetSmartSelectionRange((ModuleSpecifier, u32)),
   /// Get the diagnostic codes that support some form of code fix.
   GetSupportedCodeFixes,
+  /// Get the type definition information for a specific position.
+  GetTypeDefinition {
+    specifier: ModuleSpecifier,
+    position: u32,
+  },
   /// Resolve a call hierarchy item for a specific position.
   PrepareCallHierarchy((ModuleSpecifier, u32)),
   /// Resolve incoming call hierarchy items for a specific position.
@@ -2711,7 +2816,7 @@ impl RequestMethod {
         "id": id,
         "method": "getApplicableRefactors",
         "specifier": state.denormalize_specifier(specifier),
-        "range": { "pos": span.start, "end": span.start + span.length},
+        "range": { "pos": span.start, "end": span.start + span.length },
         "kind": kind,
       }),
       RequestMethod::GetEditsForRefactor((
@@ -2796,6 +2901,17 @@ impl RequestMethod {
         "specifier": state.denormalize_specifier(specifier),
         "position": position,
       }),
+      RequestMethod::GetNavigateToItems {
+        search,
+        max_result_count,
+        file,
+      } => json!({
+        "id": id,
+        "method": "getNavigateToItems",
+        "search": search,
+        "maxResultCount": max_result_count,
+        "file": file,
+      }),
       RequestMethod::GetNavigationTree(specifier) => json!({
         "id": id,
         "method": "getNavigationTree",
@@ -2839,6 +2955,15 @@ impl RequestMethod {
         "id": id,
         "method": "getSupportedCodeFixes",
       }),
+      RequestMethod::GetTypeDefinition {
+        specifier,
+        position,
+      } => json!({
+        "id": id,
+        "method": "getTypeDefinition",
+        "specifier": state.denormalize_specifier(specifier),
+        "position": position
+      }),
       RequestMethod::PrepareCallHierarchy((specifier, position)) => {
         json!({
           "id": id,
@@ -2876,7 +3001,7 @@ impl RequestMethod {
 /// Send a request into a runtime and return the JSON value of the response.
 pub(crate) fn request(
   runtime: &mut JsRuntime,
-  state_snapshot: StateSnapshot,
+  state_snapshot: Arc<StateSnapshot>,
   method: RequestMethod,
 ) -> Result<Value, AnyError> {
   let performance = state_snapshot.performance.clone();
@@ -2925,7 +3050,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let documents = Documents::new(location);
+    let mut documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -2946,10 +3071,10 @@ mod tests {
     debug: bool,
     config: Value,
     sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (JsRuntime, StateSnapshot, PathBuf) {
+  ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
-    let state_snapshot = mock_state_snapshot(sources, &location);
+    let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let mut runtime = load().expect("could not start server");
     start(&mut runtime, debug, &state_snapshot)
       .expect("could not start server");

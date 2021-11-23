@@ -436,7 +436,7 @@ mod tests {
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> language_server::StateSnapshot {
-    let documents = Documents::new(location);
+    let mut documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
