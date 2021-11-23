@@ -194,10 +194,17 @@ unitTest(function consoleTestStringifyLoongStringNoSurrogatesFromTruncation() {
 
   const aLongString = "a".repeat(98) + "🌎";
   actual = stringify({ aLongString });
+  assert(!actual.includes("..."));
   assert(actual.includes("🌎"));
 
   const aDifferentVeryLongString = "a".repeat(96) + "🌎" + "aaa";
   actual = stringify({ aDifferentVeryLongString });
+  assert(actual.includes("..."));
+  assert(!actual.includes("\ud83c"));
+  assert(!actual.includes("🌎"));
+
+  const aOtherVeryLongString = "a".repeat(95) + "🌎" + "aaaa";
+  actual = stringify({ aOtherVeryLongString });
   assert(actual.includes("🌎..."));
 });
 
