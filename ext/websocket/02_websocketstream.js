@@ -190,15 +190,14 @@
               const writable = new WritableStream({
                 write: async (chunk) => {
                   if (typeof chunk === "string") {
-                    await core.opAsync("op_ws_send", {
-                      rid: this[_rid],
+                    await core.opAsync("op_ws_send", this[_rid], {
                       kind: "text",
-                      text: chunk,
+                      value: chunk,
                     });
                   } else if (chunk instanceof Uint8Array) {
-                    await core.opAsync("op_ws_send", {
-                      rid: this[_rid],
+                    await core.opAsync("op_ws_send", this[_rid], {
                       kind: "binary",
+                      value: chunk,
                     }, chunk);
                   } else {
                     throw new TypeError(
@@ -257,12 +256,12 @@
                       break;
                     }
                     case "ping": {
-                      await core.opAsync("op_ws_send", {
-                        rid: this[_rid],
+                      await core.opAsync("op_ws_send", this[_rid], {
                         kind: "pong",
                       });
                       break;
                     }
+                    case "closed":
                     case "close": {
                       if (this[_closing]) {
                         this[_closed].resolve(value);

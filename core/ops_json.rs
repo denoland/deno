@@ -1,10 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::error::AnyError;
+use crate::ops::OpCall;
 use crate::serialize_op_result;
 use crate::Op;
 use crate::OpFn;
 use crate::OpState;
+use anyhow::Error;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::RefCell;
@@ -15,27 +16,14 @@ use std::rc::Rc;
 ///
 /// It's mainly intended for embedders who want to disable ops, see ./examples/disable_ops.rs
 pub fn void_op_sync() -> Box<OpFn> {
-  // TODO(@AaronO): use this simpler implementation after changing serde_v8 to allow all values
-  // to deserialize to the unit type instead of failing with `ExpectedNull`
-  // op_sync(|_, _: (), _: ()| Ok(()))
-  Box::new(move |state, _| -> Op {
-    let op_result = serialize_op_result(Ok(()), state);
-    Op::Sync(op_result)
-  })
+  op_sync(|_, _: (), _: ()| Ok(()))
 }
 
 /// A helper function that returns an async NOP OpFn
 ///
 /// It's mainly intended for embedders who want to disable ops, see ./examples/disable_ops.rs
 pub fn void_op_async() -> Box<OpFn> {
-  // TODO(@AaronO): use this simpler implementation after changing serde_v8 to allow all values
-  // to deserialize to the unit type instead of failing with `ExpectedNull`
-  // op_async(|_, _: (), _: ()| futures::future::ok(()))
-  Box::new(move |state, payload| -> Op {
-    let pid = payload.promise_id;
-    let op_result = serialize_op_result(Ok(()), state);
-    Op::Async(Box::pin(futures::future::ready((pid, op_result))))
-  })
+  op_async(|_, _: (), _: ()| futures::future::ok(()))
 }
 
 /// Creates an op that passes data synchronously using JSON.
@@ -63,7 +51,7 @@ pub fn void_op_async() -> Box<OpFn> {
 /// A more complete example is available in the examples directory.
 pub fn op_sync<F, A, B, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut OpState, A, B) -> Result<R, AnyError> + 'static,
+  F: Fn(&mut OpState, A, B) -> Result<R, Error> + 'static,
   A: DeserializeOwned,
   B: DeserializeOwned,
   R: Serialize + 'static,
@@ -108,24 +96,25 @@ where
   F: Fn(Rc<RefCell<OpState>>, A, B) -> R + 'static,
   A: DeserializeOwned,
   B: DeserializeOwned,
-  R: Future<Output = Result<RV, AnyError>> + 'static,
+  R: Future<Output = Result<RV, Error>> + 'static,
   RV: Serialize + 'static,
 {
   Box::new(move |state, payload| -> Op {
+    let op_id = payload.op_id;
     let pid = payload.promise_id;
     // Deserialize args, sync error on failure
     let args = match payload.deserialize() {
       Ok(args) => args,
       Err(err) => {
-        return Op::Sync(serialize_op_result(Err::<(), AnyError>(err), state))
+        return Op::Sync(serialize_op_result(Err::<(), Error>(err), state))
       }
     };
     let (a, b) = args;
 
     use crate::futures::FutureExt;
     let fut = op_fn(state.clone(), a, b)
-      .map(move |result| (pid, serialize_op_result(result, state)));
-    Op::Async(Box::pin(fut))
+      .map(move |result| (pid, op_id, serialize_op_result(result, state)));
+    Op::Async(OpCall::eager(fut))
   })
 }
 
@@ -139,24 +128,25 @@ where
   F: Fn(Rc<RefCell<OpState>>, A, B) -> R + 'static,
   A: DeserializeOwned,
   B: DeserializeOwned,
-  R: Future<Output = Result<RV, AnyError>> + 'static,
+  R: Future<Output = Result<RV, Error>> + 'static,
   RV: Serialize + 'static,
 {
   Box::new(move |state, payload| -> Op {
+    let op_id = payload.op_id;
     let pid = payload.promise_id;
     // Deserialize args, sync error on failure
     let args = match payload.deserialize() {
       Ok(args) => args,
       Err(err) => {
-        return Op::Sync(serialize_op_result(Err::<(), AnyError>(err), state))
+        return Op::Sync(serialize_op_result(Err::<(), Error>(err), state))
       }
     };
     let (a, b) = args;
 
     use crate::futures::FutureExt;
     let fut = op_fn(state.clone(), a, b)
-      .map(move |result| (pid, serialize_op_result(result, state)));
-    Op::AsyncUnref(Box::pin(fut))
+      .map(move |result| (pid, op_id, serialize_op_result(result, state)));
+    Op::AsyncUnref(OpCall::eager(fut))
   })
 }
 
@@ -172,7 +162,7 @@ mod tests {
       _state: Rc<RefCell<OpState>>,
       msg: Option<String>,
       _: (),
-    ) -> Result<(), AnyError> {
+    ) -> Result<(), Error> {
       assert_eq!(msg.unwrap(), "hello");
       Err(crate::error::generic_error("foo"))
     }

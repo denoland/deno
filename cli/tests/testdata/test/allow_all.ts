@@ -18,7 +18,7 @@ for (const name of permissions) {
     },
     async fn() {
       const status = await Deno.permissions.query({ name });
-      assertEquals(status.state, "denied");
+      assertEquals(status.state, "prompt");
     },
   });
 

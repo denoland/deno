@@ -237,10 +237,192 @@ itest!(_071_location_unset {
 });
 
 itest!(_072_location_relative_fetch {
-    args: "run --location http://127.0.0.1:4545/ --allow-net 072_location_relative_fetch.ts",
-    output: "072_location_relative_fetch.ts.out",
-    http_server: true,
-  });
+  args: "run --location http://127.0.0.1:4545/ --allow-net 072_location_relative_fetch.ts",
+  output: "072_location_relative_fetch.ts.out",
+  http_server: true,
+});
+
+// tests the serialization of webstorage (both localStorage and sessionStorage)
+itest!(webstorage_serialization {
+  args: "run webstorage/serialization.ts",
+  output: "webstorage/serialization.ts.out",
+});
+
+// tests to ensure that when `--location` is set, all code shares the same
+// localStorage cache based on the origin of the location URL.
+#[test]
+fn webstorage_location_shares_origin() {
+  let deno_dir = util::new_deno_dir();
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--location")
+    .arg("https://example.com/a.ts")
+    .arg("webstorage/fixture.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--location")
+    .arg("https://example.com/b.ts")
+    .arg("webstorage/logger.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+}
+
+// test to ensure that when a --config file is set, but no --location, that
+// storage persists against unique configuration files.
+#[test]
+fn webstorage_config_file() {
+  let deno_dir = util::new_deno_dir();
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--config")
+    .arg("webstorage/config_a.jsonc")
+    .arg("webstorage/fixture.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--config")
+    .arg("webstorage/config_b.jsonc")
+    .arg("webstorage/logger.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--config")
+    .arg("webstorage/config_a.jsonc")
+    .arg("webstorage/logger.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+}
+
+// tests to ensure `--config` does not effect persisted storage when a
+// `--location` is provided.
+#[test]
+fn webstorage_location_precedes_config() {
+  let deno_dir = util::new_deno_dir();
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--location")
+    .arg("https://example.com/a.ts")
+    .arg("--config")
+    .arg("webstorage/config_a.jsonc")
+    .arg("webstorage/fixture.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--location")
+    .arg("https://example.com/b.ts")
+    .arg("--config")
+    .arg("webstorage/config_b.jsonc")
+    .arg("webstorage/logger.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+}
+
+// test to ensure that when there isn't a configuration or location, that the
+// main module is used to determine how to persist storage data.
+#[test]
+fn webstorage_main_module() {
+  let deno_dir = util::new_deno_dir();
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("webstorage/fixture.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("webstorage/logger.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 0 }\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("webstorage/fixture.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Storage { length: 1, hello: \"deno\" }\n");
+}
 
 itest!(_075_import_local_query_hash {
   args: "run 075_import_local_query_hash.ts",
@@ -335,7 +517,6 @@ itest!(_089_run_allow_list {
   output: "089_run_allow_list.ts.out",
 });
 
-#[cfg(unix)]
 #[test]
 fn _090_run_permissions_request() {
   let args = "run --quiet 090_run_permissions_request.ts";
@@ -622,6 +803,12 @@ itest!(error_026_remote_import_error {
   http_server: true,
 });
 
+itest!(error_for_await {
+  args: "run --reload error_for_await.ts",
+  output: "error_for_await.ts.out",
+  exit_code: 1,
+});
+
 itest!(error_missing_module_named_import {
   args: "run --reload error_missing_module_named_import.ts",
   output: "error_missing_module_named_import.ts.out",
@@ -851,9 +1038,16 @@ itest!(wasm_async {
 });
 
 itest!(wasm_unreachable {
-  args: "run wasm_unreachable.js",
+  args: "run --allow-read wasm_unreachable.js",
   output: "wasm_unreachable.out",
   exit_code: 1,
+});
+
+itest!(wasm_url {
+  args: "run --quiet --allow-net=localhost:4545 wasm_url.js",
+  output: "wasm_url.out",
+  exit_code: 1,
+  http_server: true,
 });
 
 itest!(weakref {
@@ -1021,6 +1215,118 @@ itest!(jsx_import_from_ts {
   output: "jsx_import_from_ts.ts.out",
 });
 
+itest!(jsx_import_source_pragma {
+  args: "run --reload jsx_import_source_pragma.tsx",
+  output: "jsx_import_source.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_with_config {
+  args: "run --reload --config jsx/deno-jsx.jsonc jsx_import_source_pragma.tsx",
+  output: "jsx_import_source.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_with_dev_config {
+  args:
+    "run --reload --config jsx/deno-jsxdev.jsonc jsx_import_source_pragma.tsx",
+  output: "jsx_import_source_dev.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_no_pragma {
+  args:
+    "run --reload --config jsx/deno-jsx.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_no_pragma_dev {
+  args: "run --reload --config jsx/deno-jsxdev.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_dev.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_import_map {
+  args: "run --reload --import-map jsx/import-map.json jsx_import_source_pragma_import_map.tsx",
+  output: "jsx_import_source_import_map.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_import_map_dev {
+  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc jsx_import_source_pragma_import_map.tsx",
+  output: "jsx_import_source_import_map_dev.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_import_map {
+  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_import_map.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_import_map_dev {
+  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_import_map_dev.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_no_check {
+  args: "run --reload --no-check jsx_import_source_pragma.tsx",
+  output: "jsx_import_source.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_pragma_with_config_no_check {
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-check jsx_import_source_pragma.tsx",
+  output: "jsx_import_source.out",
+  http_server: true,
+});
+
+// itest!(jsx_import_source_pragma_with_dev_config_no_check {
+//   args:
+//     "run --reload --config jsx/deno-jsxdev.jsonc --no-check jsx_import_source_pragma.tsx",
+//   output: "jsx_import_source_dev.out",
+//   http_server: true,
+// });
+
+itest!(jsx_import_source_no_pragma_no_check {
+  args:
+    "run --reload --config jsx/deno-jsx.jsonc --no-check jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source.out",
+  http_server: true,
+});
+
+// itest!(jsx_import_source_no_pragma_dev_no_check {
+//   args: "run --reload --config jsx/deno-jsxdev.jsonc --no-check jsx_import_source_no_pragma.tsx",
+//   output: "jsx_import_source_dev.out",
+//   http_server: true,
+// });
+
+itest!(jsx_import_source_pragma_import_map_no_check {
+  args: "run --reload --import-map jsx/import-map.json --no-check jsx_import_source_pragma_import_map.tsx",
+  output: "jsx_import_source_import_map.out",
+  http_server: true,
+});
+
+// itest!(jsx_import_source_pragma_import_map_dev_no_check {
+//   args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc --no-check jsx_import_source_pragma_import_map.tsx",
+//   output: "jsx_import_source_import_map_dev.out",
+//   http_server: true,
+// });
+
+itest!(jsx_import_source_import_map_no_check {
+  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc --no-check jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_import_map.out",
+  http_server: true,
+});
+
+// itest!(jsx_import_source_import_map_dev_no_check {
+//   args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc --no-check jsx_import_source_no_pragma.tsx",
+//   output: "jsx_import_source_import_map_dev.out",
+//   http_server: true,
+// });
+
 // TODO(#11128): Flaky. Re-enable later.
 // itest!(single_compile_with_reload {
 //   args: "run --reload --allow-read single_compile_with_reload.ts",
@@ -1173,6 +1479,13 @@ itest!(error_import_map_unable_to_load {
   exit_code: 1,
 });
 
+// Test that setting `self` in the main thread to some other value doesn't break
+// the world.
+itest!(replace_self {
+  args: "run replace_self.js",
+  output: "replace_self.js.out",
+});
+
 itest!(worker_event_handler_test {
   args: "run --quiet --reload --allow-read worker_event_handler_test.js",
   output: "worker_event_handler_test.js.out",
@@ -1183,9 +1496,25 @@ itest!(worker_close_race {
   output: "worker_close_race.js.out",
 });
 
+itest!(worker_drop_handle_race {
+  args: "run --quiet --reload --allow-read worker_drop_handle_race.js",
+  output: "worker_drop_handle_race.js.out",
+  exit_code: 1,
+});
+
+itest!(worker_close_nested {
+  args: "run --quiet --reload --allow-read worker_close_nested.js",
+  output: "worker_close_nested.js.out",
+});
+
 itest!(worker_message_before_close {
   args: "run --quiet --reload --allow-read worker_message_before_close.js",
   output: "worker_message_before_close.js.out",
+});
+
+itest!(worker_close_in_wasm_reactions {
+  args: "run --quiet --reload --allow-read worker_close_in_wasm_reactions.js",
+  output: "worker_close_in_wasm_reactions.js.out",
 });
 
 #[test]
@@ -1358,6 +1687,38 @@ fn rust_log() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
+  assert!(!output.stderr.is_empty());
+}
+
+#[test]
+fn dont_cache_on_check_fail() {
+  let deno_dir = util::new_deno_dir();
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--reload")
+    .arg("error_003_typescript.ts")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert!(!output.stderr.is_empty());
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("error_003_typescript.ts")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
   assert!(!output.stderr.is_empty());
 }
 
@@ -1720,7 +2081,6 @@ mod permissions {
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
-  #[cfg(unix)]
   #[test]
   fn _061_permissions_request() {
     let args = "run --quiet 061_permissions_request.ts";
@@ -1736,7 +2096,6 @@ mod permissions {
     ]);
   }
 
-  #[cfg(unix)]
   #[test]
   fn _062_permissions_request_global() {
     let args = "run --quiet 062_permissions_request_global.ts";
@@ -1760,7 +2119,6 @@ mod permissions {
     output: "064_permissions_revoke_global.ts.out",
   });
 
-  #[cfg(unix)]
   #[test]
   fn _066_prompt() {
     let args = "run --quiet --unstable 066_prompt.ts";
@@ -1855,7 +2213,6 @@ itest!(byte_order_mark {
   output: "byte_order_mark.out",
 });
 
-#[cfg(unix)]
 #[test]
 fn issue9750() {
   use util::PtyData::*;
@@ -1879,3 +2236,72 @@ itest!(dom_exception_formatting {
   output: "dom_exception_formatting.ts.out",
   exit_code: 1,
 });
+
+itest!(long_data_url_formatting {
+  args: "run long_data_url_formatting.ts",
+  output: "long_data_url_formatting.ts.out",
+  exit_code: 1,
+});
+
+itest!(eval_context_throw_with_conflicting_source {
+  args: "run eval_context_throw_with_conflicting_source.ts",
+  output: "eval_context_throw_with_conflicting_source.ts.out",
+  exit_code: 1,
+});
+
+itest!(eval_context_throw_dom_exception {
+  args: "run eval_context_throw_dom_exception.js",
+  output: "eval_context_throw_dom_exception.js.out",
+});
+
+#[test]
+fn issue12453() {
+  let _g = util::http_server();
+  let deno_dir = util::new_deno_dir();
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("issue12453.js")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/12740.
+#[test]
+fn issue12740() {
+  let mod_dir = TempDir::new().expect("tempdir fail");
+  let mod1_path = mod_dir.path().join("mod1.ts");
+  let mod2_path = mod_dir.path().join("mod2.ts");
+  let mut deno_cmd = util::deno_cmd();
+  std::fs::write(&mod1_path, "").unwrap();
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(&mod1_path)
+    .stderr(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  std::fs::write(&mod1_path, "export { foo } from \"./mod2.ts\";").unwrap();
+  std::fs::write(&mod2_path, "(").unwrap();
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(&mod1_path)
+    .stderr(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(!status.success());
+}

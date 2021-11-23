@@ -10,6 +10,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { Interrupted } = core;
   const webidl = window.__bootstrap.webidl;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { defineEventHandler } = window.__bootstrap.event;
@@ -22,7 +23,6 @@
     ObjectSetPrototypeOf,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
     WeakSet,
     WeakSetPrototypeAdd,
@@ -58,10 +58,6 @@
       return `MessageChannel ${
         inspect({ port1: this.port1, port2: this.port2 })
       }`;
-    }
-
-    get [SymbolToStringTag]() {
-      return "MessageChannel";
     }
   }
 
@@ -139,10 +135,16 @@
         this[_enabled] = true;
         while (true) {
           if (this[_id] === null) break;
-          const data = await core.opAsync(
-            "op_message_port_recv_message",
-            this[_id],
-          );
+          let data;
+          try {
+            data = await core.opAsync(
+              "op_message_port_recv_message",
+              this[_id],
+            );
+          } catch (err) {
+            if (err instanceof Interrupted) break;
+            throw err;
+          }
           if (data === null) break;
           let message, transferables;
           try {
@@ -173,10 +175,6 @@
         core.close(this[_id]);
         this[_id] = null;
       }
-    }
-
-    get [SymbolToStringTag]() {
-      return "MessagePort";
     }
   }
 

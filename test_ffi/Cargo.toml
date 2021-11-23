@@ -4,7 +4,7 @@
 name = "test_ffi"
 version = "0.1.0"
 authors = ["the deno authors"]
-edition = "2018"
+edition = "2021"
 publish = false
 
 [lib]

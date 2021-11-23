@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::Permissions;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
@@ -20,7 +20,7 @@ pub fn init(main_module: ModuleSpecifier) -> Extension {
 
 fn op_main_module(
   state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<String, AnyError> {
   let main = state.borrow::<ModuleSpecifier>().to_string();

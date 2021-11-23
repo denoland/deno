@@ -3,6 +3,7 @@ mod async_cancel;
 mod async_cell;
 mod bindings;
 pub mod error;
+mod error_codes;
 mod extensions;
 mod flags;
 mod gotham_state;
@@ -13,19 +14,22 @@ mod normalize_path;
 mod ops;
 mod ops_builtin;
 mod ops_json;
+mod ops_metrics;
 mod resources;
 mod runtime;
 
 // Re-exports
+pub use anyhow;
 pub use futures;
 pub use parking_lot;
-pub use rusty_v8 as v8;
 pub use serde;
 pub use serde_json;
 pub use serde_v8;
 pub use serde_v8::Buffer as ZeroCopyBuf;
 pub use serde_v8::ByteString;
+pub use serde_v8::StringOrBuffer;
 pub use url;
+pub use v8;
 
 pub use crate::async_cancel::CancelFuture;
 pub use crate::async_cancel::CancelHandle;
@@ -58,6 +62,7 @@ pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::NoopModuleLoader;
+pub use crate::runtime::CompiledWasmModuleStore;
 pub use crate::runtime::SharedArrayBufferStore;
 // TODO(bartlomieju): this struct should be implementation
 // detail nad not be public
@@ -66,6 +71,7 @@ pub use crate::normalize_path::normalize_path;
 pub use crate::ops::serialize_op_result;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
+pub use crate::ops::OpCall;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
 pub use crate::ops::OpPayload;
@@ -81,6 +87,7 @@ pub use crate::ops_json::op_async_unref;
 pub use crate::ops_json::op_sync;
 pub use crate::ops_json::void_op_async;
 pub use crate::ops_json::void_op_sync;
+pub use crate::resources::AsyncResult;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
 pub use crate::resources::ResourceTable;

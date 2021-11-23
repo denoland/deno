@@ -1,9 +1,4 @@
-import {
-  assert,
-  assertEquals,
-  assertThrowsAsync,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, assertRejects, unitTest } from "./test_util.ts";
 
 // https://github.com/denoland/deno/issues/11664
 unitTest(async function testImportArrayBufferKey() {
@@ -141,7 +136,7 @@ unitTest(async function testEncryptDecrypt() {
     const badPlainText = new Uint8Array(plainText.byteLength + 1);
     badPlainText.set(plainText, 0);
     badPlainText.set(new Uint8Array([32]), plainText.byteLength);
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       // Should fail
       await subtle.encrypt(
         encryptAlgorithm,
@@ -232,7 +227,7 @@ unitTest(async function testECDSASignVerifyFail() {
 
   const encoded = new Uint8Array([1]);
   // Signing with a public key (InvalidAccessError)
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await window.crypto.subtle.sign(
       { name: "ECDSA", hash: "SHA-384" },
       key.publicKey,
@@ -249,7 +244,7 @@ unitTest(async function testECDSASignVerifyFail() {
   );
 
   // Verifying with a private key (InvalidAccessError)
-  await assertThrowsAsync(async () => {
+  await assertRejects(async () => {
     await window.crypto.subtle.verify(
       { hash: { name: "SHA-384" }, name: "ECDSA" },
       key.privateKey,
@@ -384,19 +379,32 @@ unitTest(async function generateImportHmacJwk() {
 // 2048-bits publicExponent=65537
 const pkcs8TestVectors = [
   // rsaEncryption
-  "cli/tests/testdata/webcrypto/id_rsaEncryption.pem",
-  // id-RSASSA-PSS
-  "cli/tests/testdata/webcrypto/id_rsassaPss.pem",
+  { pem: "cli/tests/testdata/webcrypto/id_rsaEncryption.pem", hash: "SHA-256" },
+  // id-RSASSA-PSS (sha256)
+  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_md:sha256 -out id_rsassaPss.pem`
+  { pem: "cli/tests/testdata/webcrypto/id_rsassaPss.pem", hash: "SHA-256" },
+  // id-RSASSA-PSS (default parameters)
+  // `openssl genpkey -algorithm rsa-pss -out id_rsassaPss.pem`
+  {
+    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_default.pem",
+    hash: "SHA-1",
+  },
+  // id-RSASSA-PSS (default hash)
+  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_saltlen:30 -out rsaPss_saltLen_30.pem`
+  {
+    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_saltLen_30.pem",
+    hash: "SHA-1",
+  },
 ];
 
-unitTest({ perms: { read: true } }, async function importRsaPkcs8() {
+unitTest({ permissions: { read: true } }, async function importRsaPkcs8() {
   const pemHeader = "-----BEGIN PRIVATE KEY-----";
   const pemFooter = "-----END PRIVATE KEY-----";
-  for (const keyFile of pkcs8TestVectors) {
-    const pem = await Deno.readTextFile(keyFile);
-    const pemContents = pem.substring(
+  for (const { pem, hash } of pkcs8TestVectors) {
+    const keyFile = await Deno.readTextFile(pem);
+    const pemContents = keyFile.substring(
       pemHeader.length,
-      pem.length - pemFooter.length,
+      keyFile.length - pemFooter.length,
     );
     const binaryDerString = atob(pemContents);
     const binaryDer = new Uint8Array(binaryDerString.length);
@@ -407,7 +415,7 @@ unitTest({ perms: { read: true } }, async function importRsaPkcs8() {
     const key = await crypto.subtle.importKey(
       "pkcs8",
       binaryDer,
-      { name: "RSA-PSS", hash: "SHA-256" },
+      { name: "RSA-PSS", hash },
       true,
       ["sign"],
     );
@@ -418,7 +426,7 @@ unitTest({ perms: { read: true } }, async function importRsaPkcs8() {
     assertEquals(key.usages, ["sign"]);
     const algorithm = key.algorithm as RsaHashedKeyAlgorithm;
     assertEquals(algorithm.name, "RSA-PSS");
-    assertEquals(algorithm.hash.name, "SHA-256");
+    assertEquals(algorithm.hash.name, hash);
     assertEquals(algorithm.modulusLength, 2048);
     assertEquals(algorithm.publicExponent, new Uint8Array([1, 0, 1]));
   }
@@ -433,7 +441,7 @@ const asn1AlgorithmIdentifier = new Uint8Array([
   0x05, 0x00, // NULL
 ]);
 
-unitTest(async function rsaExportPkcs8() {
+unitTest(async function rsaExport() {
   for (const algorithm of ["RSASSA-PKCS1-v1_5", "RSA-PSS", "RSA-OAEP"]) {
     const keyPair = await crypto.subtle.generateKey(
       {
@@ -450,20 +458,33 @@ unitTest(async function rsaExportPkcs8() {
     assert(keyPair.publicKey);
     assertEquals(keyPair.privateKey.extractable, true);
 
-    const exportedKey = await crypto.subtle.exportKey(
+    const exportedPrivateKey = await crypto.subtle.exportKey(
       "pkcs8",
       keyPair.privateKey,
     );
 
-    assert(exportedKey);
-    assert(exportedKey instanceof ArrayBuffer);
+    assert(exportedPrivateKey);
+    assert(exportedPrivateKey instanceof ArrayBuffer);
 
-    const pkcs8 = new Uint8Array(exportedKey);
+    const pkcs8 = new Uint8Array(exportedPrivateKey);
     assert(pkcs8.length > 0);
 
     assertEquals(
       pkcs8.slice(4, asn1AlgorithmIdentifier.byteLength + 4),
       asn1AlgorithmIdentifier,
+    );
+
+    const exportedPublicKey = await crypto.subtle.exportKey(
+      "spki",
+      keyPair.publicKey,
+    );
+
+    const spki = new Uint8Array(exportedPublicKey);
+    assert(spki.length > 0);
+
+    assertEquals(
+      spki.slice(4, asn1AlgorithmIdentifier.byteLength + 1),
+      asn1AlgorithmIdentifier.slice(3),
     );
   }
 });
@@ -492,6 +513,205 @@ unitTest(async function testHkdfDeriveBits() {
   assertEquals(result.byteLength, 128 / 8);
 });
 
+unitTest(async function testHkdfDeriveBitsWithLargeKeySize() {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array([0x00]),
+    "HKDF",
+    false,
+    ["deriveBits"],
+  );
+  assertRejects(
+    () =>
+      crypto.subtle.deriveBits(
+        {
+          name: "HKDF",
+          hash: "SHA-1",
+          salt: new Uint8Array(),
+          info: new Uint8Array(),
+        },
+        key,
+        ((20 * 255) << 3) + 8,
+      ),
+    DOMException,
+    "The length provided for HKDF is too large",
+  );
+});
+
+unitTest(async function testDeriveKey() {
+  // Test deriveKey
+  const rawKey = await crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    rawKey,
+    "PBKDF2",
+    false,
+    ["deriveKey", "deriveBits"],
+  );
+
+  const salt = await crypto.getRandomValues(new Uint8Array(16));
+  const derivedKey = await crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: 1000,
+      hash: "SHA-256",
+    },
+    key,
+    { name: "HMAC", hash: "SHA-256" },
+    true,
+    ["sign"],
+  );
+
+  assert(derivedKey instanceof CryptoKey);
+  assertEquals(derivedKey.type, "secret");
+  assertEquals(derivedKey.extractable, true);
+  assertEquals(derivedKey.usages, ["sign"]);
+
+  const algorithm = derivedKey.algorithm as HmacKeyAlgorithm;
+  assertEquals(algorithm.name, "HMAC");
+  assertEquals(algorithm.hash.name, "SHA-256");
+  assertEquals(algorithm.length, 256);
+});
+
+unitTest(async function testAesCbcEncryptDecrypt() {
+  const key = await crypto.subtle.generateKey(
+    { name: "AES-CBC", length: 128 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+
+  const iv = await crypto.getRandomValues(new Uint8Array(16));
+  const encrypted = await crypto.subtle.encrypt(
+    {
+      name: "AES-CBC",
+      iv,
+    },
+    key as CryptoKey,
+    new Uint8Array([1, 2, 3, 4, 5, 6]),
+  );
+
+  assert(encrypted instanceof ArrayBuffer);
+  assertEquals(encrypted.byteLength, 16);
+
+  const decrypted = await crypto.subtle.decrypt(
+    {
+      name: "AES-CBC",
+      iv,
+    },
+    key as CryptoKey,
+    encrypted,
+  );
+
+  assert(decrypted instanceof ArrayBuffer);
+  assertEquals(decrypted.byteLength, 6);
+  assertEquals(new Uint8Array(decrypted), new Uint8Array([1, 2, 3, 4, 5, 6]));
+});
+
+// TODO(@littledivy): Enable WPT when we have importKey support
+unitTest(async function testECDH() {
+  const namedCurve = "P-256";
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve,
+    },
+    true,
+    ["deriveBits"],
+  );
+
+  const derivedKey = await crypto.subtle.deriveBits(
+    {
+      name: "ECDH",
+      public: keyPair.publicKey,
+    },
+    keyPair.privateKey,
+    256,
+  );
+
+  assert(derivedKey instanceof ArrayBuffer);
+  assertEquals(derivedKey.byteLength, 256 / 8);
+});
+
+unitTest(async function testWrapKey() {
+  // Test wrapKey
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "RSA-OAEP",
+      modulusLength: 4096,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["wrapKey", "unwrapKey"],
+  );
+
+  const hmacKey = await crypto.subtle.generateKey(
+    {
+      name: "HMAC",
+      hash: "SHA-256",
+      length: 128,
+    },
+    true,
+    ["sign"],
+  );
+
+  const wrappedKey = await crypto.subtle.wrapKey(
+    "raw",
+    hmacKey,
+    key.publicKey,
+    {
+      name: "RSA-OAEP",
+      label: new Uint8Array(8),
+    },
+  );
+
+  assert(wrappedKey instanceof ArrayBuffer);
+  assertEquals(wrappedKey.byteLength, 512);
+});
+
+// Doesn't need to cover all cases.
+// Only for testing types.
+unitTest(async function testAesKeyGen() {
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "AES-GCM",
+      length: 256,
+    },
+    true,
+    ["encrypt", "decrypt"],
+  );
+
+  assert(key);
+  assertEquals(key.type, "secret");
+  assertEquals(key.extractable, true);
+  assertEquals(key.usages, ["encrypt", "decrypt"]);
+  const algorithm = key.algorithm as AesKeyAlgorithm;
+  assertEquals(algorithm.name, "AES-GCM");
+  assertEquals(algorithm.length, 256);
+});
+
+unitTest(async function testDecryptWithInvalidIntializationVector() {
+  const data = new Uint8Array([42, 42, 42, 42]);
+  const key = await crypto.subtle.generateKey(
+    { name: "AES-CBC", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const initVector = crypto.getRandomValues(new Uint8Array(16));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-CBC", iv: initVector },
+    key,
+    data,
+  );
+  const initVector2 = crypto.getRandomValues(new Uint8Array(16));
+  assertRejects(async () => {
+    await crypto.subtle.decrypt(
+      { name: "AES-CBC", iv: initVector2 },
+      key,
+      encrypted,
+    );
+  }, DOMException);
 const jwtRSAKeys = {
   "2048": {
     size: 2048,

@@ -1,0 +1,7 @@
+{
+  "name": "main_program",
+  "type": "module",
+  "dependencies": {
+    "foo": "1.0.0"
+  }
+}
