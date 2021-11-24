@@ -6,6 +6,26 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.16.3 / 2021.11.24
+
+- fix(cli): config file should resolve paths relative to the config file
+  (#12867)
+- fix(cli): don't cache .tsbuildinfo unless emitting (#12830)
+- fix(cli/compile): skip bundling for pre-bundled code (#12687)
+- fix(core): don't panic when evaluating module after termination (#12833)
+- fix(core): keep event loop alive if there are ticks scheduled (#12814)
+- fix(ext/crypto): don't panic on decryption failure (#12840)
+- fix(ext/fetch): HTTP/1.x header case got discarded on the wire (#12837)
+- fix(fmt): markdown formatting was incorrectly removing some non-breaking space
+  html entities (#12818)
+- fix(lsp): lsp should respect include/exclude files in format config (#12876)
+- fix(lsp): normalize urls in did_change_watched_files (#12873)
+- fix(lsp): tag deprecated diagnostics properly (#12801)
+- fix(lsp): use lint exclude files list from the config file (#12825)
+- fix(runtime): support "other" event type in FSWatcher (#12836)
+- fix(runtime): support reading /proc using readFile (#12839)
+- fix(test): do not throw on error.errors.map (#12810)
+
 ### 1.16.2 / 2021.11.17
 
 - feat(unstable/test): include test step pass/fail/ignore counts in final report
