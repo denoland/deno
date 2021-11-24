@@ -425,11 +425,12 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports()?;
-    let maybe_resolver = if let Some(resolver) = self.maybe_resolver {
-      Some(resolver.as_ref())
-    } else {
-      None
-    };
+    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
+      if let Some(resolver) = &self.maybe_resolver {
+        Some(resolver.as_ref())
+      } else {
+        None
+      };
     let graph = create_graph(
       roots.clone(),
       is_dynamic,
@@ -652,16 +653,24 @@ impl ProcState {
     // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
     // but sadly that's not the case due to missing APIs in V8.
     let referrer = if referrer.is_empty() && self.flags.repl {
-      deno_core::DUMMY_SPECIFIER
+      deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()
     } else {
-      referrer
+      deno_core::resolve_url_or_path(referrer).unwrap()
     };
-    if let Some(import_map) = &self.maybe_import_map {
-      import_map
-        .resolve(specifier, referrer)
+
+    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
+      if let Some(resolver) = &self.maybe_resolver {
+        Some(resolver.as_ref())
+      } else {
+        None
+      };
+    if let Some(resolver) = &maybe_resolver {
+      resolver
+        .resolve(specifier, &referrer)
         .map_err(|err| err.into())
     } else {
-      deno_core::resolve_import(specifier, referrer).map_err(|err| err.into())
+      deno_core::resolve_import(specifier, referrer.as_str())
+        .map_err(|err| err.into())
     }
   }
 

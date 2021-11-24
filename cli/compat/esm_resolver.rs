@@ -24,10 +24,6 @@ impl NodeEsmResolver {
       maybe_import_map_resolver,
     }
   }
-
-  pub fn as_resolver(&self) -> &dyn Resolver {
-    self
-  }
 }
 
 impl Resolver for NodeEsmResolver {
