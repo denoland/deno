@@ -21,6 +21,18 @@ declare namespace Deno {
       b?: any,
     ): Promise<any>;
 
+    /** Mark following promises as "ref", ie. event loop won't exit
+     * until they are resolved. All async ops are "ref" by default. */
+    function refOps(
+      ...promiseIds: number[]
+    ): void;
+
+    /** Mark following promises as "unref", ie. event loop will exit
+     * if there are only "unref" promises left. */
+    function unrefOps(
+      ...promiseIds: number[]
+    ): void;
+
     /**
      * Retrieve a list of all registered ops, in the form of a map that maps op
      * name to internal numerical op id.

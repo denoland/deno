@@ -36,6 +36,12 @@ lazy_static::lazy_static! {
         function: opcall_sync.map_fn_to()
       },
       v8::ExternalReference {
+        function: ref_ops.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: unref_ops.map_fn_to()
+      },
+      v8::ExternalReference {
         function: set_macrotask_callback.map_fn_to()
       },
       v8::ExternalReference {
@@ -151,6 +157,8 @@ pub fn initialize_context<'s>(
   // Bind functions to Deno.core.*
   set_func(scope, core_val, "opcallSync", opcall_sync);
   set_func(scope, core_val, "opcallAsync", opcall_async);
+  set_func(scope, core_val, "refOps", ref_ops);
+  set_func(scope, core_val, "unrefOps", unref_ops);
   set_func(
     scope,
     core_val,
@@ -461,6 +469,64 @@ fn opcall_async<'s>(
     Op::NotFound => {
       throw_type_error(scope, format!("Unknown op id: {}", op_id));
     }
+  }
+}
+
+fn ref_ops<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let mut promise_ids = Vec::with_capacity(args.length().try_into().unwrap());
+
+  for i in 0..args.length() {
+    let promise_id = match v8::Local::<v8::Integer>::try_from(args.get(i))
+      .map(|l| l.value() as PromiseId)
+      .map_err(Error::from)
+    {
+      Ok(promise_id) => promise_id,
+      Err(err) => {
+        throw_type_error(scope, format!("invalid promise id: {}", err));
+        return;
+      }
+    };
+    promise_ids.push(promise_id);
+  }
+
+  for promise_id in promise_ids {
+    state.unrefed_ops.remove(&promise_id);
+  }
+}
+
+fn unref_ops<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let mut promise_ids = Vec::with_capacity(args.length().try_into().unwrap());
+
+  for i in 0..args.length() {
+    let promise_id = match v8::Local::<v8::Integer>::try_from(args.get(i))
+      .map(|l| l.value() as PromiseId)
+      .map_err(Error::from)
+    {
+      Ok(promise_id) => promise_id,
+      Err(err) => {
+        throw_type_error(scope, format!("invalid promise id: {}", err));
+        return;
+      }
+    };
+    promise_ids.push(promise_id);
+  }
+
+  for promise_id in promise_ids {
+    state.unrefed_ops.insert(promise_id);
   }
 }
 

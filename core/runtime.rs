@@ -1735,6 +1735,57 @@ pub mod tests {
   }
 
   #[test]
+  fn test_ref_unref_ops() {
+    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    runtime
+      .execute_script(
+        "filename.js",
+        r#"
+        var p1 = Deno.core.opAsync("op_test", 42);
+        var p2 = Deno.core.opAsync("op_test", 42);
+        "#,
+      )
+      .unwrap();
+    {
+      let isolate = runtime.v8_isolate();
+      let state_rc = JsRuntime::state(isolate);
+      let state = state_rc.borrow();
+      assert_eq!(state.pending_ops.len(), 2);
+      assert_eq!(state.unrefed_ops.len(), 0);
+    }
+    runtime
+      .execute_script(
+        "filename.js",
+        r#"
+        Deno.core.unrefOps(p1.id, p2.id);
+        "#,
+      )
+      .unwrap();
+    {
+      let isolate = runtime.v8_isolate();
+      let state_rc = JsRuntime::state(isolate);
+      let state = state_rc.borrow();
+      assert_eq!(state.pending_ops.len(), 2);
+      assert_eq!(state.unrefed_ops.len(), 2);
+    }
+    runtime
+      .execute_script(
+        "filename.js",
+        r#"
+        Deno.core.refOps(p1.id, p2.id);
+        "#,
+      )
+      .unwrap();
+    {
+      let isolate = runtime.v8_isolate();
+      let state_rc = JsRuntime::state(isolate);
+      let state = state_rc.borrow();
+      assert_eq!(state.pending_ops.len(), 2);
+      assert_eq!(state.unrefed_ops.len(), 0);
+    }
+  }
+
+  #[test]
   fn test_dispatch_no_zero_copy_buf() {
     let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(false));
     runtime
