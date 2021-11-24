@@ -24,10 +24,6 @@ impl NodeEsmResolver {
       maybe_import_map_resolver,
     }
   }
-
-  pub fn as_resolver(&self) -> &dyn Resolver {
-    self
-  }
 }
 
 impl Resolver for NodeEsmResolver {
@@ -232,12 +228,12 @@ fn finalize_resolution(
   };
   if is_dir {
     return Err(errors::err_unsupported_dir_import(
-      &path.display().to_string(),
-      &to_file_path_string(base),
+      resolved.as_str(),
+      base.as_str(),
     ));
   } else if !is_file {
     return Err(errors::err_module_not_found(
-      &path.display().to_string(),
+      resolved.as_str(),
       base.as_str(),
       "module",
     ));
