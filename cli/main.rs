@@ -424,7 +424,19 @@ async fn compile_command(
 
   let graph =
     create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?;
-  let (bundle_str, _) = bundle_module_graph(graph.as_ref(), &ps, &flags)?;
+
+  let source = (graph.as_ref().modules().len() == 1)
+    .then(|| {
+      let root_module = graph.as_ref().modules()[0];
+      match root_module.media_type {
+        MediaType::JavaScript => Some(Ok(root_module.source.to_string())),
+        _ => None,
+      }
+    })
+    .flatten()
+    .unwrap_or_else(|| {
+      bundle_module_graph(graph.as_ref(), &ps, &flags).map(|r| r.0)
+    })?;
 
   info!(
     "{} {}",
@@ -439,7 +451,7 @@ async fn compile_command(
 
   let final_bin = tools::standalone::create_standalone_binary(
     original_binary,
-    bundle_str,
+    source,
     run_flags,
   )?;
 
@@ -724,6 +736,7 @@ async fn create_graph_and_maybe_check(
         emit_with_diagnostics: false,
         maybe_config_specifier,
         ts_config,
+        reload: ps.flags.reload,
       },
     )?;
     debug!("{}", check_result.stats);

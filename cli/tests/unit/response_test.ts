@@ -4,10 +4,9 @@ import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest(async function responseText() {
+Deno.test(async function responseText() {
   const response = new Response("hello world");
   const textPromise = response.text();
   assert(textPromise instanceof Promise);
@@ -16,7 +15,7 @@ unitTest(async function responseText() {
   assertEquals(text, "hello world");
 });
 
-unitTest(async function responseArrayBuffer() {
+Deno.test(async function responseArrayBuffer() {
   const response = new Response(new Uint8Array([1, 2, 3]));
   const arrayBufferPromise = response.arrayBuffer();
   assert(arrayBufferPromise instanceof Promise);
@@ -25,7 +24,7 @@ unitTest(async function responseArrayBuffer() {
   assertEquals(new Uint8Array(arrayBuffer), new Uint8Array([1, 2, 3]));
 });
 
-unitTest(async function responseJson() {
+Deno.test(async function responseJson() {
   const response = new Response('{"hello": "world"}');
   const jsonPromise = response.json();
   assert(jsonPromise instanceof Promise);
@@ -34,7 +33,7 @@ unitTest(async function responseJson() {
   assertEquals(json, { hello: "world" });
 });
 
-unitTest(async function responseBlob() {
+Deno.test(async function responseBlob() {
   const response = new Response(new Uint8Array([1, 2, 3]));
   const blobPromise = response.blob();
   assert(blobPromise instanceof Promise);
@@ -44,7 +43,7 @@ unitTest(async function responseBlob() {
   assertEquals(await blob.arrayBuffer(), new Uint8Array([1, 2, 3]).buffer);
 });
 
-unitTest(async function responseFormData() {
+Deno.test(async function responseFormData() {
   const input = new FormData();
   input.append("hello", "world");
   const response = new Response(input);
@@ -57,7 +56,7 @@ unitTest(async function responseFormData() {
   assertEquals([...formData], [...input]);
 });
 
-unitTest(function responseInvalidInit() {
+Deno.test(function responseInvalidInit() {
   // deno-lint-ignore ban-ts-comment
   // @ts-expect-error
   assertThrows(() => new Response("", 0));
@@ -67,14 +66,14 @@ unitTest(function responseInvalidInit() {
   assertThrows(() => new Response("", { status: null }));
 });
 
-unitTest(function responseNullInit() {
+Deno.test(function responseNullInit() {
   // deno-lint-ignore ban-ts-comment
   // @ts-expect-error
   const response = new Response("", null);
   assertEquals(response.status, 200);
 });
 
-unitTest(function customInspectFunction() {
+Deno.test(function customInspectFunction() {
   const response = new Response();
   assertEquals(
     Deno.inspect(response),

@@ -6,10 +6,9 @@ import {
   Deferred,
   deferred,
   delay,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest(async function functionParameterBindingSuccess() {
+Deno.test(async function functionParameterBindingSuccess() {
   const promise = deferred();
   let count = 0;
 
@@ -26,7 +25,7 @@ unitTest(async function functionParameterBindingSuccess() {
   assertEquals(count, 1);
 });
 
-unitTest(async function stringifyAndEvalNonFunctions() {
+Deno.test(async function stringifyAndEvalNonFunctions() {
   // eval can only access global scope
   const global = globalThis as unknown as {
     globalPromise: ReturnType<typeof deferred>;
@@ -50,7 +49,7 @@ unitTest(async function stringifyAndEvalNonFunctions() {
   Reflect.deleteProperty(global, "globalCount");
 });
 
-unitTest(async function timeoutSuccess() {
+Deno.test(async function timeoutSuccess() {
   const promise = deferred();
   let count = 0;
   setTimeout(() => {
@@ -62,7 +61,7 @@ unitTest(async function timeoutSuccess() {
   assertEquals(count, 1);
 });
 
-unitTest(async function timeoutEvalNoScopeLeak() {
+Deno.test(async function timeoutEvalNoScopeLeak() {
   // eval can only access global scope
   const global = globalThis as unknown as {
     globalPromise: Deferred<Error>;
@@ -83,7 +82,7 @@ unitTest(async function timeoutEvalNoScopeLeak() {
   Reflect.deleteProperty(global, "globalPromise");
 });
 
-unitTest(async function timeoutArgs() {
+Deno.test(async function timeoutArgs() {
   const promise = deferred();
   const arg = 1;
   let capturedArgs: unknown[] = [];
@@ -105,7 +104,7 @@ unitTest(async function timeoutArgs() {
   ]);
 });
 
-unitTest(async function timeoutCancelSuccess() {
+Deno.test(async function timeoutCancelSuccess() {
   let count = 0;
   const id = setTimeout(() => {
     count++;
@@ -116,7 +115,7 @@ unitTest(async function timeoutCancelSuccess() {
   assertEquals(count, 0);
 });
 
-unitTest(async function timeoutCancelMultiple() {
+Deno.test(async function timeoutCancelMultiple() {
   function uncalled(): never {
     throw new Error("This function should not be called.");
   }
@@ -141,7 +140,7 @@ unitTest(async function timeoutCancelMultiple() {
   await delay(50);
 });
 
-unitTest(async function timeoutCancelInvalidSilentFail() {
+Deno.test(async function timeoutCancelInvalidSilentFail() {
   // Expect no panic
   const promise = deferred();
   let count = 0;
@@ -158,7 +157,7 @@ unitTest(async function timeoutCancelInvalidSilentFail() {
   clearTimeout(2147483647);
 });
 
-unitTest(async function intervalSuccess() {
+Deno.test(async function intervalSuccess() {
   const promise = deferred();
   let count = 0;
   const id = setInterval(() => {
@@ -176,7 +175,7 @@ unitTest(async function intervalSuccess() {
   await delay(0);
 });
 
-unitTest(async function intervalCancelSuccess() {
+Deno.test(async function intervalCancelSuccess() {
   let count = 0;
   const id = setInterval(() => {
     count++;
@@ -186,7 +185,7 @@ unitTest(async function intervalCancelSuccess() {
   assertEquals(count, 0);
 });
 
-unitTest(async function intervalOrdering() {
+Deno.test(async function intervalOrdering() {
   const timers: number[] = [];
   let timeouts = 0;
   function onTimeout() {
@@ -202,12 +201,12 @@ unitTest(async function intervalOrdering() {
   assertEquals(timeouts, 1);
 });
 
-unitTest(function intervalCancelInvalidSilentFail() {
+Deno.test(function intervalCancelInvalidSilentFail() {
   // Should silently fail (no panic)
   clearInterval(2147483647);
 });
 
-unitTest(async function fireCallbackImmediatelyWhenDelayOverMaxValue() {
+Deno.test(async function fireCallbackImmediatelyWhenDelayOverMaxValue() {
   let count = 0;
   setTimeout(() => {
     count++;
@@ -216,7 +215,7 @@ unitTest(async function fireCallbackImmediatelyWhenDelayOverMaxValue() {
   assertEquals(count, 1);
 });
 
-unitTest(async function timeoutCallbackThis() {
+Deno.test(async function timeoutCallbackThis() {
   const promise = deferred();
   let capturedThis: unknown;
   const obj = {
@@ -230,7 +229,7 @@ unitTest(async function timeoutCallbackThis() {
   assertEquals(capturedThis, window);
 });
 
-unitTest(async function timeoutBindThis() {
+Deno.test(async function timeoutBindThis() {
   const thisCheckPassed = [null, undefined, window, globalThis];
 
   const thisCheckFailed = [
@@ -278,7 +277,7 @@ unitTest(async function timeoutBindThis() {
   }
 });
 
-unitTest(function clearTimeoutShouldConvertToNumber() {
+Deno.test(function clearTimeoutShouldConvertToNumber() {
   let called = false;
   const obj = {
     valueOf(): number {
@@ -290,7 +289,7 @@ unitTest(function clearTimeoutShouldConvertToNumber() {
   assert(called);
 });
 
-unitTest(function setTimeoutShouldThrowWithBigint() {
+Deno.test(function setTimeoutShouldThrowWithBigint() {
   let hasThrown = 0;
   try {
     setTimeout(() => {}, (1n as unknown) as number);
@@ -305,7 +304,7 @@ unitTest(function setTimeoutShouldThrowWithBigint() {
   assertEquals(hasThrown, 2);
 });
 
-unitTest(function clearTimeoutShouldThrowWithBigint() {
+Deno.test(function clearTimeoutShouldThrowWithBigint() {
   let hasThrown = 0;
   try {
     clearTimeout((1n as unknown) as number);
@@ -320,23 +319,23 @@ unitTest(function clearTimeoutShouldThrowWithBigint() {
   assertEquals(hasThrown, 2);
 });
 
-unitTest(function testFunctionName() {
+Deno.test(function testFunctionName() {
   assertEquals(clearTimeout.name, "clearTimeout");
   assertEquals(clearInterval.name, "clearInterval");
 });
 
-unitTest(function testFunctionParamsLength() {
+Deno.test(function testFunctionParamsLength() {
   assertEquals(setTimeout.length, 1);
   assertEquals(setInterval.length, 1);
   assertEquals(clearTimeout.length, 0);
   assertEquals(clearInterval.length, 0);
 });
 
-unitTest(function clearTimeoutAndClearIntervalNotBeEquals() {
+Deno.test(function clearTimeoutAndClearIntervalNotBeEquals() {
   assertNotEquals(clearTimeout, clearInterval);
 });
 
-unitTest(async function timerMaxCpuBug() {
+Deno.test(async function timerMaxCpuBug() {
   // There was a bug where clearing a timeout would cause Deno to use 100% CPU.
   clearTimeout(setTimeout(() => {}, 1000));
   // We can check this by counting how many ops have triggered in the interim.
@@ -347,7 +346,7 @@ unitTest(async function timerMaxCpuBug() {
   assert(opsDispatched_ - opsDispatched < 10);
 });
 
-unitTest(async function timerBasicMicrotaskOrdering() {
+Deno.test(async function timerBasicMicrotaskOrdering() {
   let s = "";
   let count = 0;
   const promise = deferred();
@@ -371,7 +370,7 @@ unitTest(async function timerBasicMicrotaskOrdering() {
   assertEquals(s, "deno");
 });
 
-unitTest(async function timerNestedMicrotaskOrdering() {
+Deno.test(async function timerNestedMicrotaskOrdering() {
   let s = "";
   const promise = deferred();
   s += "0";
@@ -407,11 +406,11 @@ unitTest(async function timerNestedMicrotaskOrdering() {
   assertEquals(s, "0123456789AB");
 });
 
-unitTest(function testQueueMicrotask() {
+Deno.test(function testQueueMicrotask() {
   assertEquals(typeof queueMicrotask, "function");
 });
 
-unitTest(async function timerIgnoresDateOverride() {
+Deno.test(async function timerIgnoresDateOverride() {
   const OriginalDate = Date;
   const promise = deferred();
   let hasThrown = 0;
@@ -445,14 +444,14 @@ unitTest(async function timerIgnoresDateOverride() {
   assertEquals(hasThrown, 1);
 });
 
-unitTest({ permissions: { hrtime: true } }, function sleepSync() {
+Deno.test({ permissions: { hrtime: true } }, function sleepSync() {
   const start = performance.now();
   Deno.sleepSync(10);
   const after = performance.now();
   assert(after - start >= 10);
 });
 
-unitTest(
+Deno.test(
   { permissions: { hrtime: true } },
   async function sleepSyncShorterPromise() {
     const perf = performance;
@@ -471,7 +470,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { hrtime: true } },
   async function sleepSyncLongerPromise() {
     const perf = performance;

@@ -61,10 +61,20 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct ProcState(Arc<Inner>);
 
+#[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
+enum ModuleEntry {
+  Module {
+    code: String,
+    dependencies: BTreeMap<String, Dependency>,
+  },
+  Error(ModuleGraphError),
+  Redirect(ModuleSpecifier),
+}
+
 #[derive(Default)]
 struct GraphData {
-  modules: HashMap<ModuleSpecifier, Result<ModuleSource, ModuleGraphError>>,
-  dependency_map: HashMap<ModuleSpecifier, BTreeMap<String, Dependency>>,
+  modules: HashMap<ModuleSpecifier, ModuleEntry>,
   /// A set of type libs that each module has passed a type check with this
   /// session. This would consist of window, worker or both.
   checked_libs_map: HashMap<ModuleSpecifier, HashSet<emit::TypeLib>>,
@@ -77,7 +87,7 @@ impl GraphData {
   /// Check if `roots` are ready to be loaded by V8. Returns `Some(Ok(()))` if
   /// prepared. Returns `Some(Err(_))` if there is a known module graph error
   /// statically reachable from `roots`. Returns `None` if sufficient graph data
-  /// is yet to supplied.
+  /// is yet to be supplied.
   fn check_if_prepared(
     &self,
     roots: &[ModuleSpecifier],
@@ -89,9 +99,8 @@ impl GraphData {
     }
     while let Some(specifier) = visiting.pop_front() {
       match self.modules.get(specifier) {
-        Some(Ok(_)) => {
-          let deps = self.dependency_map.get(specifier).unwrap();
-          for (_, dep) in deps.iter().rev() {
+        Some(ModuleEntry::Module { dependencies, .. }) => {
+          for (_, dep) in dependencies.iter().rev() {
             for resolved in [&dep.maybe_code, &dep.maybe_type] {
               if !dep.is_dynamic {
                 match resolved {
@@ -117,7 +126,7 @@ impl GraphData {
             }
           }
         }
-        Some(Err(error)) => {
+        Some(ModuleEntry::Error(error)) => {
           if !roots.contains(specifier) {
             if let Some(range) = self.referrer_map.get(specifier) {
               if !range.specifier.as_str().contains("$deno") {
@@ -130,6 +139,10 @@ impl GraphData {
             }
           }
           return Some(Err(error.clone().into()));
+        }
+        Some(ModuleEntry::Redirect(specifier)) => {
+          seen.insert(specifier);
+          visiting.push_front(specifier);
         }
         None => return None,
       }
@@ -481,6 +494,7 @@ impl ProcState {
           emit_with_diagnostics: false,
           maybe_config_specifier,
           ts_config,
+          reload: self.flags.reload,
         };
         for root in &graph.roots {
           let root_str = root.to_string();
@@ -512,16 +526,21 @@ impl ProcState {
         specifiers.insert(specifier.clone(), actual);
       }
       for (specifier, result) in &specifiers {
+        if let Some(found) = graph.redirects.get(specifier) {
+          let module_entry = ModuleEntry::Redirect(found.clone());
+          graph_data.modules.insert(specifier.clone(), module_entry);
+          continue;
+        }
         match result {
-          Ok((found_specifier, media_type)) => {
-            let module = graph.get(found_specifier).unwrap();
+          Ok((_, media_type)) => {
+            let module = graph.get(specifier).unwrap();
             // If there was a type check error, supply dummy code. It shouldn't
             // be used since preparation will fail.
             let code = if type_check_result.is_err() {
               "".to_string()
             // Check to see if there is an emitted file in the cache.
             } else if let Some(code) =
-              cache.get(cache::CacheType::Emit, found_specifier)
+              cache.get(cache::CacheType::Emit, specifier)
             {
               code
             // Then if the file is JavaScript (or unknown) and wasn't emitted,
@@ -541,23 +560,17 @@ impl ProcState {
             } else if media_type == &MediaType::Dts {
               "".to_string()
             } else {
-              unreachable!("unexpected missing emit: {}", found_specifier)
+              unreachable!("unexpected missing emit: {}", specifier)
             };
-            graph_data.modules.insert(
-              specifier.clone(),
-              Ok(ModuleSource {
-                code,
-                module_url_found: found_specifier.to_string(),
-                module_url_specified: specifier.to_string(),
-              }),
-            );
-            graph_data
-              .dependency_map
-              .insert(specifier.clone(), module.dependencies.clone());
+            let dependencies = module.dependencies.clone();
+            let module_entry = ModuleEntry::Module { code, dependencies };
+            graph_data.modules.insert(specifier.clone(), module_entry);
             for dep in module.dependencies.values() {
               #[allow(clippy::manual_flatten)]
               for resolved in [&dep.maybe_code, &dep.maybe_type] {
                 if let Some(Ok((specifier, referrer_range))) = resolved {
+                  let specifier =
+                    graph.redirects.get(specifier).unwrap_or(specifier);
                   let entry = graph_data.referrer_map.entry(specifier.clone());
                   entry.or_insert_with(|| referrer_range.clone());
                 }
@@ -565,9 +578,8 @@ impl ProcState {
             }
           }
           Err(error) => {
-            graph_data
-              .modules
-              .insert(specifier.clone(), Err(error.clone()));
+            let module_entry = ModuleEntry::Error(error.clone());
+            graph_data.modules.insert(specifier.clone(), module_entry);
           }
         }
       }
@@ -600,29 +612,28 @@ impl ProcState {
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(s) = deno_core::resolve_url_or_path(referrer) {
-      let maybe_resolved = {
-        let graph_data = self.graph_data.lock();
-        graph_data
-          .dependency_map
-          .get(&s)
-          .and_then(|map| map.get(specifier))
-          .map(|dep| dep.maybe_code.clone())
+    if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
+      let graph_data = self.graph_data.lock();
+      let found_referrer = match graph_data.modules.get(&referrer) {
+        Some(ModuleEntry::Redirect(r)) => r,
+        _ => &referrer,
+      };
+      let maybe_resolved = match graph_data.modules.get(found_referrer) {
+        Some(ModuleEntry::Module { dependencies, .. }) => dependencies
+          .get(specifier)
+          .and_then(|dep| dep.maybe_code.clone()),
+        _ => None,
       };
 
-      if let Some(resolved) = maybe_resolved {
-        match resolved {
-          Some(Ok((specifier, _))) => {
-            return Ok(specifier);
-          }
-          Some(Err(err)) => {
-            return Err(custom_error(
-              "TypeError",
-              format!("{}\n", err.to_string_with_range()),
-            ))
-          }
-          _ => (),
+      match maybe_resolved {
+        Some(Ok((specifier, _))) => return Ok(specifier),
+        Some(Err(err)) => {
+          return Err(custom_error(
+            "TypeError",
+            format!("{}\n", err.to_string_with_range()),
+          ))
         }
+        None => {}
       }
     }
 
@@ -658,10 +669,16 @@ impl ProcState {
     );
 
     let graph_data = self.graph_data.lock();
-    match graph_data.modules.get(&specifier) {
-      Some(Ok(module_source)) => Ok(module_source.clone()),
-      // This is an edge case usually hit when loading source lines for error
-      // stacks with synthetic locations. Users shouldn't see this error.
+    let found_specifier = match graph_data.modules.get(&specifier) {
+      Some(ModuleEntry::Redirect(s)) => s,
+      _ => &specifier,
+    };
+    match graph_data.modules.get(found_specifier) {
+      Some(ModuleEntry::Module { code, .. }) => Ok(ModuleSource {
+        code: code.clone(),
+        module_url_specified: specifier.to_string(),
+        module_url_found: found_specifier.to_string(),
+      }),
       _ => Err(anyhow!(
         "Loading unprepared module: {}",
         specifier.to_string()

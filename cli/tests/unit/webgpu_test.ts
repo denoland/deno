@@ -1,4 +1,4 @@
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
 let isCI: boolean;
 try {
@@ -9,7 +9,7 @@ try {
 
 // Skip this test on linux CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
-unitTest({
+Deno.test({
   permissions: { read: true, env: true },
   ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
 }, async function webgpuComputePass() {
@@ -100,7 +100,7 @@ unitTest({
 
 // Skip this test on linux CI, because the vulkan emulator is not good enough
 // yet, and skip on macOS because these do not have virtual GPUs.
-unitTest({
+Deno.test({
   permissions: { read: true, env: true },
   ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
 }, async function webgpuHelloTriangle() {

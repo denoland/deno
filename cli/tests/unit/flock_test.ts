@@ -1,15 +1,15 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, unitTest } from "./test_util.ts";
+import { assertEquals } from "./test_util.ts";
 import { readAll } from "../../../test_util/std/io/util.ts";
 
-unitTest(
+Deno.test(
   { permissions: { read: true, run: true, hrtime: true } },
   async function flockFileSync() {
     await runFlockTests({ sync: true });
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, run: true, hrtime: true } },
   async function flockFileAsync() {
     await runFlockTests({ sync: false });
