@@ -28,6 +28,12 @@ itest!(compat_dyn_import_rejects_with_node_compatible_error {
   output: "compat/dyn_import_reject.out",
 });
 
+itest!(import_esm_from_cjs {
+  args:
+    "run --compat --unstable -A --quiet compat/import_esm_from_cjs/index.js",
+  output_str: Some("function\n"),
+});
+
 #[test]
 fn globals_in_repl() {
   let (out, _err) = util::run_and_collect_output_with_args(
@@ -38,6 +44,20 @@ fn globals_in_repl() {
     false,
   );
   assert!(out.contains("true"));
+}
+
+#[test]
+fn require_in_repl() {
+  let (out, _err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--compat", "--unstable", "--quiet"],
+    Some(vec![
+      "const foo = require('./compat/import_esm_from_cjs/index');",
+    ]),
+    None,
+    false,
+  );
+  assert!(out.contains("function"));
 }
 
 #[test]
@@ -54,5 +74,5 @@ fn node_compat_url() {
   );
   assert!(out.is_empty());
   assert!(!err.is_empty());
-  assert!(err.contains("file:///non_existent/node/global.ts"));
+  assert!(err.contains("non_existent/node/global.ts"));
 }
