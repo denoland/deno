@@ -1,4 +1,4 @@
-unitTest(
+Deno.test(
 	{ perms: { net: true } },
 	async function responseClone() {
 		const response =

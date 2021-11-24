@@ -61,10 +61,20 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct ProcState(Arc<Inner>);
 
+#[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
+enum ModuleEntry {
+  Module {
+    code: String,
+    dependencies: BTreeMap<String, Dependency>,
+  },
+  Error(ModuleGraphError),
+  Redirect(ModuleSpecifier),
+}
+
 #[derive(Default)]
 struct GraphData {
-  modules: HashMap<ModuleSpecifier, Result<ModuleSource, ModuleGraphError>>,
-  dependency_map: HashMap<ModuleSpecifier, BTreeMap<String, Dependency>>,
+  modules: HashMap<ModuleSpecifier, ModuleEntry>,
   /// A set of type libs that each module has passed a type check with this
   /// session. This would consist of window, worker or both.
   checked_libs_map: HashMap<ModuleSpecifier, HashSet<emit::TypeLib>>,
@@ -77,7 +87,7 @@ impl GraphData {
   /// Check if `roots` are ready to be loaded by V8. Returns `Some(Ok(()))` if
   /// prepared. Returns `Some(Err(_))` if there is a known module graph error
   /// statically reachable from `roots`. Returns `None` if sufficient graph data
-  /// is yet to supplied.
+  /// is yet to be supplied.
   fn check_if_prepared(
     &self,
     roots: &[ModuleSpecifier],
@@ -89,9 +99,8 @@ impl GraphData {
     }
     while let Some(specifier) = visiting.pop_front() {
       match self.modules.get(specifier) {
-        Some(Ok(_)) => {
-          let deps = self.dependency_map.get(specifier).unwrap();
-          for (_, dep) in deps.iter().rev() {
+        Some(ModuleEntry::Module { dependencies, .. }) => {
+          for (_, dep) in dependencies.iter().rev() {
             for resolved in [&dep.maybe_code, &dep.maybe_type] {
               if !dep.is_dynamic {
                 match resolved {
@@ -117,7 +126,7 @@ impl GraphData {
             }
           }
         }
-        Some(Err(error)) => {
+        Some(ModuleEntry::Error(error)) => {
           if !roots.contains(specifier) {
             if let Some(range) = self.referrer_map.get(specifier) {
               if !range.specifier.as_str().contains("$deno") {
@@ -130,6 +139,10 @@ impl GraphData {
             }
           }
           return Some(Err(error.clone().into()));
+        }
+        Some(ModuleEntry::Redirect(specifier)) => {
+          seen.insert(specifier);
+          visiting.push_front(specifier);
         }
         None => return None,
       }
@@ -154,6 +167,7 @@ pub struct Inner {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
+  maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
 }
 
 impl Deref for ProcState {
@@ -300,6 +314,34 @@ impl ProcState {
       .clone()
       .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok());
 
+    // FIXME(bartlomieju): `NodeEsmResolver` is not aware of JSX resolver
+    // created below
+    let node_resolver = NodeEsmResolver::new(
+      maybe_import_map.clone().map(ImportMapResolver::new),
+    );
+    let maybe_import_map_resolver =
+      maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = maybe_config_file
+      .as_ref()
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      })
+      .flatten();
+    let maybe_resolver: Option<
+      Arc<dyn deno_graph::source::Resolver + Send + Sync>,
+    > = if flags.compat {
+      Some(Arc::new(node_resolver))
+    } else if let Some(jsx_resolver) = maybe_jsx_resolver {
+      // the JSX resolver offloads to the import map if present, otherwise uses
+      // the default Deno explicit import resolution.
+      Some(Arc::new(jsx_resolver))
+    } else if let Some(import_map_resolver) = maybe_import_map_resolver {
+      Some(Arc::new(import_map_resolver))
+    } else {
+      None
+    };
+
     Ok(ProcState(Arc::new(Inner {
       dir,
       coverage_dir,
@@ -315,6 +357,7 @@ impl ProcState {
       broadcast_channel,
       shared_array_buffer_store,
       compiled_wasm_module_store,
+      maybe_resolver,
     })))
   }
 
@@ -382,30 +425,12 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports()?;
-    let node_resolver = NodeEsmResolver::new(
-      self.maybe_import_map.clone().map(ImportMapResolver::new),
-    );
-    let maybe_import_map_resolver =
-      self.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = self
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
-    let maybe_resolver = if self.flags.compat {
-      Some(node_resolver.as_resolver())
-    } else if maybe_jsx_resolver.is_some() {
-      // the JSX resolver offloads to the import map if present, otherwise uses
-      // the default Deno explicit import resolution.
-      maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-    } else {
-      maybe_import_map_resolver
-        .as_ref()
-        .map(|im| im.as_resolver())
-    };
+    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
+      if let Some(resolver) = &self.maybe_resolver {
+        Some(resolver.as_ref())
+      } else {
+        None
+      };
     let graph = create_graph(
       roots.clone(),
       is_dynamic,
@@ -481,6 +506,7 @@ impl ProcState {
           emit_with_diagnostics: false,
           maybe_config_specifier,
           ts_config,
+          reload: self.flags.reload,
         };
         for root in &graph.roots {
           let root_str = root.to_string();
@@ -512,16 +538,21 @@ impl ProcState {
         specifiers.insert(specifier.clone(), actual);
       }
       for (specifier, result) in &specifiers {
+        if let Some(found) = graph.redirects.get(specifier) {
+          let module_entry = ModuleEntry::Redirect(found.clone());
+          graph_data.modules.insert(specifier.clone(), module_entry);
+          continue;
+        }
         match result {
-          Ok((found_specifier, media_type)) => {
-            let module = graph.get(found_specifier).unwrap();
+          Ok((_, media_type)) => {
+            let module = graph.get(specifier).unwrap();
             // If there was a type check error, supply dummy code. It shouldn't
             // be used since preparation will fail.
             let code = if type_check_result.is_err() {
               "".to_string()
             // Check to see if there is an emitted file in the cache.
             } else if let Some(code) =
-              cache.get(cache::CacheType::Emit, found_specifier)
+              cache.get(cache::CacheType::Emit, specifier)
             {
               code
             // Then if the file is JavaScript (or unknown) and wasn't emitted,
@@ -541,23 +572,17 @@ impl ProcState {
             } else if media_type == &MediaType::Dts {
               "".to_string()
             } else {
-              unreachable!("unexpected missing emit: {}", found_specifier)
+              unreachable!("unexpected missing emit: {}", specifier)
             };
-            graph_data.modules.insert(
-              specifier.clone(),
-              Ok(ModuleSource {
-                code,
-                module_url_found: found_specifier.to_string(),
-                module_url_specified: specifier.to_string(),
-              }),
-            );
-            graph_data
-              .dependency_map
-              .insert(specifier.clone(), module.dependencies.clone());
+            let dependencies = module.dependencies.clone();
+            let module_entry = ModuleEntry::Module { code, dependencies };
+            graph_data.modules.insert(specifier.clone(), module_entry);
             for dep in module.dependencies.values() {
               #[allow(clippy::manual_flatten)]
               for resolved in [&dep.maybe_code, &dep.maybe_type] {
                 if let Some(Ok((specifier, referrer_range))) = resolved {
+                  let specifier =
+                    graph.redirects.get(specifier).unwrap_or(specifier);
                   let entry = graph_data.referrer_map.entry(specifier.clone());
                   entry.or_insert_with(|| referrer_range.clone());
                 }
@@ -565,9 +590,8 @@ impl ProcState {
             }
           }
           Err(error) => {
-            graph_data
-              .modules
-              .insert(specifier.clone(), Err(error.clone()));
+            let module_entry = ModuleEntry::Error(error.clone());
+            graph_data.modules.insert(specifier.clone(), module_entry);
           }
         }
       }
@@ -600,44 +624,51 @@ impl ProcState {
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(s) = deno_core::resolve_url_or_path(referrer) {
-      let maybe_resolved = {
-        let graph_data = self.graph_data.lock();
-        graph_data
-          .dependency_map
-          .get(&s)
-          .and_then(|map| map.get(specifier))
-          .map(|dep| dep.maybe_code.clone())
+    if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
+      let graph_data = self.graph_data.lock();
+      let found_referrer = match graph_data.modules.get(&referrer) {
+        Some(ModuleEntry::Redirect(r)) => r,
+        _ => &referrer,
+      };
+      let maybe_resolved = match graph_data.modules.get(found_referrer) {
+        Some(ModuleEntry::Module { dependencies, .. }) => dependencies
+          .get(specifier)
+          .and_then(|dep| dep.maybe_code.clone()),
+        _ => None,
       };
 
-      if let Some(resolved) = maybe_resolved {
-        match resolved {
-          Some(Ok((specifier, _))) => {
-            return Ok(specifier);
-          }
-          Some(Err(err)) => {
-            return Err(custom_error(
-              "TypeError",
-              format!("{}\n", err.to_string_with_range()),
-            ))
-          }
-          _ => (),
+      match maybe_resolved {
+        Some(Ok((specifier, _))) => return Ok(specifier),
+        Some(Err(err)) => {
+          return Err(custom_error(
+            "TypeError",
+            format!("{}\n", err.to_string_with_range()),
+          ))
         }
+        None => {}
       }
     }
 
-    // FIXME(bartlomieju): hacky way to provide compatibility with repl
+    // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
+    // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
+    // but sadly that's not the case due to missing APIs in V8.
     let referrer = if referrer.is_empty() && self.flags.repl {
-      deno_core::DUMMY_SPECIFIER
+      deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()
     } else {
-      referrer
+      deno_core::resolve_url_or_path(referrer).unwrap()
     };
-    if let Some(import_map) = &self.maybe_import_map {
-      import_map
-        .resolve(specifier, referrer)
-        .map_err(|err| err.into())
+
+    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
+      if let Some(resolver) = &self.maybe_resolver {
+        Some(resolver.as_ref())
+      } else {
+        None
+      };
+    if let Some(resolver) = &maybe_resolver {
+      resolver.resolve(specifier, &referrer)
     } else {
-      deno_core::resolve_import(specifier, referrer).map_err(|err| err.into())
+      deno_core::resolve_import(specifier, referrer.as_str())
+        .map_err(|err| err.into())
     }
   }
 
@@ -658,10 +689,16 @@ impl ProcState {
     );
 
     let graph_data = self.graph_data.lock();
-    match graph_data.modules.get(&specifier) {
-      Some(Ok(module_source)) => Ok(module_source.clone()),
-      // This is an edge case usually hit when loading source lines for error
-      // stacks with synthetic locations. Users shouldn't see this error.
+    let found_specifier = match graph_data.modules.get(&specifier) {
+      Some(ModuleEntry::Redirect(s)) => s,
+      _ => &specifier,
+    };
+    match graph_data.modules.get(found_specifier) {
+      Some(ModuleEntry::Module { code, .. }) => Ok(ModuleSource {
+        code: code.clone(),
+        module_url_specified: specifier.to_string(),
+        module_url_found: found_specifier.to_string(),
+      }),
       _ => Err(anyhow!(
         "Loading unprepared module: {}",
         specifier.to_string()

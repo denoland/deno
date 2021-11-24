@@ -1,6 +1,6 @@
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
-unitTest(function basicAbortController() {
+Deno.test(function basicAbortController() {
   const controller = new AbortController();
   assert(controller);
   const { signal } = controller;
@@ -10,7 +10,7 @@ unitTest(function basicAbortController() {
   assertEquals(signal.aborted, true);
 });
 
-unitTest(function signalCallsOnabort() {
+Deno.test(function signalCallsOnabort() {
   const controller = new AbortController();
   const { signal } = controller;
   let called = false;
@@ -23,7 +23,7 @@ unitTest(function signalCallsOnabort() {
   assert(called);
 });
 
-unitTest(function signalEventListener() {
+Deno.test(function signalEventListener() {
   const controller = new AbortController();
   const { signal } = controller;
   let called = false;
@@ -36,7 +36,7 @@ unitTest(function signalEventListener() {
   assert(called);
 });
 
-unitTest(function onlyAbortsOnce() {
+Deno.test(function onlyAbortsOnce() {
   const controller = new AbortController();
   const { signal } = controller;
   let called = 0;
@@ -50,12 +50,12 @@ unitTest(function onlyAbortsOnce() {
   assertEquals(called, 2);
 });
 
-unitTest(function controllerHasProperToString() {
+Deno.test(function controllerHasProperToString() {
   const actual = Object.prototype.toString.call(new AbortController());
   assertEquals(actual, "[object AbortController]");
 });
 
-unitTest(function abortReason() {
+Deno.test(function abortReason() {
   const signal = AbortSignal.abort("hey!");
   assertEquals(signal.aborted, true);
   assertEquals(signal.reason, "hey!");

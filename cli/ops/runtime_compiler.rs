@@ -252,6 +252,7 @@ async fn op_emit(
           emit_with_diagnostics: true,
           maybe_config_specifier: None,
           ts_config,
+          reload: true,
         },
       )?;
       (emit_result.diagnostics, emit_result.stats)
@@ -271,6 +272,7 @@ async fn op_emit(
           emit_with_diagnostics: true,
           maybe_config_specifier: None,
           ts_config: ts_config.clone(),
+          reload: true,
         },
       )?;
       (emit_result.diagnostics, emit_result.stats)
