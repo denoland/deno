@@ -1514,16 +1514,13 @@ impl JsRuntime {
 
       let op_state = state.op_state.clone();
 
-      loop {
-        if let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx) {
-          let (promise_id, op_id, resp) = item;
-          op_state.borrow().tracker.track_async_completed(op_id);
-          state.unrefed_ops.remove(&promise_id);
-          args.push(v8::Integer::new(scope, promise_id as i32).into());
-          args.push(resp.to_v8(scope).unwrap());
-        } else {
-          break;
-        }
+      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
+      {
+        let (promise_id, op_id, resp) = item;
+        op_state.borrow().tracker.track_async_completed(op_id);
+        state.unrefed_ops.remove(&promise_id);
+        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(resp.to_v8(scope).unwrap());
       }
     }
 
