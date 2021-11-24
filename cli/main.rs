@@ -218,10 +218,7 @@ pub fn create_main_worker(
     }
   } else if let Some(config_file) = &ps.maybe_config_file {
     // otherwise we will use the path to the config file
-    specifier_to_file_path(&config_file.specifier)
-      .ok()
-      .map(|p| p.to_str().map(|s| s.to_string()))
-      .flatten()
+    Some(config_file.specifier.to_string())
   } else {
     // otherwise we will use the path to the main module
     Some(main_module.to_string())
