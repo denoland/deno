@@ -7,9 +7,12 @@ use deno_core::error::AnyError;
 use lspower::LspService;
 use lspower::Server;
 
+use self::client::Client;
+
 mod analysis;
 mod cache;
 mod capabilities;
+mod client;
 mod code_lens;
 mod completions;
 mod config;
@@ -31,8 +34,9 @@ pub async fn start() -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();
   let stdout = tokio::io::stdout();
 
-  let (service, messages) =
-    LspService::new(language_server::LanguageServer::new);
+  let (service, messages) = LspService::new(|client| {
+    language_server::LanguageServer::new(Client::from_lspower(client))
+  });
   Server::new(stdin, stdout)
     .interleave(messages)
     .serve(service)

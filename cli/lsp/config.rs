@@ -19,6 +19,8 @@ use std::sync::Arc;
 use std::thread;
 use tokio::sync::mpsc;
 
+use super::client::Client;
+
 pub const SETTINGS_SECTION: &str = "deno";
 
 #[derive(Debug, Clone, Default)]
@@ -229,7 +231,7 @@ pub struct Config {
 }
 
 impl Config {
-  pub fn new(client: lspower::Client) -> Self {
+  pub fn new(client: Client) -> Self {
     let (tx, mut rx) = mpsc::channel::<ConfigRequest>(100);
     let settings = Arc::new(RwLock::new(Settings::default()));
     let settings_ref = settings.clone();
@@ -453,9 +455,9 @@ mod tests {
   }
 
   fn setup() -> Config {
-    let mut maybe_client: Option<lspower::Client> = None;
+    let mut maybe_client: Option<Client> = None;
     let (_service, _) = lspower::LspService::new(|client| {
-      maybe_client = Some(client);
+      maybe_client = Some(Client::from_lspower(client));
       MockLanguageServer::default()
     });
     Config::new(maybe_client.unwrap())

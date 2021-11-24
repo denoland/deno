@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use super::client::Client;
 use super::language_server;
 use super::lsp_custom;
 use super::tsc;
@@ -37,7 +38,7 @@ pub struct CompletionItemData {
 async fn check_auto_config_registry(
   url_str: &str,
   snapshot: &language_server::StateSnapshot,
-  client: lspower::Client,
+  client: Client,
 ) {
   // check to see if auto discovery is enabled
   if snapshot
@@ -82,7 +83,7 @@ async fn check_auto_config_registry(
           // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
           if suggestions {
             client
-              .send_custom_notification::<lsp_custom::RegistryStateNotification>(
+              .send_registry_state_notification(
                 lsp_custom::RegistryStateNotificationParams {
                   origin,
                   suggestions,
@@ -133,7 +134,7 @@ pub(crate) async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   state_snapshot: &language_server::StateSnapshot,
-  client: lspower::Client,
+  client: Client,
 ) -> Option<lsp::CompletionResponse> {
   let document = state_snapshot.documents.get(specifier)?;
   let (text, _, range) = document.get_maybe_dependency(position)?;
