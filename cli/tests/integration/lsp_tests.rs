@@ -1422,8 +1422,8 @@ fn lsp_format_mbc() {
 }
 
 #[test]
-fn lsp_format_exclude() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+fn lsp_format_exclude_with_config() {
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_fmt_jsonc =
@@ -4105,7 +4105,7 @@ fn lsp_lint_with_config() {
 
 #[test]
 fn lsp_lint_exclude_with_config() {
-  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let temp_dir = TempDir::new().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_lint_jsonc =

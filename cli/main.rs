@@ -57,6 +57,7 @@ use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
+use crate::fs_util::specifier_to_file_path;
 use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
@@ -217,7 +218,10 @@ pub fn create_main_worker(
     }
   } else if let Some(config_file) = &ps.maybe_config_file {
     // otherwise we will use the path to the config file
-    config_file.path.to_str().map(|s| s.to_string())
+    specifier_to_file_path(&config_file.specifier)
+      .ok()
+      .map(|p| p.to_str().map(|s| s.to_string()))
+      .flatten()
   } else {
     // otherwise we will use the path to the main module
     Some(main_module.to_string())
@@ -724,10 +728,8 @@ async fn create_graph_and_maybe_check(
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
-    let maybe_config_specifier = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
+    let maybe_config_specifier =
+      ps.maybe_config_file.as_ref().map(|cf| cf.specifier.clone());
     let check_result = emit::check_and_maybe_emit(
       graph.clone(),
       &mut cache,
