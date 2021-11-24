@@ -60,7 +60,6 @@ use crate::config_file::TsConfig;
 use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
-use crate::fs_util::specifier_to_file_path;
 use crate::logger;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -304,9 +303,7 @@ impl Inner {
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
           Ok(url)
         } else if let Some(root_uri) = maybe_root_uri {
-          let root_path = specifier_to_file_path(&root_uri)?;
-          let config_path = root_path.join(config_str);
-          Url::from_file_path(config_path).map_err(|_| {
+          root_uri.join(config_str).map_err(|_| {
             anyhow!("Bad file path for configuration file: \"{}\"", config_str)
           })
         } else {
@@ -317,13 +314,7 @@ impl Inner {
         }?;
         info!("  Resolved configuration file: \"{}\"", config_url);
 
-        let config_file = {
-          let buffer = specifier_to_file_path(&config_url)?;
-          let path = buffer
-            .to_str()
-            .ok_or_else(|| anyhow!("Bad uri: \"{}\"", config_url))?;
-          ConfigFile::read(path)?
-        };
+        let config_file = ConfigFile::from_specifier(&config_url)?;
         return Ok(Some((config_file, config_url)));
       }
     }
@@ -401,7 +392,7 @@ impl Inner {
       let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
         Ok(url)
       } else if let Some(root_uri) = &maybe_root_uri {
-        let root_path = specifier_to_file_path(root_uri)?;
+        let root_path = fs_util::specifier_to_file_path(root_uri)?;
         let cache_path = root_path.join(cache_str);
         Url::from_file_path(cache_path).map_err(|_| {
           anyhow!("Bad file path for import path: {:?}", cache_str)
@@ -412,7 +403,7 @@ impl Inner {
           cache_str
         ))
       }?;
-      let cache_path = specifier_to_file_path(&cache_url)?;
+      let cache_path = fs_util::specifier_to_file_path(&cache_url)?;
       info!(
         "  Resolved cache path: \"{}\"",
         cache_path.to_string_lossy()
@@ -457,7 +448,7 @@ impl Inner {
           anyhow!("Bad data url for import map: {:?}", import_map_str)
         })
       } else if let Some(root_uri) = &maybe_root_uri {
-        let root_path = specifier_to_file_path(root_uri)?;
+        let root_path = fs_util::specifier_to_file_path(root_uri)?;
         let import_map_path = root_path.join(import_map_str);
         Url::from_file_path(import_map_path).map_err(|_| {
           anyhow!("Bad file path for import map: {:?}", import_map_str)
@@ -472,7 +463,7 @@ impl Inner {
       let import_map_json = if import_map_url.scheme() == "data" {
         get_source_from_data_url(&import_map_url)?.0
       } else {
-        let import_map_path = specifier_to_file_path(&import_map_url)?;
+        let import_map_path = fs_util::specifier_to_file_path(&import_map_url)?;
         info!(
           "  Resolved import map: \"{}\"",
           import_map_path.to_string_lossy()
@@ -660,7 +651,12 @@ impl Inner {
 
     {
       let config = &mut self.config;
-      config.root_uri = params.root_uri;
+      // sometimes this root uri may not have a trailing slash, so force it to
+      config.root_uri = params
+        .root_uri
+        .map(|s| self.url_map.normalize_url(&s))
+        .map(fs_util::ensure_directory_specifier);
+
       if let Some(value) = params.initialization_options {
         config.set_workspace_settings(value).map_err(|err| {
           error!("Cannot set workspace settings: {}", err);
@@ -1019,12 +1015,16 @@ impl Inner {
     };
     let mark = self.performance.mark("formatting", Some(&params));
     let file_path =
-      specifier_to_file_path(&params.text_document.uri).map_err(|err| {
+      fs_util::specifier_to_file_path(&specifier).map_err(|err| {
         error!("{}", err);
         LspError::invalid_request()
       })?;
 
     let fmt_options = if let Some(fmt_config) = self.maybe_fmt_config.as_ref() {
+      // skip formatting any files ignored by the config file
+      if !fmt_config.files.matches_specifier(&specifier) {
+        return Ok(None);
+      }
       fmt_config.options.clone()
     } else {
       Default::default()
@@ -1859,7 +1859,7 @@ impl Inner {
       .config
       .root_uri
       .as_ref()
-      .and_then(|uri| specifier_to_file_path(uri).ok());
+      .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyIncomingCall>::new();
     for item in incoming_calls.iter() {
       if let Some(resolved) = item
@@ -1908,7 +1908,7 @@ impl Inner {
       .config
       .root_uri
       .as_ref()
-      .and_then(|uri| specifier_to_file_path(uri).ok());
+      .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyOutgoingCall>::new();
     for item in outgoing_calls.iter() {
       if let Some(resolved) = item
@@ -1964,7 +1964,7 @@ impl Inner {
         .config
         .root_uri
         .as_ref()
-        .and_then(|uri| specifier_to_file_path(uri).ok());
+        .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
       let mut resolved_items = Vec::<CallHierarchyItem>::new();
       match one_or_many {
         tsc::OneOrMany::One(item) => {
