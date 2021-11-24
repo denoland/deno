@@ -74,5 +74,5 @@ fn node_compat_url() {
   );
   assert!(out.is_empty());
   assert!(!err.is_empty());
-  assert!(err.contains("non_existent/node/global.ts"));
+  assert!(err.contains("file:///non_existent/node/global.ts"));
 }
