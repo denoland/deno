@@ -375,7 +375,6 @@ fn opcall_sync<'s>(
     b,
     op_id,
     promise_id: 0,
-    unref: false,
   };
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {
@@ -440,7 +439,6 @@ fn opcall_async<'s>(
     b,
     op_id,
     promise_id,
-    unref,
   };
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {

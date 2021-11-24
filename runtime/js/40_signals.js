@@ -13,7 +13,9 @@
   }
 
   function pollSignal(rid) {
-    return core.opAsync("op_signal_poll", rid);
+    // This is an "unrefed" op, ie. won't block event loop
+    // from exiting.
+    return core.opAsync("op_signal_poll", rid, null, true);
   }
 
   function unbindSignal(rid) {

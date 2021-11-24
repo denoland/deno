@@ -1536,12 +1536,17 @@ impl JsRuntime {
         ops: &mut state.pending_ops,
         cx,
       };
+      let mut remove_from_unref = vec![];
       for (promise_id, op_id, resp) in ops {
         op_state.borrow().tracker.track_async_completed(op_id);
-        // FIXME(bartlomieju):
-        // state.unref_ops.remove(&promise_id);
+        remove_from_unref.push(promise_id);
         args.push(v8::Integer::new(scope, promise_id as i32).into());
         args.push(resp.to_v8(scope).unwrap());
+      }
+      // FIXME(bartlomieju): this should be done in the loop before,
+      // but that makes borrow checker unhappy, think how to refactor it
+      for promise_id in remove_from_unref {
+        state.unref_ops.remove(&promise_id);
       }
       let ops = AsyncOpIterator {
         ops: &mut state.pending_unref_ops,
