@@ -454,13 +454,8 @@ fn opcall_async<'s>(
       state.pending_ops.push(fut);
       if unref {
         // FIXME(bartlomieju): this should track using `track_unref`?
-        state.unref_ops.insert(promise_id);
+        state.unrefed_ops.insert(promise_id);
       }
-      state.have_unpolled_ops = true;
-    }
-    Op::AsyncUnref(fut) => {
-      state.op_state.borrow().tracker.track_unref(op_id);
-      state.pending_unref_ops.push(fut);
       state.have_unpolled_ops = true;
     }
     Op::NotFound => {

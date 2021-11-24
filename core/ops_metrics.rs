@@ -85,12 +85,14 @@ impl OpsTracker {
     metrics.ops_completed_async += 1;
   }
 
+  #[allow(unused)]
   pub fn track_unref(&self, id: OpId) {
     let metrics = &mut self.metrics_mut(id);
     metrics.ops_dispatched += 1;
     metrics.ops_dispatched_async_unref += 1;
   }
 
+  #[allow(unused)]
   pub fn track_unref_completed(&self, id: OpId) {
     let metrics = &mut self.metrics_mut(id);
     metrics.ops_completed += 1;

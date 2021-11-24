@@ -111,9 +111,6 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
 pub enum Op {
   Sync(OpResult),
   Async(OpAsyncFuture),
-  /// AsyncUnref is the variation of Async, which doesn't block the program
-  /// exiting.
-  AsyncUnref(OpAsyncFuture),
   NotFound,
 }
 

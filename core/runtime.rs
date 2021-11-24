@@ -172,8 +172,7 @@ pub(crate) struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
-  pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
-  pub(crate) unref_ops: HashSet<u64>,
+  pub(crate) unrefed_ops: HashSet<u64>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -373,8 +372,7 @@ impl JsRuntime {
       js_wasm_streaming_cb: None,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
-      pending_unref_ops: FuturesUnordered::new(),
-      unref_ops: HashSet::new(),
+      unrefed_ops: HashSet::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
@@ -804,7 +802,7 @@ impl JsRuntime {
     let mut state = state_rc.borrow_mut();
     let module_map = module_map_rc.borrow();
 
-    let has_pending_ops = state.pending_ops.len() > state.unref_ops.len();
+    let has_pending_ops = state.pending_ops.len() > state.unrefed_ops.len();
     let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
     let has_pending_dyn_module_evaluation =
       !state.pending_dyn_mod_evaluate.is_empty();
@@ -1546,16 +1544,7 @@ impl JsRuntime {
       // FIXME(bartlomieju): this should be done in the loop before,
       // but that makes borrow checker unhappy, think how to refactor it
       for promise_id in remove_from_unref {
-        state.unref_ops.remove(&promise_id);
-      }
-      let ops = AsyncOpIterator {
-        ops: &mut state.pending_unref_ops,
-        cx,
-      };
-      for (promise_id, op_id, resp) in ops {
-        op_state.borrow().tracker.track_unref_completed(op_id);
-        args.push(v8::Integer::new(scope, promise_id as i32).into());
-        args.push(resp.to_v8(scope).unwrap());
+        state.unrefed_ops.remove(&promise_id);
       }
     }
 
