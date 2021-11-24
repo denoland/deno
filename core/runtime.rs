@@ -1757,8 +1757,10 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.unrefOps(
-          p1[Symbol.for("Deno.core.internalPromiseId")], 
+        Deno.core.unrefOp(
+          p1[Symbol.for("Deno.core.internalPromiseId")]
+        );
+        Deno.core.unrefOp(
           p2[Symbol.for("Deno.core.internalPromiseId")]
         );
         "#,
@@ -1775,8 +1777,10 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.refOps(
-          p1[Symbol.for("Deno.core.internalPromiseId")], 
+        Deno.core.refOp(
+          p1[Symbol.for("Deno.core.internalPromiseId")]
+        );
+        Deno.core.refOp(
           p2[Symbol.for("Deno.core.internalPromiseId")]
         );
         "#,

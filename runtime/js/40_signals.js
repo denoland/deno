@@ -15,7 +15,7 @@
 
   function pollSignal(rid) {
     const promise = core.opAsync("op_signal_poll", rid);
-    core.unrefOps(promise[SymbolFor("Deno.core.internalPromiseId")]);
+    core.unrefOp(promise[SymbolFor("Deno.core.internalPromiseId")]);
     return promise;
   }
 
