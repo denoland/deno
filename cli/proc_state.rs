@@ -665,9 +665,7 @@ impl ProcState {
         None
       };
     if let Some(resolver) = &maybe_resolver {
-      resolver
-        .resolve(specifier, &referrer)
-        .map_err(|err| err.into())
+      resolver.resolve(specifier, &referrer)
     } else {
       deno_core::resolve_import(specifier, referrer.as_str())
         .map_err(|err| err.into())

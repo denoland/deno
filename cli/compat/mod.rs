@@ -104,6 +104,24 @@ pub(crate) fn load_cjs_module(
   Ok(())
 }
 
+pub(crate) fn add_global_require(
+  js_runtime: &mut JsRuntime,
+  main_module: &str,
+) -> Result<(), AnyError> {
+  let source_code = &format!(
+    r#"(async function setupGlobalRequire(main) {{
+      const Module = await import("{}");
+      const require = Module.createRequire(main);
+      globalThis.require = require;
+    }})('{}');"#,
+    MODULE_URL_STR.as_str(),
+    escape_for_single_quote_string(main_module),
+  );
+
+  js_runtime.execute_script(&located_script_name!(), source_code)?;
+  Ok(())
+}
+
 fn escape_for_single_quote_string(text: &str) -> String {
   text.replace(r"\", r"\\").replace("'", r"\'")
 }
