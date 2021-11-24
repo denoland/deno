@@ -318,15 +318,15 @@ impl WebWorker {
       deno_console::init(),
       deno_url::init(),
       deno_web::init(options.blob_store.clone(), Some(main_module.clone())),
-      deno_fetch::init::<Permissions, deno_fetch::FsFetchHandler>(
-        options.user_agent.clone(),
-        options.root_cert_store.clone(),
-        None,
-        None,
-        options.unsafely_ignore_certificate_errors.clone(),
-        None,
-        deno_fetch::FsFetchHandler,
-      ),
+      deno_fetch::init::<Permissions>(deno_fetch::Options {
+        user_agent: options.user_agent.clone(),
+        root_cert_store: options.root_cert_store.clone(),
+        unsafely_ignore_certificate_errors: options
+          .unsafely_ignore_certificate_errors
+          .clone(),
+        file_fetch_handler: Box::new(deno_fetch::FsFetchHandler),
+        ..Default::default()
+      }),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
         options.root_cert_store.clone(),
