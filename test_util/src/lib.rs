@@ -105,6 +105,10 @@ pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
 
+pub fn std_path() -> PathBuf {
+  root_path().join("test_util").join("std")
+}
+
 pub fn target_dir() -> PathBuf {
   let current_exe = std::env::current_exe().unwrap();
   let target_dir = current_exe.parent().unwrap().parent().unwrap();
@@ -1655,6 +1659,7 @@ pub struct CheckOutputIntegrationTest {
   pub output_str: Option<&'static str>,
   pub exit_code: i32,
   pub http_server: bool,
+  pub envs: Vec<(String, String)>,
 }
 
 impl CheckOutputIntegrationTest {
@@ -1675,6 +1680,7 @@ impl CheckOutputIntegrationTest {
     println!("deno_exe args {}", self.args);
     println!("deno_exe testdata path {:?}", &testdata_dir);
     command.args(args);
+    command.envs(self.envs.clone());
     command.current_dir(&testdata_dir);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();
