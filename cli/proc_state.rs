@@ -328,7 +328,9 @@ impl ProcState {
           .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
       })
       .flatten();
-    let maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>> = if flags.compat {
+    let maybe_resolver: Option<
+      Arc<dyn deno_graph::source::Resolver + Send + Sync>,
+    > = if flags.compat {
       Some(Arc::new(node_resolver))
     } else if let Some(jsx_resolver) = maybe_jsx_resolver {
       // the JSX resolver offloads to the import map if present, otherwise uses
