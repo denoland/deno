@@ -624,7 +624,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.16.2"
+version = "1.16.3"
 dependencies = [
  "atty",
  "base64 0.13.0",
