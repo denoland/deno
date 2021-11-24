@@ -57,7 +57,6 @@ use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
-use crate::fs_util::specifier_to_file_path;
 use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
