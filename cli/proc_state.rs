@@ -167,6 +167,7 @@ pub struct Inner {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
+  maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
 }
 
 impl Deref for ProcState {
@@ -313,6 +314,32 @@ impl ProcState {
       .clone()
       .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok());
 
+    // FIXME(bartlomieju): `NodeEsmResolver` is not aware of JSX resolver
+    // created below
+    let node_resolver = NodeEsmResolver::new(
+      maybe_import_map.clone().map(ImportMapResolver::new),
+    );
+    let maybe_import_map_resolver =
+      maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = maybe_config_file
+      .as_ref()
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      })
+      .flatten();
+    let maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>> = if flags.compat {
+      Some(Arc::new(node_resolver))
+    } else if let Some(jsx_resolver) = maybe_jsx_resolver {
+      // the JSX resolver offloads to the import map if present, otherwise uses
+      // the default Deno explicit import resolution.
+      Some(Arc::new(jsx_resolver))
+    } else if let Some(import_map_resolver) = maybe_import_map_resolver {
+      Some(Arc::new(import_map_resolver))
+    } else {
+      None
+    };
+
     Ok(ProcState(Arc::new(Inner {
       dir,
       coverage_dir,
@@ -328,6 +355,7 @@ impl ProcState {
       broadcast_channel,
       shared_array_buffer_store,
       compiled_wasm_module_store,
+      maybe_resolver,
     })))
   }
 
@@ -395,29 +423,10 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.get_maybe_imports()?;
-    let node_resolver = NodeEsmResolver::new(
-      self.maybe_import_map.clone().map(ImportMapResolver::new),
-    );
-    let maybe_import_map_resolver =
-      self.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = self
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| {
-        cf.to_maybe_jsx_import_source_module()
-          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-      })
-      .flatten();
-    let maybe_resolver = if self.flags.compat {
-      Some(node_resolver.as_resolver())
-    } else if maybe_jsx_resolver.is_some() {
-      // the JSX resolver offloads to the import map if present, otherwise uses
-      // the default Deno explicit import resolution.
-      maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+    let maybe_resolver = if let Some(resolver) = self.maybe_resolver {
+      Some(resolver.as_ref())
     } else {
-      maybe_import_map_resolver
-        .as_ref()
-        .map(|im| im.as_resolver())
+      None
     };
     let graph = create_graph(
       roots.clone(),
@@ -637,7 +646,9 @@ impl ProcState {
       }
     }
 
-    // FIXME(bartlomieju): hacky way to provide compatibility with repl
+    // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
+    // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
+    // but sadly that's not the case due to missing APIs in V8.
     let referrer = if referrer.is_empty() && self.flags.repl {
       deno_core::DUMMY_SPECIFIER
     } else {
