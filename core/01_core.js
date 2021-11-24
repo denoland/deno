@@ -141,7 +141,10 @@
     );
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
-    return PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    const p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    // Save the id on the promise so it can be latered ref'ed or unref'ed
+    p.id = promiseId;
+    return p;
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {

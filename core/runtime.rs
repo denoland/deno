@@ -1719,6 +1719,22 @@ pub mod tests {
   }
 
   #[test]
+  fn test_op_async_promise_id() {
+    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    runtime
+      .execute_script(
+        "filename.js",
+        r#"
+        const p = Deno.core.opAsync("op_test", 42);
+        if (p.id == undefined) {
+          throw new Error("missing id on returned promise");
+        }
+        "#,
+      )
+      .unwrap();
+  }
+
+  #[test]
   fn test_dispatch_no_zero_copy_buf() {
     let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(false));
     runtime
