@@ -130,9 +130,15 @@
     return res;
   }
 
-  function opAsync(opName, arg1 = null, arg2 = null) {
+  function opAsync(opName, arg1 = null, arg2 = null, unref = false) {
     const promiseId = nextPromiseId++;
-    const maybeError = opcallAsync(opsCache[opName], promiseId, arg1, arg2);
+    const maybeError = opcallAsync(
+      opsCache[opName],
+      promiseId,
+      arg1,
+      arg2,
+      unref,
+    );
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     return PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);

@@ -375,6 +375,7 @@ fn opcall_sync<'s>(
     b,
     op_id,
     promise_id: 0,
+    unref: false,
   };
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {
@@ -431,6 +432,7 @@ fn opcall_async<'s>(
   // Deserializable args (may be structured args or ZeroCopyBuf)
   let a = args.get(2);
   let b = args.get(3);
+  let unref = args.get(4).is_true();
 
   let payload = OpPayload {
     scope,
@@ -438,6 +440,7 @@ fn opcall_async<'s>(
     b,
     op_id,
     promise_id,
+    unref,
   };
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {
@@ -451,6 +454,10 @@ fn opcall_async<'s>(
     Op::Async(fut) => {
       state.op_state.borrow().tracker.track_async(op_id);
       state.pending_ops.push(fut);
+      if unref {
+        // FIXME(bartlomieju): this should track using `track_unref`?
+        state.unref_ops.insert(promise_id);
+      }
       state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {

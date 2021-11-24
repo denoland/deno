@@ -91,6 +91,7 @@ pub struct OpPayload<'a, 'b, 'c> {
   pub(crate) b: v8::Local<'c, v8::Value>,
   pub(crate) op_id: OpId,
   pub(crate) promise_id: PromiseId,
+  pub(crate) unref: bool,
 }
 
 impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
