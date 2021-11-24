@@ -23,6 +23,7 @@
     MapPrototypeSet,
     PromisePrototypeThen,
     ObjectAssign,
+    SymbolFor,
   } = window.__bootstrap.primordials;
 
   // Available on start due to bindings.
@@ -43,6 +44,7 @@
   const RING_SIZE = 4 * 1024;
   const NO_PROMISE = null; // Alias to null is faster than plain nulls
   const promiseRing = ArrayPrototypeFill(new Array(RING_SIZE), NO_PROMISE);
+  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   function setPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
@@ -130,20 +132,19 @@
     return res;
   }
 
-  function opAsync(opName, arg1 = null, arg2 = null, unref = false) {
+  function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
     const maybeError = opcallAsync(
       opsCache[opName],
       promiseId,
       arg1,
       arg2,
-      unref,
     );
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     const p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
     // Save the id on the promise so it can be latered ref'ed or unref'ed
-    p.id = promiseId;
+    p[promiseIdSymbol] = promiseId;
     return p;
   }
 

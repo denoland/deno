@@ -439,7 +439,6 @@ fn opcall_async<'s>(
   // Deserializable args (may be structured args or ZeroCopyBuf)
   let a = args.get(2);
   let b = args.get(3);
-  let unref = args.get(4).is_true();
 
   let payload = OpPayload {
     scope,
@@ -460,10 +459,6 @@ fn opcall_async<'s>(
     Op::Async(fut) => {
       state.op_state.borrow().tracker.track_async(op_id);
       state.pending_ops.push(fut);
-      if unref {
-        // FIXME(bartlomieju): this should track using `track_unref`?
-        state.unrefed_ops.insert(promise_id);
-      }
       state.have_unpolled_ops = true;
     }
     Op::NotFound => {

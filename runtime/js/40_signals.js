@@ -5,6 +5,7 @@
   const core = window.Deno.core;
   const {
     Set,
+    SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -13,9 +14,9 @@
   }
 
   function pollSignal(rid) {
-    // This is an "unrefed" op, ie. won't block event loop
-    // from exiting.
-    return core.opAsync("op_signal_poll", rid, null, true);
+    const promise = core.opAsync("op_signal_poll", rid);
+    core.unrefOps(promise[SymbolFor("Deno.core.internalPromiseId")]);
+    return promise;
   }
 
   function unbindSignal(rid) {

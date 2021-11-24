@@ -1726,7 +1726,7 @@ pub mod tests {
         "filename.js",
         r#"
         const p = Deno.core.opAsync("op_test", 42);
-        if (p.id == undefined) {
+        if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
           throw new Error("missing id on returned promise");
         }
         "#,
@@ -1757,7 +1757,10 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.unrefOps(p1.id, p2.id);
+        Deno.core.unrefOps(
+          p1[Symbol.for("Deno.core.internalPromiseId")], 
+          p2[Symbol.for("Deno.core.internalPromiseId")]
+        );
         "#,
       )
       .unwrap();
@@ -1772,7 +1775,10 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.refOps(p1.id, p2.id);
+        Deno.core.refOps(
+          p1[Symbol.for("Deno.core.internalPromiseId")], 
+          p2[Symbol.for("Deno.core.internalPromiseId")]
+        );
         "#,
       )
       .unwrap();
