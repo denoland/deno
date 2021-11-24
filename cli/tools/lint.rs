@@ -10,7 +10,7 @@ use crate::config_file::LintConfig;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::LintFlags;
 use crate::fmt_errors;
-use crate::fs_util::{collect_files, is_supported_ext};
+use crate::fs_util::{collect_files, is_supported_ext, specifier_to_file_path};
 use crate::tools::fmt::run_parallelized;
 use crate::{colors, file_watcher};
 use deno_ast::MediaType;
@@ -71,11 +71,21 @@ pub async fn lint(
 
   if let Some(lint_config) = maybe_lint_config.as_ref() {
     if include_files.is_empty() {
-      include_files = lint_config.files.include.clone();
+      include_files = lint_config
+        .files
+        .include
+        .iter()
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
 
     if exclude_files.is_empty() {
-      exclude_files = lint_config.files.exclude.clone();
+      exclude_files = lint_config
+        .files
+        .exclude
+        .iter()
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
   }
 
