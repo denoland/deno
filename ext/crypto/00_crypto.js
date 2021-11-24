@@ -1189,7 +1189,7 @@
               const { data } = await core.opAsync("op_crypto_import_key", {
                 algorithm: "ECDSA",
                 namedCurve: normalizedAlgorithm.namedCurve,
-              }, keyData);
+              }, { raw: { data: keyData } });
 
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
@@ -1245,7 +1245,7 @@
                     // Needed to perform step 7 without normalization.
                     hash: normalizedAlgorithm.hash.name,
                   },
-                  keyData,
+                  { raw: { data: keyData } },
                 );
 
               const handle = {};
@@ -1442,7 +1442,7 @@
                     // Needed to perform step 7 without normalization.
                     hash: normalizedAlgorithm.hash.name,
                   },
-                  keyData,
+                  { raw: { data: keyData } },
                 );
 
               const handle = {};
@@ -1638,7 +1638,7 @@
                     // Needed to perform step 7 without normalization.
                     hash: normalizedAlgorithm.hash.name,
                   },
-                  keyData,
+                  { raw: { data: keyData } },
                 );
 
               const handle = {};
