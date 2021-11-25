@@ -145,22 +145,6 @@
   };
 
   // Decodes the unpadded base64 to the octet sequence containing key value `k` defined in RFC7518 Section 6.4
-  function decodeSymmetricKey(key) {
-    // Decode from base64url without `=` padding.
-    const base64 = StringPrototypeReplace(
-      StringPrototypeReplace(key, /\-/g, "+"),
-      /\_/g,
-      "/",
-    );
-    const decodedKey = atob(base64);
-    const keyLength = decodedKey.length;
-    const keyBytes = new Uint8Array(keyLength);
-    for (let i = 0; i < keyLength; i++) {
-      keyBytes[i] = StringPrototypeCharCodeAt(decodedKey, i);
-    }
-    return keyBytes;
-  }
-
   function unpaddedBase64(bytes) {
     let binaryString = "";
     for (let i = 0; i < bytes.length; i++) {
@@ -168,151 +152,6 @@
     }
     const base64String = btoa(binaryString);
     return StringPrototypeReplace(base64String, /=/g, "");
-  }
-
-  function isArrayOrArrayBufferView(obj) {
-    return ArrayIsArray(obj) || ArrayBufferIsView(obj);
-  }
-
-  function concatBytes(...bytes) {
-    return TypedArrayFrom(
-      Uint8Array,
-      bytes.reduce(
-        (a, val) =>
-          (isArrayOrArrayBufferView(val)) ? [...a, ...val] : [...a, val],
-        [],
-      ),
-    );
-  }
-
-  function buildTLV(tag, value) {
-    if (isArrayOrArrayBufferView(value)) {
-      value = concatBytes(...value);
-    }
-    const len = value.length;
-    const lenBytes = [];
-
-    if (len <= 127) {
-      lenBytes.push(len);
-    } else if (len < 256) {
-      lenBytes.push(0x81);
-      lenBytes.push(len);
-    } else if (len < 65536) {
-      lenBytes.push(0x82);
-      lenBytes.push(len >> 8);
-      lenBytes.push(len & 0xff);
-    }
-
-    return concatBytes(tag, lenBytes, value);
-  }
-
-  function buildIntegerTLV(val) {
-    return buildTLV(0x02, (val[0] & 0x80) ? [0x00, ...val] : val);
-  }
-
-  function buildRsaPkcs1(key, type) {
-    const modExp = concatBytes(buildIntegerTLV(key.n), buildIntegerTLV(key.e));
-
-    if (type == "private") {
-      let keyData = concatBytes(
-        buildIntegerTLV([0x00]),
-        modExp,
-        buildIntegerTLV(key.d),
-      );
-
-      if (key.p) {
-        keyData = concatBytes(
-          keyData,
-          buildIntegerTLV(key.p),
-          buildIntegerTLV(key.q),
-          buildIntegerTLV(key.dp),
-          buildIntegerTLV(key.dq),
-          buildIntegerTLV(key.qi),
-        );
-      }
-
-      return buildTLV(0x30, keyData);
-    } else {
-      return buildTLV(0x30, modExp);
-    }
-  }
-
-  function convertJwkRsaKey(jwk) {
-    // Section 6.3.2 of RFC7518
-    if (!jwk.e || !jwk.n) {
-      throw new DOMException(
-        "Missing n or e components in RSA key",
-        "DataError",
-      );
-    }
-
-    const publicKeyComps = {
-      n: decodeSymmetricKey(jwk.n),
-      e: decodeSymmetricKey(jwk.e),
-    };
-
-    const modulusLength = publicKeyComps.n.length * 8;
-
-    if (jwk.d) {
-      return {
-        type: "private",
-        pkcs1: buildRsaPkcs1({
-          ...publicKeyComps,
-          d: decodeSymmetricKey(jwk.d),
-          p: decodeSymmetricKey(jwk.p),
-          q: decodeSymmetricKey(jwk.q),
-          dp: decodeSymmetricKey(jwk.dp),
-          dq: decodeSymmetricKey(jwk.dq),
-          qi: decodeSymmetricKey(jwk.qi),
-        }, "private"),
-        modulusLength,
-      };
-    } else {
-      return {
-        type: "public",
-        pkcs1: buildRsaPkcs1(publicKeyComps, "public"),
-        modulusLength,
-      };
-    }
-  }
-
-  function importJwkRsaKey(jwk) {
-    // Section 6.3.2 of RFC7518
-    if (!jwk.e || !jwk.n) {
-      throw new DOMException(
-        "Missing n or e components in RSA key",
-        "DataError",
-      );
-    }
-
-    const publicKeyComps = {
-      n: decodeSymmetricKey(jwk.n),
-      e: decodeSymmetricKey(jwk.e),
-    };
-
-    const modulusLength = publicKeyComps.n.length * 8;
-
-    if (jwk.d) {
-      return {
-        type: "private",
-        pkcs1: buildRsaPkcs1({
-          ...publicKeyComps,
-          d: decodeSymmetricKey(jwk.d),
-          p: decodeSymmetricKey(jwk.p),
-          q: decodeSymmetricKey(jwk.q),
-          dp: decodeSymmetricKey(jwk.dp),
-          dq: decodeSymmetricKey(jwk.dq),
-          qi: decodeSymmetricKey(jwk.qi),
-        }, "private"),
-        modulusLength,
-      };
-    } else {
-      return {
-        type: "public",
-        pkcs1: buildRsaPkcs1(publicKeyComps, "public"),
-        modulusLength,
-      };
-    }
   }
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
@@ -1055,7 +894,23 @@
               }
 
               // 4.
-              data = decodeSymmetricKey(jwk.k);
+              const keyType = "secret";
+
+              const ret_import = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "HMAC",
+                    format: "jwk",
+                    keyType,
+                    // Needed to perform step without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  { jwkSecretKey: jwk },
+                );
+
+              data = ret_import.data;
+
               // 5.
               hash = normalizedAlgorithm.hash;
               // 6.
@@ -1197,7 +1052,6 @@
 
           return key;
         }
-        // TODO(@littledivy): RSA-PSS
         case "ECDSA": {
           switch (format) {
             case "raw": {
@@ -1419,7 +1273,20 @@
               }
 
               //9.
-              const keyInfo = convertJwkRsaKey(jwk, normalizedAlgorithm.hash);
+              const keyType = (jwk.d) ? "private" : "public";
+
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSASSA-PKCS1-v1_5",
+                    format: "jwk",
+                    keyType,
+                    // Need to perform step without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  { jwkRsaKey: jwk },
+                );
 
               if (keyUsages.length == 0) {
                 throw new DOMException("Key usage is empty", "SyntaxError");
@@ -1428,18 +1295,19 @@
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 type: "raw",
-                keyType: keyInfo.type,
-                data: keyInfo.pkcs1,
+                keyType,
+                data,
               });
 
               const algorithm = {
                 name: "RSASSA-PKCS1-v1_5",
-                modulusLength: keyInfo.modulusLength,
+                modulusLength,
+                publicExponent,
                 hash: normalizedAlgorithm.hash,
               };
 
               const key = constructKey(
-                keyInfo.type,
+                keyType,
                 extractable,
                 usageIntersection(keyUsages, recognisedUsages),
                 algorithm,
@@ -1615,7 +1483,20 @@
               }
 
               //9.
-              const keyInfo = convertJwkRsaKey(jwk, normalizedAlgorithm.hash);
+              const keyType = (jwk.d) ? "private" : "public";
+
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSA-PSS",
+                    format: "jwk",
+                    keyType,
+                    // Need to perform step without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  { jwkRsaKey: jwk },
+                );
 
               if (keyUsages.length == 0) {
                 throw new DOMException("Key usage is empty", "SyntaxError");
@@ -1624,18 +1505,19 @@
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 type: "raw",
-                keyType: keyInfo.type,
-                data: keyInfo.pkcs1,
+                keyType,
+                data,
               });
 
               const algorithm = {
                 name: "RSA-PSS",
-                modulusLength: keyInfo.modulusLength,
+                modulusLength,
+                publicExponent,
                 hash: normalizedAlgorithm.hash,
               };
 
               const key = constructKey(
-                keyInfo.type,
+                keyType,
                 extractable,
                 usageIntersection(keyUsages, recognisedUsages),
                 algorithm,
@@ -1674,7 +1556,7 @@
                   {
                     algorithm: "RSA-OAEP",
                     format: "pkcs8",
-                    // Needed to perform step 7 without normalization.
+                    // Need to perform step 7 without normalization.
                     hash: normalizedAlgorithm.hash.name,
                   },
                   { raw: { data: keyData } },
@@ -1814,10 +1696,8 @@
                 }
               }
 
-              const keyInfo = convertJwkRsaKey(jwk);
+              const keyType = (jwk.d) ? "private" : "public";
 
-console.log( "Calling op..")
-debugger;
               //10.
               const { modulusLength, publicExponent, data } = await core
                 .opAsync(
@@ -1825,14 +1705,12 @@ debugger;
                   {
                     algorithm: "RSA-OAEP",
                     format: "jwk",
-                    keyType: keyInfo.type,
+                    keyType,
                     // Needed to perform step 7 without normalization.
                     hash: normalizedAlgorithm.hash.name,
                   },
                   { jwkRsaKey: jwk },
                 );
-
-                console.log( "Return op..", modulusLength)
 
               if (keyUsages.length == 0) {
                 throw new DOMException("Key usage is empty", "SyntaxError");
@@ -1841,18 +1719,19 @@ debugger;
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 type: "raw",
-                keyType: keyInfo.type,
-                data: data, // keyInfo.pkcs1
+                keyType,
+                data,
               });
 
               const algorithm = {
                 name: "RSA-OEAP",
-                modulusLength: keyInfo.modulusLength,
+                modulusLength,
+                publicExponent,
                 hash: normalizedAlgorithm.hash,
               };
 
               const key = constructKey(
-                keyInfo.type,
+                keyType,
                 extractable,
                 usageIntersection(keyUsages, recognisedUsages),
                 algorithm,
