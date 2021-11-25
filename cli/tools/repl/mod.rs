@@ -13,7 +13,6 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::value::RawValue;
-use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
 use deno_core::LossyString;
 use deno_runtime::worker::MainWorker;

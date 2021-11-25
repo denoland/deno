@@ -2,6 +2,7 @@
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::serde_json::value::RawValue;
 use deno_core::serde_json::Value;
 use std::cell::RefCell;
 use tokio::sync::mpsc::channel;
