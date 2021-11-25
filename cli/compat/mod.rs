@@ -15,7 +15,7 @@ pub(crate) use esm_resolver::NodeEsmResolver;
 // each release, a better mechanism is preferable, but it's a quick and dirty
 // solution to avoid printing `X-Deno-Warning` headers when the compat layer is
 // downloaded
-static STD_URL_STR: &str = "https://deno.land/std@0.115.0/";
+static STD_URL_STR: &str = "https://deno.land/std@0.116.0/";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -95,6 +95,24 @@ pub(crate) fn load_cjs_module(
     r#"(async function loadCjsModule(main) {{
       const Module = await import("{}");
       Module.default._load(main, null, true);
+    }})('{}');"#,
+    MODULE_URL_STR.as_str(),
+    escape_for_single_quote_string(main_module),
+  );
+
+  js_runtime.execute_script(&located_script_name!(), source_code)?;
+  Ok(())
+}
+
+pub(crate) fn add_global_require(
+  js_runtime: &mut JsRuntime,
+  main_module: &str,
+) -> Result<(), AnyError> {
+  let source_code = &format!(
+    r#"(async function setupGlobalRequire(main) {{
+      const Module = await import("{}");
+      const require = Module.createRequire(main);
+      globalThis.require = require;
     }})('{}');"#,
     MODULE_URL_STR.as_str(),
     escape_for_single_quote_string(main_module),

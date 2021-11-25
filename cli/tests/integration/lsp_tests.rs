@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_ast::ModuleSpecifier;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -178,7 +179,7 @@ fn lsp_tsconfig_bad_config_path() {
   let (method, maybe_params) = client.read_notification().unwrap();
   assert_eq!(method, "window/showMessage");
   assert_eq!(maybe_params, Some(lsp::ShowMessageParams {
-    typ: lsp::MessageType::Warning,
+    typ: lsp::MessageType::WARNING,
     message: "The path to the configuration file (\"bad_tsconfig.json\") is not resolvable.".to_string()
   }));
   let diagnostics = did_open(
@@ -1417,6 +1418,61 @@ fn lsp_format_mbc() {
     maybe_res,
     Some(json!(load_fixture("formatting_mbc_response.json")))
   );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_format_exclude_with_config() {
+  let temp_dir = TempDir::new().unwrap();
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let deno_fmt_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
+  fs::write(temp_dir.path().join("deno.fmt.jsonc"), deno_fmt_jsonc).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./deno.fmt.jsonc"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  let file_uri =
+    ModuleSpecifier::from_file_path(temp_dir.path().join("ignored.ts"))
+      .unwrap()
+      .to_string();
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": file_uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "function   myFunc(){}"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": file_uri
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
   shutdown(&mut client);
 }
 
@@ -3062,7 +3118,7 @@ fn lsp_diagnostics_warn() {
             character: 60
           }
         },
-        severity: Some(lsp::DiagnosticSeverity::Warning),
+        severity: Some(lsp::DiagnosticSeverity::WARNING),
         code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
         source: Some("deno".to_string()),
         message: "foobar".to_string(),
@@ -4044,6 +4100,47 @@ fn lsp_lint_with_config() {
       Some(lsp::NumberOrString::String("ban-untagged-todo".to_string()))
     );
   }
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_lint_exclude_with_config() {
+  let temp_dir = TempDir::new().unwrap();
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let deno_lint_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.lint.exclude.jsonc"))
+      .unwrap();
+  fs::write(temp_dir.path().join("deno.lint.jsonc"), deno_lint_jsonc).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./deno.lint.jsonc"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": ModuleSpecifier::from_file_path(temp_dir.path().join("ignored.ts")).unwrap().to_string(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "// TODO: fixme\nexport async function non_camel_case() {\nconsole.log(\"finished!\")\n}"
+      }
+    }),
+  );
+  let diagnostics = diagnostics
+    .into_iter()
+    .flat_map(|x| x.diagnostics)
+    .collect::<Vec<_>>();
+  assert_eq!(diagnostics, Vec::new());
   shutdown(&mut client);
 }
 

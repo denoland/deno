@@ -304,6 +304,8 @@ pub(crate) struct CheckOptions {
   pub maybe_config_specifier: Option<ModuleSpecifier>,
   /// The derived tsconfig that should be used when checking.
   pub ts_config: TsConfig,
+  /// If true, existing `.tsbuildinfo` files will be ignored.
+  pub reload: bool,
 }
 
 /// The result of a check or emit of a module graph. Note that the actual
@@ -331,8 +333,11 @@ pub(crate) fn check_and_maybe_emit(
   // while there might be multiple roots, we can't "merge" the build info, so we
   // try to retrieve the build info for first root, which is the most common use
   // case.
-  let maybe_tsbuildinfo =
-    cache.get(CacheType::TypeScriptBuildInfo, &graph.roots[0]);
+  let maybe_tsbuildinfo = if options.reload {
+    None
+  } else {
+    cache.get(CacheType::TypeScriptBuildInfo, &graph.roots[0])
+  };
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
   // that data here.
@@ -352,18 +357,18 @@ pub(crate) fn check_and_maybe_emit(
     root_names,
   })?;
 
-  if let Some(info) = &response.maybe_tsbuildinfo {
-    // while we retrieve the build info for just the first module, it can be
-    // used for all the roots in the graph, so we will cache it for all roots
-    for root in &graph.roots {
-      cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
-    }
-  }
   // sometimes we want to emit when there are diagnostics, and sometimes we
   // don't. tsc will always return an emit if there are diagnostics
   if (response.diagnostics.is_empty() || options.emit_with_diagnostics)
     && !response.emitted_files.is_empty()
   {
+    if let Some(info) = &response.maybe_tsbuildinfo {
+      // while we retrieve the build info for just the first module, it can be
+      // used for all the roots in the graph, so we will cache it for all roots
+      for root in &graph.roots {
+        cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
+      }
+    }
     for emit in response.emitted_files.into_iter() {
       if let Some(specifiers) = emit.maybe_specifiers {
         assert!(specifiers.len() == 1);

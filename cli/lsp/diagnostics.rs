@@ -2,7 +2,6 @@
 
 use super::analysis;
 use super::documents;
-use super::documents::Document;
 use super::documents::Documents;
 use super::language_server;
 use super::tsc;
@@ -198,15 +197,15 @@ impl DiagnosticsServer {
 impl<'a> From<&'a diagnostics::DiagnosticCategory> for lsp::DiagnosticSeverity {
   fn from(category: &'a diagnostics::DiagnosticCategory) -> Self {
     match category {
-      diagnostics::DiagnosticCategory::Error => lsp::DiagnosticSeverity::Error,
+      diagnostics::DiagnosticCategory::Error => lsp::DiagnosticSeverity::ERROR,
       diagnostics::DiagnosticCategory::Warning => {
-        lsp::DiagnosticSeverity::Warning
+        lsp::DiagnosticSeverity::WARNING
       }
       diagnostics::DiagnosticCategory::Suggestion => {
-        lsp::DiagnosticSeverity::Hint
+        lsp::DiagnosticSeverity::HINT
       }
       diagnostics::DiagnosticCategory::Message => {
-        lsp::DiagnosticSeverity::Information
+        lsp::DiagnosticSeverity::INFORMATION
       }
     }
   }
@@ -287,9 +286,9 @@ fn ts_json_to_diagnostics(
           tags: match d.code {
             // These are codes that indicate the variable is unused.
             2695 | 6133 | 6138 | 6192 | 6196 | 6198 | 6199 | 6205 | 7027
-            | 7028 => Some(vec![lsp::DiagnosticTag::Unnecessary]),
+            | 7028 => Some(vec![lsp::DiagnosticTag::UNNECESSARY]),
             // These are codes that indicated the variable is deprecated.
-            2789 | 6385 | 6387 => Some(vec![lsp::DiagnosticTag::Deprecated]),
+            2789 | 6385 | 6387 => Some(vec![lsp::DiagnosticTag::DEPRECATED]),
             _ => None,
           },
           data: None,
@@ -301,80 +300,13 @@ fn ts_json_to_diagnostics(
     .collect()
 }
 
-// Returns `ConfigSnapshot::root_uri` in the correct format.
-fn get_root_specifier(
-  snapshot: &language_server::StateSnapshot,
-) -> Option<ModuleSpecifier> {
-  let root = snapshot.config.root_uri.as_ref()?;
-  let root = root.to_file_path().ok()?;
-
-  // FIXME: `root_uri` from `ConfigSnapshot` are without a trailing slash,
-  // so `Url::join` treats the root as a file, not a directory, and erases the folder name.
-  // To fix that behaviour we just parsing `root_uri` again.
-  ModuleSpecifier::from_directory_path(root).ok()
-}
-
-// Filters documents according to the `include` and the `exclude` lists (from `StateSnapshot::maybe_lint_config`).
-// If a document is in the `exclude` list - then it be removed.
-// If the `include` list is not empty, and a document is not in - then it be removed too.
-fn filter_documents(
-  snapshot: &language_server::StateSnapshot,
-  documents: &mut Vec<Document>,
-) {
-  let root_uri = match get_root_specifier(snapshot) {
-    Some(uri) => uri,
-    None => return,
-  };
-
-  let linter_config = match &snapshot.maybe_lint_config {
-    Some(config) => config,
-    None => return,
-  };
-
-  let join_specifiers = |specifiers: &Vec<String>| -> Vec<ModuleSpecifier> {
-    specifiers
-      .iter()
-      .filter_map(|i| root_uri.join(i).ok())
-      .collect()
-  };
-
-  let ignore_specifiers = join_specifiers(&linter_config.files.exclude);
-  let include_specifiers = join_specifiers(&linter_config.files.include);
-
-  documents.retain(|doc| {
-    let path = doc.specifier().path();
-
-    // Skip files which is in the exclude list.
-    if ignore_specifiers.iter().any(|i| path.starts_with(i.path())) {
-      return false;
-    }
-
-    // Early return if the include list is empty.
-    if include_specifiers.is_empty() {
-      return true;
-    }
-
-    // Ignore files which is not in the include list.
-    if !include_specifiers
-      .iter()
-      .any(|i| path.starts_with(i.path()))
-    {
-      return false;
-    }
-
-    true
-  });
-}
-
 async fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
   collection: Arc<Mutex<DiagnosticCollection>>,
 ) -> Result<DiagnosticVec, AnyError> {
-  let mut documents = snapshot.documents.documents(true, true);
+  let documents = snapshot.documents.documents(true, true);
   let workspace_settings = snapshot.config.settings.workspace.clone();
   let maybe_lint_config = snapshot.maybe_lint_config.clone();
-
-  filter_documents(snapshot, &mut documents);
 
   tokio::task::spawn(async move {
     let mut diagnostics_vec = Vec::new();
@@ -386,25 +318,35 @@ async fn generate_lint_diagnostics(
           .await
           .get_version(document.specifier(), &DiagnosticSource::DenoLint);
         if version != current_version {
-          let diagnostics = match document.maybe_parsed_source() {
-            Some(Ok(parsed_source)) => {
-              if let Ok(references) = analysis::get_lint_references(
-                &parsed_source,
-                maybe_lint_config.as_ref(),
-              ) {
-                references
-                  .into_iter()
-                  .map(|r| r.to_diagnostic())
-                  .collect::<Vec<_>>()
-              } else {
+          let is_allowed = match &maybe_lint_config {
+            Some(lint_config) => {
+              lint_config.files.matches_specifier(document.specifier())
+            }
+            None => true,
+          };
+          let diagnostics = if is_allowed {
+            match document.maybe_parsed_source() {
+              Some(Ok(parsed_source)) => {
+                if let Ok(references) = analysis::get_lint_references(
+                  &parsed_source,
+                  maybe_lint_config.as_ref(),
+                ) {
+                  references
+                    .into_iter()
+                    .map(|r| r.to_diagnostic())
+                    .collect::<Vec<_>>()
+                } else {
+                  Vec::new()
+                }
+              }
+              Some(Err(_)) => Vec::new(),
+              None => {
+                error!("Missing file contents for: {}", document.specifier());
                 Vec::new()
               }
             }
-            Some(Err(_)) => Vec::new(),
-            None => {
-              error!("Missing file contents for: {}", document.specifier());
-              Vec::new()
-            }
+          } else {
+            Vec::new()
           };
           diagnostics_vec.push((
             document.specifier().clone(),
@@ -503,7 +445,7 @@ fn diagnose_dependency(
         if let Some(message) = doc.maybe_warning() {
           diagnostics.push(lsp::Diagnostic {
             range: documents::to_lsp_range(range),
-            severity: Some(lsp::DiagnosticSeverity::Warning),
+            severity: Some(lsp::DiagnosticSeverity::WARNING),
             code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
             source: Some("deno".to_string()),
             message,
@@ -519,7 +461,7 @@ fn diagnose_dependency(
         };
         diagnostics.push(lsp::Diagnostic {
           range: documents::to_lsp_range(range),
-          severity: Some(lsp::DiagnosticSeverity::Error),
+          severity: Some(lsp::DiagnosticSeverity::ERROR),
           code,
           source: Some("deno".to_string()),
           message,
@@ -530,7 +472,7 @@ fn diagnose_dependency(
     }
     Some(Err(err)) => diagnostics.push(lsp::Diagnostic {
       range: documents::to_lsp_range(err.range()),
-      severity: Some(lsp::DiagnosticSeverity::Error),
+      severity: Some(lsp::DiagnosticSeverity::ERROR),
       code: Some(resolution_error_as_code(err)),
       source: Some("deno".to_string()),
       message: err.to_string(),
@@ -589,10 +531,9 @@ async fn generate_deps_diagnostics(
 /// Publishes diagnostics to the client.
 async fn publish_diagnostics(
   client: &lspower::Client,
-  collection: Arc<Mutex<DiagnosticCollection>>,
+  collection: &mut DiagnosticCollection,
   snapshot: &language_server::StateSnapshot,
 ) {
-  let mut collection = collection.lock().await;
   if let Some(changes) = collection.take_changes() {
     for specifier in changes {
       let mut diagnostics: Vec<lsp::Diagnostic> =
@@ -646,13 +587,12 @@ async fn update_diagnostics(
         error!("Error generating lint diagnostics: {}", err);
       })
       .unwrap_or_default();
-    {
-      let mut collection = collection.lock().await;
-      for diagnostic_record in diagnostics {
-        collection.set(DiagnosticSource::DenoLint, diagnostic_record);
-      }
+
+    let mut collection = collection.lock().await;
+    for diagnostic_record in diagnostics {
+      collection.set(DiagnosticSource::DenoLint, diagnostic_record);
     }
-    publish_diagnostics(client, collection, &snapshot).await;
+    publish_diagnostics(client, &mut collection, &snapshot).await;
     snapshot.performance.measure(mark);
   };
 
@@ -668,13 +608,11 @@ async fn update_diagnostics(
           error!("Error generating TypeScript diagnostics: {}", err);
         })
         .unwrap_or_default();
-    {
-      let mut collection = collection.lock().await;
-      for diagnostic_record in diagnostics {
-        collection.set(DiagnosticSource::TypeScript, diagnostic_record);
-      }
+    let mut collection = collection.lock().await;
+    for diagnostic_record in diagnostics {
+      collection.set(DiagnosticSource::TypeScript, diagnostic_record);
     }
-    publish_diagnostics(client, collection, &snapshot).await;
+    publish_diagnostics(client, &mut collection, &snapshot).await;
     snapshot.performance.measure(mark);
   };
 
@@ -690,13 +628,11 @@ async fn update_diagnostics(
           error!("Error generating Deno diagnostics: {}", err);
         })
         .unwrap_or_default();
-    {
-      let mut collection = collection.lock().await;
-      for diagnostic_record in diagnostics {
-        collection.set(DiagnosticSource::Deno, diagnostic_record);
-      }
+    let mut collection = collection.lock().await;
+    for diagnostic_record in diagnostics {
+      collection.set(DiagnosticSource::Deno, diagnostic_record);
     }
-    publish_diagnostics(client, collection, &snapshot).await;
+    publish_diagnostics(client, &mut collection, &snapshot).await;
     snapshot.performance.measure(mark);
   };
 
