@@ -301,7 +301,7 @@ Deno.test(async function bufferReadFrom() {
     const fub = new Uint8Array(testString.length);
     await empty(b, s, fub);
   }
-  assertRejects(async function () {
+  await assertRejects(async function () {
     await new Deno.Buffer().readFrom(null!);
   });
 });
