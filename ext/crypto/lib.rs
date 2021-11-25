@@ -41,7 +41,11 @@ use rsa::pkcs1::der::Decodable;
 use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::FromRsaPublicKey;
+use rsa::pkcs1::RsaPrivateKeyDocument;
+use rsa::pkcs1::RsaPublicKeyDocument;
 use rsa::pkcs1::ToRsaPrivateKey;
+use rsa::pkcs1::ToRsaPublicKey;
+use rsa::pkcs1::UIntBytes;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::FromPrivateKey;
 use rsa::BigUint;
@@ -275,6 +279,7 @@ pub enum KeyFormat {
   Raw,
   Pkcs8,
   Spki,
+  Jwk,
 }
 
 #[derive(Deserialize)]
@@ -1188,7 +1193,91 @@ pub struct RSAKeyComponentsB64 {
   q: Option<String>,
   dp: Option<String>,
   dq: Option<String>,
-  u: Option<String>,
+  qi: Option<String>,
+}
+
+fn decodeBase64Url(b64: String)  -> Result<Vec<u8>, base64::DecodeError> {
+    base64::decode_config(b64, base64::URL_SAFE)
+}
+
+fn decodeBase64Url4Pkcs1(b64: &String)  -> Result<Vec<u8>, rsa::pkcs1::Error> {
+    base64::decode_config(b64, base64::URL_SAFE).map_err( |_| rsa::pkcs1::Error::Crypto)
+}
+
+/*fn decodeBase64Url4x(b64: &String)  -> Result<Vec<u8>, spki::der::Error> {
+    base64::decode_config(b64, base64::URL_SAFE).map_err( |_| spki::der::Error)
+}
+
+fn base64ToUIntBytes<'a>(b64: &'a String)  -> Result<UIntBytes, rsa::pkcs1::Error> {
+    let u8: Vec<u8> = base64::decode_config(b64, base64::URL_SAFE).map_err( |_| rsa::pkcs1::Error::Crypto)?;
+//    Ok(&UIntBytes::new(&u8.clone())?)
+    Ok(UIntBytes::new(&u8)?)
+}*/
+
+/*fn UInt8x(u8: Vec<u8> ) -> Result<UIntBytes, AnyError> {
+    &UIntBytes::new(u8).map_err( |e| {
+      custom_error("DOMExceptionOperationError", e.to_string())
+    })
+}
+
+impl RSAKeyComponentsB64 {
+  pub fn toRsaPublicKey(&self) -> Result<rsa::pkcs1::RsaPublicKey, spki::der::Error> {
+    let modulus = decodeBase64Url4x(&self.n)?;
+    //let public_exponent = decodeBase64Url4Pkcs1(self.e)?;
+    Ok(
+      rsa::pkcs1::RsaPublicKey {
+        modulus: UIntBytes::new(&modulus)?,
+        public_exponent: UIntBytes::new(&decodeBase64Url4x(&self.e)?)?,
+      }
+    )
+  }
+}*/
+
+impl ToRsaPublicKey for RSAKeyComponentsB64 {
+  fn to_pkcs1_der(&self) -> rsa::pkcs1::Result<RsaPublicKeyDocument> {
+    let modulus = decodeBase64Url4Pkcs1(&self.n)?;
+    let public_exponent = decodeBase64Url4Pkcs1(&self.e)?;
+    Ok(
+      rsa::pkcs1::RsaPublicKey {
+        modulus: UIntBytes::new(&modulus)?,
+        public_exponent: UIntBytes::new(&public_exponent)?,
+      }
+      .to_der(),
+    )
+  }
+}
+
+impl ToRsaPrivateKey for RSAKeyComponentsB64 {
+  fn to_pkcs1_der(&self) -> rsa::pkcs1::Result<RsaPrivateKeyDocument> {
+      if self.d.is_some() && self.p.is_some() && self.q.is_some() && self.dp.is_some() && self.dq.is_some() && self.qi.is_some() {
+         let modulus = decodeBase64Url4Pkcs1(&self.n)?;
+         let public_exponent = decodeBase64Url4Pkcs1(&self.e)?;
+         let private_exponent = decodeBase64Url4Pkcs1(&self.d.as_ref().unwrap())?;
+         let prime1 = decodeBase64Url4Pkcs1(&self.p.as_ref().unwrap())?;
+         let prime2 = decodeBase64Url4Pkcs1(&self.q.as_ref().unwrap())?;
+         let exponent1 = decodeBase64Url4Pkcs1(&self.dp.as_ref().unwrap())?;
+         let exponent2 = decodeBase64Url4Pkcs1(&self.dq.as_ref().unwrap())?;
+         let coefficient = decodeBase64Url4Pkcs1(&self.qi.as_ref().unwrap())?;
+
+         Ok(
+           rsa::pkcs1::RsaPrivateKey {
+             version: rsa::pkcs1::Version::TwoPrime,
+             modulus: UIntBytes::new(&modulus)?,
+             public_exponent: UIntBytes::new(&public_exponent)?,
+             private_exponent: UIntBytes::new(&private_exponent)?,
+             prime1: UIntBytes::new(&prime1)?,
+             prime2: UIntBytes::new(&prime2)?,
+             exponent1: UIntBytes::new(&exponent1)?,
+             exponent2: UIntBytes::new(&exponent2)?,
+             coefficient: UIntBytes::new(&coefficient)?,
+           }
+           .to_der(),
+         )
+      }
+      else {
+          Err(rsa::pkcs1::Error::Crypto)
+      }
+  }
 }
 
 #[derive(Deserialize)]
@@ -1206,6 +1295,7 @@ pub struct RawKeyData {
 pub struct ImportKeyArg {
   algorithm: Algorithm,
   format: KeyFormat,
+  key_type: Option<KeyType>,
   // RSASSA-PKCS1-v1_5
   hash: Option<CryptoHash>,
   // ECDSA
@@ -1238,46 +1328,62 @@ pub async fn op_crypto_import_key(
   //let data = &*zero_copy;
   let algorithm = args.algorithm;
 
-  if let ImportKeyData::Raw(raw_data) = key_data {
-    match algorithm {
-      Algorithm::Ecdsa => {
-        let curve = args.named_curve.ok_or_else(|| {
-          type_error("Missing argument named_curve".to_string())
-        })?;
+  match algorithm {
+    Algorithm::Ecdsa => {
+      let curve = args.named_curve.ok_or_else(|| {
+        type_error("Missing argument named_curve".to_string())
+      })?;
 
-        match curve {
-          CryptoNamedCurve::P256 => {
-            // 1-2.
-            let point = p256::EncodedPoint::from_bytes(&*raw_data.data)?;
-            // 3.
-            if point.is_identity() {
-              return Err(type_error("Invalid key data".to_string()));
+      let encoded_key;
+
+      match curve {
+        CryptoNamedCurve::P256 => {
+          // 1-2.
+          let point = match key_data {
+            ImportKeyData::Raw(raw_data) => {
+              encoded_key = raw_data.data;
+              p256::EncodedPoint::from_bytes(&*encoded_key)?
             }
+            _ => return Err(type_error("missing keyData.raw".to_string())),
+          };
+          //let point = p256::EncodedPoint::from_bytes(&*raw_data.data)?;
+          // 3.
+          if point.is_identity() {
+            return Err(type_error("Invalid key data".to_string()));
           }
-          CryptoNamedCurve::P384 => {
-            // 1-2.
-            let point = p384::EncodedPoint::from_bytes(&*raw_data.data)?;
-            // 3.
-            if point.is_identity() {
-              return Err(type_error("Invalid key data".to_string()));
+        }
+        CryptoNamedCurve::P384 => {
+          // 1-2.
+          let point = match key_data {
+            ImportKeyData::Raw(raw_data) => {
+              encoded_key = raw_data.data;
+              p384::EncodedPoint::from_bytes(&*encoded_key)?
             }
+            _ => return Err(type_error("missing keyData.raw".to_string())),
+          };
+          //let point = p384::EncodedPoint::from_bytes(&*raw_data.data)?;
+          // 3.
+          if point.is_identity() {
+            return Err(type_error("Invalid key data".to_string()));
           }
-        };
+        }
+      };
 
-        Ok(ImportKeyResult {
-          data: raw_data.data,
-          modulus_length: None,
-          public_exponent: None,
-        })
-      }
-      Algorithm::RsassaPkcs1v15 => {
-        match args.format {
-          KeyFormat::Pkcs8 => {
-            let hash = args
-              .hash
-              .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+      Ok(ImportKeyResult {
+        data: encoded_key,
+        modulus_length: None,
+        public_exponent: None,
+      })
+    }
+    Algorithm::RsassaPkcs1v15 => {
+      match args.format {
+        KeyFormat::Pkcs8 => {
+          let hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
 
-            // 2-3.
+          // 2-3.
+          if let ImportKeyData::Raw(raw_data) = key_data {
             let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(&*raw_data.data)
               .map_err(|e| {
                 custom_error("DOMExceptionOperationError", e.to_string())
@@ -1338,20 +1444,24 @@ pub async fn op_crypto_import_key(
               ),
               modulus_length: Some(private_key.modulus.as_bytes().len() * 8),
             })
+          } else {
+            Err(type_error("missing keyData.raw".to_string()))
           }
-          // TODO(@littledivy): spki
-          // TODO(@littledivy): jwk
-          _ => Err(type_error("Unsupported format".to_string())),
         }
+        // TODO(@littledivy): spki
+        // TODO(@littledivy): jwk
+        _ => Err(type_error("Unsupported format".to_string())),
       }
-      Algorithm::RsaPss => {
-        match args.format {
-          KeyFormat::Pkcs8 => {
-            let hash = args
-              .hash
-              .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+    }
+    Algorithm::RsaPss => {
+      match args.format {
+        KeyFormat::Pkcs8 => {
+          let hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
 
-            // 2-3.
+          // 2-3.
+          if let ImportKeyData::Raw(raw_data) = key_data {
             let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(&*raw_data.data)
               .map_err(|e| {
                 custom_error("DOMExceptionOperationError", e.to_string())
@@ -1453,20 +1563,24 @@ pub async fn op_crypto_import_key(
               ),
               modulus_length: Some(private_key.modulus.as_bytes().len() * 8),
             })
+          } else {
+            Err(type_error("missing keyData.raw".to_string()))
           }
-          // TODO(@littledivy): spki
-          // TODO(@littledivy): jwk
-          _ => Err(type_error("Unsupported format".to_string())),
         }
+        // TODO(@littledivy): spki
+        // TODO(@littledivy): jwk
+        _ => Err(type_error("Unsupported format".to_string())),
       }
-      Algorithm::RsaOaep => {
-        match args.format {
-          KeyFormat::Pkcs8 => {
-            let hash = args
-              .hash
-              .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+    }
+    Algorithm::RsaOaep => {
+      match args.format {
+        KeyFormat::Pkcs8 => {
+          let hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
 
-            // 2-3.
+          // 2-3.
+          if let ImportKeyData::Raw(raw_data) = key_data {
             let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(&*raw_data.data)
               .map_err(|e| {
                 custom_error("DOMExceptionOperationError", e.to_string())
@@ -1568,16 +1682,70 @@ pub async fn op_crypto_import_key(
               ),
               modulus_length: Some(private_key.modulus.as_bytes().len() * 8),
             })
+          } else {
+            Err(type_error("missing keyData.raw".to_string()))
           }
-          // TODO(@littledivy): spki
-          // TODO(@littledivy): jwk
-          _ => Err(type_error("Unsupported format".to_string())),
         }
+        KeyFormat::Jwk => {
+          let hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // 2-3.
+          if let ImportKeyData::JwkRsaKey(jwkRsaKey) = key_data {
+              let key_type = args.key_type
+                          .ok_or_else(|| type_error("Missing argument key_type".to_string()))?;
+
+          //let public_key;
+          let pubDoc;
+          let privDoc;
+
+          let ( public_key, pkcs1 ) = match key_type {
+            KeyType::Private => {
+                privDoc = <RSAKeyComponentsB64 as ToRsaPrivateKey>::to_pkcs1_der(&jwkRsaKey).map_err(|e| {
+                  custom_error("DOMExceptionOperationError", e.to_string())
+                })?;
+
+                let private_key = rsa::pkcs1::RsaPrivateKey::from_der(&privDoc.as_der())
+                    .map_err(|e| {
+                      custom_error("DOMExceptionOperationError", e.to_string())
+                    })?;
+
+                ( private_key.public_key(), privDoc.as_der().to_vec() )
+            }
+            KeyType::Public => {
+                pubDoc = <RSAKeyComponentsB64 as ToRsaPublicKey>::to_pkcs1_der(&jwkRsaKey).map_err(|e| {
+                  custom_error("DOMExceptionOperationError", e.to_string())
+                })?;
+
+                let public_key = rsa::pkcs1::RsaPublicKey::from_der(&pubDoc.as_der())
+                    .map_err(|e| {
+                      custom_error("DOMExceptionOperationError", e.to_string())
+                    })?;
+
+                ( public_key, pubDoc.as_der().to_vec() )
+            }
+            _ => return Err(type_error("Invalid Key format".to_string())),
+          };
+
+
+            Ok(ImportKeyResult {
+              data: pkcs1.into(),
+              public_exponent: Some(
+                public_key.public_exponent.as_bytes().to_vec().into(),
+              ),
+              modulus_length: Some(public_key.modulus.as_bytes().len() * 8),
+            })
+          } else {
+            Err(type_error("missing keyData.jwk".to_string()))
+          }
+        }
+        // TODO(@littledivy): spki
+        // TODO(@littledivy): jwk
+        _ => Err(type_error("Unsupported format".to_string())),
       }
-      _ => Err(type_error("Unsupported algorithm".to_string())),
     }
-  } else {
-    Err(type_error("missing keyData.raw".to_string()))
+    _ => Err(type_error("Unsupported algorithm".to_string())),
   }
 }
 

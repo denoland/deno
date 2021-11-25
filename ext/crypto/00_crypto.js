@@ -276,6 +276,45 @@
     }
   }
 
+  function importJwkRsaKey(jwk) {
+    // Section 6.3.2 of RFC7518
+    if (!jwk.e || !jwk.n) {
+      throw new DOMException(
+        "Missing n or e components in RSA key",
+        "DataError",
+      );
+    }
+
+    const publicKeyComps = {
+      n: decodeSymmetricKey(jwk.n),
+      e: decodeSymmetricKey(jwk.e),
+    };
+
+    const modulusLength = publicKeyComps.n.length * 8;
+
+    if (jwk.d) {
+      return {
+        type: "private",
+        pkcs1: buildRsaPkcs1({
+          ...publicKeyComps,
+          d: decodeSymmetricKey(jwk.d),
+          p: decodeSymmetricKey(jwk.p),
+          q: decodeSymmetricKey(jwk.q),
+          dp: decodeSymmetricKey(jwk.dp),
+          dq: decodeSymmetricKey(jwk.dq),
+          qi: decodeSymmetricKey(jwk.qi),
+        }, "private"),
+        modulusLength,
+      };
+    } else {
+      return {
+        type: "public",
+        pkcs1: buildRsaPkcs1(publicKeyComps, "public"),
+        modulusLength,
+      };
+    }
+  }
+
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
   // 18.4.4
   function normalizeAlgorithm(algorithm, op) {
@@ -1380,7 +1419,7 @@
               }
 
               //9.
-              const keyInfo = convertJwkRsaKey(jwk);
+              const keyInfo = convertJwkRsaKey(jwk, normalizedAlgorithm.hash);
 
               if (keyUsages.length == 0) {
                 throw new DOMException("Key usage is empty", "SyntaxError");
@@ -1576,7 +1615,7 @@
               }
 
               //9.
-              const keyInfo = convertJwkRsaKey(jwk);
+              const keyInfo = convertJwkRsaKey(jwk, normalizedAlgorithm.hash);
 
               if (keyUsages.length == 0) {
                 throw new DOMException("Key usage is empty", "SyntaxError");
@@ -1775,8 +1814,25 @@
                 }
               }
 
-              //10.
               const keyInfo = convertJwkRsaKey(jwk);
+
+console.log( "Calling op..")
+debugger;
+              //10.
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSA-OAEP",
+                    format: "jwk",
+                    keyType: keyInfo.type,
+                    // Needed to perform step 7 without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  { jwkRsaKey: jwk },
+                );
+
+                console.log( "Return op..", modulusLength)
 
               if (keyUsages.length == 0) {
                 throw new DOMException("Key usage is empty", "SyntaxError");
@@ -1786,7 +1842,7 @@
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 type: "raw",
                 keyType: keyInfo.type,
-                data: keyInfo.pkcs1,
+                data: data, // keyInfo.pkcs1
               });
 
               const algorithm = {
