@@ -26,8 +26,8 @@ unitTest(function nameOfTestCaseCantBeEmpty() {
   );
 });
 
-unitTest(function invalidStepArguments(t) {
-  assertRejects(
+unitTest(async function invalidStepArguments(t) {
+  await assertRejects(
     async () => {
       // deno-lint-ignore no-explicit-any
       await (t as any).step("test");
@@ -36,7 +36,7 @@ unitTest(function invalidStepArguments(t) {
     "Expected function for second argument.",
   );
 
-  assertRejects(
+  await assertRejects(
     async () => {
       // deno-lint-ignore no-explicit-any
       await (t as any).step("test", "not a function");
@@ -45,7 +45,7 @@ unitTest(function invalidStepArguments(t) {
     "Expected function for second argument.",
   );
 
-  assertRejects(
+  await assertRejects(
     async () => {
       // deno-lint-ignore no-explicit-any
       await (t as any).step();
@@ -54,7 +54,7 @@ unitTest(function invalidStepArguments(t) {
     "Expected a test definition or name and function.",
   );
 
-  assertRejects(
+  await assertRejects(
     async () => {
       // deno-lint-ignore no-explicit-any
       await (t as any).step(() => {});
