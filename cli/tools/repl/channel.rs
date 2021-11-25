@@ -45,9 +45,7 @@ impl RustylineSyncMessageSender {
     method: &'static str,
     params: Option<Value>,
   ) -> Result<Box<RawValue>, AnyError> {
-    if let Err(err) =
-      self.message_tx.blocking_send((method, params))
-    {
+    if let Err(err) = self.message_tx.blocking_send((method, params)) {
       Err(anyhow!("{}", err))
     } else {
       self.response_rx.borrow_mut().blocking_recv().unwrap()
