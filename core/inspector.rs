@@ -925,6 +925,7 @@ fn parse_escape(
 
           if n2 < 0xDC00 || n2 > 0xDFFF {
             str.push('\u{FFFD}');
+            return Ok(());
           }
 
           let n =
