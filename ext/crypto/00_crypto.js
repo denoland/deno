@@ -151,6 +151,48 @@
     return StringPrototypeReplace(base64String, /=/g, "");
   }
 
+  function isPresent(v) {
+    return v !== undefined;
+  }
+
+  function mustHaveJwk(jwk, el) {
+    if (!isPresent(jwk[el])) {
+      throw new DOMException(
+        `${el} member of JsonWebKey missing`,
+        "DataError",
+      );
+    }
+  }
+
+  function validateJwtRsaKey(jwk) {
+    const keyType = isPresent(jwk.d) ? "private" : "public";
+
+    mustHaveJwk(jwk, "n");
+    mustHaveJwk(jwk, "e");
+
+    if (keyType === "private") {
+      mustHaveJwk(jwk, "d");
+
+      // TODO(@sean-wykes): determine if non-CRT RSA keys must be supported
+      //  - wpt does not include test cases, but RFC7518 uses "SHOULD" in 6.3.2
+
+      /*if (
+        isPresent(jwk.p) || isPresent(jwk.q) || isPresent(jwk.dp) ||
+        isPresent(jwk.dq) || isPresent(jwk.qi)
+      )*/
+      {
+        // CRT variant
+        mustHaveJwk(jwk, "p");
+        mustHaveJwk(jwk, "q");
+        mustHaveJwk(jwk, "dp");
+        mustHaveJwk(jwk, "dq");
+        mustHaveJwk(jwk, "qi");
+      }
+    }
+
+    return keyType;
+  }
+
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
   // 18.4.4
   function normalizeAlgorithm(algorithm, op) {
@@ -1120,12 +1162,17 @@
               let hash;
 
               const jwk = keyData;
+
+              const keyType = validateJwtRsaKey(jwk);
+
               // 2.
               if (
                 ArrayPrototypeFind(
                   keyUsages,
                   (u) =>
-                    !ArrayPrototypeIncludes([jwk.d ? "sign" : "verify"], u),
+                    !ArrayPrototypeIncludes([
+                      (keyType === "private") ? "sign" : "verify",
+                    ], u),
                 ) !== undefined
               ) {
                 throw new DOMException("Invalid key usages", "SyntaxError");
@@ -1222,7 +1269,6 @@
               }
 
               //9.
-              const keyType = (jwk.d) ? "private" : "public";
 
               const { modulusLength, publicExponent, data } = await core
                 .opAsync(
@@ -1332,12 +1378,16 @@
 
               const jwk = keyData;
 
+              const keyType = validateJwtRsaKey(jwk);
+
               // 2.
               if (
                 ArrayPrototypeFind(
                   keyUsages,
                   (u) =>
-                    !ArrayPrototypeIncludes([jwk.d ? "sign" : "verify"], u),
+                    !ArrayPrototypeIncludes([
+                      (keyType === "private") ? "sign" : "verify",
+                    ], u),
                 ) !== undefined
               ) {
                 throw new DOMException("Invalid key usages", "SyntaxError");
@@ -1432,8 +1482,6 @@
               }
 
               //9.
-              const keyType = (jwk.d) ? "private" : "public";
-
               const { modulusLength, publicExponent, data } = await core
                 .opAsync(
                   "op_crypto_import_key",
@@ -1541,13 +1589,18 @@
               let hash;
 
               const jwk = keyData;
+
+              const keyType = validateJwtRsaKey(jwk);
+
               // 2-3.
               if (
                 ArrayPrototypeFind(
                   keyUsages,
                   (u) =>
                     !ArrayPrototypeIncludes(
-                      jwk.d ? ["decrypt", "unwrapKey"] : ["encrypt", "wrapKey"],
+                      (keyType == "private")
+                        ? ["decrypt", "unwrapKey"]
+                        : ["encrypt", "wrapKey"],
                       u,
                     ),
                 ) !== undefined
@@ -1644,8 +1697,6 @@
                   );
                 }
               }
-
-              const keyType = (jwk.d) ? "private" : "public";
 
               //10.
               const { modulusLength, publicExponent, data } = await core

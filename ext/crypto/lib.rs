@@ -1230,6 +1230,7 @@ impl ToRsaPrivateKey for RSAKeyComponentsB64 {
     {
       let modulus = decode_b64url_4_pkcs1(&self.n)?;
       let public_exponent = decode_b64url_4_pkcs1(&self.e)?;
+
       let private_exponent = decode_b64url_4_pkcs1(self.d.as_ref().unwrap())?;
       let prime1 = decode_b64url_4_pkcs1(self.p.as_ref().unwrap())?;
       let prime2 = decode_b64url_4_pkcs1(self.q.as_ref().unwrap())?;
@@ -1258,7 +1259,7 @@ impl ToRsaPrivateKey for RSAKeyComponentsB64 {
 }
 
 fn convert_jwk_rsa_to_pkcs1(
-  jwk_rsa_key: RSAKeyComponentsB64,
+  jwk: RSAKeyComponentsB64,
   key_type: KeyType,
 ) -> Result<ImportKeyResult, AnyError> {
   let pub_doc;
@@ -1266,11 +1267,10 @@ fn convert_jwk_rsa_to_pkcs1(
 
   let (public_key, pkcs1) = match key_type {
     KeyType::Private => {
-      priv_doc =
-        <RSAKeyComponentsB64 as ToRsaPrivateKey>::to_pkcs1_der(&jwk_rsa_key)
-          .map_err(|e| {
-            custom_error("DOMExceptionOperationError", e.to_string())
-          })?;
+      priv_doc = <RSAKeyComponentsB64 as ToRsaPrivateKey>::to_pkcs1_der(&jwk)
+        .map_err(|e| {
+        custom_error("DOMExceptionOperationError", e.to_string())
+      })?;
 
       let private_key = rsa::pkcs1::RsaPrivateKey::from_der(priv_doc.as_der())
         .map_err(|e| {
@@ -1280,11 +1280,10 @@ fn convert_jwk_rsa_to_pkcs1(
       (private_key.public_key(), priv_doc.as_der().to_vec())
     }
     KeyType::Public => {
-      pub_doc =
-        <RSAKeyComponentsB64 as ToRsaPublicKey>::to_pkcs1_der(&jwk_rsa_key)
-          .map_err(|e| {
-            custom_error("DOMExceptionOperationError", e.to_string())
-          })?;
+      pub_doc = <RSAKeyComponentsB64 as ToRsaPublicKey>::to_pkcs1_der(&jwk)
+        .map_err(|e| {
+          custom_error("DOMExceptionOperationError", e.to_string())
+        })?;
 
       let public_key = rsa::pkcs1::RsaPublicKey::from_der(pub_doc.as_der())
         .map_err(|e| {
@@ -1311,11 +1310,11 @@ pub struct SecretKeyComponentB64 {
 }
 
 fn convert_jwk_to_secret_bytes(
-  jwk_secret_key: SecretKeyComponentB64,
+  jwk: SecretKeyComponentB64,
   key_type: KeyType,
 ) -> Result<ImportKeyResult, AnyError> {
   let secret_bytes = match key_type {
-    KeyType::Secret => decode_b64url(&jwk_secret_key.k)?,
+    KeyType::Secret => decode_b64url(&jwk.k)?,
     _ => return Err(type_error("Invalid Key format".to_string())),
   };
 
@@ -1491,12 +1490,12 @@ pub async fn op_crypto_import_key(
         }
         // TODO(@littledivy): spki
         KeyFormat::Jwk => {
-          if let ImportKeyData::JwkRsaKey(jwk_rsa_key) = key_data {
+          if let ImportKeyData::JwkRsaKey(jwk) = key_data {
             let key_type = args.key_type.ok_or_else(|| {
               type_error("Missing argument key_type".to_string())
             })?;
 
-            convert_jwk_rsa_to_pkcs1(jwk_rsa_key, key_type)
+            convert_jwk_rsa_to_pkcs1(jwk, key_type)
           } else {
             Err(type_error("missing keyData.jwk".to_string()))
           }
@@ -1619,12 +1618,12 @@ pub async fn op_crypto_import_key(
           }
         }
         KeyFormat::Jwk => {
-          if let ImportKeyData::JwkRsaKey(jwk_rsa_key) = key_data {
+          if let ImportKeyData::JwkRsaKey(jwk) = key_data {
             let key_type = args.key_type.ok_or_else(|| {
               type_error("Missing argument key_type".to_string())
             })?;
 
-            convert_jwk_rsa_to_pkcs1(jwk_rsa_key, key_type)
+            convert_jwk_rsa_to_pkcs1(jwk, key_type)
           } else {
             Err(type_error("missing keyData.jwk".to_string()))
           }
@@ -1748,12 +1747,12 @@ pub async fn op_crypto_import_key(
           }
         }
         KeyFormat::Jwk => {
-          if let ImportKeyData::JwkRsaKey(jwk_rsa_key) = key_data {
+          if let ImportKeyData::JwkRsaKey(jwk) = key_data {
             let key_type = args.key_type.ok_or_else(|| {
               type_error("Missing argument key_type".to_string())
             })?;
 
-            convert_jwk_rsa_to_pkcs1(jwk_rsa_key, key_type)
+            convert_jwk_rsa_to_pkcs1(jwk, key_type)
           } else {
             Err(type_error("missing keyData.jwk".to_string()))
           }
@@ -1765,12 +1764,12 @@ pub async fn op_crypto_import_key(
     Algorithm::Hmac => {
       match args.format {
         KeyFormat::Jwk => {
-          if let ImportKeyData::JwkSecretKey(jwk_secret_key) = key_data {
+          if let ImportKeyData::JwkSecretKey(jwk) = key_data {
             let key_type = args.key_type.ok_or_else(|| {
               type_error("Missing argument key_type".to_string())
             })?;
 
-            convert_jwk_to_secret_bytes(jwk_secret_key, key_type)
+            convert_jwk_to_secret_bytes(jwk, key_type)
           } else {
             Err(type_error("missing keyData.jwk".to_string()))
           }
