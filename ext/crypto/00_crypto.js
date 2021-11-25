@@ -12,10 +12,9 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
-  const { atob, btoa } = window.__bootstrap.base64;
+  const { btoa } = window.__bootstrap.base64;
 
   const {
-    ArrayIsArray,
     ArrayPrototypeFind,
     ArrayPrototypeEvery,
     ArrayPrototypeIncludes,
@@ -24,7 +23,6 @@
     BigInt64Array,
     StringPrototypeToUpperCase,
     StringPrototypeReplace,
-    StringPrototypeCharCodeAt,
     StringFromCharCode,
     Symbol,
     SymbolFor,
@@ -35,7 +33,6 @@
     Int8Array,
     Uint8Array,
     TypedArrayPrototypeSlice,
-    TypedArrayFrom,
     Int16Array,
     Uint16Array,
     Int32Array,

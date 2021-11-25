@@ -1196,11 +1196,11 @@ pub struct RSAKeyComponentsB64 {
   qi: Option<String>,
 }
 
-fn decode_b64url(b64: &String) -> Result<Vec<u8>, base64::DecodeError> {
+fn decode_b64url(b64: &str) -> Result<Vec<u8>, base64::DecodeError> {
   base64::decode_config(b64, base64::URL_SAFE)
 }
 
-fn decode_b64url_4_pkcs1(b64: &String) -> rsa::pkcs1::Result<Vec<u8>> {
+fn decode_b64url_4_pkcs1(b64: &str) -> rsa::pkcs1::Result<Vec<u8>> {
   base64::decode_config(b64, base64::URL_SAFE)
     .map_err(|_| rsa::pkcs1::Error::Crypto)
 }
@@ -1230,12 +1230,12 @@ impl ToRsaPrivateKey for RSAKeyComponentsB64 {
     {
       let modulus = decode_b64url_4_pkcs1(&self.n)?;
       let public_exponent = decode_b64url_4_pkcs1(&self.e)?;
-      let private_exponent = decode_b64url_4_pkcs1(&self.d.as_ref().unwrap())?;
-      let prime1 = decode_b64url_4_pkcs1(&self.p.as_ref().unwrap())?;
-      let prime2 = decode_b64url_4_pkcs1(&self.q.as_ref().unwrap())?;
-      let exponent1 = decode_b64url_4_pkcs1(&self.dp.as_ref().unwrap())?;
-      let exponent2 = decode_b64url_4_pkcs1(&self.dq.as_ref().unwrap())?;
-      let coefficient = decode_b64url_4_pkcs1(&self.qi.as_ref().unwrap())?;
+      let private_exponent = decode_b64url_4_pkcs1(self.d.as_ref().unwrap())?;
+      let prime1 = decode_b64url_4_pkcs1(self.p.as_ref().unwrap())?;
+      let prime2 = decode_b64url_4_pkcs1(self.q.as_ref().unwrap())?;
+      let exponent1 = decode_b64url_4_pkcs1(self.dp.as_ref().unwrap())?;
+      let exponent2 = decode_b64url_4_pkcs1(self.dq.as_ref().unwrap())?;
+      let coefficient = decode_b64url_4_pkcs1(self.qi.as_ref().unwrap())?;
 
       Ok(
         rsa::pkcs1::RsaPrivateKey {
@@ -1272,7 +1272,7 @@ fn convert_jwk_rsa_to_pkcs1(
             custom_error("DOMExceptionOperationError", e.to_string())
           })?;
 
-      let private_key = rsa::pkcs1::RsaPrivateKey::from_der(&priv_doc.as_der())
+      let private_key = rsa::pkcs1::RsaPrivateKey::from_der(priv_doc.as_der())
         .map_err(|e| {
           custom_error("DOMExceptionOperationError", e.to_string())
         })?;
@@ -1286,7 +1286,7 @@ fn convert_jwk_rsa_to_pkcs1(
             custom_error("DOMExceptionOperationError", e.to_string())
           })?;
 
-      let public_key = rsa::pkcs1::RsaPublicKey::from_der(&pub_doc.as_der())
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(pub_doc.as_der())
         .map_err(|e| {
           custom_error("DOMExceptionOperationError", e.to_string())
         })?;
@@ -1315,11 +1315,7 @@ fn convert_jwk_to_secret_bytes(
   key_type: KeyType,
 ) -> Result<ImportKeyResult, AnyError> {
   let secret_bytes = match key_type {
-    KeyType::Secret => {
-      let secret_bytes = decode_b64url(&jwk_secret_key.k)?;
-
-      secret_bytes
-    }
+    KeyType::Secret => decode_b64url(&jwk_secret_key.k)?,
     _ => return Err(type_error("Invalid Key format".to_string())),
   };
 
