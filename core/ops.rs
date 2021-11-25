@@ -80,7 +80,7 @@ where
   }
 }
 
-pub type PromiseId = u64;
+pub type PromiseId = i32;
 pub type OpAsyncFuture = OpCall<(PromiseId, OpId, OpResult)>;
 pub type OpFn = dyn Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static;
 pub type OpId = usize;
@@ -111,9 +111,6 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
 pub enum Op {
   Sync(OpResult),
   Async(OpAsyncFuture),
-  /// AsyncUnref is the variation of Async, which doesn't block the program
-  /// exiting.
-  AsyncUnref(OpAsyncFuture),
   NotFound,
 }
 
