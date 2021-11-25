@@ -1741,6 +1741,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
         var p1 = Deno.core.opAsync("op_test", 42);
         var p2 = Deno.core.opAsync("op_test", 42);
         "#,
@@ -1757,12 +1758,8 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.unrefOp(
-          p1[Symbol.for("Deno.core.internalPromiseId")]
-        );
-        Deno.core.unrefOp(
-          p2[Symbol.for("Deno.core.internalPromiseId")]
-        );
+        Deno.core.unrefOp(p1[promiseIdSymbol]);
+        Deno.core.unrefOp(p2[promiseIdSymbol]);
         "#,
       )
       .unwrap();
@@ -1777,12 +1774,8 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
-        Deno.core.refOp(
-          p1[Symbol.for("Deno.core.internalPromiseId")]
-        );
-        Deno.core.refOp(
-          p2[Symbol.for("Deno.core.internalPromiseId")]
-        );
+        Deno.core.refOp(p1[promiseIdSymbol]);
+        Deno.core.refOp(p2[promiseIdSymbol]);
         "#,
       )
       .unwrap();
