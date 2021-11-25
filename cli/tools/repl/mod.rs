@@ -32,25 +32,21 @@ use std::sync::Arc;
 mod channel;
 
 use channel::rustyline_channel;
-use channel::SyncMessageHandler;
-use channel::SyncMessageSender;
-
-type RustylineMessageSender =
-  SyncMessageSender<(String, Option<Value>), Result<Value, AnyError>>;
-type RustylineMessageHandler =
-  SyncMessageHandler<(String, Option<Value>), Result<Value, AnyError>>;
+use channel::RustylineSyncMessageHandler;
+use channel::RustylineSyncMessageSender;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
 #[derive(Helper, Hinter)]
 struct EditorHelper {
   context_id: u64,
-  sync_sender: RustylineMessageSender,
+  sync_sender: RustylineSyncMessageSender,
 }
 
 impl EditorHelper {
   pub fn get_global_lexical_scope_names(&self) -> Vec<String> {
     let evaluate_response = self
+      .sync_sender
       .post_message(
         "Runtime.globalLexicalScopeNames",
         Some(json!({
@@ -110,6 +106,7 @@ impl EditorHelper {
     let object_id = evaluate_result.get("result")?.get("objectId")?;
 
     let get_properties_response = self
+      .sync_sender
       .post_message(
         "Runtime.getProperties",
         Some(json!({
@@ -131,6 +128,7 @@ impl EditorHelper {
 
   fn evaluate_expression(&self, expr: &str) -> Option<Value> {
     let evaluate_response = self
+      .sync_sender
       .post_message(
         "Runtime.evaluate",
         Some(json!({
@@ -147,14 +145,6 @@ impl EditorHelper {
     } else {
       Some(evaluate_response)
     }
-  }
-
-  fn post_message(
-    &self,
-    method: &str,
-    params: Option<Value>,
-  ) -> Result<Value, AnyError> {
-    self.sync_sender.send((method.to_string(), params))?
   }
 }
 
@@ -706,7 +696,7 @@ impl ReplSession {
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
-  message_handler: &mut RustylineMessageHandler,
+  message_handler: &mut RustylineSyncMessageHandler,
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
   let mut line_fut = tokio::task::spawn_blocking(move || editor.readline());
