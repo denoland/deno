@@ -5,7 +5,8 @@ use crate::ast::ImportsNotUsedAsValues;
 use crate::colors;
 use crate::proc_state::ProcState;
 use deno_ast::swc::parser::error::SyntaxError;
-use deno_ast::swc::parser::token::{Token, Word};
+use deno_ast::swc::parser::token::Token;
+use deno_ast::swc::parser::token::Word;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -30,15 +31,14 @@ use rustyline_derive::{Helper, Hinter};
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::mpsc::channel;
-use tokio::sync::mpsc::unbounded_channel;
-use tokio::sync::mpsc::Receiver;
-use tokio::sync::mpsc::Sender;
-use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::mpsc::UnboundedSender;
+
+mod channel;
+
+use channel::rustyline_channel;
+use channel::RustylineSyncMessageHandler;
+use channel::RustylineSyncMessageSender;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,13 +90,13 @@ struct CallFunctionRequest<'a> {
 #[derive(Helper, Hinter)]
 struct EditorHelper {
   context_id: u64,
-  message_tx: Sender<(&'static str, Option<Value>)>,
-  response_rx: RefCell<UnboundedReceiver<Result<Box<RawValue>, AnyError>>>,
+  sync_sender: RustylineSyncMessageSender,
 }
 
 impl EditorHelper {
   pub fn get_global_lexical_scope_names(&self) -> Vec<String> {
     let resp = self
+      .sync_sender
       .post_message(
         "Runtime.globalLexicalScopeNames",
         Some(json!({
@@ -152,6 +152,7 @@ impl EditorHelper {
     let object_id = evaluate_result.object_id?;
 
     let resp = self
+      .sync_sender
       .post_message(
         "Runtime.getProperties",
         Some(json!({
@@ -184,6 +185,7 @@ impl EditorHelper {
 
   fn evaluate_expression(&self, expr: &str) -> Option<RemoteObject> {
     let resp = self
+      .sync_sender
       .post_message(
         "Runtime.evaluate",
         Some(json!({
@@ -203,15 +205,6 @@ impl EditorHelper {
     } else {
       evaluate_response.result
     }
-  }
-
-  fn post_message(
-    &self,
-    method: &'static str,
-    params: Option<Value>,
-  ) -> Result<Box<RawValue>, AnyError> {
-    self.message_tx.blocking_send((method, params))?;
-    self.response_rx.borrow_mut().blocking_recv().unwrap()
   }
 }
 
@@ -769,8 +762,7 @@ impl ReplSession {
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
-  message_rx: &mut Receiver<(&'static str, Option<Value>)>,
-  response_tx: &UnboundedSender<Result<Box<RawValue>, AnyError>>,
+  message_handler: &mut RustylineSyncMessageHandler,
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
   let mut line_fut = tokio::task::spawn_blocking(move || editor.readline());
@@ -781,12 +773,12 @@ async fn read_line_and_poll(
       result = &mut line_fut => {
         return result.unwrap();
       }
-      result = message_rx.recv() => {
+      result = message_handler.recv() => {
         if let Some((method, params)) = result {
           let result = repl_session
             .post_message_with_event_loop(&method, params)
             .await;
-          response_tx.send(result).unwrap();
+          message_handler.send(result).unwrap();
         }
 
         poll_worker = true;
@@ -804,13 +796,11 @@ pub async fn run(
   maybe_eval: Option<String>,
 ) -> Result<(), AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
-  let (message_tx, mut message_rx) = channel(1);
-  let (response_tx, response_rx) = unbounded_channel();
+  let mut rustyline_channel = rustyline_channel();
 
   let helper = EditorHelper {
     context_id: repl_session.context_id,
-    message_tx,
-    response_rx: RefCell::new(response_rx),
+    sync_sender: rustyline_channel.0,
   };
 
   let history_file_path = ps.dir.root.join("deno_history.txt");
@@ -830,8 +820,7 @@ pub async fn run(
   loop {
     let line = read_line_and_poll(
       &mut repl_session,
-      &mut message_rx,
-      &response_tx,
+      &mut rustyline_channel.1,
       editor.clone(),
     )
     .await;
