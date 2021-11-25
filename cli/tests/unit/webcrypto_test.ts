@@ -521,7 +521,7 @@ Deno.test(async function testHkdfDeriveBitsWithLargeKeySize() {
     false,
     ["deriveBits"],
   );
-  assertRejects(
+  await assertRejects(
     () =>
       crypto.subtle.deriveBits(
         {
@@ -705,7 +705,7 @@ Deno.test(async function testDecryptWithInvalidIntializationVector() {
     data,
   );
   const initVector2 = crypto.getRandomValues(new Uint8Array(16));
-  assertRejects(async () => {
+  await assertRejects(async () => {
     await crypto.subtle.decrypt(
       { name: "AES-CBC", iv: initVector2 },
       key,
