@@ -6,10 +6,11 @@ use crate::ast::ImportsNotUsedAsValues;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::proc_state::ProcState;
+use crate::tools::repl::channel::RustylineSyncMessage;
+use crate::tools::repl::channel::RustylineSyncResponse;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
-use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -183,6 +184,7 @@ impl Completer for EditorHelper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
+    self.sync_sender.lsp_completions(line, pos);
     let expr = get_expr_from_line_at_pos(line, pos);
 
     // check if the expression is in the form `obj.prop`
@@ -543,8 +545,7 @@ impl ReplSession {
         if evaluate_exception_details.is_some() {
           self.set_last_thrown_error(evaluate_result).await?;
         } else {
-          self.language_server.update_current_text(&evaluate_response.code).await;
-          self.language_server.commit_current_text();
+          self.language_server.commit_text(&evaluate_response.code).await;
 
           self.set_last_eval_result(evaluate_result).await?;
         }
@@ -751,11 +752,23 @@ async fn read_line_and_poll(
         return result.unwrap();
       }
       result = message_handler.recv() => {
-        if let Some((method, params)) = result {
-          let result = repl_session
-            .post_message_with_event_loop(&method, params)
-            .await;
-          message_handler.send(result).unwrap();
+        match result {
+          Some(RustylineSyncMessage::PostMessage {
+            method,
+            params
+          }) => {
+            let result = repl_session
+              .post_message_with_event_loop(&method, params)
+              .await;
+            message_handler.send(RustylineSyncResponse::PostMessage(result)).unwrap();
+          },
+          Some(RustylineSyncMessage::LspCompletions {
+            line_text,
+            position,
+          }) => {
+            repl_session.language_server.completions(&line_text, position).await;
+          }
+          None => {}, // channel closed
         }
 
         poll_worker = true;

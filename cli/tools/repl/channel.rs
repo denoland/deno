@@ -31,8 +31,20 @@ pub fn rustyline_channel(
   )
 }
 
-pub type RustylineSyncMessage = (String, Option<Value>);
-pub type RustylineSyncResponse = Result<Value, AnyError>;
+pub enum RustylineSyncMessage {
+  PostMessage {
+    method: String,
+    params: Option<Value>,
+  },
+  LspCompletions {
+    line_text: String,
+    position: usize,
+  }
+}
+
+pub enum RustylineSyncResponse {
+  PostMessage(Result<Value, AnyError>),
+}
 
 pub struct RustylineSyncMessageSender {
   message_tx: Sender<RustylineSyncMessage>,
@@ -46,11 +58,31 @@ impl RustylineSyncMessageSender {
     params: Option<Value>,
   ) -> Result<Value, AnyError> {
     if let Err(err) =
-      self.message_tx.blocking_send((method.to_string(), params))
+      self.message_tx.blocking_send(RustylineSyncMessage::PostMessage {
+        method: method.to_string(),
+        params,
+      })
     {
       Err(anyhow!("{}", err))
     } else {
-      self.response_rx.borrow_mut().blocking_recv().unwrap()
+      match self.response_rx.borrow_mut().blocking_recv().unwrap() {
+        RustylineSyncResponse::PostMessage(result) => result,
+      }
+    }
+  }
+
+  pub fn lsp_completions(
+    &self,
+    line_text: &str,
+    position: usize,
+  ) {
+    if let Err(err) =
+      self.message_tx.blocking_send(RustylineSyncMessage::LspCompletions {
+        line_text: line_text.to_string(),
+        position,
+      })
+    {
+      //Err(anyhow!("{}", err))
     }
   }
 }
