@@ -155,7 +155,7 @@ pub(crate) struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
-  pub(crate) unrefed_ops: HashSet<u64>,
+  pub(crate) unrefed_ops: HashSet<i32>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -785,7 +785,8 @@ impl JsRuntime {
     let mut state = state_rc.borrow_mut();
     let module_map = module_map_rc.borrow();
 
-    let has_pending_ops = state.pending_ops.len() > state.unrefed_ops.len();
+    let has_pending_refed_ops =
+      state.pending_ops.len() > state.unrefed_ops.len();
     let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
     let has_pending_dyn_module_evaluation =
       !state.pending_dyn_mod_evaluate.is_empty();
@@ -799,7 +800,7 @@ impl JsRuntime {
       .map(|i| i.has_active_sessions())
       .unwrap_or(false);
 
-    if !has_pending_ops
+    if !has_pending_refed_ops
       && !has_pending_dyn_imports
       && !has_pending_dyn_module_evaluation
       && !has_pending_module_evaluation
@@ -825,7 +826,7 @@ impl JsRuntime {
     }
 
     if has_pending_module_evaluation {
-      if has_pending_ops
+      if has_pending_refed_ops
         || has_pending_dyn_imports
         || has_pending_dyn_module_evaluation
         || has_pending_background_tasks
@@ -838,7 +839,7 @@ impl JsRuntime {
     }
 
     if has_pending_dyn_module_evaluation {
-      if has_pending_ops
+      if has_pending_refed_ops
         || has_pending_dyn_imports
         || has_pending_background_tasks
       {

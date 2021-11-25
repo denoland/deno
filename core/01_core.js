@@ -44,6 +44,8 @@
   const RING_SIZE = 4 * 1024;
   const NO_PROMISE = null; // Alias to null is faster than plain nulls
   const promiseRing = ArrayPrototypeFill(new Array(RING_SIZE), NO_PROMISE);
+  // TODO(bartlomieju): it future use `v8::Private` so it's not visible
+  // to users. Currently missing bindings.
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   function setPromise(promiseId) {
@@ -138,7 +140,7 @@
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     const p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
-    // Save the id on the promise so it can be latered ref'ed or unref'ed
+    // Save the id on the promise so it can later be ref'ed or unref'ed
     p[promiseIdSymbol] = promiseId;
     return p;
   }
