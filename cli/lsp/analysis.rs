@@ -95,7 +95,7 @@ impl Reference {
         hint,
       } => lsp::Diagnostic {
         range: self.range,
-        severity: Some(lsp::DiagnosticSeverity::Warning),
+        severity: Some(lsp::DiagnosticSeverity::WARNING),
         code: Some(lsp::NumberOrString::String(code.to_string())),
         code_description: None,
         source: Some("deno-lint".to_string()),
@@ -785,7 +785,7 @@ mod tests {
         },
         lsp::Diagnostic {
           range,
-          severity: Some(lsp::DiagnosticSeverity::Warning),
+          severity: Some(lsp::DiagnosticSeverity::WARNING),
           code: Some(lsp::NumberOrString::String("code1".to_string())),
           source: Some("deno-lint".to_string()),
           message: "message1".to_string(),
@@ -803,7 +803,7 @@ mod tests {
         },
         lsp::Diagnostic {
           range,
-          severity: Some(lsp::DiagnosticSeverity::Warning),
+          severity: Some(lsp::DiagnosticSeverity::WARNING),
           code: Some(lsp::NumberOrString::String("code2".to_string())),
           source: Some("deno-lint".to_string()),
           message: "message2\nhint2".to_string(),

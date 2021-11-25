@@ -150,7 +150,7 @@ pub(crate) async fn get_import_completions(
       .iter()
       .map(|s| lsp::CompletionItem {
         label: s.to_string(),
-        kind: Some(lsp::CompletionItemKind::Folder),
+        kind: Some(lsp::CompletionItemKind::FOLDER),
         detail: Some("(local)".to_string()),
         sort_text: Some("1".to_string()),
         insert_text: Some(s.to_string()),
@@ -223,7 +223,7 @@ fn get_local_completions(
           match de.file_type() {
             Ok(file_type) if file_type.is_dir() => Some(lsp::CompletionItem {
               label,
-              kind: Some(lsp::CompletionItemKind::Folder),
+              kind: Some(lsp::CompletionItemKind::FOLDER),
               filter_text,
               sort_text: Some("1".to_string()),
               text_edit,
@@ -233,7 +233,7 @@ fn get_local_completions(
               if is_supported_ext(&de.path()) {
                 Some(lsp::CompletionItem {
                   label,
-                  kind: Some(lsp::CompletionItemKind::File),
+                  kind: Some(lsp::CompletionItemKind::FILE),
                   detail: Some("(local)".to_string()),
                   filter_text,
                   sort_text: Some("1".to_string()),
@@ -305,7 +305,7 @@ fn get_workspace_completions(
         }));
         Some(lsp::CompletionItem {
           label,
-          kind: Some(lsp::CompletionItemKind::File),
+          kind: Some(lsp::CompletionItemKind::FILE),
           detail,
           sort_text: Some("1".to_string()),
           text_edit,
@@ -652,7 +652,7 @@ mod tests {
       actual,
       vec![lsp::CompletionItem {
         label: "https://deno.land/x/a/b/c.ts".to_string(),
-        kind: Some(lsp::CompletionItemKind::File),
+        kind: Some(lsp::CompletionItemKind::FILE),
         detail: Some("(remote)".to_string()),
         sort_text: Some("1".to_string()),
         text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
