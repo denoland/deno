@@ -741,7 +741,7 @@ const jwtRSAKeys = {
   },
 };
 
-unitTest(async function testImportRsaJwk() {
+Deno.test(async function testImportRsaJwk() {
   const subtle = window.crypto.subtle;
   assert(subtle);
 
@@ -857,14 +857,14 @@ unitTest(async function testImportRsaJwk() {
     for (
       const { hash, plainText } of hashPlainTextVector
     ) {
-      const encryptAlgorithm = { name: "RSA-OAEP" };
-
       const hashMapOAEP: Record<string, string> = {
         "SHA-1": "RSA-OAEP",
         "SHA-256": "RSA-OAEP-256",
         "SHA-384": "RSA-OAEP-384",
         "SHA-512": "RSA-OAEP-512",
       };
+
+      const encryptAlgorithm = { name: "RSA-OAEP" };
 
       const privateKeyOAEP = await crypto.subtle.importKey(
         "jwk",
@@ -874,7 +874,7 @@ unitTest(async function testImportRsaJwk() {
           ext: true,
           "key_ops": ["decrypt"],
         },
-        { name: "RSA-OAEP", hash },
+        { ...encryptAlgorithm, hash },
         true,
         ["decrypt"],
       );
@@ -887,7 +887,7 @@ unitTest(async function testImportRsaJwk() {
           ext: true,
           "key_ops": ["encrypt"],
         },
-        { name: "RSA-OAEP", hash },
+        { ...encryptAlgorithm, hash },
         true,
         ["encrypt"],
       );

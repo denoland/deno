@@ -847,7 +847,7 @@
               // 4.
               const keyType = "secret";
 
-              const ret_import = await core
+              const retImport = await core
                 .opAsync(
                   "op_crypto_import_key",
                   {
@@ -860,7 +860,7 @@
                   { jwkSecretKey: jwk },
                 );
 
-              data = ret_import.data;
+              data = retImport.data;
 
               // 5.
               hash = normalizedAlgorithm.hash;
@@ -1038,6 +1038,7 @@
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 type: "raw",
+                keyType: "secret",
                 data,
               });
 
@@ -1675,7 +1676,7 @@
               });
 
               const algorithm = {
-                name: "RSA-OEAP",
+                name: "RSA-OAEP",
                 modulusLength,
                 publicExponent,
                 hash: normalizedAlgorithm.hash,
@@ -1826,6 +1827,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            keyType: "secret",
             data: keyData,
           });
 
@@ -1882,6 +1884,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            keyType: "secret",
             data: keyData,
           });
 
@@ -1938,6 +1941,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            keyType: "secret",
             data: keyData,
           });
 
@@ -1992,6 +1996,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            keyType: "secret",
             data: keyData,
           });
 
