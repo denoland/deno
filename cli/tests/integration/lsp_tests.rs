@@ -179,7 +179,7 @@ fn lsp_tsconfig_bad_config_path() {
   let (method, maybe_params) = client.read_notification().unwrap();
   assert_eq!(method, "window/showMessage");
   assert_eq!(maybe_params, Some(lsp::ShowMessageParams {
-    typ: lsp::MessageType::Warning,
+    typ: lsp::MessageType::WARNING,
     message: "The path to the configuration file (\"bad_tsconfig.json\") is not resolvable.".to_string()
   }));
   let diagnostics = did_open(
@@ -3118,7 +3118,7 @@ fn lsp_diagnostics_warn() {
             character: 60
           }
         },
-        severity: Some(lsp::DiagnosticSeverity::Warning),
+        severity: Some(lsp::DiagnosticSeverity::WARNING),
         code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
         source: Some("deno".to_string()),
         message: "foobar".to_string(),
