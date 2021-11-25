@@ -197,15 +197,15 @@ impl DiagnosticsServer {
 impl<'a> From<&'a diagnostics::DiagnosticCategory> for lsp::DiagnosticSeverity {
   fn from(category: &'a diagnostics::DiagnosticCategory) -> Self {
     match category {
-      diagnostics::DiagnosticCategory::Error => lsp::DiagnosticSeverity::Error,
+      diagnostics::DiagnosticCategory::Error => lsp::DiagnosticSeverity::ERROR,
       diagnostics::DiagnosticCategory::Warning => {
-        lsp::DiagnosticSeverity::Warning
+        lsp::DiagnosticSeverity::WARNING
       }
       diagnostics::DiagnosticCategory::Suggestion => {
-        lsp::DiagnosticSeverity::Hint
+        lsp::DiagnosticSeverity::HINT
       }
       diagnostics::DiagnosticCategory::Message => {
-        lsp::DiagnosticSeverity::Information
+        lsp::DiagnosticSeverity::INFORMATION
       }
     }
   }
@@ -286,9 +286,9 @@ fn ts_json_to_diagnostics(
           tags: match d.code {
             // These are codes that indicate the variable is unused.
             2695 | 6133 | 6138 | 6192 | 6196 | 6198 | 6199 | 6205 | 7027
-            | 7028 => Some(vec![lsp::DiagnosticTag::Unnecessary]),
+            | 7028 => Some(vec![lsp::DiagnosticTag::UNNECESSARY]),
             // These are codes that indicated the variable is deprecated.
-            2789 | 6385 | 6387 => Some(vec![lsp::DiagnosticTag::Deprecated]),
+            2789 | 6385 | 6387 => Some(vec![lsp::DiagnosticTag::DEPRECATED]),
             _ => None,
           },
           data: None,
@@ -445,7 +445,7 @@ fn diagnose_dependency(
         if let Some(message) = doc.maybe_warning() {
           diagnostics.push(lsp::Diagnostic {
             range: documents::to_lsp_range(range),
-            severity: Some(lsp::DiagnosticSeverity::Warning),
+            severity: Some(lsp::DiagnosticSeverity::WARNING),
             code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
             source: Some("deno".to_string()),
             message,
@@ -461,7 +461,7 @@ fn diagnose_dependency(
         };
         diagnostics.push(lsp::Diagnostic {
           range: documents::to_lsp_range(range),
-          severity: Some(lsp::DiagnosticSeverity::Error),
+          severity: Some(lsp::DiagnosticSeverity::ERROR),
           code,
           source: Some("deno".to_string()),
           message,
@@ -472,7 +472,7 @@ fn diagnose_dependency(
     }
     Some(Err(err)) => diagnostics.push(lsp::Diagnostic {
       range: documents::to_lsp_range(err.range()),
-      severity: Some(lsp::DiagnosticSeverity::Error),
+      severity: Some(lsp::DiagnosticSeverity::ERROR),
       code: Some(resolution_error_as_code(err)),
       source: Some("deno".to_string()),
       message: err.to_string(),

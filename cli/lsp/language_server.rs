@@ -579,7 +579,7 @@ impl Inner {
       tsconfig.merge(&unstable_libs);
     }
     if let Err(err) = self.merge_user_tsconfig(&mut tsconfig) {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     let _ok: bool = self
       .ts_server
@@ -669,13 +669,13 @@ impl Inner {
     self.update_debug_flag();
     // Check to see if we need to change the cache path
     if let Err(err) = self.update_cache() {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_config_file() {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_tsconfig().await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
 
     if capabilities.code_action_provider.is_some() {
@@ -692,11 +692,11 @@ impl Inner {
 
     // Check to see if we need to setup the import map
     if let Err(err) = self.update_import_map().await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     // Check to see if we need to setup any module registries
     if let Err(err) = self.update_registries().await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     self.documents.update_config(
       self.maybe_import_map.clone(),
@@ -893,19 +893,19 @@ impl Inner {
 
     self.update_debug_flag();
     if let Err(err) = self.update_cache() {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_import_map().await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_registries().await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_config_file() {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_tsconfig().await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
@@ -936,7 +936,7 @@ impl Inner {
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
       if changes.iter().any(|uri| import_map_uri == uri) {
         if let Err(err) = self.update_import_map().await {
-          self.client.show_message(MessageType::Warning, err).await;
+          self.client.show_message(MessageType::WARNING, err).await;
         }
         touched = true;
       }
@@ -945,10 +945,10 @@ impl Inner {
     if let Some(config_uri) = &self.maybe_config_uri {
       if changes.iter().any(|uri| config_uri == uri) {
         if let Err(err) = self.update_config_file() {
-          self.client.show_message(MessageType::Warning, err).await;
+          self.client.show_message(MessageType::WARNING, err).await;
         }
         if let Err(err) = self.update_tsconfig().await {
-          self.client.show_message(MessageType::Warning, err).await;
+          self.client.show_message(MessageType::WARNING, err).await;
         }
         touched = true;
       }
@@ -1066,7 +1066,7 @@ impl Inner {
         Ok(Some(text_edits))
       }
     } else {
-      self.client.show_message(MessageType::Warning, format!("Unable to format \"{}\". Likely due to unrecoverable syntax errors in the file.", specifier)).await;
+      self.client.show_message(MessageType::WARNING, format!("Unable to format \"{}\". Likely due to unrecoverable syntax errors in the file.", specifier)).await;
       Ok(None)
     }
   }
@@ -2613,7 +2613,7 @@ impl Inner {
     }
     let cache_server = self.maybe_cache_server.as_ref().unwrap();
     if let Err(err) = cache_server.cache(roots).await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
 
     // now that we have dependencies loaded, we need to re-analyze them and
