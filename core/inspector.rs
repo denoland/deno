@@ -19,14 +19,17 @@ use crate::futures::task;
 use crate::futures::task::Context;
 use crate::futures::task::Poll;
 use crate::serde_json;
-use crate::serde_json::json;
-use crate::serde_json::Value;
 use anyhow::Error;
+use log::debug;
 use parking_lot::Mutex;
+use serde::Deserialize;
+use serde::Serialize;
+use serde_json::value::RawValue;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::iter::Peekable;
 use std::mem::replace;
 use std::mem::take;
 use std::mem::MaybeUninit;
@@ -34,6 +37,7 @@ use std::pin::Pin;
 use std::ptr;
 use std::ptr::NonNull;
 use std::rc::Rc;
+use std::str::Chars;
 use std::sync::Arc;
 use std::thread;
 
@@ -600,14 +604,33 @@ impl Future for InspectorSession {
   }
 }
 
+#[derive(Debug, Deserialize)]
+struct V8InspectorMessage {
+  id: i32,
+  result: Option<Box<serde_json::value::RawValue>>,
+  error: Option<V8Error>,
+}
+
+#[derive(Debug, Deserialize)]
+struct V8Error {
+  code: i32,
+  message: LossyString,
+}
+
+#[derive(Deserialize)]
+pub struct V8InspectorNotification {
+  pub method: String,
+  pub params: Box<RawValue>,
+}
+
 /// A local inspector session that can be used to send and receive protocol messages directly on
 /// the same thread as an isolate.
 pub struct LocalInspectorSession {
   v8_session_tx: UnboundedSender<Vec<u8>>,
   v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
-  response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
+  response_tx_map: HashMap<i32, oneshot::Sender<V8InspectorMessage>>,
   next_message_id: i32,
-  notification_queue: Vec<Value>,
+  notification_queue: Vec<V8InspectorNotification>,
 }
 
 impl LocalInspectorSession {
@@ -629,29 +652,33 @@ impl LocalInspectorSession {
     }
   }
 
-  pub fn notifications(&mut self) -> Vec<Value> {
+  pub fn notifications(&mut self) -> Vec<V8InspectorNotification> {
     self.notification_queue.split_off(0)
   }
 
-  pub async fn post_message(
+  pub async fn post_message<T: Serialize>(
     &mut self,
-    method: &str,
-    params: Option<serde_json::Value>,
-  ) -> Result<serde_json::Value, Error> {
+    method: &'static str,
+    params: Option<T>,
+  ) -> Result<Box<RawValue>, Error> {
     let id = self.next_message_id;
     self.next_message_id += 1;
 
     let (response_tx, mut response_rx) =
-      oneshot::channel::<serde_json::Value>();
+      oneshot::channel::<V8InspectorMessage>();
     self.response_tx_map.insert(id, response_tx);
 
-    let message = json!({
-        "id": id,
-        "method": method,
-        "params": params,
-    });
+    #[derive(Serialize)]
+    struct Request<T> {
+      id: i32,
+      method: &'static str,
+      params: Option<T>,
+    }
+
+    let message = Request { id, method, params };
 
     let raw_message = serde_json::to_string(&message).unwrap();
+    debug!("Sending message: {}", raw_message);
     self
       .v8_session_tx
       .unbounded_send(raw_message.as_bytes().to_vec())
@@ -663,12 +690,16 @@ impl LocalInspectorSession {
         Either::Left(_) => continue,
         Either::Right((result, _)) => {
           let response = result?;
-          if let Some(error) = response.get("error") {
-            return Err(generic_error(error.to_string()));
+          match (response.result, response.error) {
+            (Some(result), None) => {
+              return Ok(result);
+            }
+            (None, Some(err)) => {
+              let message: String = err.message.into();
+              return Err(generic_error(message));
+            }
+            _ => panic!("Invalid response"),
           }
-
-          let result = response.get("result").unwrap().clone();
-          return Ok(result);
         }
       }
     }
@@ -676,31 +707,15 @@ impl LocalInspectorSession {
 
   async fn receive_from_v8_session(&mut self) {
     let (maybe_call_id, message) = self.v8_session_rx.next().await.unwrap();
+    debug!("Recv message: {}", message);
     // If there's no call_id then it's a notification
     if let Some(call_id) = maybe_call_id {
-      let message: serde_json::Value = match serde_json::from_str(&message) {
+      let message: V8InspectorMessage = match serde_json::from_str(&message) {
         Ok(v) => v,
-        Err(error) => match error.classify() {
-          serde_json::error::Category::Syntax => json!({
-            "id": call_id,
-            "result": {
-              "result": {
-                "type": "error",
-                "description": "Unterminated string literal",
-                "value": "Unterminated string literal",
-              },
-              "exceptionDetails": {
-                "exceptionId": 0,
-                "text": "Unterminated string literal",
-                "lineNumber": 0,
-                "columnNumber": 0
-              },
-            },
-          }),
-          _ => panic!("Could not parse inspector message"),
-        },
+        Err(e) => {
+          panic!("Could not parse inspector message: {}", e)
+        }
       };
-
       self
         .response_tx_map
         .remove(&call_id)
@@ -719,4 +734,245 @@ fn new_box_with<T>(new_fn: impl FnOnce(*mut T) -> T) -> Box<T> {
   let p = Box::into_raw(b) as *mut T;
   unsafe { ptr::write(p, new_fn(p)) };
   unsafe { Box::from_raw(p) }
+}
+
+/// A wrapper type for `String` that has a serde::Deserialize implementation
+/// that will deserialize lossily (i.e. using replacement characters for
+/// invalid UTF-8 sequences).
+pub struct LossyString(String);
+
+static ESCAPE: [bool; 256] = {
+  const CT: bool = true; // control character \x00..=\x1F
+  const QU: bool = true; // quote \x22
+  const BS: bool = true; // backslash \x5C
+  const __: bool = false; // allow unescaped
+  [
+    //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+    CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 0
+    CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 1
+    __, __, QU, __, __, __, __, __, __, __, __, __, __, __, __, __, // 2
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 3
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 4
+    __, __, __, __, __, __, __, __, __, __, __, __, BS, __, __, __, // 5
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 6
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 7
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 8
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 9
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // A
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // B
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // C
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // D
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // E
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // F
+  ]
+};
+
+impl<'de> serde::Deserialize<'de> for LossyString {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    macro_rules! tri {
+      ($opt:expr) => {
+        match $opt {
+          Some(v) => v,
+          None => {
+            return Err(serde::de::Error::custom("Unexpected end of string"))
+          }
+        }
+      };
+    }
+
+    let val = Box::<RawValue>::deserialize(deserializer)?;
+    let mut chars = val.get().chars().peekable();
+
+    if tri!(chars.next()) != '"' {
+      return Err(serde::de::Error::custom("Expected string"));
+    }
+
+    let mut str = String::new();
+
+    loop {
+      let ch = tri!(chars.next());
+      if !ESCAPE[ch as usize] {
+        str.push(ch);
+        continue;
+      }
+      match ch {
+        '"' => {
+          break;
+        }
+        '\\' => match parse_escape(&mut chars, &mut str) {
+          Ok(_) => {}
+          Err(err) => return Err(serde::de::Error::custom(err)),
+        },
+        _ => {
+          return Err(serde::de::Error::custom("Constrol character in string"));
+        }
+      }
+    }
+
+    if chars.next() != None {
+      return Err(serde::de::Error::custom("Trailing characters in string"));
+    }
+
+    Ok(LossyString(str))
+  }
+}
+
+static HEX: [u8; 256] = {
+  const __: u8 = 255; // not a hex digit
+  [
+    //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 0
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 1
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 2
+    00, 01, 02, 03, 04, 05, 06, 07, 08, 09, __, __, __, __, __, __, // 3
+    __, 10, 11, 12, 13, 14, 15, __, __, __, __, __, __, __, __, __, // 4
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 5
+    __, 10, 11, 12, 13, 14, 15, __, __, __, __, __, __, __, __, __, // 6
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 7
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 8
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 9
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // A
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // B
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // C
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // D
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // E
+    __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // F
+  ]
+};
+
+fn decode_hex_val(val: char) -> Option<u16> {
+  let n = HEX[val as usize] as u16;
+  if n == 255 {
+    None
+  } else {
+    Some(n)
+  }
+}
+
+fn decode_hex_escape(
+  chars: &mut Peekable<Chars<'_>>,
+) -> Result<u16, &'static str> {
+  let mut n = 0;
+  for _ in 0..4 {
+    let ch = match chars.next() {
+      Some(ch) => ch,
+      None => return Err("Unexpected end of string"),
+    };
+    match decode_hex_val(ch) {
+      None => return Err("Invalid hex escape"),
+      Some(val) => {
+        n = (n << 4) + val;
+      }
+    }
+  }
+  Ok(n)
+}
+
+fn parse_escape(
+  chars: &mut Peekable<Chars<'_>>,
+  str: &mut String,
+) -> Result<(), &'static str> {
+  macro_rules! tri {
+    ($opt:expr) => {
+      match $opt {
+        Some(v) => v,
+        None => return Err("Unexpected end of string"),
+      }
+    };
+  }
+
+  let ch = tri!(chars.next());
+
+  match ch {
+    '"' => str.push('"'),
+    '\\' => str.push('\\'),
+    '/' => str.push('/'),
+    'b' => str.push('\x08'),
+    'f' => str.push('\x0c'),
+    'n' => str.push('\n'),
+    'r' => str.push('\r'),
+    't' => str.push('\t'),
+    'u' => {
+      let c = match decode_hex_escape(chars)? {
+        0xDC00..=0xDFFF => {
+          str.push('\u{FFFD}');
+          return Ok(());
+        }
+
+        // Non-BMP characters are encoded as a sequence of two hex
+        // escapes, representing UTF-16 surrogates. If deserializing a
+        // utf-8 string the surrogates are required to be paired,
+        // whereas deserializing a byte string accepts lone surrogates.
+        n1 @ 0xD800..=0xDBFF => {
+          if *tri!(chars.peek()) == '\\' {
+            chars.next();
+          } else {
+            str.push('\u{FFFD}');
+            return Ok(());
+          }
+
+          if *tri!(chars.peek()) == 'u' {
+            chars.next();
+          } else {
+            str.push('\u{FFFD}');
+            return parse_escape(chars, str);
+          }
+
+          let n2 = decode_hex_escape(chars)?;
+
+          if n2 < 0xDC00 || n2 > 0xDFFF {
+            str.push('\u{FFFD}');
+          }
+
+          let n =
+            (((n1 - 0xD800) as u32) << 10 | (n2 - 0xDC00) as u32) + 0x1_0000;
+
+          match char::from_u32(n) {
+            Some(c) => c,
+            None => {
+              str.push('\u{FFFD}');
+              return Ok(());
+            }
+          }
+        }
+
+        n => match char::from_u32(n as u32) {
+          Some(c) => c,
+          None => {
+            str.push('\u{FFFD}');
+            return Ok(());
+          }
+        },
+      };
+
+      str.push(c);
+    }
+    _ => {
+      return Err("Invalid escape sequence");
+    }
+  }
+
+  Ok(())
+}
+
+impl From<LossyString> for String {
+  fn from(lossy_string: LossyString) -> Self {
+    lossy_string.0
+  }
+}
+
+impl std::ops::Deref for LossyString {
+  type Target = String;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl std::fmt::Debug for LossyString {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.0)
+  }
 }

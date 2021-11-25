@@ -9,9 +9,12 @@ use deno_ast::swc::parser::token::{Token, Word};
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::serde_json::value::RawValue;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
+use deno_core::LossyString;
 use deno_runtime::worker::MainWorker;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
@@ -24,6 +27,8 @@ use rustyline::Config;
 use rustyline::Context;
 use rustyline::Editor;
 use rustyline_derive::{Helper, Hinter};
+use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -35,18 +40,63 @@ use tokio::sync::mpsc::Sender;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteObject {
+  r#type: String,
+  value: Option<Box<RawValue>>,
+  unserializable_value: Option<Box<RawValue>>,
+  object_id: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CallArgument {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  value: Option<Box<RawValue>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  unserializable_value: Option<Box<RawValue>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  object_id: Option<String>,
+}
+
+impl From<RemoteObject> for CallArgument {
+  fn from(remote_object: RemoteObject) -> Self {
+    CallArgument {
+      value: remote_object.value,
+      unserializable_value: remote_object.unserializable_value,
+      object_id: remote_object.object_id,
+    }
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EvaluationResponse {
+  exception_details: Option<LossyString>,
+  result: Option<RemoteObject>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CallFunctionRequest<'a> {
+  execution_context_id: u64,
+  function_declaration: &'static str,
+  arguments: &'a [&'a CallArgument],
+}
+
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
 #[derive(Helper, Hinter)]
 struct EditorHelper {
   context_id: u64,
-  message_tx: Sender<(String, Option<Value>)>,
-  response_rx: RefCell<UnboundedReceiver<Result<Value, AnyError>>>,
+  message_tx: Sender<(&'static str, Option<Value>)>,
+  response_rx: RefCell<UnboundedReceiver<Result<Box<RawValue>, AnyError>>>,
 }
 
 impl EditorHelper {
   pub fn get_global_lexical_scope_names(&self) -> Vec<String> {
-    let evaluate_response = self
+    let resp = self
       .post_message(
         "Runtime.globalLexicalScopeNames",
         Some(json!({
@@ -55,14 +105,15 @@ impl EditorHelper {
       )
       .unwrap();
 
-    evaluate_response
-      .get("names")
-      .unwrap()
-      .as_array()
-      .unwrap()
-      .iter()
-      .map(|n| n.as_str().unwrap().to_string())
-      .collect()
+    #[derive(Deserialize)]
+    struct GlobalLexicalScopeNamesResponse {
+      names: Vec<LossyString>,
+    }
+
+    let response: GlobalLexicalScopeNamesResponse =
+      serde_json::from_str(resp.get()).unwrap();
+
+    response.names.into_iter().map(|name| name.into()).collect()
   }
 
   pub fn get_expression_property_names(&self, expr: &str) -> Vec<String> {
@@ -90,12 +141,7 @@ impl EditorHelper {
   }
 
   fn get_expression_type(&self, expr: &str) -> Option<String> {
-    self
-      .evaluate_expression(expr)?
-      .get("result")?
-      .get("type")?
-      .as_str()
-      .map(|s| s.to_string())
+    Some(self.evaluate_expression(expr)?.r#type)
   }
 
   fn get_object_expr_properties(
@@ -103,9 +149,9 @@ impl EditorHelper {
     object_expr: &str,
   ) -> Option<Vec<String>> {
     let evaluate_result = self.evaluate_expression(object_expr)?;
-    let object_id = evaluate_result.get("result")?.get("objectId")?;
+    let object_id = evaluate_result.object_id?;
 
-    let get_properties_response = self
+    let resp = self
       .post_message(
         "Runtime.getProperties",
         Some(json!({
@@ -114,19 +160,30 @@ impl EditorHelper {
       )
       .ok()?;
 
+    #[derive(Deserialize)]
+    struct Property {
+      name: LossyString,
+    }
+
+    #[derive(Deserialize)]
+    struct GetPropertiesResponse {
+      result: Option<Vec<Property>>,
+    }
+
+    let get_properties_response: GetPropertiesResponse =
+      serde_json::from_str(resp.get()).unwrap();
+
     Some(
       get_properties_response
-        .get("result")?
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
+        .result?
+        .into_iter()
+        .map(|r| r.name.into())
         .collect(),
     )
   }
 
-  fn evaluate_expression(&self, expr: &str) -> Option<Value> {
-    let evaluate_response = self
+  fn evaluate_expression(&self, expr: &str) -> Option<RemoteObject> {
+    let resp = self
       .post_message(
         "Runtime.evaluate",
         Some(json!({
@@ -138,21 +195,22 @@ impl EditorHelper {
       )
       .ok()?;
 
-    if evaluate_response.get("exceptionDetails").is_some() {
+    let evaluate_response: EvaluationResponse =
+      serde_json::from_str(resp.get()).unwrap();
+
+    if evaluate_response.exception_details.is_some() {
       None
     } else {
-      Some(evaluate_response)
+      evaluate_response.result
     }
   }
 
   fn post_message(
     &self,
-    method: &str,
+    method: &'static str,
     params: Option<Value>,
-  ) -> Result<Value, AnyError> {
-    self
-      .message_tx
-      .blocking_send((method.to_string(), params))?;
+  ) -> Result<Box<RawValue>, AnyError> {
+    self.message_tx.blocking_send((method, params))?;
     self.response_rx.borrow_mut().blocking_recv().unwrap()
   }
 }
@@ -448,7 +506,9 @@ impl ReplSession {
 
     worker
       .with_event_loop(
-        session.post_message("Runtime.enable", None).boxed_local(),
+        session
+          .post_message("Runtime.enable", None::<()>)
+          .boxed_local(),
       )
       .await?;
 
@@ -457,17 +517,17 @@ impl ReplSession {
     // our inspector does not support a default context (0 is an invalid context id).
     let mut context_id: u64 = 0;
     for notification in session.notifications() {
-      let method = notification.get("method").unwrap().as_str().unwrap();
-      let params = notification.get("params").unwrap();
-
-      if method == "Runtime.executionContextCreated" {
-        context_id = params
-          .get("context")
-          .unwrap()
-          .get("id")
-          .unwrap()
-          .as_u64()
-          .unwrap();
+      if notification.method == "Runtime.executionContextCreated" {
+        #[derive(Deserialize)]
+        struct Params {
+          context: ExecutionContextDescription,
+        }
+        #[derive(Deserialize)]
+        struct ExecutionContextDescription {
+          id: u64,
+        }
+        let params: Params = serde_json::from_str(notification.params.get())?;
+        context_id = params.context.id;
       }
     }
 
@@ -484,24 +544,19 @@ impl ReplSession {
   }
 
   pub async fn is_closing(&mut self) -> Result<bool, AnyError> {
-    let closed = self
-      .evaluate_expression("(this.closed)")
-      .await?
-      .get("result")
-      .unwrap()
-      .get("value")
-      .unwrap()
-      .as_bool()
-      .unwrap();
+    let resp = self.evaluate_expression("(this.closed)").await?;
+
+    let closed =
+      serde_json::from_str(resp.result.unwrap().value.unwrap().get()).unwrap();
 
     Ok(closed)
   }
 
-  pub async fn post_message_with_event_loop(
+  pub async fn post_message_with_event_loop<T: Serialize>(
     &mut self,
-    method: &str,
-    params: Option<Value>,
-  ) -> Result<Value, AnyError> {
+    method: &'static str,
+    params: Option<T>,
+  ) -> Result<Box<RawValue>, AnyError> {
     self
       .worker
       .with_event_loop(self.session.post_message(method, params).boxed_local())
@@ -518,17 +573,16 @@ impl ReplSession {
   ) -> Result<EvaluationOutput, AnyError> {
     match self.evaluate_line_with_object_wrapping(line).await {
       Ok(evaluate_response) => {
-        let evaluate_result = evaluate_response.get("result").unwrap();
-        let evaluate_exception_details =
-          evaluate_response.get("exceptionDetails");
+        let eval_res: CallArgument = evaluate_response.result.unwrap().into();
+        let evaluate_exception_details = evaluate_response.exception_details;
 
         if evaluate_exception_details.is_some() {
-          self.set_last_thrown_error(evaluate_result).await?;
+          self.set_last_thrown_error(&eval_res).await?;
         } else {
-          self.set_last_eval_result(evaluate_result).await?;
+          self.set_last_eval_result(&eval_res).await?;
         }
 
-        let value = self.get_eval_value(evaluate_result).await?;
+        let value = self.get_eval_value(&eval_res).await?;
         Ok(match evaluate_exception_details {
           Some(_) => EvaluationOutput::Error(format!("Uncaught {}", value)),
           None => EvaluationOutput::Value(value),
@@ -553,7 +607,7 @@ impl ReplSession {
   async fn evaluate_line_with_object_wrapping(
     &mut self,
     line: &str,
-  ) -> Result<Value, AnyError> {
+  ) -> Result<EvaluationResponse, AnyError> {
     // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
     // statement rather than an object literal so we interpret it as an expression statement
     // to match the behavior found in a typical prompt including browser developer tools.
@@ -569,21 +623,20 @@ impl ReplSession {
 
     // If that fails, we retry it without wrapping in parens letting the error bubble up to the
     // user if it is still an error.
-    let evaluate_response =
-      if evaluate_response.get("exceptionDetails").is_some()
-        && wrapped_line != line
-      {
-        self.evaluate_ts_expression(line).await?
-      } else {
-        evaluate_response
-      };
+    let evaluate_response = if evaluate_response.exception_details.is_some()
+      && wrapped_line != line
+    {
+      self.evaluate_ts_expression(line).await?
+    } else {
+      evaluate_response
+    };
 
     Ok(evaluate_response)
   }
 
   async fn set_last_thrown_error(
     &mut self,
-    error: &Value,
+    error: &CallArgument,
   ) -> Result<(), AnyError> {
     self.post_message_with_event_loop(
       "Runtime.callFunctionOn",
@@ -600,55 +653,63 @@ impl ReplSession {
 
   async fn set_last_eval_result(
     &mut self,
-    evaluate_result: &Value,
+    evaluate_result: &CallArgument,
   ) -> Result<(), AnyError> {
-    self.post_message_with_event_loop(
-      "Runtime.callFunctionOn",
-      Some(json!({
-        "executionContextId": self.context_id,
-        "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
-        "arguments": [
-          evaluate_result,
-        ],
-      })),
-    ).await?;
+    let params = CallFunctionRequest {
+      execution_context_id: self.context_id,
+      function_declaration:
+        "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
+      arguments: &[evaluate_result],
+    };
+    self
+      .post_message_with_event_loop("Runtime.callFunctionOn", Some(params))
+      .await?;
     Ok(())
   }
 
   pub async fn get_eval_value(
     &mut self,
-    evaluate_result: &Value,
+    evaluate_result: &CallArgument,
   ) -> Result<String, AnyError> {
+    let params = CallFunctionRequest {
+      execution_context_id: self.context_id,
+      function_declaration: r#"function (object) {
+        try {
+          return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
+        } catch (err) {
+          return Deno[Deno.internal].inspectArgs(["%o", err]);
+        }
+      }"#,
+      arguments: &[evaluate_result],
+    };
+
     // TODO(caspervonb) we should investigate using previews here but to keep things
     // consistent with the previous implementation we just get the preview result from
     // Deno.inspectArgs.
-    let inspect_response = self.post_message_with_event_loop(
-      "Runtime.callFunctionOn",
-      Some(json!({
-        "executionContextId": self.context_id,
-        "functionDeclaration": r#"function (object) {
-          try {
-            return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
-          } catch (err) {
-            return Deno[Deno.internal].inspectArgs(["%o", err]);
-          }
-        }"#,
-        "arguments": [
-          evaluate_result,
-        ],
-      })),
-    ).await?;
+    let inspect_response = self
+      .post_message_with_event_loop("Runtime.callFunctionOn", Some(params))
+      .await?;
 
-    let inspect_result = inspect_response.get("result").unwrap();
-    let value = inspect_result.get("value").unwrap().as_str().unwrap();
+    #[derive(Deserialize)]
+    struct CallFunctionResult {
+      value: LossyString,
+    }
 
-    Ok(value.to_string())
+    #[derive(Deserialize)]
+    struct CallFunctionResponse {
+      result: CallFunctionResult,
+    }
+
+    let resp: CallFunctionResponse =
+      serde_json::from_str(inspect_response.get()).unwrap();
+
+    Ok(resp.result.value.into())
   }
 
   async fn evaluate_ts_expression(
     &mut self,
     expression: &str,
-  ) -> Result<Value, AnyError> {
+  ) -> Result<EvaluationResponse, AnyError> {
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: "repl.ts".to_string(),
       source: deno_ast::SourceTextInfo::from_string(expression.to_string()),
@@ -689,8 +750,8 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<Value, AnyError> {
-    self
+  ) -> Result<EvaluationResponse, AnyError> {
+    let resp = self
       .post_message_with_event_loop(
         "Runtime.evaluate",
         Some(json!({
@@ -699,14 +760,17 @@ impl ReplSession {
           "replMode": true,
         })),
       )
-      .await
+      .await?;
+
+    let evaluate_resp: EvaluationResponse = serde_json::from_str(resp.get())?;
+    Ok(evaluate_resp)
   }
 }
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
-  message_rx: &mut Receiver<(String, Option<Value>)>,
-  response_tx: &UnboundedSender<Result<Value, AnyError>>,
+  message_rx: &mut Receiver<(&'static str, Option<Value>)>,
+  response_tx: &UnboundedSender<Result<Box<RawValue>, AnyError>>,
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
   let mut line_fut = tokio::task::spawn_blocking(move || editor.readline());

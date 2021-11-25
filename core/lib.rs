@@ -48,6 +48,8 @@ pub use crate::flags::v8_set_flags;
 pub use crate::inspector::InspectorSessionProxy;
 pub use crate::inspector::JsRuntimeInspector;
 pub use crate::inspector::LocalInspectorSession;
+pub use crate::inspector::LossyString;
+pub use crate::inspector::V8InspectorNotification;
 pub use crate::module_specifier::resolve_import;
 pub use crate::module_specifier::resolve_path;
 pub use crate::module_specifier::resolve_url;

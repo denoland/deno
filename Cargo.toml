@@ -27,6 +27,10 @@ members = [
 ]
 exclude = ["test_util/std/hash/_wasm"]
 
+# use serde_json lucacasonato/json.git@5ec8141acf127d9dcbc01b2b63c6426d158ee1af
+[patch.crates-io]
+serde_json = { git = "https://github.com/lucacasonato/json.git", rev = "5ec8141acf127d9dcbc01b2b63c6426d158ee1af" }
+
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]
 codegen-units = 1
