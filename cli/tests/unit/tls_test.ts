@@ -364,7 +364,7 @@ Deno.test(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, net: true } },
   async function tlsServerAlpnListenStartTls() {
     const [serverConn, clientConn] = await tlsAlpn(true);
@@ -380,7 +380,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, net: true } },
   async function tlsServerStreamHalfCloseSendOneByte() {
     const [serverConn, clientConn] = await tlsPair();
