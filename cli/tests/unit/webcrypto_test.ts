@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
-unitTest(async function testDigest() {
+Deno.test(async function testDigest() {
   const subtle = window.crypto.subtle;
   assert(subtle);
 
