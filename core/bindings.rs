@@ -36,6 +36,12 @@ lazy_static::lazy_static! {
         function: opcall_sync.map_fn_to()
       },
       v8::ExternalReference {
+        function: ref_op.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: unref_op.map_fn_to()
+      },
+      v8::ExternalReference {
         function: set_macrotask_callback.map_fn_to()
       },
       v8::ExternalReference {
@@ -151,6 +157,8 @@ pub fn initialize_context<'s>(
   // Bind functions to Deno.core.*
   set_func(scope, core_val, "opcallSync", opcall_sync);
   set_func(scope, core_val, "opcallAsync", opcall_async);
+  set_func(scope, core_val, "refOp", ref_op);
+  set_func(scope, core_val, "unrefOp", unref_op);
   set_func(
     scope,
     core_val,
@@ -453,15 +461,54 @@ fn opcall_async<'s>(
       state.pending_ops.push(fut);
       state.have_unpolled_ops = true;
     }
-    Op::AsyncUnref(fut) => {
-      state.op_state.borrow().tracker.track_unref(op_id);
-      state.pending_unref_ops.push(fut);
-      state.have_unpolled_ops = true;
-    }
     Op::NotFound => {
       throw_type_error(scope, format!("Unknown op id: {}", op_id));
     }
   }
+}
+
+fn ref_op<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let promise_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map(|l| l.value() as PromiseId)
+    .map_err(Error::from)
+  {
+    Ok(promise_id) => promise_id,
+    Err(err) => {
+      throw_type_error(scope, format!("invalid promise id: {}", err));
+      return;
+    }
+  };
+
+  state.unrefed_ops.remove(&promise_id);
+}
+
+fn unref_op<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let promise_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map(|l| l.value() as PromiseId)
+    .map_err(Error::from)
+  {
+    Ok(promise_id) => promise_id,
+    Err(err) => {
+      throw_type_error(scope, format!("invalid promise id: {}", err));
+      return;
+    }
+  };
+
+  state.unrefed_ops.insert(promise_id);
 }
 
 fn has_tick_scheduled(
