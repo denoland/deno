@@ -52,11 +52,14 @@ declare namespace Deno {
     closeWrite(): Promise<void>;
   }
 
+  // deno-lint-ignore no-empty-interface
+  export interface TlsHandshakeInfo {}
+
   export interface TlsConn extends Conn {
     /** Runs the client or server handshake protocol to completion if that has
      * not happened yet. Calling this method is optional; the TLS handshake
      * will be completed automatically as soon as data is sent or received. */
-    handshake(): Promise<void>;
+    handshake(): Promise<TlsHandshakeInfo>;
   }
 
   export interface ListenOptions {
