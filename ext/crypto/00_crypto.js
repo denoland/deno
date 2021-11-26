@@ -2162,7 +2162,7 @@
               }
 
               // 2.
-              const data = await core.opAsync(
+              const { raw: { data } } = await core.opAsync(
                 "op_crypto_export_key",
                 {
                   key: innerKey,
@@ -2184,7 +2184,7 @@
               }
 
               // 2.
-              const data = await core.opAsync(
+              const { raw: { data } } = await core.opAsync(
                 "op_crypto_export_key",
                 {
                   key: innerKey,
@@ -2195,6 +2195,21 @@
 
               // 3.
               return data.buffer;
+            }
+            case "jwk": {
+              const { jwkRsaKey } = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "jwk",
+                  algorithm: "RSASSA-PKCS1-v1_5",
+                },
+              );
+
+              return {
+                kty: "RSA",
+                ...jwkRsaKey,
+              };
             }
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
@@ -2212,7 +2227,7 @@
               }
 
               // 2.
-              const data = await core.opAsync(
+              const { raw: { data } } = await core.opAsync(
                 "op_crypto_export_key",
                 {
                   key: innerKey,
@@ -2235,7 +2250,7 @@
               }
 
               // 2.
-              const data = await core.opAsync(
+              const { raw: { data } } = await core.opAsync(
                 "op_crypto_export_key",
                 {
                   key: innerKey,
@@ -2247,6 +2262,21 @@
 
               // 3.
               return data.buffer;
+            }
+            case "jwk": {
+              const { jwkRsaKey } = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "jwk",
+                  algorithm: "RSA-PSS",
+                },
+              );
+
+              return {
+                kty: "RSA",
+                ...jwkRsaKey,
+              };
             }
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
@@ -2264,7 +2294,7 @@
               }
 
               // 2.
-              const data = await core.opAsync(
+              const { raw: { data } } = await core.opAsync(
                 "op_crypto_export_key",
                 {
                   key: innerKey,
@@ -2287,7 +2317,7 @@
               }
 
               // 2.
-              const data = await core.opAsync(
+              const { raw: { data } } = await core.opAsync(
                 "op_crypto_export_key",
                 {
                   key: innerKey,
@@ -2299,6 +2329,21 @@
 
               // 3.
               return data.buffer;
+            }
+            case "jwk": {
+              const { jwkRsaKey } = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "jwk",
+                  algorithm: "RSA-OAEP",
+                },
+              );
+
+              return {
+                kty: "RSA",
+                ...jwkRsaKey,
+              };
             }
             default:
               throw new DOMException("Not implemented", "NotSupportedError");

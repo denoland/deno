@@ -616,7 +616,7 @@ pub async fn op_crypto_export_key(
   _state: Rc<RefCell<OpState>>,
   args: ExportKeyArg,
   _: (),
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<ImportExportKeyData, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::RsassaPkcs1v15 => {
@@ -648,7 +648,9 @@ pub async fn op_crypto_export_key(
             private_key,
           };
 
-          Ok(pk_info.to_der().as_ref().to_vec().into())
+          Ok(ImportExportKeyData::Raw(RawKeyData {
+            data: pk_info.to_der().as_ref().to_vec().into(),
+          }))
         }
         KeyFormat::Spki => {
           // public_key is a PKCS#1 DER-encoded public key
@@ -669,9 +671,20 @@ pub async fn op_crypto_export_key(
 
           // Infallible based on spec because of the way we import and generate keys.
           let spki_der = key_info.to_vec().unwrap();
-          Ok(spki_der.into())
+          Ok(ImportExportKeyData::Raw(RawKeyData {
+            data: spki_der.into(),
+          }))
         }
-        // TODO(@littledivy): jwk
+        KeyFormat::Jwk => {
+          // key.data is a PKCS#1 DER-encoded public or private key
+          // Infallible based on spec because of the way we import and generate keys.
+          let jwk = convert_pkcs1_to_jwk_rsa(
+            args.key.data.to_vec(),
+            args.key.key_type,
+          )?;
+
+          Ok(ImportExportKeyData::JwkRsaKey(jwk))
+        }
         _ => unreachable!(),
       }
     }
@@ -705,7 +718,9 @@ pub async fn op_crypto_export_key(
             private_key,
           };
 
-          Ok(pk_info.to_der().as_ref().to_vec().into())
+          Ok(ImportExportKeyData::Raw(RawKeyData {
+            data: pk_info.to_der().as_ref().to_vec().into(),
+          }))
         }
         KeyFormat::Spki => {
           // Intentionally unused but required. Not encoded into SPKI (see below).
@@ -730,9 +745,20 @@ pub async fn op_crypto_export_key(
 
           // Infallible based on spec because of the way we import and generate keys.
           let spki_der = key_info.to_vec().unwrap();
-          Ok(spki_der.into())
+          Ok(ImportExportKeyData::Raw(RawKeyData {
+            data: spki_der.into(),
+          }))
         }
-        // TODO(@littledivy): jwk
+        KeyFormat::Jwk => {
+          // key.data is a PKCS#1 DER-encoded public or private key
+          // Infallible based on spec because of the way we import and generate keys.
+          let jwk = convert_pkcs1_to_jwk_rsa(
+            args.key.data.to_vec(),
+            args.key.key_type,
+          )?;
+
+          Ok(ImportExportKeyData::JwkRsaKey(jwk))
+        }
         _ => unreachable!(),
       }
     }
@@ -766,7 +792,9 @@ pub async fn op_crypto_export_key(
             private_key,
           };
 
-          Ok(pk_info.to_der().as_ref().to_vec().into())
+          Ok(ImportExportKeyData::Raw(RawKeyData {
+            data: pk_info.to_der().as_ref().to_vec().into(),
+          }))
         }
         KeyFormat::Spki => {
           // Intentionally unused but required. Not encoded into SPKI (see below).
@@ -791,9 +819,20 @@ pub async fn op_crypto_export_key(
 
           // Infallible based on spec because of the way we import and generate keys.
           let spki_der = key_info.to_vec().unwrap();
-          Ok(spki_der.into())
+          Ok(ImportExportKeyData::Raw(RawKeyData {
+            data: spki_der.into(),
+          }))
         }
-        // TODO(@littledivy): jwk
+        KeyFormat::Jwk => {
+          // key.data is a PKCS#1 DER-encoded public or private key
+          // Infallible based on spec because of the way we import and generate keys.
+          let jwk = convert_pkcs1_to_jwk_rsa(
+            args.key.data.to_vec(),
+            args.key.key_type,
+          )?;
+
+          Ok(ImportExportKeyData::JwkRsaKey(jwk))
+        }
         _ => unreachable!(),
       }
     }
@@ -1183,7 +1222,7 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
   }
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct RSAKeyComponentsB64 {
   e: String,
   n: String,
@@ -1304,7 +1343,60 @@ fn convert_jwk_rsa_to_pkcs1(
   })
 }
 
-#[derive(Deserialize)]
+fn encode_b64url(bytes: UIntBytes) -> String {
+  base64::encode_config(bytes.as_bytes(), base64::URL_SAFE_NO_PAD)
+}
+
+fn convert_pkcs1_to_jwk_rsa(
+  pkcs1: Vec<u8>,
+  key_type: KeyType,
+) -> Result<RSAKeyComponentsB64, AnyError> {
+  let jwk = match key_type {
+    KeyType::Private => {
+      let private_key =
+        rsa::pkcs1::RsaPrivateKey::from_der(&pkcs1).map_err(|e| {
+          custom_error("DOMExceptionOperationError", e.to_string())
+        })?;
+
+      let public_key = private_key.public_key();
+
+      RSAKeyComponentsB64 {
+        n: encode_b64url(public_key.modulus),
+        e: encode_b64url(public_key.public_exponent),
+
+        d: Some(encode_b64url(private_key.private_exponent)),
+        p: Some(encode_b64url(private_key.prime1)),
+        q: Some(encode_b64url(private_key.prime2)),
+        dp: Some(encode_b64url(private_key.exponent1)),
+        dq: Some(encode_b64url(private_key.exponent2)),
+        qi: Some(encode_b64url(private_key.coefficient)),
+      }
+    }
+    KeyType::Public => {
+      let public_key =
+        rsa::pkcs1::RsaPublicKey::from_der(&pkcs1).map_err(|e| {
+          custom_error("DOMExceptionOperationError", e.to_string())
+        })?;
+
+      RSAKeyComponentsB64 {
+        n: encode_b64url(public_key.modulus),
+        e: encode_b64url(public_key.public_exponent),
+
+        d: None,
+        p: None,
+        q: None,
+        dp: None,
+        dq: None,
+        qi: None,
+      }
+    }
+    _ => return Err(type_error("Invalid Key format".to_string())),
+  };
+
+  Ok(jwk)
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct SecretKeyComponentB64 {
   k: String,
 }
@@ -1325,9 +1417,18 @@ fn convert_jwk_to_secret_bytes(
   })
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct RawKeyData {
   data: ZeroCopyBuf,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ImportExportKeyData {
+  Raw(RawKeyData),
+  JwkSecretKey(SecretKeyComponentB64),
+  JwkRsaKey(RSAKeyComponentsB64),
+  //ec: todo @divy/@sean wykes
 }
 
 #[derive(Deserialize)]
@@ -1342,15 +1443,6 @@ pub struct ImportKeyArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ImportKeyData {
-  Raw(RawKeyData),
-  JwkSecretKey(SecretKeyComponentB64),
-  JwkRsaKey(RSAKeyComponentsB64),
-  //ec: todo @divy/@sean wykes
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportKeyResult {
@@ -1363,7 +1455,7 @@ pub struct ImportKeyResult {
 pub async fn op_crypto_import_key(
   _state: Rc<RefCell<OpState>>,
   args: ImportKeyArg,
-  key_data: ImportKeyData,
+  key_data: ImportExportKeyData,
 ) -> Result<ImportKeyResult, AnyError> {
   //let data = &*zero_copy;
   let algorithm = args.algorithm;
@@ -1380,7 +1472,7 @@ pub async fn op_crypto_import_key(
         CryptoNamedCurve::P256 => {
           // 1-2.
           let point = match key_data {
-            ImportKeyData::Raw(raw_data) => {
+            ImportExportKeyData::Raw(raw_data) => {
               encoded_key = raw_data.data;
               p256::EncodedPoint::from_bytes(&*encoded_key)?
             }
@@ -1395,7 +1487,7 @@ pub async fn op_crypto_import_key(
         CryptoNamedCurve::P384 => {
           // 1-2.
           let point = match key_data {
-            ImportKeyData::Raw(raw_data) => {
+            ImportExportKeyData::Raw(raw_data) => {
               encoded_key = raw_data.data;
               p384::EncodedPoint::from_bytes(&*encoded_key)?
             }
@@ -1423,7 +1515,7 @@ pub async fn op_crypto_import_key(
             .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
 
           // 2-3.
-          if let ImportKeyData::Raw(raw_data) = key_data {
+          if let ImportExportKeyData::Raw(raw_data) = key_data {
             let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(&*raw_data.data)
               .map_err(|e| {
                 custom_error("DOMExceptionOperationError", e.to_string())
@@ -1490,7 +1582,7 @@ pub async fn op_crypto_import_key(
         }
         // TODO(@littledivy): spki
         KeyFormat::Jwk => {
-          if let ImportKeyData::JwkRsaKey(jwk) = key_data {
+          if let ImportExportKeyData::JwkRsaKey(jwk) = key_data {
             let key_type = args.key_type.ok_or_else(|| {
               type_error("Missing argument key_type".to_string())
             })?;
@@ -1511,7 +1603,7 @@ pub async fn op_crypto_import_key(
             .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
 
           // 2-3.
-          if let ImportKeyData::Raw(raw_data) = key_data {
+          if let ImportExportKeyData::Raw(raw_data) = key_data {
             let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(&*raw_data.data)
               .map_err(|e| {
                 custom_error("DOMExceptionOperationError", e.to_string())
@@ -1618,7 +1710,7 @@ pub async fn op_crypto_import_key(
           }
         }
         KeyFormat::Jwk => {
-          if let ImportKeyData::JwkRsaKey(jwk) = key_data {
+          if let ImportExportKeyData::JwkRsaKey(jwk) = key_data {
             let key_type = args.key_type.ok_or_else(|| {
               type_error("Missing argument key_type".to_string())
             })?;
@@ -1640,7 +1732,7 @@ pub async fn op_crypto_import_key(
             .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
 
           // 2-3.
-          if let ImportKeyData::Raw(raw_data) = key_data {
+          if let ImportExportKeyData::Raw(raw_data) = key_data {
             let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(&*raw_data.data)
               .map_err(|e| {
                 custom_error("DOMExceptionOperationError", e.to_string())
@@ -1747,7 +1839,7 @@ pub async fn op_crypto_import_key(
           }
         }
         KeyFormat::Jwk => {
-          if let ImportKeyData::JwkRsaKey(jwk) = key_data {
+          if let ImportExportKeyData::JwkRsaKey(jwk) = key_data {
             let key_type = args.key_type.ok_or_else(|| {
               type_error("Missing argument key_type".to_string())
             })?;
@@ -1764,7 +1856,7 @@ pub async fn op_crypto_import_key(
     Algorithm::Hmac => {
       match args.format {
         KeyFormat::Jwk => {
-          if let ImportKeyData::JwkSecretKey(jwk) = key_data {
+          if let ImportExportKeyData::JwkSecretKey(jwk) = key_data {
             let key_type = args.key_type.ok_or_else(|| {
               type_error("Missing argument key_type".to_string())
             })?;
