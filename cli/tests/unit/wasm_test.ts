@@ -77,6 +77,20 @@ Deno.test(async function wasmInstantiateStreaming() {
 });
 
 Deno.test(
+  { permissions: { read: true } },
+  async function wasmFileStreaming() {
+    const url = new URL("../testdata/unreachable.wasm", import.meta.url);
+    assert(url.href.startsWith("file://"));
+
+    const { module } = await WebAssembly.instantiateStreaming(fetch(url));
+    assertEquals(WebAssembly.Module.exports(module), [{
+      name: "unreachable",
+      kind: "function",
+    }]);
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function wasmStreamingNonTrivial() {
     // deno-dom's WASM file is a real-world non-trivial case that gave us

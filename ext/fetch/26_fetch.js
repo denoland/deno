@@ -37,6 +37,7 @@
     PromisePrototypeThen,
     PromisePrototypeCatch,
     String,
+    StringPrototypeStartsWith,
     StringPrototypeToLowerCase,
     TypedArrayPrototypeSubarray,
     TypeError,
@@ -498,12 +499,16 @@
         // The spec is ambiguous here, see
         // https://github.com/WebAssembly/spec/issues/1138. The WPT tests
         // expect the raw value of the Content-Type attribute lowercased.
-        const contentType = res.headers.get("Content-Type");
-        if (
-          typeof contentType !== "string" ||
-          StringPrototypeToLowerCase(contentType) !== "application/wasm"
-        ) {
-          throw new TypeError("Invalid WebAssembly content type.");
+        // We ignore this for file:// because file fetches don't have a
+        // Content-Type.
+        if (!StringPrototypeStartsWith(res.url, "file://")) {
+          const contentType = res.headers.get("Content-Type");
+          if (
+            typeof contentType !== "string" ||
+            StringPrototypeToLowerCase(contentType) !== "application/wasm"
+          ) {
+            throw new TypeError("Invalid WebAssembly content type.");
+          }
         }
 
         // 2.5.
