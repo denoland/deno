@@ -15,6 +15,7 @@ use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::FmtFlags;
+use crate::fs_util::specifier_to_file_path;
 use crate::fs_util::{collect_files, get_extension, is_supported_ext_fmt};
 use crate::text_encoding;
 use deno_ast::ParsedSource;
@@ -59,8 +60,8 @@ pub async fn format(
         .files
         .include
         .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
 
     if exclude_files.is_empty() {
@@ -68,8 +69,8 @@ pub async fn format(
         .files
         .exclude
         .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
   }
 

@@ -6,10 +6,9 @@ import {
   assertRejects,
   assertThrows,
   pathToAbsoluteFileUrl,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest({ permissions: { read: true } }, function realPathSyncSuccess() {
+Deno.test({ permissions: { read: true } }, function realPathSyncSuccess() {
   const relative = "cli/tests/testdata/fixture.json";
   const realPath = Deno.realPathSync(relative);
   if (Deno.build.os !== "windows") {
@@ -21,13 +20,13 @@ unitTest({ permissions: { read: true } }, function realPathSyncSuccess() {
   }
 });
 
-unitTest({ permissions: { read: true } }, function realPathSyncUrl() {
+Deno.test({ permissions: { read: true } }, function realPathSyncUrl() {
   const relative = "cli/tests/testdata/fixture.json";
   const url = pathToAbsoluteFileUrl(relative);
   assertEquals(Deno.realPathSync(relative), Deno.realPathSync(url));
 });
 
-unitTest(
+Deno.test(
   {
     permissions: { read: true, write: true },
   },
@@ -48,19 +47,19 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { read: false } }, function realPathSyncPerm() {
+Deno.test({ permissions: { read: false } }, function realPathSyncPerm() {
   assertThrows(() => {
     Deno.realPathSync("some_file");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { read: true } }, function realPathSyncNotFound() {
+Deno.test({ permissions: { read: true } }, function realPathSyncNotFound() {
   assertThrows(() => {
     Deno.realPathSync("bad_filename");
   }, Deno.errors.NotFound);
 });
 
-unitTest({ permissions: { read: true } }, async function realPathSuccess() {
+Deno.test({ permissions: { read: true } }, async function realPathSuccess() {
   const relativePath = "cli/tests/testdata/fixture.json";
   const realPath = await Deno.realPath(relativePath);
   if (Deno.build.os !== "windows") {
@@ -72,7 +71,7 @@ unitTest({ permissions: { read: true } }, async function realPathSuccess() {
   }
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true } },
   async function realPathUrl() {
     const relative = "cli/tests/testdata/fixture.json";
@@ -81,7 +80,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { read: true, write: true },
   },
@@ -102,13 +101,13 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { read: false } }, async function realPathPerm() {
+Deno.test({ permissions: { read: false } }, async function realPathPerm() {
   await assertRejects(async () => {
     await Deno.realPath("some_file");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { read: true } }, async function realPathNotFound() {
+Deno.test({ permissions: { read: true } }, async function realPathNotFound() {
   await assertRejects(async () => {
     await Deno.realPath("bad_filename");
   }, Deno.errors.NotFound);

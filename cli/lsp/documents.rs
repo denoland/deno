@@ -8,6 +8,7 @@ use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
+use crate::fs_util::specifier_to_file_path;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::resolver::ImportMapResolver;
@@ -741,7 +742,7 @@ fn get_document_path(
   specifier: &ModuleSpecifier,
 ) -> Option<PathBuf> {
   if specifier.scheme() == "file" {
-    specifier.to_file_path().ok()
+    specifier_to_file_path(specifier).ok()
   } else {
     let path = cache.get_cache_filename(specifier)?;
     if path.is_file() {

@@ -1,11 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
-unitTest({ permissions: { read: true } }, function dirCwdNotNull() {
+Deno.test({ permissions: { read: true } }, function dirCwdNotNull() {
   assert(Deno.cwd() != null);
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function dirCwdChdirSuccess() {
     const initialdir = Deno.cwd();
@@ -21,7 +21,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { read: true, write: true } }, function dirCwdError() {
+Deno.test({ permissions: { read: true, write: true } }, function dirCwdError() {
   // excluding windows since it throws resource busy, while removeSync
   if (["linux", "darwin"].includes(Deno.build.os)) {
     const initialdir = Deno.cwd();
@@ -38,7 +38,7 @@ unitTest({ permissions: { read: true, write: true } }, function dirCwdError() {
   }
 });
 
-unitTest({ permissions: { read: false } }, function dirCwdPermError() {
+Deno.test({ permissions: { read: false } }, function dirCwdPermError() {
   assertThrows(
     () => {
       Deno.cwd();
@@ -48,7 +48,7 @@ unitTest({ permissions: { read: false } }, function dirCwdPermError() {
   );
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function dirChdirError() {
     const path = Deno.makeTempDirSync() + "test";

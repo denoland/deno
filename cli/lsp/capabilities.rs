@@ -68,7 +68,7 @@ pub fn server_capabilities(
     text_document_sync: Some(TextDocumentSyncCapability::Options(
       TextDocumentSyncOptions {
         open_close: Some(true),
-        change: Some(TextDocumentSyncKind::Incremental),
+        change: Some(TextDocumentSyncKind::INCREMENTAL),
         will_save: None,
         will_save_wait_until: None,
         save: Some(SaveOptions::default().into()),
