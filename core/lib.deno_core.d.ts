@@ -124,8 +124,11 @@ declare namespace Deno {
       cb: PromiseRejectCallback,
     ): undefined | PromiseRejectCallback;
 
-    export type PromiseRejectCallback =
-      (type: number, promise: Promise, reason: any) => void;
+    export type PromiseRejectCallback = (
+      type: number,
+      promise: Promise,
+      reason: any,
+    ) => void;
 
     /**
      * Set a callback that will be called when an exception isn't caught
