@@ -93,6 +93,7 @@ use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
 fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
@@ -1475,4 +1476,7 @@ pub fn main() {
   logger::init(flags.log_level);
 
   unwrap_or_exit(run_basic(get_subcommand(flags)));
+
+  let code = deno_runtime::EXIT_CODE.load(Relaxed);
+  std::process::exit(code);
 }

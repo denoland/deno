@@ -10,6 +10,7 @@ use deno_core::OpState;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
+use std::sync::atomic::Ordering::Relaxed;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -23,6 +24,7 @@ pub fn init() -> Extension {
       ("op_hostname", op_sync(op_hostname)),
       ("op_loadavg", op_sync(op_loadavg)),
       ("op_os_release", op_sync(op_os_release)),
+      ("op_set_exit_code", op_sync(op_set_exit_code)),
       ("op_system_memory_info", op_sync(op_system_memory_info)),
     ])
     .build()
@@ -95,7 +97,13 @@ fn op_delete_env(
   Ok(())
 }
 
-fn op_exit(_state: &mut OpState, code: i32, _: ()) -> Result<(), AnyError> {
+fn op_set_exit_code(_: &mut OpState, code: i32, _: ()) -> Result<(), AnyError> {
+  crate::EXIT_CODE.store(code, Relaxed);
+  Ok(())
+}
+
+fn op_exit(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
+  let code = crate::EXIT_CODE.load(Relaxed);
   std::process::exit(code)
 }
 
