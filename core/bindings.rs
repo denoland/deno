@@ -48,6 +48,12 @@ lazy_static::lazy_static! {
         function: set_nexttick_callback.map_fn_to()
       },
       v8::ExternalReference {
+        function: set_promise_reject_callback.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: set_uncaught_exception_callback.map_fn_to()
+      },
+      v8::ExternalReference {
         function: run_microtasks.map_fn_to()
       },
       v8::ExternalReference {
@@ -170,6 +176,18 @@ pub fn initialize_context<'s>(
     core_val,
     "setNextTickCallback",
     set_nexttick_callback,
+  );
+  set_func(
+    scope,
+    core_val,
+    "setPromiseRejectCallback",
+    set_promise_reject_callback,
+  );
+  set_func(
+    scope,
+    core_val,
+    "setUncaughtExceptionCallback",
+    set_uncaught_exception_callback,
   );
   set_func(scope, core_val, "runMicrotasks", run_microtasks);
   set_func(scope, core_val, "hasTickScheduled", has_tick_scheduled);
@@ -320,30 +338,89 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
+  use v8::PromiseRejectEvent::*;
+
   let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  let promise = message.get_promise();
-  let promise_global = v8::Global::new(scope, promise);
+  // Node compat: perform synchronous process.emit("unhandledRejection").
+  //
+  // Note the callback follows the (type, promise, reason) signature of Node's
+  // internal promiseRejectHandler from lib/internal/process/promises.js, not
+  // the (promise, reason) signature of the "unhandledRejection" event listener.
+  //
+  // Short-circuits Deno's regular unhandled rejection logic because that's
+  // a) asynchronous, and b) always terminates.
+  if let Some(js_promise_reject_cb) = state.js_promise_reject_cb.clone() {
+    let js_uncaught_exception_cb = state.js_uncaught_exception_cb.clone();
+    drop(state); // Drop borrow, callbacks can call back into runtime.
 
-  match message.get_event() {
-    v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
-      let error = message.get_value().unwrap();
-      let error_global = v8::Global::new(scope, error);
-      state
-        .pending_promise_exceptions
-        .insert(promise_global, error_global);
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
+    let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
+    let promise = message.get_promise();
+
+    let reason = match message.get_event() {
+      PromiseRejectWithNoHandler
+      | PromiseRejectAfterResolved
+      | PromiseResolveAfterResolved => message.get_value().unwrap_or(undefined),
+      PromiseHandlerAddedAfterReject => undefined,
+    };
+
+    let args = &[type_.into(), promise.into(), reason];
+    js_promise_reject_cb
+      .open(tc_scope)
+      .call(tc_scope, undefined, args);
+
+    if let Some(exception) = tc_scope.exception() {
+      if let Some(js_uncaught_exception_cb) = js_uncaught_exception_cb {
+        tc_scope.reset(); // Cancel pending exception.
+        js_uncaught_exception_cb.open(tc_scope).call(
+          tc_scope,
+          undefined,
+          &[exception],
+        );
+      }
     }
-    v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
-      state.pending_promise_exceptions.remove(&promise_global);
+
+    if tc_scope.has_caught() {
+      // If we get here, an exception was thrown by the unhandledRejection
+      // handler and there is ether no uncaughtException handler or the
+      // handler threw an exception of its own.
+      //
+      // TODO(bnoordhuis) Node terminates the process or worker thread
+      // but we don't really have that option. The exception won't bubble
+      // up either because V8 cancels it when this function returns.
+      let exception = tc_scope
+        .stack_trace()
+        .or_else(|| tc_scope.exception())
+        .map(|value| value.to_rust_string_lossy(tc_scope))
+        .unwrap_or_else(|| "no exception".into());
+      eprintln!("Unhandled exception: {}", exception);
     }
-    v8::PromiseRejectEvent::PromiseRejectAfterResolved => {}
-    v8::PromiseRejectEvent::PromiseResolveAfterResolved => {
-      // Should not warn. See #1272
+  } else {
+    let promise = message.get_promise();
+    let promise_global = v8::Global::new(scope, promise);
+
+    match message.get_event() {
+      PromiseRejectWithNoHandler => {
+        let error = message.get_value().unwrap();
+        let error_global = v8::Global::new(scope, error);
+        state
+          .pending_promise_exceptions
+          .insert(promise_global, error_global);
+      }
+      PromiseHandlerAddedAfterReject => {
+        state.pending_promise_exceptions.remove(&promise_global);
+      }
+      PromiseRejectAfterResolved => {}
+      PromiseResolveAfterResolved => {
+        // Should not warn. See #1272
+      }
     }
-  };
+  }
 }
 
 fn opcall_sync<'s>(
@@ -545,15 +622,12 @@ fn set_nexttick_callback(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
-
-  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
-    Ok(cb) => cb,
-    Err(err) => return throw_type_error(scope, err.to_string()),
-  };
-
-  state.js_nexttick_cbs.push(v8::Global::new(scope, cb));
+  if let Ok(cb) = arg0_to_cb(scope, args) {
+    JsRuntime::state(scope)
+      .borrow_mut()
+      .js_nexttick_cbs
+      .push(cb);
+  }
 }
 
 fn set_macrotask_callback(
@@ -561,15 +635,55 @@ fn set_macrotask_callback(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  if let Ok(cb) = arg0_to_cb(scope, args) {
+    JsRuntime::state(scope)
+      .borrow_mut()
+      .js_macrotask_cbs
+      .push(cb);
+  }
+}
 
-  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
-    Ok(cb) => cb,
-    Err(err) => return throw_type_error(scope, err.to_string()),
-  };
+fn set_promise_reject_callback(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  if let Ok(new) = arg0_to_cb(scope, args) {
+    if let Some(old) = JsRuntime::state(scope)
+      .borrow_mut()
+      .js_promise_reject_cb
+      .replace(new)
+    {
+      let old = v8::Local::new(scope, old);
+      rv.set(old.into());
+    }
+  }
+}
 
-  state.js_macrotask_cbs.push(v8::Global::new(scope, cb));
+fn set_uncaught_exception_callback(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  if let Ok(new) = arg0_to_cb(scope, args) {
+    if let Some(old) = JsRuntime::state(scope)
+      .borrow_mut()
+      .js_uncaught_exception_cb
+      .replace(new)
+    {
+      let old = v8::Local::new(scope, old);
+      rv.set(old.into());
+    }
+  }
+}
+
+fn arg0_to_cb(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+) -> Result<v8::Global<v8::Function>, ()> {
+  v8::Local::<v8::Function>::try_from(args.get(0))
+    .map(|cb| v8::Global::new(scope, cb))
+    .map_err(|err| throw_type_error(scope, err.to_string()))
 }
 
 fn eval_context(
@@ -707,19 +821,19 @@ fn set_wasm_streaming_callback(
 ) {
   use crate::ops_builtin::WasmStreamingResource;
 
+  let cb = match arg0_to_cb(scope, args) {
+    Ok(cb) => cb,
+    Err(()) => return,
+  };
+
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
-
-  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
-    Ok(cb) => cb,
-    Err(err) => return throw_type_error(scope, err.to_string()),
-  };
 
   // The callback to pass to the v8 API has to be a unit type, so it can't
   // borrow or move any local variables. Therefore, we're storing the JS
   // callback in a JsRuntimeState slot.
   if let slot @ None = &mut state.js_wasm_streaming_cb {
-    slot.replace(v8::Global::new(scope, cb));
+    slot.replace(cb);
   } else {
     return throw_type_error(
       scope,
