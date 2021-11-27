@@ -144,6 +144,8 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
+  pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_uncaught_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -351,6 +353,8 @@ impl JsRuntime {
       js_sync_cb: None,
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
+      js_promise_reject_cb: None,
+      js_uncaught_exception_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       js_error_create_fn,
@@ -2641,5 +2645,95 @@ assertEquals(1, notify_return_value);
       .unwrap_err()
       .to_string()
       .contains("JavaScript execution has been terminated"));
+  }
+
+  #[tokio::test]
+  async fn test_set_promise_reject_callback() {
+    let promise_reject = Arc::new(AtomicUsize::default());
+    let promise_reject_ = Arc::clone(&promise_reject);
+
+    let uncaught_exception = Arc::new(AtomicUsize::default());
+    let uncaught_exception_ = Arc::clone(&uncaught_exception);
+
+    let op_promise_reject = move |_: &mut OpState, _: (), _: ()| {
+      promise_reject_.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    };
+
+    let op_uncaught_exception = move |_: &mut OpState, _: (), _: ()| {
+      uncaught_exception_.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    };
+
+    let extension = Extension::builder()
+      .ops(vec![("op_promise_reject", op_sync(op_promise_reject))])
+      .ops(vec![(
+        "op_uncaught_exception",
+        op_sync(op_uncaught_exception),
+      )])
+      .build();
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "promise_reject_callback.js",
+        r#"
+        // Note: |promise| is not the promise created below, it's a child.
+        Deno.core.setPromiseRejectCallback((type, promise, reason) => {
+          if (type !== /* PromiseRejectWithNoHandler */ 0) {
+            throw Error("unexpected type: " + type);
+          }
+          if (reason.message !== "reject") {
+            throw Error("unexpected reason: " + reason);
+          }
+          Deno.core.opSync("op_promise_reject");
+          throw Error("promiseReject"); // Triggers uncaughtException handler.
+        });
+
+        Deno.core.setUncaughtExceptionCallback((err) => {
+          if (err.message !== "promiseReject") throw err;
+          Deno.core.opSync("op_uncaught_exception");
+        });
+
+        new Promise((_, reject) => reject(Error("reject")));
+        "#,
+      )
+      .unwrap();
+    runtime.run_event_loop(false).await.unwrap();
+
+    assert_eq!(1, promise_reject.load(Ordering::Relaxed));
+    assert_eq!(1, uncaught_exception.load(Ordering::Relaxed));
+
+    runtime
+      .execute_script(
+        "promise_reject_callback.js",
+        r#"
+        {
+          const prev = Deno.core.setPromiseRejectCallback((...args) => {
+            prev(...args);
+          });
+        }
+
+        {
+          const prev = Deno.core.setUncaughtExceptionCallback((...args) => {
+            prev(...args);
+            throw Error("fail");
+          });
+        }
+
+        new Promise((_, reject) => reject(Error("reject")));
+        "#,
+      )
+      .unwrap();
+    // Exception from uncaughtException handler doesn't bubble up but is
+    // printed to stderr.
+    runtime.run_event_loop(false).await.unwrap();
+
+    assert_eq!(2, promise_reject.load(Ordering::Relaxed));
+    assert_eq!(2, uncaught_exception.load(Ordering::Relaxed));
   }
 }

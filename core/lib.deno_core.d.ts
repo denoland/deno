@@ -115,5 +115,31 @@ declare namespace Deno {
     function setMacrotaskCallback(
       cb: () => bool,
     ): void;
+
+    /**
+     * Set a callback that will be called when a promise without a .catch
+     * handler is rejected. Returns the old handler or undefined.
+     */
+    function setPromiseRejectCallback(
+      cb: PromiseRejectCallback,
+    ): undefined | PromiseRejectCallback;
+
+    export type PromiseRejectCallback = (
+      type: number,
+      promise: Promise,
+      reason: any,
+    ) => void;
+
+    /**
+     * Set a callback that will be called when an exception isn't caught
+     * by any try/catch handlers. Currently only invoked when the callback
+     * to setPromiseRejectCallback() throws an exception but that is expected
+     * to change in the future. Returns the old handler or undefined.
+     */
+    function setUncaughtExceptionCallback(
+      cb: UncaughtExceptionCallback,
+    ): undefined | UncaughtExceptionCallback;
+
+    export type UncaughtExceptionCallback = (err: any) => void;
   }
 }
