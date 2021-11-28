@@ -805,6 +805,7 @@ dependencies = [
  "data-url",
  "deno_core",
  "deno_tls",
+ "dyn-clone",
  "http",
  "reqwest",
  "serde",
@@ -1157,6 +1158,12 @@ dependencies = [
  "swc_ecmascript",
  "text_lines",
 ]
+
+[[package]]
+name = "dyn-clone"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee2626afccd7561a06cf1367e2950c4718ea04565e20fb5029b6c7d8ad09abcf"
 
 [[package]]
 name = "ecdsa"
