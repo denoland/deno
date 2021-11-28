@@ -18,6 +18,7 @@ bytes = "1.1.0"
 data-url = "0.1.0"
 deno_core = { version = "0.109.0", path = "../../core" }
 deno_tls = { version = "0.14.0", path = "../tls" }
+dyn-clone = "1"
 http = "0.2.4"
 reqwest = { version = "0.11.4", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 serde = { version = "1.0.129", features = ["derive"] }
