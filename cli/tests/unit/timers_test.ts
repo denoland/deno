@@ -206,6 +206,60 @@ Deno.test(function intervalCancelInvalidSilentFail() {
   clearInterval(2147483647);
 });
 
+Deno.test(async function callbackTakesLongerThanInterval() {
+  const promise = deferred();
+
+  let timeEndOfFirstCallback: number | undefined;
+  const interval = setInterval(() => {
+    if (timeEndOfFirstCallback === undefined) {
+      // First callback
+      Deno.sleepSync(300);
+      timeEndOfFirstCallback = Date.now();
+    } else {
+      // Second callback
+      assert(Date.now() - 100 >= timeEndOfFirstCallback);
+      clearInterval(interval);
+      promise.resolve();
+    }
+  }, 100);
+
+  await promise;
+});
+
+// https://github.com/denoland/deno/issues/11398
+Deno.test(async function clearTimeoutAfterNextTimerIsDue1() {
+  const promise = deferred();
+
+  setTimeout(() => {
+    promise.resolve();
+  }, 300);
+
+  const interval = setInterval(() => {
+    Deno.sleepSync(400);
+    // Both the interval and the timeout's due times are now in the past.
+    clearTimeout(interval);
+  }, 100);
+
+  await promise;
+});
+
+// https://github.com/denoland/deno/issues/11398
+Deno.test(async function clearTimeoutAfterNextTimerIsDue2() {
+  const promise = deferred();
+
+  const timeout1 = setTimeout(() => {}, 100);
+
+  setTimeout(() => {
+    promise.resolve();
+  }, 200);
+
+  Deno.sleepSync(300);
+  // Both of the timeouts' due times are now in the past.
+  clearTimeout(timeout1);
+
+  await promise;
+});
+
 Deno.test(async function fireCallbackImmediatelyWhenDelayOverMaxValue() {
   let count = 0;
   setTimeout(() => {
