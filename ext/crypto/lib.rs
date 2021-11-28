@@ -1288,7 +1288,73 @@ pub async fn op_crypto_import_key(
             modulus_length: Some(private_key.modulus.as_bytes().len() * 8),
           })
         }
-        // TODO(@littledivy): spki
+        KeyFormat::Spki => {
+          let hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // 2-3.
+          let pk_info =
+            spki::SubjectPublicKeyInfo::from_der(data).map_err(|e| {
+              custom_error("DOMExceptionOperationError", e.to_string())
+            })?;
+
+          // 4-5.
+          let alg = pk_info.algorithm.oid;
+
+          // 6.
+          let pk_hash = match alg {
+            // rsaEncryption
+            RSA_ENCRYPTION_OID => None,
+            // sha1WithRSAEncryption
+            SHA1_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha1),
+            // sha256WithRSAEncryption
+            SHA256_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha256),
+            // sha384WithRSAEncryption
+            SHA384_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha384),
+            // sha512WithRSAEncryption
+            SHA512_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha512),
+            _ => return Err(type_error("Unsupported algorithm".to_string())),
+          };
+
+          // 7.
+          if let Some(pk_hash) = pk_hash {
+            if pk_hash != hash {
+              return Err(custom_error(
+                "DOMExceptionDataError",
+                "Hash mismatch".to_string(),
+              ));
+            }
+          }
+
+          // 8-9.
+          let public_key =
+            rsa::pkcs1::RsaPublicKey::from_der(pk_info.subject_public_key)
+              .map_err(|e| {
+                custom_error("DOMExceptionOperationError", e.to_string())
+              })?;
+
+          let bytes_consumed = public_key.encoded_len().map_err(|e| {
+            custom_error("DOMExceptionDataError", e.to_string())
+          })?;
+
+          if bytes_consumed
+            != spki::der::Length::new(pk_info.subject_public_key.len() as u16)
+          {
+            return Err(custom_error(
+              "DOMExceptionDataError",
+              "Some bytes were not consumed".to_string(),
+            ));
+          }
+
+          Ok(ImportKeyResult {
+            data: pk_info.subject_public_key.to_vec().into(),
+            public_exponent: Some(
+              public_key.public_exponent.as_bytes().to_vec().into(),
+            ),
+            modulus_length: Some(public_key.modulus.as_bytes().len() * 8),
+          })
+        }
         // TODO(@littledivy): jwk
         _ => Err(type_error("Unsupported format".to_string())),
       }
@@ -1402,7 +1468,73 @@ pub async fn op_crypto_import_key(
             modulus_length: Some(private_key.modulus.as_bytes().len() * 8),
           })
         }
-        // TODO(@littledivy): spki
+        KeyFormat::Spki => {
+          let hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // 2-3.
+          let pk_info =
+            spki::SubjectPublicKeyInfo::from_der(data).map_err(|e| {
+              custom_error("DOMExceptionOperationError", e.to_string())
+            })?;
+
+          // 4-5.
+          let alg = pk_info.algorithm.oid;
+
+          // 6.
+          let pk_hash = match alg {
+            // rsaEncryption
+            RSA_ENCRYPTION_OID => None,
+            // sha1WithRSAEncryption
+            SHA1_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha1),
+            // sha256WithRSAEncryption
+            SHA256_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha256),
+            // sha384WithRSAEncryption
+            SHA384_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha384),
+            // sha512WithRSAEncryption
+            SHA512_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha512),
+            _ => return Err(type_error("Unsupported algorithm".to_string())),
+          };
+
+          // 7.
+          if let Some(pk_hash) = pk_hash {
+            if pk_hash != hash {
+              return Err(custom_error(
+                "DOMExceptionDataError",
+                "Hash mismatch".to_string(),
+              ));
+            }
+          }
+
+          // 8-9.
+          let public_key =
+            rsa::pkcs1::RsaPublicKey::from_der(pk_info.subject_public_key)
+              .map_err(|e| {
+                custom_error("DOMExceptionOperationError", e.to_string())
+              })?;
+
+          let bytes_consumed = public_key.encoded_len().map_err(|e| {
+            custom_error("DOMExceptionDataError", e.to_string())
+          })?;
+
+          if bytes_consumed
+            != spki::der::Length::new(pk_info.subject_public_key.len() as u16)
+          {
+            return Err(custom_error(
+              "DOMExceptionDataError",
+              "Some bytes were not consumed".to_string(),
+            ));
+          }
+
+          Ok(ImportKeyResult {
+            data: pk_info.subject_public_key.to_vec().into(),
+            public_exponent: Some(
+              public_key.public_exponent.as_bytes().to_vec().into(),
+            ),
+            modulus_length: Some(public_key.modulus.as_bytes().len() * 8),
+          })
+        }
         // TODO(@littledivy): jwk
         _ => Err(type_error("Unsupported format".to_string())),
       }
@@ -1516,7 +1648,73 @@ pub async fn op_crypto_import_key(
             modulus_length: Some(private_key.modulus.as_bytes().len() * 8),
           })
         }
-        // TODO(@littledivy): spki
+        KeyFormat::Spki => {
+          let hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // 2-3.
+          let pk_info =
+            spki::SubjectPublicKeyInfo::from_der(data).map_err(|e| {
+              custom_error("DOMExceptionOperationError", e.to_string())
+            })?;
+
+          // 4-5.
+          let alg = pk_info.algorithm.oid;
+
+          // 6.
+          let pk_hash = match alg {
+            // rsaEncryption
+            RSA_ENCRYPTION_OID => None,
+            // sha1WithRSAEncryption
+            SHA1_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha1),
+            // sha256WithRSAEncryption
+            SHA256_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha256),
+            // sha384WithRSAEncryption
+            SHA384_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha384),
+            // sha512WithRSAEncryption
+            SHA512_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha512),
+            _ => return Err(type_error("Unsupported algorithm".to_string())),
+          };
+
+          // 7.
+          if let Some(pk_hash) = pk_hash {
+            if pk_hash != hash {
+              return Err(custom_error(
+                "DOMExceptionDataError",
+                "Hash mismatch".to_string(),
+              ));
+            }
+          }
+
+          // 8-9.
+          let public_key =
+            rsa::pkcs1::RsaPublicKey::from_der(pk_info.subject_public_key)
+              .map_err(|e| {
+                custom_error("DOMExceptionOperationError", e.to_string())
+              })?;
+
+          let bytes_consumed = public_key.encoded_len().map_err(|e| {
+            custom_error("DOMExceptionDataError", e.to_string())
+          })?;
+
+          if bytes_consumed
+            != spki::der::Length::new(pk_info.subject_public_key.len() as u16)
+          {
+            return Err(custom_error(
+              "DOMExceptionDataError",
+              "Some bytes were not consumed".to_string(),
+            ));
+          }
+
+          Ok(ImportKeyResult {
+            data: pk_info.subject_public_key.to_vec().into(),
+            public_exponent: Some(
+              public_key.public_exponent.as_bytes().to_vec().into(),
+            ),
+            modulus_length: Some(public_key.modulus.as_bytes().len() * 8),
+          })
+        }
         // TODO(@littledivy): jwk
         _ => Err(type_error("Unsupported format".to_string())),
       }

@@ -1114,6 +1114,58 @@
 
               return key;
             }
+            case "spki": {
+              // 1.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["verify"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+
+              if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }
+
+              // 2-9.
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSASSA-PKCS1-v1_5",
+                    format: "spki",
+                    // Needed to perform step 7 without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  keyData,
+                );
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                // PKCS#1 for RSA
+                type: "raw",
+                data,
+              });
+
+              const algorithm = {
+                name: "RSASSA-PKCS1-v1_5",
+                modulusLength,
+                publicExponent,
+                hash: normalizedAlgorithm.hash,
+              };
+
+              const key = constructKey(
+                "public",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
@@ -1172,6 +1224,58 @@
 
               return key;
             }
+            case "spki": {
+              // 1.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["verify"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+
+              if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }
+
+              // 2-9.
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSA-PSS",
+                    format: "spki",
+                    // Needed to perform step 7 without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  keyData,
+                );
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                // PKCS#1 for RSA
+                type: "raw",
+                data,
+              });
+
+              const algorithm = {
+                name: "RSA-PSS",
+                modulusLength,
+                publicExponent,
+                hash: normalizedAlgorithm.hash,
+              };
+
+              const key = constructKey(
+                "public",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
@@ -1222,6 +1326,58 @@
 
               const key = constructKey(
                 "private",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
+            case "spki": {
+              // 1.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["encrypt", "wrapKey"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+
+              if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }
+
+              // 2-9.
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSA-OAEP",
+                    format: "spki",
+                    // Needed to perform step 7 without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  keyData,
+                );
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                // PKCS#1 for RSA
+                type: "raw",
+                data,
+              });
+
+              const algorithm = {
+                name: "RSA-OAEP",
+                modulusLength,
+                publicExponent,
+                hash: normalizedAlgorithm.hash,
+              };
+
+              const key = constructKey(
+                "public",
                 extractable,
                 usageIntersection(keyUsages, recognisedUsages),
                 algorithm,
