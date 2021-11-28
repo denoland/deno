@@ -859,6 +859,24 @@ itest!(exit_error42 {
   output: "exit_error42.ts.out",
 });
 
+itest!(set_exit_code_0 {
+  args: "run --no-check --unstable set_exit_code_0.ts",
+  output: "empty.out",
+  exit_code: 0,
+});
+
+itest!(set_exit_code_1 {
+  args: "run --no-check --unstable set_exit_code_1.ts",
+  output: "empty.out",
+  exit_code: 42,
+});
+
+itest!(set_exit_code_2 {
+  args: "run --no-check --unstable set_exit_code_2.ts",
+  output: "empty.out",
+  exit_code: 42,
+});
+
 itest!(heapstats {
   args: "run --quiet --unstable --v8-flags=--expose-gc heapstats.js",
   output: "heapstats.js.out",

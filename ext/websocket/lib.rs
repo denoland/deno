@@ -239,6 +239,16 @@ where
       );
   }
 
+  let cancel_resource = if let Some(cancel_rid) = args.cancel_handle {
+    let r = state
+      .borrow_mut()
+      .resource_table
+      .get::<WsCancelResource>(cancel_rid)?;
+    Some(r)
+  } else {
+    None
+  };
+
   let unsafely_ignore_certificate_errors = state
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
@@ -283,13 +293,9 @@ where
 
   let client = client_async(request, socket);
   let (stream, response): (WsStream, Response) =
-    if let Some(cancel_rid) = args.cancel_handle {
-      let r = state
-        .borrow_mut()
-        .resource_table
-        .get::<WsCancelResource>(cancel_rid)?;
+    if let Some(cancel_resource) = cancel_resource {
       client
-        .or_cancel(r.0.to_owned())
+        .or_cancel(cancel_resource.0.to_owned())
         .await
         .map_err(|_| DomExceptionAbortError::new("connection was aborted"))?
     } else {

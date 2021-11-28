@@ -80,8 +80,8 @@ Deno.test(function nameOfTestCaseCantBeEmpty() {
   );
 });
 
-Deno.test(function invalidStepArguments(t) {
-  assertRejects(
+Deno.test(async function invalidStepArguments(t) {
+  await assertRejects(
     async () => {
       // deno-lint-ignore no-explicit-any
       await (t as any).step("test");
@@ -90,7 +90,7 @@ Deno.test(function invalidStepArguments(t) {
     "Expected function for second argument.",
   );
 
-  assertRejects(
+  await assertRejects(
     async () => {
       // deno-lint-ignore no-explicit-any
       await (t as any).step("test", "not a function");
@@ -99,7 +99,7 @@ Deno.test(function invalidStepArguments(t) {
     "Expected function for second argument.",
   );
 
-  assertRejects(
+  await assertRejects(
     async () => {
       // deno-lint-ignore no-explicit-any
       await (t as any).step();
@@ -108,7 +108,7 @@ Deno.test(function invalidStepArguments(t) {
     "Expected a test definition or name and function.",
   );
 
-  assertRejects(
+  await assertRejects(
     async () => {
       // deno-lint-ignore no-explicit-any
       await (t as any).step(() => {});

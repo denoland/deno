@@ -151,6 +151,11 @@ itest!(ops_sanitizer_unstable {
   output: "test/ops_sanitizer_unstable.out",
 });
 
+itest!(ops_sanitizer_timeout_failure {
+  args: "test test/ops_sanitizer_timeout_failure.ts",
+  output: "test/ops_sanitizer_timeout_failure.out",
+});
+
 itest!(exit_sanitizer {
   args: "test test/exit_sanitizer.ts",
   output: "test/exit_sanitizer.out",
