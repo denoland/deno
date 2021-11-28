@@ -6,11 +6,10 @@ import {
   deferred,
   fail,
   unimplemented,
-  unitTest,
 } from "./test_util.ts";
 import { Buffer } from "../../../test_util/std/io/buffer.ts";
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchRequiresOneArgument() {
     await assertRejects(
@@ -20,7 +19,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { net: true } }, async function fetchProtocolError() {
+Deno.test({ permissions: { net: true } }, async function fetchProtocolError() {
   await assertRejects(
     async () => {
       await fetch("ftp://localhost:21/a/file");
@@ -54,7 +53,7 @@ function findClosedPortInRange(
   );
 }
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchConnectionError() {
     const port = findClosedPortInRange(4000, 9999);
@@ -68,7 +67,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchDnsError() {
     await assertRejects(
@@ -81,7 +80,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchInvalidUriError() {
     await assertRejects(
@@ -93,25 +92,25 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { net: true } }, async function fetchJsonSuccess() {
+Deno.test({ permissions: { net: true } }, async function fetchJsonSuccess() {
   const response = await fetch("http://localhost:4545/fixture.json");
   const json = await response.json();
   assertEquals(json.name, "deno");
 });
 
-unitTest(async function fetchPerm() {
+Deno.test({ permissions: { net: false } }, async function fetchPerm() {
   await assertRejects(async () => {
     await fetch("http://localhost:4545/fixture.json");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { net: true } }, async function fetchUrl() {
+Deno.test({ permissions: { net: true } }, async function fetchUrl() {
   const response = await fetch("http://localhost:4545/fixture.json");
   assertEquals(response.url, "http://localhost:4545/fixture.json");
   const _json = await response.json();
 });
 
-unitTest({ permissions: { net: true } }, async function fetchURL() {
+Deno.test({ permissions: { net: true } }, async function fetchURL() {
   const response = await fetch(
     new URL("http://localhost:4545/fixture.json"),
   );
@@ -119,14 +118,14 @@ unitTest({ permissions: { net: true } }, async function fetchURL() {
   const _json = await response.json();
 });
 
-unitTest({ permissions: { net: true } }, async function fetchHeaders() {
+Deno.test({ permissions: { net: true } }, async function fetchHeaders() {
   const response = await fetch("http://localhost:4545/fixture.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
   const _json = await response.json();
 });
 
-unitTest({ permissions: { net: true } }, async function fetchBlob() {
+Deno.test({ permissions: { net: true } }, async function fetchBlob() {
   const response = await fetch("http://localhost:4545/fixture.json");
   const headers = response.headers;
   const blob = await response.blob();
@@ -134,7 +133,7 @@ unitTest({ permissions: { net: true } }, async function fetchBlob() {
   assertEquals(blob.size, Number(headers.get("Content-Length")));
 });
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchBodyUsedReader() {
     const response = await fetch(
@@ -152,7 +151,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchBodyUsedCancelStream() {
     const response = await fetch(
@@ -167,7 +166,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { net: true } }, async function fetchAsyncIterator() {
+Deno.test({ permissions: { net: true } }, async function fetchAsyncIterator() {
   const response = await fetch("http://localhost:4545/fixture.json");
   const headers = response.headers;
 
@@ -181,7 +180,7 @@ unitTest({ permissions: { net: true } }, async function fetchAsyncIterator() {
   assertEquals(total, Number(headers.get("Content-Length")));
 });
 
-unitTest({ permissions: { net: true } }, async function fetchBodyReader() {
+Deno.test({ permissions: { net: true } }, async function fetchBodyReader() {
   const response = await fetch("http://localhost:4545/fixture.json");
   const headers = response.headers;
   assert(response.body !== null);
@@ -198,7 +197,7 @@ unitTest({ permissions: { net: true } }, async function fetchBodyReader() {
   assertEquals(total, Number(headers.get("Content-Length")));
 });
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchBodyReaderBigBody() {
     const data = "a".repeat(10 << 10); // 10mb
@@ -220,7 +219,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { net: true } }, async function responseClone() {
+Deno.test({ permissions: { net: true } }, async function responseClone() {
   const response = await fetch("http://localhost:4545/fixture.json");
   const response1 = response.clone();
   assert(response !== response1);
@@ -233,7 +232,7 @@ unitTest({ permissions: { net: true } }, async function responseClone() {
   }
 });
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchMultipartFormDataSuccess() {
     const response = await fetch(
@@ -250,7 +249,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchMultipartFormBadContentType() {
     const response = await fetch(
@@ -268,7 +267,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchURLEncodedFormDataSuccess() {
     const response = await fetch(
@@ -282,7 +281,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitFormDataBinaryFileBody() {
     // Some random bytes
@@ -301,7 +300,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitFormDataMultipleFilesBody() {
     const files = [
@@ -355,7 +354,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { net: true },
   },
@@ -369,7 +368,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { net: true },
   },
@@ -384,7 +383,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { net: true },
   },
@@ -405,7 +404,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { net: true },
   },
@@ -418,7 +417,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitStringBody() {
     const data = "Hello World";
@@ -432,7 +431,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchRequestInitStringBody() {
     const data = "Hello World";
@@ -446,7 +445,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchSeparateInit() {
     // related to: https://github.com/denoland/deno/issues/10396
@@ -461,7 +460,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitTypedArrayBody() {
     const data = "Hello World";
@@ -474,7 +473,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitArrayBufferBody() {
     const data = "Hello World";
@@ -487,7 +486,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitURLSearchParamsBody() {
     const data = "param1=value1&param2=value2";
@@ -506,7 +505,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { net: true } }, async function fetchInitBlobBody() {
+Deno.test({ permissions: { net: true } }, async function fetchInitBlobBody() {
   const data = "const a = 1";
   const blob = new Blob([data], {
     type: "text/javascript",
@@ -520,7 +519,7 @@ unitTest({ permissions: { net: true } }, async function fetchInitBlobBody() {
   assert(response.headers.get("content-type")!.startsWith("text/javascript"));
 });
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitFormDataBody() {
     const form = new FormData();
@@ -534,7 +533,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitFormDataBlobFilenameBody() {
     const form = new FormData();
@@ -552,7 +551,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitFormDataTextFileBody() {
     const fileContent = "deno land";
@@ -582,7 +581,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { net: true } }, async function fetchUserAgent() {
+Deno.test({ permissions: { net: true } }, async function fetchUserAgent() {
   const data = "Hello World";
   const response = await fetch("http://localhost:4545/echo_server", {
     method: "POST",
@@ -619,7 +618,7 @@ function bufferServer(addr: string): Promise<Buffer> {
   });
 }
 
-unitTest(
+Deno.test(
   {
     permissions: { net: true },
   },
@@ -652,7 +651,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { net: true },
   },
@@ -689,7 +688,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { net: true },
   },
@@ -726,7 +725,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { net: true },
   },
@@ -740,7 +739,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { net: true },
   },
@@ -756,7 +755,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { net: true },
   },
@@ -772,7 +771,7 @@ unitTest(
   },
 );
 
-unitTest(function responseRedirect() {
+Deno.test(function responseRedirect() {
   const redir = Response.redirect("example.com/newLocation", 301);
   assertEquals(redir.status, 301);
   assertEquals(redir.statusText, "");
@@ -784,7 +783,7 @@ unitTest(function responseRedirect() {
   assertEquals(redir.type, "default");
 });
 
-unitTest(async function responseWithoutBody() {
+Deno.test(async function responseWithoutBody() {
   const response = new Response();
   assertEquals(await response.arrayBuffer(), new ArrayBuffer(0));
   const blob = await response.blob();
@@ -796,7 +795,7 @@ unitTest(async function responseWithoutBody() {
   });
 });
 
-unitTest({ permissions: { net: true } }, async function fetchBodyReadTwice() {
+Deno.test({ permissions: { net: true } }, async function fetchBodyReadTwice() {
   const response = await fetch("http://localhost:4545/fixture.json");
 
   // Read body
@@ -817,7 +816,7 @@ unitTest({ permissions: { net: true } }, async function fetchBodyReadTwice() {
   }
 });
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchBodyReaderAfterRead() {
     const response = await fetch(
@@ -840,7 +839,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchBodyReaderWithCancelAndNewReader() {
     const data = "a".repeat(1 << 10);
@@ -868,7 +867,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchBodyReaderWithReadCancelAndNewReader() {
     const data = "a".repeat(1 << 10);
@@ -898,7 +897,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchResourceCloseAfterStreamCancel() {
     const res = await fetch("http://localhost:4545/fixture.json");
@@ -916,7 +915,7 @@ unitTest(
 // TypeError: error sending request for url (http://localhost:4545/echo_server):
 // connection error: An established connection was aborted by
 // the software in your host machine. (os error 10053)
-unitTest(
+Deno.test(
   { permissions: { net: true }, ignore: Deno.build.os == "windows" },
   async function fetchNullBodyStatus() {
     const nullBodyStatus = [101, 204, 205, 304];
@@ -934,7 +933,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchResponseContentLength() {
     const body = new Uint8Array(2 ** 16);
@@ -953,7 +952,7 @@ unitTest(
   },
 );
 
-unitTest(function fetchResponseConstructorNullBody() {
+Deno.test(function fetchResponseConstructorNullBody() {
   const nullBodyStatus = [204, 205, 304];
 
   for (const status of nullBodyStatus) {
@@ -970,7 +969,7 @@ unitTest(function fetchResponseConstructorNullBody() {
   }
 });
 
-unitTest(function fetchResponseConstructorInvalidStatus() {
+Deno.test(function fetchResponseConstructorInvalidStatus() {
   const invalidStatus = [101, 600, 199, null, "", NaN];
 
   for (const status of invalidStatus) {
@@ -986,7 +985,7 @@ unitTest(function fetchResponseConstructorInvalidStatus() {
   }
 });
 
-unitTest(function fetchResponseEmptyConstructor() {
+Deno.test(function fetchResponseEmptyConstructor() {
   const response = new Response();
   assertEquals(response.status, 200);
   assertEquals(response.body, null);
@@ -998,7 +997,7 @@ unitTest(function fetchResponseEmptyConstructor() {
   assertEquals([...response.headers], []);
 });
 
-unitTest(
+Deno.test(
   { permissions: { net: true, read: true } },
   async function fetchCustomHttpClientParamCertificateSuccess(): Promise<
     void
@@ -1014,7 +1013,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchCustomClientUserAgent(): Promise<
     void
@@ -1035,7 +1034,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { net: true },
   },
@@ -1083,7 +1082,7 @@ unitTest(
   },
 );
 
-unitTest({}, function fetchWritableRespProps() {
+Deno.test({}, function fetchWritableRespProps() {
   const original = new Response("https://deno.land", {
     status: 404,
     headers: { "x-deno": "foo" },
@@ -1122,7 +1121,7 @@ function returnHostHeaderServer(addr: string): Deno.Listener {
   return listener;
 }
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchFilterOutCustomHostHeader(): Promise<
     void
@@ -1139,7 +1138,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchNoServerReadableStreamBody() {
     const done = deferred();
@@ -1160,7 +1159,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchHeadRespBody() {
     const res = await fetch("http://localhost:4545/echo_server", {
@@ -1170,7 +1169,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, net: true } },
   async function fetchClientCertWrongPrivateKey(): Promise<void> {
     await assertRejects(async () => {
@@ -1187,7 +1186,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, net: true } },
   async function fetchClientCertBadPrivateKey(): Promise<void> {
     await assertRejects(async () => {
@@ -1204,7 +1203,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, net: true } },
   async function fetchClientCertNotPrivateKey(): Promise<void> {
     await assertRejects(async () => {
@@ -1221,7 +1220,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, net: true } },
   async function fetchCustomClientPrivateKey(): Promise<
     void
@@ -1251,7 +1250,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchAbortWhileUploadStreaming(): Promise<void> {
     const abortController = new AbortController();
@@ -1278,7 +1277,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchHeaderValueShouldNotPanic() {
     for (let i = 0; i < 0x21; i++) {
@@ -1300,7 +1299,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchHeaderNameShouldNotPanic() {
     const validTokens =
@@ -1326,7 +1325,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true, read: true } },
   async function fetchSupportsHttp1Only() {
     const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
@@ -1338,7 +1337,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true, read: true } },
   async function fetchSupportsHttp2() {
     const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
@@ -1350,7 +1349,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true, read: true } },
   async function fetchPrefersHttp2() {
     const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
@@ -1362,19 +1361,22 @@ unitTest(
   },
 );
 
-unitTest(async function fetchFilePerm() {
+Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
   await assertRejects(async () => {
     await fetch(new URL("../testdata/subdir/json_1.json", import.meta.url));
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest(async function fetchFilePermDoesNotExist() {
-  await assertRejects(async () => {
-    await fetch(new URL("./bad.json", import.meta.url));
-  }, Deno.errors.PermissionDenied);
-});
+Deno.test(
+  { permissions: { read: false } },
+  async function fetchFilePermDoesNotExist() {
+    await assertRejects(async () => {
+      await fetch(new URL("./bad.json", import.meta.url));
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
-unitTest(
+Deno.test(
   { permissions: { read: true } },
   async function fetchFileBadMethod() {
     await assertRejects(
@@ -1392,7 +1394,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true } },
   async function fetchFileDoesNotExist() {
     await assertRejects(
@@ -1404,7 +1406,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true } },
   async function fetchFile() {
     const res = await fetch(
@@ -1418,7 +1420,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchContentLengthPost() {
     const response = await fetch("http://localhost:4545/content_length", {
@@ -1429,7 +1431,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchContentLengthPut() {
     const response = await fetch("http://localhost:4545/content_length", {
@@ -1440,7 +1442,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchContentLengthPatch() {
     const response = await fetch("http://localhost:4545/content_length", {
@@ -1451,7 +1453,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchContentLengthPostWithStringBody() {
     const response = await fetch("http://localhost:4545/content_length", {
@@ -1463,7 +1465,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { net: true } },
   async function fetchContentLengthPostWithBufferBody() {
     const response = await fetch("http://localhost:4545/content_length", {

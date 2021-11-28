@@ -93,6 +93,7 @@ use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
 fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
@@ -217,7 +218,7 @@ pub fn create_main_worker(
     }
   } else if let Some(config_file) = &ps.maybe_config_file {
     // otherwise we will use the path to the config file
-    config_file.path.to_str().map(|s| s.to_string())
+    Some(config_file.specifier.to_string())
   } else {
     // otherwise we will use the path to the main module
     Some(main_module.to_string())
@@ -424,7 +425,19 @@ async fn compile_command(
 
   let graph =
     create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?;
-  let (bundle_str, _) = bundle_module_graph(graph.as_ref(), &ps, &flags)?;
+
+  let source = (graph.as_ref().modules().len() == 1)
+    .then(|| {
+      let root_module = graph.as_ref().modules()[0];
+      match root_module.media_type {
+        MediaType::JavaScript => Some(Ok(root_module.source.to_string())),
+        _ => None,
+      }
+    })
+    .flatten()
+    .unwrap_or_else(|| {
+      bundle_module_graph(graph.as_ref(), &ps, &flags).map(|r| r.0)
+    })?;
 
   info!(
     "{} {}",
@@ -439,7 +452,7 @@ async fn compile_command(
 
   let final_bin = tools::standalone::create_standalone_binary(
     original_binary,
-    bundle_str,
+    source,
     run_flags,
   )?;
 
@@ -712,10 +725,8 @@ async fn create_graph_and_maybe_check(
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
-    let maybe_config_specifier = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
+    let maybe_config_specifier =
+      ps.maybe_config_file.as_ref().map(|cf| cf.specifier.clone());
     let check_result = emit::check_and_maybe_emit(
       graph.clone(),
       &mut cache,
@@ -724,6 +735,7 @@ async fn create_graph_and_maybe_check(
         emit_with_diagnostics: false,
         maybe_config_specifier,
         ts_config,
+        reload: ps.flags.reload,
       },
     )?;
     debug!("{}", check_result.stats);
@@ -935,6 +947,7 @@ async fn run_repl(flags: Flags, repl_flags: ReplFlags) -> Result<(), AnyError> {
     create_main_worker(&ps, main_module.clone(), permissions, None);
   if flags.compat {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
+    compat::add_global_require(&mut worker.js_runtime, main_module.as_str())?;
   }
   worker.run_event_loop(false).await?;
 
@@ -1463,4 +1476,7 @@ pub fn main() {
   logger::init(flags.log_level);
 
   unwrap_or_exit(run_basic(get_subcommand(flags)));
+
+  let code = deno_runtime::EXIT_CODE.load(Relaxed);
+  std::process::exit(code);
 }

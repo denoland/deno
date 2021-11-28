@@ -11,10 +11,12 @@ pub struct OpMetrics {
   pub ops_dispatched: u64,
   pub ops_dispatched_sync: u64,
   pub ops_dispatched_async: u64,
+  // TODO(bartlomieju): this field is never updated
   pub ops_dispatched_async_unref: u64,
   pub ops_completed: u64,
   pub ops_completed_sync: u64,
   pub ops_completed_async: u64,
+  // TODO(bartlomieju): this field is never updated
   pub ops_completed_async_unref: u64,
   pub bytes_sent_control: u64,
   pub bytes_sent_data: u64,
@@ -83,17 +85,5 @@ impl OpsTracker {
     let metrics = &mut self.metrics_mut(id);
     metrics.ops_completed += 1;
     metrics.ops_completed_async += 1;
-  }
-
-  pub fn track_unref(&self, id: OpId) {
-    let metrics = &mut self.metrics_mut(id);
-    metrics.ops_dispatched += 1;
-    metrics.ops_dispatched_async_unref += 1;
-  }
-
-  pub fn track_unref_completed(&self, id: OpId) {
-    let metrics = &mut self.metrics_mut(id);
-    metrics.ops_completed += 1;
-    metrics.ops_completed_async_unref += 1;
   }
 }

@@ -19,6 +19,12 @@ fn no_color() {
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 
+itest!(overloads {
+  args: "test test/overloads.ts",
+  exit_code: 0,
+  output: "test/overloads.out",
+});
+
 itest!(meta {
   args: "test test/meta.ts",
   exit_code: 0,
@@ -143,6 +149,11 @@ itest!(ops_sanitizer_unstable {
   args: "test --unstable test/ops_sanitizer_unstable.ts",
   exit_code: 1,
   output: "test/ops_sanitizer_unstable.out",
+});
+
+itest!(ops_sanitizer_timeout_failure {
+  args: "test test/ops_sanitizer_timeout_failure.ts",
+  output: "test/ops_sanitizer_timeout_failure.out",
 });
 
 itest!(exit_sanitizer {

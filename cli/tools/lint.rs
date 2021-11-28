@@ -10,7 +10,7 @@ use crate::config_file::LintConfig;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::LintFlags;
 use crate::fmt_errors;
-use crate::fs_util::{collect_files, is_supported_ext};
+use crate::fs_util::{collect_files, is_supported_ext, specifier_to_file_path};
 use crate::tools::fmt::run_parallelized;
 use crate::{colors, file_watcher};
 use deno_ast::MediaType;
@@ -75,8 +75,8 @@ pub async fn lint(
         .files
         .include
         .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
 
     if exclude_files.is_empty() {
@@ -84,8 +84,8 @@ pub async fn lint(
         .files
         .exclude
         .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
   }
 
