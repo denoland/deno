@@ -472,10 +472,8 @@ pub async fn op_crypto_verify_key(
         KeyKind::Private => {
           RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
         }
-        KeyKind::Public => {
-          RsaPublicKey::from_pkcs1_der(&*args.key.data)?
-        }
-        _ => unreachable!()
+        KeyKind::Public => RsaPublicKey::from_pkcs1_der(&*args.key.data)?,
+        _ => unreachable!(),
       };
       let (padding, hashed) = match args
         .hash
@@ -536,10 +534,8 @@ pub async fn op_crypto_verify_key(
         KeyKind::Private => {
           RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
         }
-        KeyKind::Public => {
-          RsaPublicKey::from_pkcs1_der(&*args.key.data)?
-        }
-        _ => unreachable!()
+        KeyKind::Public => RsaPublicKey::from_pkcs1_der(&*args.key.data)?,
+        _ => unreachable!(),
       };
 
       let rng = OsRng;
@@ -941,10 +937,8 @@ pub async fn op_crypto_encrypt_key(
         KeyKind::Private => {
           RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
         }
-        KeyKind::Public => {
-          RsaPublicKey::from_pkcs1_der(&*args.key.data)?
-        }
-        _ => unreachable!()
+        KeyKind::Public => RsaPublicKey::from_pkcs1_der(&*args.key.data)?,
+        _ => unreachable!(),
       };
       let label = args.label.map(|l| String::from_utf8_lossy(&*l).to_string());
       let mut rng = OsRng;
