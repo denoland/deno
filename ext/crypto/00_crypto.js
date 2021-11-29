@@ -974,10 +974,6 @@
             length = normalizedAlgorithm.length;
           }
 
-          if (keyUsages.length == 0) {
-            throw new DOMException("Key usage is empty", "SyntaxError");
-          }
-
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
@@ -1073,10 +1069,6 @@
                 throw new DOMException("Invalid key usages", "SyntaxError");
               }
 
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
-              }
-
               // 2-9.
               const { modulusLength, publicExponent, data } = await core
                 .opAsync(
@@ -1123,10 +1115,6 @@
                 ) !== undefined
               ) {
                 throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
               }
 
               // 2-9.
@@ -1183,10 +1171,6 @@
                 throw new DOMException("Invalid key usages", "SyntaxError");
               }
 
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
-              }
-
               // 2-9.
               const { modulusLength, publicExponent, data } = await core
                 .opAsync(
@@ -1233,10 +1217,6 @@
                 ) !== undefined
               ) {
                 throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
               }
 
               // 2-9.
@@ -1293,10 +1273,6 @@
                 throw new DOMException("Invalid key usages", "SyntaxError");
               }
 
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
-              }
-
               // 2-9.
               const { modulusLength, publicExponent, data } = await core
                 .opAsync(
@@ -1343,10 +1319,6 @@
                 ) !== undefined
               ) {
                 throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
               }
 
               // 2-9.
