@@ -977,6 +977,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            kind: "secret",
             data,
           });
 
@@ -1032,6 +1033,7 @@
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 type: "raw",
+                kind: "public",
                 data,
               });
 
@@ -1086,6 +1088,7 @@
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 // PKCS#1 for RSA
                 type: "raw",
+                kind: "private",
                 data,
               });
 
@@ -1134,6 +1137,7 @@
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 // PKCS#1 for RSA
                 type: "raw",
+                kind: "public",
                 data,
               });
 
@@ -1188,6 +1192,7 @@
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 // PKCS#1 for RSA
                 type: "raw",
+                kind: "private",
                 data,
               });
 
@@ -1236,6 +1241,7 @@
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 // PKCS#1 for RSA
                 type: "raw",
+                kind: "public",
                 data,
               });
 
@@ -1290,6 +1296,7 @@
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 // PKCS#1 for RSA
                 type: "raw",
+                kind: "private",
                 data,
               });
 
@@ -1338,6 +1345,7 @@
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 // PKCS#1 for RSA
                 type: "raw",
+                kind: "public",
                 data,
               });
 
@@ -1389,6 +1397,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            kind: "secret",
             data: keyData,
           });
 
@@ -1435,6 +1444,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            kind: "secret",
             data: keyData,
           });
 
@@ -1489,6 +1499,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            kind: "secret",
             data: keyData,
           });
 
@@ -1545,6 +1556,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            kind: "secret",
             data: keyData,
           });
 
@@ -1601,6 +1613,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            kind: "secret",
             data: keyData,
           });
 
@@ -1655,6 +1668,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            kind: "secret",
             data: keyData,
           });
 
@@ -2422,6 +2436,7 @@
         WeakMapPrototypeSet(KEY_STORE, handle, {
           // PKCS#1 for RSA
           type: "raw",
+          kind: "private",
           data: keyData,
         });
 
@@ -2483,6 +2498,7 @@
         WeakMapPrototypeSet(KEY_STORE, handle, {
           // PKCS#1 for RSA
           type: "raw",
+          kind: "private",
           data: keyData,
         });
 
@@ -2540,6 +2556,7 @@
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "pkcs8",
+            kind: "private",
             data: keyData,
           });
         } else {
@@ -2598,6 +2615,7 @@
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "pkcs8",
+            kink: "private",
             data: keyData,
           });
         } else {
@@ -2693,7 +2711,11 @@
           length,
         });
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, { type: "raw", data: keyData });
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: "raw",
+          kind: "secret",
+          data: keyData,
+        });
 
         // 6-10.
         const algorithm = {
@@ -2733,6 +2755,7 @@
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
       type: "raw",
+      kind: "secret",
       data: keyData,
     });
 

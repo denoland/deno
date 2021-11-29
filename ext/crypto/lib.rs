@@ -278,10 +278,19 @@ pub enum KeyFormat {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
+pub enum KeyKind {
+  Secret,
+  Private,
+  Public,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub struct KeyData {
   // TODO(littledivy): Kept here to be used to importKey() in future.
   #[allow(dead_code)]
   r#type: KeyFormat,
+  kind: KeyKind,
   data: ZeroCopyBuf,
 }
 
@@ -459,7 +468,15 @@ pub async fn op_crypto_verify_key(
 
   let verification = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
-      let public_key = RsaPublicKey::from_pkcs1_der(&*args.key.data)?;
+      let public_key = match args.key.kind {
+        KeyKind::Private => {
+          RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
+        }
+        KeyKind::Public => {
+          RsaPublicKey::from_pkcs1_der(&*args.key.data)?
+        }
+        _ => unreachable!()
+      };
       let (padding, hashed) = match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
@@ -515,7 +532,15 @@ pub async fn op_crypto_verify_key(
         .salt_length
         .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
         as usize;
-      let public_key = RsaPublicKey::from_pkcs1_der(&*args.key.data)?;
+      let public_key = match args.key.kind {
+        KeyKind::Private => {
+          RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
+        }
+        KeyKind::Public => {
+          RsaPublicKey::from_pkcs1_der(&*args.key.data)?
+        }
+        _ => unreachable!()
+      };
 
       let rng = OsRng;
       let (padding, hashed) = match args
@@ -912,7 +937,15 @@ pub async fn op_crypto_encrypt_key(
 
   match algorithm {
     Algorithm::RsaOaep => {
-      let public_key = RsaPublicKey::from_pkcs1_der(&*args.key.data)?;
+      let public_key = match args.key.kind {
+        KeyKind::Private => {
+          RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
+        }
+        KeyKind::Public => {
+          RsaPublicKey::from_pkcs1_der(&*args.key.data)?
+        }
+        _ => unreachable!()
+      };
       let label = args.label.map(|l| String::from_utf8_lossy(&*l).to_string());
       let mut rng = OsRng;
       let padding = match args
