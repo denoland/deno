@@ -2463,7 +2463,7 @@
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "pkcs8",
-            kink: "private",
+            kind: "private",
             data: keyData,
           });
         } else {
