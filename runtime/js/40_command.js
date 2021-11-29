@@ -51,8 +51,8 @@
       cwd = undefined,
       clearEnv = false,
       env = {},
-      gid = undefined,
       uid = undefined,
+      gid = undefined,
     } = {}) {
       this.#rid = core.opSync("op_create_command", {
         cmd: pathFromURL(command),
@@ -60,8 +60,8 @@
         cwd: pathFromURL(cwd),
         clearEnv,
         env: ObjectEntries(env),
-        gid,
         uid,
+        gid,
       });
     }
 

@@ -2333,13 +2333,33 @@ declare namespace Deno {
    * Requires `allow-run` permission. */
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
 
+  /**
+   * Environmental variables for subprocess can be specified using `env`
+   * mapping.
+   */
   interface CommandOptions {
+    /** Arguments to pass to the process. */
     args?: string[];
+    /**
+     * The working directory of the process.
+     * If not specified, the cwd of the parent process is used.
+     */
     cwd?: string | URL;
+    /**
+     * Clear environmental variables from parent process.
+     * Doesn't guarantee that only `opt.env` variables are present,
+     * as the OS may set environmental variables for processes.
+     */
     clearEnv?: boolean;
+    /** Environmental variables to pass to the subprocess. */
     env?: Record<string, string>;
-    gid?: number;
+    /**
+     * Sets the child process’s user ID. This translates to a setuid call
+     * in the child process. Failure in the setuid call will cause the spawn to fail.
+     */
     uid?: number;
+    /** Similar to `uid`, but sets the group ID of the child process. */
+    gid?: number;
   }
 
   interface ProcessIoOptions {
@@ -2348,14 +2368,28 @@ declare namespace Deno {
     stderr?: "piped" | "inherit" | "null";
   }
 
+  /** Spawns new subprocess. */
   class Command {
+    /**
+     * @param command The path to the binary to run.
+     * @param options Options for the Command.
+     */
     constructor(command: string | URL, options?: CommandOptions);
 
+    /**
+     * Starts the command as a child process.
+     * By default, the io options are all set to `inherit`.
+     */
     spawn<T extends ProcessIoOptions = ProcessIoOptions>(options?: T): Child<T>;
+    /**
+     * Executes the command as a child process, waiting for it to finish and collecting its exit status.
+     * By default, `stdout` and `stderr` are set to `inherit`.
+     */
     status(options?: {
       stdout?: "inherit" | "null";
       stderr?: "inherit" | "null";
     }): Promise<ProcessStatus>;
+    /** Executes the command as a child process, waiting for it to finish and collecting all of its output. */
     output(): Promise<CommandOutput<{ stdin: "piped"; stderr: "piped" }>>;
   }
 
@@ -2368,9 +2402,12 @@ declare namespace Deno {
       : null;
 
     readonly pid: number;
+    /** Get the current status. */
     readonly status: ProcessStatus | null;
 
+    /** Waits for the child to exit completely, returning the status that it exited with. */
     wait(): Promise<ProcessStatus>;
+    /** Waits for the child to exit completely, returning all its output and status. */
     output(): Promise<CommandOutput>;
     kill(signo: Signal): void;
   }
