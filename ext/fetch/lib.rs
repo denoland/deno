@@ -63,6 +63,7 @@ pub struct Options {
   pub root_cert_store: Option<RootCertStore>,
   pub proxy: Option<Proxy>,
   pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
+  pub get_client: Option<fn(&mut OpState) -> Client>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
   pub file_fetch_handler: Box<dyn FetchHandler>,
@@ -75,6 +76,7 @@ impl Default for Options {
       root_cert_store: None,
       proxy: None,
       request_builder_hook: None,
+      get_client: None,
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       file_fetch_handler: Box::new(DefaultFileFetchHandler),
@@ -107,21 +109,47 @@ where
       ),
     ])
     .state(move |state| {
-      state.put::<Options>(options.clone());
-      state.put::<reqwest::Client>({
-        create_http_client(
-          options.user_agent.clone(),
-          options.root_cert_store.clone(),
-          vec![],
-          options.proxy.clone(),
-          options.unsafely_ignore_certificate_errors.clone(),
-          options.client_cert_chain_and_key.clone(),
-        )
-        .unwrap()
-      });
+      let mut options = options.clone();
+      if options.get_client.is_none() {
+        options.get_client = Some(get_shared_client);
+      }
+      state.put::<Options>(options);
       Ok(())
     })
     .build()
+}
+
+/// Assign to Options::get_client for a fetch that creates a new client for every request.
+pub fn get_new_client(state: &mut OpState) -> Client {
+  let options = state.borrow::<Options>();
+  create_http_client(
+    options.user_agent.clone(),
+    options.root_cert_store.clone(),
+    vec![],
+    options.proxy.clone(),
+    options.unsafely_ignore_certificate_errors.clone(),
+    options.client_cert_chain_and_key.clone(),
+  )
+  .unwrap()
+}
+
+fn get_shared_client(state: &mut OpState) -> Client {
+  if let Some(client) = state.try_borrow::<Client>() {
+    client.clone()
+  } else {
+    let options = state.borrow::<Options>();
+    let client = create_http_client(
+      options.user_agent.clone(),
+      options.root_cert_store.clone(),
+      vec![],
+      options.proxy.clone(),
+      options.unsafely_ignore_certificate_errors.clone(),
+      options.client_cert_chain_and_key.clone(),
+    )
+    .unwrap();
+    state.put::<Client>(client.clone());
+    client
+  }
 }
 
 pub type CancelableResponseFuture =
@@ -205,8 +233,9 @@ where
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     r.client.clone()
   } else {
-    let client = state.borrow::<reqwest::Client>();
-    client.clone()
+    let options = state.borrow::<Options>();
+    let client = options.get_client.unwrap()(state);
+    client
   };
 
   let method = Method::from_bytes(&args.method)?;
