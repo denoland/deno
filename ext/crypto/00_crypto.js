@@ -2900,7 +2900,7 @@
         ) {
           const baseKeyhandle = baseKey[_handle];
           const baseKeyData = WeakMapPrototypeGet(KEY_STORE, baseKeyhandle);
-          const publicKeyhandle = baseKey[_handle];
+          const publicKeyhandle = publicKey[_handle];
           const publicKeyData = WeakMapPrototypeGet(KEY_STORE, publicKeyhandle);
 
           const buf = await core.opAsync("op_crypto_derive_bits", {
