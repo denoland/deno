@@ -2902,6 +2902,7 @@
           key: keyData,
           algorithm: "RSA-OAEP",
           hash: hashAlgorithm,
+          label: normalizedAlgorithm.label,
         }, data);
 
         // 6.
