@@ -40,6 +40,7 @@ use rsa::padding::PaddingScheme;
 use rsa::pkcs1::der::Decodable;
 use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::FromRsaPrivateKey;
+use rsa::pkcs1::FromRsaPublicKey;
 use rsa::pkcs1::ToRsaPrivateKey;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::FromPrivateKey;
@@ -458,8 +459,7 @@ pub async fn op_crypto_verify_key(
 
   let verification = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
-      let public_key: RsaPublicKey =
-        RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key();
+      let public_key = RsaPublicKey::from_pkcs1_der(&*args.key.data)?;
       let (padding, hashed) = match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
@@ -515,8 +515,7 @@ pub async fn op_crypto_verify_key(
         .salt_length
         .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
         as usize;
-      let public_key: RsaPublicKey =
-        RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key();
+      let public_key = RsaPublicKey::from_pkcs1_der(&*args.key.data)?;
 
       let rng = OsRng;
       let (padding, hashed) = match args
@@ -913,8 +912,7 @@ pub async fn op_crypto_encrypt_key(
 
   match algorithm {
     Algorithm::RsaOaep => {
-      let public_key: RsaPublicKey =
-        RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key();
+      let public_key = RsaPublicKey::from_pkcs1_der(&*args.key.data)?;
       let label = args.label.map(|l| String::from_utf8_lossy(&*l).to_string());
       let mut rng = OsRng;
       let padding = match args
