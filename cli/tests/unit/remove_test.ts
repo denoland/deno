@@ -1,9 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertRejects, assertThrows, unitTest } from "./test_util.ts";
+import { assert, assertRejects, assertThrows } from "./test_util.ts";
 
 const REMOVE_METHODS = ["remove", "removeSync"] as const;
 
-unitTest(
+Deno.test(
   { permissions: { write: true, read: true } },
   async function removeDirSuccess() {
     for (const method of REMOVE_METHODS) {
@@ -21,7 +21,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true, read: true } },
   async function removeFileSuccess() {
     for (const method of REMOVE_METHODS) {
@@ -41,7 +41,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true, read: true } },
   async function removeFileByUrl() {
     for (const method of REMOVE_METHODS) {
@@ -66,7 +66,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true, read: true } },
   async function removeFail() {
     for (const method of REMOVE_METHODS) {
@@ -101,7 +101,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true, read: true } },
   async function removeDanglingSymlinkSuccess() {
     for (const method of REMOVE_METHODS) {
@@ -123,7 +123,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true, read: true } },
   async function removeValidSymlinkSuccess() {
     for (const method of REMOVE_METHODS) {
@@ -149,7 +149,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { write: false } }, async function removePerm() {
+Deno.test({ permissions: { write: false } }, async function removePerm() {
   for (const method of REMOVE_METHODS) {
     await assertRejects(async () => {
       await Deno[method]("/baddir");
@@ -157,7 +157,7 @@ unitTest({ permissions: { write: false } }, async function removePerm() {
   }
 });
 
-unitTest(
+Deno.test(
   { permissions: { write: true, read: true } },
   async function removeAllDirSuccess() {
     for (const method of REMOVE_METHODS) {
@@ -194,7 +194,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true, read: true } },
   async function removeAllFileSuccess() {
     for (const method of REMOVE_METHODS) {
@@ -215,7 +215,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { write: true } }, async function removeAllFail() {
+Deno.test({ permissions: { write: true } }, async function removeAllFail() {
   for (const method of REMOVE_METHODS) {
     // NON-EXISTENT DIRECTORY/FILE
     await assertRejects(
@@ -229,7 +229,7 @@ unitTest({ permissions: { write: true } }, async function removeAllFail() {
   }
 });
 
-unitTest({ permissions: { write: false } }, async function removeAllPerm() {
+Deno.test({ permissions: { write: false } }, async function removeAllPerm() {
   for (const method of REMOVE_METHODS) {
     await assertRejects(async () => {
       await Deno[method]("/baddir", { recursive: true });
@@ -237,7 +237,7 @@ unitTest({ permissions: { write: false } }, async function removeAllPerm() {
   }
 });
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { write: true, read: true },
@@ -259,7 +259,7 @@ unitTest(
 );
 
 if (Deno.build.os === "windows") {
-  unitTest(
+  Deno.test(
     { permissions: { run: true, write: true, read: true } },
     async function removeFileSymlink() {
       const symlink = Deno.run({
@@ -276,7 +276,7 @@ if (Deno.build.os === "windows") {
     },
   );
 
-  unitTest(
+  Deno.test(
     { permissions: { run: true, write: true, read: true } },
     async function removeDirSymlink() {
       const symlink = Deno.run({

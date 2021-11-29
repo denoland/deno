@@ -4,10 +4,9 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrows,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest({ permissions: { env: true } }, function envSuccess() {
+Deno.test({ permissions: { env: true } }, function envSuccess() {
   Deno.env.set("TEST_VAR", "A");
   const env = Deno.env.toObject();
   Deno.env.set("TEST_VAR", "B");
@@ -15,19 +14,19 @@ unitTest({ permissions: { env: true } }, function envSuccess() {
   assertNotEquals(Deno.env.get("TEST_VAR"), env["TEST_VAR"]);
 });
 
-unitTest({ permissions: { env: true } }, function envNotFound() {
+Deno.test({ permissions: { env: true } }, function envNotFound() {
   const r = Deno.env.get("env_var_does_not_exist!");
   assertEquals(r, undefined);
 });
 
-unitTest({ permissions: { env: true } }, function deleteEnv() {
+Deno.test({ permissions: { env: true } }, function deleteEnv() {
   Deno.env.set("TEST_VAR", "A");
   assertEquals(Deno.env.get("TEST_VAR"), "A");
   assertEquals(Deno.env.delete("TEST_VAR"), undefined);
   assertEquals(Deno.env.get("TEST_VAR"), undefined);
 });
 
-unitTest({ permissions: { env: true } }, function avoidEmptyNamedEnv() {
+Deno.test({ permissions: { env: true } }, function avoidEmptyNamedEnv() {
   assertThrows(() => Deno.env.set("", "v"), TypeError);
   assertThrows(() => Deno.env.set("a=a", "v"), TypeError);
   assertThrows(() => Deno.env.set("a\0a", "v"), TypeError);
@@ -42,13 +41,13 @@ unitTest({ permissions: { env: true } }, function avoidEmptyNamedEnv() {
   assertThrows(() => Deno.env.delete("a\0a"), TypeError);
 });
 
-unitTest(function envPermissionDenied1() {
+Deno.test({ permissions: { env: false } }, function envPermissionDenied1() {
   assertThrows(() => {
     Deno.env.toObject();
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest(function envPermissionDenied2() {
+Deno.test({ permissions: { env: false } }, function envPermissionDenied2() {
   assertThrows(() => {
     Deno.env.get("PATH");
   }, Deno.errors.PermissionDenied);
@@ -57,7 +56,7 @@ unitTest(function envPermissionDenied2() {
 // This test verifies that on Windows, environment variables are
 // case-insensitive. Case normalization needs be done using the collation
 // that Windows uses, rather than naively using String.toLowerCase().
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os !== "windows",
     permissions: { read: true, env: true, run: true },
@@ -122,15 +121,15 @@ unitTest(
   },
 );
 
-unitTest(function osPid() {
+Deno.test(function osPid() {
   assert(Deno.pid > 0);
 });
 
-unitTest(function osPpid() {
+Deno.test(function osPpid() {
   assert(Deno.ppid > 0);
 });
 
-unitTest(
+Deno.test(
   { permissions: { run: true, read: true } },
   async function osPpidIsEqualToPidOfParentProcess() {
     const decoder = new TextDecoder();
@@ -148,11 +147,11 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { read: true } }, function execPath() {
+Deno.test({ permissions: { read: true } }, function execPath() {
   assertNotEquals(Deno.execPath(), "");
 });
 
-unitTest({ permissions: { read: false } }, function execPathPerm() {
+Deno.test({ permissions: { read: false } }, function execPathPerm() {
   assertThrows(
     () => {
       Deno.execPath();
@@ -162,38 +161,38 @@ unitTest({ permissions: { read: false } }, function execPathPerm() {
   );
 });
 
-unitTest({ permissions: { env: true } }, function loadavgSuccess() {
+Deno.test({ permissions: { env: true } }, function loadavgSuccess() {
   const load = Deno.loadavg();
   assertEquals(load.length, 3);
 });
 
-unitTest({ permissions: { env: false } }, function loadavgPerm() {
+Deno.test({ permissions: { env: false } }, function loadavgPerm() {
   assertThrows(() => {
     Deno.loadavg();
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { env: true } }, function hostnameDir() {
+Deno.test({ permissions: { env: true } }, function hostnameDir() {
   assertNotEquals(Deno.hostname(), "");
 });
 
-unitTest({ permissions: { env: false } }, function hostnamePerm() {
+Deno.test({ permissions: { env: false } }, function hostnamePerm() {
   assertThrows(() => {
     Deno.hostname();
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { env: true } }, function releaseDir() {
+Deno.test({ permissions: { env: true } }, function releaseDir() {
   assertNotEquals(Deno.osRelease(), "");
 });
 
-unitTest({ permissions: { env: false } }, function releasePerm() {
+Deno.test({ permissions: { env: false } }, function releasePerm() {
   assertThrows(() => {
     Deno.osRelease();
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { env: true } }, function systemMemoryInfo() {
+Deno.test({ permissions: { env: true } }, function systemMemoryInfo() {
   const info = Deno.systemMemoryInfo();
   assert(info.total >= 0);
   assert(info.free >= 0);

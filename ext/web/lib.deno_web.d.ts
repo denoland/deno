@@ -258,7 +258,7 @@ declare class AbortController {
   readonly signal: AbortSignal;
   /** Invoking this method will set this object's AbortSignal's aborted flag and
    * signal to any observers that the associated activity is to be aborted. */
-  abort(): void;
+  abort(reason?: any): void;
 }
 
 interface AbortSignalEventMap {
@@ -271,6 +271,7 @@ interface AbortSignal extends EventTarget {
   /** Returns true if this AbortSignal's AbortController has signaled to abort,
    * and false otherwise. */
   readonly aborted: boolean;
+  readonly reason?: unknown;
   onabort: ((this: AbortSignal, ev: Event) => any) | null;
   addEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
@@ -297,6 +298,7 @@ interface AbortSignal extends EventTarget {
 declare var AbortSignal: {
   prototype: AbortSignal;
   new (): AbortSignal;
+  abort(reason?: any): AbortSignal;
 };
 
 interface FileReaderEventMap {

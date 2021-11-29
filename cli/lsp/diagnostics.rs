@@ -8,7 +8,7 @@ use super::tsc;
 
 use crate::diagnostics;
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde_json::json;
@@ -175,7 +175,7 @@ impl DiagnosticsServer {
               update_diagnostics(
                 &client,
                 collection.clone(),
-                &snapshot,
+                snapshot,
                 &ts_server
               ).await;
             }
@@ -197,15 +197,15 @@ impl DiagnosticsServer {
 impl<'a> From<&'a diagnostics::DiagnosticCategory> for lsp::DiagnosticSeverity {
   fn from(category: &'a diagnostics::DiagnosticCategory) -> Self {
     match category {
-      diagnostics::DiagnosticCategory::Error => lsp::DiagnosticSeverity::Error,
+      diagnostics::DiagnosticCategory::Error => lsp::DiagnosticSeverity::ERROR,
       diagnostics::DiagnosticCategory::Warning => {
-        lsp::DiagnosticSeverity::Warning
+        lsp::DiagnosticSeverity::WARNING
       }
       diagnostics::DiagnosticCategory::Suggestion => {
-        lsp::DiagnosticSeverity::Hint
+        lsp::DiagnosticSeverity::HINT
       }
       diagnostics::DiagnosticCategory::Message => {
-        lsp::DiagnosticSeverity::Information
+        lsp::DiagnosticSeverity::INFORMATION
       }
     }
   }
@@ -285,9 +285,10 @@ fn ts_json_to_diagnostics(
           ),
           tags: match d.code {
             // These are codes that indicate the variable is unused.
-            2695 | 6133 | 6138 | 6192 | 6196 | 6198 | 6199 | 7027 | 7028 => {
-              Some(vec![lsp::DiagnosticTag::Unnecessary])
-            }
+            2695 | 6133 | 6138 | 6192 | 6196 | 6198 | 6199 | 6205 | 7027
+            | 7028 => Some(vec![lsp::DiagnosticTag::UNNECESSARY]),
+            // These are codes that indicated the variable is deprecated.
+            2789 | 6385 | 6387 => Some(vec![lsp::DiagnosticTag::DEPRECATED]),
             _ => None,
           },
           data: None,
@@ -303,40 +304,55 @@ async fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
   collection: Arc<Mutex<DiagnosticCollection>>,
 ) -> Result<DiagnosticVec, AnyError> {
-  let documents = snapshot.documents.clone();
+  let documents = snapshot.documents.documents(true, true);
   let workspace_settings = snapshot.config.settings.workspace.clone();
   let maybe_lint_config = snapshot.maybe_lint_config.clone();
+
   tokio::task::spawn(async move {
     let mut diagnostics_vec = Vec::new();
     if workspace_settings.lint {
-      for specifier in documents.specifiers(true, true) {
-        let version = documents.lsp_version(&specifier);
+      for document in documents {
+        let version = document.maybe_lsp_version();
         let current_version = collection
           .lock()
           .await
-          .get_version(&specifier, &DiagnosticSource::DenoLint);
+          .get_version(document.specifier(), &DiagnosticSource::DenoLint);
         if version != current_version {
-          let diagnostics = match documents.parsed_source(&specifier) {
-            Some(Ok(parsed_source)) => {
-              if let Ok(references) = analysis::get_lint_references(
-                &parsed_source,
-                maybe_lint_config.as_ref(),
-              ) {
-                references
-                  .into_iter()
-                  .map(|r| r.to_diagnostic())
-                  .collect::<Vec<_>>()
-              } else {
+          let is_allowed = match &maybe_lint_config {
+            Some(lint_config) => {
+              lint_config.files.matches_specifier(document.specifier())
+            }
+            None => true,
+          };
+          let diagnostics = if is_allowed {
+            match document.maybe_parsed_source() {
+              Some(Ok(parsed_source)) => {
+                if let Ok(references) = analysis::get_lint_references(
+                  &parsed_source,
+                  maybe_lint_config.as_ref(),
+                ) {
+                  references
+                    .into_iter()
+                    .map(|r| r.to_diagnostic())
+                    .collect::<Vec<_>>()
+                } else {
+                  Vec::new()
+                }
+              }
+              Some(Err(_)) => Vec::new(),
+              None => {
+                error!("Missing file contents for: {}", document.specifier());
                 Vec::new()
               }
             }
-            Some(Err(_)) => Vec::new(),
-            None => {
-              error!("Missing file contents for: {}", specifier);
-              Vec::new()
-            }
+          } else {
+            Vec::new()
           };
-          diagnostics_vec.push((specifier.clone(), version, diagnostics));
+          diagnostics_vec.push((
+            document.specifier().clone(),
+            version,
+            diagnostics,
+          ));
         }
       }
     }
@@ -347,7 +363,7 @@ async fn generate_lint_diagnostics(
 }
 
 async fn generate_ts_diagnostics(
-  snapshot: &language_server::StateSnapshot,
+  snapshot: Arc<language_server::StateSnapshot>,
   collection: Arc<Mutex<DiagnosticCollection>>,
   ts_server: &tsc::TsServer,
 ) -> Result<DiagnosticVec, AnyError> {
@@ -356,14 +372,14 @@ async fn generate_ts_diagnostics(
     let collection = collection.lock().await;
     snapshot
       .documents
-      .specifiers(true, true)
+      .documents(true, true)
       .iter()
-      .filter_map(|s| {
-        let version = snapshot.documents.lsp_version(s);
+      .filter_map(|d| {
+        let version = d.maybe_lsp_version();
         let current_version =
-          collection.get_version(s, &DiagnosticSource::TypeScript);
+          collection.get_version(d.specifier(), &DiagnosticSource::TypeScript);
         if version != current_version {
-          Some(s.clone())
+          Some(d.specifier().clone())
         } else {
           None
         }
@@ -376,7 +392,11 @@ async fn generate_ts_diagnostics(
       ts_server.request(snapshot.clone(), req).await?;
     for (specifier_str, ts_diagnostics) in ts_diagnostics_map {
       let specifier = resolve_url(&specifier_str)?;
-      let version = snapshot.documents.lsp_version(&specifier);
+      let version = snapshot
+        .documents
+        .get(&specifier)
+        .map(|d| d.maybe_lsp_version())
+        .flatten();
       diagnostics_vec.push((
         specifier,
         version,
@@ -421,7 +441,18 @@ fn diagnose_dependency(
 ) {
   match resolved {
     Some(Ok((specifier, range))) => {
-      if !documents.contains_specifier(specifier) {
+      if let Some(doc) = documents.get(specifier) {
+        if let Some(message) = doc.maybe_warning() {
+          diagnostics.push(lsp::Diagnostic {
+            range: documents::to_lsp_range(range),
+            severity: Some(lsp::DiagnosticSeverity::WARNING),
+            code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
+            source: Some("deno".to_string()),
+            message,
+            ..Default::default()
+          })
+        }
+      } else {
         let (code, message) = match specifier.scheme() {
           "file" => (Some(lsp::NumberOrString::String("no-local".to_string())), format!("Unable to load a local module: \"{}\".\n  Please check the file path.", specifier)),
           "data" => (Some(lsp::NumberOrString::String("no-cache-data".to_string())), "Uncached data URL.".to_string()),
@@ -430,27 +461,18 @@ fn diagnose_dependency(
         };
         diagnostics.push(lsp::Diagnostic {
           range: documents::to_lsp_range(range),
-          severity: Some(lsp::DiagnosticSeverity::Error),
+          severity: Some(lsp::DiagnosticSeverity::ERROR),
           code,
           source: Some("deno".to_string()),
           message,
           data: Some(json!({ "specifier": specifier })),
           ..Default::default()
         });
-      } else if let Some(message) = documents.maybe_warning(specifier) {
-        diagnostics.push(lsp::Diagnostic {
-          range: documents::to_lsp_range(range),
-          severity: Some(lsp::DiagnosticSeverity::Warning),
-          code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
-          source: Some("deno".to_string()),
-          message,
-          ..Default::default()
-        })
       }
     }
     Some(Err(err)) => diagnostics.push(lsp::Diagnostic {
       range: documents::to_lsp_range(err.range()),
-      severity: Some(lsp::DiagnosticSeverity::Error),
+      severity: Some(lsp::DiagnosticSeverity::ERROR),
       code: Some(resolution_error_as_code(err)),
       source: Some("deno".to_string()),
       message: err.to_string(),
@@ -463,40 +485,40 @@ fn diagnose_dependency(
 /// Generate diagnostics for dependencies of a module, attempting to resolve
 /// dependencies on the local file system or in the DENO_DIR cache.
 async fn generate_deps_diagnostics(
-  snapshot: &language_server::StateSnapshot,
+  snapshot: Arc<language_server::StateSnapshot>,
   collection: Arc<Mutex<DiagnosticCollection>>,
 ) -> Result<DiagnosticVec, AnyError> {
-  let config = snapshot.config.clone();
-  let documents = snapshot.documents.clone();
   tokio::task::spawn(async move {
     let mut diagnostics_vec = Vec::new();
 
-    for specifier in documents.specifiers(true, true) {
-      if !config.specifier_enabled(&specifier) {
+    for document in snapshot.documents.documents(true, true) {
+      if !snapshot.config.specifier_enabled(document.specifier()) {
         continue;
       }
-      let version = documents.lsp_version(&specifier);
+      let version = document.maybe_lsp_version();
       let current_version = collection
         .lock()
         .await
-        .get_version(&specifier, &DiagnosticSource::Deno);
+        .get_version(document.specifier(), &DiagnosticSource::Deno);
       if version != current_version {
         let mut diagnostics = Vec::new();
-        if let Some(dependencies) = documents.dependencies(&specifier) {
-          for (_, dependency) in dependencies {
-            diagnose_dependency(
-              &mut diagnostics,
-              &documents,
-              &dependency.maybe_code,
-            );
-            diagnose_dependency(
-              &mut diagnostics,
-              &documents,
-              &dependency.maybe_type,
-            );
-          }
+        for (_, dependency) in document.dependencies() {
+          diagnose_dependency(
+            &mut diagnostics,
+            &snapshot.documents,
+            &dependency.maybe_code,
+          );
+          diagnose_dependency(
+            &mut diagnostics,
+            &snapshot.documents,
+            &dependency.maybe_type,
+          );
         }
-        diagnostics_vec.push((specifier.clone(), version, diagnostics));
+        diagnostics_vec.push((
+          document.specifier().clone(),
+          version,
+          diagnostics,
+        ));
       }
     }
 
@@ -509,10 +531,9 @@ async fn generate_deps_diagnostics(
 /// Publishes diagnostics to the client.
 async fn publish_diagnostics(
   client: &lspower::Client,
-  collection: Arc<Mutex<DiagnosticCollection>>,
+  collection: &mut DiagnosticCollection,
   snapshot: &language_server::StateSnapshot,
 ) {
-  let mut collection = collection.lock().await;
   if let Some(changes) = collection.take_changes() {
     for specifier in changes {
       let mut diagnostics: Vec<lsp::Diagnostic> =
@@ -533,9 +554,14 @@ async fn publish_diagnostics(
         diagnostics
           .extend(collection.get(&specifier, DiagnosticSource::Deno).cloned());
       }
-      let uri = specifier.clone();
-      let version = snapshot.documents.lsp_version(&specifier);
-      client.publish_diagnostics(uri, diagnostics, version).await;
+      let version = snapshot
+        .documents
+        .get(&specifier)
+        .map(|d| d.maybe_lsp_version())
+        .flatten();
+      client
+        .publish_diagnostics(specifier.clone(), diagnostics, version)
+        .await;
     }
   }
 }
@@ -545,7 +571,7 @@ async fn publish_diagnostics(
 async fn update_diagnostics(
   client: &lspower::Client,
   collection: Arc<Mutex<DiagnosticCollection>>,
-  snapshot: &language_server::StateSnapshot,
+  snapshot: Arc<language_server::StateSnapshot>,
   ts_server: &tsc::TsServer,
 ) {
   let mark = snapshot.performance.mark("update_diagnostics", None::<()>);
@@ -555,19 +581,18 @@ async fn update_diagnostics(
       .performance
       .mark("update_diagnostics_lint", None::<()>);
     let collection = collection.clone();
-    let diagnostics = generate_lint_diagnostics(snapshot, collection.clone())
+    let diagnostics = generate_lint_diagnostics(&snapshot, collection.clone())
       .await
       .map_err(|err| {
         error!("Error generating lint diagnostics: {}", err);
       })
       .unwrap_or_default();
-    {
-      let mut collection = collection.lock().await;
-      for diagnostic_record in diagnostics {
-        collection.set(DiagnosticSource::DenoLint, diagnostic_record);
-      }
+
+    let mut collection = collection.lock().await;
+    for diagnostic_record in diagnostics {
+      collection.set(DiagnosticSource::DenoLint, diagnostic_record);
     }
-    publish_diagnostics(client, collection, snapshot).await;
+    publish_diagnostics(client, &mut collection, &snapshot).await;
     snapshot.performance.measure(mark);
   };
 
@@ -577,19 +602,17 @@ async fn update_diagnostics(
       .mark("update_diagnostics_ts", None::<()>);
     let collection = collection.clone();
     let diagnostics =
-      generate_ts_diagnostics(snapshot, collection.clone(), ts_server)
+      generate_ts_diagnostics(snapshot.clone(), collection.clone(), ts_server)
         .await
         .map_err(|err| {
           error!("Error generating TypeScript diagnostics: {}", err);
         })
         .unwrap_or_default();
-    {
-      let mut collection = collection.lock().await;
-      for diagnostic_record in diagnostics {
-        collection.set(DiagnosticSource::TypeScript, diagnostic_record);
-      }
+    let mut collection = collection.lock().await;
+    for diagnostic_record in diagnostics {
+      collection.set(DiagnosticSource::TypeScript, diagnostic_record);
     }
-    publish_diagnostics(client, collection, snapshot).await;
+    publish_diagnostics(client, &mut collection, &snapshot).await;
     snapshot.performance.measure(mark);
   };
 
@@ -598,19 +621,18 @@ async fn update_diagnostics(
       .performance
       .mark("update_diagnostics_deps", None::<()>);
     let collection = collection.clone();
-    let diagnostics = generate_deps_diagnostics(snapshot, collection.clone())
-      .await
-      .map_err(|err| {
-        error!("Error generating Deno diagnostics: {}", err);
-      })
-      .unwrap_or_default();
-    {
-      let mut collection = collection.lock().await;
-      for diagnostic_record in diagnostics {
-        collection.set(DiagnosticSource::Deno, diagnostic_record);
-      }
+    let diagnostics =
+      generate_deps_diagnostics(snapshot.clone(), collection.clone())
+        .await
+        .map_err(|err| {
+          error!("Error generating Deno diagnostics: {}", err);
+        })
+        .unwrap_or_default();
+    let mut collection = collection.lock().await;
+    for diagnostic_record in diagnostics {
+      collection.set(DiagnosticSource::Deno, diagnostic_record);
     }
-    publish_diagnostics(client, collection, snapshot).await;
+    publish_diagnostics(client, &mut collection, &snapshot).await;
     snapshot.performance.measure(mark);
   };
 
@@ -634,7 +656,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let documents = Documents::new(location);
+    let mut documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -678,7 +700,7 @@ mod tests {
     let (snapshot, collection, _) = setup(&[(
       "file:///a.ts",
       r#"import * as b from "./b.ts";
-      
+
 let a = "a";
 console.log(a);
 "#,

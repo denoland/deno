@@ -19,6 +19,12 @@ fn no_color() {
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 
+itest!(overloads {
+  args: "test test/overloads.ts",
+  exit_code: 0,
+  output: "test/overloads.out",
+});
+
 itest!(meta {
   args: "test test/meta.ts",
   exit_code: 0,
@@ -83,6 +89,12 @@ itest!(markdown {
   args: "test --doc --allow-all test/markdown.md",
   exit_code: 1,
   output: "test/markdown.out",
+});
+
+itest!(markdown_windows {
+  args: "test --doc --allow-all test/markdown_windows.md",
+  exit_code: 1,
+  output: "test/markdown_windows.out",
 });
 
 itest!(text {

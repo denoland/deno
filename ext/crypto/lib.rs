@@ -876,10 +876,14 @@ pub async fn op_crypto_derive_bits(
       let salt = hkdf::Salt::new(algorithm, salt);
       let prk = salt.extract(&secret);
       let info = &[&*info];
-      let okm = prk.expand(info, HkdfOutput(length))?;
+      let okm = prk.expand(info, HkdfOutput(length)).map_err(|_e| {
+        custom_error(
+          "DOMExceptionOperationError",
+          "The length provided for HKDF is too large",
+        )
+      })?;
       let mut r = vec![0u8; length];
       okm.fill(&mut r)?;
-
       Ok(r.into())
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
@@ -1599,7 +1603,12 @@ pub async fn op_crypto_decrypt_key(
             block_modes::Cbc<aes::Aes128, block_modes::block_padding::Pkcs7>;
           let cipher = Aes128Cbc::new_from_slices(key, &iv)?;
 
-          cipher.decrypt_vec(data)?
+          cipher.decrypt_vec(data).map_err(|_| {
+            custom_error(
+              "DOMExceptionOperationError",
+              "Decryption failed".to_string(),
+            )
+          })?
         }
         192 => {
           // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
@@ -1607,7 +1616,12 @@ pub async fn op_crypto_decrypt_key(
             block_modes::Cbc<aes::Aes192, block_modes::block_padding::Pkcs7>;
           let cipher = Aes192Cbc::new_from_slices(key, &iv)?;
 
-          cipher.decrypt_vec(data)?
+          cipher.decrypt_vec(data).map_err(|_| {
+            custom_error(
+              "DOMExceptionOperationError",
+              "Decryption failed".to_string(),
+            )
+          })?
         }
         256 => {
           // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
@@ -1615,7 +1629,12 @@ pub async fn op_crypto_decrypt_key(
             block_modes::Cbc<aes::Aes256, block_modes::block_padding::Pkcs7>;
           let cipher = Aes256Cbc::new_from_slices(key, &iv)?;
 
-          cipher.decrypt_vec(data)?
+          cipher.decrypt_vec(data).map_err(|_| {
+            custom_error(
+              "DOMExceptionOperationError",
+              "Decryption failed".to_string(),
+            )
+          })?
         }
         _ => unreachable!(),
       };

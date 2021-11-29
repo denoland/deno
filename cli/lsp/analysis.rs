@@ -8,7 +8,7 @@ use crate::tools::lint::create_linter;
 use crate::tools::lint::get_configured_rules;
 
 use deno_ast::SourceTextInfo;
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
@@ -95,7 +95,7 @@ impl Reference {
         hint,
       } => lsp::Diagnostic {
         range: self.range,
-        severity: Some(lsp::DiagnosticSeverity::Warning),
+        severity: Some(lsp::DiagnosticSeverity::WARNING),
         code: Some(lsp::NumberOrString::String(code.to_string())),
         code_description: None,
         source: Some("deno-lint".to_string()),
@@ -785,7 +785,7 @@ mod tests {
         },
         lsp::Diagnostic {
           range,
-          severity: Some(lsp::DiagnosticSeverity::Warning),
+          severity: Some(lsp::DiagnosticSeverity::WARNING),
           code: Some(lsp::NumberOrString::String("code1".to_string())),
           source: Some("deno-lint".to_string()),
           message: "message1".to_string(),
@@ -803,7 +803,7 @@ mod tests {
         },
         lsp::Diagnostic {
           range,
-          severity: Some(lsp::DiagnosticSeverity::Warning),
+          severity: Some(lsp::DiagnosticSeverity::WARNING),
           code: Some(lsp::NumberOrString::String("code2".to_string())),
           source: Some("deno-lint".to_string()),
           message: "message2\nhint2".to_string(),

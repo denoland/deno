@@ -1,12 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {
-  assertEquals,
-  assertRejects,
-  assertThrows,
-  unitTest,
-} from "./test_util.ts";
+import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function ftruncateSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_ftruncateSync.txt";
@@ -28,7 +23,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function ftruncateSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_ftruncate.txt";
@@ -50,7 +45,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function truncateSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_truncateSync.txt";
@@ -65,7 +60,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function truncateSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_truncate.txt";
@@ -80,19 +75,19 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { write: false } }, function truncateSyncPerm() {
+Deno.test({ permissions: { write: false } }, function truncateSyncPerm() {
   assertThrows(() => {
     Deno.truncateSync("/test_truncateSyncPermission.txt");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { write: false } }, async function truncatePerm() {
+Deno.test({ permissions: { write: false } }, async function truncatePerm() {
   await assertRejects(async () => {
     await Deno.truncate("/test_truncatePermission.txt");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function truncateSyncNotFound() {
     const filename = "/badfile.txt";
@@ -106,7 +101,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function truncateSyncNotFound() {
     const filename = "/badfile.txt";

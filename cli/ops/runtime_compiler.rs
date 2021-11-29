@@ -9,10 +9,10 @@ use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
@@ -252,6 +252,7 @@ async fn op_emit(
           emit_with_diagnostics: true,
           maybe_config_specifier: None,
           ts_config,
+          reload: true,
         },
       )?;
       (emit_result.diagnostics, emit_result.stats)
@@ -271,6 +272,7 @@ async fn op_emit(
           emit_with_diagnostics: true,
           maybe_config_specifier: None,
           ts_config: ts_config.clone(),
+          reload: true,
         },
       )?;
       (emit_result.diagnostics, emit_result.stats)

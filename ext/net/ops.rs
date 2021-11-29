@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::AsyncRefCell;
+use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpPair;
@@ -82,6 +83,12 @@ pub enum OpAddr {
 pub struct OpPacket {
   pub size: usize,
   pub remote_addr: OpAddr,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TlsHandshakeInfo {
+  pub alpn_protocol: Option<ByteString>,
 }
 
 #[derive(Serialize)]
@@ -433,6 +440,8 @@ fn listen_udp(
 ) -> Result<(u32, SocketAddr), AnyError> {
   let std_socket = std::net::UdpSocket::bind(&addr)?;
   std_socket.set_nonblocking(true)?;
+  // Enable messages to be sent to the broadcast address (255.255.255.255) by default
+  std_socket.set_broadcast(true)?;
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
   let socket_resource = UdpSocketResource {

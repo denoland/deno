@@ -2,8 +2,8 @@
 
 import {
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
 } from "../../../test_util/std/testing/asserts.ts";
 
 Deno.test("fragment", () => {
@@ -57,12 +57,12 @@ Deno.test("echo string tls", async () => {
 Deno.test("websocket error", async () => {
   const ws = new WebSocketStream("wss://localhost:4242");
   await Promise.all([
-    assertThrowsAsync(
+    assertRejects(
       () => ws.connection,
       Deno.errors.UnexpectedEof,
       "tls handshake eof",
     ),
-    assertThrowsAsync(
+    assertRejects(
       () => ws.closed,
       Deno.errors.UnexpectedEof,
       "tls handshake eof",
@@ -79,4 +79,18 @@ Deno.test("echo uint8array", async () => {
   assertEquals(res.value, uint);
   ws.close();
   await ws.closed;
+});
+
+Deno.test("aborting immediately throws an AbortError", async () => {
+  const controller = new AbortController();
+  const wss = new WebSocketStream("ws://localhost:4242", {
+    signal: controller.signal,
+  });
+  controller.abort();
+  await assertRejects(
+    () => wss.connection,
+    DOMException,
+    "connection was aborted",
+  );
+  await assertRejects(() => wss.closed, DOMException, "connection was aborted");
 });

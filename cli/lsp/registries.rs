@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::language_server;
 use super::path_to_regex::parse;
 use super::path_to_regex::string_to_regex;
 use super::path_to_regex::Compiler;
@@ -16,9 +15,9 @@ use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::http_cache::HttpCache;
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
@@ -349,7 +348,7 @@ impl ModuleRegistry {
       s,
       lsp::CompletionItem {
         label,
-        kind: Some(lsp::CompletionItemKind::Folder),
+        kind: Some(lsp::CompletionItemKind::FOLDER),
         filter_text,
         sort_text: Some("1".to_string()),
         text_edit,
@@ -439,7 +438,7 @@ impl ModuleRegistry {
     current_specifier: &str,
     offset: usize,
     range: &lsp::Range,
-    state_snapshot: &language_server::StateSnapshot,
+    specifier_exists: impl Fn(&ModuleSpecifier) -> bool,
   ) -> Option<Vec<lsp::CompletionItem>> {
     if let Ok(specifier) = Url::parse(current_specifier) {
       let origin = base_url(&specifier);
@@ -509,9 +508,9 @@ impl ModuleRegistry {
                             item.clone()
                           };
                           let kind = if key.name == last_key_name {
-                            Some(lsp::CompletionItemKind::File)
+                            Some(lsp::CompletionItemKind::FILE)
                           } else {
-                            Some(lsp::CompletionItemKind::Folder)
+                            Some(lsp::CompletionItemKind::FOLDER)
                           };
                           let mut params = match_result.params.clone();
                           params.insert(
@@ -529,9 +528,7 @@ impl ModuleRegistry {
                             },
                           ));
                           let command = if key.name == last_key_name
-                            && !state_snapshot
-                              .documents
-                              .contains_specifier(&item_specifier)
+                            && !specifier_exists(&item_specifier)
                           {
                             Some(lsp::Command {
                               title: "".to_string(),
@@ -575,7 +572,7 @@ impl ModuleRegistry {
                   Token::String(s) => {
                     if s.starts_with(path) {
                       let label = s.to_string();
-                      let kind = Some(lsp::CompletionItemKind::Folder);
+                      let kind = Some(lsp::CompletionItemKind::FOLDER);
                       let mut url = specifier.clone();
                       url.set_path(s);
                       let full_text = url.as_str();
@@ -609,7 +606,7 @@ impl ModuleRegistry {
                           let base = Url::parse(&origin).ok()?;
                           for (idx, item) in items.into_iter().enumerate() {
                             let path = format!("{}{}", prefix, item);
-                            let kind = Some(lsp::CompletionItemKind::Folder);
+                            let kind = Some(lsp::CompletionItemKind::FOLDER);
                             let item_specifier = base.join(&path).ok()?;
                             let full_text = item_specifier.as_str();
                             let text_edit = Some(
@@ -619,9 +616,7 @@ impl ModuleRegistry {
                               }),
                             );
                             let command = if k.name == last_key_name
-                              && !state_snapshot
-                                .documents
-                                .contains_specifier(&item_specifier)
+                              && !specifier_exists(&item_specifier)
                             {
                               Some(lsp::Command {
                                 title: "".to_string(),
@@ -692,7 +687,7 @@ impl ModuleRegistry {
           }));
           Some(lsp::CompletionItem {
             label: origin,
-            kind: Some(lsp::CompletionItemKind::Folder),
+            kind: Some(lsp::CompletionItemKind::FOLDER),
             detail: Some("(registry)".to_string()),
             sort_text: Some("2".to_string()),
             text_edit,
@@ -771,37 +766,7 @@ impl ModuleRegistry {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::lsp::documents::Documents;
   use tempfile::TempDir;
-
-  fn mock_state_snapshot(
-    source_fixtures: &[(&str, &str)],
-    location: &Path,
-  ) -> language_server::StateSnapshot {
-    let documents = Documents::new(location);
-    let http_cache = HttpCache::new(location);
-    for (specifier, source) in source_fixtures {
-      let specifier =
-        resolve_url(specifier).expect("failed to create specifier");
-      http_cache
-        .set(&specifier, HashMap::default(), source.as_bytes())
-        .expect("could not cache file");
-      assert!(
-        documents.content(&specifier).is_some(),
-        "source could not be setup"
-      );
-    }
-    language_server::StateSnapshot {
-      documents,
-      ..Default::default()
-    }
-  }
-
-  fn setup(sources: &[(&str, &str)]) -> language_server::StateSnapshot {
-    let temp_dir = TempDir::new().expect("could not create temp dir");
-    let location = temp_dir.path().join("deps");
-    mock_state_snapshot(sources, &location)
-  }
 
   #[test]
   fn test_validate_registry_configuration() {
@@ -920,9 +885,8 @@ mod tests {
         character: 21,
       },
     };
-    let state_snapshot = setup(&[]);
     let completions = module_registry
-      .get_completions("h", 1, &range, &state_snapshot)
+      .get_completions("h", 1, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -946,7 +910,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions("http://localhost", 16, &range, &state_snapshot)
+      .get_completions("http://localhost", 16, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -971,7 +935,6 @@ mod tests {
       .enable("http://localhost:4545/")
       .await
       .expect("could not enable");
-    let state_snapshot = setup(&[]);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -983,7 +946,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions("http://localhost:4545", 21, &range, &state_snapshot)
+      .get_completions("http://localhost:4545", 21, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1007,7 +970,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions("http://localhost:4545/", 22, &range, &state_snapshot)
+      .get_completions("http://localhost:4545/", 22, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1031,7 +994,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions("http://localhost:4545/x/", 24, &range, &state_snapshot)
+      .get_completions("http://localhost:4545/x/", 24, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1049,12 +1012,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions(
-        "http://localhost:4545/x/a@",
-        26,
-        &range,
-        &state_snapshot,
-      )
+      .get_completions("http://localhost:4545/x/a@", 26, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1070,21 +1028,18 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions(
-        "http://localhost:4545/x/a@v1.0.0/",
-        33,
-        &range,
-        &state_snapshot,
-      )
+      .get_completions("http://localhost:4545/x/a@v1.0.0/", 33, &range, |_| {
+        false
+      })
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
     assert_eq!(completions.len(), 2);
     assert_eq!(completions[0].detail, Some("(path)".to_string()));
-    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::File));
+    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
     assert!(completions[0].command.is_some());
     assert_eq!(completions[1].detail, Some("(path)".to_string()));
-    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::File));
+    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
     assert!(completions[1].command.is_some());
   }
 
@@ -1098,7 +1053,6 @@ mod tests {
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
       .expect("could not enable");
-    let state_snapshot = setup(&[]);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1110,7 +1064,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions("http://localhost:4545/", 22, &range, &state_snapshot)
+      .get_completions("http://localhost:4545/", 22, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1139,12 +1093,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions(
-        "http://localhost:4545/cde@",
-        26,
-        &range,
-        &state_snapshot,
-      )
+      .get_completions("http://localhost:4545/cde@", 26, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();
@@ -1173,7 +1122,6 @@ mod tests {
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
       .expect("could not enable");
-    let state_snapshot = setup(&[]);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1185,7 +1133,7 @@ mod tests {
       },
     };
     let completions = module_registry
-      .get_completions("http://localhost:4545/", 22, &range, &state_snapshot)
+      .get_completions("http://localhost:4545/", 22, &range, |_| false)
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap();

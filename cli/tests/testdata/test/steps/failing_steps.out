@@ -48,6 +48,6 @@ failures:
 	multiple test step failures
 	failing step in failing test
 
-test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+test result: FAILED. 0 passed (1 step); 3 failed (5 steps); 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 
 error: Test failed
