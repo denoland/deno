@@ -136,6 +136,7 @@
     http: __bootstrap.http,
     dlopen: __bootstrap.ffi.dlopen,
     UnsafePointer: __bootstrap.ffi.UnsafePointer,
+    UnsafePointerView: __bootstrap.ffi.UnsafePointerView,
     flock: __bootstrap.fs.flock,
     flockSync: __bootstrap.fs.flockSync,
     funlock: __bootstrap.fs.funlock,

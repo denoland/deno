@@ -6,17 +6,122 @@
   const __bootstrap = window.__bootstrap;
   const {
     ArrayBuffer,
+    Uint8Array,
     BigInt,
     Number,
     TypeError,
   } = window.__bootstrap.primordials;
 
-  function unpackPointer([hi, lo]) {
+  function unpackU64([hi, lo]) {
     return BigInt(hi) << 32n | BigInt(lo);
   }
 
-  function packPointer(value) {
+  function packU64(value) {
     return [Number(value >> 32n), Number(value & 0xFFFFFFFFn)];
+  }
+
+  function unpackI64([hi, lo]) {
+    const u64 = unpackU64([hi, lo]);
+    return u64 >> 63n ? u64 - 0x10000000000000000n : u64;
+  }
+
+  class UnsafePointerView {
+    pointer;
+
+    constructor(pointer) {
+      this.pointer = pointer;
+    }
+
+    getUint8(offset = 0) {
+      return core.opSync(
+        "op_ffi_read_u8",
+        packU64(this.pointer.value + BigInt(offset)),
+      );
+    }
+
+    getInt8(offset = 0) {
+      return core.opSync(
+        "op_ffi_read_i8",
+        packU64(this.pointer.value + BigInt(offset)),
+      );
+    }
+
+    getUint16(offset = 0) {
+      return core.opSync(
+        "op_ffi_read_u16",
+        packU64(this.pointer.value + BigInt(offset)),
+      );
+    }
+
+    getInt16(offset = 0) {
+      return core.opSync(
+        "op_ffi_read_i16",
+        packU64(this.pointer.value + BigInt(offset)),
+      );
+    }
+
+    getUint32(offset = 0) {
+      return core.opSync(
+        "op_ffi_read_u32",
+        packU64(this.pointer.value + BigInt(offset)),
+      );
+    }
+
+    getInt32(offset = 0) {
+      return core.opSync(
+        "op_ffi_read_i32",
+        packU64(this.pointer.value + BigInt(offset)),
+      );
+    }
+
+    getBigUint64(offset = 0) {
+      return unpackU64(core.opSync(
+        "op_ffi_read_u64",
+        packU64(this.pointer.value + BigInt(offset)),
+      ));
+    }
+
+    getBigInt64(offset = 0) {
+      return unpackI64(core.opSync(
+        "op_ffi_read_u64",
+        packU64(this.pointer.value + BigInt(offset)),
+      ));
+    }
+
+    getFloat32(offset = 0) {
+      return core.opSync(
+        "op_ffi_read_f32",
+        packU64(this.pointer.value + BigInt(offset)),
+      );
+    }
+
+    getFloat64(offset = 0) {
+      return core.opSync(
+        "op_ffi_read_f64",
+        packU64(this.pointer.value + BigInt(offset)),
+      );
+    }
+
+    getCString(offset = 0) {
+      return core.opSync(
+        "op_ffi_cstr_read",
+        packU64(this.pointer.value + BigInt(offset)),
+      );
+    }
+
+    getArrayBuffer(byteLength, offset = 0) {
+      const uint8array = new Uint8Array(byteLength);
+      this.copy(uint8array, offset);
+      return uint8array.buffer;
+    }
+
+    copy(destination, offset = 0) {
+      core.opSync("op_ffi_buf_copy", [
+        packU64(this.pointer.value + BigInt(offset)),
+        destination,
+        destination.byteLength,
+      ]);
+    }
   }
 
   class UnsafePointer {
@@ -28,22 +133,7 @@
 
     static of(typedArray) {
       return new UnsafePointer(
-        unpackPointer(core.opSync("op_ffi_ptr_of", typedArray)),
-      );
-    }
-
-    read(destination, offset = 0) {
-      core.opSync("op_ffi_buf_read", [
-        packPointer(this.value + BigInt(offset)),
-        destination,
-        destination.byteLength,
-      ]);
-    }
-
-    readCString(offset = 0) {
-      return core.opSync(
-        "op_ffi_cstr_read",
-        packPointer(this.value + BigInt(offset)),
+        unpackU64(core.opSync("op_ffi_ptr_of", typedArray)),
       );
     }
 
@@ -79,7 +169,7 @@
                 parameters.push(buffers.length);
                 buffers.push(arg);
               } else if (arg instanceof UnsafePointer) {
-                parameters.push(packPointer(arg.value));
+                parameters.push(packU64(arg.value));
                 buffers.push(undefined);
               } else if (arg === null) {
                 parameters.push(null);
@@ -104,7 +194,7 @@
 
             if (symbols[symbol].result === "buffer") {
               return promise.then((value) =>
-                new UnsafePointer(unpackPointer(value))
+                new UnsafePointer(unpackU64(value))
               );
             }
 
@@ -118,7 +208,7 @@
             });
 
             if (symbols[symbol].result === "buffer") {
-              return new UnsafePointer(unpackPointer(result));
+              return new UnsafePointer(unpackU64(result));
             }
 
             return result;
@@ -138,5 +228,5 @@
     return new DynamicLibrary(pathFromURL(path), symbols);
   }
 
-  window.__bootstrap.ffi = { dlopen, UnsafePointer };
+  window.__bootstrap.ffi = { dlopen, UnsafePointer, UnsafePointerView };
 })(this);

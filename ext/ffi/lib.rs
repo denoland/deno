@@ -1,5 +1,6 @@
 // Copyright 2021 the Deno authors. All rights reserved. MIT license.
 
+use core::slice;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
@@ -113,8 +114,17 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       ("op_ffi_call", op_sync(op_ffi_call)),
       ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
       ("op_ffi_ptr_of", op_sync(op_ffi_ptr_of)),
-      ("op_ffi_buf_read", op_sync(op_ffi_buf_read)),
+      ("op_ffi_buf_copy", op_sync(op_ffi_buf_copy)),
       ("op_ffi_cstr_read", op_sync(op_ffi_cstr_read)),
+      ("op_ffi_read_u8", op_sync(op_ffi_read_u8)),
+      ("op_ffi_read_i8", op_sync(op_ffi_read_i8)),
+      ("op_ffi_read_u16", op_sync(op_ffi_read_u16)),
+      ("op_ffi_read_i16", op_sync(op_ffi_read_i16)),
+      ("op_ffi_read_u32", op_sync(op_ffi_read_u32)),
+      ("op_ffi_read_i32", op_sync(op_ffi_read_i32)),
+      ("op_ffi_read_u64", op_sync(op_ffi_read_u64)),
+      ("op_ffi_read_f32", op_sync(op_ffi_read_f32)),
+      ("op_ffi_read_f64", op_sync(op_ffi_read_f64)),
     ])
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
@@ -230,7 +240,7 @@ impl NativeValue {
         } else {
           Self {
             buffer: u64::from(
-              serde_json::from_value::<PointerValue>(value)
+              serde_json::from_value::<U32x2>(value)
               .expect("Expected ffi arg value to be a tuple of the low and high bits of a pointer address")
             ) as *const u8,
           }
@@ -288,16 +298,16 @@ fn value_as_f64(value: Value) -> f64 {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct PointerValue(u32, u32);
+struct U32x2(u32, u32);
 
-impl From<u64> for PointerValue {
+impl From<u64> for U32x2 {
   fn from(value: u64) -> Self {
-    PointerValue((value >> 32) as u32, value as u32)
+    U32x2((value >> 32) as u32, value as u32)
   }
 }
 
-impl From<PointerValue> for u64 {
-  fn from(value: PointerValue) -> Self {
+impl From<U32x2> for u64 {
+  fn from(value: U32x2) -> Self {
     (value.0 as u64) << 32 | value.1 as u64
   }
 }
@@ -506,7 +516,7 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
       json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
     }
     NativeType::Buffer => {
-      json!(PointerValue::from(unsafe {
+      json!(U32x2::from(unsafe {
         symbol.cif.call::<*const u8>(symbol.ptr, &call_args)
       } as u64))
     }
@@ -555,27 +565,99 @@ fn op_ffi_ptr_of(
   _state: &mut deno_core::OpState,
   buf: ZeroCopyBuf,
   _: (),
-) -> Result<PointerValue, AnyError> {
-  Ok(PointerValue::from(buf.as_ptr() as u64))
+) -> Result<U32x2, AnyError> {
+  Ok(U32x2::from(buf.as_ptr() as u64))
 }
 
-fn op_ffi_buf_read(
+fn op_ffi_buf_copy(
   _state: &mut deno_core::OpState,
-  (src, mut dst, count): (PointerValue, ZeroCopyBuf, usize),
+  (src, mut dst, len): (U32x2, ZeroCopyBuf, usize),
   _: (),
 ) -> Result<(), AnyError> {
   let src = u64::from(src) as *const u8;
-  unsafe { ptr::copy(src, dst.as_mut_ptr(), count) };
+  unsafe { ptr::copy(src, dst.as_mut_ptr(), len) };
   Ok(())
 }
 
 fn op_ffi_cstr_read(
   _state: &mut deno_core::OpState,
-  ptr: PointerValue,
+  ptr: U32x2,
   _: (),
 ) -> Result<String, AnyError> {
   let ptr = u64::from(ptr) as *const i8;
   Ok(unsafe { CStr::from_ptr(ptr) }.to_str()?.to_string())
+}
+
+fn op_ffi_read_u8(
+  _state: &mut deno_core::OpState,
+  ptr: U32x2,
+  _: (),
+) -> Result<u8, AnyError> {
+  Ok(unsafe { *(u64::from(ptr) as *const u8) })
+}
+
+fn op_ffi_read_i8(
+  _state: &mut deno_core::OpState,
+  ptr: U32x2,
+  _: (),
+) -> Result<i8, AnyError> {
+  Ok(unsafe { *(u64::from(ptr) as *const i8) })
+}
+
+fn op_ffi_read_u16(
+  _state: &mut deno_core::OpState,
+  ptr: U32x2,
+  _: (),
+) -> Result<u16, AnyError> {
+  Ok(unsafe { *(u64::from(ptr) as *const u16) })
+}
+
+fn op_ffi_read_i16(
+  _state: &mut deno_core::OpState,
+  ptr: U32x2,
+  _: (),
+) -> Result<i16, AnyError> {
+  Ok(unsafe { *(u64::from(ptr) as *const i16) })
+}
+
+fn op_ffi_read_u32(
+  _state: &mut deno_core::OpState,
+  ptr: U32x2,
+  _: (),
+) -> Result<u32, AnyError> {
+  Ok(unsafe { *(u64::from(ptr) as *const u32) })
+}
+
+fn op_ffi_read_i32(
+  _state: &mut deno_core::OpState,
+  ptr: U32x2,
+  _: (),
+) -> Result<i32, AnyError> {
+  Ok(unsafe { *(u64::from(ptr) as *const i32) })
+}
+
+fn op_ffi_read_u64(
+  _state: &mut deno_core::OpState,
+  ptr: U32x2,
+  _: (),
+) -> Result<U32x2, AnyError> {
+  Ok(U32x2::from(unsafe { *(u64::from(ptr) as *const u64) }))
+}
+
+fn op_ffi_read_f32(
+  _state: &mut deno_core::OpState,
+  ptr: U32x2,
+  _: (),
+) -> Result<f32, AnyError> {
+  Ok(unsafe { *(u64::from(ptr) as *const f32) })
+}
+
+fn op_ffi_read_f64(
+  _state: &mut deno_core::OpState,
+  ptr: U32x2,
+  _: (),
+) -> Result<f64, AnyError> {
+  Ok(unsafe { *(u64::from(ptr) as *const f64) })
 }
 
 #[cfg(test)]
