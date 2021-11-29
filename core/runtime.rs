@@ -2583,20 +2583,21 @@ assertEquals(1, notify_return_value);
       }
     }
 
-    let was_awoken = Arc::new(AtomicUsize::new(0));
-    let waker = futures::task::waker(Arc::new(ArcWakeImpl(was_awoken.clone())));
+    let awoken_times = Arc::new(AtomicUsize::new(0));
+    let waker =
+      futures::task::waker(Arc::new(ArcWakeImpl(awoken_times.clone())));
     let cx = &mut Context::from_waker(&waker);
 
     assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
     assert_eq!(1, macrotask.load(Ordering::Relaxed));
     assert_eq!(1, next_tick.load(Ordering::Relaxed));
-    assert_eq!(was_awoken.swap(0, Ordering::Relaxed), 1);
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
     assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-    assert_eq!(was_awoken.swap(0, Ordering::Relaxed), 1);
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
     assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-    assert_eq!(was_awoken.swap(0, Ordering::Relaxed), 1);
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
     assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-    assert_eq!(was_awoken.swap(0, Ordering::Relaxed), 1);
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
 
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     state_rc.borrow_mut().has_tick_scheduled = false;
@@ -2604,12 +2605,12 @@ assertEquals(1, notify_return_value);
       runtime.poll_event_loop(cx, false),
       Poll::Ready(Ok(()))
     ));
-    assert_eq!(was_awoken.load(Ordering::Relaxed), 0);
+    assert_eq!(awoken_times.load(Ordering::Relaxed), 0);
     assert!(matches!(
       runtime.poll_event_loop(cx, false),
       Poll::Ready(Ok(()))
     ));
-    assert_eq!(was_awoken.load(Ordering::Relaxed), 0);
+    assert_eq!(awoken_times.load(Ordering::Relaxed), 0);
   }
 
   #[test]
