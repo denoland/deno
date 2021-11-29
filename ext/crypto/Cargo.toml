@@ -19,10 +19,10 @@ base64 = "0.13.0"
 block-modes = "0.8.1"
 deno_core = { version = "0.109.0", path = "../../core" }
 deno_web = { version = "0.58.0", path = "../web" }
-elliptic-curve = "0.10.6"
+elliptic-curve = { version = "0.11.1", features = ["pem", "arithmetic"] }
 lazy_static = "1.4.0"
 num-traits = "0.2.14"
-p256 = { version = "0.9.0", features = ["ecdh"] }
+p256 = { version = "0.10.0-pre.1", features = ["ecdh", "pem"] }
 p384 = "0.8.0"
 rand = "0.8.4"
 ring = { version = "0.16.20", features = ["std"] }

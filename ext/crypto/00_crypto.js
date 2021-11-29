@@ -106,6 +106,8 @@
       "RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
       "RSA-PSS": "RsaHashedImportParams",
       "RSA-OAEP": "RsaHashedImportParams",
+      "ECDSA": "EcImportParams",
+      "ECDH": "EcImportParams",
       "HMAC": "HmacImportParams",
       "HKDF": null,
       "PBKDF2": null,
@@ -1077,7 +1079,7 @@
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 type: "raw",
-                keyType: "secret",
+                keyType: "public",
                 data,
               });
 
@@ -1090,6 +1092,128 @@
               // 6-8.
               const key = constructKey(
                 "public",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
+            case "jwk": {
+              const jwk = keyData;
+
+              const keyType = (jwk.d != undefined) ? "private" : "public"; // validateJwtRsaKey(jwk);
+
+              if (
+                !ArrayPrototypeIncludes(
+                  supportedNamedCurves,
+                  normalizedAlgorithm.namedCurve,
+                )
+              ) {
+                throw new DOMException(
+                  "Invalid namedCurve",
+                  "DataError",
+                );
+              }
+
+              // 2.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) =>
+                    !ArrayPrototypeIncludes([
+                      (keyType === "private") ? "sign" : "verify",
+                    ], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+              // 3.
+              if (jwk.kty !== "EC") {
+                throw new DOMException(
+                  "`kty` member of JsonWebKey must be `RSA`",
+                  "DataError",
+                );
+              }
+
+              // 4.
+              if (keyUsages.length > 0 && jwk.use && jwk.use !== "sig") {
+                throw new DOMException(
+                  "`use` member of JsonWebKey must be `sig`",
+                  "DataError",
+                );
+              }
+
+              // 5.
+              // Section 4.3 of RFC7517
+              if (jwk.key_ops) {
+                if (
+                  ArrayPrototypeFind(
+                    jwk.key_ops,
+                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+                  ) !== undefined
+                ) {
+                  throw new DOMException(
+                    "`key_ops` member of JsonWebKey is invalid",
+                    "DataError",
+                  );
+                }
+
+                if (
+                  !ArrayPrototypeEvery(
+                    jwk.key_ops,
+                    (u) => ArrayPrototypeIncludes(keyUsages, u),
+                  )
+                ) {
+                  throw new DOMException(
+                    "`key_ops` member of JsonWebKey is invalid",
+                    "DataError",
+                  );
+                }
+              }
+
+              // 6.
+              if (jwk.ext === false && extractable == true) {
+                throw new DOMException(
+                  "`ext` member of JsonWebKey is invalid",
+                  "DataError",
+                );
+              }
+
+              // 7.
+
+              const { data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "ECDSA",
+                    format: "jwk",
+                    keyType,
+                    namedCurve: normalizedAlgorithm.namedCurve,
+                  },
+                  { jwkEcKey: jwk },
+                );
+
+              /*if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }*/
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                type: (keyType == "private") ? "pkcs8" : "raw",
+                keyType,
+                data,
+                jwk,
+              });
+
+              const algorithm = {
+                name: "ECDSA",
+                namedCurve: normalizedAlgorithm.namedCurve,
+              };
+
+              const key = constructKey(
+                keyType,
                 extractable,
                 usageIntersection(keyUsages, recognisedUsages),
                 algorithm,
@@ -2093,6 +2217,73 @@
       const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
 
       switch (key[_algorithm].name) {
+        case "ECDSA": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (key[_type] !== "private") {
+                throw new DOMException(
+                  "Key is not a private key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const { raw: { data } } = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "pkcs8",
+                  algorithm: "ECDSA",
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            case "spki": {
+              // 1.
+              if (key[_type] !== "public") {
+                throw new DOMException(
+                  "Key is not a public key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const { raw: { data } } = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "spki",
+                  algorithm: "ECDSA",
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            case "jwk": {
+              const { jwkEcKey } = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "jwk",
+                  algorithm: "ECDSA",
+                  namedCurve: key[_algorithm].namedCurve,
+                },
+              );
+
+              return {
+                kty: "EC",
+                crv: key[_algorithm].namedCurve,
+                ...jwkEcKey,
+              };
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
         case "HMAC": {
           if (innerKey == null) {
             throw new DOMException("Key is not available", "OperationError");

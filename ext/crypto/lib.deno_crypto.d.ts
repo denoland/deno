@@ -69,6 +69,10 @@ interface EcKeyGenParams extends Algorithm {
   namedCurve: NamedCurve;
 }
 
+interface EcImportParams extends Algorithm {
+  namedCurve: NamedCurve;
+}
+
 interface EcdsaParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
 }
@@ -193,14 +197,22 @@ interface SubtleCrypto {
   importKey(
     format: "jwk",
     keyData: JsonWebKey,
-    algorithm: AlgorithmIdentifier | HmacImportParams,
+    algorithm:
+      | AlgorithmIdentifier
+      | HmacImportParams
+      | RsaHashedImportParams
+      | EcImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
   importKey(
     format: Exclude<KeyFormat, "jwk">,
     keyData: BufferSource,
-    algorithm: AlgorithmIdentifier | HmacImportParams | RsaHashedImportParams,
+    algorithm:
+      | AlgorithmIdentifier
+      | HmacImportParams
+      | RsaHashedImportParams
+      | EcImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
