@@ -2909,7 +2909,7 @@
         return cipherText.buffer;
       }
       case "AES-CBC": {
-        normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.id);
+        normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
 
         // 1.
         if (normalizedAlgorithm.iv.byteLength !== 16) {
