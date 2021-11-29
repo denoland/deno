@@ -1486,15 +1486,56 @@ pub async fn op_crypto_import_key(
           let pk_hash = match alg {
             // rsaEncryption
             RSA_ENCRYPTION_OID => None,
-            // sha1WithRSAEncryption
-            SHA1_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha1),
-            // sha256WithRSAEncryption
-            SHA256_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha256),
-            // sha384WithRSAEncryption
-            SHA384_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha384),
-            // sha512WithRSAEncryption
-            SHA512_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha512),
-            _ => return Err(type_error("Unsupported algorithm".to_string())),
+            // id-RSASSA-PSS
+            RSASSA_PSS_OID => {
+              let params = PssPrivateKeyParameters::try_from(
+                pk_info.algorithm.parameters.ok_or_else(|| {
+                  custom_error(
+                    "DOMExceptionNotSupportedError",
+                    "Malformed parameters".to_string(),
+                  )
+                })?,
+              )
+              .map_err(|_| {
+                custom_error(
+                  "DOMExceptionNotSupportedError",
+                  "Malformed parameters".to_string(),
+                )
+              })?;
+
+              let hash_alg = params.hash_algorithm;
+              let hash = match hash_alg.oid {
+                // id-sha1
+                ID_SHA1_OID => Some(CryptoHash::Sha1),
+                // id-sha256
+                ID_SHA256_OID => Some(CryptoHash::Sha256),
+                // id-sha384
+                ID_SHA384_OID => Some(CryptoHash::Sha384),
+                // id-sha256
+                ID_SHA512_OID => Some(CryptoHash::Sha512),
+                _ => {
+                  return Err(custom_error(
+                    "DOMExceptionDataError",
+                    "Unsupported hash algorithm".to_string(),
+                  ))
+                }
+              };
+
+              if params.mask_gen_algorithm.oid != ID_MFG1 {
+                return Err(custom_error(
+                  "DOMExceptionNotSupportedError",
+                  "Unsupported hash algorithm".to_string(),
+                ));
+              }
+
+              hash
+            }
+            _ => {
+              return Err(custom_error(
+                "DOMExceptionDataError",
+                "Unsupported algorithm".to_string(),
+              ))
+            }
           };
 
           // 7.
@@ -1666,15 +1707,56 @@ pub async fn op_crypto_import_key(
           let pk_hash = match alg {
             // rsaEncryption
             RSA_ENCRYPTION_OID => None,
-            // sha1WithRSAEncryption
-            SHA1_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha1),
-            // sha256WithRSAEncryption
-            SHA256_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha256),
-            // sha384WithRSAEncryption
-            SHA384_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha384),
-            // sha512WithRSAEncryption
-            SHA512_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha512),
-            _ => return Err(type_error("Unsupported algorithm".to_string())),
+            // id-RSAES-OAEP
+            RSAES_OAEP_OID => {
+              let params = OaepPrivateKeyParameters::try_from(
+                pk_info.algorithm.parameters.ok_or_else(|| {
+                  custom_error(
+                    "DOMExceptionNotSupportedError",
+                    "Malformed parameters".to_string(),
+                  )
+                })?,
+              )
+              .map_err(|_| {
+                custom_error(
+                  "DOMExceptionNotSupportedError",
+                  "Malformed parameters".to_string(),
+                )
+              })?;
+
+              let hash_alg = params.hash_algorithm;
+              let hash = match hash_alg.oid {
+                // id-sha1
+                ID_SHA1_OID => Some(CryptoHash::Sha1),
+                // id-sha256
+                ID_SHA256_OID => Some(CryptoHash::Sha256),
+                // id-sha384
+                ID_SHA384_OID => Some(CryptoHash::Sha384),
+                // id-sha256
+                ID_SHA512_OID => Some(CryptoHash::Sha512),
+                _ => {
+                  return Err(custom_error(
+                    "DOMExceptionDataError",
+                    "Unsupported hash algorithm".to_string(),
+                  ))
+                }
+              };
+
+              if params.mask_gen_algorithm.oid != ID_MFG1 {
+                return Err(custom_error(
+                  "DOMExceptionNotSupportedError",
+                  "Unsupported hash algorithm".to_string(),
+                ));
+              }
+
+              hash
+            }
+            _ => {
+              return Err(custom_error(
+                "DOMExceptionDataError",
+                "Unsupported algorithm".to_string(),
+              ))
+            }
           };
 
           // 7.
