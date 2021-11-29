@@ -457,7 +457,7 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
       ScriptElementKind::PrimitiveType | ScriptElementKind::Keyword => {
-        lsp::CompletionItemKind::Keyword
+        lsp::CompletionItemKind::KEYWORD
       }
       ScriptElementKind::ConstElement
       | ScriptElementKind::LetElement
@@ -465,40 +465,40 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
       | ScriptElementKind::LocalVariableElement
       | ScriptElementKind::Alias
       | ScriptElementKind::ParameterElement => {
-        lsp::CompletionItemKind::Variable
+        lsp::CompletionItemKind::VARIABLE
       }
       ScriptElementKind::MemberVariableElement
       | ScriptElementKind::MemberGetAccessorElement
       | ScriptElementKind::MemberSetAccessorElement => {
-        lsp::CompletionItemKind::Field
+        lsp::CompletionItemKind::FIELD
       }
       ScriptElementKind::FunctionElement
       | ScriptElementKind::LocalFunctionElement => {
-        lsp::CompletionItemKind::Function
+        lsp::CompletionItemKind::FUNCTION
       }
       ScriptElementKind::MemberFunctionElement
       | ScriptElementKind::ConstructSignatureElement
       | ScriptElementKind::CallSignatureElement
       | ScriptElementKind::IndexSignatureElement => {
-        lsp::CompletionItemKind::Method
+        lsp::CompletionItemKind::METHOD
       }
-      ScriptElementKind::EnumElement => lsp::CompletionItemKind::Enum,
+      ScriptElementKind::EnumElement => lsp::CompletionItemKind::ENUM,
       ScriptElementKind::EnumMemberElement => {
-        lsp::CompletionItemKind::EnumMember
+        lsp::CompletionItemKind::ENUM_MEMBER
       }
       ScriptElementKind::ModuleElement
       | ScriptElementKind::ExternalModuleName => {
-        lsp::CompletionItemKind::Module
+        lsp::CompletionItemKind::MODULE
       }
       ScriptElementKind::ClassElement | ScriptElementKind::TypeElement => {
-        lsp::CompletionItemKind::Class
+        lsp::CompletionItemKind::CLASS
       }
-      ScriptElementKind::InterfaceElement => lsp::CompletionItemKind::Interface,
-      ScriptElementKind::Warning => lsp::CompletionItemKind::Text,
-      ScriptElementKind::ScriptElement => lsp::CompletionItemKind::File,
-      ScriptElementKind::Directory => lsp::CompletionItemKind::Folder,
-      ScriptElementKind::String => lsp::CompletionItemKind::Constant,
-      _ => lsp::CompletionItemKind::Property,
+      ScriptElementKind::InterfaceElement => lsp::CompletionItemKind::INTERFACE,
+      ScriptElementKind::Warning => lsp::CompletionItemKind::TEXT,
+      ScriptElementKind::ScriptElement => lsp::CompletionItemKind::FILE,
+      ScriptElementKind::Directory => lsp::CompletionItemKind::FOLDER,
+      ScriptElementKind::String => lsp::CompletionItemKind::CONSTANT,
+      _ => lsp::CompletionItemKind::PROPERTY,
     }
   }
 }
@@ -507,35 +507,35 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
 impl From<ScriptElementKind> for lsp::SymbolKind {
   fn from(kind: ScriptElementKind) -> Self {
     match kind {
-      ScriptElementKind::ModuleElement => Self::Module,
+      ScriptElementKind::ModuleElement => Self::MODULE,
       // this is only present in `getSymbolKind` in `workspaceSymbols` in
       // vscode, but seems strange it isn't consistent.
-      ScriptElementKind::TypeElement => Self::Class,
-      ScriptElementKind::ClassElement => Self::Class,
-      ScriptElementKind::EnumElement => Self::Enum,
-      ScriptElementKind::EnumMemberElement => Self::EnumMember,
-      ScriptElementKind::InterfaceElement => Self::Interface,
-      ScriptElementKind::IndexSignatureElement => Self::Method,
-      ScriptElementKind::CallSignatureElement => Self::Method,
-      ScriptElementKind::MemberFunctionElement => Self::Method,
+      ScriptElementKind::TypeElement => Self::CLASS,
+      ScriptElementKind::ClassElement => Self::CLASS,
+      ScriptElementKind::EnumElement => Self::ENUM,
+      ScriptElementKind::EnumMemberElement => Self::ENUM_MEMBER,
+      ScriptElementKind::InterfaceElement => Self::INTERFACE,
+      ScriptElementKind::IndexSignatureElement => Self::METHOD,
+      ScriptElementKind::CallSignatureElement => Self::METHOD,
+      ScriptElementKind::MemberFunctionElement => Self::METHOD,
       // workspaceSymbols in vscode treats them as fields, which does seem more
       // semantically correct while `fromProtocolScriptElementKind` treats them
       // as properties.
-      ScriptElementKind::MemberVariableElement => Self::Field,
-      ScriptElementKind::MemberGetAccessorElement => Self::Field,
-      ScriptElementKind::MemberSetAccessorElement => Self::Field,
-      ScriptElementKind::VariableElement => Self::Variable,
-      ScriptElementKind::LetElement => Self::Variable,
-      ScriptElementKind::ConstElement => Self::Variable,
-      ScriptElementKind::LocalVariableElement => Self::Variable,
-      ScriptElementKind::Alias => Self::Variable,
-      ScriptElementKind::FunctionElement => Self::Function,
-      ScriptElementKind::LocalFunctionElement => Self::Function,
-      ScriptElementKind::ConstructSignatureElement => Self::Constructor,
-      ScriptElementKind::ConstructorImplementationElement => Self::Constructor,
-      ScriptElementKind::TypeParameterElement => Self::TypeParameter,
-      ScriptElementKind::String => Self::String,
-      _ => Self::Variable,
+      ScriptElementKind::MemberVariableElement => Self::FIELD,
+      ScriptElementKind::MemberGetAccessorElement => Self::FIELD,
+      ScriptElementKind::MemberSetAccessorElement => Self::FIELD,
+      ScriptElementKind::VariableElement => Self::VARIABLE,
+      ScriptElementKind::LetElement => Self::VARIABLE,
+      ScriptElementKind::ConstElement => Self::VARIABLE,
+      ScriptElementKind::LocalVariableElement => Self::VARIABLE,
+      ScriptElementKind::Alias => Self::VARIABLE,
+      ScriptElementKind::FunctionElement => Self::FUNCTION,
+      ScriptElementKind::LocalFunctionElement => Self::FUNCTION,
+      ScriptElementKind::ConstructSignatureElement => Self::CONSTRUCTOR,
+      ScriptElementKind::ConstructorImplementationElement => Self::CONSTRUCTOR,
+      ScriptElementKind::TypeParameterElement => Self::TYPE_PARAMETER,
+      ScriptElementKind::String => Self::STRING,
+      _ => Self::VARIABLE,
     }
   }
 }
@@ -726,7 +726,7 @@ impl NavigateToItem {
     let mut tags: Option<Vec<lsp::SymbolTag>> = None;
     let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
     if kind_modifiers.contains("deprecated") {
-      tags = Some(vec![lsp::SymbolTag::Deprecated]);
+      tags = Some(vec![lsp::SymbolTag::DEPRECATED]);
     }
 
     // The field `deprecated` is deprecated but SymbolInformation does not have
@@ -837,7 +837,7 @@ impl NavigationTree {
         let mut tags: Option<Vec<lsp::SymbolTag>> = None;
         let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
         if kind_modifiers.contains("deprecated") {
-          tags = Some(vec![lsp::SymbolTag::Deprecated]);
+          tags = Some(vec![lsp::SymbolTag::DEPRECATED]);
         }
 
         let children = if !symbol_children.is_empty() {
@@ -1087,9 +1087,9 @@ impl DocumentHighlights {
         range: hs.text_span.to_range(line_index.clone()),
         kind: match hs.kind {
           HighlightSpanKind::WrittenReference => {
-            Some(lsp::DocumentHighlightKind::Write)
+            Some(lsp::DocumentHighlightKind::WRITE)
           }
-          _ => Some(lsp::DocumentHighlightKind::Read),
+          _ => Some(lsp::DocumentHighlightKind::READ),
         },
       })
       .collect()
@@ -1550,7 +1550,7 @@ impl CallHierarchyItem {
     if let Some(modifiers) = self.kind_modifiers.as_ref() {
       let kind_modifiers = parse_kind_modifier(modifiers);
       if kind_modifiers.contains("deprecated") {
-        tags = Some(vec![lsp::SymbolTag::Deprecated]);
+        tags = Some(vec![lsp::SymbolTag::DEPRECATED]);
       }
     }
 
@@ -1884,8 +1884,8 @@ impl CompletionEntry {
 
     let preselect = self.is_recommended;
     let use_code_snippet = settings.complete_function_calls
-      && (kind == Some(lsp::CompletionItemKind::Function)
-        || kind == Some(lsp::CompletionItemKind::Method));
+      && (kind == Some(lsp::CompletionItemKind::FUNCTION)
+        || kind == Some(lsp::CompletionItemKind::METHOD));
     // TODO(@kitsonk) missing from types: https://github.com/gluon-lang/lsp-types/issues/204
     let _commit_characters = self.get_commit_characters(info, settings);
     let mut insert_text = self.insert_text.clone();
@@ -1906,10 +1906,10 @@ impl CompletionEntry {
         label += "?";
       }
       if kind_modifiers.contains("deprecated") {
-        tags = Some(vec![lsp::CompletionItemTag::Deprecated]);
+        tags = Some(vec![lsp::CompletionItemTag::DEPRECATED]);
       }
       if kind_modifiers.contains("color") {
-        kind = Some(lsp::CompletionItemKind::Color);
+        kind = Some(lsp::CompletionItemKind::COLOR);
       }
       if self.kind == ScriptElementKind::ScriptElement {
         for ext_modifier in FILE_EXTENSION_KIND_MODIFIERS {
@@ -2669,14 +2669,17 @@ pub enum SignatureHelpTriggerKind {
   Invoked,
   #[serde(rename = "retrigger")]
   Retrigger,
+  #[serde(rename = "unknown")]
+  Unknown,
 }
 
 impl From<lsp::SignatureHelpTriggerKind> for SignatureHelpTriggerKind {
   fn from(kind: lsp::SignatureHelpTriggerKind) -> Self {
     match kind {
-      lsp::SignatureHelpTriggerKind::Invoked => Self::Invoked,
-      lsp::SignatureHelpTriggerKind::TriggerCharacter => Self::CharacterTyped,
-      lsp::SignatureHelpTriggerKind::ContentChange => Self::Retrigger,
+      lsp::SignatureHelpTriggerKind::INVOKED => Self::Invoked,
+      lsp::SignatureHelpTriggerKind::TRIGGER_CHARACTER => Self::CharacterTyped,
+      lsp::SignatureHelpTriggerKind::CONTENT_CHANGE => Self::Retrigger,
+      _ => Self::Unknown,
     }
   }
 }

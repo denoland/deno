@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertRejects, assertThrows, unitTest } from "./test_util.ts";
+import { assertRejects, assertThrows } from "./test_util.ts";
 
-unitTest(function testWrongOverloads() {
+Deno.test(function testWrongOverloads() {
   assertThrows(
     () => {
       // @ts-ignore Testing invalid overloads
@@ -60,7 +60,7 @@ unitTest(function testWrongOverloads() {
   );
 });
 
-unitTest(function nameOfTestCaseCantBeEmpty() {
+Deno.test(function nameOfTestCaseCantBeEmpty() {
   assertThrows(
     () => {
       Deno.test("", () => {});
@@ -80,8 +80,8 @@ unitTest(function nameOfTestCaseCantBeEmpty() {
   );
 });
 
-unitTest(function invalidStepArguments(t) {
-  assertRejects(
+Deno.test(async function invalidStepArguments(t) {
+  await assertRejects(
     async () => {
       // deno-lint-ignore no-explicit-any
       await (t as any).step("test");
@@ -90,7 +90,7 @@ unitTest(function invalidStepArguments(t) {
     "Expected function for second argument.",
   );
 
-  assertRejects(
+  await assertRejects(
     async () => {
       // deno-lint-ignore no-explicit-any
       await (t as any).step("test", "not a function");
@@ -99,7 +99,7 @@ unitTest(function invalidStepArguments(t) {
     "Expected function for second argument.",
   );
 
-  assertRejects(
+  await assertRejects(
     async () => {
       // deno-lint-ignore no-explicit-any
       await (t as any).step();
@@ -108,7 +108,7 @@ unitTest(function invalidStepArguments(t) {
     "Expected a test definition or name and function.",
   );
 
-  assertRejects(
+  await assertRejects(
     async () => {
       // deno-lint-ignore no-explicit-any
       await (t as any).step(() => {});

@@ -4,7 +4,6 @@ import {
   assertEquals,
   assertThrows,
   pathToAbsoluteFileUrl,
-  unitTest,
 } from "./test_util.ts";
 
 function assertMissing(path: string) {
@@ -33,7 +32,7 @@ function assertDirectory(path: string, mode?: number) {
   }
 }
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function renameSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
@@ -46,7 +45,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function renameSyncWithURL() {
     const testDir = Deno.makeTempDirSync();
@@ -62,7 +61,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: false, write: true } },
   function renameSyncReadPerm() {
     assertThrows(() => {
@@ -73,7 +72,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: false } },
   function renameSyncWritePerm() {
     assertThrows(() => {
@@ -84,7 +83,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function renameSuccess() {
     const testDir = Deno.makeTempDirSync();
@@ -97,7 +96,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function renameWithURL() {
     const testDir = Deno.makeTempDirSync();
@@ -125,7 +124,7 @@ function writeFileString(filename: string, s: string) {
   Deno.writeFileSync(filename, data, { mode: 0o666 });
 }
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },
@@ -210,7 +209,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     ignore: Deno.build.os !== "windows",
     permissions: { read: true, write: true },

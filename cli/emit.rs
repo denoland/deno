@@ -12,6 +12,7 @@ use crate::config_file::ConfigFile;
 use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
+use crate::flags;
 use crate::tsc;
 use crate::version;
 
@@ -293,6 +294,9 @@ fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
 /// Options for performing a check of a module graph. Note that the decision to
 /// emit or not is determined by the `ts_config` settings.
 pub(crate) struct CheckOptions {
+  /// The check flag from the option which can effect the filtering of
+  /// diagnostics in the emit result.
+  pub check: flags::CheckFlag,
   /// Set the debug flag on the TypeScript type checker.
   pub debug: bool,
   /// If true, any files emitted will be cached, even if there are diagnostics
@@ -304,6 +308,8 @@ pub(crate) struct CheckOptions {
   pub maybe_config_specifier: Option<ModuleSpecifier>,
   /// The derived tsconfig that should be used when checking.
   pub ts_config: TsConfig,
+  /// If true, existing `.tsbuildinfo` files will be ignored.
+  pub reload: bool,
 }
 
 /// The result of a check or emit of a module graph. Note that the actual
@@ -331,8 +337,11 @@ pub(crate) fn check_and_maybe_emit(
   // while there might be multiple roots, we can't "merge" the build info, so we
   // try to retrieve the build info for first root, which is the most common use
   // case.
-  let maybe_tsbuildinfo =
-    cache.get(CacheType::TypeScriptBuildInfo, &graph.roots[0]);
+  let maybe_tsbuildinfo = if options.reload {
+    None
+  } else {
+    cache.get(CacheType::TypeScriptBuildInfo, &graph.roots[0])
+  };
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
   // that data here.
@@ -352,18 +361,30 @@ pub(crate) fn check_and_maybe_emit(
     root_names,
   })?;
 
-  if let Some(info) = &response.maybe_tsbuildinfo {
-    // while we retrieve the build info for just the first module, it can be
-    // used for all the roots in the graph, so we will cache it for all roots
-    for root in &graph.roots {
-      cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
-    }
-  }
+  let diagnostics = if options.check == flags::CheckFlag::Local {
+    response.diagnostics.filter(|d| {
+      if let Some(file_name) = &d.file_name {
+        !file_name.starts_with("http")
+      } else {
+        true
+      }
+    })
+  } else {
+    response.diagnostics
+  };
+
   // sometimes we want to emit when there are diagnostics, and sometimes we
   // don't. tsc will always return an emit if there are diagnostics
-  if (response.diagnostics.is_empty() || options.emit_with_diagnostics)
+  if (diagnostics.is_empty() || options.emit_with_diagnostics)
     && !response.emitted_files.is_empty()
   {
+    if let Some(info) = &response.maybe_tsbuildinfo {
+      // while we retrieve the build info for just the first module, it can be
+      // used for all the roots in the graph, so we will cache it for all roots
+      for root in &graph.roots {
+        cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
+      }
+    }
     for emit in response.emitted_files.into_iter() {
       if let Some(specifiers) = emit.maybe_specifiers {
         assert!(specifiers.len() == 1);
@@ -409,7 +430,7 @@ pub(crate) fn check_and_maybe_emit(
   }
 
   Ok(CheckEmitResult {
-    diagnostics: response.diagnostics,
+    diagnostics,
     stats: response.stats,
   })
 }

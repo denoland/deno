@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-import { assertThrows, unitTest } from "./test_util.ts";
+import { assertThrows } from "./test_util.ts";
 
-unitTest({ permissions: { ffi: true } }, function dlopenInvalidArguments() {
+Deno.test({ permissions: { ffi: true } }, function dlopenInvalidArguments() {
   const filename = "/usr/lib/libc.so.6";
   assertThrows(() => {
     // @ts-expect-error: ForeignFunction cannot be null

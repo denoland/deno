@@ -142,6 +142,29 @@
     },
   };
 
+  const aesJwkAlg = {
+    "AES-CTR": {
+      128: "A128CTR",
+      192: "A192CTR",
+      256: "A256CTR",
+    },
+    "AES-CBC": {
+      128: "A128CBC",
+      192: "A192CBC",
+      256: "A256CBC",
+    },
+    "AES-GCM": {
+      128: "A128GCM",
+      192: "A192GCM",
+      256: "A256GCM",
+    },
+    "AES-KW": {
+      128: "A128KW",
+      192: "A192KW",
+      256: "A256KW",
+    },
+  };
+
   // Decodes the unpadded base64 to the octet sequence containing key value `k` defined in RFC7518 Section 6.4
   function decodeSymmetricKey(key) {
     // Decode from base64url without `=` padding.
@@ -472,88 +495,23 @@
       // 3.
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "encrypt");
 
-      const handle = key[_handle];
-      const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
-
-      switch (normalizedAlgorithm.name) {
-        case "RSA-OAEP": {
-          // 1.
-          if (key[_type] !== "public") {
-            throw new DOMException(
-              "Key type not supported",
-              "InvalidAccessError",
-            );
-          }
-
-          // 2.
-          if (normalizedAlgorithm.label) {
-            if (ArrayBufferIsView(normalizedAlgorithm.label)) {
-              normalizedAlgorithm.label = new Uint8Array(
-                normalizedAlgorithm.label.buffer,
-                normalizedAlgorithm.label.byteOffset,
-                normalizedAlgorithm.label.byteLength,
-              );
-            } else {
-              normalizedAlgorithm.label = new Uint8Array(
-                normalizedAlgorithm.label,
-              );
-            }
-            normalizedAlgorithm.label = TypedArrayPrototypeSlice(
-              normalizedAlgorithm.label,
-            );
-          } else {
-            normalizedAlgorithm.label = new Uint8Array();
-          }
-
-          // 3-5.
-          const hashAlgorithm = key[_algorithm].hash.name;
-          const cipherText = await core.opAsync("op_crypto_encrypt_key", {
-            key: keyData,
-            algorithm: "RSA-OAEP",
-            hash: hashAlgorithm,
-          }, data);
-
-          // 6.
-          return cipherText.buffer;
-        }
-        case "AES-CBC": {
-          if (ArrayBufferIsView(normalizedAlgorithm.iv)) {
-            normalizedAlgorithm.iv = new Uint8Array(
-              normalizedAlgorithm.iv.buffer,
-              normalizedAlgorithm.iv.byteOffset,
-              normalizedAlgorithm.iv.byteLength,
-            );
-          } else {
-            normalizedAlgorithm.iv = new Uint8Array(
-              normalizedAlgorithm.iv,
-            );
-          }
-          normalizedAlgorithm.iv = TypedArrayPrototypeSlice(
-            normalizedAlgorithm.iv,
-          );
-
-          // 1.
-          if (normalizedAlgorithm.iv.byteLength !== 16) {
-            throw new DOMException(
-              "Initialization vector must be 16 bytes",
-              "OperationError",
-            );
-          }
-
-          // 2.
-          const cipherText = await core.opAsync("op_crypto_encrypt_key", {
-            key: keyData,
-            algorithm: "AES-CBC",
-            length: key[_algorithm].length,
-            iv: normalizedAlgorithm.iv,
-          }, data);
-
-          // 4.
-          return cipherText.buffer;
-        }
-        default:
-          throw new DOMException("Not implemented", "NotSupportedError");
+      // 8.
+      if (normalizedAlgorithm.name !== key[_algorithm].name) {
+        throw new DOMException(
+          "Encryption algorithm doesn't match key algorithm.",
+          "InvalidAccessError",
+        );
       }
+
+      // 9.
+      if (!ArrayPrototypeIncludes(key[_usages], "encrypt")) {
+        throw new DOMException(
+          "Key does not support the 'encrypt' operation.",
+          "InvalidAccessError",
+        );
+      }
+
+      return await encrypt(normalizedAlgorithm, key, data);
     }
 
     /**
@@ -589,6 +547,22 @@
 
       // 3.
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "decrypt");
+
+      // 8.
+      if (normalizedAlgorithm.name !== key[_algorithm].name) {
+        throw new DOMException(
+          "Decryption algorithm doesn't match key algorithm.",
+          "OperationError",
+        );
+      }
+
+      // 9.
+      if (!ArrayPrototypeIncludes(key[_usages], "decrypt")) {
+        throw new DOMException(
+          "Key does not support the 'decrypt' operation.",
+          "InvalidAccessError",
+        );
+      }
 
       const handle = key[_handle];
       const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
@@ -1391,44 +1365,13 @@
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
 
-          // 2.
-          switch (format) {
-            case "raw": {
-              // 2.
-              if (
-                !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
-              ) {
-                throw new DOMException("Invalid key length", "Datarror");
-              }
-
-              break;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-
-          const handle = {};
-          WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "raw",
-            data: keyData,
-          });
-
-          // 4-7.
-          const algorithm = {
-            name: "AES-CBC",
-            length: keyData.byteLength * 8,
-          };
-
-          const key = constructKey(
-            "secret",
-            false,
-            usageIntersection(keyUsages, recognisedUsages),
-            algorithm,
-            handle,
+          return importKeyAES(
+            format,
+            normalizedAlgorithm,
+            keyData,
+            extractable,
+            keyUsages,
           );
-
-          // 8.
-          return key;
         }
         case "AES-CBC": {
           // 1.
@@ -1446,45 +1389,13 @@
           ) {
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
-
-          // 2.
-          switch (format) {
-            case "raw": {
-              // 2.
-              if (
-                !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
-              ) {
-                throw new DOMException("Invalid key length", "Datarror");
-              }
-
-              break;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-
-          const handle = {};
-          WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "raw",
-            data: keyData,
-          });
-
-          // 4-7.
-          const algorithm = {
-            name: "AES-CTR",
-            length: keyData.byteLength * 8,
-          };
-
-          const key = constructKey(
-            "secret",
-            false,
-            usageIntersection(keyUsages, recognisedUsages),
-            algorithm,
-            handle,
+          return importKeyAES(
+            format,
+            normalizedAlgorithm,
+            keyData,
+            extractable,
+            keyUsages,
           );
-
-          // 8.
-          return key;
         }
         case "AES-GCM": {
           // 1.
@@ -1503,44 +1414,13 @@
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
 
-          // 2.
-          switch (format) {
-            case "raw": {
-              // 2.
-              if (
-                !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
-              ) {
-                throw new DOMException("Invalid key length", "Datarror");
-              }
-
-              break;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-
-          const handle = {};
-          WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "raw",
-            data: keyData,
-          });
-
-          // 4-7.
-          const algorithm = {
-            name: "AES-GCM",
-            length: keyData.byteLength * 8,
-          };
-
-          const key = constructKey(
-            "secret",
-            false,
-            usageIntersection(keyUsages, recognisedUsages),
-            algorithm,
-            handle,
+          return importKeyAES(
+            format,
+            normalizedAlgorithm,
+            keyData,
+            extractable,
+            keyUsages,
           );
-
-          // 8.
-          return key;
         }
         case "AES-KW": {
           // 1.
@@ -1557,44 +1437,13 @@
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
 
-          // 2.
-          switch (format) {
-            case "raw": {
-              // 2.
-              if (
-                !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
-              ) {
-                throw new DOMException("Invalid key length", "Datarror");
-              }
-
-              break;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-
-          const handle = {};
-          WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "raw",
-            data: keyData,
-          });
-
-          // 4-7.
-          const algorithm = {
-            name: "AES-KW",
-            length: keyData.byteLength * 8,
-          };
-
-          const key = constructKey(
-            "secret",
-            false,
-            usageIntersection(keyUsages, recognisedUsages),
-            algorithm,
-            handle,
+          return importKeyAES(
+            format,
+            normalizedAlgorithm,
+            keyData,
+            extractable,
+            keyUsages,
           );
-
-          // 8.
-          return key;
         }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
@@ -1835,57 +1684,11 @@
               throw new DOMException("Not implemented", "NotSupportedError");
           }
         }
-        case "AES-CTR": {
-          switch (format) {
-            // 2.
-            case "raw": {
-              // 1.
-              const data = innerKey.data;
-              // 2.
-              return data.buffer;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-        }
-        case "AES-CBC": {
-          switch (format) {
-            // 2.
-            case "raw": {
-              // 1.
-              const data = innerKey.data;
-              // 2.
-              return data.buffer;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-        }
-        case "AES-GCM": {
-          switch (format) {
-            // 2.
-            case "raw": {
-              // 1.
-              const data = innerKey.data;
-              // 2.
-              return data.buffer;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-        }
+        case "AES-CTR":
+        case "AES-CBC":
+        case "AES-GCM":
         case "AES-KW": {
-          switch (format) {
-            // 2.
-            case "raw": {
-              // 1.
-              const data = innerKey.data;
-              // 2.
-              return data.buffer;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
+          return exportKeyAES(format, key, innerKey);
         }
         // TODO(@littledivy): ECDSA
         default:
@@ -2238,7 +2041,7 @@
       let bytes;
       // 13.
       if (format !== "jwk") {
-        bytes = exportedKey;
+        bytes = new Uint8Array(exportedKey);
       } else {
         // TODO(@littledivy): Implement JWK.
         throw new DOMException(
@@ -2259,7 +2062,7 @@
       } else if (
         supportedAlgorithms["encrypt"][normalizedAlgorithm.name] !== undefined
       ) {
-        return this.encrypt(normalizedAlgorithm, wrappingKey, bytes);
+        return await encrypt(normalizedAlgorithm, wrappingKey, bytes);
       } else {
         throw new DOMException(
           "Algorithm not supported",
@@ -2640,6 +2443,202 @@
     }
   }
 
+  function exportKeyAES(
+    format,
+    key,
+    innerKey,
+  ) {
+    switch (format) {
+      // 2.
+      case "raw": {
+        // 1.
+        const data = innerKey.data;
+        // 2.
+        return data.buffer;
+      }
+      case "jwk": {
+        // 1-3.
+        const jwk = {
+          kty: "oct",
+          k: unpaddedBase64(innerKey.data),
+        };
+
+        // 4.
+        const algorithm = key[_algorithm];
+        switch (algorithm.length) {
+          case 128:
+            jwk.alg = aesJwkAlg[algorithm.name][128];
+            break;
+          case 192:
+            jwk.alg = aesJwkAlg[algorithm.name][192];
+            break;
+          case 256:
+            jwk.alg = aesJwkAlg[algorithm.name][256];
+            break;
+          default:
+            throw new DOMException(
+              "Invalid key length",
+              "NotSupportedError",
+            );
+        }
+
+        // 5.
+        jwk.key_ops = key[_usages];
+        // 6.
+        jwk.ext = key[_extractable];
+        // 7.
+        return jwk;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+  }
+
+  function importKeyAES(
+    format,
+    normalizedAlgorithm,
+    keyData,
+    extractable,
+    keyUsages,
+  ) {
+    // 2.
+    let data = keyData;
+    switch (format) {
+      case "raw": {
+        // 2.
+        if (
+          !ArrayPrototypeIncludes([128, 192, 256], keyData.byteLength * 8)
+        ) {
+          throw new DOMException("Invalid key length", "Datarror");
+        }
+
+        break;
+      }
+      case "jwk": {
+        // 1.
+        const jwk = keyData;
+        // 2.
+        if (jwk.kty !== "oct") {
+          throw new DOMException(
+            "`kty` member of JsonWebKey must be `oct`",
+            "DataError",
+          );
+        }
+
+        // Section 6.4.1 of RFC7518
+        if (jwk.k === undefined) {
+          throw new DOMException(
+            "`k` member of JsonWebKey must be present",
+            "DataError",
+          );
+        }
+
+        // 4.
+        data = decodeSymmetricKey(jwk.k);
+
+        // 5.
+        switch (data.byteLength * 8) {
+          case 128:
+            if (
+              jwk.alg !== undefined &&
+              jwk.alg !== aesJwkAlg[normalizedAlgorithm.name][128]
+            ) {
+              throw new DOMException("Invalid algorithm", "DataError");
+            }
+            break;
+          case 192:
+            if (
+              jwk.alg !== undefined &&
+              jwk.alg !== aesJwkAlg[normalizedAlgorithm.name][192]
+            ) {
+              throw new DOMException("Invalid algorithm", "DataError");
+            }
+            break;
+          case 256:
+            if (
+              jwk.alg !== undefined &&
+              jwk.alg !== aesJwkAlg[normalizedAlgorithm.name][256]
+            ) {
+              throw new DOMException("Invalid algorithm", "DataError");
+            }
+            break;
+          default:
+            throw new DOMException(
+              "Invalid key length",
+              "DataError",
+            );
+        }
+
+        // 6.
+        if (keyUsages.length > 0 && jwk.use && jwk.use !== "enc") {
+          throw new DOMException("Invalid key usages", "DataError");
+        }
+
+        // 7.
+        // Section 4.3 of RFC7517
+        if (jwk.key_ops) {
+          if (
+            ArrayPrototypeFind(
+              jwk.key_ops,
+              (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+            ) !== undefined
+          ) {
+            throw new DOMException(
+              "`key_ops` member of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+
+          if (
+            !ArrayPrototypeEvery(
+              jwk.key_ops,
+              (u) => ArrayPrototypeIncludes(keyUsages, u),
+            )
+          ) {
+            throw new DOMException(
+              "`key_ops` member of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+        }
+
+        // 8.
+        if (jwk.ext === false && extractable == true) {
+          throw new DOMException(
+            "`ext` member of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+
+        break;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+
+    const handle = {};
+    WeakMapPrototypeSet(KEY_STORE, handle, {
+      type: "raw",
+      data,
+    });
+
+    // 4-7.
+    const algorithm = {
+      name: normalizedAlgorithm.name,
+      length: data.byteLength * 8,
+    };
+
+    const key = constructKey(
+      "secret",
+      extractable,
+      usageIntersection(keyUsages, recognisedUsages),
+      algorithm,
+      handle,
+    );
+
+    // 8.
+    return key;
+  }
   async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
     // 2.
     if (!ArrayPrototypeIncludes([128, 192, 256], normalizedAlgorithm.length)) {
@@ -2813,6 +2812,91 @@
         }, normalizedAlgorithm.salt);
 
         return buf.buffer;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+  }
+
+  async function encrypt(normalizedAlgorithm, key, data) {
+    const handle = key[_handle];
+    const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
+
+    switch (normalizedAlgorithm.name) {
+      case "RSA-OAEP": {
+        // 1.
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key type not supported",
+            "InvalidAccessError",
+          );
+        }
+
+        // 2.
+        if (normalizedAlgorithm.label) {
+          if (ArrayBufferIsView(normalizedAlgorithm.label)) {
+            normalizedAlgorithm.label = new Uint8Array(
+              normalizedAlgorithm.label.buffer,
+              normalizedAlgorithm.label.byteOffset,
+              normalizedAlgorithm.label.byteLength,
+            );
+          } else {
+            normalizedAlgorithm.label = new Uint8Array(
+              normalizedAlgorithm.label,
+            );
+          }
+          normalizedAlgorithm.label = TypedArrayPrototypeSlice(
+            normalizedAlgorithm.label,
+          );
+        } else {
+          normalizedAlgorithm.label = new Uint8Array();
+        }
+
+        // 3-5.
+        const hashAlgorithm = key[_algorithm].hash.name;
+        const cipherText = await core.opAsync("op_crypto_encrypt_key", {
+          key: keyData,
+          algorithm: "RSA-OAEP",
+          hash: hashAlgorithm,
+        }, data);
+
+        // 6.
+        return cipherText.buffer;
+      }
+      case "AES-CBC": {
+        if (ArrayBufferIsView(normalizedAlgorithm.iv)) {
+          normalizedAlgorithm.iv = new Uint8Array(
+            normalizedAlgorithm.iv.buffer,
+            normalizedAlgorithm.iv.byteOffset,
+            normalizedAlgorithm.iv.byteLength,
+          );
+        } else {
+          normalizedAlgorithm.iv = new Uint8Array(
+            normalizedAlgorithm.iv,
+          );
+        }
+        normalizedAlgorithm.iv = TypedArrayPrototypeSlice(
+          normalizedAlgorithm.iv,
+        );
+
+        // 1.
+        if (normalizedAlgorithm.iv.byteLength !== 16) {
+          throw new DOMException(
+            "Initialization vector must be 16 bytes",
+            "OperationError",
+          );
+        }
+
+        // 2.
+        const cipherText = await core.opAsync("op_crypto_encrypt_key", {
+          key: keyData,
+          algorithm: "AES-CBC",
+          length: key[_algorithm].length,
+          iv: normalizedAlgorithm.iv,
+        }, data);
+
+        // 4.
+        return cipherText.buffer;
       }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");

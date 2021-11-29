@@ -859,6 +859,24 @@ itest!(exit_error42 {
   output: "exit_error42.ts.out",
 });
 
+itest!(set_exit_code_0 {
+  args: "run --no-check --unstable set_exit_code_0.ts",
+  output: "empty.out",
+  exit_code: 0,
+});
+
+itest!(set_exit_code_1 {
+  args: "run --no-check --unstable set_exit_code_1.ts",
+  output: "empty.out",
+  exit_code: 42,
+});
+
+itest!(set_exit_code_2 {
+  args: "run --no-check --unstable set_exit_code_2.ts",
+  output: "empty.out",
+  exit_code: 42,
+});
+
 itest!(heapstats {
   args: "run --quiet --unstable --v8-flags=--expose-gc heapstats.js",
   output: "heapstats.js.out",
@@ -900,6 +918,19 @@ itest!(no_check {
 itest!(no_check_decorators {
   args: "run --quiet --reload --no-check no_check_decorators.ts",
   output: "no_check_decorators.ts.out",
+});
+
+itest!(check_remote {
+  args: "run --quiet --reload no_check_remote.ts",
+  output: "no_check_remote.ts.disabled.out",
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(no_check_remote {
+  args: "run --quiet --reload --no-check=remote no_check_remote.ts",
+  output: "no_check_remote.ts.enabled.out",
+  http_server: true,
 });
 
 itest!(runtime_decorators {
@@ -2304,4 +2335,40 @@ fn issue12740() {
     .wait()
     .unwrap();
   assert!(!status.success());
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/12807.
+#[test]
+fn issue12807() {
+  let mod_dir = TempDir::new().expect("tempdir fail");
+  let mod1_path = mod_dir.path().join("mod1.ts");
+  let mod2_path = mod_dir.path().join("mod2.ts");
+  let mut deno_cmd = util::deno_cmd();
+  // With a fresh `DENO_DIR`, run a module with a dependency and a type error.
+  std::fs::write(&mod1_path, "import './mod2.ts'; Deno.exit('0');").unwrap();
+  std::fs::write(&mod2_path, "console.log('Hello, world!');").unwrap();
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(&mod1_path)
+    .stderr(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(!status.success());
+  // Fix the type error and run again.
+  std::fs::write(&mod1_path, "import './mod2.ts'; Deno.exit(0);").unwrap();
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(&mod1_path)
+    .stderr(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
 }
