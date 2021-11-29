@@ -1272,7 +1272,7 @@ pub async fn op_crypto_import_key(
           })?;
 
           if bytes_consumed
-            != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
+            != spki::der::Length::new(pk_info.private_key.len() as u16)
           {
             return Err(custom_error(
               "DOMExceptionDataError",
@@ -1452,7 +1452,7 @@ pub async fn op_crypto_import_key(
             .map_err(|e| custom_error("DataError", e.to_string()))?;
 
           if bytes_consumed
-            != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
+            != spki::der::Length::new(pk_info.private_key.len() as u16)
           {
             return Err(custom_error(
               "DOMExceptionDataError",
@@ -1673,7 +1673,7 @@ pub async fn op_crypto_import_key(
           })?;
 
           if bytes_consumed
-            != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
+            != spki::der::Length::new(pk_info.private_key.len() as u16)
           {
             return Err(custom_error(
               "DOMExceptionDataError",
