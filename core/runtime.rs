@@ -2535,7 +2535,6 @@ assertEquals(1, notify_return_value);
   #[test]
   fn test_has_tick_scheduled() {
     use futures::task::ArcWake;
-    use std::sync::atomic::AtomicBool;
 
     let macrotask = Arc::new(AtomicUsize::default());
     let macrotask_ = Arc::clone(&macrotask);
@@ -2577,27 +2576,27 @@ assertEquals(1, notify_return_value);
       )
       .unwrap();
 
-    struct ArcWakeImpl(Arc<AtomicBool>);
+    struct ArcWakeImpl(Arc<AtomicUsize>);
     impl ArcWake for ArcWakeImpl {
       fn wake_by_ref(arc_self: &Arc<Self>) {
-        arc_self.0.store(true, Ordering::Relaxed);
+        arc_self.0.fetch_add(1, Ordering::Relaxed);
       }
     }
 
-    let was_awoken = Arc::new(AtomicBool::new(false));
+    let was_awoken = Arc::new(AtomicUsize::new(0));
     let waker = futures::task::waker(Arc::new(ArcWakeImpl(was_awoken.clone())));
     let cx = &mut Context::from_waker(&waker);
 
     assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
     assert_eq!(1, macrotask.load(Ordering::Relaxed));
     assert_eq!(1, next_tick.load(Ordering::Relaxed));
-    assert!(was_awoken.swap(false, Ordering::Relaxed));
+    assert_eq!(was_awoken.swap(0, Ordering::Relaxed), 1);
     assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-    assert!(was_awoken.swap(false, Ordering::Relaxed));
+    assert_eq!(was_awoken.swap(0, Ordering::Relaxed), 1);
     assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-    assert!(was_awoken.swap(false, Ordering::Relaxed));
+    assert_eq!(was_awoken.swap(0, Ordering::Relaxed), 1);
     assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-    assert!(was_awoken.swap(false, Ordering::Relaxed));
+    assert_eq!(was_awoken.swap(0, Ordering::Relaxed), 1);
 
     let state_rc = JsRuntime::state(runtime.v8_isolate());
     state_rc.borrow_mut().has_tick_scheduled = false;
@@ -2605,12 +2604,12 @@ assertEquals(1, notify_return_value);
       runtime.poll_event_loop(cx, false),
       Poll::Ready(Ok(()))
     ));
-    assert!(!was_awoken.load(Ordering::Relaxed));
+    assert_eq!(was_awoken.load(Ordering::Relaxed), 0);
     assert!(matches!(
       runtime.poll_event_loop(cx, false),
       Poll::Ready(Ok(()))
     ));
-    assert!(!was_awoken.load(Ordering::Relaxed));
+    assert_eq!(was_awoken.load(Ordering::Relaxed), 0);
   }
 
   #[test]
