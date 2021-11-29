@@ -440,6 +440,8 @@ fn listen_udp(
 ) -> Result<(u32, SocketAddr), AnyError> {
   let std_socket = std::net::UdpSocket::bind(&addr)?;
   std_socket.set_nonblocking(true)?;
+  // Enable messages to be sent to the broadcast address (255.255.255.255) by default
+  std_socket.set_broadcast(true)?;
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
   let socket_resource = UdpSocketResource {
