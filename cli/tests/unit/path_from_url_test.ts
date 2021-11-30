@@ -1,9 +1,9 @@
-import { assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import { assertEquals, assertThrows } from "./test_util.ts";
 
 // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const { pathFromURL } = Deno[Deno.internal];
 
-unitTest(
+Deno.test(
   { ignore: Deno.build.os === "windows" },
   function pathFromURLPosix() {
     assertEquals(
@@ -15,7 +15,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { ignore: Deno.build.os !== "windows" },
   function pathFromURLWin32() {
     assertEquals(

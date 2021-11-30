@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, unitTest } from "./test_util.ts";
+import { assert } from "./test_util.ts";
 
-unitTest(
+Deno.test(
   { permissions: { read: true } },
   function utimeSyncFileSuccess() {
     const w = new Worker(

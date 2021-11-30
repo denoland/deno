@@ -5,6 +5,7 @@
   const core = window.Deno.core;
   const {
     Set,
+    SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -13,7 +14,9 @@
   }
 
   function pollSignal(rid) {
-    return core.opAsync("op_signal_poll", rid);
+    const promise = core.opAsync("op_signal_poll", rid);
+    core.unrefOp(promise[SymbolFor("Deno.core.internalPromiseId")]);
+    return promise;
   }
 
   function unbindSignal(rid) {

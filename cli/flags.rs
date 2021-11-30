@@ -188,6 +188,24 @@ impl Default for DenoSubcommand {
   }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum CheckFlag {
+  /// Type check all modules. The default value.
+  All,
+  /// Skip type checking of all modules. Represents `--no-check` on the command
+  /// line.
+  None,
+  /// Only type check local modules. Represents `--no-check=remote` on the
+  /// command line.
+  Local,
+}
+
+impl Default for CheckFlag {
+  fn default() -> Self {
+    Self::All
+  }
+}
+
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
@@ -209,6 +227,7 @@ pub struct Flags {
   /// the language server is configured with an explicit cache option.
   pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
+  pub check: CheckFlag,
   pub config_path: Option<String>,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
@@ -220,7 +239,6 @@ pub struct Flags {
   pub lock_write: bool,
   pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
-  pub no_check: bool,
   pub no_remote: bool,
   /// If true, a list of Node built-in modules will be injected into
   /// the import map.
@@ -1643,8 +1661,17 @@ Only local files from entry point module graph are watched.",
 
 fn no_check_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("no-check")
+    .takes_value(true)
+    .require_equals(true)
+    .min_values(0)
+    .value_name("NO_CHECK_TYPE")
     .long("no-check")
     .help("Skip type checking modules")
+    .long_help(
+      "Skip type checking of modules.
+If the value of '--no-check=remote' is supplied, diagnostic errors from remote
+modules will be ignored.",
+    )
 }
 
 fn script_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -2334,8 +2361,16 @@ fn compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 }
 
 fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  if matches.is_present("no-check") {
-    flags.no_check = true;
+  if let Some(cache_type) = matches.value_of("no-check") {
+    match cache_type {
+      "remote" => flags.check = CheckFlag::Local,
+      _ => debug!(
+        "invalid value for 'no-check' of '{}' using default",
+        cache_type
+      ),
+    }
+  } else if matches.is_present("no-check") {
+    flags.check = CheckFlag::None;
   }
 }
 
@@ -3131,7 +3166,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
-        no_check: true,
+        check: CheckFlag::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -3216,7 +3251,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
-        no_check: true,
+        check: CheckFlag::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -3483,7 +3518,7 @@ mod tests {
           source_file: "script.ts".to_string(),
           out_file: None,
         }),
-        no_check: true,
+        check: CheckFlag::None,
         ..Flags::default()
       }
     );
@@ -3682,7 +3717,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
-        no_check: true,
+        check: CheckFlag::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -3833,7 +3868,23 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        no_check: true,
+        check: CheckFlag::None,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn no_check_remote() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--no-check=remote", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        check: CheckFlag::Local,
         ..Flags::default()
       }
     );
@@ -4406,7 +4457,7 @@ mod tests {
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
-        no_check: true,
+        check: CheckFlag::None,
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,

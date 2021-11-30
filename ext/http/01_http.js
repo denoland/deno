@@ -64,10 +64,7 @@
     async nextRequest() {
       let nextRequest;
       try {
-        nextRequest = await core.opAsync(
-          "op_http_accept",
-          this.#rid,
-        );
+        nextRequest = await core.opAsync("op_http_accept", this.#rid);
       } catch (error) {
         this.close();
         // A connection error seen here would cause disrupted responses to throw
@@ -93,12 +90,7 @@
         return null;
       }
 
-      const [
-        streamRid,
-        method,
-        headersList,
-        url,
-      ] = nextRequest;
+      const [streamRid, method, headersList, url] = nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
@@ -202,15 +194,16 @@
         } else {
           respBody = new Uint8Array(0);
         }
-        const isStreamingResponseBody =
-          !(typeof respBody === "string" || respBody instanceof Uint8Array);
+        const isStreamingResponseBody = !(
+          typeof respBody === "string" || respBody instanceof Uint8Array
+        );
 
         try {
-          await core.opAsync("op_http_write_headers", [
-            streamRid,
-            innerResp.status ?? 200,
-            innerResp.headerList,
-          ], isStreamingResponseBody ? null : respBody);
+          await core.opAsync(
+            "op_http_write_headers",
+            [streamRid, innerResp.status ?? 200, innerResp.headerList],
+            isStreamingResponseBody ? null : respBody,
+          );
         } catch (error) {
           const connError = httpConn[connErrorSymbol];
           if (error instanceof BadResource && connError != null) {

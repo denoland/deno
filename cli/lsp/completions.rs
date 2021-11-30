@@ -5,6 +5,7 @@ use super::lsp_custom;
 use super::tsc;
 
 use crate::fs_util::is_supported_ext;
+use crate::fs_util::specifier_to_file_path;
 
 use deno_core::normalize_path;
 use deno_core::resolve_path;
@@ -149,7 +150,7 @@ pub(crate) async fn get_import_completions(
       .iter()
       .map(|s| lsp::CompletionItem {
         label: s.to_string(),
-        kind: Some(lsp::CompletionItemKind::Folder),
+        kind: Some(lsp::CompletionItemKind::FOLDER),
         detail: Some("(local)".to_string()),
         sort_text: Some("1".to_string()),
         insert_text: Some(s.to_string()),
@@ -180,7 +181,7 @@ fn get_local_completions(
     return None;
   }
 
-  let mut base_path = base.to_file_path().ok()?;
+  let mut base_path = specifier_to_file_path(base).ok()?;
   base_path.pop();
   let mut current_path = normalize_path(base_path.join(current));
   // if the current text does not end in a `/` then we are still selecting on
@@ -222,7 +223,7 @@ fn get_local_completions(
           match de.file_type() {
             Ok(file_type) if file_type.is_dir() => Some(lsp::CompletionItem {
               label,
-              kind: Some(lsp::CompletionItemKind::Folder),
+              kind: Some(lsp::CompletionItemKind::FOLDER),
               filter_text,
               sort_text: Some("1".to_string()),
               text_edit,
@@ -232,7 +233,7 @@ fn get_local_completions(
               if is_supported_ext(&de.path()) {
                 Some(lsp::CompletionItem {
                   label,
-                  kind: Some(lsp::CompletionItemKind::File),
+                  kind: Some(lsp::CompletionItemKind::FILE),
                   detail: Some("(local)".to_string()),
                   filter_text,
                   sort_text: Some("1".to_string()),
@@ -304,7 +305,7 @@ fn get_workspace_completions(
         }));
         Some(lsp::CompletionItem {
           label,
-          kind: Some(lsp::CompletionItemKind::File),
+          kind: Some(lsp::CompletionItemKind::FILE),
           detail,
           sort_text: Some("1".to_string()),
           text_edit,
@@ -340,7 +341,10 @@ fn relative_specifier(
     || specifier.port_or_known_default() != base.port_or_known_default()
   {
     if specifier.scheme() == "file" {
-      specifier.to_file_path().unwrap().to_string_lossy().into()
+      specifier_to_file_path(specifier)
+        .unwrap()
+        .to_string_lossy()
+        .into()
     } else {
       specifier.as_str().into()
     }
@@ -436,7 +440,7 @@ mod tests {
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> language_server::StateSnapshot {
-    let documents = Documents::new(location);
+    let mut documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -648,7 +652,7 @@ mod tests {
       actual,
       vec![lsp::CompletionItem {
         label: "https://deno.land/x/a/b/c.ts".to_string(),
-        kind: Some(lsp::CompletionItemKind::File),
+        kind: Some(lsp::CompletionItemKind::FILE),
         detail: Some("(remote)".to_string()),
         sort_text: Some("1".to_string()),
         text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
