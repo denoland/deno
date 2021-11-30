@@ -400,6 +400,26 @@ Deno.test(async function timerMaxCpuBug() {
   assert(opsDispatched_ - opsDispatched < 10);
 });
 
+Deno.test(async function timerOrdering() {
+  const array: number[] = [];
+  setTimeout(() => {
+    array.push(1);
+    setTimeout(() => array.push(4));
+  }, 0);
+  setTimeout(() => {
+    array.push(2);
+    setTimeout(() => array.push(5));
+  }, 0);
+  setTimeout(() => {
+    array.push(3);
+    setTimeout(() => array.push(6));
+  }, 0);
+
+  await delay(10);
+
+  assertEquals(array, [1, 2, 3, 4, 5, 6]);
+});
+
 Deno.test(async function timerBasicMicrotaskOrdering() {
   let s = "";
   let count = 0;

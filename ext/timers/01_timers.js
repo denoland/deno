@@ -6,7 +6,6 @@
   const {
     ArrayPrototypePush,
     ArrayPrototypeShift,
-    ArrayPrototypeSplice,
     Error,
     FunctionPrototypeCall,
     Map,
@@ -15,9 +14,6 @@
     MapPrototypeHas,
     MapPrototypeSet,
     MathMax,
-    // deno-lint-ignore camelcase
-    NumberPOSITIVE_INFINITY,
-    Promise,
     PromisePrototypeThen,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -188,74 +184,32 @@
     // the timer task source given global to run task.
     // 13. Run steps after a timeout given global, "setTimeout/setInterval",
     // timeout, completionStep, and id.
-    PromisePrototypeThen(waitForTimeout(timeout, cancelRid), () => {
-      ArrayPrototypePush(timerTasks, task);
-    });
+    runAfterTimeout(
+      () => ArrayPrototypePush(timerTasks, task),
+      timeout,
+      cancelRid,
+    );
 
     return id;
   }
 
-  /** @type { Array<{ timeout: number, resolve: () => void, waiting: boolean }> } */
-  const scheduledTimers = [];
-
   /**
-   * @param {number} timeout
+   * @param {() => void} cb Will be run after the timeout, if it hasn't been
+   * cancelled.
+   * @param {number} millis
    * @param {number} cancelRid
-   * @returns {Promise<void>} A promise that resolves after the timeout has
-   * elapsed or cancelRid has been closed.
    */
-  function waitForTimeout(timeout, cancelRid) {
-    let scheduledTimerObject;
-    const retPromise = new Promise((resolve) => {
-      scheduledTimerObject = { timeout, resolve, waiting: true };
-      scheduledTimers.push(scheduledTimerObject);
-    });
-
-    core.opAsync("op_sleep", timeout, cancelRid).then(
-      () => {
-        scheduledTimerObject.waiting = false;
-
-        // 2. Wait until any invocations of this algorithm that had the same
-        // global and orderingIdentifier, that started before this one, and
-        // whose milliseconds is equal or less than this one's, have completed.
-        //
-        // TODO(@andreubotella): This might not actually be necessary, given
-        // https://github.com/tokio-rs/tokio/issues/1775, but I'm not 100% sure
-        // that if two delay futures resolve before the async ops are resolved,
-        // the microtasks will be queued in the right order. Does
-        // FuturesUnordered guarantee that?
-
-        let lowestStillWaitingTimeout = NumberPOSITIVE_INFINITY;
-
-        for (let i = 0; i < scheduledTimers.length; i++) {
-          const timer = scheduledTimers[i];
-
-          if (timer.waiting) {
-            if (timer.timeout < lowestStillWaitingTimeout) {
-              lowestStillWaitingTimeout = timer.timeout;
-            }
-          } else {
-            if (timer.timeout < lowestStillWaitingTimeout) {
-              timer.resolve();
-              ArrayPrototypeSplice(scheduledTimers, i, 1);
-              i--;
-            }
-          }
-        }
-      },
+  function runAfterTimeout(cb, millis, cancelRid) {
+    PromisePrototypeThen(
+      core.opAsync("op_sleep", millis, cancelRid),
+      cb,
       (err) => {
+        // Do nothing if the timer was cancelled.
         if (!(err instanceof core.Interrupted)) {
           throw err;
         }
-
-        // Find the current timer and remove it without resolving.
-        const index = scheduledTimers.indexOf(scheduledTimerObject);
-        assert(index >= 0);
-        ArrayPrototypeSplice(scheduledTimers, index, 1);
       },
     );
-
-    return retPromise;
   }
 
   // ---------------------------------------------------------------------------

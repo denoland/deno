@@ -105,11 +105,11 @@ pub fn op_timer_handle(
 
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
-  timeout: i32,
+  millis: u64,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
   let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
-  tokio::time::sleep(Duration::from_millis(timeout as u64))
+  tokio::time::sleep(Duration::from_millis(millis))
     .or_cancel(handle.0.clone())
     .await?;
   Ok(())
