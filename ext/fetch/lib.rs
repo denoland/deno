@@ -3,7 +3,6 @@
 mod fs_fetch_handler;
 
 use data_url::DataUrl;
-use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::Future;
@@ -612,7 +611,6 @@ pub fn create_http_client(
     builder = builder.proxy(reqwest_proxy);
   }
 
-  builder
-    .build()
-    .map_err(|e| generic_error(format!("Unable to build http client: {}", e)))
+  // unwrap here because it can only fail when native TLS is used.
+  Ok(builder.build().unwrap())
 }
