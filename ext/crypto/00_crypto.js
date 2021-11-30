@@ -2216,13 +2216,18 @@
         keyUsages,
       );
       // 16.
-      if (result[_type] == "secret" || result[_type] == "private") {
+      if (
+        (result[_type] == "secret" || result[_type] == "private") &&
+        keyUsages.length == 0
+      ) {
         throw new SyntaxError("Invalid key type.");
       }
       // 17.
       result[_extractable] = extractable;
       // 18.
       result[_usages] = usageIntersection(keyUsages, recognisedUsages);
+      // 19.
+      return result;
     }
 
     /**
