@@ -8,6 +8,8 @@ import {
   delay,
 } from "./test_util.ts";
 
+const decoder = new TextDecoder();
+
 Deno.test(async function functionParameterBindingSuccess() {
   const promise = deferred();
   let count = 0;
@@ -489,3 +491,123 @@ Deno.test(
     await p;
   },
 );
+
+async function execCode(code: string) {
+  const p = Deno.run({
+    cmd: [
+      Deno.execPath(),
+      "eval",
+      "--unstable",
+      code,
+    ],
+    stdout: "piped",
+  });
+  const [status, output] = await Promise.all([p.status(), p.output()]);
+  p.close();
+  return [status.code, decoder.decode(output)];
+}
+
+Deno.test({
+  name: "unrefTimer",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const timer = setTimeout(() => console.log("1"));
+      Deno.unrefTimer(timer);
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "");
+  },
+});
+
+Deno.test({
+  name: "unrefTimer - mix ref and unref 1",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const timer1 = setTimeout(() => console.log("1"), 10);
+      const timer2 = setTimeout(() => console.log("2"), 20);
+      const timer3 = setTimeout(() => console.log("3"), 30);
+      Deno.unrefTimer(timer3);
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "1\n2\n");
+  },
+});
+
+Deno.test({
+  name: "unrefTimer - mix ref and unref 2",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const timer1 = setTimeout(() => console.log("1"), 10);
+      const timer2 = setTimeout(() => console.log("2"), 20);
+      const timer3 = setTimeout(() => console.log("3"), 30);
+      Deno.unrefTimer(timer1);
+      Deno.unrefTimer(timer2);
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "1\n2\n3\n");
+  },
+});
+
+Deno.test({
+  name: "unrefTimer - unref interval 1",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const timer1 = setInterval(() => console.log("1"), 49);
+      const timer2 = setTimeout(() => console.log("2"), 300);
+      Deno.unrefTimer(timer1);
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "1\n1\n1\n1\n1\n1\n2\n");
+  },
+});
+
+Deno.test({
+  name: "unrefTimer - unref interval 2",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const timer1 = setInterval(() => console.log("1"), 49);
+      const timer2 = setTimeout(() => {
+        Deno.unrefTimer(timer1);
+      }, 300);
+      Deno.unrefTimer(timer2);
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "1\n1\n1\n1\n1\n1\n");
+  },
+});
+
+Deno.test({
+  name: "unrefTimer - unref then ref 1",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const timer1 = setTimeout(() => console.log("1"), 10);
+      Deno.unrefTimer(timer1);
+      Deno.refTimer(timer1);
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "1\n");
+  },
+});
+
+Deno.test({
+  name: "unrefTimer - unref then ref",
+  permissions: { run: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const timer1 = setTimeout(() => {
+        console.log("1");
+        Deno.refTimer(timer2);
+      }, 10);
+      const timer2 = setTimeout(() => console.log("2"), 20);
+      Deno.unrefTimer(timer2);
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "1\n2\n");
+  },
+});

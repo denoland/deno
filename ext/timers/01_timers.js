@@ -18,6 +18,10 @@
     MapPrototypeSet,
     MathMax,
     Number,
+    Set,
+    SetPrototypeAdd,
+    SetPrototypeDelete,
+    SymbolFor,
     String,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -49,8 +53,8 @@
     return core.opSync("op_global_timer_start", timeout);
   }
 
-  async function opWaitGlobalTimer() {
-    await core.opAsync("op_global_timer");
+  function opWaitGlobalTimer() {
+    return core.opAsync("op_global_timer");
   }
 
   function opNow() {
@@ -316,11 +320,40 @@
 
   let nextTimerId = 1;
   const idMap = new Map();
+  // Stores timer ids which need to block event loop from exiting ("ref" timers)
+  // If we don't have items in this set, but the global timers are still remaining,
+  // then we mark those promise "unref", otherwise we mark them "ref"
+  const refIds = new Set();
+  // The set of promises of op_global_timer op calls
+  // We need to mark these ref/unref according to the remaining timers.
+  const globalTimerPromises = new Set();
+  let isGlobalTimerRef = true;
   const dueTree = new RBTree((a, b) => a.due - b.due);
 
   function clearGlobalTimeout() {
     globalTimeoutDue = null;
     opStopGlobalTimer();
+  }
+
+  // Checks and resets the ref/unref state of the global timer promises.
+  function resetGlobalTimersRef() {
+    const isRef = refIds.size > 0;
+    if (isRef === isGlobalTimerRef) {
+      // The state isn't changed. Skip
+      return;
+    }
+
+    // Needs to switch ref/unref state of all the global timer promises
+    if (isRef) {
+      for (const p of globalTimerPromises) {
+        core.refOp(p[SymbolFor("Deno.core.internalPromiseId")]);
+      }
+    } else {
+      for (const p of globalTimerPromises) {
+        core.unrefOp(p[SymbolFor("Deno.core.internalPromiseId")]);
+      }
+    }
+    isGlobalTimerRef = isRef;
   }
 
   let pendingEvents = 0;
@@ -359,7 +392,10 @@
     // Ideally `clearGlobalTimeout` doesn't return until this op is resolved, but
     // I'm not if that's possible.
     opStartGlobalTimer(timeout);
-    await opWaitGlobalTimer();
+    const p = opWaitGlobalTimer();
+    globalTimerPromises.add(p);
+    await p;
+    globalTimerPromises.delete(p);
     pendingEvents--;
     prepareReadyTimers();
   }
@@ -392,6 +428,7 @@
     } else {
       setGlobalTimeout(due, now);
     }
+    resetGlobalTimersRef();
   }
 
   function schedule(timer, now) {
@@ -461,8 +498,10 @@
     }
     // Reschedule the timer if it is a repeating one, otherwise drop it.
     if (!timer.repeat) {
-      // One-shot timer: remove the timer from this id-to-timer map.
+      // One-shot timer: remove the timer from this id-to-timer map and ref timer set.
       MapPrototypeDelete(idMap, timer.id);
+      SetPrototypeDelete(refIds, timer.id);
+      resetGlobalTimersRef();
     } else {
       // Interval timer: compute when timer was supposed to fire next.
       // However make sure to never schedule the next interval in the past.
@@ -526,8 +565,9 @@
       repeat,
       scheduled: false,
     };
-    // Register the timer's existence in the id-to-timer map.
+    // Register the timer's existence in the id-to-timer map and ref timer set.
     MapPrototypeSet(idMap, timer.id, timer);
+    SetPrototypeAdd(refIds, timer.id);
     // Schedule the timer in the due table.
     schedule(timer, now);
     return timer.id;
@@ -563,6 +603,8 @@
     // Unschedule the timer if it is currently scheduled, and forget about it.
     unschedule(timer);
     MapPrototypeDelete(idMap, timer.id);
+    SetPrototypeDelete(refIds, timer.id);
+    resetGlobalTimersRef();
   }
 
   function clearTimeout(id = 0) {
@@ -581,15 +623,35 @@
     clearTimer(id);
   }
 
+  function refTimer(id = 0) {
+    id >>>= 0;
+    if (id === 0) {
+      return;
+    }
+    SetPrototypeAdd(refIds, id);
+    resetGlobalTimersRef();
+  }
+
+  function unrefTimer(id = 0) {
+    id >>>= 0;
+    if (id === 0) {
+      return;
+    }
+    SetPrototypeDelete(refIds, id);
+    resetGlobalTimersRef();
+  }
+
   window.__bootstrap.timers = {
     clearInterval,
-    setInterval,
     clearTimeout,
-    setTimeout,
     handleTimerMacrotask,
+    opNow,
     opStopGlobalTimer,
     opStartGlobalTimer,
-    opNow,
+    refTimer,
+    setInterval,
+    setTimeout,
     sleepSync,
+    unrefTimer,
   };
 })(this);
