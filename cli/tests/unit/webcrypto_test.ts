@@ -712,7 +712,7 @@ Deno.test(async function testUnwrapKey() {
     keyMaterial,
     { "name": "AES-CBC", "length": 256 },
     true,
-    ["wrapKey", "unwrapKey"],
+    ["wrapKey", "unwrapKey", "decrypt"],
   );
 
   // deno-fmt-ignore
