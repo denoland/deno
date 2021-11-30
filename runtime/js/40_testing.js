@@ -30,14 +30,9 @@
   } = window.__bootstrap.primordials;
   let testStepsEnabled = false;
 
-  // Test files mustn't use `Deno.exit()` as it might result in false positive
-  // test results, so to prevent that we add an exit handler that will always
-  // raise an error.
   function exitHandler(exitCode) {
     throw new Error(`Test file attempted to exit with exit code: ${exitCode}`);
   }
-
-  setExitHandler(exitHandler);
 
   let opSanitizerDelayResolve = null;
 
@@ -512,6 +507,10 @@ finishing test case.`;
     const originalConsole = globalThis.console;
 
     globalThis.console = new Console(reportTestConsoleOutput);
+    // Test files mustn't use `Deno.exit()` as it might result in false positive
+    // test results, so to prevent that we add an exit handler that will always
+    // raise an error.
+    setExitHandler(exitHandler);
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
     const filtered = ArrayPrototypeFilter(
