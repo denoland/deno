@@ -465,13 +465,7 @@ pub async fn op_crypto_verify_key(
 
   let verification = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
-      let public_key = match args.key.r#type {
-        KeyType::Private => {
-          RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
-        }
-        KeyType::Public => RsaPublicKey::from_pkcs1_der(&*args.key.data)?,
-        _ => unreachable!(),
-      };
+      let public_key = read_rsa_public_key(args.key)?;
       let (padding, hashed) = match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
@@ -527,13 +521,7 @@ pub async fn op_crypto_verify_key(
         .salt_length
         .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
         as usize;
-      let public_key = match args.key.r#type {
-        KeyType::Private => {
-          RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
-        }
-        KeyType::Public => RsaPublicKey::from_pkcs1_der(&*args.key.data)?,
-        _ => unreachable!(),
-      };
+      let public_key = read_rsa_public_key(args.key)?;
 
       let rng = OsRng;
       let (padding, hashed) = match args
@@ -920,6 +908,17 @@ pub struct EncryptArg {
   length: Option<usize>,
 }
 
+fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, AnyError> {
+  let public_key = match key_data.r#type {
+    KeyType::Private => {
+      RsaPrivateKey::from_pkcs1_der(&*key_data.data)?.to_public_key()
+    }
+    KeyType::Public => RsaPublicKey::from_pkcs1_der(&*key_data.data)?,
+    KeyType::Secret => unreachable!("unexpected KeyType::Secret"),
+  };
+  Ok(public_key)
+}
+
 pub async fn op_crypto_encrypt_key(
   _state: Rc<RefCell<OpState>>,
   args: EncryptArg,
@@ -930,13 +929,7 @@ pub async fn op_crypto_encrypt_key(
 
   match algorithm {
     Algorithm::RsaOaep => {
-      let public_key = match args.key.r#type {
-        KeyType::Private => {
-          RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
-        }
-        KeyType::Public => RsaPublicKey::from_pkcs1_der(&*args.key.data)?,
-        _ => unreachable!(),
-      };
+      let public_key = read_rsa_public_key(args.key)?;
       let label = args.label.map(|l| String::from_utf8_lossy(&*l).to_string());
       let mut rng = OsRng;
       let padding = match args
