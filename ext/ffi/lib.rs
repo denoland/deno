@@ -1,6 +1,5 @@
 // Copyright 2021 the Deno authors. All rights reserved. MIT license.
 
-use core::slice;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
