@@ -738,7 +738,7 @@ Deno.test(async function testUnwrapKey() {
     false,
     ["encrypt", "decrypt"],
   );
-  console.log(unwrappedKey);
+
   assert(unwrappedKey instanceof CryptoKey);
   assertEquals(unwrappedKey.type, "secret");
   assertEquals(unwrappedKey.extractable, false);
