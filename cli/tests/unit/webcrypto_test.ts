@@ -707,12 +707,12 @@ Deno.test(async function testUnwrapKey() {
     hash: "SHA-1",
   };
 
-  const aes_key = await subtle.generateKey(AES_KEY, true, [
+  const aesKey = await subtle.generateKey(AES_KEY, true, [
     "encrypt",
     "decrypt",
   ]);
 
-  const rsa_keypair = await subtle.generateKey(
+  const rsaKeyPair = await subtle.generateKey(
     {
       name: "RSA-OAEP",
       hash: "SHA-1",
@@ -725,14 +725,14 @@ Deno.test(async function testUnwrapKey() {
 
   const enc = await subtle.wrapKey(
     "raw",
-    aes_key,
-    rsa_keypair.publicKey,
+    aesKey,
+    rsaKeyPair.publicKey,
     RSA_KEY,
   );
   const unwrappedKey = await subtle.unwrapKey(
     "raw",
     enc,
-    rsa_keypair.privateKey,
+    rsaKeyPair.privateKey,
     RSA_KEY,
     AES_KEY,
     false,
