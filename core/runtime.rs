@@ -841,7 +841,7 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else {
-        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promise.";
+        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promises.";
         return Poll::Ready(Err(generic_error(msg)));
       }
     }
@@ -854,7 +854,7 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else if state.dyn_module_evaluate_idle_counter >= 1 {
-        let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.
+        let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promises.
 Pending dynamic modules:\n".to_string();
         for pending_evaluate in &state.pending_dyn_mod_evaluate {
           let module_info = module_map
