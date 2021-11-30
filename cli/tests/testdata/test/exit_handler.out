@@ -1,0 +1,24 @@
+Check [WILDCARD]exit_handler.ts
+running 2 tests from [WILDCARD]exit_handler.ts
+test ok ... ok ([WILDCARD])
+test error ... FAILED ([WILDCARD])
+
+failures:
+
+error
+Error: boom!
+    at [WILDCARD]exit_handler.ts:6:9
+[WILDCARD]
+
+failures:
+
+	error
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Uncaught Error: Test file attempted to exit with exit code: 0
+  Deno.exit(0);
+       ^
+[WILDCARD]
+    at self.onunload ([WILDCARD]exit_handler.ts:10:8)
+[WILDCARD]

@@ -167,6 +167,12 @@ itest!(exit_sanitizer {
   exit_code: 1,
 });
 
+itest!(exit_handler {
+  args: "test test/exit_handler.ts",
+  output: "test/exit_handler.out",
+  exit_code: 1,
+});
+
 itest!(clear_timeout {
   args: "test test/clear_timeout.ts",
   exit_code: 0,
