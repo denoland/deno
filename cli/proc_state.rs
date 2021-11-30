@@ -404,7 +404,7 @@ impl ProcState {
     };
     if !reload_on_watch {
       let graph_data = self.graph_data.lock();
-      if self.flags.no_check
+      if self.flags.check == flags::CheckFlag::None
         || roots.iter().all(|root| {
           graph_data
             .checked_libs_map
@@ -452,7 +452,7 @@ impl ProcState {
       graph_data.modules.keys().cloned().collect()
     };
 
-    let config_type = if self.flags.no_check {
+    let config_type = if self.flags.check == flags::CheckFlag::None {
       emit::ConfigType::Emit
     } else {
       emit::ConfigType::Check {
@@ -483,7 +483,7 @@ impl ProcState {
       if let Some(ignored_options) = maybe_ignored_options {
         log::warn!("{}", ignored_options);
       }
-      let emit_result = if self.flags.no_check {
+      let emit_result = if self.flags.check == flags::CheckFlag::None {
         let options = emit::EmitOptions {
           ts_config,
           reload_exclusions,
@@ -502,6 +502,7 @@ impl ProcState {
           .as_ref()
           .map(|cf| cf.specifier.clone());
         let options = emit::CheckOptions {
+          check: self.flags.check.clone(),
           debug: self.flags.log_level == Some(log::Level::Debug),
           emit_with_diagnostics: false,
           maybe_config_specifier,
@@ -599,7 +600,7 @@ impl ProcState {
       graph_data.check_if_prepared(&roots).unwrap()?;
       type_check_result?;
 
-      if !self.flags.no_check {
+      if self.flags.check != flags::CheckFlag::None {
         for specifier in specifiers.keys() {
           let checked_libs = graph_data
             .checked_libs_map

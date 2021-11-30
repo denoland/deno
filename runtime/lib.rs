@@ -4,6 +4,7 @@ use std::sync::atomic::AtomicI32;
 
 pub use deno_broadcast_channel;
 pub use deno_console;
+pub use deno_core;
 pub use deno_crypto;
 pub use deno_fetch;
 pub use deno_ffi;
