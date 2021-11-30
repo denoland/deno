@@ -552,32 +552,21 @@ Deno.test({
 });
 
 Deno.test({
-  name: "unrefTimer - unref interval 1",
+  name: "unrefTimer - unref interval",
   permissions: { run: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
-      const timer1 = setInterval(() => console.log("1"), 49);
-      const timer2 = setTimeout(() => console.log("2"), 300);
-      Deno.unrefTimer(timer1);
+      let i = 0;
+      const timer1 = setInterval(() => {
+        console.log("1");
+        i++;
+        if (i === 5) {
+          Deno.unrefTimer(timer1);
+        }
+      }, 10);
     `);
     assertEquals(statusCode, 0);
-    assertEquals(output, "1\n1\n1\n1\n1\n1\n2\n");
-  },
-});
-
-Deno.test({
-  name: "unrefTimer - unref interval 2",
-  permissions: { run: true },
-  fn: async () => {
-    const [statusCode, output] = await execCode(`
-      const timer1 = setInterval(() => console.log("1"), 49);
-      const timer2 = setTimeout(() => {
-        Deno.unrefTimer(timer1);
-      }, 300);
-      Deno.unrefTimer(timer2);
-    `);
-    assertEquals(statusCode, 0);
-    assertEquals(output, "1\n1\n1\n1\n1\n1\n");
+    assertEquals(output, "1\n1\n1\n1\n1\n");
   },
 });
 
