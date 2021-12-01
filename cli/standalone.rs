@@ -28,6 +28,7 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use deno_tls::create_default_root_cert_store;
+use deno_tls::rustls_pemfile;
 use log::Level;
 use std::env::current_exe;
 use std::fs::File;
@@ -222,8 +223,16 @@ pub async fn run(
   if let Some(cert) = metadata.ca_data {
     let reader = &mut BufReader::new(Cursor::new(cert));
     // This function does not return specific errors, if it fails give a generic message.
-    if let Err(_err) = root_cert_store.add_pem_file(reader) {
-      return Err(anyhow!("Unable to add pem file to certificate store"));
+    match rustls_pemfile::certs(reader) {
+      Ok(certs) => {
+        root_cert_store.add_parsable_certificates(&certs);
+      }
+      Err(e) => {
+        return Err(anyhow!(
+          "Unable to add pem file to certificate store: {}",
+          e
+        ));
+      }
     }
   }
 

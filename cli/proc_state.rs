@@ -44,6 +44,7 @@ use deno_runtime::permissions::Permissions;
 use deno_tls::rustls;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::rustls_native_certs::load_native_certs;
+use deno_tls::rustls_pemfile;
 use deno_tls::webpki_roots;
 use import_map::ImportMap;
 use std::collections::BTreeMap;
@@ -208,8 +209,8 @@ impl ProcState {
       match store.as_str() {
         "mozilla" => {
           root_cert_store.add_server_trust_anchors(
-            deno_tls::webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
-              deno_tls::rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+            webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+              rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
                 ta.subject,
                 ta.spki,
                 ta.name_constraints,
@@ -218,10 +219,13 @@ impl ProcState {
           );
         }
         "system" => {
-          let roots = load_native_certs()
-            .expect("could not load platform certs")
-            .roots;
-          root_cert_store.roots.extend(roots);
+          let roots =
+            load_native_certs().expect("could not load platform certs");
+          for root in roots {
+            root_cert_store
+              .add(&rustls::Certificate(root.0))
+              .expect("Failed to add platform cert to root cert store");
+          }
         }
         _ => {
           return Err(anyhow!("Unknown certificate store \"{}\" specified (allowed: \"system,mozilla\")", store));
@@ -235,8 +239,16 @@ impl ProcState {
       let mut reader = BufReader::new(certfile);
 
       // This function does not return specific errors, if it fails give a generic message.
-      if let Err(_err) = root_cert_store.add_pem_file(&mut reader) {
-        return Err(anyhow!("Unable to add pem file to certificate store"));
+      match rustls_pemfile::certs(&mut reader) {
+        Ok(certs) => {
+          root_cert_store.add_parsable_certificates(&certs);
+        }
+        Err(e) => {
+          return Err(anyhow!(
+            "Unable to add pem file to certificate store: {}",
+            e
+          ));
+        }
       }
     }
 

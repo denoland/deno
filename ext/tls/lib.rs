@@ -3,6 +3,7 @@
 pub use reqwest;
 pub use rustls;
 pub use rustls_native_certs;
+pub use rustls_pemfile;
 pub use webpki;
 pub use webpki_roots;
 
