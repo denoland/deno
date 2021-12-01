@@ -859,6 +859,24 @@ itest!(exit_error42 {
   output: "exit_error42.ts.out",
 });
 
+itest!(set_exit_code_0 {
+  args: "run --no-check --unstable set_exit_code_0.ts",
+  output: "empty.out",
+  exit_code: 0,
+});
+
+itest!(set_exit_code_1 {
+  args: "run --no-check --unstable set_exit_code_1.ts",
+  output: "empty.out",
+  exit_code: 42,
+});
+
+itest!(set_exit_code_2 {
+  args: "run --no-check --unstable set_exit_code_2.ts",
+  output: "empty.out",
+  exit_code: 42,
+});
+
 itest!(heapstats {
   args: "run --quiet --unstable --v8-flags=--expose-gc heapstats.js",
   output: "heapstats.js.out",
@@ -900,6 +918,19 @@ itest!(no_check {
 itest!(no_check_decorators {
   args: "run --quiet --reload --no-check no_check_decorators.ts",
   output: "no_check_decorators.ts.out",
+});
+
+itest!(check_remote {
+  args: "run --quiet --reload no_check_remote.ts",
+  output: "no_check_remote.ts.disabled.out",
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(no_check_remote {
+  args: "run --quiet --reload --no-check=remote no_check_remote.ts",
+  output: "no_check_remote.ts.enabled.out",
+  http_server: true,
 });
 
 itest!(runtime_decorators {

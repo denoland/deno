@@ -87,35 +87,34 @@ pub async fn format(
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
 
-    let collect_files =
-      collect_files(&include_files, &exclude_files, is_supported_ext_fmt);
-
-    let (result, should_refmt) = match collect_files {
-      Ok(value) => {
-        if let Some(paths) = changed {
-          let refmt_files = value
-            .clone()
-            .into_iter()
-            .filter(|path| paths.contains(path))
-            .collect::<Vec<_>>();
-
-          let should_refmt = !refmt_files.is_empty();
-
-          if check {
-            (Ok((value, fmt_options.clone())), Some(should_refmt))
+    let result =
+      collect_files(&include_files, &exclude_files, is_supported_ext_fmt).map(
+        |files| {
+          let refmt_files = if let Some(paths) = changed {
+            if check {
+              files
+                .iter()
+                .any(|path| paths.contains(path))
+                .then(|| files)
+                .unwrap_or_else(|| [].to_vec())
+            } else {
+              files
+                .into_iter()
+                .filter(|path| paths.contains(path))
+                .collect::<Vec<_>>()
+            }
           } else {
-            (Ok((refmt_files, fmt_options.clone())), Some(should_refmt))
-          }
-        } else {
-          (Ok((value, fmt_options.clone())), None)
-        }
-      }
-      Err(e) => (Err(e), None),
-    };
+            files
+          };
+          (refmt_files, fmt_options.clone())
+        },
+      );
 
     let paths_to_watch = include_files.clone();
     async move {
-      if files_changed && matches!(should_refmt, Some(false)) {
+      if files_changed
+        && matches!(result, Ok((ref files, _)) if files.is_empty())
+      {
         ResolutionResult::Ignore
       } else {
         ResolutionResult::Restart {

@@ -244,6 +244,49 @@ async function tlsPair(): Promise<[Deno.Conn, Deno.Conn]> {
   return endpoints;
 }
 
+async function tlsAlpn(
+  useStartTls: boolean,
+): Promise<[Deno.TlsConn, Deno.TlsConn]> {
+  const port = getPort();
+  const listener = Deno.listenTls({
+    hostname: "localhost",
+    port,
+    certFile: "cli/tests/testdata/tls/localhost.crt",
+    keyFile: "cli/tests/testdata/tls/localhost.key",
+    alpnProtocols: ["deno", "rocks"],
+  });
+
+  const acceptPromise = listener.accept();
+
+  const caCerts = [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")];
+  const clientAlpnProtocols = ["rocks", "rises"];
+  let endpoints: [Deno.TlsConn, Deno.TlsConn];
+
+  if (!useStartTls) {
+    const connectPromise = Deno.connectTls({
+      hostname: "localhost",
+      port,
+      caCerts,
+      alpnProtocols: clientAlpnProtocols,
+    });
+    endpoints = await Promise.all([acceptPromise, connectPromise]);
+  } else {
+    const client = await Deno.connect({
+      hostname: "localhost",
+      port,
+    });
+    const connectPromise = Deno.startTls(client, {
+      hostname: "localhost",
+      caCerts,
+      alpnProtocols: clientAlpnProtocols,
+    });
+    endpoints = await Promise.all([acceptPromise, connectPromise]);
+  }
+
+  listener.close();
+  return endpoints;
+}
+
 async function sendThenCloseWriteThenReceive(
   conn: Deno.Conn,
   chunkCount: number,
@@ -304,6 +347,38 @@ async function receiveThenSend(
 
   conn.close();
 }
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function tlsServerAlpnListenConnect() {
+    const [serverConn, clientConn] = await tlsAlpn(false);
+    const [serverHS, clientHS] = await Promise.all([
+      serverConn.handshake(),
+      clientConn.handshake(),
+    ]);
+    assertStrictEquals(serverHS.alpnProtocol, "rocks");
+    assertStrictEquals(clientHS.alpnProtocol, "rocks");
+
+    serverConn.close();
+    clientConn.close();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function tlsServerAlpnListenStartTls() {
+    const [serverConn, clientConn] = await tlsAlpn(true);
+    const [serverHS, clientHS] = await Promise.all([
+      serverConn.handshake(),
+      clientConn.handshake(),
+    ]);
+    assertStrictEquals(serverHS.alpnProtocol, "rocks");
+    assertStrictEquals(clientHS.alpnProtocol, "rocks");
+
+    serverConn.close();
+    clientConn.close();
+  },
+);
 
 Deno.test(
   { permissions: { read: true, net: true } },

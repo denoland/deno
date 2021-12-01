@@ -367,6 +367,16 @@ impl Diagnostics {
     }));
   }
 
+  /// Return a set of diagnostics where only the values where the predicate
+  /// returns `true` are included.
+  pub fn filter<P>(&self, predicate: P) -> Self
+  where
+    P: FnMut(&Diagnostic) -> bool,
+  {
+    let diagnostics = self.0.clone().into_iter().filter(predicate).collect();
+    Self(diagnostics)
+  }
+
   pub fn is_empty(&self) -> bool {
     self.0.is_empty()
   }

@@ -40,6 +40,7 @@ use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::BundleFlags;
 use crate::flags::CacheFlags;
+use crate::flags::CheckFlag;
 use crate::flags::CompileFlags;
 use crate::flags::CompletionsFlags;
 use crate::flags::CoverageFlags;
@@ -93,6 +94,7 @@ use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
 fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
@@ -705,7 +707,7 @@ async fn create_graph_and_maybe_check(
   // locker.
   emit::lock(graph.as_ref());
 
-  if !ps.flags.no_check {
+  if ps.flags.check != CheckFlag::None {
     graph.valid_types_only().map_err(emit::GraphError::from)?;
     let lib = if ps.flags.unstable {
       emit::TypeLib::UnstableDenoWindow
@@ -730,6 +732,7 @@ async fn create_graph_and_maybe_check(
       graph.clone(),
       &mut cache,
       emit::CheckOptions {
+        check: ps.flags.check.clone(),
         debug,
         emit_with_diagnostics: false,
         maybe_config_specifier,
@@ -758,7 +761,7 @@ fn bundle_module_graph(
     ps.maybe_config_file.as_ref(),
     None,
   )?;
-  if flags.no_check {
+  if flags.check == CheckFlag::None {
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
@@ -1475,4 +1478,7 @@ pub fn main() {
   logger::init(flags.log_level);
 
   unwrap_or_exit(run_basic(get_subcommand(flags)));
+
+  let code = deno_runtime::EXIT_CODE.load(Relaxed);
+  std::process::exit(code);
 }
