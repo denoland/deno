@@ -825,7 +825,10 @@ impl JsRuntime {
     // TODO(andreubotella) The event loop will spin as long as there are pending
     // background tasks. We should look into having V8 notify us when a
     // background task is done.
-    if state.have_unpolled_ops || has_pending_background_tasks {
+    if state.have_unpolled_ops
+      || has_pending_background_tasks
+      || has_tick_scheduled
+    {
       state.waker.wake();
     }
 
@@ -834,6 +837,7 @@ impl JsRuntime {
         || has_pending_dyn_imports
         || has_pending_dyn_module_evaluation
         || has_pending_background_tasks
+        || has_tick_scheduled
       {
         // pass, will be polled again
       } else {
@@ -846,6 +850,7 @@ impl JsRuntime {
       if has_pending_refed_ops
         || has_pending_dyn_imports
         || has_pending_background_tasks
+        || has_tick_scheduled
       {
         // pass, will be polled again
       } else if state.dyn_module_evaluate_idle_counter >= 1 {
@@ -2527,39 +2532,40 @@ assertEquals(1, notify_return_value);
     assert_eq!(state.js_nexttick_cbs.len(), 2);
   }
 
-  #[tokio::test]
-  async fn test_has_tick_scheduled() {
-    run_in_task(|cx| {
-      let macrotask = Arc::new(AtomicUsize::default());
-      let macrotask_ = Arc::clone(&macrotask);
+  #[test]
+  fn test_has_tick_scheduled() {
+    use futures::task::ArcWake;
 
-      let next_tick = Arc::new(AtomicUsize::default());
-      let next_tick_ = Arc::clone(&next_tick);
+    let macrotask = Arc::new(AtomicUsize::default());
+    let macrotask_ = Arc::clone(&macrotask);
 
-      let op_macrotask = move |_: &mut OpState, _: (), _: ()| {
-        macrotask_.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-      };
+    let next_tick = Arc::new(AtomicUsize::default());
+    let next_tick_ = Arc::clone(&next_tick);
 
-      let op_next_tick = move |_: &mut OpState, _: (), _: ()| {
-        next_tick_.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-      };
+    let op_macrotask = move |_: &mut OpState, _: (), _: ()| {
+      macrotask_.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    };
 
-      let extension = Extension::builder()
-        .ops(vec![("op_macrotask", op_sync(op_macrotask))])
-        .ops(vec![("op_next_tick", op_sync(op_next_tick))])
-        .build();
+    let op_next_tick = move |_: &mut OpState, _: (), _: ()| {
+      next_tick_.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    };
 
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![extension],
-        ..Default::default()
-      });
+    let extension = Extension::builder()
+      .ops(vec![("op_macrotask", op_sync(op_macrotask))])
+      .ops(vec![("op_next_tick", op_sync(op_next_tick))])
+      .build();
 
-      runtime
-        .execute_script(
-          "has_tick_scheduled.js",
-          r#"
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "has_tick_scheduled.js",
+        r#"
           Deno.core.setMacrotaskCallback(() => {
             Deno.core.opSync("op_macrotask");
             return true; // We're done.
@@ -2567,25 +2573,44 @@ assertEquals(1, notify_return_value);
           Deno.core.setNextTickCallback(() => Deno.core.opSync("op_next_tick"));
           Deno.core.setHasTickScheduled(true);
           "#,
-        )
-        .unwrap();
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      assert_eq!(1, macrotask.load(Ordering::Relaxed));
-      assert_eq!(1, next_tick.load(Ordering::Relaxed));
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      let state_rc = JsRuntime::state(runtime.v8_isolate());
-      state_rc.borrow_mut().has_tick_scheduled = false;
-      assert!(matches!(
-        runtime.poll_event_loop(cx, false),
-        Poll::Ready(Ok(()))
-      ));
-      assert!(matches!(
-        runtime.poll_event_loop(cx, false),
-        Poll::Ready(Ok(()))
-      ));
-    });
+      )
+      .unwrap();
+
+    struct ArcWakeImpl(Arc<AtomicUsize>);
+    impl ArcWake for ArcWakeImpl {
+      fn wake_by_ref(arc_self: &Arc<Self>) {
+        arc_self.0.fetch_add(1, Ordering::Relaxed);
+      }
+    }
+
+    let awoken_times = Arc::new(AtomicUsize::new(0));
+    let waker =
+      futures::task::waker(Arc::new(ArcWakeImpl(awoken_times.clone())));
+    let cx = &mut Context::from_waker(&waker);
+
+    assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+    assert_eq!(1, macrotask.load(Ordering::Relaxed));
+    assert_eq!(1, next_tick.load(Ordering::Relaxed));
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+    assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+    assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+    assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
+    state_rc.borrow_mut().has_tick_scheduled = false;
+    assert!(matches!(
+      runtime.poll_event_loop(cx, false),
+      Poll::Ready(Ok(()))
+    ));
+    assert_eq!(awoken_times.load(Ordering::Relaxed), 0);
+    assert!(matches!(
+      runtime.poll_event_loop(cx, false),
+      Poll::Ready(Ok(()))
+    ));
+    assert_eq!(awoken_times.load(Ordering::Relaxed), 0);
   }
 
   #[test]

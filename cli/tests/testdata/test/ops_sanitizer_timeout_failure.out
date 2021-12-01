@@ -1,0 +1,6 @@
+Check [WILDCARD]/testdata/test/ops_sanitizer_timeout_failure.ts
+running 1 test from [WILDCARD]/testdata/test/ops_sanitizer_timeout_failure.ts
+test wait ... ok ([WILDCARD])
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

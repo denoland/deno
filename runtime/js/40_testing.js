@@ -30,6 +30,37 @@
   } = window.__bootstrap.primordials;
   let testStepsEnabled = false;
 
+  let opSanitizerDelayResolve = null;
+
+  // Even if every resource is closed by the end of a test, there can be a delay
+  // until the pending ops have all finished. This function returns a promise
+  // that resolves when it's (probably) fine to run the op sanitizer.
+  //
+  // This is implemented by adding a macrotask callback that runs after the
+  // timer macrotasks, so we can guarantee that a currently running interval
+  // will have an associated op. An additional `setTimeout` of 0 is needed
+  // before that, though, in order to give time for worker message ops to finish
+  // (since timeouts of 0 don't queue tasks in the timer queue immediately).
+  function opSanitizerDelay() {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        if (opSanitizerDelayResolve !== null) {
+          reject(new Error("There is an op sanitizer delay already."));
+        } else {
+          opSanitizerDelayResolve = resolve;
+        }
+      }, 0);
+    });
+  }
+
+  function handleOpSanitizerDelayMacrotask() {
+    if (opSanitizerDelayResolve !== null) {
+      opSanitizerDelayResolve();
+      opSanitizerDelayResolve = null;
+    }
+    return true;
+  }
+
   // Wrap test function in additional assertion that makes sure
   // the test case does not leak async "ops" - ie. number of async
   // completed ops after the test is the same as number of dispatched
@@ -45,7 +76,7 @@
         // Defer until next event loop turn - that way timeouts and intervals
         // cleared can actually be removed from resource table, otherwise
         // false positives may occur (https://github.com/denoland/deno/issues/4591)
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await opSanitizerDelay();
       }
 
       if (step.shouldSkipSanitizers) {
@@ -466,6 +497,8 @@ finishing test case.`;
     filter = null,
     shuffle = null,
   } = {}) {
+    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
+
     const origin = getTestOrigin();
     const originalConsole = globalThis.console;
 
