@@ -1061,6 +1061,7 @@ Deno.test(
       assertStrictEquals(event2, null);
 
       listener.close();
+      socket.close();
     }
 
     async function client() {

@@ -139,5 +139,7 @@
     flockSync: __bootstrap.fs.flockSync,
     funlock: __bootstrap.fs.funlock,
     funlockSync: __bootstrap.fs.funlockSync,
+    refTimer: __bootstrap.timers.refTimer,
+    unrefTimer: __bootstrap.timers.unrefTimer,
   };
 })(this);
