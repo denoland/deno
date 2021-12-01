@@ -41,9 +41,10 @@ use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
+use deno_tls::rustls;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::rustls_native_certs::load_native_certs;
-use deno_tls::webpki_roots::TLS_SERVER_ROOTS;
+use deno_tls::webpki_roots;
 use import_map::ImportMap;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -206,7 +207,15 @@ impl ProcState {
     for store in ca_stores.iter() {
       match store.as_str() {
         "mozilla" => {
-          root_cert_store.add_server_trust_anchors(&TLS_SERVER_ROOTS);
+          root_cert_store.add_server_trust_anchors(
+            deno_tls::webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+              deno_tls::rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+                ta.subject,
+                ta.spki,
+                ta.name_constraints,
+              )
+            }),
+          );
         }
         "system" => {
           let roots = load_native_certs()
