@@ -359,30 +359,28 @@ async fn get_tls_config(
 
       // Allow (but do not require) client authentication.
 
-      let mut builder = rustls::ServerConfig::builder()
+      let mut config = rustls::ServerConfig::builder()
         .with_safe_defaults()
         .with_client_cert_verifier(
           rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
             root_cert_store,
           ),
         )
-        .with_single_cert(certs, PrivateKey(key));
-        
-      match http_versions {
-        SupportedHttpVersions::All => {
-          builder = builder.with_protocol_versions(&["h2".into(), "http/1.1".into()]).unwrap();
-        }
-        SupportedHttpVersions::Http1Only => {}
-        SupportedHttpVersions::Http2Only => {
-          builder = builder.with_protocol_versions(&["h2".into()]).unwrap();
-        }
-      }
-
-      let config = builder
+        .with_single_cert(certs, PrivateKey(key))
         .map_err(|e| {
           eprintln!("Error setting cert: {:?}", e);
         })
         .unwrap();
+
+      match http_versions {
+        SupportedHttpVersions::All => {
+          config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
+        }
+        SupportedHttpVersions::Http1Only => {}
+        SupportedHttpVersions::Http2Only => {
+          config.alpn_protocols = vec!["h2".into()];
+        }
+      }
 
       Ok(Arc::new(config))
     }

@@ -41,7 +41,7 @@ fn op_http_start(
       .expect("Only a single use of this resource should happen");
     let (read_half, write_half) = resource.into_inner();
     let tls_stream = read_half.reunite(write_half);
-    let addr = tls_stream.get_ref().0.local_addr()?;
+    let addr = tls_stream.get_ref().local_addr()?;
     return http_create_conn_resource(state, tls_stream, addr, "https");
   }
 

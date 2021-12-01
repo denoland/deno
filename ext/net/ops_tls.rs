@@ -135,14 +135,10 @@ impl TlsStream {
     (rd, wr)
   }
 
-  /*
-  /// Tokio-rustls compatibility: returns a reference to the underlying TCP
-  /// stream, and a reference to the Rustls `Session` object.
-  pub fn get_ref(&self) -> (&TcpStream, &dyn Session) {
+  pub fn get_ref(&self) -> &TcpStream {
     let inner = self.0.as_ref().unwrap();
-    (&inner.tcp, &*inner.tls)
+    &inner.tcp
   }
-  */
 
   fn inner_mut(&mut self) -> &mut TlsStreamInner {
     self.0.as_mut().unwrap()
@@ -160,7 +156,7 @@ impl TlsStream {
     self
       .inner_mut()
       .tls
-      .get_alpn_protocol()
+      .alpn_protocol()
       .map(|s| ByteString(s.to_owned()))
   }
 }
@@ -815,12 +811,6 @@ where
     .map(|s| s.into_bytes())
     .collect::<Vec<_>>();
 
-  if let Some(path) = cert_file {
-    let mut buf = Vec::new();
-    File::open(path)?.read_to_end(&mut buf)?;
-    ca_certs.push(buf);
-  };
-
   let hostname_dns =
     ServerName::try_from(hostname).map_err(|_| invalid_hostname(hostname))?;
 
@@ -964,7 +954,7 @@ where
       None
     };
 
-  let tls_config = create_client_config(
+  let mut tls_config = create_client_config(
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
@@ -975,23 +965,6 @@ where
     super::check_unstable2(&state, "Deno.connectTls#alpnProtocols");
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
-  }
-
-  if args.cert_chain.is_some() || args.private_key.is_some() {
-    let cert_chain = args
-      .cert_chain
-      .ok_or_else(|| type_error("No certificate chain provided"))?;
-    let private_key = args
-      .private_key
-      .ok_or_else(|| type_error("No private key provided"))?;
-
-    // The `remove` is safe because load_private_keys checks that there is at least one key.
-    let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
-
-    tls_config.set_single_client_cert(
-      load_certs(&mut cert_chain.as_bytes())?,
-      private_key,
-    )?;
   }
 
   let tls_config = Arc::new(tls_config);
