@@ -525,9 +525,9 @@ Deno.test({
   permissions: { run: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
-      const timer1 = setTimeout(() => console.log("1"), 10);
-      const timer2 = setTimeout(() => console.log("2"), 20);
-      const timer3 = setTimeout(() => console.log("3"), 30);
+      const timer1 = setTimeout(() => console.log("1"), 100);
+      const timer2 = setTimeout(() => console.log("2"), 200);
+      const timer3 = setTimeout(() => console.log("3"), 300);
       Deno.unrefTimer(timer3);
     `);
     assertEquals(statusCode, 0);
@@ -540,9 +540,9 @@ Deno.test({
   permissions: { run: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
-      const timer1 = setTimeout(() => console.log("1"), 10);
-      const timer2 = setTimeout(() => console.log("2"), 20);
-      const timer3 = setTimeout(() => console.log("3"), 30);
+      const timer1 = setTimeout(() => console.log("1"), 100);
+      const timer2 = setTimeout(() => console.log("2"), 200);
+      const timer3 = setTimeout(() => console.log("3"), 300);
       Deno.unrefTimer(timer1);
       Deno.unrefTimer(timer2);
     `);
