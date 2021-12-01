@@ -37,9 +37,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 
-/// If first argument is `None` then it's a notification, otherwise
-/// it's a message.
-pub type SessionProxySender = UnboundedSender<(Option<i32>, String)>;
+pub enum InspectorMsg {
+  Notification,
+  Message(i32),
+}
+pub type SessionProxySender = UnboundedSender<(InspectorMsg, String)>;
 pub type SessionProxyReceiver = UnboundedReceiver<Vec<u8>>;
 
 /// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
@@ -535,11 +537,11 @@ impl InspectorSession {
 
   fn send_message(
     &self,
-    maybe_call_id: Option<i32>,
+    msg_type: InspectorMsg,
     msg: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     let msg = msg.unwrap().string().to_string();
-    let _ = self.proxy.tx.unbounded_send((maybe_call_id, msg));
+    let _ = self.proxy.tx.unbounded_send((msg_type, msg));
   }
 
   pub fn break_on_next_statement(&mut self) {
@@ -567,14 +569,14 @@ impl v8::inspector::ChannelImpl for InspectorSession {
     call_id: i32,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    self.send_message(Some(call_id), message);
+    self.send_message(InspectorMsg::Message(call_id), message);
   }
 
   fn send_notification(
     &mut self,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    self.send_message(None, message);
+    self.send_message(InspectorMsg::Notification, message);
   }
 
   fn flush_protocol_notifications(&mut self) {}
@@ -604,7 +606,7 @@ impl Future for InspectorSession {
 /// the same thread as an isolate.
 pub struct LocalInspectorSession {
   v8_session_tx: UnboundedSender<Vec<u8>>,
-  v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
+  v8_session_rx: UnboundedReceiver<(InspectorMsg, String)>,
   response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
   next_message_id: i32,
   notification_queue: Vec<Value>,
@@ -613,7 +615,7 @@ pub struct LocalInspectorSession {
 impl LocalInspectorSession {
   pub fn new(
     v8_session_tx: UnboundedSender<Vec<u8>>,
-    v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
+    v8_session_rx: UnboundedReceiver<(InspectorMsg, String)>,
   ) -> Self {
     let response_tx_map = HashMap::new();
     let next_message_id = 0;
@@ -675,14 +677,14 @@ impl LocalInspectorSession {
   }
 
   async fn receive_from_v8_session(&mut self) {
-    let (maybe_call_id, message) = self.v8_session_rx.next().await.unwrap();
-    // If there's no call_id then it's a notification
-    if let Some(call_id) = maybe_call_id {
+    let (inspector_msg_type, message) =
+      self.v8_session_rx.next().await.unwrap();
+    if let InspectorMsg::Message(msg_id) = inspector_msg_type {
       let message: serde_json::Value = match serde_json::from_str(&message) {
         Ok(v) => v,
         Err(error) => match error.classify() {
           serde_json::error::Category::Syntax => json!({
-            "id": call_id,
+            "id": msg_id,
             "result": {
               "result": {
                 "type": "error",
@@ -703,7 +705,7 @@ impl LocalInspectorSession {
 
       self
         .response_tx_map
-        .remove(&call_id)
+        .remove(&msg_id)
         .unwrap()
         .send(message)
         .unwrap();

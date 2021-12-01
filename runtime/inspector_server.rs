@@ -16,6 +16,7 @@ use deno_core::futures::task::Poll;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::InspectorMsg;
 use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
 use deno_websocket::tokio_tungstenite::tungstenite;
@@ -325,12 +326,12 @@ async fn pump_websocket_messages(
     hyper::upgrade::Upgraded,
   >,
   inbound_tx: UnboundedSender<Vec<u8>>,
-  outbound_rx: UnboundedReceiver<(Option<i32>, String)>,
+  outbound_rx: UnboundedReceiver<(InspectorMsg, String)>,
 ) {
   let (websocket_tx, websocket_rx) = websocket.split();
 
   let outbound_pump = outbound_rx
-    .map(|(_maybe_call_id, msg)| tungstenite::Message::text(msg))
+    .map(|(_msg_type, msg)| tungstenite::Message::text(msg))
     .map(Ok)
     .forward(websocket_tx)
     .map_err(|_| ());
