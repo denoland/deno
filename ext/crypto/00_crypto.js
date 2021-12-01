@@ -866,7 +866,9 @@
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
 
-      switch (normalizedAlgorithm.name) {
+      const algorithmName = normalizedAlgorithm.name;
+
+      switch (algorithmName) {
         case "HMAC": {
           // 2.
           if (
@@ -1067,6 +1069,7 @@
 
           return key;
         }
+        case "ECDH":
         case "ECDSA": {
           switch (format) {
             case "raw": {
@@ -1095,7 +1098,7 @@
 
               // 3.
               const { data } = await core.opAsync("op_crypto_import_key", {
-                algorithm: "ECDSA",
+                algorithm: normalizedAlgorithm.name,
                 keyType: "public",
                 namedCurve: normalizedAlgorithm.namedCurve,
               }, { raw: { data: keyData } });
@@ -1109,7 +1112,7 @@
 
               // 4-5.
               const algorithm = {
-                name: "ECDSA",
+                name: normalizedAlgorithm.name,
                 namedCurve: normalizedAlgorithm.namedCurve,
               };
 
@@ -1127,7 +1130,7 @@
             case "jwk": {
               const jwk = keyData;
 
-              const keyType = (jwk.d != undefined) ? "private" : "public"; // validateJwtRsaKey(jwk);
+              const keyType = (jwk.d != undefined) ? "private" : "public";
 
               if (
                 !ArrayPrototypeIncludes(
@@ -1146,9 +1149,12 @@
                 ArrayPrototypeFind(
                   keyUsages,
                   (u) =>
-                    !ArrayPrototypeIncludes([
-                      (keyType === "private") ? "sign" : "verify",
-                    ], u),
+                    !ArrayPrototypeIncludes(
+                      algorithmName == "ECDSA"
+                        ? [(keyType === "private") ? "sign" : "verify"]
+                        : ["deriveBits"],
+                      u,
+                    ),
                 ) !== undefined
               ) {
                 throw new DOMException("Invalid key usages", "SyntaxError");
@@ -1211,7 +1217,7 @@
                 .opAsync(
                   "op_crypto_import_key",
                   {
-                    algorithm: "ECDSA",
+                    algorithm: algorithmName,
                     format: "jwk",
                     keyType,
                     namedCurve: normalizedAlgorithm.namedCurve,
@@ -1232,7 +1238,7 @@
               });
 
               const algorithm = {
-                name: "ECDSA",
+                name: algorithmName,
                 namedCurve: normalizedAlgorithm.namedCurve,
               };
 
@@ -1272,7 +1278,7 @@
                 .opAsync(
                   "op_crypto_import_key",
                   {
-                    algorithm: "RSASSA-PKCS1-v1_5",
+                    algorithm: algorithmName,
                     format: "pkcs8",
                     keyType: "private",
                     // Needed to perform step 7 without normalization.
@@ -1423,7 +1429,7 @@
                 .opAsync(
                   "op_crypto_import_key",
                   {
-                    algorithm: "RSASSA-PKCS1-v1_5",
+                    algorithm: algorithmName,
                     format: "jwk",
                     keyType,
                     // Need to perform step without normalization.
@@ -1444,7 +1450,7 @@
               });
 
               const algorithm = {
-                name: "RSASSA-PKCS1-v1_5",
+                name: algorithmName,
                 modulusLength,
                 publicExponent,
                 hash: normalizedAlgorithm.hash,
@@ -1488,7 +1494,7 @@
                 .opAsync(
                   "op_crypto_import_key",
                   {
-                    algorithm: "RSA-PSS",
+                    algorithm: algorithmName,
                     format: "pkcs8",
                     keyType: "private",
                     // Needed to perform step 7 without normalization.
@@ -1636,7 +1642,7 @@
                 .opAsync(
                   "op_crypto_import_key",
                   {
-                    algorithm: "RSA-PSS",
+                    algorithm: algorithmName,
                     format: "jwk",
                     keyType,
                     // Need to perform step without normalization.
@@ -1701,7 +1707,7 @@
                 .opAsync(
                   "op_crypto_import_key",
                   {
-                    algorithm: "RSA-OAEP",
+                    algorithm: algorithmName,
                     format: "pkcs8",
                     keyType: "private",
                     // Need to perform step 7 without normalization.
@@ -1854,7 +1860,7 @@
                 .opAsync(
                   "op_crypto_import_key",
                   {
-                    algorithm: "RSA-OAEP",
+                    algorithm: algorithmName,
                     format: "jwk",
                     keyType,
                     // Needed to perform step 7 without normalization.
@@ -2114,7 +2120,10 @@
       // 2.
       const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
 
-      switch (key[_algorithm].name) {
+      const algorithmName = key[_algorithm].name;
+
+      switch (algorithmName) {
+        case "ECDH":
         case "ECDSA": {
           switch (format) {
             case "pkcs8": {
@@ -2132,7 +2141,7 @@
                 {
                   key: innerKey,
                   format: "pkcs8",
-                  algorithm: "ECDSA",
+                  algorithm: algorithmName,
                 },
               );
 
@@ -2154,7 +2163,7 @@
                 {
                   key: innerKey,
                   format: "spki",
-                  algorithm: "ECDSA",
+                  algorithm: algorithmName,
                 },
               );
 
@@ -2167,13 +2176,15 @@
                 {
                   key: innerKey,
                   format: "jwk",
-                  algorithm: "ECDSA",
+                  algorithm: algorithmName,
                   namedCurve: key[_algorithm].namedCurve,
                 },
               );
 
               return {
                 kty: "EC",
+                ext: key[_extractable],
+                "key_ops": key.usages,
                 crv: key[_algorithm].namedCurve,
                 ...jwkEcKey,
               };
@@ -2200,6 +2211,10 @@
               // 1-3.
               const jwk = {
                 kty: "oct",
+                // 7.
+                ext: key[_extractable],
+                // 8.
+                "key_ops": key.usages,
                 k: unpaddedBase64(innerKey.data),
               };
               // 4.
@@ -2226,10 +2241,6 @@
                     "NotSupportedError",
                   );
               }
-              // 7.
-              jwk.key_ops = key.usages;
-              // 8.
-              jwk.ext = key[_extractable];
               // 9.
               return jwk;
             }
@@ -2256,7 +2267,7 @@
                 {
                   key: innerKey,
                   format: "pkcs8",
-                  algorithm: "RSASSA-PKCS1-v1_5",
+                  algorithm: algorithmName,
                 },
               );
 
@@ -2278,7 +2289,7 @@
                 {
                   key: innerKey,
                   format: "spki",
-                  algorithm: "RSASSA-PKCS1-v1_5",
+                  algorithm: algorithmName,
                 },
               );
 
@@ -2291,12 +2302,14 @@
                 {
                   key: innerKey,
                   format: "jwk",
-                  algorithm: "RSASSA-PKCS1-v1_5",
+                  algorithm: algorithmName,
                 },
               );
 
               return {
                 kty: "RSA",
+                ext: key[_extractable],
+                "key_ops": key.usages,
                 ...jwkRsaKey,
               };
             }
@@ -2321,7 +2334,7 @@
                 {
                   key: innerKey,
                   format: "pkcs8",
-                  algorithm: "RSA-PSS",
+                  algorithm: algorithmName,
                   hash: key[_algorithm].hash.name,
                 },
               );
@@ -2344,7 +2357,7 @@
                 {
                   key: innerKey,
                   format: "spki",
-                  algorithm: "RSA-PSS",
+                  algorithm: algorithmName,
                   hash: key[_algorithm].hash.name,
                 },
               );
@@ -2358,12 +2371,14 @@
                 {
                   key: innerKey,
                   format: "jwk",
-                  algorithm: "RSA-PSS",
+                  algorithm: algorithmName,
                 },
               );
 
               return {
                 kty: "RSA",
+                ext: key[_extractable],
+                "key_ops": key.usages,
                 ...jwkRsaKey,
               };
             }
@@ -2388,7 +2403,7 @@
                 {
                   key: innerKey,
                   format: "pkcs8",
-                  algorithm: "RSA-PSS",
+                  algorithm: algorithmName,
                   hash: key[_algorithm].hash.name,
                 },
               );
@@ -2411,7 +2426,7 @@
                 {
                   key: innerKey,
                   format: "spki",
-                  algorithm: "RSA-OAEP",
+                  algorithm: algorithmName,
                   hash: key[_algorithm].hash.name,
                 },
               );
@@ -2425,12 +2440,14 @@
                 {
                   key: innerKey,
                   format: "jwk",
-                  algorithm: "RSA-OAEP",
+                  algorithm: algorithmName,
                 },
               );
 
               return {
                 kty: "RSA",
+                ext: key[_extractable],
+                "key_ops": key.usages,
                 ...jwkRsaKey,
               };
             }
@@ -3222,6 +3239,10 @@
         // 1-3.
         const jwk = {
           kty: "oct",
+          // 5.
+          ext: key[_extractable],
+          // 6.
+          "key_ops": key.usages,
           k: unpaddedBase64(innerKey.data),
         };
 
@@ -3244,10 +3265,6 @@
             );
         }
 
-        // 5.
-        jwk.key_ops = key[_usages];
-        // 6.
-        jwk.ext = key[_extractable];
         // 7.
         return jwk;
       }

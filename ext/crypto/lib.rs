@@ -638,7 +638,7 @@ pub async fn op_crypto_export_key(
 ) -> Result<ImportExportKeyData, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {
-    Algorithm::Ecdsa => {
+    Algorithm::Ecdsa | Algorithm::Ecdh => {
       match args.format {
         KeyFormat::Jwk => {
           // key.data is a PKCS#1 DER-encoded public or private key
@@ -1719,7 +1719,7 @@ pub async fn op_crypto_import_key(
   let algorithm = args.algorithm;
 
   match algorithm {
-    Algorithm::Ecdsa => {
+    Algorithm::Ecdsa | Algorithm::Ecdh => {
       let curve = args.named_curve.ok_or_else(|| {
         type_error("Missing argument named_curve".to_string())
       })?;

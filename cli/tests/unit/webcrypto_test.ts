@@ -1006,8 +1006,27 @@ const jwtECKeys = {
   },
 };
 
-Deno.test(async function testImportEcJwk() {
-  const subtle = window.crypto.subtle;
+type JWK = Record<string, string>;
+
+function equalJwk(expected: JWK, got: JWK): boolean {
+  const fields = Object.keys(expected);
+
+  for (let i = 0; i < fields.length; i++) {
+    const fieldName = fields[i];
+
+    if (!(fieldName in got)) {
+      return false;
+    }
+    if (expected[fieldName] !== got[fieldName]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+Deno.test(async function testImportExportEcDsaJwk() {
+  const subtle = crypto.subtle;
   assert(subtle);
 
   for (
@@ -1019,7 +1038,7 @@ Deno.test(async function testImportEcJwk() {
     }
 
     // 1. Test import EcDsa
-    const privateKeyECDSA = await crypto.subtle.importKey(
+    const privateKeyECDSA = await subtle.importKey(
       "jwk",
       {
         alg: "ECDSA",
@@ -1031,12 +1050,13 @@ Deno.test(async function testImportEcJwk() {
       true,
       ["sign"],
     );
-    const expPrivateKeyJWK = await crypto.subtle.exportKey(
+    const expPrivateKeyJWK = await subtle.exportKey(
       "jwk",
       privateKeyECDSA,
     );
+    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));
 
-    const publicKeyECDSA = await crypto.subtle.importKey(
+    const publicKeyECDSA = await subtle.importKey(
       "jwk",
       {
         alg: "ECDSA",
@@ -1049,23 +1069,89 @@ Deno.test(async function testImportEcJwk() {
       ["verify"],
     );
 
-    const expPublicKeyJWK = await crypto.subtle.exportKey(
+    const expPublicKeyJWK = await subtle.exportKey(
       "jwk",
       publicKeyECDSA,
     );
 
-    const signatureECDSA = await crypto.subtle.sign(
+    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
+
+    const signatureECDSA = await subtle.sign(
       { name: "ECDSA", hash: "SHA-256" },
       privateKeyECDSA,
       new Uint8Array([1, 2, 3, 4]),
     );
 
-    const verifyECDSA = await crypto.subtle.verify(
+    const verifyECDSA = await subtle.verify(
       { name: "ECDSA", hash: "SHA-256" },
       publicKeyECDSA,
       signatureECDSA,
       new Uint8Array([1, 2, 3, 4]),
     );
     assert(verifyECDSA);
+  }
+});
+
+Deno.test(async function testImportExportEcDhJwk() {
+  const subtle = crypto.subtle;
+  assert(subtle);
+
+  for (
+    const [_key, jwkData] of Object.entries(jwtECKeys)
+  ) {
+    const { size, publicJWK, privateJWK } = jwkData;
+    if (size != 256) {
+      continue;
+    }
+
+    // 1. Test import EcDsa
+    const privateKeyECDH = await subtle.importKey(
+      "jwk",
+      {
+        alg: "ECDH",
+        ...privateJWK,
+        ext: true,
+        "key_ops": ["deriveBits"],
+      },
+      { name: "ECDH", namedCurve: privateJWK.crv },
+      true,
+      ["deriveBits"],
+    );
+
+    const expPrivateKeyJWK = await subtle.exportKey(
+      "jwk",
+      privateKeyECDH,
+    );
+    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));
+
+    const publicKeyECDH = await subtle.importKey(
+      "jwk",
+      {
+        alg: "ECDH",
+        ...publicJWK,
+        ext: true,
+        "key_ops": ["deriveBits"],
+      },
+      { name: "ECDH", namedCurve: publicJWK.crv },
+      true,
+      ["deriveBits"],
+    );
+    const expPublicKeyJWK = await subtle.exportKey(
+      "jwk",
+      publicKeyECDH,
+    );
+    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
+
+    const derivedKey = await subtle.deriveBits(
+      {
+        name: "ECDH",
+        public: publicKeyECDH,
+      },
+      privateKeyECDH,
+      256,
+    );
+
+    assert(derivedKey instanceof ArrayBuffer);
+    assertEquals(derivedKey.byteLength, 256 / 8);
   }
 });
