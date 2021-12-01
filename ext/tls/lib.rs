@@ -253,7 +253,7 @@ pub fn create_http_client(
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
   client_cert_chain_and_key: Option<(String, String)>,
 ) -> Result<Client, AnyError> {
-  let tls_config = create_client_config(
+  let mut tls_config = create_client_config(
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,

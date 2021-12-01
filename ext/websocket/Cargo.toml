@@ -21,10 +21,4 @@ hyper = { version = "0.14.12" }
 serde = { version = "1.0.129", features = ["derive"] }
 tokio = { version = "1.10.1", features = ["full"] }
 tokio-rustls = "0.23.0"
-
-[dependencies.tokio-tungstenite]
-version = "0.15.0"
-features = ["rustls-tls-webpki-roots"]
-# TODO(ry) Waiting for https://github.com/snapview/tokio-tungstenite/pull/198
-git = "https://github.com/dnaka91/tokio-tungstenite"
-branch = "rustls-0.20"
+tokio-tungstenite = "0.16.0"
