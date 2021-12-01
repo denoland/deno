@@ -600,7 +600,6 @@ pub fn create_http_client(
   let mut builder = Client::builder()
     .redirect(Policy::none())
     .default_headers(headers)
-    .timeout(std::time::Duration::from_secs(30))
     .use_preconfigured_tls(tls_config);
 
   if let Some(proxy) = proxy {
