@@ -1,12 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
+  assert,
   assertEquals,
   assertRejects,
   assertThrows,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function writeFileSyncSuccess() {
     const enc = new TextEncoder();
@@ -20,7 +20,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function writeFileSyncUrl() {
     const enc = new TextEncoder();
@@ -39,7 +39,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { write: true } }, function writeFileSyncFail() {
+Deno.test({ permissions: { write: true } }, function writeFileSyncFail() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -49,7 +49,7 @@ unitTest({ permissions: { write: true } }, function writeFileSyncFail() {
   }, Deno.errors.NotFound);
 });
 
-unitTest({ permissions: { write: false } }, function writeFileSyncPerm() {
+Deno.test({ permissions: { write: false } }, function writeFileSyncPerm() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -59,7 +59,7 @@ unitTest({ permissions: { write: false } }, function writeFileSyncPerm() {
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function writeFileSyncUpdateMode() {
     if (Deno.build.os !== "windows") {
@@ -74,7 +74,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function writeFileSyncCreate() {
     const enc = new TextEncoder();
@@ -95,7 +95,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function writeFileSyncAppend() {
     const enc = new TextEncoder();
@@ -120,7 +120,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileSuccess() {
     const enc = new TextEncoder();
@@ -134,7 +134,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileUrl() {
     const enc = new TextEncoder();
@@ -153,7 +153,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileNotFound() {
     const enc = new TextEncoder();
@@ -166,7 +166,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: false } },
   async function writeFilePerm() {
     const enc = new TextEncoder();
@@ -179,7 +179,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileUpdateMode() {
     if (Deno.build.os !== "windows") {
@@ -194,7 +194,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileCreate() {
     const enc = new TextEncoder();
@@ -215,7 +215,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileAppend() {
     const enc = new TextEncoder();
@@ -240,7 +240,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileAbortSignal(): Promise<void> {
     const ac = new AbortController();
@@ -251,6 +251,7 @@ unitTest(
     try {
       await Deno.writeFile(filename, data, { signal: ac.signal });
     } catch (e) {
+      assert(e instanceof Error);
       assertEquals(e.name, "AbortError");
     }
     const stat = Deno.statSync(filename);
@@ -258,7 +259,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function writeFileAbortSignalPreAborted(): Promise<void> {
     const ac = new AbortController();
@@ -269,6 +270,7 @@ unitTest(
     try {
       await Deno.writeFile(filename, data, { signal: ac.signal });
     } catch (e) {
+      assert(e instanceof Error);
       assertEquals(e.name, "AbortError");
     }
     const stat = Deno.statSync(filename);

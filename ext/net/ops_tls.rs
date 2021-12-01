@@ -1,10 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::TcpStreamResource;
-use crate::io::TlsStreamResource;
 use crate::ops::IpAddr;
 use crate::ops::OpAddr;
 use crate::ops::OpConn;
+use crate::ops::TlsHandshakeInfo;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::DefaultTlsOptions;
@@ -29,6 +29,8 @@ use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
+use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpPair;
@@ -36,6 +38,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
@@ -65,7 +68,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Weak;
 use tokio::io::AsyncRead;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
+use tokio::io::AsyncWriteExt;
 use tokio::io::ReadBuf;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -73,6 +78,7 @@ use tokio::task::spawn_local;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Flow {
+  Handshake,
   Read,
   Write,
 }
@@ -83,6 +89,7 @@ enum State {
   StreamClosed,
   TlsClosing,
   TlsClosed,
+  TlsError,
   TcpClosed,
 }
 
@@ -119,10 +126,6 @@ impl TlsStream {
     Self::new(tcp, tls)
   }
 
-  pub async fn handshake(&mut self) -> io::Result<()> {
-    poll_fn(|cx| self.inner_mut().poll_io(cx, Flow::Write)).await
-  }
-
   fn into_split(self) -> (ReadHalf, WriteHalf) {
     let shared = Shared::new(self);
     let rd = ReadHalf {
@@ -143,6 +146,22 @@ impl TlsStream {
 
   fn inner_mut(&mut self) -> &mut TlsStreamInner {
     self.0.as_mut().unwrap()
+  }
+
+  pub async fn handshake(&mut self) -> io::Result<()> {
+    poll_fn(|cx| self.inner_mut().poll_handshake(cx)).await
+  }
+
+  fn poll_handshake(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    self.inner_mut().poll_handshake(cx)
+  }
+
+  fn get_alpn_protocol(&mut self) -> Option<ByteString> {
+    self
+      .inner_mut()
+      .tls
+      .get_alpn_protocol()
+      .map(|s| ByteString(s.to_owned()))
   }
 }
 
@@ -246,19 +265,19 @@ impl TlsStreamInner {
           _ => {}
         }
 
+        // Write ciphertext to the TCP socket.
+        let mut wrapped_tcp = ImplementWriteTrait(&mut self.tcp);
+        match self.tls.write_tls(&mut wrapped_tcp) {
+          Ok(0) => {}        // Wait until the socket has enough buffer space.
+          Ok(_) => continue, // Try to send more more data immediately.
+          Err(err) if err.kind() == ErrorKind::WouldBlock => unreachable!(),
+          Err(err) => return Poll::Ready(Err(err)),
+        }
+
         // Poll whether there is space in the socket send buffer so we can flush
         // the remaining outgoing ciphertext.
         if self.tcp.poll_write_ready(cx)?.is_pending() {
           break false;
-        }
-
-        // Write ciphertext to the TCP socket.
-        let mut wrapped_tcp = ImplementWriteTrait(&mut self.tcp);
-        match self.tls.write_tls(&mut wrapped_tcp) {
-          Ok(0) => unreachable!(),
-          Ok(_) => {}
-          Err(err) if err.kind() == ErrorKind::WouldBlock => {}
-          Err(err) => return Poll::Ready(Err(err)),
         }
       };
 
@@ -268,6 +287,7 @@ impl TlsStreamInner {
             let err = Error::new(ErrorKind::UnexpectedEof, "tls handshake eof");
             return Poll::Ready(Err(err));
           }
+          State::TlsError => {}
           _ if self.tls.is_handshaking() && !self.tls.wants_read() => {
             break true;
           }
@@ -307,24 +327,36 @@ impl TlsStreamInner {
           }
         }
 
-        // Poll whether more ciphertext is available in the socket receive
-        // buffer.
-        if self.tcp.poll_read_ready(cx)?.is_pending() {
-          break false;
+        if self.rd_state != State::TlsError {
+          // Receive ciphertext from the socket.
+          let mut wrapped_tcp = ImplementReadTrait(&mut self.tcp);
+          match self.tls.read_tls(&mut wrapped_tcp) {
+            Ok(0) => {
+              // End of TCP stream.
+              self.rd_state = State::TcpClosed;
+              continue;
+            }
+            Err(err) if err.kind() == ErrorKind::WouldBlock => {
+              // Get notified when more ciphertext becomes available in the
+              // socket receive buffer.
+              if self.tcp.poll_read_ready(cx)?.is_pending() {
+                break false;
+              } else {
+                continue;
+              }
+            }
+            Err(err) => return Poll::Ready(Err(err)),
+            _ => {}
+          }
         }
 
-        // Receive ciphertext from the socket.
-        let mut wrapped_tcp = ImplementReadTrait(&mut self.tcp);
-        match self.tls.read_tls(&mut wrapped_tcp) {
-          Ok(0) => self.rd_state = State::TcpClosed,
-          Ok(_) => {
-            self
-              .tls
-              .process_new_packets()
-              .map_err(|err| Error::new(ErrorKind::InvalidData, err))?;
+        // Interpret and decrypt TLS protocol data.
+        match self.tls.process_new_packets() {
+          Ok(_) => assert!(self.rd_state < State::TcpClosed),
+          Err(err) => {
+            self.rd_state = State::TlsError;
+            return Poll::Ready(Err(Error::new(ErrorKind::InvalidData, err)));
           }
-          Err(err) if err.kind() == ErrorKind::WouldBlock => {}
-          Err(err) => return Poll::Ready(Err(err)),
         }
       };
 
@@ -342,6 +374,7 @@ impl TlsStreamInner {
 
       let io_ready = match flow {
         _ if self.tls.is_handshaking() => false,
+        Flow::Handshake => true,
         Flow::Read => rd_ready,
         Flow::Write => wr_ready,
       };
@@ -350,6 +383,13 @@ impl TlsStreamInner {
         true => Poll::Ready(Ok(())),
       };
     }
+  }
+
+  fn poll_handshake(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    if self.tls.is_handshaking() {
+      ready!(self.poll_io(cx, Flow::Handshake))?;
+    }
+    Poll::Ready(Ok(()))
   }
 
   fn poll_read(
@@ -471,6 +511,23 @@ pub struct WriteHalf {
   shared: Arc<Shared>,
 }
 
+impl WriteHalf {
+  pub async fn handshake(&mut self) -> io::Result<()> {
+    poll_fn(|cx| {
+      self
+        .shared
+        .poll_with_shared_waker(cx, Flow::Write, |mut tls, cx| {
+          tls.poll_handshake(cx)
+        })
+    })
+    .await
+  }
+
+  fn get_alpn_protocol(&mut self) -> Option<ByteString> {
+    self.shared.get_alpn_protocol()
+  }
+}
+
 impl AsyncWrite for WriteHalf {
   fn poll_write(
     self: Pin<&mut Self>,
@@ -527,6 +584,7 @@ impl Shared {
     mut f: impl FnMut(Pin<&mut TlsStream>, &mut Context<'_>) -> R,
   ) -> R {
     match flow {
+      Flow::Handshake => unreachable!(),
       Flow::Read => self.rd_waker.register(cx.waker()),
       Flow::Write => self.wr_waker.register(cx.waker()),
     }
@@ -577,6 +635,11 @@ impl Shared {
   fn drop_shared_waker(self_ptr: *const ()) {
     let _ = unsafe { Weak::from_raw(self_ptr as *const Self) };
   }
+
+  fn get_alpn_protocol(self: &Arc<Self>) -> Option<ByteString> {
+    let mut tls_stream = self.tls_stream.lock();
+    tls_stream.get_alpn_protocol()
+  }
 }
 
 struct ImplementReadTrait<'a, T>(&'a mut T);
@@ -591,7 +654,11 @@ struct ImplementWriteTrait<'a, T>(&'a mut T);
 
 impl Write for ImplementWriteTrait<'_, TcpStream> {
   fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-    self.0.try_write(buf)
+    match self.0.try_write(buf) {
+      Ok(n) => Ok(n),
+      Err(err) if err.kind() == ErrorKind::WouldBlock => Ok(0),
+      Err(err) => Err(err),
+    }
   }
 
   fn flush(&mut self) -> io::Result<()> {
@@ -601,11 +668,103 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
 
 pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
   vec![
-    ("op_start_tls", op_async(op_start_tls::<P>)),
-    ("op_connect_tls", op_async(op_connect_tls::<P>)),
-    ("op_listen_tls", op_sync(op_listen_tls::<P>)),
-    ("op_accept_tls", op_async(op_accept_tls)),
+    ("op_tls_start", op_async(op_tls_start::<P>)),
+    ("op_tls_connect", op_async(op_tls_connect::<P>)),
+    ("op_tls_listen", op_sync(op_tls_listen::<P>)),
+    ("op_tls_accept", op_async(op_tls_accept)),
+    ("op_tls_handshake", op_async(op_tls_handshake)),
   ]
+}
+
+#[derive(Debug)]
+pub struct TlsStreamResource {
+  rd: AsyncRefCell<ReadHalf>,
+  wr: AsyncRefCell<WriteHalf>,
+  // `None` when a TLS handshake hasn't been done.
+  handshake_info: RefCell<Option<TlsHandshakeInfo>>,
+  cancel_handle: CancelHandle, // Only read and handshake ops get canceled.
+}
+
+impl TlsStreamResource {
+  pub fn new((rd, wr): (ReadHalf, WriteHalf)) -> Self {
+    Self {
+      rd: rd.into(),
+      wr: wr.into(),
+      handshake_info: RefCell::new(None),
+      cancel_handle: Default::default(),
+    }
+  }
+
+  pub fn into_inner(self) -> (ReadHalf, WriteHalf) {
+    (self.rd.into_inner(), self.wr.into_inner())
+  }
+
+  pub async fn read(
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
+    let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
+    let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+    let nread = rd.read(&mut buf).try_or_cancel(cancel_handle).await?;
+    Ok(nread)
+  }
+
+  pub async fn write(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
+    self.handshake().await?;
+    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
+    let nwritten = wr.write(&buf).await?;
+    wr.flush().await?;
+    Ok(nwritten)
+  }
+
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
+    self.handshake().await?;
+    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
+    wr.shutdown().await?;
+    Ok(())
+  }
+
+  pub async fn handshake(
+    self: &Rc<Self>,
+  ) -> Result<TlsHandshakeInfo, AnyError> {
+    if let Some(tls_info) = &*self.handshake_info.borrow() {
+      return Ok(tls_info.clone());
+    }
+
+    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
+    let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
+    wr.handshake().try_or_cancel(cancel_handle).await?;
+
+    let alpn_protocol = wr.get_alpn_protocol();
+    let tls_info = TlsHandshakeInfo { alpn_protocol };
+    self.handshake_info.replace(Some(tls_info.clone()));
+    Ok(tls_info)
+  }
+}
+
+impl Resource for TlsStreamResource {
+  fn name(&self) -> Cow<str> {
+    "tlsStream".into()
+  }
+
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
+  }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.write(buf))
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(self.shutdown())
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel_handle.cancel();
+  }
 }
 
 #[derive(Deserialize)]
@@ -618,18 +777,19 @@ pub struct ConnectTlsArgs {
   ca_certs: Vec<String>,
   cert_chain: Option<String>,
   private_key: Option<String>,
+  alpn_protocols: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StartTlsArgs {
+pub struct StartTlsArgs {
   rid: ResourceId,
-  cert_file: Option<String>,
   ca_certs: Vec<String>,
   hostname: String,
+  alpn_protocols: Option<Vec<String>>,
 }
 
-async fn op_start_tls<NP>(
+pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
   _: (),
@@ -642,18 +802,14 @@ where
     "" => "localhost",
     n => n,
   };
-  let cert_file = args.cert_file.as_deref();
+
   {
-    super::check_unstable2(&state, "Deno.startTls");
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
     permissions.check_net(&(hostname, Some(0)))?;
-    if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path))?;
-    }
   }
 
-  let mut ca_certs = args
+  let ca_certs = args
     .ca_certs
     .into_iter()
     .map(|s| s.into_bytes())
@@ -693,12 +849,21 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let tls_config = Arc::new(create_client_config(
+  let mut tls_config = create_client_config(
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
     None,
-  )?);
+  )?;
+
+  if let Some(alpn_protocols) = args.alpn_protocols {
+    super::check_unstable2(&state, "Deno.startTls#alpnProtocols");
+    tls_config.alpn_protocols =
+      alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
+  }
+
+  let tls_config = Arc::new(tls_config);
+
   let tls_stream =
     TlsStream::new_client_side(tcp_stream, tls_config, hostname_dns);
 
@@ -722,7 +887,7 @@ where
   })
 }
 
-pub async fn op_connect_tls<NP>(
+pub async fn op_tls_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
   _: (),
@@ -806,6 +971,29 @@ where
     cert_chain_and_key,
   )?;
 
+  if let Some(alpn_protocols) = args.alpn_protocols {
+    super::check_unstable2(&state, "Deno.connectTls#alpnProtocols");
+    tls_config.alpn_protocols =
+      alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
+  }
+
+  if args.cert_chain.is_some() || args.private_key.is_some() {
+    let cert_chain = args
+      .cert_chain
+      .ok_or_else(|| type_error("No certificate chain provided"))?;
+    let private_key = args
+      .private_key
+      .ok_or_else(|| type_error("No private key provided"))?;
+
+    // The `remove` is safe because load_private_keys checks that there is at least one key.
+    let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
+
+    tls_config.set_single_client_cert(
+      load_certs(&mut cert_chain.as_bytes())?,
+      private_key,
+    )?;
+  }
+
   let tls_config = Arc::new(tls_config);
 
   let tls_stream =
@@ -871,7 +1059,7 @@ pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-fn op_listen_tls<NP>(
+pub fn op_tls_listen<NP>(
   state: &mut OpState,
   args: ListenTlsArgs,
   _: (),
@@ -932,7 +1120,7 @@ where
   })
 }
 
-async fn op_accept_tls(
+pub async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),
@@ -981,4 +1169,16 @@ async fn op_accept_tls(
       port: remote_addr.port(),
     })),
   })
+}
+
+pub async fn op_tls_handshake(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  _: (),
+) -> Result<TlsHandshakeInfo, AnyError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<TlsStreamResource>(rid)?;
+  resource.handshake().await
 }

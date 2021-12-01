@@ -4,7 +4,7 @@ use deno_core::error::generic_error;
 #[cfg(not(target_os = "windows"))]
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op_async_unref;
+use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -33,7 +33,7 @@ pub fn init() -> Extension {
     .ops(vec![
       ("op_signal_bind", op_sync(op_signal_bind)),
       ("op_signal_unbind", op_sync(op_signal_unbind)),
-      ("op_signal_poll", op_async_unref(op_signal_poll)),
+      ("op_signal_poll", op_async(op_signal_poll)),
     ])
     .build()
 }

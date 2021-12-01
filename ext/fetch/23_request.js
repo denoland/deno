@@ -173,8 +173,10 @@
       let charset = null;
       let essence = null;
       let mimeType = null;
-      const headerList = headerListFromHeaders(this[_headers]);
-      const values = getDecodeSplitHeader(headerList, "content-type");
+      const values = getDecodeSplitHeader(
+        headerListFromHeaders(this[_headers]),
+        "Content-Type",
+      );
       if (values === null) return null;
       for (const value of values) {
         const temporaryMimeType = mimesniff.parseMimeType(value);

@@ -41,6 +41,7 @@ use tokio_tungstenite::tungstenite::handshake::client::Response;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::WebSocketStream;
 
@@ -75,6 +76,27 @@ pub enum WebSocketStreamType {
   },
 }
 
+pub async fn ws_create_server_stream(
+  state: &Rc<RefCell<OpState>>,
+  transport: hyper::upgrade::Upgraded,
+) -> Result<ResourceId, AnyError> {
+  let ws_stream =
+    WebSocketStream::from_raw_socket(transport, Role::Server, None).await;
+  let (ws_tx, ws_rx) = ws_stream.split();
+
+  let ws_resource = WsStreamResource {
+    stream: WebSocketStreamType::Server {
+      tx: AsyncRefCell::new(ws_tx),
+      rx: AsyncRefCell::new(ws_rx),
+    },
+    cancel: Default::default(),
+  };
+
+  let resource_table = &mut state.borrow_mut().resource_table;
+  let rid = resource_table.add(ws_resource);
+  Ok(rid)
+}
+
 pub struct WsStreamResource {
   pub stream: WebSocketStreamType,
   // When a `WsStreamResource` resource is closed, all pending 'read' ops are
@@ -85,7 +107,8 @@ pub struct WsStreamResource {
 
 impl WsStreamResource {
   async fn send(self: &Rc<Self>, message: Message) -> Result<(), AnyError> {
-    match self.stream {
+    use tokio_tungstenite::tungstenite::Error;
+    let res = match self.stream {
       WebSocketStreamType::Client { .. } => {
         let mut tx = RcRef::map(self, |r| match &r.stream {
           WebSocketStreamType::Client { tx, .. } => tx,
@@ -93,7 +116,7 @@ impl WsStreamResource {
         })
         .borrow_mut()
         .await;
-        tx.send(message).await?;
+        tx.send(message).await
       }
       WebSocketStreamType::Server { .. } => {
         let mut tx = RcRef::map(self, |r| match &r.stream {
@@ -102,11 +125,15 @@ impl WsStreamResource {
         })
         .borrow_mut()
         .await;
-        tx.send(message).await?;
+        tx.send(message).await
       }
-    }
+    };
 
-    Ok(())
+    match res {
+      Ok(()) => Ok(()),
+      Err(Error::ConnectionClosed) => Ok(()),
+      Err(err) => Err(err.into()),
+    }
   }
 
   async fn next_message(
@@ -215,6 +242,16 @@ where
       );
   }
 
+  let cancel_resource = if let Some(cancel_rid) = args.cancel_handle {
+    let r = state
+      .borrow_mut()
+      .resource_table
+      .get::<WsCancelResource>(cancel_rid)?;
+    Some(r)
+  } else {
+    None
+  };
+
   let unsafely_ignore_certificate_errors = state
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
@@ -260,13 +297,9 @@ where
 
   let client = client_async(request, socket);
   let (stream, response): (WsStream, Response) =
-    if let Some(cancel_rid) = args.cancel_handle {
-      let r = state
-        .borrow_mut()
-        .resource_table
-        .get::<WsCancelResource>(cancel_rid)?;
+    if let Some(cancel_resource) = cancel_resource {
       client
-        .or_cancel(r.0.to_owned())
+        .or_cancel(cancel_resource.0.to_owned())
         .await
         .map_err(|_| DomExceptionAbortError::new("connection was aborted"))?
     } else {

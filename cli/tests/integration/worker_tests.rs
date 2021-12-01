@@ -99,3 +99,8 @@ itest!(worker_permissions_blob_local {
   http_server: true,
   exit_code: 1,
 });
+
+itest!(worker_terminate_tla_crash {
+  args: "run --quiet --reload workers/terminate_tla_crash.js",
+  output: "workers/terminate_tla_crash.js.out",
+});

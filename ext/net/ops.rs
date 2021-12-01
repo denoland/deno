@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::AsyncRefCell;
+use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpPair;
@@ -48,11 +49,11 @@ use std::path::Path;
 
 pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
   vec![
-    ("op_accept", op_async(op_accept)),
-    ("op_connect", op_async(op_connect::<P>)),
-    ("op_listen", op_sync(op_listen::<P>)),
-    ("op_datagram_receive", op_async(op_datagram_receive)),
-    ("op_datagram_send", op_async(op_datagram_send::<P>)),
+    ("op_net_accept", op_async(op_net_accept)),
+    ("op_net_connect", op_async(op_net_connect::<P>)),
+    ("op_net_listen", op_sync(op_net_listen::<P>)),
+    ("op_dgram_recv", op_async(op_dgram_recv)),
+    ("op_dgram_send", op_async(op_dgram_send::<P>)),
     ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
   ]
 }
@@ -82,6 +83,12 @@ pub enum OpAddr {
 pub struct OpPacket {
   pub size: usize,
   pub remote_addr: OpAddr,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TlsHandshakeInfo {
+  pub alpn_protocol: Option<ByteString>,
 }
 
 #[derive(Serialize)]
@@ -141,7 +148,7 @@ async fn accept_tcp(
   })
 }
 
-async fn op_accept(
+async fn op_net_accept(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
   _: (),
@@ -193,7 +200,7 @@ async fn receive_udp(
   })
 }
 
-async fn op_datagram_receive(
+async fn op_dgram_recv(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
   zero_copy: ZeroCopyBuf,
@@ -214,7 +221,7 @@ struct SendArgs {
   transport_args: ArgsEnum,
 }
 
-async fn op_datagram_send<NP>(
+async fn op_dgram_send<NP>(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
   zero_copy: ZeroCopyBuf,
@@ -282,7 +289,7 @@ pub struct ConnectArgs {
   transport_args: ArgsEnum,
 }
 
-pub async fn op_connect<NP>(
+pub async fn op_net_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
   _: (),
@@ -433,6 +440,8 @@ fn listen_udp(
 ) -> Result<(u32, SocketAddr), AnyError> {
   let std_socket = std::net::UdpSocket::bind(&addr)?;
   std_socket.set_nonblocking(true)?;
+  // Enable messages to be sent to the broadcast address (255.255.255.255) by default
+  std_socket.set_broadcast(true)?;
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
   let socket_resource = UdpSocketResource {
@@ -444,7 +453,7 @@ fn listen_udp(
   Ok((rid, local_addr))
 }
 
-fn op_listen<NP>(
+fn op_net_listen<NP>(
   state: &mut OpState,
   args: ListenArgs,
   _: (),

@@ -14,6 +14,7 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const { byteLowerCase } = window.__bootstrap.infra;
   const { errorReadableStream } = window.__bootstrap.streams;
   const { InnerBody, extractBody } = window.__bootstrap.fetchBody;
   const {
@@ -36,6 +37,7 @@
     PromisePrototypeThen,
     PromisePrototypeCatch,
     String,
+    StringPrototypeStartsWith,
     StringPrototypeToLowerCase,
     TypedArrayPrototypeSubarray,
     TypeError,
@@ -73,24 +75,6 @@
     return core.opAsync("op_fetch_send", rid);
   }
 
-  /**
-   * @param {number} rid
-   * @param {Uint8Array} body
-   * @returns {Promise<void>}
-   */
-  function opFetchRequestWrite(rid, body) {
-    return core.opAsync("op_fetch_request_write", rid, body);
-  }
-
-  /**
-   * @param {number} rid
-   * @param {Uint8Array} body
-   * @returns {Promise<number>}
-   */
-  function opFetchResponseRead(rid, body) {
-    return core.opAsync("op_fetch_response_read", rid, body);
-  }
-
   // A finalization registry to clean up underlying fetch resources that are GC'ed.
   const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
     core.tryClose(rid);
@@ -120,7 +104,8 @@
           // This is the largest possible size for a single packet on a TLS
           // stream.
           const chunk = new Uint8Array(16 * 1024 + 256);
-          const read = await opFetchResponseRead(
+          // TODO(@AaronO): switch to handle nulls if that's moved to core
+          const read = await core.read(
             responseBodyRid,
             chunk,
           );
@@ -214,6 +199,8 @@
       } else {
         req.body.streamOrStatic.consumed = true;
         reqBody = req.body.streamOrStatic.body;
+        // TODO(@AaronO): plumb support for StringOrBuffer all the way
+        reqBody = typeof reqBody === "string" ? core.encode(reqBody) : reqBody;
       }
     }
 
@@ -258,7 +245,7 @@
           }
           try {
             await PromisePrototypeCatch(
-              opFetchRequestWrite(requestBodyRid, value),
+              core.write(requestBodyRid, value),
               (err) => {
                 if (terminator.aborted) return;
                 throw err;
@@ -346,7 +333,7 @@
   function httpRedirectFetch(request, response, terminator) {
     const locationHeaders = ArrayPrototypeFilter(
       response.headerList,
-      (entry) => entry[0] === "location",
+      (entry) => byteLowerCase(entry[0]) === "location",
     );
     if (locationHeaders.length === 0) {
       return response;
@@ -387,7 +374,7 @@
         if (
           ArrayPrototypeIncludes(
             REQUEST_BODY_HEADER_NAMES,
-            request.headerList[i][0],
+            byteLowerCase(request.headerList[i][0]),
           )
         ) {
           ArrayPrototypeSplice(request.headerList, i, 1);
@@ -409,7 +396,7 @@
    */
   function fetch(input, init = {}) {
     // 1.
-    const p = new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const prefix = "Failed to call 'fetch'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // 2.
@@ -433,8 +420,8 @@
       }
       requestObject.signal[abortSignal.add](onabort);
 
-      if (!requestObject.headers.has("accept")) {
-        ArrayPrototypePush(request.headerList, ["accept", "*/*"]);
+      if (!requestObject.headers.has("Accept")) {
+        ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
       }
 
       // 12.
@@ -470,7 +457,6 @@
         },
       );
     });
-    return p;
   }
 
   function abortFetch(request, responseObject) {
@@ -513,12 +499,16 @@
         // The spec is ambiguous here, see
         // https://github.com/WebAssembly/spec/issues/1138. The WPT tests
         // expect the raw value of the Content-Type attribute lowercased.
-        const contentType = res.headers.get("Content-Type");
-        if (
-          typeof contentType !== "string" ||
-          StringPrototypeToLowerCase(contentType) !== "application/wasm"
-        ) {
-          throw new TypeError("Invalid WebAssembly content type.");
+        // We ignore this for file:// because file fetches don't have a
+        // Content-Type.
+        if (!StringPrototypeStartsWith(res.url, "file://")) {
+          const contentType = res.headers.get("Content-Type");
+          if (
+            typeof contentType !== "string" ||
+            StringPrototypeToLowerCase(contentType) !== "application/wasm"
+          ) {
+            throw new TypeError("Invalid WebAssembly content type.");
+          }
         }
 
         // 2.5.

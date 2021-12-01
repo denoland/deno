@@ -277,15 +277,20 @@ declare namespace Deno {
     /** Emit the source alongside the source maps within a single file; requires
      * `inlineSourceMap` or `sourceMap` to be set. Defaults to `false`. */
     inlineSources?: boolean;
-    /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`.
+    /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`,
+     * `"react-jsx", `"react-jsxdev"`.
      * Defaults to `"react"`. */
-    jsx?: "react" | "preserve" | "react-native";
+    jsx?: "react" | "preserve" | "react-native" | "react-jsx" | "react-jsx-dev";
     /** Specify the JSX factory function to use when targeting react JSX emit,
      * e.g. `React.createElement` or `h`. Defaults to `React.createElement`. */
     jsxFactory?: string;
     /** Specify the JSX fragment factory function to use when targeting react
      * JSX emit, e.g. `Fragment`. Defaults to `React.Fragment`. */
     jsxFragmentFactory?: string;
+    /** Declares the module specifier to be used for importing the `jsx` and
+     * `jsxs` factory functions when using jsx as `"react-jsx"` or
+     * `"react-jsxdev"`. Defaults to `"react"`. */
+    jsxImportSource?: string;
     /** Resolve keyof to string valued property names only (no numbers or
      * symbols). Defaults to `false`. */
     keyofStringsOnly?: string;
@@ -566,56 +571,37 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Represents the stream of signals, implements both `AsyncIterator` and
-   * `PromiseLike`. */
-  export class SignalStream
-    implements AsyncIterableIterator<void>, PromiseLike<void> {
-    constructor(signal: Signal);
-    then<T, S>(
-      f: (v: void) => T | Promise<T>,
-      g?: (v: void) => S | Promise<S>,
-    ): Promise<T | S>;
-    next(): Promise<IteratorResult<void>>;
-    [Symbol.asyncIterator](): AsyncIterableIterator<void>;
-    dispose(): void;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Returns the stream of the given signal number. You can use it as an async
-   * iterator.
+   * Registers the given function as a listener of the given signal event.
    *
    * ```ts
-   * for await (const _ of Deno.signal("SIGTERM")) {
-   *   console.log("got SIGTERM!");
-   * }
-   * ```
-   *
-   * You can also use it as a promise. In this case you can only receive the
-   * first one.
-   *
-   * ```ts
-   * await Deno.signal("SIGTERM");
-   * console.log("SIGTERM received!")
-   * ```
-   *
-   * If you want to stop receiving the signals, you can use `.dispose()` method
-   * of the signal stream object.
-   *
-   * ```ts
-   * const sig = Deno.signal("SIGTERM");
-   * setTimeout(() => { sig.dispose(); }, 5000);
-   * for await (const _ of sig) {
+   * Deno.addSignalListener("SIGTERM", () => {
    *   console.log("SIGTERM!")
-   * }
+   * });
    * ```
-   *
-   * The above for-await loop exits after 5 seconds when `sig.dispose()` is
-   * called.
    *
    * NOTE: This functionality is not yet implemented on Windows.
    */
-  export function signal(sig: Signal): SignalStream;
+  export function addSignalListener(signal: Signal, handler: () => void): void;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Removes the given signal listener that has been registered with
+   * Deno.addSignalListener.
+   *
+   * ```ts
+   * const listener = () => {
+   *   console.log("SIGTERM!")
+   * };
+   * Deno.addSignalListener("SIGTERM", listener);
+   * Deno.removeSignalListener("SIGTERM", listener);
+   * ```
+   *
+   * NOTE: This functionality is not yet implemented on Windows.
+   */
+  export function removeSignalListener(
+    signal: Signal,
+    handler: () => void,
+  ): void;
 
   export type SetRawOptions = {
     cbreak: boolean;
@@ -807,150 +793,6 @@ declare namespace Deno {
   export function sleepSync(millis: number): void;
 
   /** **UNSTABLE**: New option, yet to be vetted. */
-  export interface TestDefinition {
-    /** Specifies the permissions that should be used to run the test.
-     * Set this to "inherit" to keep the calling thread's permissions.
-     * Set this to "none" to revoke all permissions.
-     *
-     * Defaults to "inherit".
-     */
-    permissions?: "inherit" | "none" | {
-      /** Specifies if the `net` permission should be requested or revoked.
-       * If set to `"inherit"`, the current `env` permission will be inherited.
-       * If set to `true`, the global `net` permission will be requested.
-       * If set to `false`, the global `net` permission will be revoked.
-       *
-       * Defaults to "inherit".
-       */
-      env?: "inherit" | boolean | string[];
-
-      /** Specifies if the `hrtime` permission should be requested or revoked.
-       * If set to `"inherit"`, the current `hrtime` permission will be inherited.
-       * If set to `true`, the global `hrtime` permission will be requested.
-       * If set to `false`, the global `hrtime` permission will be revoked.
-       *
-       * Defaults to "inherit".
-       */
-      hrtime?: "inherit" | boolean;
-
-      /** Specifies if the `net` permission should be requested or revoked.
-       * if set to `"inherit"`, the current `net` permission will be inherited.
-       * if set to `true`, the global `net` permission will be requested.
-       * if set to `false`, the global `net` permission will be revoked.
-       * if set to `string[]`, the `net` permission will be requested with the
-       * specified host strings with the format `"<host>[:<port>]`.
-       *
-       * Defaults to "inherit".
-       *
-       * Examples:
-       *
-       * ```ts
-       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-       *
-       * Deno.test({
-       *   name: "inherit",
-       *   permissions: {
-       *     net: "inherit",
-       *   },
-       *   async fn() {
-       *     const status = await Deno.permissions.query({ name: "net" })
-       *     assertEquals(status.state, "granted");
-       *   },
-       * });
-       * ```
-       *
-       * ```ts
-       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-       *
-       * Deno.test({
-       *   name: "true",
-       *   permissions: {
-       *     net: true,
-       *   },
-       *   async fn() {
-       *     const status = await Deno.permissions.query({ name: "net" });
-       *     assertEquals(status.state, "granted");
-       *   },
-       * });
-       * ```
-       *
-       * ```ts
-       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-       *
-       * Deno.test({
-       *   name: "false",
-       *   permissions: {
-       *     net: false,
-       *   },
-       *   async fn() {
-       *     const status = await Deno.permissions.query({ name: "net" });
-       *     assertEquals(status.state, "denied");
-       *   },
-       * });
-       * ```
-       *
-       * ```ts
-       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-       *
-       * Deno.test({
-       *   name: "localhost:8080",
-       *   permissions: {
-       *     net: ["localhost:8080"],
-       *   },
-       *   async fn() {
-       *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
-       *     assertEquals(status.state, "granted");
-       *   },
-       * });
-       * ```
-       */
-      net?: "inherit" | boolean | string[];
-
-      /** Specifies if the `ffi` permission should be requested or revoked.
-       * If set to `"inherit"`, the current `ffi` permission will be inherited.
-       * If set to `true`, the global `ffi` permission will be requested.
-       * If set to `false`, the global `ffi` permission will be revoked.
-       * If set to `Array<string | URL>`, the `ffi` permission will be requested with the
-       * specified file paths.
-       *
-       * Defaults to "inherit".
-       */
-      ffi?: "inherit" | boolean | Array<string | URL>;
-
-      /** Specifies if the `read` permission should be requested or revoked.
-       * If set to `"inherit"`, the current `read` permission will be inherited.
-       * If set to `true`, the global `read` permission will be requested.
-       * If set to `false`, the global `read` permission will be revoked.
-       * If set to `Array<string | URL>`, the `read` permission will be requested with the
-       * specified file paths.
-       *
-       * Defaults to "inherit".
-       */
-      read?: "inherit" | boolean | Array<string | URL>;
-
-      /** Specifies if the `run` permission should be requested or revoked.
-       * If set to `"inherit"`, the current `run` permission will be inherited.
-       * If set to `true`, the global `run` permission will be requested.
-       * If set to `false`, the global `run` permission will be revoked.
-       *
-       * Defaults to "inherit".
-       */
-      run?: "inherit" | boolean | Array<string | URL>;
-
-      /** Specifies if the `write` permission should be requested or revoked.
-       * If set to `"inherit"`, the current `write` permission will be inherited.
-       * If set to `true`, the global `write` permission will be requested.
-       * If set to `false`, the global `write` permission will be revoked.
-       * If set to `Array<string | URL>`, the `write` permission will be requested with the
-       * specified file paths.
-       *
-       * Defaults to "inherit".
-       */
-      write?: "inherit" | boolean | Array<string | URL>;
-    };
-  }
-
-  /** **UNSTABLE**: New option, yet to be vetted. */
   export interface TestContext {
     /** Run a sub step of the parent test with a given name. Returns a promise
      * that resolves to a boolean signifying if the step completed successfully.
@@ -1093,6 +935,29 @@ declare namespace Deno {
     certChain?: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey?: string;
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Application-Layer Protocol Negotiation (ALPN) protocols supported by
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
+  }
+
+  export interface TlsHandshakeInfo {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Contains the ALPN protocol selected during negotiation with the server.
+     * If no ALPN protocol selected, returns `null`.
+     */
+    alpnProtocol: string | null;
+  }
+
+  export interface TlsConn extends Conn {
+    /** Runs the client or server handshake protocol to completion if that has
+     * not happened yet. Calling this method is optional; the TLS handshake
+     * will be completed automatically as soon as data is sent or received. */
+    handshake(): Promise<TlsHandshakeInfo>;
   }
 
   /** **UNSTABLE** New API, yet to be vetted.
@@ -1110,48 +975,19 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    */
-  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
-
-  export interface StartTlsOptions {
-    /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `127.0.0.1`. */
-    hostname?: string;
-    /**
-     * @deprecated This option is deprecated and will be removed in a future
-     * release.
-     *
-     * Server certificate file.
-     */
-    certFile?: string;
-    /** A list of root certificates that will be used in addition to the
-     * default root certificates to verify the peer's certificate.
-     *
-     * Must be in PEM format. */
-    caCerts?: string[];
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Start TLS handshake from an existing connection using
-   * an optional cert file, hostname (default is "127.0.0.1"). Specifying CA
-   * certs is optional. By default the configured root certificates are used.
-   * Using this function requires that the other end of the connection is
-   * prepared for TLS handshake.
-   *
-   * ```ts
-   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
-   * const tlsConn = await Deno.startTls(conn, { caCerts: [caCert], hostname: "localhost" });
-   * ```
-   *
-   * Requires `allow-net` permission.
-   */
-  export function startTls(
-    conn: Conn,
-    options?: StartTlsOptions,
-  ): Promise<Conn>;
+  export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
 
   export interface ListenTlsOptions {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
+  }
+
+  export interface StartTlsOptions {
     /** **UNSTABLE**: new API, yet to be vetted.
      *
      * Application-Layer Protocol Negotiation (ALPN) protocols to announce to

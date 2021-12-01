@@ -6,7 +6,7 @@ pub use rustls_native_certs;
 pub use webpki;
 pub use webpki_roots;
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -259,6 +259,8 @@ pub fn create_http_client(
     unsafely_ignore_certificate_errors,
     client_cert_chain_and_key,
   )?;
+
+  tls_config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
 
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());

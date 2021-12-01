@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::errors;
+use crate::resolver::ImportMapResolver;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -13,11 +14,15 @@ use regex::Regex;
 use std::path::PathBuf;
 
 #[derive(Debug, Default)]
-pub struct NodeEsmResolver;
+pub(crate) struct NodeEsmResolver {
+  maybe_import_map_resolver: Option<ImportMapResolver>,
+}
 
 impl NodeEsmResolver {
-  pub fn as_resolver(&self) -> &dyn Resolver {
-    self
+  pub fn new(maybe_import_map_resolver: Option<ImportMapResolver>) -> Self {
+    Self {
+      maybe_import_map_resolver,
+    }
   }
 }
 
@@ -27,7 +32,38 @@ impl Resolver for NodeEsmResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    node_resolve(specifier, referrer.as_str(), &std::env::current_dir()?)
+    // First try to resolve using import map, ignoring any errors
+    if !specifier.starts_with("node:") {
+      if let Some(import_map_resolver) = &self.maybe_import_map_resolver {
+        if let Ok(specifier) = import_map_resolver.resolve(specifier, referrer)
+        {
+          return Ok(specifier);
+        }
+      }
+    }
+
+    let node_resolution =
+      node_resolve(specifier, referrer.as_str(), &std::env::current_dir()?);
+
+    match node_resolution {
+      Ok(specifier) => {
+        // If node resolution succeeded, return the specifier
+        Ok(specifier)
+      }
+      Err(err) => {
+        // If node resolution failed, check if it's because of unsupported
+        // URL scheme, and if so try to resolve using regular resolution algorithm
+        if err
+          .to_string()
+          .starts_with("[ERR_UNSUPPORTED_ESM_URL_SCHEME]")
+        {
+          return deno_core::resolve_import(specifier, referrer.as_str())
+            .map_err(|err| err.into());
+        }
+
+        Err(err)
+      }
+    }
   }
 }
 
@@ -192,13 +228,13 @@ fn finalize_resolution(
   };
   if is_dir {
     return Err(errors::err_unsupported_dir_import(
-      &path.display().to_string(),
-      &to_file_path_string(base),
+      resolved.as_str(),
+      base.as_str(),
     ));
   } else if !is_file {
     return Err(errors::err_module_not_found(
-      &path.display().to_string(),
-      &to_file_path_string(base),
+      resolved.as_str(),
+      base.as_str(),
       "module",
     ));
   }
@@ -886,6 +922,20 @@ struct PackageConfig {
   typ: String,
 }
 
+pub fn check_if_should_use_esm_loader(
+  main_module: &ModuleSpecifier,
+) -> Result<bool, AnyError> {
+  let s = main_module.as_str();
+  if s.ends_with(".mjs") {
+    return Ok(true);
+  }
+  if s.ends_with(".cjs") {
+    return Ok(false);
+  }
+  let package_config = get_package_scope_config(main_module)?;
+  Ok(package_config.typ == "module")
+}
+
 fn get_package_config(
   path: PathBuf,
   specifier: &str,
@@ -1143,7 +1193,7 @@ mod tests {
     let cwd = testdir("basic");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
     let expected =
-      Url::parse("https://deno.land/std@0.112.0/node/http.ts").unwrap();
+      Url::parse("https://deno.land/std@0.116.0/node/http.ts").unwrap();
 
     let actual = node_resolve("http", main.as_str(), &cwd).unwrap();
     println!("actual {}", actual);
@@ -1178,5 +1228,19 @@ mod tests {
   fn test_is_relative_specifier() {
     assert!(is_relative_specifier("./foo.js"));
     assert!(!is_relative_specifier("https://deno.land/std/node/http.ts"));
+  }
+
+  #[test]
+  fn test_check_if_should_use_esm_loader() {
+    let basic = testdir("basic");
+    let main = Url::from_file_path(basic.join("main.js")).unwrap();
+    assert!(check_if_should_use_esm_loader(&main).unwrap());
+
+    let cjs = Url::from_file_path(basic.join("main.cjs")).unwrap();
+    assert!(!check_if_should_use_esm_loader(&cjs).unwrap());
+
+    let not_esm = testdir("not_esm");
+    let main = Url::from_file_path(not_esm.join("main.js")).unwrap();
+    assert!(!check_if_should_use_esm_loader(&main).unwrap());
   }
 }

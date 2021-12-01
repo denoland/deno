@@ -529,3 +529,109 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "Deno.emit() - no check respects inlineSources compiler option",
+  async fn() {
+    const { files } = await Deno.emit(
+      "file:///a.ts",
+      {
+        check: false,
+        compilerOptions: {
+          types: ["file:///b.d.ts"],
+          inlineSources: true,
+        },
+        sources: {
+          "file:///a.ts": `const b = new B();
+          console.log(b.b);`,
+          "file:///b.d.ts": `declare class B {
+            b: string;
+          }`,
+        },
+      },
+    );
+    const sourceMap: { sourcesContent?: string[] } = JSON.parse(
+      files["file:///a.ts.js.map"],
+    );
+    assert(sourceMap.sourcesContent);
+    assertEquals(sourceMap.sourcesContent.length, 1);
+  },
+});
+
+Deno.test({
+  name: "Deno.emit() - JSX import source pragma",
+  async fn() {
+    const { files } = await Deno.emit(
+      "file:///a.tsx",
+      {
+        sources: {
+          "file:///a.tsx": `/** @jsxImportSource https://example.com/jsx */
+          
+          export function App() {
+            return (
+              <div><></></div>
+            );
+          }`,
+          "https://example.com/jsx/jsx-runtime": `export function jsx(
+            _type,
+            _props,
+            _key,
+            _source,
+            _self,
+          ) {}
+          export const jsxs = jsx;
+          export const jsxDEV = jsx;
+          export const Fragment = Symbol("Fragment");
+          console.log("imported", import.meta.url);
+          `,
+        },
+      },
+    );
+    assert(files["file:///a.tsx.js"]);
+    assert(
+      files["file:///a.tsx.js"].startsWith(
+        `import { Fragment as _Fragment, jsx as _jsx } from "https://example.com/jsx/jsx-runtime";\n`,
+      ),
+    );
+  },
+});
+
+Deno.test({
+  name: "Deno.emit() - JSX import source no pragma",
+  async fn() {
+    const { files } = await Deno.emit(
+      "file:///a.tsx",
+      {
+        compilerOptions: {
+          jsx: "react-jsx",
+          jsxImportSource: "https://example.com/jsx",
+        },
+        sources: {
+          "file:///a.tsx": `export function App() {
+            return (
+              <div><></></div>
+            );
+          }`,
+          "https://example.com/jsx/jsx-runtime": `export function jsx(
+            _type,
+            _props,
+            _key,
+            _source,
+            _self,
+          ) {}
+          export const jsxs = jsx;
+          export const jsxDEV = jsx;
+          export const Fragment = Symbol("Fragment");
+          console.log("imported", import.meta.url);
+          `,
+        },
+      },
+    );
+    assert(files["file:///a.tsx.js"]);
+    assert(
+      files["file:///a.tsx.js"].startsWith(
+        `import { Fragment as _Fragment, jsx as _jsx } from "https://example.com/jsx/jsx-runtime";\n`,
+      ),
+    );
+  },
+});
