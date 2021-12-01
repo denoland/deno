@@ -59,7 +59,7 @@ use sha2::Sha512;
 use std::path::PathBuf;
 
 use p256::elliptic_curve::generic_array::{
-  typenum::U32, typenum::U48, ArrayLength, GenericArray,
+  typenum::U32, ArrayLength, GenericArray,
 };
 use p256::{
   elliptic_curve::sec1::ToEncodedPoint,
@@ -1477,10 +1477,9 @@ fn jwk_to_ec_pk_bytes(
 
       p384::EncodedPoint::from_affine_coordinates(&xbytes, &ybytes, false)
         .to_bytes()
-    }
-    /*_ => {
-      return Err(type_error("Unsupported namedCurve".to_string()));
-    }*/
+    } /*_ => {
+        return Err(type_error("Unsupported namedCurve".to_string()));
+      }*/
   };
 
   //let point = p256::EncodedPoint::from_affine_coordinates(&xbytes, &ybytes, false);
@@ -2132,6 +2131,26 @@ pub async fn op_crypto_import_key(
       }
     }
     Algorithm::Hmac => {
+      match args.format {
+        KeyFormat::Jwk => {
+          if let ImportExportKeyData::JwkSecretKey(jwk) = key_data {
+            let key_type = args.key_type.ok_or_else(|| {
+              type_error("Missing argument key_type".to_string())
+            })?;
+
+            convert_jwk_to_secret_bytes(jwk, key_type)
+          } else {
+            Err(type_error("missing keyData.jwk".to_string()))
+          }
+        }
+        // TODO(@littledivy): spki
+        _ => Err(type_error("Unsupported format".to_string())),
+      }
+    }
+    Algorithm::AesCbc
+    | Algorithm::AesCtr
+    | Algorithm::AesGcm
+    | Algorithm::AesKw => {
       match args.format {
         KeyFormat::Jwk => {
           if let ImportExportKeyData::JwkSecretKey(jwk) = key_data {

@@ -1096,6 +1096,7 @@
               // 3.
               const { data } = await core.opAsync("op_crypto_import_key", {
                 algorithm: "ECDSA",
+                keyType: "public",
                 namedCurve: normalizedAlgorithm.namedCurve,
               }, { raw: { data: keyData } });
 
@@ -1273,6 +1274,7 @@
                   {
                     algorithm: "RSASSA-PKCS1-v1_5",
                     format: "pkcs8",
+                    keyType: "private",
                     // Needed to perform step 7 without normalization.
                     hash: normalizedAlgorithm.hash.name,
                   },
@@ -1488,6 +1490,7 @@
                   {
                     algorithm: "RSA-PSS",
                     format: "pkcs8",
+                    keyType: "private",
                     // Needed to perform step 7 without normalization.
                     hash: normalizedAlgorithm.hash.name,
                   },
@@ -1700,6 +1703,7 @@
                   {
                     algorithm: "RSA-OAEP",
                     format: "pkcs8",
+                    keyType: "private",
                     // Need to perform step 7 without normalization.
                     hash: normalizedAlgorithm.hash.name,
                   },
@@ -2003,7 +2007,7 @@
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
 
-          return importKeyAES(
+          return await importKeyAES(
             format,
             normalizedAlgorithm,
             keyData,
@@ -2027,7 +2031,7 @@
           ) {
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
-          return importKeyAES(
+          return await importKeyAES(
             format,
             normalizedAlgorithm,
             keyData,
@@ -2052,7 +2056,7 @@
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
 
-          return importKeyAES(
+          return await importKeyAES(
             format,
             normalizedAlgorithm,
             keyData,
@@ -2075,7 +2079,7 @@
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
 
-          return importKeyAES(
+          return await importKeyAES(
             format,
             normalizedAlgorithm,
             keyData,
@@ -3252,7 +3256,7 @@
     }
   }
 
-  function importKeyAES(
+  async function importKeyAES(
     format,
     normalizedAlgorithm,
     keyData,
@@ -3261,6 +3265,7 @@
   ) {
     // 2.
     let data = keyData;
+
     switch (format) {
       case "raw": {
         // 2.
@@ -3292,7 +3297,18 @@
         }
 
         // 4.
-        data = decodeSymmetricKey(jwk.k);
+        const importRet = await core
+          .opAsync(
+            "op_crypto_import_key",
+            {
+              algorithm: normalizedAlgorithm.name,
+              format: "jwk",
+              keyType: "secret",
+            },
+            { jwkSecretKey: jwk },
+          );
+
+        data = importRet.data;
 
         // 5.
         switch (data.byteLength * 8) {
@@ -3377,6 +3393,7 @@
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
       type: "raw",
+      keyType: "secret",
       data,
     });
 
@@ -3397,6 +3414,7 @@
     // 8.
     return key;
   }
+
   async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
     // 2.
     if (!ArrayPrototypeIncludes([128, 192, 256], normalizedAlgorithm.length)) {
