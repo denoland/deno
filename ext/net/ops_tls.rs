@@ -135,9 +135,9 @@ impl TlsStream {
     (rd, wr)
   }
 
-  pub fn get_ref(&self) -> &TcpStream {
+  pub fn get_ref(&self) -> (&TcpStream, &Connection) {
     let inner = self.0.as_ref().unwrap();
-    &inner.tcp
+    (&inner.tcp, &inner.tls)
   }
 
   fn inner_mut(&mut self) -> &mut TlsStreamInner {
