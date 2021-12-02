@@ -305,54 +305,39 @@ impl TlsStreamInner {
           _ => break true,
         }
 
+        // Interpret and decrypt unprocessed TLS protocol data.
         if self.rd_state < State::TlsClosed {
-          // Do a zero-length plaintext read so we can detect the arrival of
-          // 'CloseNotify' messages, even if only the write half is open.
-          // Actually reading data from the socket is done in `poll_read()`.
-          match self.tls.reader().read(&mut []) {
-            Ok(0) => {}
-            Err(err) if err.kind() == ErrorKind::ConnectionAborted => {
-              // `Session::read()` returns `ConnectionAborted` when a
-              // 'CloseNotify' alert has been received, which indicates that
-              // the remote peer wants to gracefully end the TLS session.
+          match self.tls.process_new_packets() {
+            Ok(r) if r.plaintext_bytes_to_read() > 0 => continue,
+            Ok(r) if r.peer_has_closed() => {
               self.rd_state = State::TlsClosed;
               continue;
             }
-            Err(err) => return Poll::Ready(Err(err)),
-            _ => unreachable!(),
+            Ok(_) => {}
+            Err(err) => {
+              self.rd_state = State::TlsError;
+              return Poll::Ready(Err(Error::new(ErrorKind::InvalidData, err)));
+            }
           }
         }
 
-        if self.rd_state != State::TlsError {
-          // Receive ciphertext from the socket.
-          let mut wrapped_tcp = ImplementReadTrait(&mut self.tcp);
-          match self.tls.read_tls(&mut wrapped_tcp) {
-            Ok(0) => {
-              // End of TCP stream.
-              self.rd_state = State::TcpClosed;
-              continue;
-            }
-            Err(err) if err.kind() == ErrorKind::WouldBlock => {
-              // Get notified when more ciphertext becomes available in the
-              // socket receive buffer.
-              if self.tcp.poll_read_ready(cx)?.is_pending() {
-                break false;
-              } else {
-                continue;
-              }
-            }
-            Err(err) => return Poll::Ready(Err(err)),
-            _ => {}
+        // Try to read more TLS protocol data from the TCP socket.
+        let mut wrapped_tcp = ImplementReadTrait(&mut self.tcp);
+        match self.tls.read_tls(&mut wrapped_tcp) {
+          Ok(0) => {
+            // End of TCP stream.
+            self.rd_state = State::TcpClosed;
+            continue;
           }
+          Ok(_) => continue,
+          Err(err) if err.kind() == ErrorKind::WouldBlock => {}
+          Err(err) => return Poll::Ready(Err(err)),
         }
 
-        // Interpret and decrypt TLS protocol data.
-        match self.tls.process_new_packets() {
-          Ok(_) => assert!(self.rd_state < State::TcpClosed),
-          Err(err) => {
-            self.rd_state = State::TlsError;
-            return Poll::Ready(Err(Error::new(ErrorKind::InvalidData, err)));
-          }
+        // Get notified when more ciphertext becomes available to read from the
+        // TCP socket.
+        if self.tcp.poll_read_ready(cx)?.is_pending() {
+          break false;
         }
       };
 
