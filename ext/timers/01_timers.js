@@ -14,6 +14,8 @@
     MapPrototypeHas,
     MapPrototypeSet,
     MathMax,
+    // deno-lint-ignore camelcase
+    NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -193,6 +195,22 @@
     return id;
   }
 
+  // ---------------------------------------------------------------------------
+
+  /**
+   * @typedef ScheduledTimer
+   * @property {number} millis
+   * @property {() => void} cb
+   * @property {boolean} resolved
+   * @property {ScheduledTimer | null} prev
+   * @property {ScheduledTimer | null} next
+   */
+
+  /**
+   * A doubly linked list of timers.
+   * @type { { head: ScheduledTimer | null, tail: ScheduledTimer | null } } */
+  const scheduledTimers = { head: null, tail: null };
+
   /**
    * @param {() => void} cb Will be run after the timeout, if it hasn't been
    * cancelled.
@@ -200,16 +218,84 @@
    * @param {number} cancelRid
    */
   function runAfterTimeout(cb, millis, cancelRid) {
+    /** @type {ScheduledTimer} */
+    const timerObject = {
+      millis,
+      cb,
+      resolved: false,
+      prev: scheduledTimersTail,
+      next: null,
+    };
+
+    // Add timerObject to the end of the list.
+    if (scheduledTimers.tail === null) {
+      assert(scheduledTimers.head === null);
+      scheduledTimers.head = scheduledTimers.tail = timerObject;
+    } else {
+      scheduledTimers.tail.next = timerObject;
+      scheduledTimers.tail = timerObject;
+    }
+
+    // 1.
     PromisePrototypeThen(
       core.opAsync("op_sleep", millis, cancelRid),
-      cb,
+      () => {
+        // 2. Wait until any invocations of this algorithm that had the same
+        // global and orderingIdentifier, that started before this one, and
+        // whose milliseconds is equal to or less than this one's, have
+        // completed.
+        // 4. Perform completionSteps.
+
+        // Since the sleep ops aren't guaranteed to resolve in the right order,
+        // whenever a timer resolves, we run through the list of scheduled
+        // timers (which is in the order in which they were scheduled), and we
+        // call the callback for every timer which has resolved and whose
+        // timeout is lower than the lowest unresolved timeout found so far in
+        // the list.
+
+        timerObject.resolved = true;
+
+        let lowestUnresolvedTimeout = NumberPOSITIVE_INFINITY;
+
+        let currentEntry = scheduledTimersHead;
+        while (currentEntry !== null) {
+          if (currentEntry.millis < lowestUnresolvedTimeout) {
+            if (timer.resolved) {
+              timer.cb();
+              removeFromScheduledTimers(currentEntry);
+            } else {
+              lowestUnresolvedTimeout = currentEntry.millis;
+            }
+          }
+
+          currentEntry = currentEntry.next;
+        }
+      },
       (err) => {
-        // Do nothing if the timer was cancelled.
-        if (!(err instanceof core.Interrupted)) {
+        if (err instanceof core.Interrupted) {
+          // The timer was cancelled.
+          removeFromScheduledTimers(timerObject);
+        } else {
           throw err;
         }
       },
     );
+  }
+
+  /** @param {ScheduledTimer} timerObj */
+  function removeFromScheduledTimers(timerObj) {
+    if (timerObj.prev !== null) {
+      timerObj.prev.next = timerObj.next;
+    } else {
+      assert(scheduledTimers.head === timerObj);
+      scheduledTimers.head = timerObj.next;
+    }
+    if (timerObj.next !== null) {
+      timerObj.next.prev = timerObj.prev;
+    } else {
+      assert(scheduledTimers.tail === timerObj);
+      scheduledTimers.tail = timerObj.prev;
+    }
   }
 
   // ---------------------------------------------------------------------------
