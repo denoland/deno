@@ -149,6 +149,9 @@
     }
 
     get status() {
+      if (this.#rid === null) {
+        throw new TypeError("Child has already been used up.");
+      }
       const status = core.opSync("op_command_child_status", this.#rid);
       // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
       status.signal ??= undefined;
@@ -156,30 +159,41 @@
     }
 
     async wait() {
+      if (this.#rid === null) {
+        throw new TypeError("Child has already been used up.");
+      }
       const status = await core.opAsync(
         "op_command_child_wait",
         this.#rid,
         this.#stdinRid,
       );
       await this.stdin?.abort();
+      this.#rid = null;
       // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
       status.signal ??= undefined;
       return status;
     }
 
     async output() {
+      if (this.#rid === null) {
+        throw new TypeError("Child has already been used up.");
+      }
       const res = await core.opAsync("op_command_child_output", {
         rid: this.#rid,
         stdoutRid: this.#stdoutRid,
         stderrRid: this.#stderrRid,
       });
       await this.stdin?.abort();
+      this.#rid = null;
       // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
       res.status.signal ??= undefined;
       return res;
     }
 
     kill(signo) {
+      if (this.#rid === null) {
+        throw new TypeError("Child has already been used up.");
+      }
       core.opSync("op_kill", this.#pid, signo);
     }
   }
