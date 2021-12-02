@@ -107,6 +107,8 @@
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
     kill: __bootstrap.process.kill,
+    Command: __bootstrap.command.Command,
+    Child: __bootstrap.command.Child,
   };
 
   __bootstrap.denoNsUnstable = {
@@ -139,7 +141,5 @@
     flockSync: __bootstrap.fs.flockSync,
     funlock: __bootstrap.fs.funlock,
     funlockSync: __bootstrap.fs.funlockSync,
-    Command: __bootstrap.command.Command,
-    Child: __bootstrap.command.Child,
   };
 })(this);

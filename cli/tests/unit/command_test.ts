@@ -11,7 +11,7 @@ import {
   writableStreamFromWriter,
 } from "../../../test_util/std/streams/conversion.ts";
 
-Deno.test({ permissions: { read: true } }, async function runPermissions() {
+Deno.test({ permissions: { read: true, run: false } }, async function runPermissions() {
   await assertRejects(() => {
     const cmd = new Deno.Command(Deno.execPath(), {
       args: ["eval", "console.log('hello world')"],

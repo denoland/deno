@@ -77,7 +77,6 @@ fn create_command(
   state: &mut OpState,
   command_args: CommandArgs,
 ) -> Result<Command, AnyError> {
-  super::check_unstable(state, "Deno.Command");
   state
     .borrow_mut::<Permissions>()
     .run
@@ -97,12 +96,12 @@ fn create_command(
 
   #[cfg(unix)]
   if let Some(gid) = command_args.gid {
-    super::check_unstable(state, "Deno.run.gid");
+    super::check_unstable(state, "Deno.Command.gid");
     command.gid(gid);
   }
   #[cfg(unix)]
   if let Some(uid) = command_args.uid {
-    super::check_unstable(state, "Deno.run.uid");
+    super::check_unstable(state, "Deno.Command.uid");
     command.uid(uid);
   }
   #[cfg(unix)]
