@@ -223,7 +223,7 @@
       millis,
       cb,
       resolved: false,
-      prev: scheduledTimersTail,
+      prev: scheduledTimers.tail,
       next: null,
     };
 
@@ -257,11 +257,11 @@
 
         let lowestUnresolvedTimeout = NumberPOSITIVE_INFINITY;
 
-        let currentEntry = scheduledTimersHead;
+        let currentEntry = scheduledTimers.head;
         while (currentEntry !== null) {
           if (currentEntry.millis < lowestUnresolvedTimeout) {
-            if (timer.resolved) {
-              timer.cb();
+            if (currentEntry.resolved) {
+              currentEntry.cb();
               removeFromScheduledTimers(currentEntry);
             } else {
               lowestUnresolvedTimeout = currentEntry.millis;
