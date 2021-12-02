@@ -34,12 +34,13 @@ use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
 use tokio_rustls::TlsConnector;
+use tokio_tungstenite::client_async;
 use tokio_tungstenite::tungstenite::{
   handshake::client::Response, protocol::frame::coding::CloseCode,
-  protocol::CloseFrame, Message,
+  protocol::CloseFrame, protocol::Role, Message,
 };
 use tokio_tungstenite::MaybeTlsStream;
-use tokio_tungstenite::{client_async, WebSocketStream};
+use tokio_tungstenite::WebSocketStream;
 
 pub use tokio_tungstenite; // Re-export tokio_tungstenite
 
@@ -70,6 +71,27 @@ pub enum WebSocketStreamType {
     >,
     rx: AsyncRefCell<SplitStream<WebSocketStream<hyper::upgrade::Upgraded>>>,
   },
+}
+
+pub async fn ws_create_server_stream(
+  state: &Rc<RefCell<OpState>>,
+  transport: hyper::upgrade::Upgraded,
+) -> Result<ResourceId, AnyError> {
+  let ws_stream =
+    WebSocketStream::from_raw_socket(transport, Role::Server, None).await;
+  let (ws_tx, ws_rx) = ws_stream.split();
+
+  let ws_resource = WsStreamResource {
+    stream: WebSocketStreamType::Server {
+      tx: AsyncRefCell::new(ws_tx),
+      rx: AsyncRefCell::new(ws_rx),
+    },
+    cancel: Default::default(),
+  };
+
+  let resource_table = &mut state.borrow_mut().resource_table;
+  let rid = resource_table.add(ws_resource);
+  Ok(rid)
 }
 
 pub struct WsStreamResource {
@@ -217,6 +239,16 @@ where
       );
   }
 
+  let cancel_resource = if let Some(cancel_rid) = args.cancel_handle {
+    let r = state
+      .borrow_mut()
+      .resource_table
+      .get::<WsCancelResource>(cancel_rid)?;
+    Some(r)
+  } else {
+    None
+  };
+
   let unsafely_ignore_certificate_errors = state
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
@@ -249,6 +281,7 @@ where
         root_cert_store,
         vec![],
         unsafely_ignore_certificate_errors,
+        None,
       )?;
       let tls_connector = TlsConnector::from(Arc::new(tls_config));
       let dnsname = DNSNameRef::try_from_ascii_str(domain)
@@ -261,13 +294,9 @@ where
 
   let client = client_async(request, socket);
   let (stream, response): (WsStream, Response) =
-    if let Some(cancel_rid) = args.cancel_handle {
-      let r = state
-        .borrow_mut()
-        .resource_table
-        .get::<WsCancelResource>(cancel_rid)?;
+    if let Some(cancel_resource) = cancel_resource {
       client
-        .or_cancel(r.0.to_owned())
+        .or_cancel(cancel_resource.0.to_owned())
         .await
         .map_err(|_| DomExceptionAbortError::new("connection was aborted"))?
     } else {

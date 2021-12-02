@@ -38,7 +38,7 @@ impl Loader for StubDocLoader {
 
 #[derive(Debug)]
 struct DocResolver {
-  import_map: Option<ImportMap>,
+  import_map: Option<Arc<ImportMap>>,
 }
 
 impl Resolver for DocResolver {

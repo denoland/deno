@@ -9,7 +9,8 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  // TODO(lucacasonato): get AbortSignal from __bootstrap.
+  const { add, remove, signalAbort, newSignal } =
+    window.__bootstrap.abortSignal;
   const {
     ArrayBuffer,
     ArrayBufferIsView,
@@ -286,6 +287,7 @@
   const _readRequests = Symbol("[[readRequests]]");
   const _readIntoRequests = Symbol("[[readIntoRequests]]");
   const _readyPromise = Symbol("[[readyPromise]]");
+  const _signal = Symbol("[[signal]]");
   const _started = Symbol("[[started]]");
   const _state = Symbol("[[state]]");
   const _storedError = Symbol("[[storedError]]");
@@ -1902,8 +1904,7 @@
         abortAlgorithm();
         return promise.promise;
       }
-      // TODO(lucacasonato): use the internal API to listen for abort.
-      signal.addEventListener("abort", abortAlgorithm);
+      signal[add](abortAlgorithm);
     }
 
     function pipeLoop() {
@@ -2107,8 +2108,7 @@
       readableStreamReaderGenericRelease(reader);
 
       if (signal !== undefined) {
-        // TODO(lucacasonato): use the internal API to remove the listener.
-        signal.removeEventListener("abort", abortAlgorithm);
+        signal[remove](abortAlgorithm);
       }
       if (isError) {
         promise.reject(error);
@@ -2985,6 +2985,7 @@
     controller[_stream] = stream;
     stream[_controller] = controller;
     resetQueue(controller);
+    controller[_signal] = newSignal();
     controller[_started] = false;
     controller[_strategySizeAlgorithm] = sizeAlgorithm;
     controller[_strategyHWM] = highWaterMark;
@@ -3339,6 +3340,10 @@
    */
   function writableStreamAbort(stream, reason) {
     const state = stream[_state];
+    if (state === "closed" || state === "errored") {
+      return resolvePromiseWith(undefined);
+    }
+    stream[_controller][_signal][signalAbort]();
     if (state === "closed" || state === "errored") {
       return resolvePromiseWith(undefined);
     }
@@ -4209,15 +4214,6 @@
         );
       }
       return readableStreamCancel(this, reason);
-    }
-
-    /**
-     * @deprecated TODO(@kitsonk): Remove in Deno 1.8
-     * @param {ReadableStreamIteratorOptions=} options
-     * @returns {AsyncIterableIterator<R>}
-     */
-    getIterator(options = {}) {
-      return this[SymbolAsyncIterator](options);
     }
 
     /**
@@ -5430,6 +5426,13 @@
     [_stream];
     /** @type {(chunk: W, controller: this) => Promise<void>} */
     [_writeAlgorithm];
+    /** @type {AbortSignal} */
+    [_signal];
+
+    get signal() {
+      webidl.assertBranded(this, WritableStreamDefaultController);
+      return this[_signal];
+    }
 
     constructor() {
       webidl.illegalConstructor();

@@ -1,21 +1,15 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  assertEquals,
-  assertThrows,
-  delay,
-  unitTest,
-} from "./test_util.ts";
+import { assert, assertEquals, assertThrows, delay } from "./test_util.ts";
 
 // TODO(ry) Add more tests to specify format.
 
-unitTest({ permissions: { read: false } }, function watchFsPermissions() {
+Deno.test({ permissions: { read: false } }, function watchFsPermissions() {
   assertThrows(() => {
     Deno.watchFs(".");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ permissions: { read: true } }, function watchFsInvalidPath() {
+Deno.test({ permissions: { read: true } }, function watchFsInvalidPath() {
   if (Deno.build.os === "windows") {
     assertThrows(
       () => {
@@ -50,7 +44,7 @@ async function makeTempDir(): Promise<string> {
   return testDir;
 }
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsBasic() {
     const testDir = await makeTempDir();
@@ -77,7 +71,7 @@ unitTest(
 
 // TODO(kt3k): This test is for the backward compatibility of `.return` method.
 // This should be removed at 2.0
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsReturn() {
     const testDir = await makeTempDir();
@@ -95,7 +89,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsClose() {
     const testDir = await makeTempDir();

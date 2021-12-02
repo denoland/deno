@@ -17,6 +17,7 @@ use deno_fetch::reqwest;
 use std::env;
 use std::error::Error;
 use std::io;
+use std::sync::Arc;
 
 fn get_dlopen_error_class(error: &dlopen::Error) -> &'static str {
   use dlopen::Error::*;
@@ -163,6 +164,10 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
         .map(get_dlopen_error_class)
     })
     .or_else(|| e.downcast_ref::<hyper::Error>().map(get_hyper_error_class))
+    .or_else(|| {
+      e.downcast_ref::<Arc<hyper::Error>>()
+        .map(|e| get_hyper_error_class(&**e))
+    })
     .or_else(|| {
       e.downcast_ref::<deno_core::Canceled>().map(|e| {
         let io_err: io::Error = e.to_owned().into();

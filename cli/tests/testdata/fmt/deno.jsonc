@@ -1,8 +1,8 @@
 {
   "fmt": {
     "files": {
-      "include": ["fmt/fmt_with_config/"],
-      "exclude": ["fmt/fmt_with_config/b.ts"]
+      "include": ["fmt_with_config/"],
+      "exclude": ["fmt_with_config/b.ts"]
     },
     "options": {
       "useTabs": true,

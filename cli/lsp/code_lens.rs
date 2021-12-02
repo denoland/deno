@@ -220,9 +220,9 @@ async fn resolve_implementation_code_lens(
   data: CodeLensData,
   language_server: &mut language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
-  let line_index = language_server
-    .get_line_index_sync(&data.specifier)
-    .unwrap();
+  let asset_or_doc =
+    language_server.get_cached_asset_or_document(&data.specifier)?;
+  let line_index = asset_or_doc.line_index();
   let req = tsc::RequestMethod::GetImplementation((
     data.specifier.clone(),
     line_index.offset_tsc(code_lens.range.start)?,
@@ -289,9 +289,9 @@ async fn resolve_references_code_lens(
   data: CodeLensData,
   language_server: &mut language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
-  let line_index = language_server
-    .get_line_index_sync(&data.specifier)
-    .unwrap();
+  let asset_or_document =
+    language_server.get_cached_asset_or_document(&data.specifier)?;
+  let line_index = asset_or_document.line_index();
   let req = tsc::RequestMethod::GetReferences((
     data.specifier.clone(),
     line_index.offset_tsc(code_lens.range.start)?,
@@ -307,9 +307,12 @@ async fn resolve_references_code_lens(
       }
       let reference_specifier =
         resolve_url(&reference.document_span.file_name)?;
-      let line_index =
-        language_server.get_line_index(reference_specifier).await?;
-      locations.push(reference.to_location(line_index, language_server));
+      let asset_or_doc = language_server
+        .get_asset_or_document(&reference_specifier)
+        .await?;
+      locations.push(
+        reference.to_location(asset_or_doc.line_index(), language_server),
+      );
     }
     let command = if !locations.is_empty() {
       let title = if locations.len() > 1 {

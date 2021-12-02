@@ -1,4 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+use crate::flags::CheckFlag;
 use crate::flags::Flags;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
@@ -267,8 +269,12 @@ pub fn install(
     }
   }
 
-  if flags.no_check {
-    executable_args.push("--no-check".to_string());
+  // we should avoid a default branch here to ensure we continue to cover any
+  // changes to this flag.
+  match flags.check {
+    CheckFlag::All => (),
+    CheckFlag::None => executable_args.push("--no-check".to_string()),
+    CheckFlag::Local => executable_args.push("--no-check=remote".to_string()),
   }
 
   if flags.unstable {
@@ -687,7 +693,7 @@ mod tests {
       Flags {
         allow_net: Some(vec![]),
         allow_read: Some(vec![]),
-        no_check: true,
+        check: CheckFlag::None,
         log_level: Some(Level::Error),
         ..Flags::default()
       },

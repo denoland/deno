@@ -1016,29 +1016,29 @@ async fn test_resolve_dns() {
 
 #[test]
 fn typecheck_declarations_ns() {
-  let status = util::deno_cmd()
+  let output = util::deno_cmd()
     .arg("test")
     .arg("--doc")
     .arg(util::root_path().join("cli/dts/lib.deno.ns.d.ts"))
-    .spawn()
-    .unwrap()
-    .wait()
+    .output()
     .unwrap();
-  assert!(status.success());
+  println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
+  println!("stderr: {}", String::from_utf8(output.stderr).unwrap());
+  assert!(output.status.success());
 }
 
 #[test]
 fn typecheck_declarations_unstable() {
-  let status = util::deno_cmd()
+  let output = util::deno_cmd()
     .arg("test")
     .arg("--doc")
     .arg("--unstable")
     .arg(util::root_path().join("cli/dts/lib.deno.unstable.d.ts"))
-    .spawn()
-    .unwrap()
-    .wait()
+    .output()
     .unwrap();
-  assert!(status.success());
+  println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
+  println!("stderr: {}", String::from_utf8(output.stderr).unwrap());
+  assert!(output.status.success());
 }
 
 #[test]
@@ -1100,7 +1100,7 @@ fn basic_auth_tokens() {
   eprintln!("{}", stderr_str);
 
   assert!(stderr_str.contains(
-    "Import 'http://127.0.0.1:4554/001_hello.js' failed: 404 Not Found"
+    "Import 'http://127.0.0.1:4554/001_hello.js' failed, not found."
   ));
 
   let output = util::deno_cmd()

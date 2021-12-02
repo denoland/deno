@@ -6,6 +6,7 @@ use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_http::http_create_conn_resource;
 use deno_net::io::TcpStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
 
@@ -29,7 +30,7 @@ fn op_http_start(
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
     let addr = tcp_stream.local_addr()?;
-    return deno_http::start_http(state, tcp_stream, addr, "http");
+    return http_create_conn_resource(state, tcp_stream, addr, "http");
   }
 
   if let Ok(resource_rc) = state
@@ -41,7 +42,7 @@ fn op_http_start(
     let (read_half, write_half) = resource.into_inner();
     let tls_stream = read_half.reunite(write_half);
     let addr = tls_stream.get_ref().0.local_addr()?;
-    return deno_http::start_http(state, tls_stream, addr, "https");
+    return http_create_conn_resource(state, tls_stream, addr, "https");
   }
 
   Err(bad_resource_id())

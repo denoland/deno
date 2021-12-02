@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
-use deno_core::error::Context;
+use deno_core::anyhow::Context;
+use deno_core::error::{uri_error, AnyError};
 pub use deno_core::normalize_path;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
@@ -298,14 +298,87 @@ where
   Ok(prepared)
 }
 
-// Asynchronously removes a directory and all its descendants, but does not error
-// when the directory does not exist.
+/// Asynchronously removes a directory and all its descendants, but does not error
+/// when the directory does not exist.
 pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
   let result = tokio::fs::remove_dir_all(path).await;
   match result {
     Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
     _ => result,
   }
+}
+
+/// Attempts to convert a specifier to a file path. By default, uses the Url
+/// crate's `to_file_path()` method, but falls back to try and resolve unix-style
+/// paths on Windows.
+pub fn specifier_to_file_path(
+  specifier: &ModuleSpecifier,
+) -> Result<PathBuf, AnyError> {
+  let result = if cfg!(windows) {
+    match specifier.to_file_path() {
+      Ok(path) => Ok(path),
+      Err(()) => {
+        // This might be a unix-style path which is used in the tests even on Windows.
+        // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
+        // once/if https://github.com/servo/rust-url/issues/730 is implemented.
+        if specifier.scheme() == "file"
+          && specifier.host().is_none()
+          && specifier.port().is_none()
+          && specifier.path_segments().is_some()
+        {
+          let path_str = specifier.path();
+          match String::from_utf8(
+            percent_encoding::percent_decode(path_str.as_bytes()).collect(),
+          ) {
+            Ok(path_str) => Ok(PathBuf::from(path_str)),
+            Err(_) => Err(()),
+          }
+        } else {
+          Err(())
+        }
+      }
+    }
+  } else {
+    specifier.to_file_path()
+  };
+  match result {
+    Ok(path) => Ok(path),
+    Err(()) => Err(uri_error(format!(
+      "Invalid file path.\n  Specifier: {}",
+      specifier
+    ))),
+  }
+}
+
+/// Ensures a specifier that will definitely be a directory has a trailing slash.
+pub fn ensure_directory_specifier(
+  mut specifier: ModuleSpecifier,
+) -> ModuleSpecifier {
+  let path = specifier.path();
+  if !path.ends_with('/') {
+    let new_path = format!("{}/", path);
+    specifier.set_path(&new_path);
+  }
+  specifier
+}
+
+/// Gets the parent of this module specifier.
+pub fn specifier_parent(specifier: &ModuleSpecifier) -> ModuleSpecifier {
+  let mut specifier = specifier.clone();
+  // don't use specifier.segments() because it will strip the leading slash
+  let mut segments = specifier.path().split('/').collect::<Vec<_>>();
+  if segments.iter().all(|s| s.is_empty()) {
+    return specifier;
+  }
+  if let Some(last) = segments.last() {
+    if last.is_empty() {
+      segments.pop();
+    }
+    segments.pop();
+    let new_path = format!("{}/", segments.join("/"));
+    specifier.set_path(&new_path);
+  }
+  specifier
 }
 
 #[cfg(test)]
@@ -626,6 +699,55 @@ mod tests {
         strip_unc_prefix(PathBuf::from(input)),
         PathBuf::from(expected)
       );
+    }
+  }
+
+  #[test]
+  fn test_specifier_to_file_path() {
+    run_success_test("file:///", "/");
+    run_success_test("file:///test", "/test");
+    run_success_test("file:///dir/test/test.txt", "/dir/test/test.txt");
+    run_success_test(
+      "file:///dir/test%20test/test.txt",
+      "/dir/test test/test.txt",
+    );
+
+    fn run_success_test(specifier: &str, expected_path: &str) {
+      let result =
+        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
+          .unwrap();
+      assert_eq!(result, PathBuf::from(expected_path));
+    }
+  }
+
+  #[test]
+  fn test_ensure_directory_specifier() {
+    run_test("file:///", "file:///");
+    run_test("file:///test", "file:///test/");
+    run_test("file:///test/", "file:///test/");
+    run_test("file:///test/other", "file:///test/other/");
+    run_test("file:///test/other/", "file:///test/other/");
+
+    fn run_test(specifier: &str, expected: &str) {
+      let result =
+        ensure_directory_specifier(ModuleSpecifier::parse(specifier).unwrap());
+      assert_eq!(result.to_string(), expected);
+    }
+  }
+
+  #[test]
+  fn test_specifier_parent() {
+    run_test("file:///", "file:///");
+    run_test("file:///test", "file:///");
+    run_test("file:///test/", "file:///");
+    run_test("file:///test/other", "file:///test/");
+    run_test("file:///test/other.txt", "file:///test/");
+    run_test("file:///test/other/", "file:///test/");
+
+    fn run_test(specifier: &str, expected: &str) {
+      let result =
+        specifier_parent(&ModuleSpecifier::parse(specifier).unwrap());
+      assert_eq!(result.to_string(), expected);
     }
   }
 }

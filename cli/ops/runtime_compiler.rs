@@ -5,13 +5,15 @@ use crate::config_file::IgnoredCompilerOptions;
 use crate::diagnostics::Diagnostics;
 use crate::emit;
 use crate::errors::get_error_class_name;
+use crate::flags;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
+use crate::resolver::JsxResolver;
 
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
@@ -71,14 +73,66 @@ struct EmitResult {
   stats: emit::Stats,
 }
 
+/// Provides inferred imported modules from configuration options, like the
+/// `"types"` and `"jsxImportSource"` imports.
 fn to_maybe_imports(
   referrer: &ModuleSpecifier,
   maybe_options: Option<&HashMap<String, Value>>,
 ) -> Option<Vec<(ModuleSpecifier, Vec<String>)>> {
-  let options = maybe_options.as_ref()?;
-  let types_value = options.get("types")?;
-  let types: Vec<String> = serde_json::from_value(types_value.clone()).ok()?;
-  Some(vec![(referrer.clone(), types)])
+  let options = maybe_options?;
+  let mut imports = Vec::new();
+  if let Some(types_value) = options.get("types") {
+    if let Ok(types) =
+      serde_json::from_value::<Vec<String>>(types_value.clone())
+    {
+      imports.extend(types);
+    }
+  }
+  if let Some(jsx_value) = options.get("jsx") {
+    if let Ok(jsx) = serde_json::from_value::<String>(jsx_value.clone()) {
+      let jsx_import_source =
+        if let Some(jsx_import_source_value) = options.get("jsxImportSource") {
+          if let Ok(jsx_import_source) =
+            serde_json::from_value::<String>(jsx_import_source_value.clone())
+          {
+            jsx_import_source
+          } else {
+            "react".to_string()
+          }
+        } else {
+          "react".to_string()
+        };
+      match jsx.as_str() {
+        "react-jsx" => {
+          imports.push(format!("{}/jsx-runtime", jsx_import_source));
+        }
+        "react-jsxdev" => {
+          imports.push(format!("{}/jsx-dev-runtime", jsx_import_source));
+        }
+        _ => (),
+      }
+    }
+  }
+  if !imports.is_empty() {
+    Some(vec![(referrer.clone(), imports)])
+  } else {
+    None
+  }
+}
+
+/// Converts the compiler options to the JSX import source module that will be
+/// loaded when transpiling JSX.
+fn to_maybe_jsx_import_source_module(
+  maybe_options: Option<&HashMap<String, Value>>,
+) -> Option<String> {
+  let options = maybe_options?;
+  let jsx_value = options.get("jsx")?;
+  let jsx: String = serde_json::from_value(jsx_value.clone()).ok()?;
+  match jsx.as_str() {
+    "react-jsx" => Some("jsx-runtime".to_string()),
+    "react-jsxdev" => Some("jsx-dev-runtime".to_string()),
+    _ => None,
+  }
 }
 
 async fn op_emit(
@@ -88,9 +142,15 @@ async fn op_emit(
 ) -> Result<EmitResult, AnyError> {
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
   let root_specifier = args.root_specifier;
-  let state = state.borrow();
-  let ps = state.borrow::<ProcState>();
-  let mut runtime_permissions = { state.borrow::<Permissions>().clone() };
+  let ps = {
+    let state = state.borrow();
+    state.borrow::<ProcState>().clone()
+  };
+  let mut runtime_permissions = {
+    let state = state.borrow();
+    state.borrow::<Permissions>().clone()
+  };
+
   let mut cache: Box<dyn cache::CacherLoader> =
     if let Some(sources) = &args.sources {
       Box::new(cache::MemoryCacher::new(sources.clone()))
@@ -102,7 +162,9 @@ async fn op_emit(
         runtime_permissions.clone(),
       ))
     };
-  let maybe_import_map = if let Some(import_map_str) = args.import_map_path {
+  let maybe_import_map_resolver = if let Some(import_map_str) =
+    args.import_map_path
+  {
     let import_map_specifier = resolve_url_or_path(&import_map_str)
       .context(format!("Bad URL (\"{}\") for import map.", import_map_str))?;
     let import_map = if let Some(value) = args.import_map {
@@ -120,23 +182,32 @@ async fn op_emit(
         })?;
       ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
     };
-    Some(import_map)
+    Some(ImportMapResolver::new(Arc::new(import_map)))
   } else if args.import_map.is_some() {
     return Err(generic_error("An importMap was specified, but no importMapPath was provided, which is required."));
   } else {
     None
   };
+  let maybe_jsx_resolver =
+    to_maybe_jsx_import_source_module(args.compiler_options.as_ref())
+      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
+  let maybe_resolver = if maybe_jsx_resolver.is_some() {
+    maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+  } else {
+    maybe_import_map_resolver
+      .as_ref()
+      .map(|imr| imr.as_resolver())
+  };
   let roots = vec![resolve_url_or_path(&root_specifier)?];
   let maybe_imports =
     to_maybe_imports(&roots[0], args.compiler_options.as_ref());
-  let maybe_resolver = maybe_import_map.as_ref().map(ImportMapResolver::new);
   let graph = Arc::new(
     deno_graph::create_graph(
       roots,
       true,
       maybe_imports,
       cache.as_mut_loader(),
-      maybe_resolver.as_ref().map(|r| r.as_resolver()),
+      maybe_resolver,
       None,
       None,
     )
@@ -178,10 +249,12 @@ async fn op_emit(
         graph.clone(),
         cache.as_mut_cacher(),
         emit::CheckOptions {
+          check: flags::CheckFlag::All,
           debug,
           emit_with_diagnostics: true,
           maybe_config_specifier: None,
           ts_config,
+          reload: true,
         },
       )?;
       (emit_result.diagnostics, emit_result.stats)
@@ -197,10 +270,12 @@ async fn op_emit(
         graph.clone(),
         cache.as_mut_cacher(),
         emit::CheckOptions {
+          check: flags::CheckFlag::All,
           debug,
           emit_with_diagnostics: true,
           maybe_config_specifier: None,
           ts_config: ts_config.clone(),
+          reload: true,
         },
       )?;
       (emit_result.diagnostics, emit_result.stats)

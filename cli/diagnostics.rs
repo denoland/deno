@@ -36,6 +36,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "SystemMemoryInfo",
   "UnixConnectOptions",
   "UnixListenOptions",
+  "addSignalListener",
   "applySourceMap",
   "connect",
   "consoleSize",
@@ -52,11 +53,10 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "dlopen",
   "osRelease",
   "ppid",
+  "removeSignalListener",
   "setRaw",
   "shutdown",
   "Signal",
-  "signal",
-  "signals",
   "sleepSync",
   "startTls",
   "systemMemoryInfo",
@@ -368,6 +368,16 @@ impl Diagnostics {
       file_name: Some(err.specifier().to_string()),
       related_information: None,
     }));
+  }
+
+  /// Return a set of diagnostics where only the values where the predicate
+  /// returns `true` are included.
+  pub fn filter<P>(&self, predicate: P) -> Self
+  where
+    P: FnMut(&Diagnostic) -> bool,
+  {
+    let diagnostics = self.0.clone().into_iter().filter(predicate).collect();
+    Self(diagnostics)
   }
 
   pub fn is_empty(&self) -> bool {

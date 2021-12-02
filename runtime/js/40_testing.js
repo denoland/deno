@@ -9,6 +9,7 @@
   const { serializePermissions } = window.__bootstrap.permissions;
   const { assert } = window.__bootstrap.util;
   const {
+    AggregateError,
     ArrayPrototypeFilter,
     ArrayPrototypePush,
     ArrayPrototypeSome,
@@ -29,6 +30,37 @@
   } = window.__bootstrap.primordials;
   let testStepsEnabled = false;
 
+  let opSanitizerDelayResolve = null;
+
+  // Even if every resource is closed by the end of a test, there can be a delay
+  // until the pending ops have all finished. This function returns a promise
+  // that resolves when it's (probably) fine to run the op sanitizer.
+  //
+  // This is implemented by adding a macrotask callback that runs after the
+  // timer macrotasks, so we can guarantee that a currently running interval
+  // will have an associated op. An additional `setTimeout` of 0 is needed
+  // before that, though, in order to give time for worker message ops to finish
+  // (since timeouts of 0 don't queue tasks in the timer queue immediately).
+  function opSanitizerDelay() {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        if (opSanitizerDelayResolve !== null) {
+          reject(new Error("There is an op sanitizer delay already."));
+        } else {
+          opSanitizerDelayResolve = resolve;
+        }
+      }, 0);
+    });
+  }
+
+  function handleOpSanitizerDelayMacrotask() {
+    if (opSanitizerDelayResolve !== null) {
+      opSanitizerDelayResolve();
+      opSanitizerDelayResolve = null;
+    }
+    return true;
+  }
+
   // Wrap test function in additional assertion that makes sure
   // the test case does not leak async "ops" - ie. number of async
   // completed ops after the test is the same as number of dispatched
@@ -44,7 +76,7 @@
         // Defer until next event loop turn - that way timeouts and intervals
         // cleared can actually be removed from resource table, otherwise
         // false positives may occur (https://github.com/denoland/deno/issues/4591)
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await opSanitizerDelay();
       }
 
       if (step.shouldSkipSanitizers) {
@@ -253,8 +285,9 @@ finishing test case.`;
 
   // Main test function provided by Deno.
   function test(
-    t,
-    fn,
+    nameOrFnOrOptions,
+    optionsOrFn,
+    maybeFn,
   ) {
     let testDef;
     const defaults = {
@@ -266,22 +299,74 @@ finishing test case.`;
       permissions: null,
     };
 
-    if (typeof t === "string") {
-      if (!fn || typeof fn != "function") {
-        throw new TypeError("Missing test function");
-      }
-      if (!t) {
+    if (typeof nameOrFnOrOptions === "string") {
+      if (!nameOrFnOrOptions) {
         throw new TypeError("The test name can't be empty");
       }
-      testDef = { fn: fn, name: t, ...defaults };
+      if (typeof optionsOrFn === "function") {
+        testDef = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
+      } else {
+        if (!maybeFn || typeof maybeFn !== "function") {
+          throw new TypeError("Missing test function");
+        }
+        if (optionsOrFn.fn != undefined) {
+          throw new TypeError(
+            "Unexpected 'fn' field in options, test function is already provided as the third argument.",
+          );
+        }
+        if (optionsOrFn.name != undefined) {
+          throw new TypeError(
+            "Unexpected 'name' field in options, test name is already provided as the first argument.",
+          );
+        }
+        testDef = {
+          ...defaults,
+          ...optionsOrFn,
+          fn: maybeFn,
+          name: nameOrFnOrOptions,
+        };
+      }
+    } else if (typeof nameOrFnOrOptions === "function") {
+      if (!nameOrFnOrOptions.name) {
+        throw new TypeError("The test function must have a name");
+      }
+      if (optionsOrFn != undefined) {
+        throw new TypeError("Unexpected second argument to Deno.test()");
+      }
+      if (maybeFn != undefined) {
+        throw new TypeError("Unexpected third argument to Deno.test()");
+      }
+      testDef = {
+        ...defaults,
+        fn: nameOrFnOrOptions,
+        name: nameOrFnOrOptions.name,
+      };
     } else {
-      if (!t.fn) {
-        throw new TypeError("Missing test function");
+      let fn;
+      let name;
+      if (typeof optionsOrFn === "function") {
+        fn = optionsOrFn;
+        if (nameOrFnOrOptions.fn != undefined) {
+          throw new TypeError(
+            "Unexpected 'fn' field in options, test function is already provided as the second argument.",
+          );
+        }
+        name = nameOrFnOrOptions.name ?? fn.name;
+      } else {
+        if (
+          !nameOrFnOrOptions.fn || typeof nameOrFnOrOptions.fn !== "function"
+        ) {
+          throw new TypeError(
+            "Expected 'fn' field in the first argument to be a test function.",
+          );
+        }
+        fn = nameOrFnOrOptions.fn;
+        name = nameOrFnOrOptions.name ?? fn.name;
       }
-      if (!t.name) {
+      if (!name) {
         throw new TypeError("The test name can't be empty");
       }
-      testDef = { ...defaults, ...t };
+      testDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
     testDef.fn = wrapTestFnWithSanitizers(testDef.fn, testDef);
@@ -297,7 +382,7 @@ finishing test case.`;
   }
 
   function formatError(error) {
-    if (error.errors) {
+    if (error instanceof AggregateError) {
       const message = error
         .errors
         .map((error) =>
@@ -412,6 +497,8 @@ finishing test case.`;
     filter = null,
     shuffle = null,
   } = {}) {
+    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
+
     const origin = getTestOrigin();
     const originalConsole = globalThis.console;
 

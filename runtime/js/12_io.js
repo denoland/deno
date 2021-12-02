@@ -102,7 +102,7 @@
       return 0;
     }
 
-    const nread = await core.opAsync("op_read_async", rid, buffer);
+    const nread = await core.read(rid, buffer);
 
     return nread === 0 ? null : nread;
   }
@@ -111,8 +111,8 @@
     return core.opSync("op_write_sync", rid, data);
   }
 
-  async function write(rid, data) {
-    return await core.opAsync("op_write_async", rid, data);
+  function write(rid, data) {
+    return core.write(rid, data);
   }
 
   const READ_PER_ITER = 16 * 1024; // 16kb, see https://github.com/denoland/deno/issues/10157
