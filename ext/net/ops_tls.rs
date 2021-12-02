@@ -665,7 +665,7 @@ impl Shared {
       self_arc.rd_waker.wake();
       self_arc.wr_waker.wake();
     }
-    self_weak.into_raw();
+    let _ = self_weak.into_raw();
   }
 
   fn drop_shared_waker(self_ptr: *const ()) {
