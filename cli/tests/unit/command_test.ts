@@ -11,14 +11,17 @@ import {
   writableStreamFromWriter,
 } from "../../../test_util/std/streams/conversion.ts";
 
-Deno.test({ permissions: { read: true, run: false } }, async function runPermissions() {
-  await assertRejects(() => {
-    const cmd = new Deno.Command(Deno.execPath(), {
-      args: ["eval", "console.log('hello world')"],
-    });
-    return cmd.output();
-  }, Deno.errors.PermissionDenied);
-});
+Deno.test(
+  { permissions: { read: true, run: false } },
+  async function runPermissions() {
+    await assertRejects(() => {
+      const cmd = new Deno.Command(Deno.execPath(), {
+        args: ["eval", "console.log('hello world')"],
+      });
+      return cmd.output();
+    }, Deno.errors.PermissionDenied);
+  },
+);
 
 Deno.test(
   { permissions: { run: true, read: true } },
