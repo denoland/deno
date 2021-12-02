@@ -199,10 +199,6 @@ jobs:
           sudo chroot /sysroot bash -c \
                                     'ln -f "$(which ld.lld-13)" "$(which ld)"'
 
-          # Make rust available inside the chroot environment.
-          sudo mkdir -p /sysroot/usr/share/rust
-          sudo mount --rbind /usr/share/rust /sysroot/usr/share/rust
-
           # Make node (needed to run the benchmarks) available.
           sudo ln --target /sysroot/usr/bin "$(which node)"
 
@@ -216,7 +212,7 @@ jobs:
             fi
 
             # Add cargo, rustc, and deno to $PATH.
-            source /usr/share/rust/.cargo/env
+            source /home/runner/.cargo/env
             export PATH="$PATH:$(pwd)/target/release"
 
             # Rust build configuration.
@@ -274,7 +270,7 @@ jobs:
         # when https://github.com/actions/cache/pull/489 (or 571) is merged.
         uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
         if: (matrix.profile == 'release' || matrix.profile == 'fastci') &&
-            github.ref == 'refs/heads/main' 
+            github.ref == 'refs/heads/main'
         with:
           path: |
             ./target
@@ -470,7 +466,7 @@ jobs:
       - name: Run web platform tests (debug)
         if: |
           startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&
-          matrix.profile == 'debug' && 
+          matrix.profile == 'debug' &&
           github.ref == 'refs/heads/main'
         env:
           DENO_BIN: ./target/debug/deno

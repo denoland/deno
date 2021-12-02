@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-pub use reqwest;
 pub use rustls;
 pub use rustls_native_certs;
 pub use webpki;
@@ -8,15 +7,10 @@ pub use webpki_roots;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::Extension;
 
-use reqwest::header::HeaderMap;
-use reqwest::header::USER_AGENT;
-use reqwest::redirect::Policy;
-use reqwest::Client;
 use rustls::internal::msgs::handshake::DigitallySignedStruct;
 use rustls::internal::pemfile::certs;
 use rustls::internal::pemfile::pkcs8_private_keys;
@@ -138,6 +132,7 @@ pub fn create_client_config(
   root_cert_store: Option<RootCertStore>,
   ca_certs: Vec<Vec<u8>>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  client_cert_chain_and_key: Option<(String, String)>,
 ) -> Result<ClientConfig, AnyError> {
   let mut tls_config = ClientConfig::new();
   tls_config.set_persistence(CLIENT_SESSION_MEMORY_CACHE.clone());
@@ -157,6 +152,18 @@ pub fn create_client_config(
     tls_config.dangerous().set_certificate_verifier(Arc::new(
       NoCertificateVerification(ic_allowlist),
     ));
+  }
+
+  if let Some((cert_chain, private_key)) = client_cert_chain_and_key {
+    // The `remove` is safe because load_private_keys checks that there is at least one key.
+    let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
+
+    tls_config
+      .set_single_client_cert(
+        load_certs(&mut cert_chain.as_bytes())?,
+        private_key,
+      )
+      .expect("invalid client key or certificate");
   }
 
   Ok(tls_config)
@@ -208,55 +215,4 @@ pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   }
 
   Ok(keys)
-}
-
-/// Create new instance of async reqwest::Client. This client supports
-/// proxies and doesn't follow redirects.
-pub fn create_http_client(
-  user_agent: String,
-  root_cert_store: Option<RootCertStore>,
-  ca_certs: Vec<Vec<u8>>,
-  proxy: Option<Proxy>,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  client_cert_chain_and_key: Option<(String, String)>,
-) -> Result<Client, AnyError> {
-  let mut tls_config = create_client_config(
-    root_cert_store,
-    ca_certs,
-    unsafely_ignore_certificate_errors,
-  )?;
-
-  if let Some((cert_chain, private_key)) = client_cert_chain_and_key {
-    // The `remove` is safe because load_private_keys checks that there is at least one key.
-    let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
-
-    tls_config
-      .set_single_client_cert(
-        load_certs(&mut cert_chain.as_bytes())?,
-        private_key,
-      )
-      .expect("invalid client key or certificate");
-  }
-
-  tls_config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
-
-  let mut headers = HeaderMap::new();
-  headers.insert(USER_AGENT, user_agent.parse().unwrap());
-  let mut builder = Client::builder()
-    .redirect(Policy::none())
-    .default_headers(headers)
-    .use_preconfigured_tls(tls_config);
-
-  if let Some(proxy) = proxy {
-    let mut reqwest_proxy = reqwest::Proxy::all(&proxy.url)?;
-    if let Some(basic_auth) = &proxy.basic_auth {
-      reqwest_proxy =
-        reqwest_proxy.basic_auth(&basic_auth.username, &basic_auth.password);
-    }
-    builder = builder.proxy(reqwest_proxy);
-  }
-
-  builder
-    .build()
-    .map_err(|e| generic_error(format!("Unable to build http client: {}", e)))
 }

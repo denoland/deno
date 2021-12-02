@@ -281,6 +281,7 @@ where
         root_cert_store,
         vec![],
         unsafely_ignore_certificate_errors,
+        None,
       )?;
       let tls_connector = TlsConnector::from(Arc::new(tls_config));
       let dnsname = DNSNameRef::try_from_ascii_str(domain)

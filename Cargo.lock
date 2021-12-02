@@ -665,7 +665,6 @@ dependencies = [
  "deno_lint",
  "deno_net",
  "deno_runtime",
- "deno_tls",
  "deno_url",
  "deno_web",
  "deno_webgpu",
@@ -979,7 +978,6 @@ version = "0.14.0"
 dependencies = [
  "deno_core",
  "lazy_static",
- "reqwest",
  "rustls",
  "rustls-native-certs",
  "serde",
