@@ -2115,7 +2115,7 @@
         case "ECDH":
         case "ECDSA": {
           switch (format) {
-            case "pkcs8": {
+            /*case "pkcs8": {
               // 1.
               if (key[_type] !== "private") {
                 throw new DOMException(
@@ -2158,7 +2158,7 @@
 
               // 3.
               return data.buffer;
-            }
+            }*/
             case "jwk": {
               const { jwkEcKey } = await core.opAsync(
                 "op_crypto_export_key",
