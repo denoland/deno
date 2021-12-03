@@ -89,7 +89,6 @@ enum State {
   StreamClosed,
   TlsClosing,
   TlsClosed,
-  TlsError,
   TcpClosed,
 }
 
@@ -97,7 +96,9 @@ enum State {
 pub struct TlsStream(Option<TlsStreamInner>);
 
 impl TlsStream {
-  fn new(tcp: TcpStream, tls: Connection) -> Self {
+  fn new(tcp: TcpStream, mut tls: Connection) -> Self {
+    tls.set_buffer_limit(None);
+
     let inner = TlsStreamInner {
       tcp,
       tls,
@@ -112,18 +113,16 @@ impl TlsStream {
     tls_config: Arc<ClientConfig>,
     server_name: ServerName,
   ) -> Self {
-    let tls = Connection::Client(
-      ClientConnection::new(tls_config, server_name).unwrap(),
-    );
-    Self::new(tcp, tls)
+    let tls = ClientConnection::new(tls_config, server_name).unwrap();
+    Self::new(tcp, Connection::Client(tls))
   }
 
   pub fn new_server_side(
     tcp: TcpStream,
     tls_config: Arc<ServerConfig>,
   ) -> Self {
-    let tls = Connection::Server(ServerConnection::new(tls_config).unwrap());
-    Self::new(tcp, tls)
+    let tls = ServerConnection::new(tls_config).unwrap();
+    Self::new(tcp, Connection::Server(tls))
   }
 
   fn into_split(self) -> (ReadHalf, WriteHalf) {
@@ -235,7 +234,7 @@ impl TlsStreamInner {
           State::StreamOpen if !self.tls.wants_write() => break true,
           State::StreamClosed => {
             // Rustls will enqueue the 'CloseNotify' alert and send it after
-            // flusing the data that is already in the queue.
+            // flushing the data that is already in the queue.
             self.tls.send_close_notify();
             self.wr_state = State::TlsClosing;
             continue;
@@ -278,19 +277,30 @@ impl TlsStreamInner {
       };
 
       let rd_ready = loop {
+        // Interpret and decrypt unprocessed TLS protocol data.
+        let tls_state = self
+          .tls
+          .process_new_packets()
+          .map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
+
         match self.rd_state {
           State::TcpClosed if self.tls.is_handshaking() => {
             let err = Error::new(ErrorKind::UnexpectedEof, "tls handshake eof");
             return Poll::Ready(Err(err));
           }
-          State::TlsError => {}
           _ if self.tls.is_handshaking() && !self.tls.wants_read() => {
             break true;
           }
           _ if self.tls.is_handshaking() => {}
-          State::StreamOpen if !self.tls.wants_read() => break true,
+          State::StreamOpen if tls_state.plaintext_bytes_to_read() > 0 => {
+            break true;
+          }
+          State::StreamOpen if tls_state.peer_has_closed() => {
+            self.rd_state = State::TlsClosed;
+            continue;
+          }
           State::StreamOpen => {}
-          State::StreamClosed if !self.tls.wants_read() => {
+          State::StreamClosed if tls_state.plaintext_bytes_to_read() > 0 => {
             // Rustls has more incoming cleartext buffered up, but the TLS
             // session is closing so this data will never be processed by the
             // application layer. Just like what would happen if this were a raw
@@ -299,33 +309,18 @@ impl TlsStreamInner {
           }
           State::StreamClosed => {}
           State::TlsClosed if self.wr_state == State::TcpClosed => {
-            // Wait for the remote end to gracefully close the TCP connection.
-            // TODO(piscisaureus): this is unnecessary; remove when stable.
+            // Keep trying to read from the TCP connection until the remote end
+            // closes it gracefully.
           }
-          _ => break true,
-        }
-
-        // Interpret and decrypt unprocessed TLS protocol data.
-        if self.rd_state < State::TlsClosed {
-          match self.tls.process_new_packets() {
-            Ok(r) if r.plaintext_bytes_to_read() > 0 => continue,
-            Ok(r) if r.peer_has_closed() => {
-              self.rd_state = State::TlsClosed;
-              continue;
-            }
-            Ok(_) => {}
-            Err(err) => {
-              self.rd_state = State::TlsError;
-              return Poll::Ready(Err(Error::new(ErrorKind::InvalidData, err)));
-            }
-          }
+          State::TlsClosed => break true,
+          State::TcpClosed => break true,
+          _ => unreachable!(),
         }
 
         // Try to read more TLS protocol data from the TCP socket.
         let mut wrapped_tcp = ImplementReadTrait(&mut self.tcp);
         match self.tls.read_tls(&mut wrapped_tcp) {
           Ok(0) => {
-            // End of TCP stream.
             self.rd_state = State::TcpClosed;
             continue;
           }
