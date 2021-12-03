@@ -73,7 +73,10 @@ pub struct CommandIoArgs {
   stderr: Option<String>,
 }
 
-fn handle_io_args(command: &mut tokio::process::Command, args: CommandIoArgs) -> Result<(), AnyError> {
+fn handle_io_args(
+  command: &mut tokio::process::Command,
+  args: CommandIoArgs,
+) -> Result<(), AnyError> {
   if let Some(stdin) = &args.stdin {
     command.stdin(subprocess_stdio_map(stdin)?);
   }
@@ -186,7 +189,10 @@ async fn op_command_status(
   rid: ResourceId,
   args: CommandIoArgs,
 ) -> Result<CommandStatus, AnyError> {
-  let command_resource = state.borrow_mut().resource_table.take::<CommandResource>(rid)?;
+  let command_resource = state
+    .borrow_mut()
+    .resource_table
+    .take::<CommandResource>(rid)?;
   let mut command = Rc::try_unwrap(command_resource).ok().unwrap().0;
   handle_io_args(&mut command, args)?;
   Ok(command.status().await?.into())
@@ -205,7 +211,10 @@ async fn op_command_output(
   rid: ResourceId,
   _: (),
 ) -> Result<CommandOutput, AnyError> {
-  let command_resource = state.borrow_mut().resource_table.take::<CommandResource>(rid)?;
+  let command_resource = state
+    .borrow_mut()
+    .resource_table
+    .take::<CommandResource>(rid)?;
   let mut command = Rc::try_unwrap(command_resource).ok().unwrap().0;
   let output = command.output().await?;
 

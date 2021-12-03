@@ -17,7 +17,7 @@ Deno.test(
     assertThrows(() => {
       new Deno.Command(Deno.execPath(), {
         args: ["eval", "console.log('hello world')"],
-      })
+      });
     }, Deno.errors.PermissionDenied);
   },
 );
