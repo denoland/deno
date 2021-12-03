@@ -78,7 +78,7 @@ where
         .ok_or_else(|| anyhow::anyhow!("missing capture"))?;
       content_length = content_length_match.as_str().parse::<usize>()?;
     }
-    if &buf == "\r\n" || &buf == "" {
+    if &buf == "\r\n" || buf.is_empty() {
       break;
     }
   }
