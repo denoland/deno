@@ -1068,193 +1068,50 @@
 
           return key;
         }
-        case "ECDH":
+        case "ECDH": {
+          return await importKeyEC(
+            format,
+            normalizedAlgorithm,
+            keyData,
+            extractable,
+            keyUsages,
+            false,
+          );
+        }
         case "ECDSA": {
-          switch (format) {
-            case "raw": {
-              const keyType = "public";
+          return await importKeyEC(
+            format,
+            normalizedAlgorithm,
+            keyData,
+            extractable,
+            keyUsages,
+            true,
+            (alg) => {
+              let curve;
 
-              // 1.
-              if (
-                !ArrayPrototypeIncludes(
-                  supportedNamedCurves,
-                  normalizedAlgorithm.namedCurve,
-                )
-              ) {
-                throw new DOMException(
-                  "Invalid namedCurve",
-                  "DataError",
-                );
-              }
-
-              // 2.
-              if (
-                ArrayPrototypeFind(
-                  keyUsages,
-                  (u) => !ArrayPrototypeIncludes(["verify"], u),
-                ) !== undefined
-              ) {
-                throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-
-              // 3.
-              const { data } = await core.opAsync("op_crypto_import_key", {
-                algorithm: algorithmName,
-                keyType,
-                namedCurve: normalizedAlgorithm.namedCurve,
-              }, { raw: { data: keyData } });
-
-              const handle = {};
-              WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: keyType,
-                data,
-              });
-
-              // 4-5.
-              const algorithm = {
-                name: algorithmName,
-                namedCurve: normalizedAlgorithm.namedCurve,
-              };
-
-              // 6-8.
-              const key = constructKey(
-                keyType,
-                extractable,
-                usageIntersection(keyUsages, recognisedUsages),
-                algorithm,
-                handle,
-              );
-
-              return key;
-            }
-            case "jwk": {
-              const jwk = keyData;
-
-              const keyType = (jwk.d != undefined) ? "private" : "public";
-
-              if (
-                !ArrayPrototypeIncludes(
-                  supportedNamedCurves,
-                  normalizedAlgorithm.namedCurve,
-                )
-              ) {
-                throw new DOMException(
-                  "Invalid namedCurve",
-                  "DataError",
-                );
-              }
-
-              // 2.
-              if (
-                ArrayPrototypeFind(
-                  keyUsages,
-                  (u) =>
-                    !ArrayPrototypeIncludes(
-                      algorithmName == "ECDSA"
-                        ? [(keyType === "private") ? "sign" : "verify"]
-                        : ["deriveBits"],
-                      u,
-                    ),
-                ) !== undefined
-              ) {
-                throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-              // 3.
-              if (jwk.kty !== "EC") {
-                throw new DOMException(
-                  "`kty` member of JsonWebKey must be `RSA`",
-                  "DataError",
-                );
-              }
-
-              // 4.
-              if (keyUsages.length > 0 && jwk.use) {
-                if (jwk.use !== (algorithmName == "ECDSA" ? "sig" : "enc")) {
+              switch (alg) {
+                case "ES256": {
+                  curve = "P-256";
+                  break;
+                }
+                case "ES384": {
+                  curve = "P-384";
+                  break;
+                }
+                case "ES512": {
+                  curve = "P-521";
+                  break;
+                }
+                default:
                   throw new DOMException(
-                    "`use` member of JsonWebKey must be `sig`",
+                    "Curve algorithm not supported",
                     "DataError",
                   );
-                }
               }
 
-              // 5.
-              // Section 4.3 of RFC7517
-              if (jwk.key_ops) {
-                if (
-                  ArrayPrototypeFind(
-                    jwk.key_ops,
-                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-                  ) !== undefined
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
-
-                if (
-                  !ArrayPrototypeEvery(
-                    jwk.key_ops,
-                    (u) => ArrayPrototypeIncludes(keyUsages, u),
-                  )
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
-              }
-
-              // 6.
-              if (jwk.ext === false && extractable == true) {
-                throw new DOMException(
-                  "`ext` member of JsonWebKey is invalid",
-                  "DataError",
-                );
-              }
-
-              // 7.
-
-              const { data } = await core
-                .opAsync(
-                  "op_crypto_import_key",
-                  {
-                    algorithm: algorithmName,
-                    format,
-                    keyType,
-                    namedCurve: normalizedAlgorithm.namedCurve,
-                  },
-                  { jwkEcKey: jwk },
-                );
-
-              /*if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
-              }*/
-
-              const handle = {};
-              WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: keyType,
-                data,
-              });
-
-              const algorithm = {
-                name: algorithmName,
-                namedCurve: normalizedAlgorithm.namedCurve,
-              };
-
-              const key = constructKey(
-                keyType,
-                extractable,
-                usageIntersection(keyUsages, recognisedUsages),
-                algorithm,
-                handle,
-              );
-
-              return key;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
+              return curve;
+            },
+          );
         }
         case "RSASSA-PKCS1-v1_5": {
           return await importKeyRSA(
@@ -3118,6 +2975,218 @@
           modulusLength,
           publicExponent,
           hash: normalizedAlgorithm.hash,
+        };
+
+        const key = constructKey(
+          keyType,
+          extractable,
+          usageIntersection(keyUsages, recognisedUsages),
+          algorithm,
+          handle,
+        );
+
+        return key;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+  }
+
+  async function importKeyEC(
+    format,
+    normalizedAlgorithm,
+    keyData,
+    extractable,
+    keyUsages,
+    isSignKey,
+    mapJwkAlgToCurve,
+  ) {
+    const algorithmName = normalizedAlgorithm.name;
+
+    switch (format) {
+      case "raw": {
+        const keyType = "public";
+
+        // 1.
+        if (
+          !ArrayPrototypeIncludes(
+            supportedNamedCurves,
+            normalizedAlgorithm.namedCurve,
+          )
+        ) {
+          throw new DOMException(
+            "Invalid namedCurve",
+            "DataError",
+          );
+        }
+
+        // 2.
+        if (isSignKey) {
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) => !ArrayPrototypeIncludes(["verify"], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+        } else if (keyUsages.length != 0) {
+          throw new DOMException("Key usage must be empty", "SyntaxError");
+        }
+
+        // 3.
+        const { data } = await core.opAsync("op_crypto_import_key", {
+          algorithm: algorithmName,
+          keyType,
+          namedCurve: normalizedAlgorithm.namedCurve,
+        }, { raw: { data: keyData } });
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: keyType,
+          data,
+        });
+
+        // 4-5.
+        const algorithm = {
+          name: algorithmName,
+          namedCurve: normalizedAlgorithm.namedCurve,
+        };
+
+        // 6-8.
+        const key = constructKey(
+          keyType,
+          extractable,
+          usageIntersection(keyUsages, recognisedUsages),
+          algorithm,
+          handle,
+        );
+
+        return key;
+      }
+      case "jwk": {
+        const jwk = keyData;
+
+        const keyType = (jwk.d != undefined) ? "private" : "public";
+
+        if (
+          !ArrayPrototypeIncludes(
+            supportedNamedCurves,
+            normalizedAlgorithm.namedCurve,
+          )
+        ) {
+          throw new DOMException(
+            "Invalid namedCurve",
+            "DataError",
+          );
+        }
+
+        // 2.
+        const validUsages = isSignKey
+          ? ((keyType === "private") ? ["sign"] : ["verify"])
+          : ((keyType == "private") ? ["deriveKey", "deriveBits"] : []);
+
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(validUsages, u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        // 3.
+        if (jwk.kty !== "EC") {
+          throw new DOMException(
+            "`kty` member of JsonWebKey must be `RSA`",
+            "DataError",
+          );
+        }
+
+        // 4.
+        if (keyUsages.length > 0 && jwk.use) {
+          const validUse = (isSignKey ? "sig" : "enc");
+          if (jwk.use !== validUse) {
+            throw new DOMException(
+              "`use` member of JsonWebKey must be `" + validUse + "`",
+              "DataError",
+            );
+          }
+        }
+
+        // 5.
+        // Section 4.3 of RFC7517
+        if (jwk.key_ops) {
+          if (
+            ArrayPrototypeFind(
+              jwk.key_ops,
+              (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+            ) !== undefined
+          ) {
+            throw new DOMException(
+              "`key_ops` member of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+
+          if (
+            !ArrayPrototypeEvery(
+              jwk.key_ops,
+              (u) => ArrayPrototypeIncludes(keyUsages, u),
+            )
+          ) {
+            throw new DOMException(
+              "`key_ops` member of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+        }
+
+        // 6.
+        if (jwk.ext === false && extractable == true) {
+          throw new DOMException(
+            "`ext` member of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+
+        // 9.
+        if (jwk.alg && mapJwkAlgToCurve != undefined) {
+          const algNamedCurve = mapJwkAlgToCurve(jwk.alg);
+
+          if (algNamedCurve) {
+            //const normalizedHash = normalizeAlgorithm(hash, "digest");
+
+            if (algNamedCurve !== normalizedAlgorithm.namedCurve) {
+              throw new DOMException(
+                "Mismatched curve algorithm for JWK.alg",
+                "DataError",
+              );
+            }
+          }
+        }
+
+        const { data } = await core
+          .opAsync(
+            "op_crypto_import_key",
+            {
+              algorithm: algorithmName,
+              format,
+              keyType,
+              namedCurve: normalizedAlgorithm.namedCurve,
+            },
+            { jwkEcKey: jwk },
+          );
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: keyType,
+          data,
+        });
+
+        const algorithm = {
+          name: algorithmName,
+          namedCurve: normalizedAlgorithm.namedCurve,
         };
 
         const key = constructKey(

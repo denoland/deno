@@ -1444,9 +1444,6 @@ fn jwk_to_ec_pk_bytes(
   jwk: &ECKeyComponentsB64,
   curve: &CryptoNamedCurve,
 ) -> Result<Vec<u8>, AnyError> {
-  //let x = decode_b64url_4_pkcs1(&jwk.x)?;
-  //let y = decode_b64url_4_pkcs1(&jwk.y)?;
-
   let point_bytes = match curve {
     CryptoNamedCurve::P256 => {
       let xbytes = decode_b64url_to_gen_array(&jwk.x);
@@ -1461,12 +1458,8 @@ fn jwk_to_ec_pk_bytes(
 
       p384::EncodedPoint::from_affine_coordinates(&xbytes, &ybytes, false)
         .to_bytes()
-    } /*_ => {
-        return Err(type_error("Unsupported namedCurve".to_string()));
-      }*/
+    }
   };
-
-  //let point = p256::EncodedPoint::from_affine_coordinates(&xbytes, &ybytes, false);
 
   Ok(point_bytes.to_vec())
 }
@@ -1529,12 +1522,6 @@ fn convert_jwk_to_ec_key(
         public_exponent: None,
         modulus_length: None,
       }
-
-      //let xx = <p256::SecretKey as pkcs8::ToPrivateKey>::to_pkcs8_der(&secret_key);//  ( secret_key as pkcs8::ToPrivateKey).to_pkcs8_der();
-      // let public_key = secret_key.public_key();
-      // //let private_exponent = decode_b64url_4_pkcs1(self.d.as_ref().unwrap())?;
-
-      //let pki = pkcs8::PrivateKeyInfo::new(p256::pkcs8::ObjectIdentifier);
     }
     KeyType::Public => {
       let pk = jwk_to_ec_pk_bytes(&jwk, &curve)?;
@@ -1580,9 +1567,8 @@ fn convert_data_to_jwk_ec(
         }
       };
 
-      //let public_key = private_key.public_key();
-      let pk = public_key.as_affine().to_encoded_point(false); // ).unwrap();
-      let coords = pk.coordinates(); //p256::EncodedPoint::coordinates(&pk);
+      let pk = public_key.as_affine().to_encoded_point(false);
+      let coords = pk.coordinates();
 
       if let p256::elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
         coords
@@ -1725,7 +1711,6 @@ pub async fn op_crypto_import_key(
 
                 _ => return Err(type_error("missing keyData.raw".to_string())),
               };
-              //let point = p256::EncodedPoint::from_bytes(&*raw_data.data)?;
               // 3.
               if point.is_identity() {
                 return Err(type_error("Invalid key data".to_string()));
@@ -1740,7 +1725,6 @@ pub async fn op_crypto_import_key(
                 }
                 _ => return Err(type_error("missing keyData.raw".to_string())),
               };
-              //let point = p384::EncodedPoint::from_bytes(&*raw_data.data)?;
               // 3.
               if point.is_identity() {
                 return Err(type_error("Invalid key data".to_string()));

@@ -1037,11 +1037,17 @@ Deno.test(async function testImportExportEcDsaJwk() {
       continue;
     }
 
+    const curveMapEC: Record<string, string> = {
+      "P-256": "ES256",
+      "P-384": "ES384",
+      "P-521": "ES521",
+    };
+
     // 1. Test import EcDsa
     const privateKeyECDSA = await subtle.importKey(
       "jwk",
       {
-        alg: "ECDSA",
+        alg: curveMapEC["P-" + size],
         ...privateJWK,
         ext: true,
         "key_ops": ["sign"],
@@ -1059,7 +1065,7 @@ Deno.test(async function testImportExportEcDsaJwk() {
     const publicKeyECDSA = await subtle.importKey(
       "jwk",
       {
-        alg: "ECDSA",
+        alg: curveMapEC["P-" + size],
         ...publicJWK,
         ext: true,
         "key_ops": ["verify"],
@@ -1108,7 +1114,6 @@ Deno.test(async function testImportExportEcDhJwk() {
     const privateKeyECDH = await subtle.importKey(
       "jwk",
       {
-        alg: "ECDH",
         ...privateJWK,
         ext: true,
         "key_ops": ["deriveBits"],
@@ -1127,14 +1132,13 @@ Deno.test(async function testImportExportEcDhJwk() {
     const publicKeyECDH = await subtle.importKey(
       "jwk",
       {
-        alg: "ECDH",
         ...publicJWK,
         ext: true,
-        "key_ops": ["deriveBits"],
+        "key_ops": [],
       },
       { name: "ECDH", namedCurve: publicJWK.crv },
       true,
-      ["deriveBits"],
+      [],
     );
     const expPublicKeyJWK = await subtle.exportKey(
       "jwk",
