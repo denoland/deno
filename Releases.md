@@ -6,6 +6,17 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.16.4 / 2021.12.03
+
+- fix(core): Wake up the runtime if there are ticks scheduled (#12933)
+- fix(core): throw on invalid callConsole args (#12973) (#12974)
+- fix(ext/crypto): throw on key & op algo mismatch (#12838)
+- fix(test): Improve reliability of `deno test`'s op sanitizer with timers
+  (#12934)
+- fix(websocket): bad rid on WebSocketStream abort (#12913)
+- fix(workers): Make `worker.terminate()` not immediately kill the isolate
+  (#12831)
+
 ### 1.16.3 / 2021.11.24
 
 - fix(cli): config file should resolve paths relative to the config file
