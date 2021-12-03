@@ -166,7 +166,6 @@
     },
   };
 
-  // Decodes the unpadded base64 to the octet sequence containing key value `k` defined in RFC7518 Section 6.4
   function unpaddedBase64(bytes) {
     let binaryString = "";
     for (let i = 0; i < bytes.length; i++) {
@@ -200,6 +199,7 @@
 
       // TODO(@sean-wykes): determine if non-CRT RSA keys must be supported
       //  - wpt does not include test cases, but RFC7518 uses "SHOULD" in 6.3.2
+      // Maybe in future patch
 
       /*if (
         isPresent(jwk.p) || isPresent(jwk.q) || isPresent(jwk.dp) ||
@@ -870,6 +870,8 @@
 
       switch (algorithmName) {
         case "HMAC": {
+          const keyType = "secret";
+
           // 2.
           if (
             ArrayPrototypeFind(
@@ -911,14 +913,12 @@
               }
 
               // 4.
-              const keyType = "secret";
-
               const retImport = await core
                 .opAsync(
                   "op_crypto_import_key",
                   {
-                    algorithm: "HMAC",
-                    format: "jwk",
+                    algorithm: algorithmName,
+                    format,
                     keyType,
                     // Needed to perform step without normalization.
                     hash: normalizedAlgorithm.hash.name,
@@ -975,7 +975,7 @@
               // 7.
               if (keyUsages.length > 0 && jwk.use && jwk.use !== "sig") {
                 throw new DOMException(
-                  "`use` member of JsonWebKey must be `sign`",
+                  "`use` member of JsonWebKey must be `sig`",
                   "DataError",
                 );
               }
@@ -1048,19 +1048,18 @@
 
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "raw",
-            keyType: "secret",
+            type: keyType,
             data,
           });
 
           const algorithm = {
-            name: "HMAC",
+            name: algorithmName,
             length,
             hash,
           };
 
           const key = constructKey(
-            "secret",
+            keyType,
             extractable,
             usageIntersection(keyUsages, recognisedUsages),
             algorithm,
@@ -1073,6 +1072,8 @@
         case "ECDSA": {
           switch (format) {
             case "raw": {
+              const keyType = "public";
+
               // 1.
               if (
                 !ArrayPrototypeIncludes(
@@ -1098,27 +1099,26 @@
 
               // 3.
               const { data } = await core.opAsync("op_crypto_import_key", {
-                algorithm: normalizedAlgorithm.name,
-                keyType: "public",
+                algorithm: algorithmName,
+                keyType,
                 namedCurve: normalizedAlgorithm.namedCurve,
               }, { raw: { data: keyData } });
 
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: "raw",
-                keyType: "public",
+                type: keyType,
                 data,
               });
 
               // 4-5.
               const algorithm = {
-                name: normalizedAlgorithm.name,
+                name: algorithmName,
                 namedCurve: normalizedAlgorithm.namedCurve,
               };
 
               // 6-8.
               const key = constructKey(
-                "public",
+                keyType,
                 extractable,
                 usageIntersection(keyUsages, recognisedUsages),
                 algorithm,
@@ -1218,7 +1218,7 @@
                   "op_crypto_import_key",
                   {
                     algorithm: algorithmName,
-                    format: "jwk",
+                    format,
                     keyType,
                     namedCurve: normalizedAlgorithm.namedCurve,
                   },
@@ -1231,10 +1231,8 @@
 
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: (keyType == "private") ? "pkcs8" : "raw",
-                keyType,
+                type: keyType,
                 data,
-                jwk,
               });
 
               const algorithm = {
@@ -1279,7 +1277,7 @@
                   "op_crypto_import_key",
                   {
                     algorithm: algorithmName,
-                    format: "pkcs8",
+                    format,
                     keyType: "private",
                     // Needed to perform step 7 without normalization.
                     hash: normalizedAlgorithm.hash.name,
@@ -1289,9 +1287,7 @@
 
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
-                // PKCS#1 for RSA
-                type: "raw",
-                keyType: "private",
+                type: "private",
                 data,
               });
 
@@ -1430,7 +1426,7 @@
                   "op_crypto_import_key",
                   {
                     algorithm: algorithmName,
-                    format: "jwk",
+                    format,
                     keyType,
                     // Need to perform step without normalization.
                     hash: normalizedAlgorithm.hash.name,
@@ -1444,8 +1440,7 @@
 
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: "raw",
-                keyType,
+                type: keyType,
                 data,
               });
 
@@ -1495,7 +1490,7 @@
                   "op_crypto_import_key",
                   {
                     algorithm: algorithmName,
-                    format: "pkcs8",
+                    format,
                     keyType: "private",
                     // Needed to perform step 7 without normalization.
                     hash: normalizedAlgorithm.hash.name,
@@ -1505,9 +1500,7 @@
 
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
-                // PKCS#1 for RSA
-                type: "raw",
-                keyType: "private",
+                type: "private",
                 data,
               });
 
@@ -1558,7 +1551,7 @@
               // 4.
               if (keyUsages.length > 0 && jwk.use && jwk.use !== "sig") {
                 throw new DOMException(
-                  "`use` member of JsonWebKey must be `sign`",
+                  "`use` member of JsonWebKey must be `sig`",
                   "DataError",
                 );
               }
@@ -1643,7 +1636,7 @@
                   "op_crypto_import_key",
                   {
                     algorithm: algorithmName,
-                    format: "jwk",
+                    format,
                     keyType,
                     // Need to perform step without normalization.
                     hash: normalizedAlgorithm.hash.name,
@@ -1657,8 +1650,7 @@
 
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: "raw",
-                keyType,
+                type: keyType,
                 data,
               });
 
@@ -1688,6 +1680,8 @@
         case "RSA-OAEP": {
           switch (format) {
             case "pkcs8": {
+              const keyType = "private";
+
               // 1.
               if (
                 ArrayPrototypeFind(
@@ -1708,8 +1702,8 @@
                   "op_crypto_import_key",
                   {
                     algorithm: algorithmName,
-                    format: "pkcs8",
-                    keyType: "private",
+                    format,
+                    keyType,
                     // Need to perform step 7 without normalization.
                     hash: normalizedAlgorithm.hash.name,
                   },
@@ -1718,21 +1712,19 @@
 
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
-                // PKCS#1 for RSA
-                type: "raw",
-                keyType: "private",
+                type: keyType,
                 data,
               });
 
               const algorithm = {
-                name: "RSA-OAEP",
+                name: algorithmName,
                 modulusLength,
                 publicExponent,
                 hash: normalizedAlgorithm.hash,
               };
 
               const key = constructKey(
-                "private",
+                keyType,
                 extractable,
                 usageIntersection(keyUsages, recognisedUsages),
                 algorithm,
@@ -1861,7 +1853,7 @@
                   "op_crypto_import_key",
                   {
                     algorithm: algorithmName,
-                    format: "jwk",
+                    format,
                     keyType,
                     // Needed to perform step 7 without normalization.
                     hash: normalizedAlgorithm.hash.name,
@@ -1875,8 +1867,7 @@
 
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: "raw",
-                keyType,
+                type: keyType,
                 data,
               });
 
@@ -1929,8 +1920,7 @@
           // 3.
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "raw",
-            keyType: "secret",
+            type: "secret",
             data: keyData,
           });
 
@@ -1976,8 +1966,7 @@
           // 4.
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "raw",
-            keyType: "secret",
+            type: "secret",
             data: keyData,
           });
 
@@ -2140,7 +2129,7 @@
                 "op_crypto_export_key",
                 {
                   key: innerKey,
-                  format: "pkcs8",
+                  format,
                   algorithm: algorithmName,
                 },
               );
@@ -2162,7 +2151,7 @@
                 "op_crypto_export_key",
                 {
                   key: innerKey,
-                  format: "spki",
+                  format,
                   algorithm: algorithmName,
                 },
               );
@@ -2175,7 +2164,7 @@
                 "op_crypto_export_key",
                 {
                   key: innerKey,
-                  format: "jwk",
+                  format,
                   algorithm: algorithmName,
                   namedCurve: key[_algorithm].namedCurve,
                 },
@@ -2266,7 +2255,7 @@
                 "op_crypto_export_key",
                 {
                   key: innerKey,
-                  format: "pkcs8",
+                  format,
                   algorithm: algorithmName,
                 },
               );
@@ -2288,7 +2277,7 @@
                 "op_crypto_export_key",
                 {
                   key: innerKey,
-                  format: "spki",
+                  format,
                   algorithm: algorithmName,
                 },
               );
@@ -2301,7 +2290,7 @@
                 "op_crypto_export_key",
                 {
                   key: innerKey,
-                  format: "jwk",
+                  format,
                   algorithm: algorithmName,
                 },
               );
@@ -2333,7 +2322,7 @@
                 "op_crypto_export_key",
                 {
                   key: innerKey,
-                  format: "pkcs8",
+                  format,
                   algorithm: algorithmName,
                   hash: key[_algorithm].hash.name,
                 },
@@ -2356,7 +2345,7 @@
                 "op_crypto_export_key",
                 {
                   key: innerKey,
-                  format: "spki",
+                  format,
                   algorithm: algorithmName,
                   hash: key[_algorithm].hash.name,
                 },
@@ -2370,7 +2359,7 @@
                 "op_crypto_export_key",
                 {
                   key: innerKey,
-                  format: "jwk",
+                  format,
                   algorithm: algorithmName,
                 },
               );
@@ -2402,7 +2391,7 @@
                 "op_crypto_export_key",
                 {
                   key: innerKey,
-                  format: "pkcs8",
+                  format,
                   algorithm: algorithmName,
                   hash: key[_algorithm].hash.name,
                 },
@@ -2425,7 +2414,7 @@
                 "op_crypto_export_key",
                 {
                   key: innerKey,
-                  format: "spki",
+                  format,
                   algorithm: algorithmName,
                   hash: key[_algorithm].hash.name,
                 },
@@ -2439,7 +2428,7 @@
                 "op_crypto_export_key",
                 {
                   key: innerKey,
-                  format: "jwk",
+                  format,
                   algorithm: algorithmName,
                 },
               );
@@ -2915,9 +2904,7 @@
         );
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          // PKCS#1 for RSA
-          type: "raw",
-          keyType: "private",
+          type: "private",
           data: keyData,
         });
 
@@ -2977,9 +2964,7 @@
         );
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          // PKCS#1 for RSA
-          type: "raw",
-          keyType: "private",
+          type: "private",
           data: keyData,
         });
 
@@ -3036,8 +3021,7 @@
             namedCurve: normalizedAlgorithm.namedCurve,
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "pkcs8",
-            keyType: "private",
+            type: "private",
             data: keyData,
           });
         } else {
@@ -3095,8 +3079,7 @@
             namedCurve: normalizedAlgorithm.namedCurve,
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "pkcs8",
-            keyType: "private",
+            type: "private",
             data: keyData,
           });
         } else {
@@ -3193,8 +3176,7 @@
         });
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "raw",
-          keyType: "secret",
+          type: "secret",
           data: keyData,
         });
 
@@ -3319,7 +3301,7 @@
             "op_crypto_import_key",
             {
               algorithm: normalizedAlgorithm.name,
-              format: "jwk",
+              format,
               keyType: "secret",
             },
             { jwkSecretKey: jwk },
@@ -3409,8 +3391,7 @@
 
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
-      type: "raw",
-      keyType: "secret",
+      type: "secret",
       data,
     });
 
@@ -3445,8 +3426,7 @@
     });
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
-      type: "raw",
-      keyType: "secret",
+      type: "secret",
       data: keyData,
     });
 

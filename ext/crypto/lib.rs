@@ -292,10 +292,7 @@ pub enum KeyFormat {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KeyData {
-  // TODO(littledivy): Kept here to be used to `importKey`() in future.
-  #[allow(dead_code)]
-  r#type: KeyFormat,
-  key_type: KeyType,
+  r#type: KeyType,
   data: ZeroCopyBuf,
 }
 
@@ -473,13 +470,7 @@ pub async fn op_crypto_verify_key(
 
   let verification = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
-      let public_key: RsaPublicKey = match args.key.key_type {
-        KeyType::Private => {
-          RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
-        }
-        KeyType::Public => RsaPublicKey::from_pkcs1_der(&*args.key.data)?,
-        _ => return Err(type_error("Invalid Key format".to_string())),
-      };
+      let public_key = read_rsa_public_key(args.key)?;
       let (padding, hashed) = match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
@@ -535,13 +526,7 @@ pub async fn op_crypto_verify_key(
         .salt_length
         .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
         as usize;
-      let public_key: RsaPublicKey = match args.key.key_type {
-        KeyType::Private => {
-          RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
-        }
-        KeyType::Public => RsaPublicKey::from_pkcs1_der(&*args.key.data)?,
-        _ => return Err(type_error("Invalid Key format".to_string())),
-      };
+      let public_key = read_rsa_public_key(args.key)?;
       let rng = OsRng;
       let (padding, hashed) = match args
         .hash
@@ -598,7 +583,7 @@ pub async fn op_crypto_verify_key(
 
       let private_key;
 
-      let public_key_bytes = match args.key.key_type {
+      let public_key_bytes = match args.key.r#type {
         KeyType::Private => {
           private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &*args.key.data)?;
 
@@ -649,7 +634,7 @@ pub async fn op_crypto_export_key(
 
           let jwk = convert_data_to_jwk_ec(
             args.key.data.to_vec(),
-            args.key.key_type,
+            args.key.r#type,
             curve,
           )?;
 
@@ -717,10 +702,8 @@ pub async fn op_crypto_export_key(
         KeyFormat::Jwk => {
           // key.data is a PKCS#1 DER-encoded public or private key
           // Infallible based on spec because of the way we import and generate keys.
-          let jwk = convert_pkcs1_to_jwk_rsa(
-            args.key.data.to_vec(),
-            args.key.key_type,
-          )?;
+          let jwk =
+            convert_pkcs1_to_jwk_rsa(args.key.data.to_vec(), args.key.r#type)?;
 
           Ok(ImportExportKeyData::JwkRsaKey(jwk))
         }
@@ -791,10 +774,8 @@ pub async fn op_crypto_export_key(
         KeyFormat::Jwk => {
           // key.data is a PKCS#1 DER-encoded public or private key
           // Infallible based on spec because of the way we import and generate keys.
-          let jwk = convert_pkcs1_to_jwk_rsa(
-            args.key.data.to_vec(),
-            args.key.key_type,
-          )?;
+          let jwk =
+            convert_pkcs1_to_jwk_rsa(args.key.data.to_vec(), args.key.r#type)?;
 
           Ok(ImportExportKeyData::JwkRsaKey(jwk))
         }
@@ -865,10 +846,8 @@ pub async fn op_crypto_export_key(
         KeyFormat::Jwk => {
           // key.data is a PKCS#1 DER-encoded public or private key
           // Infallible based on spec because of the way we import and generate keys.
-          let jwk = convert_pkcs1_to_jwk_rsa(
-            args.key.data.to_vec(),
-            args.key.key_type,
-          )?;
+          let jwk =
+            convert_pkcs1_to_jwk_rsa(args.key.data.to_vec(), args.key.r#type)?;
 
           Ok(ImportExportKeyData::JwkRsaKey(jwk))
         }
@@ -1002,6 +981,17 @@ pub struct EncryptArg {
   length: Option<usize>,
 }
 
+fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, AnyError> {
+  let public_key = match key_data.r#type {
+    KeyType::Private => {
+      RsaPrivateKey::from_pkcs1_der(&*key_data.data)?.to_public_key()
+    }
+    KeyType::Public => RsaPublicKey::from_pkcs1_der(&*key_data.data)?,
+    KeyType::Secret => unreachable!("unexpected KeyType::Secret"),
+  };
+  Ok(public_key)
+}
+
 pub async fn op_crypto_encrypt_key(
   _state: Rc<RefCell<OpState>>,
   args: EncryptArg,
@@ -1012,13 +1002,7 @@ pub async fn op_crypto_encrypt_key(
 
   match algorithm {
     Algorithm::RsaOaep => {
-      let public_key: RsaPublicKey = match args.key.key_type {
-        KeyType::Private => {
-          RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
-        }
-        KeyType::Public => RsaPublicKey::from_pkcs1_der(&*args.key.data)?,
-        _ => return Err(type_error("Invalid Key format".to_string())),
-      };
+      let public_key = read_rsa_public_key(args.key)?;
       let label = args.label.map(|l| String::from_utf8_lossy(&*l).to_string());
       let mut rng = OsRng;
       let padding = match args
