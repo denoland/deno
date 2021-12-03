@@ -883,6 +883,7 @@ where
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
+    None,
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
@@ -983,6 +984,7 @@ where
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
+    None,
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {

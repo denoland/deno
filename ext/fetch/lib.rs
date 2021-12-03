@@ -25,13 +25,15 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_tls::create_http_client;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use http::header::CONTENT_LENGTH;
+use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
 use reqwest::header::HOST;
+use reqwest::header::USER_AGENT;
+use reqwest::redirect::Policy;
 use reqwest::Body;
 use reqwest::Client;
 use reqwest::Method;
@@ -65,7 +67,7 @@ pub struct Options {
   pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
-  pub file_fetch_handler: Box<dyn FetchHandler>,
+  pub file_fetch_handler: Rc<dyn FetchHandler>,
 }
 
 impl Default for Options {
@@ -77,7 +79,7 @@ impl Default for Options {
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
-      file_fetch_handler: Box::new(DefaultFileFetchHandler),
+      file_fetch_handler: Rc::new(DefaultFileFetchHandler),
     }
   }
 }
@@ -132,7 +134,8 @@ pub trait FetchHandler: dyn_clone::DynClone {
   // cancelable response result, the optional fetch body resource and the
   // optional cancel handle.
   fn fetch_file(
-    &mut self,
+    &self,
+    state: &mut OpState,
     url: Url,
   ) -> (
     CancelableResponseFuture,
@@ -149,7 +152,8 @@ pub struct DefaultFileFetchHandler;
 
 impl FetchHandler for DefaultFileFetchHandler {
   fn fetch_file(
-    &mut self,
+    &self,
+    _state: &mut OpState,
     _url: Url,
   ) -> (
     CancelableResponseFuture,
@@ -232,8 +236,9 @@ where
       let Options {
         file_fetch_handler, ..
       } = state.borrow_mut::<Options>();
+      let file_fetch_handler = file_fetch_handler.clone();
       let (request, maybe_request_body, maybe_cancel_handle) =
-        file_fetch_handler.fetch_file(url);
+        file_fetch_handler.fetch_file(state, url);
       let request_rid = state.resource_table.add(FetchRequestResource(request));
       let maybe_request_body_rid =
         maybe_request_body.map(|r| state.resource_table.add(r));
@@ -572,4 +577,43 @@ where
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(rid)
+}
+
+/// Create new instance of async reqwest::Client. This client supports
+/// proxies and doesn't follow redirects.
+pub fn create_http_client(
+  user_agent: String,
+  root_cert_store: Option<RootCertStore>,
+  ca_certs: Vec<Vec<u8>>,
+  proxy: Option<Proxy>,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  client_cert_chain_and_key: Option<(String, String)>,
+) -> Result<Client, AnyError> {
+  let mut tls_config = deno_tls::create_client_config(
+    root_cert_store,
+    ca_certs,
+    unsafely_ignore_certificate_errors,
+    client_cert_chain_and_key,
+  )?;
+
+  tls_config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
+
+  let mut headers = HeaderMap::new();
+  headers.insert(USER_AGENT, user_agent.parse().unwrap());
+  let mut builder = Client::builder()
+    .redirect(Policy::none())
+    .default_headers(headers)
+    .use_preconfigured_tls(tls_config);
+
+  if let Some(proxy) = proxy {
+    let mut reqwest_proxy = reqwest::Proxy::all(&proxy.url)?;
+    if let Some(basic_auth) = &proxy.basic_auth {
+      reqwest_proxy =
+        reqwest_proxy.basic_auth(&basic_auth.username, &basic_auth.password);
+    }
+    builder = builder.proxy(reqwest_proxy);
+  }
+
+  // unwrap here because it can only fail when native TLS is used.
+  Ok(builder.build().unwrap())
 }
