@@ -13,12 +13,11 @@ import {
 
 Deno.test(
   { permissions: { read: true, run: false } },
-  async function runPermissions() {
-    await assertRejects(() => {
-      const cmd = new Deno.Command(Deno.execPath(), {
+  function runPermissions() {
+    assertThrows(() => {
+      new Deno.Command(Deno.execPath(), {
         args: ["eval", "console.log('hello world')"],
-      });
-      return cmd.output();
+      })
     }, Deno.errors.PermissionDenied);
   },
 );
@@ -388,33 +387,6 @@ Deno.test(
     const output = await cmd.output();
     const s = new TextDecoder().decode(output.stdout);
     assertEquals(s, "01234567");
-  },
-);
-
-Deno.test(
-  { permissions: { run: true, read: true } },
-  async function runKillAfterStatus() {
-    const cmd = new Deno.Command(Deno.execPath(), {
-      args: ["eval", "console.log('hello')"],
-    });
-    const child = cmd.spawn();
-    await child.wait();
-
-    let error = null;
-    try {
-      child.kill("SIGTERM");
-    } catch (e) {
-      error = e;
-    }
-
-    assert(
-      error instanceof Deno.errors.NotFound ||
-        // On Windows, the underlying Windows API may return
-        // `ERROR_ACCESS_DENIED` when the process has exited, but hasn't been
-        // completely cleaned up yet and its `pid` is still valid.
-        (Deno.build.os === "windows" &&
-          error instanceof Deno.errors.PermissionDenied),
-    );
   },
 );
 

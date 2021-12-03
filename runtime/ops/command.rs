@@ -29,6 +29,7 @@ use std::os::unix::prelude::ExitStatusExt;
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
+      ("op_create_command", op_sync(op_create_command)),
       ("op_command_spawn", op_sync(op_command_spawn)),
       ("op_command_status", op_async(op_command_status)),
       ("op_command_output", op_async(op_command_output)),
@@ -47,6 +48,14 @@ impl Resource for ChildResource {
   }
 }
 
+struct CommandResource(tokio::process::Command);
+
+impl Resource for CommandResource {
+  fn name(&self) -> Cow<str> {
+    "command".into()
+  }
+}
+
 fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
   match s {
     "inherit" => Ok(std::process::Stdio::inherit()),
@@ -54,6 +63,28 @@ fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
     "null" => Ok(std::process::Stdio::null()),
     _ => Err(type_error("Invalid resource for stdio")),
   }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandIoArgs {
+  stdin: Option<String>,
+  stdout: Option<String>,
+  stderr: Option<String>,
+}
+
+fn handle_io_args(command: &mut tokio::process::Command, args: CommandIoArgs) -> Result<(), AnyError> {
+  if let Some(stdin) = &args.stdin {
+    command.stdin(subprocess_stdio_map(stdin)?);
+  }
+  if let Some(stdout) = &args.stdout {
+    command.stdout(subprocess_stdio_map(stdout)?);
+  }
+  if let Some(stderr) = &args.stderr {
+    command.stderr(subprocess_stdio_map(stderr)?);
+  }
+
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -68,39 +99,34 @@ pub struct CommandArgs {
   gid: Option<u32>,
   #[cfg(unix)]
   uid: Option<u32>,
-  stdin: Option<String>,
-  stdout: Option<String>,
-  stderr: Option<String>,
 }
 
-fn create_command(
+fn op_create_command(
   state: &mut OpState,
-  command_args: CommandArgs,
-) -> Result<Command, AnyError> {
-  state
-    .borrow_mut::<Permissions>()
-    .run
-    .check(&command_args.cmd)?;
+  args: CommandArgs,
+  _: (),
+) -> Result<ResourceId, AnyError> {
+  state.borrow_mut::<Permissions>().run.check(&args.cmd)?;
 
-  let mut command = Command::new(&command_args.cmd);
-  command.args(&command_args.args);
+  let mut command = Command::new(&args.cmd);
+  command.args(&args.args);
 
-  if let Some(cwd) = command_args.cwd {
+  if let Some(cwd) = args.cwd {
     command.current_dir(cwd);
   }
 
-  if command_args.clear_env {
+  if args.clear_env {
     command.env_clear();
   }
-  command.envs(command_args.env);
+  command.envs(args.env);
 
   #[cfg(unix)]
-  if let Some(gid) = command_args.gid {
+  if let Some(gid) = args.gid {
     super::check_unstable(state, "Deno.Command.gid");
     command.gid(gid);
   }
   #[cfg(unix)]
-  if let Some(uid) = command_args.uid {
+  if let Some(uid) = args.uid {
     super::check_unstable(state, "Deno.Command.uid");
     command.uid(uid);
   }
@@ -112,22 +138,13 @@ fn create_command(
     });
   }
 
-  if let Some(stdin) = &command_args.stdin {
-    command.stdin(subprocess_stdio_map(stdin)?);
-  }
-  if let Some(stdout) = &command_args.stdout {
-    command.stdout(subprocess_stdio_map(stdout)?);
-  }
-  if let Some(stderr) = &command_args.stderr {
-    command.stderr(subprocess_stdio_map(stderr)?);
-  }
-
   // TODO(@crowlkats): allow detaching processes.
   //  currently deno will orphan a process when exiting with an error or Deno.exit()
   // We want to kill child when it's closed
   command.kill_on_drop(true);
 
-  Ok(command)
+  let rid = state.resource_table.add(CommandResource(command));
+  Ok(rid)
 }
 
 #[derive(Serialize)]
@@ -166,10 +183,12 @@ impl From<std::process::ExitStatus> for CommandStatus {
 
 async fn op_command_status(
   state: Rc<RefCell<OpState>>,
-  command_args: CommandArgs,
-  _: (),
+  rid: ResourceId,
+  args: CommandIoArgs,
 ) -> Result<CommandStatus, AnyError> {
-  let mut command = create_command(&mut state.borrow_mut(), command_args)?;
+  let command_resource = state.borrow_mut().resource_table.take::<CommandResource>(rid)?;
+  let mut command = Rc::try_unwrap(command_resource).ok().unwrap().0;
+  handle_io_args(&mut command, args)?;
   Ok(command.status().await?.into())
 }
 
@@ -183,10 +202,11 @@ pub struct CommandOutput {
 
 async fn op_command_output(
   state: Rc<RefCell<OpState>>,
-  command_args: CommandArgs,
+  rid: ResourceId,
   _: (),
 ) -> Result<CommandOutput, AnyError> {
-  let mut command = create_command(&mut state.borrow_mut(), command_args)?;
+  let command_resource = state.borrow_mut().resource_table.take::<CommandResource>(rid)?;
+  let mut command = Rc::try_unwrap(command_resource).ok().unwrap().0;
   let output = command.output().await?;
 
   Ok(CommandOutput {
@@ -208,10 +228,13 @@ struct Child {
 
 fn op_command_spawn(
   state: &mut OpState,
-  command_args: CommandArgs,
-  _: (),
+  rid: ResourceId,
+  args: CommandIoArgs,
 ) -> Result<Child, AnyError> {
-  let mut command = create_command(state, command_args)?;
+  let command_resource = state.resource_table.take::<CommandResource>(rid)?;
+  let mut command = Rc::try_unwrap(command_resource).ok().unwrap().0;
+  handle_io_args(&mut command, args)?;
+
   let mut child = command.spawn()?;
   let pid = child.id().expect("Process ID should be set.");
 

@@ -44,7 +44,7 @@
   }
 
   class Command {
-    #options;
+    #rid;
 
     constructor(command, {
       args = [],
@@ -54,7 +54,7 @@
       gid = undefined,
       uid = undefined,
     } = {}) {
-      this.#options = {
+      this.#rid = core.opSync("op_create_command", {
         cmd: pathFromURL(command),
         args: ArrayPrototypeMap(args, String),
         cwd: pathFromURL(cwd),
@@ -62,31 +62,40 @@
         env: ObjectEntries(env),
         gid,
         uid,
-      };
+      });
     }
 
     spawn(options = {}) {
-      const child = core.opSync("op_command_spawn", {
-        ...this.#options,
-        ...options,
-      });
-
+      if (this.#rid === null) {
+        throw new TypeError("Child has already been used up.");
+      }
+      const child = core.opSync("op_command_spawn", this.#rid, options);
+      this.#rid = null;
       return new Child(illegalConstructorKey, child);
     }
 
     async status(options = {}) {
-      const status = await core.opAsync("op_command_status", {
-        ...this.#options,
-        ...options,
-      });
-      // TODO(@crowlKats): change typings to return null instead of undefined for status.signal
+      if (this.#rid === null) {
+        throw new TypeError("Child has already been used up.");
+      }
+      const status = await core.opAsync(
+        "op_command_status",
+        this.#rid,
+        options,
+      );
+      this.#rid = null;
+      // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
       status.signal ??= undefined;
       return status;
     }
 
     async output() {
-      const res = await core.opAsync("op_command_output", this.#options);
-      // TODO(@crowlKats): change typings to return null instead of undefined for status.signal
+      if (this.#rid === null) {
+        throw new TypeError("Child has already been used up.");
+      }
+      const res = await core.opAsync("op_command_output", this.#rid);
+      this.#rid = null;
+      // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
       res.status.signal ??= undefined;
       return res;
     }
