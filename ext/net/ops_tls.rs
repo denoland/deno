@@ -92,7 +92,6 @@ enum State {
   TcpClosed,
 }
 
-//#[derive(Debug)]
 pub struct TlsStream(Option<TlsStreamInner>);
 
 impl TlsStream {
@@ -134,6 +133,8 @@ impl TlsStream {
     (rd, wr)
   }
 
+  /// Tokio-rustls compatibility: returns a reference to the underlying TCP
+  /// stream, and a reference to the Rustls `Connection` object.
   pub fn get_ref(&self) -> (&TcpStream, &Connection) {
     let inner = self.0.as_ref().unwrap();
     (&inner.tcp, &inner.tls)
@@ -210,7 +211,6 @@ impl Drop for TlsStream {
   }
 }
 
-// #[derive(Debug)]
 pub struct TlsStreamInner {
   tls: Connection,
   tcp: TcpStream,
@@ -451,7 +451,6 @@ impl TlsStreamInner {
   }
 }
 
-// #[derive(Debug)]
 pub struct ReadHalf {
   shared: Arc<Shared>,
 }
@@ -482,7 +481,6 @@ impl AsyncRead for ReadHalf {
   }
 }
 
-// #[derive(Debug)]
 pub struct WriteHalf {
   shared: Arc<Shared>,
 }
@@ -536,7 +534,6 @@ impl AsyncWrite for WriteHalf {
   }
 }
 
-// #[derive(Debug)]
 struct Shared {
   tls_stream: Mutex<TlsStream>,
   rd_waker: AtomicWaker,
