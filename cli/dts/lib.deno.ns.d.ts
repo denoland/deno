@@ -2372,7 +2372,7 @@ declare namespace Deno {
 
     wait(): Promise<ProcessStatus>;
     output(): Promise<CommandOutput>;
-    kill(signo: string): void;
+    kill(signo: Signal): void;
   }
 
   interface CommandOutput<T extends ProcessIoOptions = ProcessIoOptions> {

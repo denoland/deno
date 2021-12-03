@@ -398,7 +398,7 @@ Deno.test(
     });
     const child = cmd.spawn();
 
-    Deno.kill(child.pid, "SIGINT");
+    child.kill("SIGKILL");
     const status = await child.wait();
 
     assertEquals(status.success, false);
@@ -406,8 +406,8 @@ Deno.test(
       assertEquals(status.code, 1);
       assertEquals(status.signal, undefined);
     } else {
-      assertEquals(status.code, 130);
-      assertEquals(status.signal, 2);
+      assertEquals(status.code, 137);
+      assertEquals(status.signal, 9);
     }
   },
 );
@@ -422,7 +422,7 @@ Deno.test(
 
     assertThrows(() => {
       // @ts-expect-error testing runtime error of bad signal
-      Deno.kill(child.pid, "foobar");
+      child.kill("foobar");
     }, TypeError);
 
     await child.wait();
