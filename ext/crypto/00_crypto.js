@@ -1168,11 +1168,13 @@
               }
 
               // 4.
-              if (keyUsages.length > 0 && jwk.use && jwk.use !== "sig") {
-                throw new DOMException(
-                  "`use` member of JsonWebKey must be `sig`",
-                  "DataError",
-                );
+              if (keyUsages.length > 0 && jwk.use) {
+                if (jwk.use !== (algorithmName == "ECDSA" ? "sig" : "enc")) {
+                  throw new DOMException(
+                    "`use` member of JsonWebKey must be `sig`",
+                    "DataError",
+                  );
+                }
               }
 
               // 5.
@@ -1255,644 +1257,120 @@
           }
         }
         case "RSASSA-PKCS1-v1_5": {
-          switch (format) {
-            case "pkcs8": {
-              // 1.
-              if (
-                ArrayPrototypeFind(
-                  keyUsages,
-                  (u) => !ArrayPrototypeIncludes(["sign"], u),
-                ) !== undefined
-              ) {
-                throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
-              }
-
-              // 2-9.
-              const { modulusLength, publicExponent, data } = await core
-                .opAsync(
-                  "op_crypto_import_key",
-                  {
-                    algorithm: algorithmName,
-                    format,
-                    keyType: "private",
-                    // Needed to perform step 7 without normalization.
-                    hash: normalizedAlgorithm.hash.name,
-                  },
-                  { raw: { data: keyData } },
-                );
-
-              const handle = {};
-              WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: "private",
-                data,
-              });
-
-              const algorithm = {
-                name: "RSASSA-PKCS1-v1_5",
-                modulusLength,
-                publicExponent,
-                hash: normalizedAlgorithm.hash,
-              };
-
-              const key = constructKey(
-                "private",
-                extractable,
-                usageIntersection(keyUsages, recognisedUsages),
-                algorithm,
-                handle,
-              );
-
-              return key;
-            }
-            case "jwk": {
-              // 2. https://w3c.github.io/webcrypto/#rsassa-pkcs1-operations
+          return await importKeyRSA(
+            format,
+            normalizedAlgorithm,
+            keyData,
+            extractable,
+            keyUsages,
+            true,
+            (alg) => {
               let hash;
 
-              const jwk = keyData;
-
-              const keyType = validateJwtRsaKey(jwk);
-
-              // 2.
-              if (
-                ArrayPrototypeFind(
-                  keyUsages,
-                  (u) =>
-                    !ArrayPrototypeIncludes([
-                      (keyType === "private") ? "sign" : "verify",
-                    ], u),
-                ) !== undefined
-              ) {
-                throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-              // 3.
-              if (jwk.kty !== "RSA") {
-                throw new DOMException(
-                  "`kty` member of JsonWebKey must be `RSA`",
-                  "DataError",
-                );
-              }
-
-              // 4.
-              if (keyUsages.length > 0 && jwk.use && jwk.use !== "sig") {
-                throw new DOMException(
-                  "`use` member of JsonWebKey must be `sig`",
-                  "DataError",
-                );
-              }
-
-              // 5.
-              // Section 4.3 of RFC7517
-              if (jwk.key_ops) {
-                if (
-                  ArrayPrototypeFind(
-                    jwk.key_ops,
-                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-                  ) !== undefined
-                ) {
+              switch (alg) {
+                case "RS1": {
+                  hash = "SHA-1";
+                  break;
+                }
+                case "RS256": {
+                  hash = "SHA-256";
+                  break;
+                }
+                case "RS384": {
+                  hash = "SHA-384";
+                  break;
+                }
+                case "RS512": {
+                  hash = "SHA-512";
+                  break;
+                }
+                default:
                   throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
+                    "Hash algorithm not supported",
                     "DataError",
                   );
-                }
-
-                if (
-                  !ArrayPrototypeEvery(
-                    jwk.key_ops,
-                    (u) => ArrayPrototypeIncludes(keyUsages, u),
-                  )
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
               }
-
-              // 6.
-              if (jwk.ext === false && extractable == true) {
-                throw new DOMException(
-                  "`ext` member of JsonWebKey is invalid",
-                  "DataError",
-                );
-              }
-
-              // 7.
-              if (jwk.alg) {
-                switch (jwk.alg) {
-                  case "RS1": {
-                    hash = "SHA-1";
-                    break;
-                  }
-                  case "RS256": {
-                    hash = "SHA-256";
-                    break;
-                  }
-                  case "RS384": {
-                    hash = "SHA-384";
-                    break;
-                  }
-                  case "RS512": {
-                    hash = "SHA-512";
-                    break;
-                  }
-                  default:
-                    throw new DOMException(
-                      "Hash algorithm not supported",
-                      "DataError",
-                    );
-                }
-              }
-
-              //8.
-              if (hash) {
-                const normalizedHash = normalizeAlgorithm(hash, "digest");
-
-                if (normalizedHash.name !== normalizedAlgorithm.hash.name) {
-                  throw new DOMException(
-                    "Mismatched hash algorithm for JWK.alg",
-                    "DataError",
-                  );
-                }
-              }
-
-              //9.
-
-              const { modulusLength, publicExponent, data } = await core
-                .opAsync(
-                  "op_crypto_import_key",
-                  {
-                    algorithm: algorithmName,
-                    format,
-                    keyType,
-                    // Need to perform step without normalization.
-                    hash: normalizedAlgorithm.hash.name,
-                  },
-                  { jwkRsaKey: jwk },
-                );
-
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
-              }
-
-              const handle = {};
-              WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: keyType,
-                data,
-              });
-
-              const algorithm = {
-                name: algorithmName,
-                modulusLength,
-                publicExponent,
-                hash: normalizedAlgorithm.hash,
-              };
-
-              const key = constructKey(
-                keyType,
-                extractable,
-                usageIntersection(keyUsages, recognisedUsages),
-                algorithm,
-                handle,
-              );
-
-              return key;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-          /* Redundant break but deno_lint complains without it*/
-          break;
+              return hash;
+            },
+          );
         }
         case "RSA-PSS": {
-          switch (format) {
-            case "pkcs8": {
-              // 1.
-              if (
-                ArrayPrototypeFind(
-                  keyUsages,
-                  (u) => !ArrayPrototypeIncludes(["sign"], u),
-                ) !== undefined
-              ) {
-                throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
-              }
-
-              // 2-9.
-              const { modulusLength, publicExponent, data } = await core
-                .opAsync(
-                  "op_crypto_import_key",
-                  {
-                    algorithm: algorithmName,
-                    format,
-                    keyType: "private",
-                    // Needed to perform step 7 without normalization.
-                    hash: normalizedAlgorithm.hash.name,
-                  },
-                  { raw: { data: keyData } },
-                );
-
-              const handle = {};
-              WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: "private",
-                data,
-              });
-
-              const algorithm = {
-                name: "RSA-PSS",
-                modulusLength,
-                publicExponent,
-                hash: normalizedAlgorithm.hash,
-              };
-
-              const key = constructKey(
-                "private",
-                extractable,
-                usageIntersection(keyUsages, recognisedUsages),
-                algorithm,
-                handle,
-              );
-
-              return key;
-            }
-            case "jwk": {
-              // 2. https://w3c.github.io/webcrypto/#rss-pss-operations
+          return await importKeyRSA(
+            format,
+            normalizedAlgorithm,
+            keyData,
+            extractable,
+            keyUsages,
+            true,
+            (alg) => {
               let hash;
 
-              const jwk = keyData;
-
-              const keyType = validateJwtRsaKey(jwk);
-
-              // 2.
-              if (
-                ArrayPrototypeFind(
-                  keyUsages,
-                  (u) =>
-                    !ArrayPrototypeIncludes([
-                      (keyType === "private") ? "sign" : "verify",
-                    ], u),
-                ) !== undefined
-              ) {
-                throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-              // 3.
-              if (jwk.kty !== "RSA") {
-                throw new DOMException(
-                  "`kty` member of JsonWebKey must be `RSA`",
-                  "DataError",
-                );
-              }
-              // 4.
-              if (keyUsages.length > 0 && jwk.use && jwk.use !== "sig") {
-                throw new DOMException(
-                  "`use` member of JsonWebKey must be `sig`",
-                  "DataError",
-                );
-              }
-              // 5.
-              // Section 4.3 of RFC7517
-              if (jwk.key_ops) {
-                if (
-                  ArrayPrototypeFind(
-                    jwk.key_ops,
-                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-                  ) !== undefined
-                ) {
+              switch (alg) {
+                case "PS1": {
+                  hash = "SHA-1";
+                  break;
+                }
+                case "PS256": {
+                  hash = "SHA-256";
+                  break;
+                }
+                case "PS384": {
+                  hash = "SHA-384";
+                  break;
+                }
+                case "PS512": {
+                  hash = "SHA-512";
+                  break;
+                }
+                default:
                   throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
+                    "Hash algorithm not supported",
                     "DataError",
                   );
-                }
-
-                if (
-                  !ArrayPrototypeEvery(
-                    jwk.key_ops,
-                    (u) => ArrayPrototypeIncludes(keyUsages, u),
-                  )
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
               }
 
-              // 6.
-              if (jwk.ext === false && extractable == true) {
-                throw new DOMException(
-                  "`ext` member of JsonWebKey is invalid",
-                  "DataError",
-                );
-              }
-
-              // 7.
-              if (jwk.alg) {
-                switch (jwk.alg) {
-                  case "PS1": {
-                    hash = "SHA-1";
-                    break;
-                  }
-                  case "PS256": {
-                    hash = "SHA-256";
-                    break;
-                  }
-                  case "PS384": {
-                    hash = "SHA-384";
-                    break;
-                  }
-                  case "PS512": {
-                    hash = "SHA-512";
-                    break;
-                  }
-                  default:
-                    throw new DOMException(
-                      "Hash algorithm not supported",
-                      "DataError",
-                    );
-                }
-              }
-
-              //8.
-              if (hash) {
-                const normalizedHash = normalizeAlgorithm(hash, "digest");
-
-                if (normalizedHash.name !== normalizedAlgorithm.hash.name) {
-                  throw new DOMException(
-                    "Mismatched hash algorithm for JWK.alg",
-                    "DataError",
-                  );
-                }
-              }
-
-              //9.
-              const { modulusLength, publicExponent, data } = await core
-                .opAsync(
-                  "op_crypto_import_key",
-                  {
-                    algorithm: algorithmName,
-                    format,
-                    keyType,
-                    // Need to perform step without normalization.
-                    hash: normalizedAlgorithm.hash.name,
-                  },
-                  { jwkRsaKey: jwk },
-                );
-
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
-              }
-
-              const handle = {};
-              WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: keyType,
-                data,
-              });
-
-              const algorithm = {
-                name: "RSA-PSS",
-                modulusLength,
-                publicExponent,
-                hash: normalizedAlgorithm.hash,
-              };
-
-              const key = constructKey(
-                keyType,
-                extractable,
-                usageIntersection(keyUsages, recognisedUsages),
-                algorithm,
-                handle,
-              );
-
-              return key;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-          /* Redundant break but deno_lint complains without it*/
-          break;
+              return hash;
+            },
+          );
         }
         case "RSA-OAEP": {
-          switch (format) {
-            case "pkcs8": {
-              const keyType = "private";
-
-              // 1.
-              if (
-                ArrayPrototypeFind(
-                  keyUsages,
-                  (u) => !ArrayPrototypeIncludes(["decrypt", "unwrapKey"], u),
-                ) !== undefined
-              ) {
-                throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
-              }
-
-              // 2-9.
-              const { modulusLength, publicExponent, data } = await core
-                .opAsync(
-                  "op_crypto_import_key",
-                  {
-                    algorithm: algorithmName,
-                    format,
-                    keyType,
-                    // Need to perform step 7 without normalization.
-                    hash: normalizedAlgorithm.hash.name,
-                  },
-                  { raw: { data: keyData } },
-                );
-
-              const handle = {};
-              WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: keyType,
-                data,
-              });
-
-              const algorithm = {
-                name: algorithmName,
-                modulusLength,
-                publicExponent,
-                hash: normalizedAlgorithm.hash,
-              };
-
-              const key = constructKey(
-                keyType,
-                extractable,
-                usageIntersection(keyUsages, recognisedUsages),
-                algorithm,
-                handle,
-              );
-
-              return key;
-            }
-            case "jwk": {
-              // 2. https://w3c.github.io/webcrypto/#rss-oaep-operations
+          return await importKeyRSA(
+            format,
+            normalizedAlgorithm,
+            keyData,
+            extractable,
+            keyUsages,
+            false,
+            (alg) => {
               let hash;
 
-              const jwk = keyData;
-
-              const keyType = validateJwtRsaKey(jwk);
-
-              // 2-3.
-              if (
-                ArrayPrototypeFind(
-                  keyUsages,
-                  (u) =>
-                    !ArrayPrototypeIncludes(
-                      (keyType == "private")
-                        ? ["decrypt", "unwrapKey"]
-                        : ["encrypt", "wrapKey"],
-                      u,
-                    ),
-                ) !== undefined
-              ) {
-                throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-              // 4.
-              if (jwk.kty !== "RSA") {
-                throw new DOMException(
-                  "`kty` member of JsonWebKey must be `RSA`",
-                  "DataError",
-                );
-              }
-
-              // 5.
-              if (keyUsages.length > 0 && jwk.use && jwk.use !== "enc") {
-                throw new DOMException(
-                  "`use` member of JsonWebKey must be `enc`",
-                  "DataError",
-                );
-              }
-
-              // 6.
-              // Section 4.3 of RFC7517
-              if (jwk.key_ops) {
-                if (
-                  ArrayPrototypeFind(
-                    jwk.key_ops,
-                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-                  ) !== undefined
-                ) {
+              switch (alg) {
+                case "RSA-OAEP": {
+                  hash = "SHA-1";
+                  break;
+                }
+                case "RSA-OAEP-256": {
+                  hash = "SHA-256";
+                  break;
+                }
+                case "RSA-OAEP-384": {
+                  hash = "SHA-384";
+                  break;
+                }
+                case "RSA-OAEP-512": {
+                  hash = "SHA-512";
+                  break;
+                }
+                default:
                   throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
+                    "Hash algorithm not supported",
                     "DataError",
                   );
-                }
-
-                if (
-                  !ArrayPrototypeEvery(
-                    jwk.key_ops,
-                    (u) => ArrayPrototypeIncludes(keyUsages, u),
-                  )
-                ) {
-                  throw new DOMException(
-                    "`key_ops` member of JsonWebKey is invalid",
-                    "DataError",
-                  );
-                }
               }
 
-              // 7.
-              if (jwk.ext === false && extractable == true) {
-                throw new DOMException(
-                  "`ext` member of JsonWebKey is invalid",
-                  "DataError",
-                );
-              }
-
-              // 8.
-              if (jwk.alg) {
-                switch (jwk.alg) {
-                  case "RSA-OAEP": {
-                    hash = "SHA-1";
-                    break;
-                  }
-                  case "RSA-OAEP-256": {
-                    hash = "SHA-256";
-                    break;
-                  }
-                  case "RSA-OAEP-384": {
-                    hash = "SHA-384";
-                    break;
-                  }
-                  case "RSA-OAEP-512": {
-                    hash = "SHA-512";
-                    break;
-                  }
-                  default:
-                    throw new DOMException(
-                      "Hash algorithm not supported",
-                      "DataError",
-                    );
-                }
-              }
-
-              //9.
-              if (hash) {
-                const normalizedHash = normalizeAlgorithm(hash, "digest");
-
-                if (normalizedHash.name !== normalizedAlgorithm.hash.name) {
-                  throw new DOMException(
-                    "Mismatched hash algorithm for JWK.alg",
-                    "DataError",
-                  );
-                }
-              }
-
-              //10.
-              const { modulusLength, publicExponent, data } = await core
-                .opAsync(
-                  "op_crypto_import_key",
-                  {
-                    algorithm: algorithmName,
-                    format,
-                    keyType,
-                    // Needed to perform step 7 without normalization.
-                    hash: normalizedAlgorithm.hash.name,
-                  },
-                  { jwkRsaKey: jwk },
-                );
-
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
-              }
-
-              const handle = {};
-              WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: keyType,
-                data,
-              });
-
-              const algorithm = {
-                name: "RSA-OAEP",
-                modulusLength,
-                publicExponent,
-                hash: normalizedAlgorithm.hash,
-              };
-
-              const key = constructKey(
-                keyType,
-                extractable,
-                usageIntersection(keyUsages, recognisedUsages),
-                algorithm,
-                handle,
-              );
-
-              return key;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-          /* Redundant break but deno_lint complains without it*/
-          break;
+              return hash;
+            },
+          );
         }
         case "HKDF": {
           if (format !== "raw") {
@@ -3447,6 +2925,214 @@
 
     // 12.
     return key;
+  }
+
+  async function importKeyRSA(
+    format,
+    normalizedAlgorithm,
+    keyData,
+    extractable,
+    keyUsages,
+    isSignKey,
+    mapJwkAlgToHash,
+  ) {
+    const algorithmName = normalizedAlgorithm.name;
+
+    switch (format) {
+      case "pkcs8": {
+        const keyType = "private";
+
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) =>
+              !ArrayPrototypeIncludes(
+                isSignKey ? ["sign"] : ["decrypt", "unwrapKey"],
+                u,
+              ),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        if (keyUsages.length == 0) {
+          throw new DOMException("Key usage is empty", "SyntaxError");
+        }
+
+        // 2-9.
+        const { modulusLength, publicExponent, data } = await core
+          .opAsync(
+            "op_crypto_import_key",
+            {
+              algorithm: algorithmName,
+              format,
+              keyType,
+              // Needed to perform step 7 without normalization.
+              hash: normalizedAlgorithm.hash.name,
+            },
+            { raw: { data: keyData } },
+          );
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: keyType,
+          data,
+        });
+
+        const algorithm = {
+          name: algorithmName,
+          modulusLength,
+          publicExponent,
+          hash: normalizedAlgorithm.hash,
+        };
+
+        const key = constructKey(
+          keyType,
+          extractable,
+          usageIntersection(keyUsages, recognisedUsages),
+          algorithm,
+          handle,
+        );
+
+        return key;
+      }
+      case "jwk": {
+        // 2. https://w3c.github.io/webcrypto/#rsassa-pkcs1-operations
+        const jwk = keyData;
+
+        const keyType = validateJwtRsaKey(jwk);
+
+        const validUsages = isSignKey
+          ? ((keyType === "private") ? ["sign"] : ["verify"])
+          : ((keyType == "private")
+            ? ["decrypt", "unwrapKey"]
+            : ["encrypt", "wrapKey"]);
+
+        // 2.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(validUsages, u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+        // 3.
+        if (jwk.kty !== "RSA") {
+          throw new DOMException(
+            "`kty` member of JsonWebKey must be `RSA`",
+            "DataError",
+          );
+        }
+
+        // 4.
+        if (keyUsages.length > 0 && jwk.use) {
+          if (jwk.use !== (isSignKey ? "sig" : "enc")) {
+            throw new DOMException(
+              "`use` member of JsonWebKey must be `sig`",
+              "DataError",
+            );
+          }
+        }
+
+        // 5.
+        // Section 4.3 of RFC7517
+        if (jwk.key_ops) {
+          if (
+            ArrayPrototypeFind(
+              jwk.key_ops,
+              (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+            ) !== undefined
+          ) {
+            throw new DOMException(
+              "`key_ops` member of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+
+          if (
+            !ArrayPrototypeEvery(
+              jwk.key_ops,
+              (u) => ArrayPrototypeIncludes(keyUsages, u),
+            )
+          ) {
+            throw new DOMException(
+              "`key_ops` member of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+        }
+
+        // 6.
+        if (jwk.ext === false && extractable == true) {
+          throw new DOMException(
+            "`ext` member of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+
+        // 7.
+        if (jwk.alg) {
+          const hash = mapJwkAlgToHash(jwk.alg);
+
+          //8.
+          if (hash) {
+            const normalizedHash = normalizeAlgorithm(hash, "digest");
+
+            if (normalizedHash.name !== normalizedAlgorithm.hash.name) {
+              throw new DOMException(
+                "Mismatched hash algorithm for JWK.alg",
+                "DataError",
+              );
+            }
+          }
+        }
+
+        //9.
+        const { modulusLength, publicExponent, data } = await core
+          .opAsync(
+            "op_crypto_import_key",
+            {
+              algorithm: algorithmName,
+              format,
+              keyType,
+              // Need to perform step without normalization.
+              hash: normalizedAlgorithm.hash.name,
+            },
+            { jwkRsaKey: jwk },
+          );
+
+        if (keyUsages.length == 0) {
+          throw new DOMException("Key usage is empty", "SyntaxError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: keyType,
+          data,
+        });
+
+        const algorithm = {
+          name: algorithmName,
+          modulusLength,
+          publicExponent,
+          hash: normalizedAlgorithm.hash,
+        };
+
+        const key = constructKey(
+          keyType,
+          extractable,
+          usageIntersection(keyUsages, recognisedUsages),
+          algorithm,
+          handle,
+        );
+
+        return key;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
   }
 
   async function deriveBits(normalizedAlgorithm, baseKey, length) {
