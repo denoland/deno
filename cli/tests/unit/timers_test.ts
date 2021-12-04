@@ -415,7 +415,7 @@ Deno.test(async function timerOrdering() {
     setTimeout(() => array.push(6));
   }, 0);
 
-  await delay(10);
+  await delay(100);
 
   assertEquals(array, [1, 2, 3, 4, 5, 6]);
 });
