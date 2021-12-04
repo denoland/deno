@@ -1143,11 +1143,10 @@ async fn listen_tls_alpn() {
         .spawn()
         .unwrap();
       let stdout = child.stdout.as_mut().unwrap();
-      let mut buffer = [0; 5];
-      let read = stdout.read(&mut buffer).unwrap();
+      let mut msg = [0; 5];
+      let read = stdout.read(&mut msg).unwrap();
       assert_eq!(read, 5);
-      let msg = std::str::from_utf8(&buffer).unwrap();
-      assert_eq!(msg, "READY");
+      assert_eq!(&msg, b"READY");
 
       let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
         "../testdata/tls/RootCA.crt"
@@ -1159,7 +1158,7 @@ async fn listen_tls_alpn() {
         .with_safe_defaults()
         .with_root_certificates(root_store)
         .with_no_client_auth();
-      cfg.alpn_protocols.push("foobar".as_bytes().to_vec());
+      cfg.alpn_protocols.push(b"foobar".to_vec());
       let cfg = Arc::new(cfg);
 
       let hostname = rustls::ServerName::try_from("localhost").unwrap();
@@ -1170,13 +1169,13 @@ async fn listen_tls_alpn() {
       let mut tls_stream =
         TlsStream::new_client_side(tcp_stream, cfg, hostname);
       tls_stream.handshake().await.unwrap();
-      let (_, session) = tls_stream.get_ref();
 
-      let alpn = session.alpn_protocol().unwrap();
-      assert_eq!(std::str::from_utf8(alpn).unwrap(), "foobar");
+      let (_, rustls_connection) = tls_stream.get_ref();
+      let alpn = rustls_connection.alpn_protocol().unwrap();
+      assert_eq!(alpn, b"foobar");
 
-      child.kill().unwrap();
-      child.wait().unwrap();
+      let status = child.wait().unwrap();
+      assert!(status.success());
     })
     .await;
 }
@@ -1194,17 +1193,16 @@ async fn listen_tls_alpn_fail() {
         .arg("--quiet")
         .arg("--allow-net")
         .arg("--allow-read")
-        .arg("./listen_tls_alpn.ts")
+        .arg("./listen_tls_alpn_fail.ts")
         .arg("4505")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
       let stdout = child.stdout.as_mut().unwrap();
-      let mut buffer = [0; 5];
-      let read = stdout.read(&mut buffer).unwrap();
+      let mut msg = [0; 5];
+      let read = stdout.read(&mut msg).unwrap();
       assert_eq!(read, 5);
-      let msg = std::str::from_utf8(&buffer).unwrap();
-      assert_eq!(msg, "READY");
+      assert_eq!(&msg, b"READY");
 
       let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
         "../testdata/tls/RootCA.crt"
@@ -1216,7 +1214,7 @@ async fn listen_tls_alpn_fail() {
         .with_safe_defaults()
         .with_root_certificates(root_store)
         .with_no_client_auth();
-      cfg.alpn_protocols.push("boofar".as_bytes().to_vec());
+      cfg.alpn_protocols.push(b"boofar".to_vec());
       let cfg = Arc::new(cfg);
 
       let hostname = rustls::ServerName::try_from("localhost").unwrap();
@@ -1225,13 +1223,13 @@ async fn listen_tls_alpn_fail() {
         .unwrap();
       let mut tls_stream =
         TlsStream::new_client_side(tcp_stream, cfg, hostname);
-      tls_stream.handshake().await.unwrap();
-      let (_, session) = tls_stream.get_ref();
+      tls_stream.handshake().await.unwrap_err();
 
-      assert!(session.alpn_protocol().is_none());
+      let (_, rustls_connection) = tls_stream.get_ref();
+      assert!(rustls_connection.alpn_protocol().is_none());
 
-      child.kill().unwrap();
-      child.wait().unwrap();
+      let status = child.wait().unwrap();
+      assert!(status.success());
     })
     .await;
 }
