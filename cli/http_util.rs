@@ -148,7 +148,8 @@ pub async fn fetch_once(
 mod tests {
   use super::*;
   use crate::version;
-  use deno_tls::create_http_client;
+  use deno_runtime::deno_fetch::create_http_client;
+  use deno_runtime::deno_tls::rustls::RootCertStore;
   use std::fs::read;
 
   fn create_test_client() -> Client {
@@ -413,7 +414,7 @@ mod tests {
     let url = Url::parse("https://deno.land").unwrap();
     let client = create_http_client(
       version::get_user_agent(),
-      Some(deno_tls::rustls::RootCertStore::empty()), // no certs loaded at all
+      Some(RootCertStore::empty()), // no certs loaded at all
       vec![],
       None,
       None,
