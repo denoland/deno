@@ -371,7 +371,7 @@ impl WebWorker {
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
           .clone(),
-        file_fetch_handler: Box::new(deno_fetch::FsFetchHandler),
+        file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
       deno_websocket::init::<Permissions>(
