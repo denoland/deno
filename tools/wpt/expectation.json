@@ -5787,28 +5787,8 @@
     "idlharness.any.html": true,
     "idlharness.any.worker.html": true,
     "piping": {
-      "abort.any.html": [
-        "(reason: 'null') all the error objects should be the same object",
-        "(reason: 'undefined') all the error objects should be the same object",
-        "(reason: 'error1: error1') all the error objects should be the same object",
-        "(reason: 'null') abort should prevent further reads",
-        "(reason: 'undefined') abort should prevent further reads",
-        "(reason: 'error1: error1') abort should prevent further reads",
-        "(reason: 'null') all pending writes should complete on abort",
-        "(reason: 'undefined') all pending writes should complete on abort",
-        "(reason: 'error1: error1') all pending writes should complete on abort"
-      ],
-      "abort.any.worker.html": [
-        "(reason: 'null') all the error objects should be the same object",
-        "(reason: 'undefined') all the error objects should be the same object",
-        "(reason: 'error1: error1') all the error objects should be the same object",
-        "(reason: 'null') abort should prevent further reads",
-        "(reason: 'undefined') abort should prevent further reads",
-        "(reason: 'error1: error1') abort should prevent further reads",
-        "(reason: 'null') all pending writes should complete on abort",
-        "(reason: 'undefined') all pending writes should complete on abort",
-        "(reason: 'error1: error1') all pending writes should complete on abort"
-      ],
+      "abort.any.html": true,
+      "abort.any.worker.html": true,
       "close-propagation-backward.any.html": true,
       "close-propagation-backward.any.worker.html": true,
       "close-propagation-forward.any.html": true,
@@ -5907,12 +5887,8 @@
       "terminate.any.worker.html": true
     },
     "writable-streams": {
-      "aborting.any.html": [
-        "WritableStreamDefaultController.signal"
-      ],
-      "aborting.any.worker.html": [
-        "WritableStreamDefaultController.signal"
-      ],
+      "aborting.any.html": true,
+      "aborting.any.worker.html": true,
       "bad-strategies.any.html": true,
       "bad-strategies.any.worker.html": true,
       "bad-underlying-sinks.any.html": true,
