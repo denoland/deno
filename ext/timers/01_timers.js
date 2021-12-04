@@ -115,6 +115,7 @@
     let id;
     let cancelRid;
     if (prevId !== undefined) {
+      // `prevId` is only passed for follow-up calls on intervals
       assert(repeat);
       id = prevId;
       cancelRid = MapPrototypeGet(activeTimers, id);
@@ -246,12 +247,13 @@
         // completed.
         // 4. Perform completionSteps.
 
-        // Since the sleep ops aren't guaranteed to resolve in the right order,
-        // whenever a timer resolves, we run through the list of scheduled
-        // timers (which is in the order in which they were scheduled), and we
-        // call the callback for every timer which has resolved and whose
-        // timeout is lower than the lowest unresolved timeout found so far in
-        // the list.
+        // IMPORTANT: Since the sleep ops aren't guaranteed to resolve in the
+        // right order, whenever one resolves, we run through the scheduled
+        // timers list (which is in the order in which they were scheduled), and
+        // we call the callback for every timer which both:
+        //   a) has resolved, and
+        //   b) its timeout is lower than the lowest unresolved timeout found so
+        //      far in the list.
 
         timerObject.resolved = true;
 

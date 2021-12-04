@@ -1,12 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-//! This module helps deno implement timers.
-//!
-//! As an optimization, we want to avoid an expensive calls into rust for every
-//! setTimeout in JavaScript. Thus in //js/timers.ts a data structure is
-//! implemented that calls into Rust for only the smallest timeout.  Thus we
-//! only need to be able to start, cancel and await a single timer (or Delay, as Tokio
-//! calls it) for an entire Isolate. This is what is implemented here.
+//! This module helps deno implement timers and performance APIs.
 
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
@@ -92,6 +86,8 @@ impl Resource for TimerHandle {
   }
 }
 
+/// Creates a [`TimerHandle`] resource that can be used to cancel invocations of
+/// [`op_sleep`].
 pub fn op_timer_handle(
   state: &mut OpState,
   _: (),
@@ -103,6 +99,8 @@ pub fn op_timer_handle(
   Ok(rid)
 }
 
+/// Waits asynchronously until either `millis` milliseconds have passed or the
+/// [`TimerHandle`] resource given by `rid` has been canceled.
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
   millis: u64,

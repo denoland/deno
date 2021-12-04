@@ -237,7 +237,7 @@ Deno.test(async function clearTimeoutAfterNextTimerIsDue1() {
   const interval = setInterval(() => {
     Deno.sleepSync(400);
     // Both the interval and the timeout's due times are now in the past.
-    clearTimeout(interval);
+    clearInterval(interval);
   }, 100);
 
   await promise;
