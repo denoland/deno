@@ -67,7 +67,9 @@ impl ServerCertVerifier for NoCertificateVerification {
         )
       }
     } else {
-      todo!()
+      // NOTE(bartlomieju): `ServerName` is a non-exhaustive enum
+      // so we have this catch all error here.
+      Err(Error::General("Unknown `ServerName` variant".to_string()))
     }
   }
 }
@@ -133,27 +135,42 @@ pub fn create_client_config(
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
   client_cert_chain_and_key: Option<(String, String)>,
 ) -> Result<ClientConfig, AnyError> {
-  let b = ClientConfig::builder().with_safe_defaults();
+  let maybe_cert_chain_and_key =
+    if let Some((cert_chain, private_key)) = client_cert_chain_and_key {
+      // The `remove` is safe because load_private_keys checks that there is at least one key.
+      let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
+      let cert_chain = load_certs(&mut cert_chain.as_bytes())?;
+      Some((cert_chain, private_key))
+    } else {
+      None
+    };
 
   if let Some(ic_allowlist) = unsafely_ignore_certificate_errors {
-    let b = b.with_custom_certificate_verifier(Arc::new(
-      NoCertificateVerification(ic_allowlist),
-    ));
+    let client_config = ClientConfig::builder()
+      .with_safe_defaults()
+      .with_custom_certificate_verifier(Arc::new(NoCertificateVerification(
+        ic_allowlist,
+      )));
 
-    // TODO(ry) DUPLICATED CODE HERE.
-    Ok(
-      if let Some((cert_chain, private_key)) = client_cert_chain_and_key {
-        // The `remove` is safe because load_private_keys checks that there is at least one key.
-        let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
-
-        b.with_single_cert(load_certs(&mut cert_chain.as_bytes())?, private_key)
+    // NOTE(bartlomieju): this if/else is duplicated at the end of the body of this function.
+    // However it's not really feasible to deduplicate it as the `client_config` instances
+    // are not type-compatible - one wants "client cert", the other wants "transparency policy
+    // or client cert".
+    let client =
+      if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key {
+        client_config
+          .with_single_cert(cert_chain, private_key)
           .expect("invalid client key or certificate")
       } else {
-        b.with_no_client_auth()
-      },
-    )
-  } else {
-    let b = b.with_root_certificates({
+        client_config.with_no_client_auth()
+      };
+
+    return Ok(client);
+  }
+
+  let client_config = ClientConfig::builder()
+    .with_safe_defaults()
+    .with_root_certificates({
       let mut root_cert_store =
         root_cert_store.unwrap_or_else(create_default_root_cert_store);
       // If custom certs are specified, add them to the store
@@ -175,19 +192,16 @@ pub fn create_client_config(
       root_cert_store
     });
 
-    // TODO(ry) DUPLICATED CODE HERE.
-    Ok(
-      if let Some((cert_chain, private_key)) = client_cert_chain_and_key {
-        // The `remove` is safe because load_private_keys checks that there is at least one key.
-        let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
+  let client = if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key
+  {
+    client_config
+      .with_single_cert(cert_chain, private_key)
+      .expect("invalid client key or certificate")
+  } else {
+    client_config.with_no_client_auth()
+  };
 
-        b.with_single_cert(load_certs(&mut cert_chain.as_bytes())?, private_key)
-          .expect("invalid client key or certificate")
-      } else {
-        b.with_no_client_auth()
-      },
-    )
-  }
+  Ok(client)
 }
 
 pub fn load_certs(
