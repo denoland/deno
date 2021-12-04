@@ -37,11 +37,14 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 
+// TODO(bartlomieju): consider storing content on this struct
+// instead of using tuple in sender
 pub enum InspectorMsg {
   Notification,
   Message(i32),
 }
 pub type SessionProxySender = UnboundedSender<(InspectorMsg, String)>;
+// TODO(bartlomieju): consider using `String` instead of `Vec<u8>`
 pub type SessionProxyReceiver = UnboundedReceiver<Vec<u8>>;
 
 /// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
@@ -552,6 +555,16 @@ impl InspectorSession {
       .borrow_mut()
       .as_mut()
       .schedule_pause_on_next_statement(reason, detail);
+  }
+
+  async fn pump_messages(&mut self) {
+    let v8_session_rc = self.v8_session.clone();
+    while let Some(msg) = self.proxy.rx.next().await {
+      let msg = v8::inspector::StringView::from(msg.as_slice());
+      let mut v8_session = v8_session_rc.borrow_mut();
+      let v8_session_ptr = v8_session.as_mut();
+      v8_session_ptr.dispatch_protocol_message(msg);
+    }
   }
 }
 
