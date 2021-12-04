@@ -13,7 +13,6 @@
     MapPrototypeGet,
     MapPrototypeHas,
     MapPrototypeSet,
-    MathMax,
     // deno-lint-ignore camelcase
     NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
@@ -135,13 +134,20 @@
     // 4. If timeout is less than 0, then set timeout to 0.
     // 5. If nesting level is greater than 5, and timeout is less than 4, then
     // set timeout to 4.
-    timeout = MathMax(timeout, (timerNestingLevel > 5) ? 4 : 0);
+    //
+    // The nesting level of 5 and minimum of 4 ms are spec-mandated magic
+    // constants.
+    if (timeout < 0) timeout = 0;
+    if (timerNestingLevel > 5 && timeout < 4) timeout = 4;
 
     // 9. Let task be a task that runs the following steps:
     const task = {
       action: () => {
         // 1. If id does not exist in global's map of active timers, then abort
         // these steps.
+        //
+        // This is relevant if the timer has been canceled after the sleep op
+        // resolves but before this task runs.
         if (!MapPrototypeHas(activeTimers, id)) {
           return;
         }
@@ -157,24 +163,20 @@
           (0, eval)(callback);
         }
 
-        // 4. If id does not exist in global's map of active timers, then abort
-        // these steps.
-        // NOTE: It might have been removed via the author code in handler
-        // calling clearTimeout() or clearInterval().
-        if (MapPrototypeHas(activeTimers, id)) {
-          if (repeat) {
+        if (repeat) {
+          if (MapPrototypeHas(activeTimers, id)) {
+            // 4. If id does not exist in global's map of active timers, then
+            // abort these steps.
+            // NOTE: If might have been removed via the author code in handler
+            // calling clearTimeout() or clearInterval().
             // 5. If repeat is true, then perform the timer initialization steps
             // again, given global, handler, timeout, arguments, true, and id.
             initializeTimer(callback, timeout, args, true, id);
-          } else {
-            // NOTE: Once the task has been processed, if repeat is false, it is
-            // safe to remove the entry for id from the map of active timers
-            // (there is no way for the entry's existence to be detected past
-            // this point, so it does not technically matter one way or the
-            // other).
-            core.tryClose(cancelRid);
-            MapPrototypeDelete(activeTimers, id);
           }
+        } else {
+          // 6. Otherwise, remove global's map of active timers[id].
+          core.tryClose(cancelRid);
+          MapPrototypeDelete(activeTimers, id);
         }
       },
 
@@ -209,7 +211,8 @@
 
   /**
    * A doubly linked list of timers.
-   * @type { { head: ScheduledTimer | null, tail: ScheduledTimer | null } } */
+   * @type { { head: ScheduledTimer | null, tail: ScheduledTimer | null } }
+   */
   const scheduledTimers = { head: null, tail: null };
 
   /**

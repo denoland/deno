@@ -6,6 +6,7 @@ import {
   Deferred,
   deferred,
   delay,
+  unreachable,
 } from "./test_util.ts";
 
 Deno.test(async function functionParameterBindingSuccess() {
@@ -247,7 +248,7 @@ Deno.test(async function clearTimeoutAfterNextTimerIsDue1() {
 Deno.test(async function clearTimeoutAfterNextTimerIsDue2() {
   const promise = deferred();
 
-  const timeout1 = setTimeout(() => {}, 100);
+  const timeout1 = setTimeout(unreachable, 100);
 
   setTimeout(() => {
     promise.resolve();
