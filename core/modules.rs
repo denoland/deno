@@ -1487,7 +1487,7 @@ mod tests {
 
   #[test]
   fn slow_never_ready_modules() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let loader = MockLoader::new();
       let loads = loader.loads.clone();
       let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -1498,7 +1498,7 @@ mod tests {
       let mut recursive_load =
         runtime.load_main_module(&spec, None).boxed_local();
 
-      let result = recursive_load.poll_unpin(&mut cx);
+      let result = recursive_load.poll_unpin(cx);
       assert!(result.is_pending());
 
       // TODO(ry) Arguably the first time we poll only the following modules
@@ -1511,7 +1511,7 @@ mod tests {
       // run_in_task.
 
       for _ in 0..10 {
-        let result = recursive_load.poll_unpin(&mut cx);
+        let result = recursive_load.poll_unpin(cx);
         assert!(result.is_pending());
         let l = loads.lock();
         assert_eq!(
@@ -1537,7 +1537,7 @@ mod tests {
 
   #[test]
   fn loader_disappears_after_error() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let loader = MockLoader::new();
       let mut runtime = JsRuntime::new(RuntimeOptions {
         module_loader: Some(loader),
@@ -1545,7 +1545,7 @@ mod tests {
       });
       let spec = crate::resolve_url("file:///bad_import.js").unwrap();
       let mut load_fut = runtime.load_main_module(&spec, None).boxed_local();
-      let result = load_fut.poll_unpin(&mut cx);
+      let result = load_fut.poll_unpin(cx);
       if let Poll::Ready(Err(err)) = result {
         assert_eq!(
           err.downcast_ref::<MockError>().unwrap(),
