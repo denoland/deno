@@ -277,15 +277,20 @@ declare namespace Deno {
     /** Emit the source alongside the source maps within a single file; requires
      * `inlineSourceMap` or `sourceMap` to be set. Defaults to `false`. */
     inlineSources?: boolean;
-    /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`.
+    /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`,
+     * `"react-jsx", `"react-jsxdev"`.
      * Defaults to `"react"`. */
-    jsx?: "react" | "preserve" | "react-native";
+    jsx?: "react" | "preserve" | "react-native" | "react-jsx" | "react-jsx-dev";
     /** Specify the JSX factory function to use when targeting react JSX emit,
      * e.g. `React.createElement` or `h`. Defaults to `React.createElement`. */
     jsxFactory?: string;
     /** Specify the JSX fragment factory function to use when targeting react
      * JSX emit, e.g. `Fragment`. Defaults to `React.Fragment`. */
     jsxFragmentFactory?: string;
+    /** Declares the module specifier to be used for importing the `jsx` and
+     * `jsxs` factory functions when using jsx as `"react-jsx"` or
+     * `"react-jsxdev"`. Defaults to `"react"`. */
+    jsxImportSource?: string;
     /** Resolve keyof to string valued property names only (no numbers or
      * symbols). Defaults to `false`. */
     keyofStringsOnly?: string;
@@ -930,6 +935,29 @@ declare namespace Deno {
     certChain?: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey?: string;
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Application-Layer Protocol Negotiation (ALPN) protocols supported by
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
+  }
+
+  export interface TlsHandshakeInfo {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Contains the ALPN protocol selected during negotiation with the server.
+     * If no ALPN protocol selected, returns `null`.
+     */
+    alpnProtocol: string | null;
+  }
+
+  export interface TlsConn extends Conn {
+    /** Runs the client or server handshake protocol to completion if that has
+     * not happened yet. Calling this method is optional; the TLS handshake
+     * will be completed automatically as soon as data is sent or received. */
+    handshake(): Promise<TlsHandshakeInfo>;
   }
 
   /** **UNSTABLE** New API, yet to be vetted.
@@ -950,6 +978,16 @@ declare namespace Deno {
   export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
 
   export interface ListenTlsOptions {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
+  }
+
+  export interface StartTlsOptions {
     /** **UNSTABLE**: new API, yet to be vetted.
      *
      * Application-Layer Protocol Negotiation (ALPN) protocols to announce to

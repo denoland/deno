@@ -70,12 +70,13 @@ pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
         .map(get_resolution_error_class)
     })
     .unwrap_or_else(|| {
-      panic!(
+      eprintln!(
         "Error '{}' contains boxed error of unknown type:{}",
         e,
         e.chain()
           .map(|e| format!("\n  {:?}", e))
           .collect::<String>()
       );
+      "Error"
     })
 }

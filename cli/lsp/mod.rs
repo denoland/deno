@@ -19,7 +19,6 @@ mod path_to_regex;
 mod performance;
 mod refactor;
 mod registries;
-mod resolver;
 mod semantic_tokens;
 mod text;
 mod tsc;

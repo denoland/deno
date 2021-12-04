@@ -80,6 +80,14 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.url]
 opt-level = 3
+[profile.bench.package.bytes]
+opt-level = 3
+[profile.bench.package.futures-util]
+opt-level = 3
+[profile.bench.package.hyper]
+opt-level = 3
+[profile.bench.package.tokio]
+opt-level = 3
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release.package.rand]
@@ -113,4 +121,12 @@ opt-level = 3
 [profile.release.package.deno_url]
 opt-level = 3
 [profile.release.package.url]
+opt-level = 3
+[profile.release.package.bytes]
+opt-level = 3
+[profile.release.package.futures-util]
+opt-level = 3
+[profile.release.package.hyper]
+opt-level = 3
+[profile.release.package.tokio]
 opt-level = 3

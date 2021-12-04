@@ -1,10 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {
-  assertEquals,
-  assertRejects,
-  assertThrows,
-  unitTest,
-} from "./test_util.ts";
+import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 // chown on Windows is noop for now, so ignore its testing on Windows
 
@@ -29,8 +24,8 @@ async function getUidAndGid(): Promise<{ uid: number; gid: number }> {
   return { uid, gid };
 }
 
-unitTest(
-  { ignore: Deno.build.os == "windows" },
+Deno.test(
+  { ignore: Deno.build.os == "windows", permissions: { write: false } },
   async function chownNoWritePermission() {
     const filePath = "chown_test_file.txt";
     await assertRejects(async () => {
@@ -39,7 +34,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",
@@ -58,7 +53,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",
@@ -77,7 +72,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true }, ignore: Deno.build.os == "windows" },
   function chownSyncPermissionDenied() {
     const dirPath = Deno.makeTempDirSync();
@@ -92,7 +87,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true }, ignore: Deno.build.os == "windows" },
   async function chownPermissionDenied() {
     const dirPath = await Deno.makeTempDir();
@@ -107,7 +102,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",
@@ -130,7 +125,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",
@@ -145,7 +140,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",
@@ -160,7 +155,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",
@@ -175,7 +170,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
     permissions: { run: true, write: true },
     ignore: Deno.build.os == "windows",

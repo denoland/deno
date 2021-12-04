@@ -18,16 +18,16 @@
     if (buffer.length === 0) {
       return 0;
     }
-    const nread = await core.opAsync("op_net_read_async", rid, buffer);
+    const nread = await core.read(rid, buffer);
     return nread === 0 ? null : nread;
   }
 
   async function write(rid, data) {
-    return await core.opAsync("op_net_write_async", rid, data);
+    return await core.write(rid, data);
   }
 
   function shutdown(rid) {
-    return core.opAsync("op_net_shutdown", rid);
+    return core.shutdown(rid);
   }
 
   function opAccept(rid, transport) {

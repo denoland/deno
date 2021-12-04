@@ -14,23 +14,19 @@ use regex::Regex;
 use std::path::PathBuf;
 
 #[derive(Debug, Default)]
-pub(crate) struct NodeEsmResolver<'a> {
-  maybe_import_map_resolver: Option<ImportMapResolver<'a>>,
+pub(crate) struct NodeEsmResolver {
+  maybe_import_map_resolver: Option<ImportMapResolver>,
 }
 
-impl<'a> NodeEsmResolver<'a> {
-  pub fn new(maybe_import_map_resolver: Option<ImportMapResolver<'a>>) -> Self {
+impl NodeEsmResolver {
+  pub fn new(maybe_import_map_resolver: Option<ImportMapResolver>) -> Self {
     Self {
       maybe_import_map_resolver,
     }
   }
-
-  pub fn as_resolver(&self) -> &dyn Resolver {
-    self
-  }
 }
 
-impl Resolver for NodeEsmResolver<'_> {
+impl Resolver for NodeEsmResolver {
   fn resolve(
     &self,
     specifier: &str,
@@ -232,12 +228,12 @@ fn finalize_resolution(
   };
   if is_dir {
     return Err(errors::err_unsupported_dir_import(
-      &path.display().to_string(),
-      &to_file_path_string(base),
+      resolved.as_str(),
+      base.as_str(),
     ));
   } else if !is_file {
     return Err(errors::err_module_not_found(
-      &path.display().to_string(),
+      resolved.as_str(),
       base.as_str(),
       "module",
     ));
@@ -1197,7 +1193,7 @@ mod tests {
     let cwd = testdir("basic");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
     let expected =
-      Url::parse("https://deno.land/std@0.113.0/node/http.ts").unwrap();
+      Url::parse("https://deno.land/std@0.116.0/node/http.ts").unwrap();
 
     let actual = node_resolve("http", main.as_str(), &cwd).unwrap();
     println!("actual {}", actual);

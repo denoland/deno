@@ -105,6 +105,10 @@ pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
 
+pub fn std_path() -> PathBuf {
+  root_path().join("test_util").join("std")
+}
+
 pub fn target_dir() -> PathBuf {
   let current_exe = std::env::current_exe().unwrap();
   let target_dir = current_exe.parent().unwrap().parent().unwrap();
@@ -566,7 +570,9 @@ async fn absolute_redirect(
   Ok(file_resp)
 }
 
-async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
+async fn main_server(
+  req: Request<Body>,
+) -> Result<Response<Body>, hyper::http::Error> {
   return match (req.method(), req.uri().path()) {
     (&hyper::Method::POST, "/echo_server") => {
       let (parts, body) = req.into_parts();
@@ -849,6 +855,31 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       let version = format!("{:?}", req.version());
       Ok(Response::new(version.into()))
     }
+    (_, "/content_length") => {
+      let content_length = format!("{:?}", req.headers().get("content-length"));
+      Ok(Response::new(content_length.into()))
+    }
+    (_, "/jsx/jsx-runtime") | (_, "/jsx/jsx-dev-runtime") => {
+      let mut res = Response::new(Body::from(
+        r#"export function jsx(
+          _type,
+          _props,
+          _key,
+          _source,
+          _self,
+        ) {}
+        export const jsxs = jsx;
+        export const jsxDEV = jsx;
+        export const Fragment = Symbol("Fragment");
+        console.log("imported", import.meta.url);
+        "#,
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      Ok(res)
+    }
     _ => {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
@@ -857,7 +888,9 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
         return Ok(file_resp);
       }
 
-      return Ok(Response::new(Body::empty()));
+      Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Body::empty())
     }
   };
 }
@@ -1626,6 +1659,7 @@ pub struct CheckOutputIntegrationTest {
   pub output_str: Option<&'static str>,
   pub exit_code: i32,
   pub http_server: bool,
+  pub envs: Vec<(String, String)>,
 }
 
 impl CheckOutputIntegrationTest {
@@ -1646,6 +1680,7 @@ impl CheckOutputIntegrationTest {
     println!("deno_exe args {}", self.args);
     println!("deno_exe testdata path {:?}", &testdata_dir);
     command.args(args);
+    command.envs(self.envs.clone());
     command.current_dir(&testdata_dir);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();

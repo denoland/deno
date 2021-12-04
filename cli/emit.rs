@@ -12,21 +12,20 @@ use crate::config_file::ConfigFile;
 use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
+use crate::flags;
 use crate::tsc;
 use crate::version;
 
 use deno_ast::swc;
-use deno_core::error::anyhow;
-use deno_core::error::custom_error;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
@@ -43,7 +42,7 @@ use std::time::Instant;
 /// Represents the "default" type library that should be used when type
 /// checking the code in the module graph.  Note that a user provided config
 /// of `"lib"` would override this value.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub(crate) enum TypeLib {
   DenoWindow,
   DenoWorker,
@@ -75,8 +74,6 @@ impl Serialize for TypeLib {
     Serialize::serialize(&value, serializer)
   }
 }
-
-type Modules = HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>;
 
 /// A structure representing stats from an emit operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -160,6 +157,8 @@ pub(crate) fn get_ts_config(
         "target": "esnext",
         "tsBuildInfoFile": "deno:///.tsbuildinfo",
         "useDefineForClassFields": true,
+        // TODO(@kitsonk) remove for Deno 2.0
+        "useUnknownInCatchVariables": false,
       }));
       if tsc_emit {
         ts_config.merge(&json!({
@@ -211,6 +210,8 @@ pub(crate) fn get_ts_config(
         "target": "esnext",
         "tsBuildInfoFile": "deno:///.tsbuildinfo",
         "useDefineForClassFields": true,
+        // TODO(@kitsonk) remove for Deno 2.0
+        "useUnknownInCatchVariables": false,
       }));
       if tsc_emit {
         ts_config.merge(&json!({
@@ -293,6 +294,9 @@ fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
 /// Options for performing a check of a module graph. Note that the decision to
 /// emit or not is determined by the `ts_config` settings.
 pub(crate) struct CheckOptions {
+  /// The check flag from the option which can effect the filtering of
+  /// diagnostics in the emit result.
+  pub check: flags::CheckFlag,
   /// Set the debug flag on the TypeScript type checker.
   pub debug: bool,
   /// If true, any files emitted will be cached, even if there are diagnostics
@@ -304,6 +308,8 @@ pub(crate) struct CheckOptions {
   pub maybe_config_specifier: Option<ModuleSpecifier>,
   /// The derived tsconfig that should be used when checking.
   pub ts_config: TsConfig,
+  /// If true, existing `.tsbuildinfo` files will be ignored.
+  pub reload: bool,
 }
 
 /// The result of a check or emit of a module graph. Note that the actual
@@ -331,8 +337,11 @@ pub(crate) fn check_and_maybe_emit(
   // while there might be multiple roots, we can't "merge" the build info, so we
   // try to retrieve the build info for first root, which is the most common use
   // case.
-  let maybe_tsbuildinfo =
-    cache.get(CacheType::TypeScriptBuildInfo, &graph.roots[0]);
+  let maybe_tsbuildinfo = if options.reload {
+    None
+  } else {
+    cache.get(CacheType::TypeScriptBuildInfo, &graph.roots[0])
+  };
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
   // that data here.
@@ -352,18 +361,30 @@ pub(crate) fn check_and_maybe_emit(
     root_names,
   })?;
 
-  if let Some(info) = &response.maybe_tsbuildinfo {
-    // while we retrieve the build info for just the first module, it can be
-    // used for all the roots in the graph, so we will cache it for all roots
-    for root in &graph.roots {
-      cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
-    }
-  }
+  let diagnostics = if options.check == flags::CheckFlag::Local {
+    response.diagnostics.filter(|d| {
+      if let Some(file_name) = &d.file_name {
+        !file_name.starts_with("http")
+      } else {
+        true
+      }
+    })
+  } else {
+    response.diagnostics
+  };
+
   // sometimes we want to emit when there are diagnostics, and sometimes we
   // don't. tsc will always return an emit if there are diagnostics
-  if (response.diagnostics.is_empty() || options.emit_with_diagnostics)
+  if (diagnostics.is_empty() || options.emit_with_diagnostics)
     && !response.emitted_files.is_empty()
   {
+    if let Some(info) = &response.maybe_tsbuildinfo {
+      // while we retrieve the build info for just the first module, it can be
+      // used for all the roots in the graph, so we will cache it for all roots
+      for root in &graph.roots {
+        cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
+      }
+    }
     for emit in response.emitted_files.into_iter() {
       if let Some(specifiers) = emit.maybe_specifiers {
         assert!(specifiers.len() == 1);
@@ -409,7 +430,7 @@ pub(crate) fn check_and_maybe_emit(
   }
 
   Ok(CheckEmitResult {
-    diagnostics: response.diagnostics,
+    diagnostics,
     stats: response.stats,
   })
 }
@@ -786,74 +807,9 @@ pub(crate) fn to_file_map(
   files
 }
 
-/// Convert a module graph to a map of module sources, which are used by
-/// `deno_core` to load modules into V8.
-pub(crate) fn to_module_sources(
-  graph: &ModuleGraph,
-  cache: &dyn Cacher,
-) -> Modules {
-  graph
-    .specifiers()
-    .into_iter()
-    .map(|(requested_specifier, r)| match r {
-      Err(err) => (requested_specifier, Err(err.into())),
-      Ok((found_specifier, media_type)) => {
-        // First we check to see if there is an emitted file in the cache.
-        if let Some(code) = cache.get(CacheType::Emit, &found_specifier) {
-          (
-            requested_specifier.clone(),
-            Ok(ModuleSource {
-              code,
-              module_url_found: found_specifier.to_string(),
-              module_url_specified: requested_specifier.to_string(),
-            }),
-          )
-        // Then if the file is JavaScript (or unknown) and wasn't emitted, we
-        // will load the original source code in the module.
-        } else if matches!(
-          media_type,
-          MediaType::JavaScript
-            | MediaType::Unknown
-            | MediaType::Cjs
-            | MediaType::Mjs
-        ) {
-          if let Some(module) = graph.get(&found_specifier) {
-            (
-              requested_specifier.clone(),
-              Ok(ModuleSource {
-                code: module.source.as_str().to_string(),
-                module_url_found: module.specifier.to_string(),
-                module_url_specified: requested_specifier.to_string(),
-              }),
-            )
-          } else {
-            unreachable!(
-              "unexpected module missing from graph: {}",
-              found_specifier
-            )
-          }
-        // Otherwise we will add a not found error.
-        } else {
-          (
-            requested_specifier.clone(),
-            Err(custom_error(
-              "NotFound",
-              format!(
-                "Emitted code for \"{}\" not found.",
-                requested_specifier
-              ),
-            )),
-          )
-        }
-      }
-    })
-    .collect()
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cache::MemoryCacher;
 
   #[test]
   fn test_is_emittable() {
@@ -868,82 +824,5 @@ mod tests {
     assert!(is_emittable(&MediaType::JavaScript, true));
     assert!(is_emittable(&MediaType::Jsx, false));
     assert!(!is_emittable(&MediaType::Json, false));
-  }
-
-  async fn setup<S: AsRef<str>>(
-    root: S,
-    sources: Vec<(S, S)>,
-  ) -> (ModuleGraph, MemoryCacher) {
-    let roots = vec![ModuleSpecifier::parse(root.as_ref()).unwrap()];
-    let sources = sources
-      .into_iter()
-      .map(|(s, c)| (s.as_ref().to_string(), Arc::new(c.as_ref().to_string())))
-      .collect();
-    let mut cache = MemoryCacher::new(sources);
-    let graph = deno_graph::create_graph(
-      roots, false, None, &mut cache, None, None, None,
-    )
-    .await;
-    (graph, cache)
-  }
-
-  #[tokio::test]
-  async fn test_to_module_sources_emitted() {
-    let (graph, mut cache) = setup(
-      "https://example.com/a.ts",
-      vec![("https://example.com/a.ts", r#"console.log("hello deno");"#)],
-    )
-    .await;
-    let (ts_config, _) = get_ts_config(ConfigType::Emit, None, None).unwrap();
-    emit(
-      &graph,
-      &mut cache,
-      EmitOptions {
-        ts_config,
-        reload_exclusions: HashSet::default(),
-        reload: false,
-      },
-    )
-    .unwrap();
-    let modules = to_module_sources(&graph, &cache);
-    assert_eq!(modules.len(), 1);
-    let root = ModuleSpecifier::parse("https://example.com/a.ts").unwrap();
-    let maybe_result = modules.get(&root);
-    assert!(maybe_result.is_some());
-    let result = maybe_result.unwrap();
-    assert!(result.is_ok());
-    let module_source = result.as_ref().unwrap();
-    assert!(module_source
-      .code
-      .starts_with(r#"console.log("hello deno");"#));
-  }
-
-  #[tokio::test]
-  async fn test_to_module_sources_not_emitted() {
-    let (graph, mut cache) = setup(
-      "https://example.com/a.js",
-      vec![("https://example.com/a.js", r#"console.log("hello deno");"#)],
-    )
-    .await;
-    let (ts_config, _) = get_ts_config(ConfigType::Emit, None, None).unwrap();
-    emit(
-      &graph,
-      &mut cache,
-      EmitOptions {
-        ts_config,
-        reload_exclusions: HashSet::default(),
-        reload: false,
-      },
-    )
-    .unwrap();
-    let modules = to_module_sources(&graph, &cache);
-    assert_eq!(modules.len(), 1);
-    let root = ModuleSpecifier::parse("https://example.com/a.js").unwrap();
-    let maybe_result = modules.get(&root);
-    assert!(maybe_result.is_some());
-    let result = maybe_result.unwrap();
-    assert!(result.is_ok());
-    let module_source = result.as_ref().unwrap();
-    assert_eq!(module_source.code, r#"console.log("hello deno");"#);
   }
 }

@@ -10,6 +10,7 @@ use deno_ast::swc::codegen::text_writer::JsWriter;
 use deno_ast::swc::codegen::Node;
 use deno_ast::swc::common::chain;
 use deno_ast::swc::common::comments::SingleThreadedComments;
+use deno_ast::swc::common::errors::Diagnostic as SwcDiagnostic;
 use deno_ast::swc::common::BytePos;
 use deno_ast::swc::common::FileName;
 use deno_ast::swc::common::Globals;
@@ -31,10 +32,12 @@ use deno_ast::Diagnostic;
 use deno_ast::LineAndColumnDisplay;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
+use std::cell::RefCell;
 use std::rc::Rc;
 
 mod bundle_hook;
@@ -122,15 +125,26 @@ pub struct EmitOptions {
   pub inline_source_map: bool,
   /// Should the sources be inlined in the source map.  Defaults to `true`.
   pub inline_sources: bool,
-  // Should a corresponding .map file be created for the output. This should be
-  // false if inline_source_map is true. Defaults to `false`.
+  /// Should a corresponding .map file be created for the output. This should be
+  /// false if inline_source_map is true. Defaults to `false`.
   pub source_map: bool,
+  /// `true` if the program should use an implicit JSX import source/the "new"
+  /// JSX transforms.
+  pub jsx_automatic: bool,
+  /// If JSX is automatic, if it is in development mode, meaning that it should
+  /// import `jsx-dev-runtime` and transform JSX using `jsxDEV` import from the
+  /// JSX import source as well as provide additional debug information to the
+  /// JSX factory.
+  pub jsx_development: bool,
   /// When transforming JSX, what value should be used for the JSX factory.
   /// Defaults to `React.createElement`.
   pub jsx_factory: String,
   /// When transforming JSX, what value should be used for the JSX fragment
   /// factory.  Defaults to `React.Fragment`.
   pub jsx_fragment_factory: String,
+  /// The string module specifier to implicitly import JSX factories from when
+  /// transpiling JSX.
+  pub jsx_import_source: Option<String>,
   /// Should JSX be transformed or preserved.  Defaults to `true`.
   pub transform_jsx: bool,
   /// Should import declarations be transformed to variable declarations.
@@ -146,8 +160,11 @@ impl Default for EmitOptions {
       inline_source_map: true,
       inline_sources: true,
       source_map: false,
+      jsx_automatic: false,
+      jsx_development: false,
       jsx_factory: "React.createElement".into(),
       jsx_fragment_factory: "React.Fragment".into(),
+      jsx_import_source: None,
       transform_jsx: true,
       repl_imports: false,
     }
@@ -164,15 +181,25 @@ impl From<config_file::TsConfig> for EmitOptions {
         "error" => ImportsNotUsedAsValues::Error,
         _ => ImportsNotUsedAsValues::Remove,
       };
+    let (transform_jsx, jsx_automatic, jsx_development) =
+      match options.jsx.as_str() {
+        "react" => (true, false, false),
+        "react-jsx" => (true, true, false),
+        "react-jsxdev" => (true, true, true),
+        _ => (false, false, false),
+      };
     EmitOptions {
       emit_metadata: options.emit_decorator_metadata,
       imports_not_used_as_values,
       inline_source_map: options.inline_source_map,
       inline_sources: options.inline_sources,
       source_map: options.source_map,
+      jsx_automatic,
+      jsx_development,
       jsx_factory: options.jsx_factory,
       jsx_fragment_factory: options.jsx_fragment_factory,
-      transform_jsx: options.jsx == "react",
+      jsx_import_source: options.jsx_import_source,
+      transform_jsx,
       repl_imports: false,
     }
   }
@@ -251,7 +278,7 @@ pub fn transpile(
       source_map.clone(),
       &comments,
       top_level_mark,
-    );
+    )?;
 
     let mut src_map_buf = vec![];
     let mut buf = vec![];
@@ -328,7 +355,7 @@ pub fn transpile_module(
     cm,
     &comments,
     top_level_mark,
-  );
+  )?;
   let module = match program {
     Program::Module(module) => module,
     _ => unreachable!(),
@@ -337,13 +364,38 @@ pub fn transpile_module(
   Ok((source_file, module))
 }
 
+#[derive(Default, Clone)]
+struct DiagnosticCollector {
+  diagnostics_cell: Rc<RefCell<Vec<SwcDiagnostic>>>,
+}
+
+impl DiagnosticCollector {
+  pub fn into_handler(self) -> deno_ast::swc::common::errors::Handler {
+    deno_ast::swc::common::errors::Handler::with_emitter(
+      true,
+      false,
+      Box::new(self),
+    )
+  }
+}
+
+impl deno_ast::swc::common::errors::Emitter for DiagnosticCollector {
+  fn emit(
+    &mut self,
+    db: &deno_ast::swc::common::errors::DiagnosticBuilder<'_>,
+  ) {
+    use std::ops::Deref;
+    self.diagnostics_cell.borrow_mut().push(db.deref().clone());
+  }
+}
+
 fn fold_program(
   program: Program,
   options: &EmitOptions,
   source_map: Rc<SourceMap>,
   comments: &SingleThreadedComments,
   top_level_mark: Mark,
-) -> Program {
+) -> Result<Program, AnyError> {
   let jsx_pass = chain!(
     resolver_with_mark(top_level_mark),
     react::react(
@@ -355,6 +407,13 @@ fn fold_program(
         // this will use `Object.assign()` instead of the `_extends` helper
         // when spreading props.
         use_builtins: true,
+        runtime: if options.jsx_automatic {
+          Some(react::Runtime::Automatic)
+        } else {
+          None
+        },
+        development: options.jsx_development,
+        import_source: options.jsx_import_source.clone().unwrap_or_default(),
         ..Default::default()
       },
       top_level_mark,
@@ -376,7 +435,7 @@ fn fold_program(
     ),
     Optional::new(
       typescript::strip::strip_with_jsx(
-        source_map,
+        source_map.clone(),
         strip_config_from_emit_options(options),
         comments,
         top_level_mark
@@ -388,9 +447,57 @@ fn fold_program(
     hygiene(),
   );
 
-  helpers::HELPERS.set(&helpers::Helpers::new(false), || {
-    program.fold_with(&mut passes)
-  })
+  let emitter = DiagnosticCollector::default();
+  let diagnostics_cell = emitter.diagnostics_cell.clone();
+  let handler = emitter.into_handler();
+  let result = deno_ast::swc::utils::HANDLER.set(&handler, || {
+    helpers::HELPERS.set(&helpers::Helpers::new(false), || {
+      program.fold_with(&mut passes)
+    })
+  });
+
+  let diagnostics = diagnostics_cell.borrow();
+  if let Some(diagnostic) = diagnostics.iter().find(|d| is_fatal_diagnostic(d))
+  {
+    Err(anyhow!(
+      "{}",
+      format_swc_diagnostic(&source_map, diagnostic)
+    ))
+  } else {
+    Ok(result)
+  }
+}
+
+fn is_fatal_diagnostic(diagnostic: &SwcDiagnostic) -> bool {
+  use deno_ast::swc::common::errors::Level;
+  match diagnostic.level {
+    Level::Bug
+    | Level::Cancelled
+    | Level::FailureNote
+    | Level::Fatal
+    | Level::PhaseFatal
+    | Level::Error => true,
+    Level::Help | Level::Note | Level::Warning => false,
+  }
+}
+
+fn format_swc_diagnostic(
+  source_map: &SourceMap,
+  diagnostic: &SwcDiagnostic,
+) -> String {
+  if let Some(span) = &diagnostic.span.primary_span() {
+    let file_name = source_map.span_to_filename(*span);
+    let loc = source_map.lookup_char_pos(span.lo);
+    format!(
+      "{} at {}:{}:{}",
+      diagnostic.message(),
+      file_name.to_string(),
+      loc.line,
+      loc.col_display + 1,
+    )
+  } else {
+    diagnostic.message()
+  }
 }
 
 #[cfg(test)]
@@ -496,6 +603,112 @@ function App() {
   }
 
   #[test]
+  fn test_transpile_jsx_import_source_pragma() {
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.tsx")
+      .expect("could not resolve specifier");
+    let source = r#"
+/** @jsxImportSource jsx_lib */
+
+function App() {
+  return (
+    <div><></></div>
+  );
+}"#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      source: SourceTextInfo::from_string(source.to_string()),
+      media_type: deno_ast::MediaType::Jsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+    let (code, _) = transpile(&module, &EmitOptions::default()).unwrap();
+    let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
+/** @jsxImportSource jsx_lib */ function App() {
+    return(/*#__PURE__*/ _jsx("div", {
+        children: /*#__PURE__*/ _jsx(_Fragment, {
+        })
+    }));
+"#;
+    assert_eq!(&code[..expected.len()], expected);
+  }
+
+  #[test]
+  fn test_transpile_jsx_import_source_no_pragma() {
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.tsx")
+      .expect("could not resolve specifier");
+    let source = r#"
+function App() {
+  return (
+    <div><></></div>
+  );
+}"#;
+    let module = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      source: SourceTextInfo::from_string(source.to_string()),
+      media_type: deno_ast::MediaType::Jsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: true,
+    })
+    .unwrap();
+    let emit_options = EmitOptions {
+      jsx_automatic: true,
+      jsx_import_source: Some("jsx_lib".to_string()),
+      ..Default::default()
+    };
+    let (code, _) = transpile(&module, &emit_options).unwrap();
+    let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
+function App() {
+    return(/*#__PURE__*/ _jsx("div", {
+        children: /*#__PURE__*/ _jsx(_Fragment, {
+        })
+    }));
+}
+"#;
+    assert_eq!(&code[..expected.len()], expected);
+  }
+
+  // TODO(@kitsonk) https://github.com/swc-project/swc/issues/2656
+  //   #[test]
+  //   fn test_transpile_jsx_import_source_no_pragma_dev() {
+  //     let specifier = resolve_url_or_path("https://deno.land/x/mod.tsx")
+  //       .expect("could not resolve specifier");
+  //     let source = r#"
+  // function App() {
+  //   return (
+  //     <div><></></div>
+  //   );
+  // }"#;
+  //     let module = parse_module(ParseParams {
+  //       specifier: specifier.as_str().to_string(),
+  //       source: SourceTextInfo::from_string(source.to_string()),
+  //       media_type: deno_ast::MediaType::Jsx,
+  //       capture_tokens: false,
+  //       maybe_syntax: None,
+  //       scope_analysis: true,
+  //     })
+  //     .unwrap();
+  //     let emit_options = EmitOptions {
+  //       jsx_automatic: true,
+  //       jsx_import_source: Some("jsx_lib".to_string()),
+  //       jsx_development: true,
+  //       ..Default::default()
+  //     };
+  //     let (code, _) = transpile(&module, &emit_options).unwrap();
+  //     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-dev-runtime";
+  // function App() {
+  //     return(/*#__PURE__*/ _jsx("div", {
+  //         children: /*#__PURE__*/ _jsx(_Fragment, {
+  //         })
+  //     }));
+  // }
+  // "#;
+  //     assert_eq!(&code[..expected.len()], expected);
+  //   }
+
+  #[test]
   fn test_transpile_decorators() {
     let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
       .expect("could not resolve specifier");
@@ -566,5 +779,27 @@ export function g() {
     return test(algorithm, false, keyUsages);
 }"#;
     assert_eq!(&code[..expected.len()], expected);
+  }
+
+  #[test]
+  fn diagnostic_jsx_spread_instead_of_panic() {
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"const A = () => {
+  return <div>{...[]}</div>;
+};"#;
+    let parsed_source = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      source: SourceTextInfo::from_string(source.to_string()),
+      media_type: deno_ast::MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let err = transpile(&parsed_source, &Default::default())
+      .err()
+      .unwrap();
+
+    assert_eq!(err.to_string(), "Spread children are not supported in React. at https://deno.land/x/mod.ts:2:15");
   }
 }

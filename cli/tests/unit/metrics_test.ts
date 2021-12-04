@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, unitTest } from "./test_util.ts";
+import { assert } from "./test_util.ts";
 
-unitTest(async function metrics() {
+Deno.test(async function metrics() {
   // Write to stdout to ensure a "data" message gets sent instead of just
   // control messages.
   const dataMsg = new Uint8Array([13, 13, 13]); // "\r\r\r",
@@ -16,7 +16,7 @@ unitTest(async function metrics() {
   assert(m1.bytesSentControl === 0);
   assert(m1.bytesSentData === 0);
   assert(m1.bytesReceived === 0);
-  const m1OpWrite = m1.ops["op_write_async"];
+  const m1OpWrite = m1.ops["op_write"];
   assert(m1OpWrite.opsDispatchedAsync > 0);
   assert(m1OpWrite.opsCompletedAsync > 0);
   assert(m1OpWrite.bytesSentControl === 0);
@@ -31,7 +31,7 @@ unitTest(async function metrics() {
   assert(m2.bytesSentControl === m1.bytesSentControl);
   assert(m2.bytesSentData === 0);
   assert(m2.bytesReceived === m1.bytesReceived);
-  const m2OpWrite = m2.ops["op_write_async"];
+  const m2OpWrite = m2.ops["op_write"];
   assert(m2OpWrite.opsDispatchedAsync > m1OpWrite.opsDispatchedAsync);
   assert(m2OpWrite.opsCompletedAsync > m1OpWrite.opsCompletedAsync);
   assert(m2OpWrite.bytesSentControl === m1OpWrite.bytesSentControl);
@@ -39,7 +39,7 @@ unitTest(async function metrics() {
   assert(m2OpWrite.bytesReceived === m1OpWrite.bytesReceived);
 });
 
-unitTest(
+Deno.test(
   { permissions: { write: true } },
   function metricsUpdatedIfNoResponseSync() {
     const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -53,7 +53,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { write: true } },
   async function metricsUpdatedIfNoResponseAsync() {
     const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -69,7 +69,7 @@ unitTest(
 );
 
 // Test that ops from extensions have metrics (via OpMiddleware)
-unitTest(function metricsForOpCrates() {
+Deno.test(function metricsForOpCrates() {
   const _ = new URL("https://deno.land");
 
   const m1 = Deno.metrics().ops["op_url_parse"];

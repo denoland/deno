@@ -3,10 +3,10 @@
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
-use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Extension;
@@ -15,11 +15,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_net::io::TcpStreamResource;
-use deno_net::io::UnixStreamResource;
-use deno_net::ops_tls::TlsStreamResource;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::fs::File as StdFile;
 use std::io::Read;
 use std::io::Write;
@@ -70,11 +66,8 @@ lazy_static::lazy_static! {
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_read_async", op_async(op_read_async)),
-      ("op_write_async", op_async(op_write_async)),
       ("op_read_sync", op_sync(op_read_sync)),
       ("op_write_sync", op_sync(op_write_sync)),
-      ("op_shutdown", op_async(op_shutdown)),
     ])
     .build()
 }
@@ -126,13 +119,13 @@ where
     RcRef::map(self, |r| &r.stream).borrow_mut()
   }
 
-  async fn write(self: &Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
     let mut stream = self.borrow_mut().await;
-    let nwritten = stream.write(buf).await?;
+    let nwritten = stream.write(&buf).await?;
     Ok(nwritten)
   }
 
-  async fn shutdown(self: &Rc<Self>) -> Result<(), AnyError> {
+  async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
     let mut stream = self.borrow_mut().await;
     stream.shutdown().await?;
     Ok(())
@@ -170,9 +163,15 @@ where
     self.cancel_handle.cancel()
   }
 
-  async fn read(self: &Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+  async fn read(
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
     let mut rd = self.borrow_mut().await;
-    let nread = rd.read(buf).try_or_cancel(self.cancel_handle()).await?;
+    let nread = rd
+      .read(&mut buf)
+      .try_or_cancel(self.cancel_handle())
+      .await?;
     Ok(nread)
   }
 }
@@ -183,6 +182,14 @@ impl Resource for ChildStdinResource {
   fn name(&self) -> Cow<str> {
     "childStdin".into()
   }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.write(buf))
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(self.shutdown())
+  }
 }
 
 pub type ChildStdoutResource = ReadOnlyResource<process::ChildStdout>;
@@ -190,6 +197,10 @@ pub type ChildStdoutResource = ReadOnlyResource<process::ChildStdout>;
 impl Resource for ChildStdoutResource {
   fn name(&self) -> Cow<str> {
     "childStdout".into()
+  }
+
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
   }
 
   fn close(self: Rc<Self>) {
@@ -202,6 +213,10 @@ pub type ChildStderrResource = ReadOnlyResource<process::ChildStderr>;
 impl Resource for ChildStderrResource {
   fn name(&self) -> Cow<str> {
     "childStderr".into()
+  }
+
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
   }
 
   fn close(self: Rc<Self>) {
@@ -240,24 +255,27 @@ impl StdFileResource {
     }
   }
 
-  async fn read(self: &Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+  async fn read(
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
     if self.fs_file.is_some() {
-      let mut fs_file = RcRef::map(&*self, |r| r.fs_file.as_ref().unwrap())
+      let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
-      let nwritten = fs_file.0.as_mut().unwrap().read(buf).await?;
+      let nwritten = fs_file.0.as_mut().unwrap().read(&mut buf).await?;
       Ok(nwritten)
     } else {
       Err(resource_unavailable())
     }
   }
 
-  async fn write(self: &Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
     if self.fs_file.is_some() {
-      let mut fs_file = RcRef::map(&*self, |r| r.fs_file.as_ref().unwrap())
+      let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
-      let nwritten = fs_file.0.as_mut().unwrap().write(buf).await?;
+      let nwritten = fs_file.0.as_mut().unwrap().write(&buf).await?;
       fs_file.0.as_mut().unwrap().flush().await?;
       Ok(nwritten)
     } else {
@@ -318,6 +336,14 @@ impl Resource for StdFileResource {
     self.name.as_str().into()
   }
 
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
+  }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.write(buf))
+  }
+
   fn close(self: Rc<Self>) {
     // TODO: do not cancel file I/O when file is writable.
     self.cancel.cancel()
@@ -338,30 +364,6 @@ fn op_read_sync(
   })
 }
 
-async fn op_read_async(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  mut buf: ZeroCopyBuf,
-) -> Result<u32, AnyError> {
-  let resource = state.borrow().resource_table.get_any(rid)?;
-  let nread = if let Some(s) = resource.downcast_rc::<ChildStdoutResource>() {
-    s.read(&mut buf).await?
-  } else if let Some(s) = resource.downcast_rc::<ChildStderrResource>() {
-    s.read(&mut buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.read(&mut buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.read(&mut buf).await?
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.read(&mut buf).await?
-  } else if let Some(s) = resource.downcast_rc::<StdFileResource>() {
-    s.read(&mut buf).await?
-  } else {
-    return Err(not_supported());
-  };
-  Ok(nread as u32)
-}
-
 fn op_write_sync(
   state: &mut OpState,
   rid: ResourceId,
@@ -374,46 +376,4 @@ fn op_write_sync(
       .map_err(AnyError::from),
     Err(_) => Err(not_supported()),
   })
-}
-
-async fn op_write_async(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  buf: ZeroCopyBuf,
-) -> Result<u32, AnyError> {
-  let resource = state.borrow().resource_table.get_any(rid)?;
-  let nwritten = if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
-    s.write(&buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.write(&buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.write(&buf).await?
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.write(&buf).await?
-  } else if let Some(s) = resource.downcast_rc::<StdFileResource>() {
-    s.write(&buf).await?
-  } else {
-    return Err(not_supported());
-  };
-  Ok(nwritten as u32)
-}
-
-async fn op_shutdown(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  _: (),
-) -> Result<(), AnyError> {
-  let resource = state.borrow().resource_table.get_any(rid)?;
-  if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
-    s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.shutdown().await?;
-  } else {
-    return Err(not_supported());
-  }
-  Ok(())
 }

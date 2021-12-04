@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, unitTest } from "./test_util.ts";
+import { assertEquals } from "./test_util.ts";
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function fdatasyncSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fdatasyncSync.txt";
@@ -19,7 +19,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function fdatasyncSuccess() {
     const filename = (await Deno.makeTempDir()) + "/test_fdatasync.txt";
@@ -37,7 +37,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function fsyncSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fsyncSync.txt";
@@ -55,7 +55,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function fsyncSuccess() {
     const filename = (await Deno.makeTempDir()) + "/test_fsync.txt";

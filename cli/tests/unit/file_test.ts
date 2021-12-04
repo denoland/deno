@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
 // deno-lint-ignore no-explicit-any
 function testFirstArgument(arg1: any[], expectedSize: number) {
@@ -10,47 +10,47 @@ function testFirstArgument(arg1: any[], expectedSize: number) {
   assertEquals(file.type, "");
 }
 
-unitTest(function fileEmptyFileBits() {
+Deno.test(function fileEmptyFileBits() {
   testFirstArgument([], 0);
 });
 
-unitTest(function fileStringFileBits() {
+Deno.test(function fileStringFileBits() {
   testFirstArgument(["bits"], 4);
 });
 
-unitTest(function fileUnicodeStringFileBits() {
+Deno.test(function fileUnicodeStringFileBits() {
   testFirstArgument(["𝓽𝓮𝔁𝓽"], 16);
 });
 
-unitTest(function fileStringObjectFileBits() {
+Deno.test(function fileStringObjectFileBits() {
   testFirstArgument([new String("string object")], 13);
 });
 
-unitTest(function fileEmptyBlobFileBits() {
+Deno.test(function fileEmptyBlobFileBits() {
   testFirstArgument([new Blob()], 0);
 });
 
-unitTest(function fileBlobFileBits() {
+Deno.test(function fileBlobFileBits() {
   testFirstArgument([new Blob(["bits"])], 4);
 });
 
-unitTest(function fileEmptyFileFileBits() {
+Deno.test(function fileEmptyFileFileBits() {
   testFirstArgument([new File([], "world.txt")], 0);
 });
 
-unitTest(function fileFileFileBits() {
+Deno.test(function fileFileFileBits() {
   testFirstArgument([new File(["bits"], "world.txt")], 4);
 });
 
-unitTest(function fileArrayBufferFileBits() {
+Deno.test(function fileArrayBufferFileBits() {
   testFirstArgument([new ArrayBuffer(8)], 8);
 });
 
-unitTest(function fileTypedArrayFileBits() {
+Deno.test(function fileTypedArrayFileBits() {
   testFirstArgument([new Uint8Array([0x50, 0x41, 0x53, 0x53])], 4);
 });
 
-unitTest(function fileVariousFileBits() {
+Deno.test(function fileVariousFileBits() {
   testFirstArgument(
     [
       "bits",
@@ -64,15 +64,15 @@ unitTest(function fileVariousFileBits() {
   );
 });
 
-unitTest(function fileNumberInFileBits() {
+Deno.test(function fileNumberInFileBits() {
   testFirstArgument([12], 2);
 });
 
-unitTest(function fileArrayInFileBits() {
+Deno.test(function fileArrayInFileBits() {
   testFirstArgument([[1, 2, 3]], 5);
 });
 
-unitTest(function fileObjectInFileBits() {
+Deno.test(function fileObjectInFileBits() {
   // "[object Object]"
   testFirstArgument([{}], 15);
 });
@@ -84,23 +84,23 @@ function testSecondArgument(arg2: any, expectedFileName: string) {
   assertEquals(file.name, expectedFileName);
 }
 
-unitTest(function fileUsingFileName() {
+Deno.test(function fileUsingFileName() {
   testSecondArgument("dummy", "dummy");
 });
 
-unitTest(function fileUsingNullFileName() {
+Deno.test(function fileUsingNullFileName() {
   testSecondArgument(null, "null");
 });
 
-unitTest(function fileUsingNumberFileName() {
+Deno.test(function fileUsingNumberFileName() {
   testSecondArgument(1, "1");
 });
 
-unitTest(function fileUsingEmptyStringFileName() {
+Deno.test(function fileUsingEmptyStringFileName() {
   testSecondArgument("", "");
 });
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   function fileTruncateSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fileTruncateSync.txt";
@@ -122,7 +122,7 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   { permissions: { read: true, write: true } },
   async function fileTruncateSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fileTruncate.txt";
@@ -144,7 +144,7 @@ unitTest(
   },
 );
 
-unitTest({ permissions: { read: true } }, function fileStatSyncSuccess() {
+Deno.test({ permissions: { read: true } }, function fileStatSyncSuccess() {
   const file = Deno.openSync("README.md");
   const fileInfo = file.statSync();
   assert(fileInfo.isFile);
@@ -159,7 +159,7 @@ unitTest({ permissions: { read: true } }, function fileStatSyncSuccess() {
   file.close();
 });
 
-unitTest({ permissions: { read: true } }, async function fileStatSuccess() {
+Deno.test({ permissions: { read: true } }, async function fileStatSuccess() {
   const file = await Deno.open("README.md");
   const fileInfo = await file.stat();
   assert(fileInfo.isFile);

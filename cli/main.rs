@@ -30,7 +30,6 @@ mod resolver;
 mod source_maps;
 mod standalone;
 mod text_encoding;
-mod tokio_util;
 mod tools;
 mod tsc;
 mod unix_util;
@@ -41,6 +40,7 @@ use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::BundleFlags;
 use crate::flags::CacheFlags;
+use crate::flags::CheckFlag;
 use crate::flags::CompileFlags;
 use crate::flags::CompletionsFlags;
 use crate::flags::CoverageFlags;
@@ -61,6 +61,7 @@ use crate::fmt_errors::PrettyJsError;
 use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
+use crate::resolver::JsxResolver;
 use crate::source_maps::apply_source_map;
 use crate::tools::installer::infer_name_from_url;
 use deno_ast::MediaType;
@@ -78,6 +79,7 @@ use deno_core::ModuleSpecifier;
 use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::tokio_util::run_basic;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -92,6 +94,7 @@ use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
 fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
@@ -216,7 +219,7 @@ pub fn create_main_worker(
     }
   } else if let Some(config_file) = &ps.maybe_config_file {
     // otherwise we will use the path to the config file
-    config_file.path.to_str().map(|s| s.to_string())
+    Some(config_file.specifier.to_string())
   } else {
     // otherwise we will use the path to the main module
     Some(main_module.to_string())
@@ -423,7 +426,19 @@ async fn compile_command(
 
   let graph =
     create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?;
-  let (bundle_str, _) = bundle_module_graph(graph.as_ref(), &ps, &flags)?;
+
+  let source = (graph.as_ref().modules().len() == 1)
+    .then(|| {
+      let root_module = graph.as_ref().modules()[0];
+      match root_module.media_type {
+        MediaType::JavaScript => Some(Ok(root_module.source.to_string())),
+        _ => None,
+      }
+    })
+    .flatten()
+    .unwrap_or_else(|| {
+      bundle_module_graph(graph.as_ref(), &ps, &flags).map(|r| r.0)
+    })?;
 
   info!(
     "{} {}",
@@ -438,7 +453,7 @@ async fn compile_command(
 
   let final_bin = tools::standalone::create_standalone_binary(
     original_binary,
-    bundle_str,
+    source,
     run_flags,
   )?;
 
@@ -468,14 +483,29 @@ async fn info_command(
       Permissions::allow_all(),
     );
     let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-    let maybe_resolver =
-      ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
+    let maybe_import_map_resolver =
+      ps.maybe_import_map.clone().map(ImportMapResolver::new);
+    let maybe_jsx_resolver = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| {
+        cf.to_maybe_jsx_import_source_module()
+          .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+      })
+      .flatten();
+    let maybe_resolver = if maybe_jsx_resolver.is_some() {
+      maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+    } else {
+      maybe_import_map_resolver
+        .as_ref()
+        .map(|im| im.as_resolver())
+    };
     let graph = deno_graph::create_graph(
       vec![specifier],
       false,
       None,
       &mut cache,
-      maybe_resolver.as_ref().map(|r| r.as_resolver()),
+      maybe_resolver,
       maybe_locker,
       None,
     )
@@ -566,11 +596,9 @@ async fn cache_command(
       lib.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
+      false,
     )
     .await?;
-    if let Some(graph_error) = ps.take_graph_error() {
-      return Err(graph_error.into());
-    }
   }
 
   Ok(())
@@ -637,19 +665,35 @@ async fn create_graph_and_maybe_check(
     Permissions::allow_all(),
   );
   let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-  let maybe_imports = ps
+  let maybe_imports = if let Some(config_file) = &ps.maybe_config_file {
+    config_file.to_maybe_imports()?
+  } else {
+    None
+  };
+  let maybe_import_map_resolver =
+    ps.maybe_import_map.clone().map(ImportMapResolver::new);
+  let maybe_jsx_resolver = ps
     .maybe_config_file
     .as_ref()
-    .map(|cf| cf.to_maybe_imports())
+    .map(|cf| {
+      cf.to_maybe_jsx_import_source_module()
+        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+    })
     .flatten();
-  let maybe_resolver = ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
+  let maybe_resolver = if maybe_jsx_resolver.is_some() {
+    maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+  } else {
+    maybe_import_map_resolver
+      .as_ref()
+      .map(|im| im.as_resolver())
+  };
   let graph = Arc::new(
     deno_graph::create_graph(
       vec![root],
       false,
       maybe_imports,
       &mut cache,
-      maybe_resolver.as_ref().map(|r| r.as_resolver()),
+      maybe_resolver,
       maybe_locker,
       None,
     )
@@ -663,7 +707,7 @@ async fn create_graph_and_maybe_check(
   // locker.
   emit::lock(graph.as_ref());
 
-  if !ps.flags.no_check {
+  if ps.flags.check != CheckFlag::None {
     graph.valid_types_only().map_err(emit::GraphError::from)?;
     let lib = if ps.flags.unstable {
       emit::TypeLib::UnstableDenoWindow
@@ -682,18 +726,18 @@ async fn create_graph_and_maybe_check(
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
-    let maybe_config_specifier = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| ModuleSpecifier::from_file_path(&cf.path).unwrap());
+    let maybe_config_specifier =
+      ps.maybe_config_file.as_ref().map(|cf| cf.specifier.clone());
     let check_result = emit::check_and_maybe_emit(
       graph.clone(),
       &mut cache,
       emit::CheckOptions {
+        check: ps.flags.check.clone(),
         debug,
         emit_with_diagnostics: false,
         maybe_config_specifier,
         ts_config,
+        reload: ps.flags.reload,
       },
     )?;
     debug!("{}", check_result.stats);
@@ -717,7 +761,7 @@ fn bundle_module_graph(
     ps.maybe_config_file.as_ref(),
     None,
   )?;
-  if flags.no_check {
+  if flags.check == CheckFlag::None {
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
@@ -905,6 +949,7 @@ async fn run_repl(flags: Flags, repl_flags: ReplFlags) -> Result<(), AnyError> {
     create_main_worker(&ps, main_module.clone(), permissions, None);
   if flags.compat {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
+    compat::add_global_require(&mut worker.js_runtime, main_module.as_str())?;
   }
   worker.run_event_loop(false).await?;
 
@@ -965,19 +1010,34 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         Permissions::allow_all(),
       );
       let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-      let maybe_imports = ps
+      let maybe_imports = if let Some(config_file) = &ps.maybe_config_file {
+        config_file.to_maybe_imports()?
+      } else {
+        None
+      };
+      let maybe_import_map_resolver =
+        ps.maybe_import_map.clone().map(ImportMapResolver::new);
+      let maybe_jsx_resolver = ps
         .maybe_config_file
         .as_ref()
-        .map(|cf| cf.to_maybe_imports())
+        .map(|cf| {
+          cf.to_maybe_jsx_import_source_module()
+            .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
+        })
         .flatten();
-      let maybe_resolver =
-        ps.maybe_import_map.as_ref().map(ImportMapResolver::new);
+      let maybe_resolver = if maybe_jsx_resolver.is_some() {
+        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
+      } else {
+        maybe_import_map_resolver
+          .as_ref()
+          .map(|im| im.as_resolver())
+      };
       let graph = deno_graph::create_graph(
         vec![main_module.clone()],
         false,
         maybe_imports,
         &mut cache,
-        maybe_resolver.as_ref().map(|r| r.as_resolver()),
+        maybe_resolver,
         maybe_locker,
         None,
       )
@@ -1389,7 +1449,7 @@ pub fn main() {
   let args: Vec<String> = env::args().collect();
   let standalone_res = match standalone::extract_standalone(args.clone()) {
     Ok(Some((metadata, bundle))) => {
-      tokio_util::run_basic(standalone::run(bundle, metadata))
+      run_basic(standalone::run(bundle, metadata))
     }
     Ok(None) => Ok(()),
     Err(err) => Err(err),
@@ -1417,5 +1477,8 @@ pub fn main() {
 
   logger::init(flags.log_level);
 
-  unwrap_or_exit(tokio_util::run_basic(get_subcommand(flags)));
+  unwrap_or_exit(run_basic(get_subcommand(flags)));
+
+  let code = deno_runtime::EXIT_CODE.load(Relaxed);
+  std::process::exit(code);
 }
