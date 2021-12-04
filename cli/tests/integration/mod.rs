@@ -1168,6 +1168,7 @@ async fn listen_tls_alpn() {
         .unwrap();
       let mut tls_stream =
         TlsStream::new_client_side(tcp_stream, cfg, hostname);
+
       tls_stream.handshake().await.unwrap();
 
       let (_, rustls_connection) = tls_stream.get_ref();
@@ -1218,11 +1219,13 @@ async fn listen_tls_alpn_fail() {
       let cfg = Arc::new(cfg);
 
       let hostname = rustls::ServerName::try_from("localhost").unwrap();
+
       let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
         .await
         .unwrap();
       let mut tls_stream =
         TlsStream::new_client_side(tcp_stream, cfg, hostname);
+
       tls_stream.handshake().await.unwrap_err();
 
       let (_, rustls_connection) = tls_stream.get_ref();
