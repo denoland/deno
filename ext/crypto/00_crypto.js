@@ -140,6 +140,10 @@
       // TODO(@littledivy): Enable this once implemented.
       // "AES-KW": "AesKeyWrapParams",
     },
+    "unwrapKey": {
+      // TODO(@littledivy): Enable this once implemented.
+      // "AES-KW": "AesKeyWrapParams",
+    },
   };
 
   const aesJwkAlg = {
@@ -2069,6 +2073,161 @@
           "NotSupportedError",
         );
       }
+    }
+    /**
+     * @param {string} format
+     * @param {BufferSource} wrappedKey
+     * @param {CryptoKey} unwrappingKey
+     * @param {AlgorithmIdentifier} unwrapAlgorithm
+     * @param {AlgorithmIdentifier} unwrappedKeyAlgorithm
+     * @param {boolean} extractable
+     * @param {KeyUsage[]} keyUsages
+     * @returns {Promise<CryptoKey>}
+     */
+    async unwrapKey(
+      format,
+      wrappedKey,
+      unwrappingKey,
+      unwrapAlgorithm,
+      unwrappedKeyAlgorithm,
+      extractable,
+      keyUsages,
+    ) {
+      webidl.assertBranded(this, SubtleCrypto);
+      const prefix = "Failed to execute 'unwrapKey' on 'SubtleCrypto'";
+      webidl.requiredArguments(arguments.length, 7, { prefix });
+      format = webidl.converters.KeyFormat(format, {
+        prefix,
+        context: "Argument 1",
+      });
+      wrappedKey = webidl.converters.BufferSource(wrappedKey, {
+        prefix,
+        context: "Argument 2",
+      });
+      unwrappingKey = webidl.converters.CryptoKey(unwrappingKey, {
+        prefix,
+        context: "Argument 3",
+      });
+      unwrapAlgorithm = webidl.converters.AlgorithmIdentifier(unwrapAlgorithm, {
+        prefix,
+        context: "Argument 4",
+      });
+      unwrappedKeyAlgorithm = webidl.converters.AlgorithmIdentifier(
+        unwrappedKeyAlgorithm,
+        {
+          prefix,
+          context: "Argument 5",
+        },
+      );
+      extractable = webidl.converters.boolean(extractable, {
+        prefix,
+        context: "Argument 6",
+      });
+      keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
+        prefix,
+        context: "Argument 7",
+      });
+
+      // 2.
+      if (ArrayBufferIsView(wrappedKey)) {
+        wrappedKey = new Uint8Array(
+          wrappedKey.buffer,
+          wrappedKey.byteOffset,
+          wrappedKey.byteLength,
+        );
+      } else {
+        wrappedKey = new Uint8Array(wrappedKey);
+      }
+      wrappedKey = TypedArrayPrototypeSlice(wrappedKey);
+
+      let normalizedAlgorithm;
+
+      try {
+        // 3.
+        normalizedAlgorithm = normalizeAlgorithm(unwrapAlgorithm, "unwrapKey");
+      } catch (_) {
+        // 4.
+        normalizedAlgorithm = normalizeAlgorithm(unwrapAlgorithm, "decrypt");
+      }
+
+      // 6.
+      const normalizedKeyAlgorithm = normalizeAlgorithm(
+        unwrappedKeyAlgorithm,
+        "importKey",
+      );
+
+      // 11.
+      if (normalizedAlgorithm.name !== unwrappingKey[_algorithm].name) {
+        throw new DOMException(
+          "Unwrapping algorithm doesn't match key algorithm.",
+          "InvalidAccessError",
+        );
+      }
+
+      // 12.
+      if (!ArrayPrototypeIncludes(unwrappingKey[_usages], "unwrapKey")) {
+        throw new DOMException(
+          "Key does not support the 'unwrapKey' operation.",
+          "InvalidAccessError",
+        );
+      }
+
+      // 13.
+      let key;
+      if (
+        supportedAlgorithms["unwrapKey"][normalizedAlgorithm.name] !== undefined
+      ) {
+        // TODO(@littledivy): Implement this for AES-KW.
+        throw new DOMException(
+          "Not implemented",
+          "NotSupportedError",
+        );
+      } else if (
+        supportedAlgorithms["decrypt"][normalizedAlgorithm.name] !== undefined
+      ) {
+        key = await this.decrypt(
+          normalizedAlgorithm,
+          unwrappingKey,
+          wrappedKey,
+        );
+      } else {
+        throw new DOMException(
+          "Algorithm not supported",
+          "NotSupportedError",
+        );
+      }
+
+      // 14.
+      const bytes = key;
+      if (format == "jwk") {
+        // TODO(@littledivy): Implement JWK.
+        throw new DOMException(
+          "Not implemented",
+          "NotSupportedError",
+        );
+      }
+
+      // 15.
+      const result = await this.importKey(
+        format,
+        bytes,
+        normalizedKeyAlgorithm,
+        extractable,
+        keyUsages,
+      );
+      // 16.
+      if (
+        (result[_type] == "secret" || result[_type] == "private") &&
+        keyUsages.length == 0
+      ) {
+        throw new SyntaxError("Invalid key type.");
+      }
+      // 17.
+      result[_extractable] = extractable;
+      // 18.
+      result[_usages] = usageIntersection(keyUsages, recognisedUsages);
+      // 19.
+      return result;
     }
 
     /**
