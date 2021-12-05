@@ -403,20 +403,29 @@ Deno.test(async function timerMaxCpuBug() {
 
 Deno.test(async function timerOrdering() {
   const array: number[] = [];
+  const donePromise = deferred();
+
+  function push(n: number) {
+    array.push(n);
+    if (array.length === 6) {
+      donePromise.resolve();
+    }
+  }
+
   setTimeout(() => {
-    array.push(1);
-    setTimeout(() => array.push(4));
+    push(1);
+    setTimeout(() => push(4));
   }, 0);
   setTimeout(() => {
-    array.push(2);
-    setTimeout(() => array.push(5));
+    push(2);
+    setTimeout(() => push(5));
   }, 0);
   setTimeout(() => {
-    array.push(3);
-    setTimeout(() => array.push(6));
+    push(3);
+    setTimeout(() => push(6));
   }, 0);
 
-  await delay(100);
+  await donePromise;
 
   assertEquals(array, [1, 2, 3, 4, 5, 6]);
 });
