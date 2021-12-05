@@ -137,7 +137,7 @@ pub fn infer_name_from_url(url: &Url) -> Option<String> {
       stem = parent_name.to_string_lossy().to_string();
     }
   }
-  let stem = stem.splitn(2, '@').next().unwrap().to_string();
+  let stem = stem.split_once('@').map_or(&*stem, |x| x.0).to_string();
   Some(stem)
 }
 

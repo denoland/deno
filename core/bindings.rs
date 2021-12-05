@@ -794,10 +794,12 @@ fn call_console(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  assert!(args.length() >= 2);
-
-  assert!(args.get(0).is_function());
-  assert!(args.get(1).is_function());
+  if args.length() < 2
+    || !args.get(0).is_function()
+    || !args.get(1).is_function()
+  {
+    return throw_type_error(scope, "Invalid arguments");
+  }
 
   let mut call_args = vec![];
   for i in 2..args.length() {

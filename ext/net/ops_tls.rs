@@ -665,7 +665,7 @@ impl Shared {
       self_arc.rd_waker.wake();
       self_arc.wr_waker.wake();
     }
-    self_weak.into_raw();
+    let _ = self_weak.into_raw();
   }
 
   fn drop_shared_waker(self_ptr: *const ()) {
@@ -883,6 +883,7 @@ where
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
+    None,
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
@@ -983,6 +984,7 @@ where
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
+    None,
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {

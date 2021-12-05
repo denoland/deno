@@ -841,7 +841,7 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else {
-        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promise.";
+        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promises.";
         return Poll::Ready(Err(generic_error(msg)));
       }
     }
@@ -854,7 +854,7 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else if state.dyn_module_evaluate_idle_counter >= 1 {
-        let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.
+        let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promises.
 Pending dynamic modules:\n".to_string();
         for pending_evaluate in &state.pending_dyn_mod_evaluate {
           let module_info = module_map
@@ -1950,7 +1950,7 @@ pub mod tests {
 
   #[test]
   fn test_pre_dispatch() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute_script(
@@ -1966,7 +1966,7 @@ pub mod tests {
          "#,
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -1984,7 +1984,7 @@ pub mod tests {
 
   #[test]
   fn test_encode_decode() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute_script(
@@ -1992,7 +1992,7 @@ pub mod tests {
           include_str!("encode_decode_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -2000,7 +2000,7 @@ pub mod tests {
 
   #[test]
   fn test_serialize_deserialize() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute_script(
@@ -2008,7 +2008,7 @@ pub mod tests {
           include_str!("serialize_deserialize_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -2024,7 +2024,7 @@ pub mod tests {
       "DOMExceptionOperationError"
     }
 
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let mut runtime = JsRuntime::new(RuntimeOptions {
         get_error_class_fn: Some(&get_error_class_name),
         ..Default::default()
@@ -2037,7 +2037,7 @@ pub mod tests {
           include_str!("error_builder_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
