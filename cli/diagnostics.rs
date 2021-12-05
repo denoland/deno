@@ -63,9 +63,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "umask",
   "utime",
   "utimeSync",
-  "CommandOptions",
-  "Command",
-  "Child",
 ];
 
 lazy_static::lazy_static! {

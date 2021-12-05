@@ -2333,11 +2333,7 @@ declare namespace Deno {
    * Requires `allow-run` permission. */
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
 
-  /**
-   * Environmental variables for subprocess can be specified using `env`
-   * mapping.
-   */
-  interface CommandOptions {
+  export interface CommandOptions {
     /** Arguments to pass to the process. */
     args?: string[];
     /**
@@ -2362,14 +2358,14 @@ declare namespace Deno {
     gid?: number;
   }
 
-  interface ProcessIoOptions {
+  export interface ProcessIoOptions {
     stdin?: "piped" | "inherit" | "null";
     stdout?: "piped" | "inherit" | "null";
     stderr?: "piped" | "inherit" | "null";
   }
 
   /** Spawns new subprocess. */
-  class Command {
+  export class Command {
     /**
      * @param command The path to the binary to run.
      * @param options Options for the Command.
@@ -2393,7 +2389,7 @@ declare namespace Deno {
     output(): Promise<CommandOutput<{ stdin: "piped"; stderr: "piped" }>>;
   }
 
-  class Child<T extends ProcessIoOptions = ProcessIoOptions> {
+  export class Child<T extends ProcessIoOptions = ProcessIoOptions> {
     readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
       : null;
     readonly stdout: T["stdout"] extends "piped" ? ReadableStream<Uint8Array>
@@ -2412,7 +2408,7 @@ declare namespace Deno {
     kill(signo: Signal): void;
   }
 
-  interface CommandOutput<T extends ProcessIoOptions = ProcessIoOptions> {
+  export interface CommandOutput<T extends ProcessIoOptions = ProcessIoOptions> {
     status: ProcessStatus;
     stdout: T["stdin"] extends "piped" ? Uint8Array : null;
     stderr: T["stderr"] extends "piped" ? Uint8Array : null;
