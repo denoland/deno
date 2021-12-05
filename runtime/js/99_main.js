@@ -558,6 +558,7 @@ delete Object.prototype.__proto__;
 
     core.setPromiseRejectCallback((_type, promise, reason) => {
       const event = new PromiseRejectionEvent("unhandledrejection", {
+        cancelable: true,
         promise,
         reason,
       });
