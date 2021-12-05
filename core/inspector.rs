@@ -160,7 +160,6 @@ impl JsRuntimeInspector {
     let v8_inspector_client =
       v8::inspector::V8InspectorClientBase::new::<Self>();
 
-    let flags = InspectorFlags::new();
     let waker = InspectorWaker::new(scope.thread_safe_handle());
 
     // Create JsRuntimeInspector instance.
@@ -169,7 +168,7 @@ impl JsRuntimeInspector {
       v8_inspector: Default::default(),
       sessions: Default::default(),
       new_session_tx,
-      flags,
+      flags: Default::default(),
       waker,
       deregister_tx: None,
     });
@@ -378,13 +377,6 @@ struct InspectorFlags {
   waiting_for_session: bool,
   session_handshake_done: bool,
   on_pause: bool,
-}
-
-impl InspectorFlags {
-  fn new() -> RefCell<Self> {
-    let self_ = Self::default();
-    RefCell::new(self_)
-  }
 }
 
 /// A helper structure that helps coordinate sessions during different
