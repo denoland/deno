@@ -338,8 +338,7 @@ async fn pump_websocket_messages(
     let result = websocket_rx
       .map_err(AnyError::from)
       .map_ok(|msg| {
-        // Messages that are cannot be converted to strings
-        // are ignored.
+        // Messages that cannot be converted to strings are ignored.
         if let Ok(msg_text) = msg.into_text() {
           let _ = inbound_tx.unbounded_send(msg_text);
         }
