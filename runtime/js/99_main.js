@@ -382,6 +382,7 @@ delete Object.prototype.__proto__;
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
     PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
+    PromiseRejectionEvent: util.nonEnumerable(PromiseRejectionEvent),
     ProgressEvent: util.nonEnumerable(ProgressEvent),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
     ReadableStreamDefaultReader: util.nonEnumerable(
@@ -553,6 +554,19 @@ delete Object.prototype.__proto__;
 
     defineEventHandler(window, "load");
     defineEventHandler(window, "unload");
+    defineEventHandler(window, "unhandledrejection");
+
+    core.setPromiseRejectCallback((_type, promise, reason) => {
+      const event = new PromiseRejectionEvent("unhandledrejection", {
+        promise,
+        reason,
+      });
+      globalThis.dispatchEvent(event);
+
+      if (!event.defaultPrevented) {
+        throw new Error("unhandled rejection");
+      }
+    });
 
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");
     // Stores the flag for checking whether unload is dispatched or not.
