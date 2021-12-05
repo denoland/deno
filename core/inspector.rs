@@ -95,7 +95,7 @@ impl Drop for JsRuntimeInspector {
     // deleted, however InspectorSession also has a drop handler that cleans
     // up after itself. To avoid a double free, make sure the inspector is
     // dropped last.
-    take(&mut *self.sessions.borrow_mut());
+    self.sessions.borrow_mut().drop_sessions();
 
     // Notify counterparty that this instance is being destroyed. Ignoring
     // result because counterparty waiting for the signal might have already
@@ -166,7 +166,7 @@ impl JsRuntimeInspector {
     let mut self_ = Box::new(Self {
       v8_inspector_client,
       v8_inspector: Default::default(),
-      sessions: Default::default(),
+      sessions: RefCell::new(SessionContainer::temporary_placeholder()),
       new_session_tx,
       flags: Default::default(),
       waker,
@@ -175,8 +175,10 @@ impl JsRuntimeInspector {
     self_.v8_inspector = Rc::new(RefCell::new(
       v8::inspector::V8Inspector::create(scope, &mut *self_).into(),
     ));
-    self_.sessions =
-      SessionContainer::new(self_.v8_inspector.clone(), new_session_rx);
+    self_.sessions = RefCell::new(SessionContainer::new(
+      self_.v8_inspector.clone(),
+      new_session_rx,
+    ));
 
     // Tell the inspector about the global context.
     let context = v8::Local::new(scope, context);
@@ -189,7 +191,7 @@ impl JsRuntimeInspector {
       .context_created(context, Self::CONTEXT_GROUP_ID, context_name);
 
     // Poll the session handler so we will get notified whenever there is
-    // new_incoming debugger activity.
+    // new incoming debugger activity.
     let _ = self_.poll_sessions(None).unwrap();
 
     self_
@@ -240,8 +242,12 @@ impl JsRuntimeInspector {
         }
 
         // Accept new connections.
-        match sessions.new_incoming.poll_next_unpin(cx) {
-          Poll::Ready(Some(session)) => {
+        match sessions.session_rx.poll_next_unpin(cx) {
+          Poll::Ready(Some(session_proxy)) => {
+            let session = InspectorSession::new(
+              sessions.v8_inspector.clone(),
+              session_proxy,
+            );
             let prev = sessions.handshake.replace(session);
             assert!(prev.is_none());
             continue;
@@ -381,7 +387,8 @@ struct InspectorFlags {
 /// A helper structure that helps coordinate sessions during different
 /// parts of their lifecycle.
 struct SessionContainer {
-  new_incoming: Pin<Box<dyn Stream<Item = Box<InspectorSession>> + 'static>>,
+  v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
+  session_rx: UnboundedReceiver<InspectorSessionProxy>,
   handshake: Option<Box<InspectorSession>>,
   established: FuturesUnordered<Box<InspectorSession>>,
 }
@@ -390,28 +397,38 @@ impl SessionContainer {
   fn new(
     v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
     new_session_rx: UnboundedReceiver<InspectorSessionProxy>,
-  ) -> RefCell<Self> {
-    let new_incoming = new_session_rx
-      .map(move |session_proxy| {
-        InspectorSession::new(v8_inspector.clone(), session_proxy)
-      })
-      .boxed_local();
-    let self_ = Self {
-      new_incoming,
-      ..Default::default()
-    };
-    RefCell::new(self_)
+  ) -> Self {
+    Self {
+      v8_inspector,
+      session_rx: new_session_rx,
+      handshake: None,
+      established: FuturesUnordered::new(),
+    }
+  }
+
+  /// V8 automatically deletes all sessions when an `V8Inspector` instance is
+  /// deleted, however InspectorSession also has a drop handler that cleans
+  /// up after itself. To avoid a double free, we need to manually drop
+  /// all sessions before dropping the inspector instance.
+  fn drop_sessions(&mut self) {
+    self.v8_inspector = Default::default();
+    self.handshake.take();
+    self.established.clear();
   }
 
   fn has_active_sessions(&self) -> bool {
     !self.established.is_empty() || self.handshake.is_some()
   }
-}
 
-impl Default for SessionContainer {
-  fn default() -> Self {
+  /// A temporary placeholder that should be used before actual
+  /// instance of V8Inspector is created. It's used in favor
+  /// of `Default` implementation to signal that it's not meant
+  /// for actual use.
+  fn temporary_placeholder() -> Self {
+    let (_tx, rx) = mpsc::unbounded::<InspectorSessionProxy>();
     Self {
-      new_incoming: stream::empty().boxed_local(),
+      v8_inspector: Default::default(),
+      session_rx: rx,
       handshake: None,
       established: FuturesUnordered::new(),
     }
