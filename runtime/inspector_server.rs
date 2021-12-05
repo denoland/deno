@@ -324,12 +324,12 @@ async fn server(
 async fn pump_websocket_messages(
   websocket: WebSocketStream<hyper::upgrade::Upgraded>,
   inbound_tx: UnboundedSender<String>,
-  outbound_rx: UnboundedReceiver<(InspectorMsg, String)>,
+  outbound_rx: UnboundedReceiver<InspectorMsg>,
 ) {
   let (websocket_tx, websocket_rx) = websocket.split();
 
   let outbound_pump = outbound_rx
-    .map(|(_msg_type, msg)| tungstenite::Message::text(msg))
+    .map(|msg| tungstenite::Message::text(msg.content))
     .map(Ok)
     .forward(websocket_tx)
     .map_err(|_| ());

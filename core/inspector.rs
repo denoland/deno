@@ -37,13 +37,15 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 
-// TODO(bartlomieju): consider storing content on this struct
-// instead of using tuple in sender
-pub enum InspectorMsg {
+pub enum InspectorMsgKind {
   Notification,
   Message(i32),
 }
-pub type SessionProxySender = UnboundedSender<(InspectorMsg, String)>;
+pub struct InspectorMsg {
+  pub kind: InspectorMsgKind,
+  pub content: String,
+}
+pub type SessionProxySender = UnboundedSender<InspectorMsg>;
 pub type SessionProxyReceiver = UnboundedReceiver<String>;
 
 /// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
@@ -539,11 +541,14 @@ impl InspectorSession {
 
   fn send_message(
     &self,
-    msg_type: InspectorMsg,
+    msg_kind: InspectorMsgKind,
     msg: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     let msg = msg.unwrap().string().to_string();
-    let _ = self.proxy.tx.unbounded_send((msg_type, msg));
+    let _ = self.proxy.tx.unbounded_send(InspectorMsg {
+      kind: msg_kind,
+      content: msg,
+    });
   }
 
   pub fn break_on_next_statement(&mut self) {
@@ -581,14 +586,14 @@ impl v8::inspector::ChannelImpl for InspectorSession {
     call_id: i32,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    self.send_message(InspectorMsg::Message(call_id), message);
+    self.send_message(InspectorMsgKind::Message(call_id), message);
   }
 
   fn send_notification(
     &mut self,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    self.send_message(InspectorMsg::Notification, message);
+    self.send_message(InspectorMsgKind::Notification, message);
   }
 
   fn flush_protocol_notifications(&mut self) {}
@@ -618,7 +623,7 @@ impl Future for InspectorSession {
 /// the same thread as an isolate.
 pub struct LocalInspectorSession {
   v8_session_tx: UnboundedSender<String>,
-  v8_session_rx: UnboundedReceiver<(InspectorMsg, String)>,
+  v8_session_rx: UnboundedReceiver<InspectorMsg>,
   response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
   next_message_id: i32,
   notification_queue: Vec<Value>,
@@ -627,7 +632,7 @@ pub struct LocalInspectorSession {
 impl LocalInspectorSession {
   pub fn new(
     v8_session_tx: UnboundedSender<String>,
-    v8_session_rx: UnboundedReceiver<(InspectorMsg, String)>,
+    v8_session_rx: UnboundedReceiver<InspectorMsg>,
   ) -> Self {
     let response_tx_map = HashMap::new();
     let next_message_id = 0;
@@ -686,31 +691,31 @@ impl LocalInspectorSession {
   }
 
   async fn receive_from_v8_session(&mut self) {
-    let (inspector_msg_type, message) =
-      self.v8_session_rx.next().await.unwrap();
-    if let InspectorMsg::Message(msg_id) = inspector_msg_type {
-      let message: serde_json::Value = match serde_json::from_str(&message) {
-        Ok(v) => v,
-        Err(error) => match error.classify() {
-          serde_json::error::Category::Syntax => json!({
-            "id": msg_id,
-            "result": {
+    let inspector_msg = self.v8_session_rx.next().await.unwrap();
+    if let InspectorMsgKind::Message(msg_id) = inspector_msg.kind {
+      let message: serde_json::Value =
+        match serde_json::from_str(&inspector_msg.content) {
+          Ok(v) => v,
+          Err(error) => match error.classify() {
+            serde_json::error::Category::Syntax => json!({
+              "id": msg_id,
               "result": {
-                "type": "error",
-                "description": "Unterminated string literal",
-                "value": "Unterminated string literal",
+                "result": {
+                  "type": "error",
+                  "description": "Unterminated string literal",
+                  "value": "Unterminated string literal",
+                },
+                "exceptionDetails": {
+                  "exceptionId": 0,
+                  "text": "Unterminated string literal",
+                  "lineNumber": 0,
+                  "columnNumber": 0
+                },
               },
-              "exceptionDetails": {
-                "exceptionId": 0,
-                "text": "Unterminated string literal",
-                "lineNumber": 0,
-                "columnNumber": 0
-              },
-            },
-          }),
-          _ => panic!("Could not parse inspector message"),
-        },
-      };
+            }),
+            _ => panic!("Could not parse inspector message"),
+          },
+        };
 
       self
         .response_tx_map
@@ -719,7 +724,7 @@ impl LocalInspectorSession {
         .send(message)
         .unwrap();
     } else {
-      let message = serde_json::from_str(&message).unwrap();
+      let message = serde_json::from_str(&inspector_msg.content).unwrap();
       self.notification_queue.push(message);
     }
   }
