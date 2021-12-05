@@ -196,8 +196,7 @@ impl JsRuntimeInspector {
   }
 
   pub fn has_active_sessions(&self) -> bool {
-    let sessions = self.sessions.borrow();
-    !sessions.established.is_empty() || sessions.handshake.is_some()
+    self.sessions.borrow().has_active_sessions()
   }
 
   fn poll_sessions(
@@ -402,6 +401,10 @@ impl SessionContainer {
       ..Default::default()
     };
     RefCell::new(self_)
+  }
+
+  fn has_active_sessions(&self) -> bool {
+    !self.established.is_empty() || self.handshake.is_some()
   }
 }
 
