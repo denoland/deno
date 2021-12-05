@@ -44,8 +44,7 @@ pub enum InspectorMsg {
   Message(i32),
 }
 pub type SessionProxySender = UnboundedSender<(InspectorMsg, String)>;
-// TODO(bartlomieju): consider using `String` instead of `Vec<u8>`
-pub type SessionProxyReceiver = UnboundedReceiver<Vec<u8>>;
+pub type SessionProxyReceiver = UnboundedReceiver<String>;
 
 /// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
 /// a duplex channel for sending/receiving messages in V8 session.
@@ -557,15 +556,15 @@ impl InspectorSession {
       .schedule_pause_on_next_statement(reason, detail);
   }
 
-  async fn pump_messages(&mut self) {
-    let v8_session_rc = self.v8_session.clone();
-    while let Some(msg) = self.proxy.rx.next().await {
-      let msg = v8::inspector::StringView::from(msg.as_slice());
-      let mut v8_session = v8_session_rc.borrow_mut();
-      let v8_session_ptr = v8_session.as_mut();
-      v8_session_ptr.dispatch_protocol_message(msg);
-    }
-  }
+  // async fn pump_messages(&mut self) {
+  //   let v8_session_rc = self.v8_session.clone();
+  //   while let Some(msg) = self.proxy.rx.next().await {
+  //     let msg = v8::inspector::StringView::from(msg.as_bytes().as_slice());
+  //     let mut v8_session = v8_session_rc.borrow_mut();
+  //     let v8_session_ptr = v8_session.as_mut();
+  //     v8_session_ptr.dispatch_protocol_message(msg);
+  //   }
+  // }
 }
 
 impl v8::inspector::ChannelImpl for InspectorSession {
@@ -602,7 +601,7 @@ impl Future for InspectorSession {
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     while let Poll::Ready(maybe_msg) = self.proxy.rx.poll_next_unpin(cx) {
       if let Some(msg) = maybe_msg {
-        let msg = v8::inspector::StringView::from(msg.as_slice());
+        let msg = v8::inspector::StringView::from(msg.as_bytes());
         let mut v8_session = self.v8_session.borrow_mut();
         let v8_session_ptr = v8_session.as_mut();
         v8_session_ptr.dispatch_protocol_message(msg);
@@ -618,7 +617,7 @@ impl Future for InspectorSession {
 /// A local inspector session that can be used to send and receive protocol messages directly on
 /// the same thread as an isolate.
 pub struct LocalInspectorSession {
-  v8_session_tx: UnboundedSender<Vec<u8>>,
+  v8_session_tx: UnboundedSender<String>,
   v8_session_rx: UnboundedReceiver<(InspectorMsg, String)>,
   response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
   next_message_id: i32,
@@ -627,7 +626,7 @@ pub struct LocalInspectorSession {
 
 impl LocalInspectorSession {
   pub fn new(
-    v8_session_tx: UnboundedSender<Vec<u8>>,
+    v8_session_tx: UnboundedSender<String>,
     v8_session_rx: UnboundedReceiver<(InspectorMsg, String)>,
   ) -> Self {
     let response_tx_map = HashMap::new();
@@ -666,11 +665,8 @@ impl LocalInspectorSession {
         "params": params,
     });
 
-    let raw_message = serde_json::to_string(&message).unwrap();
-    self
-      .v8_session_tx
-      .unbounded_send(raw_message.as_bytes().to_vec())
-      .unwrap();
+    let stringified_msg = serde_json::to_string(&message).unwrap();
+    self.v8_session_tx.unbounded_send(stringified_msg).unwrap();
 
     loop {
       let receive_fut = self.receive_from_v8_session().boxed_local();

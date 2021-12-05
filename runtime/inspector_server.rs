@@ -20,6 +20,7 @@ use deno_core::InspectorMsg;
 use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
 use deno_websocket::tokio_tungstenite::tungstenite;
+use deno_websocket::tokio_tungstenite::WebSocketStream;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -165,13 +166,12 @@ fn handle_ws_request(
       eprintln!("Inspector server failed to upgrade to WS connection");
       return;
     };
-    let websocket =
-      deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
-        upgraded,
-        tungstenite::protocol::Role::Server,
-        None,
-      )
-      .await;
+    let websocket = WebSocketStream::from_raw_socket(
+      upgraded,
+      tungstenite::protocol::Role::Server,
+      None,
+    )
+    .await;
 
     // The 'outbound' channel carries messages sent to the websocket.
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
@@ -322,10 +322,8 @@ async fn server(
 /// 'futures' crate, therefore they can't participate in Tokio's cooperative
 /// task yielding.
 async fn pump_websocket_messages(
-  websocket: deno_websocket::tokio_tungstenite::WebSocketStream<
-    hyper::upgrade::Upgraded,
-  >,
-  inbound_tx: UnboundedSender<Vec<u8>>,
+  websocket: WebSocketStream<hyper::upgrade::Upgraded>,
+  inbound_tx: UnboundedSender<String>,
   outbound_rx: UnboundedReceiver<(InspectorMsg, String)>,
 ) {
   let (websocket_tx, websocket_rx) = websocket.split();
@@ -338,10 +336,13 @@ async fn pump_websocket_messages(
 
   let inbound_pump = async move {
     let result = websocket_rx
-      .map_ok(|msg| msg.into_data())
       .map_err(AnyError::from)
       .map_ok(|msg| {
-        let _ = inbound_tx.unbounded_send(msg);
+        // Messages that are cannot be converted to strings
+        // are ignored.
+        if let Ok(msg_text) = msg.into_text() {
+          let _ = inbound_tx.unbounded_send(msg_text);
+        }
       })
       .try_collect::<()>()
       .await;
