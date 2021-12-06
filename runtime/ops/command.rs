@@ -109,6 +109,7 @@ fn op_create_command(
   args: CommandArgs,
   _: (),
 ) -> Result<ResourceId, AnyError> {
+  super::check_unstable(state, "Deno.Command");
   state.borrow_mut::<Permissions>().run.check(&args.cmd)?;
 
   let mut command = Command::new(&args.cmd);
