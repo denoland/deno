@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
+use anyhow::anyhow;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
@@ -15,6 +16,8 @@ use hyper::StatusCode;
 use lazy_static::lazy_static;
 use os_pipe::pipe;
 use regex::Regex;
+use rustls::Certificate;
+use rustls::PrivateKey;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -40,7 +43,7 @@ use tempfile::TempDir;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio_rustls::rustls::{self, Session};
+use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
@@ -321,21 +324,25 @@ async fn get_tls_config(
   let key_file = std::fs::File::open(key_path)?;
   let ca_file = std::fs::File::open(ca_path)?;
 
-  let mut cert_reader = io::BufReader::new(cert_file);
-  let cert = rustls::internal::pemfile::certs(&mut cert_reader)
-    .expect("Cannot load certificate");
+  let certs: Vec<Certificate> = {
+    let mut cert_reader = io::BufReader::new(cert_file);
+    rustls_pemfile::certs(&mut cert_reader)
+      .unwrap()
+      .into_iter()
+      .map(Certificate)
+      .collect()
+  };
 
   let mut ca_cert_reader = io::BufReader::new(ca_file);
-  let ca_cert = rustls::internal::pemfile::certs(&mut ca_cert_reader)
+  let ca_cert = rustls_pemfile::certs(&mut ca_cert_reader)
     .expect("Cannot load CA certificate")
     .remove(0);
 
   let mut key_reader = io::BufReader::new(key_file);
   let key = {
-    let pkcs8_key =
-      rustls::internal::pemfile::pkcs8_private_keys(&mut key_reader)
-        .expect("Cannot load key file");
-    let rsa_key = rustls::internal::pemfile::rsa_private_keys(&mut key_reader)
+    let pkcs8_key = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
+      .expect("Cannot load key file");
+    let rsa_key = rustls_pemfile::rsa_private_keys(&mut key_reader)
       .expect("Cannot load key file");
     if !pkcs8_key.is_empty() {
       Some(pkcs8_key[0].clone())
@@ -349,26 +356,32 @@ async fn get_tls_config(
   match key {
     Some(key) => {
       let mut root_cert_store = rustls::RootCertStore::empty();
-      root_cert_store.add(&ca_cert).unwrap();
+      root_cert_store.add(&rustls::Certificate(ca_cert)).unwrap();
+
       // Allow (but do not require) client authentication.
-      let allow_client_auth =
-        rustls::AllowAnyAnonymousOrAuthenticatedClient::new(root_cert_store);
-      let mut config = rustls::ServerConfig::new(allow_client_auth);
+
+      let mut config = rustls::ServerConfig::builder()
+        .with_safe_defaults()
+        .with_client_cert_verifier(
+          rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
+            root_cert_store,
+          ),
+        )
+        .with_single_cert(certs, PrivateKey(key))
+        .map_err(|e| {
+          anyhow!("Error setting cert: {:?}", e);
+        })
+        .unwrap();
+
       match http_versions {
         SupportedHttpVersions::All => {
-          config.set_protocols(&["h2".into(), "http/1.1".into()]);
+          config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
         }
         SupportedHttpVersions::Http1Only => {}
         SupportedHttpVersions::Http2Only => {
-          config.set_protocols(&["h2".into()]);
+          config.alpn_protocols = vec!["h2".into()];
         }
       }
-      config
-        .set_single_cert(cert, key)
-        .map_err(|e| {
-          eprintln!("Error setting cert: {:?}", e);
-        })
-        .unwrap();
 
       Ok(Arc::new(config))
     }
@@ -466,7 +479,7 @@ async fn run_tls_client_auth_server() {
           let (_, tls_session) = tls_stream.get_mut();
           // We only need to check for the presence of client certificates
           // here. Rusttls ensures that they are valid and signed by the CA.
-          let response = match tls_session.get_peer_certificates() {
+          let response = match tls_session.peer_certificates() {
             Some(_certs) => b"PASS",
             None => b"FAIL",
           };
@@ -1173,7 +1186,7 @@ async fn wrap_client_auth_https_server() {
               let (_, tls_session) = tls_stream.get_mut();
               // We only need to check for the presence of client certificates
               // here. Rusttls ensures that they are valid and signed by the CA.
-              match tls_session.get_peer_certificates() {
+              match tls_session.peer_certificates() {
                 Some(_certs) => { yield Ok(tls_stream); },
                 None => { eprintln!("https_client_auth: no valid client certificate"); },
               };
