@@ -557,6 +557,7 @@ delete Object.prototype.__proto__;
     defineEventHandler(window, "unhandledrejection");
 
     core.setPromiseRejectCallback((_type, promise, reason) => {
+      // console.log("setPromiseRejectionCallback", _type);
       const event = new PromiseRejectionEvent("unhandledrejection", {
         cancelable: true,
         promise,
@@ -565,7 +566,7 @@ delete Object.prototype.__proto__;
       globalThis.dispatchEvent(event);
 
       if (!event.defaultPrevented) {
-        throw new Error("unhandled rejection");
+        throw reason;
       }
     });
 
