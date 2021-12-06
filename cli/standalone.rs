@@ -222,7 +222,6 @@ pub async fn run(
 
   if let Some(cert) = metadata.ca_data {
     let reader = &mut BufReader::new(Cursor::new(cert));
-    // This function does not return specific errors, if it fails give a generic message.
     match rustls_pemfile::certs(reader) {
       Ok(certs) => {
         root_cert_store.add_parsable_certificates(&certs);

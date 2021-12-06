@@ -238,7 +238,6 @@ impl ProcState {
       let certfile = File::open(&ca_file)?;
       let mut reader = BufReader::new(certfile);
 
-      // This function does not return specific errors, if it fails give a generic message.
       match rustls_pemfile::certs(&mut reader) {
         Ok(certs) => {
           root_cert_store.add_parsable_certificates(&certs);

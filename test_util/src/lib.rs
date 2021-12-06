@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
+use anyhow::anyhow;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
@@ -368,7 +369,7 @@ async fn get_tls_config(
         )
         .with_single_cert(certs, PrivateKey(key))
         .map_err(|e| {
-          eprintln!("Error setting cert: {:?}", e);
+          anyhow!("Error setting cert: {:?}", e);
         })
         .unwrap();
 
