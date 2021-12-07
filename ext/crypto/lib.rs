@@ -615,6 +615,28 @@ pub struct ExportKeyArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
+/*fn key_data_to_ec_point() => Result<p256::EncodedPoint, AnyError> {
+  let point = match args.key.r#type {
+    KeyType::Public => {
+      // public_key is a PKCS#1 DER-encoded public key
+      p256::EncodedPoint::from_bytes(&args.key.data).map_err(
+        |_| type_error("EC PublicKey format error".to_string()),
+      )?
+    }
+    KeyType::Private => {
+      // public_key is a PKCS#1 DER-encoded public key
+      let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data).unwrap();
+
+      let public_key = secret_key.public_key();
+      let point = public_key.as_affine().to_encoded_point(false);
+
+      point
+    }
+  };
+
+  Some(point)
+}*/
+
 pub async fn op_crypto_export_key(
   _state: Rc<RefCell<OpState>>,
   args: ExportKeyArg,
