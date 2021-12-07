@@ -609,6 +609,28 @@ pub struct ExportKeyArg {
   // named_curve: Option<CryptoNamedCurve>,
 }
 
+/*fn key_data_to_ec_point() => Result<p256::EncodedPoint, AnyError> {
+  let point = match args.key.r#type {
+    KeyType::Public => {
+      // public_key is a PKCS#1 DER-encoded public key
+      p256::EncodedPoint::from_bytes(&args.key.data).map_err(
+        |_| type_error("EC PublicKey format error".to_string()),
+      )?
+    }
+    KeyType::Private => {
+      // public_key is a PKCS#1 DER-encoded public key
+      let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data).unwrap();
+
+      let public_key = secret_key.public_key();
+      let point = public_key.as_affine().to_encoded_point(false);
+
+      point
+    }
+  };
+
+  Some(point)
+}*/
+
 pub async fn op_crypto_export_key(
   _state: Rc<RefCell<OpState>>,
   args: ExportKeyArg,
@@ -616,6 +638,136 @@ pub async fn op_crypto_export_key(
 ) -> Result<ImportExportKeyData, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {
+    Algorithm::Ecdsa | Algorithm::Ecdh => {
+      match args.format {
+        KeyFormat::Pkcs8 => {
+          // private_key is a PKCS#8 DER-encoded private key
+
+          let private_key = &args.key.data;
+
+          Ok(ImportExportKeyData::Raw(RawKeyData {
+            data: private_key.to_vec().into(),
+          }))
+        }
+        KeyFormat::Spki => {
+          /*          let spki_der = match args.key.r#type {
+            KeyType::Public => {
+              // public_key is a PKCS#1 DER-encoded public key
+              let public_key_bytes = &args.key.data;
+
+              let oid = spki::der::asn1::ObjectIdentifier::new("1.2.840.10045.3.1.7");
+              //let oid = <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::OID;
+              let oid_bytes = spki::der::asn1::Any::new(spki::der::Tag::ObjectIdentifier, oid.as_bytes()).unwrap();
+
+              // the SPKI structure
+              let key_info = spki::SubjectPublicKeyInfo {
+                algorithm: spki::AlgorithmIdentifier {
+                  // rsaEncryption(1)
+                  oid: "1.2.840.10045.2.1".parse().unwrap(),
+                  // parameters field should not be ommited (None).
+                  // It MUST have ASN.1 type NULL.
+                  parameters: Some(oid_bytes),
+                },
+                subject_public_key: public_key_bytes,
+              };
+
+              // Infallible based on spec because of the way we import and generate keys.
+              key_info.to_vec().unwrap()
+            }
+            KeyType::Private => {
+              // public_key is a PKCS#1 DER-encoded public key
+              let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data).unwrap();
+
+              public_key = secret_key.public_key();
+
+              let public_key_bytes = public_key.as_affine().to_encoded_point(false).as_ref();
+
+              let oid = spki::der::asn1::ObjectIdentifier::new("1.2.840.10045.3.1.7");
+              //let oid = <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::OID;
+              let oid_bytes = spki::der::asn1::Any::new(spki::der::Tag::ObjectIdentifier, oid.as_bytes()).unwrap();
+
+              // the SPKI structure
+              let key_info = spki::SubjectPublicKeyInfo {
+                algorithm: spki::AlgorithmIdentifier {
+                  // rsaEncryption(1)
+                  oid: "1.2.840.10045.2.1".parse().unwrap(),
+                  // parameters field should not be ommited (None).
+                  // It MUST have ASN.1 type NULL.
+                  parameters: Some(oid_bytes),
+                },
+                subject_public_key: public_key_bytes,
+              };
+
+              // Infallible based on spec because of the way we import and generate keys.
+              key_info.to_vec().unwrap()
+            }
+          };*/
+
+          let point = match args.key.r#type {
+            KeyType::Public => {
+              // public_key is a PKCS#1 DER-encoded public key
+              p256::EncodedPoint::from_bytes(&args.key.data).map_err(|_| {
+                type_error("EC PublicKey format error".to_string())
+              })?
+            }
+            /*KeyType::Private => {
+              // public_key is a PKCS#1 DER-encoded public key
+              let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data).unwrap();
+
+              let public_key = secret_key.public_key();
+              let point = public_key.as_affine().to_encoded_point(false);
+
+              point
+            }*/
+            _ => unreachable!(),
+          };
+
+          let oid =
+            spki::der::asn1::ObjectIdentifier::new("1.2.840.10045.3.1.7");
+          //let oid = <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::OID;
+          let oid_bytes = spki::der::asn1::Any::new(
+            spki::der::Tag::ObjectIdentifier,
+            oid.as_bytes(),
+          )
+          .unwrap();
+
+          // the SPKI structure
+          let key_info = spki::SubjectPublicKeyInfo {
+            algorithm: spki::AlgorithmIdentifier {
+              // rsaEncryption(1)
+              oid: "1.2.840.10045.2.1".parse().unwrap(),
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL.
+              parameters: Some(oid_bytes),
+            },
+            subject_public_key: point.as_ref(),
+          };
+
+          // Infallible based on spec because of the way we import and generate keys.
+          let spki_der = key_info.to_vec().unwrap();
+
+          Ok(ImportExportKeyData::Raw(RawKeyData {
+            data: spki_der.into(),
+          }))
+        }
+        KeyFormat::Jwk => {
+          // key.data is a PKCS#1 DER-encoded public or private key
+          // Infallible based on spec because of the way we import and generate keys.
+          let curve = args.named_curve.ok_or_else(|| {
+            type_error("Missing argument named_curve".to_string())
+          })?;
+
+          let jwk = convert_data_to_jwk_ec(
+            args.key.data.to_vec(),
+            args.key.r#type,
+            curve,
+          )?;
+
+          Ok(ImportExportKeyData::JwkEcKey(jwk))
+        }
+        _ => unreachable!(),
+      }
+    }
     Algorithm::RsassaPkcs1v15 => {
       match args.format {
         KeyFormat::Pkcs8 => {
@@ -886,9 +1038,12 @@ pub async fn op_crypto_derive_bits(
 
       match named_curve {
         CryptoNamedCurve::P256 => {
-          let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)?;
-          let public_key =
-            p256::SecretKey::from_pkcs8_der(&public_key.data)?.public_key();
+          let secret_key =
+            p256::SecretKey::from_pkcs8_der(&args.key.data).unwrap();
+
+          let public_key = p256::SecretKey::from_pkcs8_der(&public_key.data)
+            .unwrap()
+            .public_key();
 
           let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
             secret_key.to_secret_scalar(),
@@ -1504,7 +1659,104 @@ pub async fn op_crypto_import_key(
             public_exponent: None,
           })
         }
-        _ => Err(type_error("Unsupported format".to_string())),
+        KeyFormat::Spki => {
+          // 1.
+          let encoded_key = match key_data {
+            ImportExportKeyData::Raw(raw_data) => {
+              let pk_info: spki::SubjectPublicKeyInfo =
+                spki::SubjectPublicKeyInfo::try_from(raw_data.data.as_ref())
+                  .unwrap();
+              let pk = pk_info.subject_public_key;
+
+              pk.to_vec()
+            }
+            _ => return Err(type_error("missing keyData.raw".to_string())),
+          };
+
+          match curve {
+            CryptoNamedCurve::P256 => {
+              // 1-2.
+              let point = p256::EncodedPoint::from_bytes(&*encoded_key)
+                .map_err(|_| {
+                  type_error("EC PublicKey format error".to_string())
+                })?;
+
+              // 3.
+              if point.is_identity() {
+                return Err(type_error("Invalid key data".to_string()));
+              }
+            }
+            CryptoNamedCurve::P384 => {
+              // 2.
+              let point = p384::EncodedPoint::from_bytes(&*encoded_key)
+                .map_err(|_| {
+                  type_error("EC PublicKey format error".to_string())
+                })?;
+              // 3.
+              if point.is_identity() {
+                return Err(type_error("Invalid key data".to_string()));
+              }
+            }
+          };
+
+          Ok(ImportKeyResult {
+            data: encoded_key.to_vec().into(),
+            modulus_length: None,
+            public_exponent: None,
+          })
+        }
+        KeyFormat::Pkcs8 => {
+          let pkcs8 = match key_data {
+            ImportExportKeyData::Raw(raw_data) => {
+              match curve {
+                CryptoNamedCurve::P256 => {
+                  let secret_key =
+                    p256::SecretKey::from_pkcs8_der(&raw_data.data).unwrap();
+
+                  let point =
+                    secret_key.public_key().as_affine().to_encoded_point(false);
+                  // 3.
+                  if point.is_identity() {
+                    return Err(type_error("Invalid key data".to_string()));
+                  }
+
+                  Ok(raw_data.data.to_vec())
+                }
+                CryptoNamedCurve::P384 => {
+                  // let secret_key =
+                  //   p384::SecretKey::from_pkcs8_der(&raw_data.data).unwrap();
+
+                  // let point =
+                  //   secret_key.public_key().as_affine().to_encoded_point(false);
+                  // // 3.
+                  // if point.is_identity() {
+                  //   return Err(type_error("Invalid key data".to_string()));
+                  // }
+
+                  Ok(raw_data.data.to_vec())
+                }
+              }
+            }
+            _ => Err(type_error("Unsupported namedCurve".to_string())),
+          }?;
+
+          Ok(ImportKeyResult {
+            data: pkcs8.into(),
+            modulus_length: None,
+            public_exponent: None,
+          })
+        }
+        KeyFormat::Jwk => {
+          if let ImportExportKeyData::JwkEcKey(jwk) = key_data {
+            let key_type = args.key_type.ok_or_else(|| {
+              type_error("Missing argument key_type".to_string())
+            })?;
+
+            convert_jwk_to_ec_key(jwk, key_type, curve)
+          } else {
+            Err(type_error("missing keyData.jwk".to_string()))
+          }
+        }
       }
     }
     Algorithm::RsassaPkcs1v15 => {

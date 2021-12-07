@@ -1454,7 +1454,7 @@
         case "ECDH":
         case "ECDSA": {
           switch (format) {
-            /*case "pkcs8": {
+            case "pkcs8": {
               // 1.
               if (key[_type] !== "private") {
                 throw new DOMException(
@@ -1464,17 +1464,18 @@
               }
 
               // 2.
-              const { raw: { data } } = await core.opAsync(
+              /*const { raw: { data } } = await core.opAsync(
                 "op_crypto_export_key",
                 {
                   key: innerKey,
                   format,
                   algorithm: algorithmName,
                 },
-              );
+              );*/
 
               // 3.
-              return data.buffer;
+              //return data.buffer;
+              return innerKey.data;
             }
             case "spki": {
               // 1.
@@ -1497,8 +1498,8 @@
 
               // 3.
               return data.buffer;
-            }*/
-            /*case "jwk": {
+            }
+            case "jwk": {
               const { jwkEcKey } = await core.opAsync(
                 "op_crypto_export_key",
                 {
@@ -3196,6 +3197,125 @@
         // 3.
         const { data } = await core.opAsync("op_crypto_import_key", {
           algorithm: algorithmName,
+          format,
+          keyType,
+          namedCurve: normalizedAlgorithm.namedCurve,
+        }, { raw: { data: keyData } });
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: keyType,
+          data,
+        });
+
+        // 4-5.
+        const algorithm = {
+          name: algorithmName,
+          namedCurve: normalizedAlgorithm.namedCurve,
+        };
+
+        // 6-8.
+        const key = constructKey(
+          keyType,
+          extractable,
+          usageIntersection(keyUsages, recognisedUsages),
+          algorithm,
+          handle,
+        );
+
+        return key;
+      }
+      case "pkcs8": {
+        const keyType = "private";
+
+        const validUsages = isSignKey ? ["sign"] : ["deriveKey", "deriveBits"];
+
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) =>
+              !ArrayPrototypeIncludes(
+                validUsages,
+                u,
+              ),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        if (keyUsages.length == 0) {
+          throw new DOMException("Key usage is empty", "SyntaxError");
+        }
+
+        // 2-9.
+        const { data } = await core
+          .opAsync(
+            "op_crypto_import_key",
+            {
+              algorithm: algorithmName,
+              format,
+              keyType,
+              namedCurve: normalizedAlgorithm.namedCurve,
+            },
+            { raw: { data: keyData } },
+          );
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: keyType,
+          data,
+        });
+
+        const algorithm = {
+          name: algorithmName,
+          hash: normalizedAlgorithm.hash,
+        };
+
+        const key = constructKey(
+          keyType,
+          extractable,
+          usageIntersection(keyUsages, recognisedUsages),
+          algorithm,
+          handle,
+        );
+
+        return key;
+      }
+      case "spki": {
+        const keyType = "public";
+
+        // 1.
+        if (
+          !ArrayPrototypeIncludes(
+            supportedNamedCurves,
+            normalizedAlgorithm.namedCurve,
+          )
+        ) {
+          throw new DOMException(
+            "Invalid namedCurve",
+            "DataError",
+          );
+        }
+
+        // 2.
+        if (isSignKey) {
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) => !ArrayPrototypeIncludes(["verify"], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+        } else if (keyUsages.length != 0) {
+          throw new DOMException("Key usage must be empty", "SyntaxError");
+        }
+
+        // 3.
+        const { data } = await core.opAsync("op_crypto_import_key", {
+          algorithm: algorithmName,
+          format,
           keyType,
           namedCurve: normalizedAlgorithm.namedCurve,
         }, { raw: { data: keyData } });
