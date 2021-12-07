@@ -20,5 +20,5 @@ http = "0.2.4"
 hyper = { version = "0.14.12" }
 serde = { version = "1.0.129", features = ["derive"] }
 tokio = { version = "1.10.1", features = ["full"] }
-tokio-rustls = "0.22.0"
-tokio-tungstenite = { version = "0.14.0", features = ["rustls-tls"] }
+tokio-rustls = "0.23.0"
+tokio-tungstenite = { version = "0.16.0", features = ["rustls-tls-webpki-roots"] }

@@ -20,25 +20,28 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
-use deno_tls::webpki::DNSNameRef;
-
-use http::{Method, Request, Uri};
+use http::Method;
+use http::Request;
+use http::Uri;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::convert::TryFrom;
 use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
+use tokio_rustls::rustls::ServerName;
 use tokio_rustls::TlsConnector;
 use tokio_tungstenite::client_async;
-use tokio_tungstenite::tungstenite::{
-  handshake::client::Response, protocol::frame::coding::CloseCode,
-  protocol::CloseFrame, protocol::Role, Message,
-};
+use tokio_tungstenite::tungstenite::handshake::client::Response;
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::WebSocketStream;
 
@@ -284,7 +287,7 @@ where
         None,
       )?;
       let tls_connector = TlsConnector::from(Arc::new(tls_config));
-      let dnsname = DNSNameRef::try_from_ascii_str(domain)
+      let dnsname = ServerName::try_from(domain.as_str())
         .map_err(|_| invalid_hostname(domain))?;
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
       MaybeTlsStream::Rustls(tls_socket)
