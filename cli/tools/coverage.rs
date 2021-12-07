@@ -1,11 +1,14 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::config_file::FmtOptionsConfig;
+use crate::config_file::ProseWrap;
 use crate::emit;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
 use crate::source_maps::SourceMapGetter;
+use crate::tools::fmt::format_json;
 
 use deno_ast::swc::common::Span;
 use deno_ast::MediaType;
@@ -14,6 +17,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_runtime::permissions::Permissions;
+use log::debug;
 use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
@@ -153,13 +157,27 @@ impl CoverageCollector {
     fs::create_dir_all(&self.dir)?;
 
     let script_coverages = self.take_precise_coverage().await?.result;
+    let format_options = FmtOptionsConfig {
+      use_tabs: Some(false),
+      line_width: Some(80),
+      indent_width: Some(2),
+      single_quote: Some(true),
+      prose_wrap: Some(ProseWrap::Preserve),
+    };
     for script_coverage in script_coverages {
       let filename = format!("{}.json", Uuid::new_v4());
       let filepath = self.dir.join(filename);
 
       let mut out = BufWriter::new(File::create(filepath)?);
-      serde_json::to_writer_pretty(&mut out, &script_coverage)?;
-      out.write_all(b"\n")?;
+      let coverage = serde_json::to_string(&script_coverage)?;
+      let formated_coverage = match format_json(&coverage, &format_options) {
+        Ok(formated_coverage) => formated_coverage,
+        Err(err) => {
+          debug!("{}", err);
+          coverage
+        }
+      };
+      out.write_all(formated_coverage.as_bytes())?;
       out.flush()?;
     }
 

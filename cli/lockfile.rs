@@ -12,6 +12,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::config_file::{FmtOptionsConfig, ProseWrap};
+use crate::tools::fmt::format_json;
+
 #[derive(Debug, Clone)]
 pub struct Lockfile {
   write: bool,
@@ -42,13 +45,25 @@ impl Lockfile {
     }
     let j = json!(&self.map);
     let s = serde_json::to_string_pretty(&j).unwrap();
+    let s_options = FmtOptionsConfig {
+      use_tabs: Some(false),
+      line_width: Some(80),
+      indent_width: Some(2),
+      single_quote: Some(true),
+      prose_wrap: Some(ProseWrap::Preserve),
+    };
+    let formated_s = format_json(&s, &s_options);
+    let formated_str = match formated_s {
+      Ok(x) => x,
+      Err(e) => e,
+    };
     let mut f = std::fs::OpenOptions::new()
       .write(true)
       .create(true)
       .truncate(true)
       .open(&self.filename)?;
     use std::io::Write;
-    f.write_all(s.as_bytes())?;
+    f.write_all(formated_str.as_bytes())?;
     debug!("lockfile write {}", self.filename.display());
     Ok(())
   }
