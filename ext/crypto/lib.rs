@@ -17,6 +17,8 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
+use base64;
+
 use block_modes::BlockMode;
 use lazy_static::lazy_static;
 use num_traits::cast::FromPrimitive;
@@ -47,6 +49,7 @@ use rsa::pkcs1::ToRsaPrivateKey;
 use rsa::pkcs1::ToRsaPublicKey;
 use rsa::pkcs1::UIntBytes;
 use rsa::pkcs8::der::asn1;
+use rsa::pkcs8::FromPrivateKey;
 use rsa::BigUint;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
@@ -57,14 +60,6 @@ use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
 use std::path::PathBuf;
-
-use p256::elliptic_curve::generic_array::{
-  typenum::U32, ArrayLength, GenericArray,
-};
-use p256::{
-  elliptic_curve::sec1::ToEncodedPoint,
-  pkcs8::{DecodePrivateKey, EncodePrivateKey},
-};
 
 pub use rand; // Re-export rand
 
@@ -612,8 +607,8 @@ pub struct ExportKeyArg {
   format: KeyFormat,
   // RSA-PSS
   hash: Option<CryptoHash>,
-  // ECDSA
-  named_curve: Option<CryptoNamedCurve>,
+  // ECDSA/ECDH
+  // named_curve: Option<CryptoNamedCurve>,
 }
 
 pub async fn op_crypto_export_key(
@@ -623,26 +618,26 @@ pub async fn op_crypto_export_key(
 ) -> Result<ImportExportKeyData, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {
-    Algorithm::Ecdsa | Algorithm::Ecdh => {
-      match args.format {
-        KeyFormat::Jwk => {
-          // key.data is a PKCS#1 DER-encoded public or private key
-          // Infallible based on spec because of the way we import and generate keys.
-          let curve = args.named_curve.ok_or_else(|| {
-            type_error("Missing argument named_curve".to_string())
-          })?;
+    // Algorithm::Ecdsa | Algorithm::Ecdh => {
+    //   match args.format {
+    //     KeyFormat::Jwk => {
+    //       // key.data is a PKCS#1 DER-encoded public or private key
+    //       // Infallible based on spec because of the way we import and generate keys.
+    //       let curve = args.named_curve.ok_or_else(|| {
+    //         type_error("Missing argument named_curve".to_string())
+    //       })?;
 
-          let jwk = convert_data_to_jwk_ec(
-            args.key.data.to_vec(),
-            args.key.r#type,
-            curve,
-          )?;
+    //       let jwk = convert_data_to_jwk_ec(
+    //         args.key.data.to_vec(),
+    //         args.key.r#type,
+    //         curve,
+    //       )?;
 
-          Ok(ImportExportKeyData::JwkEcKey(jwk))
-        }
-        _ => unreachable!(),
-      }
-    }
+    //       Ok(ImportExportKeyData::JwkEcKey(jwk))
+    //     }
+    //     _ => unreachable!(),
+    //   }
+    // }
     Algorithm::RsassaPkcs1v15 => {
       match args.format {
         KeyFormat::Pkcs8 => {
@@ -913,19 +908,14 @@ pub async fn op_crypto_derive_bits(
 
       match named_curve {
         CryptoNamedCurve::P256 => {
-          // todo(@sean) - must verify pkcs8 EC key on import
-          let secret_key =
-            p256::SecretKey::from_pkcs8_der(&args.key.data).unwrap();
-
-          let public_key = p256::SecretKey::from_pkcs8_der(&public_key.data)
-            .unwrap()
-            .public_key();
+          let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)?;
+          let public_key =
+            p256::SecretKey::from_pkcs8_der(&public_key.data)?.public_key();
 
           let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
-            secret_key.to_nonzero_scalar(),
+            secret_key.to_secret_scalar(),
             public_key.as_affine(),
           );
-
           Ok(shared_secret.as_bytes().to_vec().into())
         }
         // TODO(@littledivy): support for P384
@@ -1374,9 +1364,9 @@ fn encode_b64url(bytes: UIntBytes) -> String {
   base64::encode_config(bytes.as_bytes(), base64::URL_SAFE_NO_PAD)
 }
 
-fn encode_b64url_bytes(bytes: Vec<u8>) -> String {
-  base64::encode_config(bytes, base64::URL_SAFE_NO_PAD)
-}
+// fn encode_b64url_bytes(bytes: Vec<u8>) -> String {
+//   base64::encode_config(bytes, base64::URL_SAFE_NO_PAD)
+// }
 
 fn convert_pkcs1_to_jwk_rsa(
   pkcs1: Vec<u8>,
@@ -1427,7 +1417,7 @@ fn convert_pkcs1_to_jwk_rsa(
   Ok(jwk)
 }
 
-fn decode_b64url_to_gen_array<T: ArrayLength<u8>>(
+/*fn decode_b64url_to_gen_array<T: ArrayLength<u8>>(
   b64: &str,
 ) -> GenericArray<u8, T> {
   let val = base64::decode_config(b64, base64::URL_SAFE)
@@ -1489,13 +1479,13 @@ fn convert_jwk_to_ec_key(
 
           secret_key.to_pkcs8_der().unwrap()
         }
-        /*CryptoNamedCurve::P384 => {
-          let dbytes = decode_b64url_to_gen_array::<U48>(&d);
+        // CryptoNamedCurve::P384 => {
+        //   let dbytes = decode_b64url_to_gen_array::<U48>(&d);
 
-          let secret_key = p384::SecretKey::from_bytes(&dbytes)?;
+        //   let secret_key = p384::SecretKey::from_bytes(&dbytes)?;
 
-          secret_key.to_pkcs8_der().unwrap()
-        }*/
+        //   secret_key.to_pkcs8_der().unwrap()
+        // }
         _ => {
           return Err(type_error("Unsupported namedCurve".to_string()));
         }
@@ -1593,13 +1583,13 @@ fn convert_data_to_jwk_ec(
 
           pk.coordinates()
         }
-        /*CryptoNamedCurve::P384 => {
-          let pk =p384::EncodedPoint::from_bytes(&data).map_err(
-            |_| type_error("EC PublicKey format error".to_string()),
-          )?;
+        // CryptoNamedCurve::P384 => {
+        //   let pk =p384::EncodedPoint::from_bytes(&data).map_err(
+        //     |_| type_error("EC PublicKey format error".to_string()),
+        //   )?;
 
-          pk.coordinates();
-        }*/
+        //   pk.coordinates();
+        // }
         _ => {
           return Err(type_error("Unsupported namedCurve".to_string()));
         }
@@ -1622,7 +1612,7 @@ fn convert_data_to_jwk_ec(
   };
 
   Ok(jwk)
-}
+}*/
 
 #[derive(Serialize, Deserialize)]
 pub struct SecretKeyComponentB64 {
@@ -1656,7 +1646,7 @@ pub enum ImportExportKeyData {
   Raw(RawKeyData),
   JwkSecretKey(SecretKeyComponentB64),
   JwkRsaKey(RSAKeyComponentsB64),
-  JwkEcKey(ECKeyComponentsB64),
+//  JwkEcKey(ECKeyComponentsB64),
 }
 
 #[derive(Deserialize)]
@@ -1738,17 +1728,17 @@ pub async fn op_crypto_import_key(
             public_exponent: None,
           })
         }
-        KeyFormat::Jwk => {
-          if let ImportExportKeyData::JwkEcKey(jwk) = key_data {
-            let key_type = args.key_type.ok_or_else(|| {
-              type_error("Missing argument key_type".to_string())
-            })?;
+        // KeyFormat::Jwk => {
+        //   if let ImportExportKeyData::JwkEcKey(jwk) = key_data {
+        //     let key_type = args.key_type.ok_or_else(|| {
+        //       type_error("Missing argument key_type".to_string())
+        //     })?;
 
-            convert_jwk_to_ec_key(jwk, key_type, curve)
-          } else {
-            Err(type_error("missing keyData.jwk".to_string()))
-          }
-        }
+        //     convert_jwk_to_ec_key(jwk, key_type, curve)
+        //   } else {
+        //     Err(type_error("missing keyData.jwk".to_string()))
+        //   }
+        // }
         _ => Err(type_error("Unsupported format".to_string())),
       }
     }

@@ -1498,7 +1498,7 @@
               // 3.
               return data.buffer;
             }*/
-            case "jwk": {
+            /*case "jwk": {
               const { jwkEcKey } = await core.opAsync(
                 "op_crypto_export_key",
                 {
@@ -1516,7 +1516,7 @@
                 crv: key[_algorithm].namedCurve,
                 ...jwkEcKey,
               };
-            }
+            }*/
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
@@ -3223,7 +3223,7 @@
 
         return key;
       }
-      case "jwk": {
+      /*case "jwk": {
         const jwk = keyData;
 
         const keyType = (jwk.d != undefined) ? "private" : "public";
@@ -3357,7 +3357,7 @@
         );
 
         return key;
-      }
+      }*/
       default:
         throw new DOMException("Not implemented", "NotSupportedError");
     }
