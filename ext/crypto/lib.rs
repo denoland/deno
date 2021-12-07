@@ -17,8 +17,6 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
-use base64;
-
 use block_modes::BlockMode;
 use lazy_static::lazy_static;
 use num_traits::cast::FromPrimitive;
@@ -1646,7 +1644,7 @@ pub enum ImportExportKeyData {
   Raw(RawKeyData),
   JwkSecretKey(SecretKeyComponentB64),
   JwkRsaKey(RSAKeyComponentsB64),
-//  JwkEcKey(ECKeyComponentsB64),
+  //  JwkEcKey(ECKeyComponentsB64),
 }
 
 #[derive(Deserialize)]

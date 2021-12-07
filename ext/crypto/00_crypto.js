@@ -3158,7 +3158,7 @@
     extractable,
     keyUsages,
     isSignKey,
-    mapJwkAlgToCurve,
+    _mapJwkAlgToCurve,
   ) {
     const algorithmName = normalizedAlgorithm.name;
 
