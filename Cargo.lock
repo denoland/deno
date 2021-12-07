@@ -760,6 +760,7 @@ name = "deno_crypto"
 version = "0.42.0"
 dependencies = [
  "aes",
+ "base64 0.13.0",
  "block-modes",
  "deno_core",
  "deno_web",
