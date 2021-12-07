@@ -63,7 +63,12 @@ use p256::elliptic_curve::generic_array::{
 };
 use p256::{
   elliptic_curve::sec1::ToEncodedPoint,
-  pkcs8::{DecodePrivateKey, EncodePrivateKey},
+  
+};
+
+use p256::pkcs8::{
+  FromPrivateKey,FromPublicKey,
+  ToPrivateKey, ToPublicKey,
 };
 
 pub use rand; // Re-export rand
@@ -1053,7 +1058,7 @@ pub async fn op_crypto_derive_bits(
             .public_key();
 
           let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
-            secret_key.to_nonzero_scalar(),
+            secret_key.to_secret_scalar(),
             public_key.as_affine(),
           );
 
@@ -1616,7 +1621,7 @@ fn convert_jwk_to_ec_key(
         CryptoNamedCurve::P256 => {
           let dbytes = decode_b64url_to_gen_array::<U32>(&d);
 
-          let secret_key = p256::SecretKey::from_be_bytes(&dbytes)?;
+          let secret_key = p256::SecretKey::from_bytes(&dbytes)?;
 
           secret_key.to_pkcs8_der().unwrap()
         }
@@ -1684,7 +1689,7 @@ fn convert_data_to_jwk_ec(
 
           public_key = secret_key.public_key();
 
-          secret_key.to_be_bytes()
+          secret_key.to_bytes()
         }
         /*CryptoNamedCurve::P384 => {
           let secret_key = p384::SecretKey::from_pkcs8_der(&data).unwrap();
