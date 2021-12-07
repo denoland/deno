@@ -1,5 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+// FIXME(bartlomieju): remove this attribute
+#![allow(unused)]
+
 use deno_core::error::AnyError;
 use lspower::LspService;
 use lspower::Server;

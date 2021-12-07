@@ -67,7 +67,7 @@ pub struct Options {
   pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
-  pub file_fetch_handler: Box<dyn FetchHandler>,
+  pub file_fetch_handler: Rc<dyn FetchHandler>,
 }
 
 impl Default for Options {
@@ -79,7 +79,7 @@ impl Default for Options {
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
-      file_fetch_handler: Box::new(DefaultFileFetchHandler),
+      file_fetch_handler: Rc::new(DefaultFileFetchHandler),
     }
   }
 }
@@ -134,7 +134,8 @@ pub trait FetchHandler: dyn_clone::DynClone {
   // cancelable response result, the optional fetch body resource and the
   // optional cancel handle.
   fn fetch_file(
-    &mut self,
+    &self,
+    state: &mut OpState,
     url: Url,
   ) -> (
     CancelableResponseFuture,
@@ -151,7 +152,8 @@ pub struct DefaultFileFetchHandler;
 
 impl FetchHandler for DefaultFileFetchHandler {
   fn fetch_file(
-    &mut self,
+    &self,
+    _state: &mut OpState,
     _url: Url,
   ) -> (
     CancelableResponseFuture,
@@ -234,8 +236,9 @@ where
       let Options {
         file_fetch_handler, ..
       } = state.borrow_mut::<Options>();
+      let file_fetch_handler = file_fetch_handler.clone();
       let (request, maybe_request_body, maybe_cancel_handle) =
-        file_fetch_handler.fetch_file(url);
+        file_fetch_handler.fetch_file(state, url);
       let request_rid = state.resource_table.add(FetchRequestResource(request));
       let maybe_request_body_rid =
         maybe_request_body.map(|r| state.resource_table.add(r));
