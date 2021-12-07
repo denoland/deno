@@ -282,7 +282,7 @@ impl Default for ModuleRegistry {
     let dir = deno_dir::DenoDir::new(None).unwrap();
     let location = dir.root.join("registries");
     let http_cache = HttpCache::new(&location);
-    let cache_setting = CacheSetting::Use;
+    let cache_setting = CacheSetting::RespectHeaders;
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_setting,
@@ -305,7 +305,7 @@ impl ModuleRegistry {
     let http_cache = HttpCache::new(location);
     let file_fetcher = FileFetcher::new(
       http_cache,
-      CacheSetting::Use,
+      CacheSetting::RespectHeaders,
       true,
       None,
       BlobStore::default(),
