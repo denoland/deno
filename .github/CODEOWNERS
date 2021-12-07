@@ -26,5 +26,8 @@ runtime/        @bartlomieju
 serde_v8/       @AaronO
 test_ffi/       @bartlomieju
 test_util/      @bartlomieju
+test_util/wpt/  @lucacasonato
+test_util/      @bartlomieju
 third_party/    @bartlomieju
 tools/          @bartlomieju @dsherret
+tools/wpt/      @lucacasonato
