@@ -4,23 +4,21 @@
 ((window) => {
   const core = window.Deno.core;
   const {
-    ArrayPrototypeIndexOf,
     ArrayPrototypePush,
     ArrayPrototypeShift,
-    ArrayPrototypeSplice,
-    DateNow,
     Error,
-    FunctionPrototypeBind,
+    FunctionPrototypeCall,
     Map,
     MapPrototypeDelete,
     MapPrototypeGet,
     MapPrototypeHas,
     MapPrototypeSet,
-    MathMax,
-    Number,
-    String,
+    // deno-lint-ignore camelcase
+    NumberPOSITIVE_INFINITY,
+    PromisePrototypeThen,
     TypeError,
   } = window.__bootstrap.primordials;
+  const { webidl } = window.__bootstrap;
 
   // Shamelessly cribbed from extensions/fetch/11_streams.js
   class AssertionError extends Error {
@@ -41,18 +39,6 @@
     }
   }
 
-  function opStopGlobalTimer() {
-    core.opSync("op_global_timer_stop");
-  }
-
-  function opStartGlobalTimer(timeout) {
-    return core.opSync("op_global_timer_start", timeout);
-  }
-
-  async function opWaitGlobalTimer() {
-    await core.opAsync("op_global_timer");
-  }
-
   function opNow() {
     return core.opSync("op_now");
   }
@@ -61,424 +47,263 @@
     return core.opSync("op_sleep_sync", millis);
   }
 
-  // Derived from https://github.com/vadimg/js_bintrees. MIT Licensed.
+  // ---------------------------------------------------------------------------
 
-  class RBNode {
-    constructor(data) {
-      this.data = data;
-      this.left = null;
-      this.right = null;
-      this.red = true;
-    }
+  /**
+   * The task queue corresponding to the timer task source.
+   *
+   * @type { {action: () => void, nestingLevel: number}[] }
+   */
+  const timerTasks = [];
 
-    getChild(dir) {
-      return dir ? this.right : this.left;
-    }
+  /**
+   * The current task's timer nesting level, or zero if we're not currently
+   * running a timer task (since the minimum nesting level is 1).
+   *
+   * @type {number}
+   */
+  let timerNestingLevel = 0;
 
-    setChild(dir, val) {
-      if (dir) {
-        this.right = val;
-      } else {
-        this.left = val;
-      }
-    }
-  }
-
-  class RBTree {
-    #comparator = null;
-    #root = null;
-
-    constructor(comparator) {
-      this.#comparator = comparator;
-      this.#root = null;
-    }
-
-    /** Returns `null` if tree is empty. */
-    min() {
-      let res = this.#root;
-      if (res === null) {
-        return null;
-      }
-      while (res.left !== null) {
-        res = res.left;
-      }
-      return res.data;
-    }
-
-    /** Returns node `data` if found, `null` otherwise. */
-    find(data) {
-      let res = this.#root;
-      while (res !== null) {
-        const c = this.#comparator(data, res.data);
-        if (c === 0) {
-          return res.data;
-        } else {
-          res = res.getChild(c > 0);
-        }
-      }
-      return null;
-    }
-
-    /** returns `true` if inserted, `false` if duplicate. */
-    insert(data) {
-      let ret = false;
-
-      if (this.#root === null) {
-        // empty tree
-        this.#root = new RBNode(data);
-        ret = true;
-      } else {
-        const head = new RBNode(null); // fake tree root
-
-        let dir = 0;
-        let last = 0;
-
-        // setup
-        let gp = null; // grandparent
-        let ggp = head; // grand-grand-parent
-        let p = null; // parent
-        let node = this.#root;
-        ggp.right = this.#root;
-
-        // search down
-        while (true) {
-          if (node === null) {
-            // insert new node at the bottom
-            node = new RBNode(data);
-            p.setChild(dir, node);
-            ret = true;
-          } else if (isRed(node.left) && isRed(node.right)) {
-            // color flip
-            node.red = true;
-            node.left.red = false;
-            node.right.red = false;
-          }
-
-          // fix red violation
-          if (isRed(node) && isRed(p)) {
-            const dir2 = ggp.right === gp;
-
-            assert(gp);
-            if (node === p.getChild(last)) {
-              ggp.setChild(dir2, singleRotate(gp, !last));
-            } else {
-              ggp.setChild(dir2, doubleRotate(gp, !last));
-            }
-          }
-
-          const cmp = this.#comparator(node.data, data);
-
-          // stop if found
-          if (cmp === 0) {
-            break;
-          }
-
-          last = dir;
-          dir = Number(cmp < 0); // Fix type
-
-          // update helpers
-          if (gp !== null) {
-            ggp = gp;
-          }
-          gp = p;
-          p = node;
-          node = node.getChild(dir);
-        }
-
-        // update root
-        this.#root = head.right;
-      }
-
-      // make root black
-      this.#root.red = false;
-
-      return ret;
-    }
-
-    /** Returns `true` if removed, `false` if not found. */
-    remove(data) {
-      if (this.#root === null) {
-        return false;
-      }
-
-      const head = new RBNode(null); // fake tree root
-      let node = head;
-      node.right = this.#root;
-      let p = null; // parent
-      let gp = null; // grand parent
-      let found = null; // found item
-      let dir = 1;
-
-      while (node.getChild(dir) !== null) {
-        const last = dir;
-
-        // update helpers
-        gp = p;
-        p = node;
-        node = node.getChild(dir);
-
-        const cmp = this.#comparator(data, node.data);
-
-        dir = cmp > 0;
-
-        // save found node
-        if (cmp === 0) {
-          found = node;
-        }
-
-        // push the red node down
-        if (!isRed(node) && !isRed(node.getChild(dir))) {
-          if (isRed(node.getChild(!dir))) {
-            const sr = singleRotate(node, dir);
-            p.setChild(last, sr);
-            p = sr;
-          } else if (!isRed(node.getChild(!dir))) {
-            const sibling = p.getChild(!last);
-            if (sibling !== null) {
-              if (
-                !isRed(sibling.getChild(!last)) &&
-                !isRed(sibling.getChild(last))
-              ) {
-                // color flip
-                p.red = false;
-                sibling.red = true;
-                node.red = true;
-              } else {
-                assert(gp);
-                const dir2 = gp.right === p;
-
-                if (isRed(sibling.getChild(last))) {
-                  gp.setChild(dir2, doubleRotate(p, last));
-                } else if (isRed(sibling.getChild(!last))) {
-                  gp.setChild(dir2, singleRotate(p, last));
-                }
-
-                // ensure correct coloring
-                const gpc = gp.getChild(dir2);
-                assert(gpc);
-                gpc.red = true;
-                node.red = true;
-                assert(gpc.left);
-                gpc.left.red = false;
-                assert(gpc.right);
-                gpc.right.red = false;
-              }
-            }
-          }
-        }
-      }
-
-      // replace and remove if found
-      if (found !== null) {
-        found.data = node.data;
-        assert(p);
-        p.setChild(p.right === node, node.getChild(node.left === null));
-      }
-
-      // update root and make it black
-      this.#root = head.right;
-      if (this.#root !== null) {
-        this.#root.red = false;
-      }
-
-      return found !== null;
-    }
-  }
-
-  function isRed(node) {
-    return node !== null && node.red;
-  }
-
-  function singleRotate(root, dir) {
-    const save = root.getChild(!dir);
-    assert(save);
-
-    root.setChild(!dir, save.getChild(dir));
-    save.setChild(dir, root);
-
-    root.red = true;
-    save.red = false;
-
-    return save;
-  }
-
-  function doubleRotate(root, dir) {
-    root.setChild(!dir, singleRotate(root.getChild(!dir), !dir));
-    return singleRotate(root, dir);
-  }
-
-  const { console } = globalThis;
-
-  // Timeout values > TIMEOUT_MAX are set to 1.
-  const TIMEOUT_MAX = 2 ** 31 - 1;
-
-  let globalTimeoutDue = null;
-
-  let nextTimerId = 1;
-  const idMap = new Map();
-  const dueTree = new RBTree((a, b) => a.due - b.due);
-
-  function clearGlobalTimeout() {
-    globalTimeoutDue = null;
-    opStopGlobalTimer();
-  }
-
-  let pendingEvents = 0;
-  const pendingFireTimers = [];
-
-  /** Process and run a single ready timer macrotask.
-   * This function should be registered through Deno.core.setMacrotaskCallback.
-   * Returns true when all ready macrotasks have been processed, false if more
-   * ready ones are available. The Isolate future would rely on the return value
-   * to repeatedly invoke this function until depletion. Multiple invocations
-   * of this function one at a time ensures newly ready microtasks are processed
-   * before next macrotask timer callback is invoked. */
   function handleTimerMacrotask() {
-    if (pendingFireTimers.length > 0) {
-      fire(ArrayPrototypeShift(pendingFireTimers));
-      return pendingFireTimers.length === 0;
+    if (timerTasks.length === 0) {
+      return true;
     }
-    return true;
+
+    const task = ArrayPrototypeShift(timerTasks);
+
+    timerNestingLevel = task.nestingLevel;
+
+    try {
+      task.action();
+    } finally {
+      timerNestingLevel = 0;
+    }
+    return timerTasks.length === 0;
   }
 
-  async function setGlobalTimeout(due, now) {
-    // Since JS and Rust don't use the same clock, pass the time to rust as a
-    // relative time value. On the Rust side we'll turn that into an absolute
-    // value again.
-    const timeout = due - now;
-    assert(timeout >= 0);
-    // Send message to the backend.
-    globalTimeoutDue = due;
-    pendingEvents++;
-    // FIXME(bartlomieju): this is problematic, because `clearGlobalTimeout`
-    // is synchronous. That means that timer is cancelled, but this promise is still pending
-    // until next turn of event loop. This leads to "leaking of async ops" in tests;
-    // because `clearTimeout/clearInterval` might be the last statement in test function
-    // `opSanitizer` will immediately complain that there is pending op going on, unless
-    // some timeout/defer is put in place to allow promise resolution.
-    // Ideally `clearGlobalTimeout` doesn't return until this op is resolved, but
-    // I'm not if that's possible.
-    opStartGlobalTimer(timeout);
-    await opWaitGlobalTimer();
-    pendingEvents--;
-    prepareReadyTimers();
-  }
+  // ---------------------------------------------------------------------------
 
-  function prepareReadyTimers() {
-    const now = DateNow();
-    // Bail out if we're not expecting the global timer to fire.
-    if (globalTimeoutDue === null || pendingEvents > 0) {
-      return;
-    }
-    // After firing the timers that are due now, this will hold the first timer
-    // list that hasn't fired yet.
-    let nextDueNode;
-    while ((nextDueNode = dueTree.min()) !== null && nextDueNode.due <= now) {
-      dueTree.remove(nextDueNode);
-      // Fire all the timers in the list.
-      for (const timer of nextDueNode.timers) {
-        // With the list dropped, the timer is no longer scheduled.
-        timer.scheduled = false;
-        // Place the callback to pending timers to fire.
-        ArrayPrototypePush(pendingFireTimers, timer);
-      }
-    }
-    setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, now);
-  }
+  /**
+   * The keys in this map correspond to the key ID's in the spec's map of active
+   * timers. The values are the timeout's cancel rid.
+   *
+   * @type {Map<number, number>}
+   */
+  const activeTimers = new Map();
 
-  function setOrClearGlobalTimeout(due, now) {
-    if (due == null) {
-      clearGlobalTimeout();
+  let nextId = 1;
+
+  /**
+   * @param {Function | string} callback
+   * @param {number} timeout
+   * @param {Array<any>} args
+   * @param {boolean} repeat
+   * @param {number | undefined} prevId
+   * @returns {number} The timer ID
+   */
+  function initializeTimer(
+    callback,
+    timeout,
+    args,
+    repeat,
+    prevId,
+  ) {
+    // 2. If previousId was given, let id be previousId; otherwise, let
+    // previousId be an implementation-defined integer than is greater than zero
+    // and does not already exist in global's map of active timers.
+    let id;
+    let cancelRid;
+    if (prevId !== undefined) {
+      // `prevId` is only passed for follow-up calls on intervals
+      assert(repeat);
+      id = prevId;
+      cancelRid = MapPrototypeGet(activeTimers, id);
     } else {
-      setGlobalTimeout(due, now);
+      // TODO(@andreubotella): Deal with overflow.
+      // https://github.com/whatwg/html/issues/7358
+      id = nextId++;
+      cancelRid = core.opSync("op_timer_handle");
+
+      // Step 4 in "run steps after a timeout".
+      MapPrototypeSet(activeTimers, id, cancelRid);
+    }
+
+    // 3. If the surrounding agent's event loop's currently running task is a
+    // task that was created by this algorithm, then let nesting level be the
+    // task's timer nesting level. Otherwise, let nesting level be zero.
+    // 4. If timeout is less than 0, then set timeout to 0.
+    // 5. If nesting level is greater than 5, and timeout is less than 4, then
+    // set timeout to 4.
+    //
+    // The nesting level of 5 and minimum of 4 ms are spec-mandated magic
+    // constants.
+    if (timeout < 0) timeout = 0;
+    if (timerNestingLevel > 5 && timeout < 4) timeout = 4;
+
+    // 9. Let task be a task that runs the following steps:
+    const task = {
+      action: () => {
+        // 1. If id does not exist in global's map of active timers, then abort
+        // these steps.
+        //
+        // This is relevant if the timer has been canceled after the sleep op
+        // resolves but before this task runs.
+        if (!MapPrototypeHas(activeTimers, id)) {
+          return;
+        }
+
+        // 2.
+        // 3.
+        // TODO(@andreubotella): Error handling.
+        if (typeof callback === "function") {
+          FunctionPrototypeCall(callback, globalThis, ...args);
+        } else {
+          // TODO(@andreubotella): eval doesn't seem to have a primordial, but
+          // it can be redefined in the global scope.
+          (0, eval)(callback);
+        }
+
+        if (repeat) {
+          if (MapPrototypeHas(activeTimers, id)) {
+            // 4. If id does not exist in global's map of active timers, then
+            // abort these steps.
+            // NOTE: If might have been removed via the author code in handler
+            // calling clearTimeout() or clearInterval().
+            // 5. If repeat is true, then perform the timer initialization steps
+            // again, given global, handler, timeout, arguments, true, and id.
+            initializeTimer(callback, timeout, args, true, id);
+          }
+        } else {
+          // 6. Otherwise, remove global's map of active timers[id].
+          core.tryClose(cancelRid);
+          MapPrototypeDelete(activeTimers, id);
+        }
+      },
+
+      // 10. Increment nesting level by one.
+      // 11. Set task's timer nesting level to nesting level.
+      nestingLevel: timerNestingLevel + 1,
+    };
+
+    // 12. Let completionStep be an algorithm step which queues a global task on
+    // the timer task source given global to run task.
+    // 13. Run steps after a timeout given global, "setTimeout/setInterval",
+    // timeout, completionStep, and id.
+    runAfterTimeout(
+      () => ArrayPrototypePush(timerTasks, task),
+      timeout,
+      cancelRid,
+    );
+
+    return id;
+  }
+
+  // ---------------------------------------------------------------------------
+
+  /**
+   * @typedef ScheduledTimer
+   * @property {number} millis
+   * @property {() => void} cb
+   * @property {boolean} resolved
+   * @property {ScheduledTimer | null} prev
+   * @property {ScheduledTimer | null} next
+   */
+
+  /**
+   * A doubly linked list of timers.
+   * @type { { head: ScheduledTimer | null, tail: ScheduledTimer | null } }
+   */
+  const scheduledTimers = { head: null, tail: null };
+
+  /**
+   * @param {() => void} cb Will be run after the timeout, if it hasn't been
+   * cancelled.
+   * @param {number} millis
+   * @param {number} cancelRid
+   */
+  function runAfterTimeout(cb, millis, cancelRid) {
+    /** @type {ScheduledTimer} */
+    const timerObject = {
+      millis,
+      cb,
+      resolved: false,
+      prev: scheduledTimers.tail,
+      next: null,
+    };
+
+    // Add timerObject to the end of the list.
+    if (scheduledTimers.tail === null) {
+      assert(scheduledTimers.head === null);
+      scheduledTimers.head = scheduledTimers.tail = timerObject;
+    } else {
+      scheduledTimers.tail.next = timerObject;
+      scheduledTimers.tail = timerObject;
+    }
+
+    // 1.
+    PromisePrototypeThen(
+      core.opAsync("op_sleep", millis, cancelRid),
+      () => {
+        // 2. Wait until any invocations of this algorithm that had the same
+        // global and orderingIdentifier, that started before this one, and
+        // whose milliseconds is equal to or less than this one's, have
+        // completed.
+        // 4. Perform completionSteps.
+
+        // IMPORTANT: Since the sleep ops aren't guaranteed to resolve in the
+        // right order, whenever one resolves, we run through the scheduled
+        // timers list (which is in the order in which they were scheduled), and
+        // we call the callback for every timer which both:
+        //   a) has resolved, and
+        //   b) its timeout is lower than the lowest unresolved timeout found so
+        //      far in the list.
+
+        timerObject.resolved = true;
+
+        let lowestUnresolvedTimeout = NumberPOSITIVE_INFINITY;
+
+        let currentEntry = scheduledTimers.head;
+        while (currentEntry !== null) {
+          if (currentEntry.millis < lowestUnresolvedTimeout) {
+            if (currentEntry.resolved) {
+              currentEntry.cb();
+              removeFromScheduledTimers(currentEntry);
+            } else {
+              lowestUnresolvedTimeout = currentEntry.millis;
+            }
+          }
+
+          currentEntry = currentEntry.next;
+        }
+      },
+      (err) => {
+        if (err instanceof core.Interrupted) {
+          // The timer was cancelled.
+          removeFromScheduledTimers(timerObject);
+        } else {
+          throw err;
+        }
+      },
+    );
+  }
+
+  /** @param {ScheduledTimer} timerObj */
+  function removeFromScheduledTimers(timerObj) {
+    if (timerObj.prev !== null) {
+      timerObj.prev.next = timerObj.next;
+    } else {
+      assert(scheduledTimers.head === timerObj);
+      scheduledTimers.head = timerObj.next;
+    }
+    if (timerObj.next !== null) {
+      timerObj.next.prev = timerObj.prev;
+    } else {
+      assert(scheduledTimers.tail === timerObj);
+      scheduledTimers.tail = timerObj.prev;
     }
   }
 
-  function schedule(timer, now) {
-    assert(!timer.scheduled);
-    assert(now <= timer.due);
-    // Find or create the list of timers that will fire at point-in-time `due`.
-    const maybeNewDueNode = { due: timer.due, timers: [] };
-    let dueNode = dueTree.find(maybeNewDueNode);
-    if (dueNode === null) {
-      dueTree.insert(maybeNewDueNode);
-      dueNode = maybeNewDueNode;
-    }
-    // Append the newly scheduled timer to the list and mark it as scheduled.
-    ArrayPrototypePush(dueNode.timers, timer);
-    timer.scheduled = true;
-    // If the new timer is scheduled to fire before any timer that existed before,
-    // update the global timeout to reflect this.
-    if (globalTimeoutDue === null || globalTimeoutDue > timer.due) {
-      setOrClearGlobalTimeout(timer.due, now);
-    }
-  }
-
-  function unschedule(timer) {
-    // Check if our timer is pending scheduling or pending firing.
-    // If either is true, they are not in tree, and their idMap entry
-    // will be deleted soon. Remove it from queue.
-    let index = -1;
-    if ((index = ArrayPrototypeIndexOf(pendingFireTimers, timer)) >= 0) {
-      ArrayPrototypeSplice(pendingFireTimers, index);
-      return;
-    }
-    // If timer is not in the 2 pending queues and is unscheduled,
-    // it is not in the tree.
-    if (!timer.scheduled) {
-      return;
-    }
-    const searchKey = { due: timer.due, timers: [] };
-    // Find the list of timers that will fire at point-in-time `due`.
-    const list = dueTree.find(searchKey).timers;
-    if (list.length === 1) {
-      // Time timer is the only one in the list. Remove the entire list.
-      assert(list[0] === timer);
-      dueTree.remove(searchKey);
-      // If the unscheduled timer was 'next up', find when the next timer that
-      // still exists is due, and update the global alarm accordingly.
-      if (timer.due === globalTimeoutDue) {
-        const nextDueNode = dueTree.min();
-        setOrClearGlobalTimeout(
-          nextDueNode && nextDueNode.due,
-          DateNow(),
-        );
-      }
-    } else {
-      // Multiple timers that are due at the same point in time.
-      // Remove this timer from the list.
-      const index = ArrayPrototypeIndexOf(list, timer);
-      assert(index > -1);
-      ArrayPrototypeSplice(list, index, 1);
-    }
-  }
-
-  function fire(timer) {
-    // If the timer isn't found in the ID map, that means it has been cancelled
-    // between the timer firing and the promise callback (this function).
-    if (!MapPrototypeHas(idMap, timer.id)) {
-      return;
-    }
-    // Reschedule the timer if it is a repeating one, otherwise drop it.
-    if (!timer.repeat) {
-      // One-shot timer: remove the timer from this id-to-timer map.
-      MapPrototypeDelete(idMap, timer.id);
-    } else {
-      // Interval timer: compute when timer was supposed to fire next.
-      // However make sure to never schedule the next interval in the past.
-      const now = DateNow();
-      timer.due = MathMax(now, timer.due + timer.delay);
-      schedule(timer, now);
-    }
-    // Call the user callback. Intermediate assignment is to avoid leaking `this`
-    // to it, while also keeping the stack trace neat when it shows up in there.
-    const callback = timer.callback;
-    if ("function" === typeof callback) {
-      callback();
-    } else {
-      (0, eval)(callback);
-    }
-  }
+  // ---------------------------------------------------------------------------
 
   function checkThis(thisArg) {
     if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
@@ -486,109 +311,47 @@
     }
   }
 
-  function setTimer(
-    cb,
-    delay,
-    args,
-    repeat,
-  ) {
-    // If the callack is a function, bind `args` to the callback and bind `this` to globalThis(global).
-    // otherwise call `String` on it, and `eval` it on calls; do not pass variardic args to the string
-    let callback;
-
-    if ("function" === typeof cb) {
-      callback = FunctionPrototypeBind(cb, globalThis, ...args);
-    } else {
-      callback = String(cb);
-      args = []; // args are ignored
-    }
-    // In the browser, the delay value must be coercible to an integer between 0
-    // and INT32_MAX. Any other value will cause the timer to fire immediately.
-    // We emulate this behavior.
-    const now = DateNow();
-    if (delay > TIMEOUT_MAX) {
-      console.warn(
-        `${delay} does not fit into` +
-          " a 32-bit signed integer." +
-          "\nTimeout duration was set to 1.",
-      );
-      delay = 1;
-    }
-    delay = MathMax(0, delay | 0);
-
-    // Create a new, unscheduled timer object.
-    const timer = {
-      id: nextTimerId++,
-      callback,
-      args,
-      delay,
-      due: now + delay,
-      repeat,
-      scheduled: false,
-    };
-    // Register the timer's existence in the id-to-timer map.
-    MapPrototypeSet(idMap, timer.id, timer);
-    // Schedule the timer in the due table.
-    schedule(timer, now);
-    return timer.id;
-  }
-
-  function setTimeout(
-    cb,
-    delay = 0,
-    ...args
-  ) {
-    delay >>>= 0;
+  function setTimeout(callback, timeout = 0, ...args) {
     checkThis(this);
-    return setTimer(cb, delay, args, false);
-  }
-
-  function setInterval(
-    cb,
-    delay = 0,
-    ...args
-  ) {
-    delay >>>= 0;
-    checkThis(this);
-    return setTimer(cb, delay, args, true);
-  }
-
-  function clearTimer(id) {
-    id >>>= 0;
-    const timer = MapPrototypeGet(idMap, id);
-    if (timer === undefined) {
-      // Timer doesn't exist any more or never existed. This is not an error.
-      return;
+    if (typeof callback !== "function") {
+      callback = webidl.converters.DOMString(callback);
     }
-    // Unschedule the timer if it is currently scheduled, and forget about it.
-    unschedule(timer);
-    MapPrototypeDelete(idMap, timer.id);
+    timeout = webidl.converters.long(timeout);
+
+    return initializeTimer(callback, timeout, args, false);
+  }
+
+  function setInterval(callback, timeout = 0, ...args) {
+    checkThis(this);
+    if (typeof callback !== "function") {
+      callback = webidl.converters.DOMString(callback);
+    }
+    timeout = webidl.converters.long(timeout);
+
+    return initializeTimer(callback, timeout, args, true);
   }
 
   function clearTimeout(id = 0) {
-    id >>>= 0;
-    if (id === 0) {
-      return;
+    checkThis(this);
+    id = webidl.converters.long(id);
+    const cancelHandle = MapPrototypeGet(activeTimers, id);
+    if (cancelHandle !== undefined) {
+      core.tryClose(cancelHandle);
+      MapPrototypeDelete(activeTimers, id);
     }
-    clearTimer(id);
   }
 
   function clearInterval(id = 0) {
-    id >>>= 0;
-    if (id === 0) {
-      return;
-    }
-    clearTimer(id);
+    checkThis(this);
+    clearTimeout(id);
   }
 
   window.__bootstrap.timers = {
-    clearInterval,
+    setTimeout,
     setInterval,
     clearTimeout,
-    setTimeout,
+    clearInterval,
     handleTimerMacrotask,
-    opStopGlobalTimer,
-    opStartGlobalTimer,
     opNow,
     sleepSync,
   };
