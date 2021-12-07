@@ -1463,18 +1463,7 @@
                 );
               }
 
-              // 2.
-              /*const { raw: { data } } = await core.opAsync(
-                "op_crypto_export_key",
-                {
-                  key: innerKey,
-                  format,
-                  algorithm: algorithmName,
-                },
-              );*/
-
               // 3.
-              //return data.buffer;
               return innerKey.data;
             }
             case "spki": {
@@ -1517,7 +1506,7 @@
                 crv: key[_algorithm].namedCurve,
                 ...jwkEcKey,
               };
-            }*/
+            }
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
@@ -3159,9 +3148,14 @@
     extractable,
     keyUsages,
     isSignKey,
-    _mapJwkAlgToCurve,
+    mapJwkAlgToCurve,
   ) {
     const algorithmName = normalizedAlgorithm.name;
+    const namedCurve = normalizedAlgorithm.namedCurve;
+
+    if (namedCurve !== "P-256" && namedCurve !== "P-384") {
+      throw new DOMException("Not implemented", "NotSupportedError");
+    }
 
     switch (format) {
       case "raw": {
@@ -3171,7 +3165,7 @@
         if (
           !ArrayPrototypeIncludes(
             supportedNamedCurves,
-            normalizedAlgorithm.namedCurve,
+            namedCurve,
           )
         ) {
           throw new DOMException(
@@ -3199,7 +3193,7 @@
           algorithm: algorithmName,
           format,
           keyType,
-          namedCurve: normalizedAlgorithm.namedCurve,
+          namedCurve,
         }, { raw: { data: keyData } });
 
         const handle = {};
@@ -3211,7 +3205,7 @@
         // 4-5.
         const algorithm = {
           name: algorithmName,
-          namedCurve: normalizedAlgorithm.namedCurve,
+          namedCurve,
         };
 
         // 6-8.
@@ -3256,7 +3250,7 @@
               algorithm: algorithmName,
               format,
               keyType,
-              namedCurve: normalizedAlgorithm.namedCurve,
+              namedCurve,
             },
             { raw: { data: keyData } },
           );
@@ -3289,7 +3283,7 @@
         if (
           !ArrayPrototypeIncludes(
             supportedNamedCurves,
-            normalizedAlgorithm.namedCurve,
+            namedCurve,
           )
         ) {
           throw new DOMException(
@@ -3317,7 +3311,7 @@
           algorithm: algorithmName,
           format,
           keyType,
-          namedCurve: normalizedAlgorithm.namedCurve,
+          namedCurve,
         }, { raw: { data: keyData } });
 
         const handle = {};
@@ -3329,7 +3323,7 @@
         // 4-5.
         const algorithm = {
           name: algorithmName,
-          namedCurve: normalizedAlgorithm.namedCurve,
+          namedCurve,
         };
 
         // 6-8.
@@ -3343,7 +3337,7 @@
 
         return key;
       }
-      /*case "jwk": {
+      case "jwk": {
         const jwk = keyData;
 
         const keyType = (jwk.d != undefined) ? "private" : "public";
@@ -3351,7 +3345,7 @@
         if (
           !ArrayPrototypeIncludes(
             supportedNamedCurves,
-            normalizedAlgorithm.namedCurve,
+            namedCurve,
           )
         ) {
           throw new DOMException(
@@ -3436,7 +3430,7 @@
           if (algNamedCurve) {
             //const normalizedHash = normalizeAlgorithm(hash, "digest");
 
-            if (algNamedCurve !== normalizedAlgorithm.namedCurve) {
+            if (algNamedCurve !== namedCurve) {
               throw new DOMException(
                 "Mismatched curve algorithm for JWK.alg",
                 "DataError",
@@ -3452,7 +3446,7 @@
               algorithm: algorithmName,
               format,
               keyType,
-              namedCurve: normalizedAlgorithm.namedCurve,
+              namedCurve,
             },
             { jwkEcKey: jwk },
           );
@@ -3465,7 +3459,7 @@
 
         const algorithm = {
           name: algorithmName,
-          namedCurve: normalizedAlgorithm.namedCurve,
+          namedCurve,
         };
 
         const key = constructKey(
@@ -3477,7 +3471,7 @@
         );
 
         return key;
-      }*/
+      }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");
     }
