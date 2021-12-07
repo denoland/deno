@@ -48,8 +48,8 @@ deno_runtime = { version = "0.36.0", path = "../runtime" }
 
 atty = "=0.2.14"
 base64 = "=0.13.0"
-clap = "=2.33.3"
 chrono = "=0.4.19"
+clap = "=2.33.3"
 data-url = "=0.1.1"
 dissimilar = "=1.0.2"
 dprint-plugin-json = "=0.13.2"
