@@ -61,15 +61,9 @@ use std::path::PathBuf;
 use p256::elliptic_curve::generic_array::{
   typenum::U32, ArrayLength, GenericArray,
 };
-use p256::{
-  elliptic_curve::sec1::ToEncodedPoint,
-  
-};
+use p256::elliptic_curve::sec1::ToEncodedPoint;
 
-use p256::pkcs8::{
-  FromPrivateKey,FromPublicKey,
-  ToPrivateKey, ToPublicKey,
-};
+use p256::pkcs8::{FromPrivateKey, ToPrivateKey};
 
 pub use rand; // Re-export rand
 
