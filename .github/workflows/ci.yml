@@ -618,8 +618,7 @@ jobs:
     name: publish canary
     runs-on: ubuntu-20.04
     needs: ["build"]
-    if: github.repository == 'denoland/deno' &&
-        (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     steps:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@master
