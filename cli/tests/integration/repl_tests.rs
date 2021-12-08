@@ -267,7 +267,8 @@ fn typescript_declarations() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("undefined\n0\n2\nundefined\nundefined\n"));
+  let expected_end_text = "undefined\n0\n2\nundefined\nundefined\n";
+  assert_eq!(&out[out.len() - expected_end_text.len()..], expected_end_text);
   assert!(err.is_empty());
 }
 

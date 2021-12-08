@@ -25,6 +25,7 @@ use deno_ast::swc::transforms::hygiene;
 use deno_ast::swc::transforms::pass::Optional;
 use deno_ast::swc::transforms::proposals;
 use deno_ast::swc::transforms::react;
+use deno_ast::swc::transforms::resolver::ts_resolver;
 use deno_ast::swc::transforms::resolver_with_mark;
 use deno_ast::swc::transforms::typescript;
 use deno_ast::swc::visit::FoldWith;
@@ -333,7 +334,7 @@ pub fn transpile_module(
   let input = StringInput::from(&*source_file);
   let comments = SingleThreadedComments::default();
   let syntax = get_syntax(media_type);
-  let lexer = Lexer::new(syntax, deno_ast::TARGET, input, Some(&comments));
+  let lexer = Lexer::new(syntax, deno_ast::ES_VERSION, input, Some(&comments));
   let mut parser = deno_ast::swc::parser::Parser::new_from(lexer);
   let module = parser.parse_module().map_err(|err| {
     let location = cm.lookup_char_pos(err.span().lo);
@@ -420,6 +421,7 @@ fn fold_program(
     ),
   );
   let mut passes = chain!(
+    ts_resolver(top_level_mark),
     Optional::new(transforms::DownlevelImportsFolder, options.repl_imports),
     Optional::new(transforms::StripExportsFolder, options.repl_imports),
     proposals::decorators::decorators(proposals::decorators::Config {
@@ -512,34 +514,64 @@ mod tests {
     let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
       .expect("could not resolve specifier");
     let source = r#"
-    enum D {
-      A,
-      B,
-      C,
-    }
+enum D {
+  A,
+  B,
+}
 
-    export class A {
-      private b: string;
-      protected c: number = 1;
-      e: "foo";
-      constructor (public d = D.A) {
-        const e = "foo" as const;
-        this.e = e;
-      }
-    }
+namespace Test {
+  export const Value = 5;
+}
+
+class A {
+  private b: string;
+  protected c: number = 1;
+  e: "foo";
+  constructor (public d = D.A) {
+    const e = "foo" as const;
+    this.e = e;
+    console.log(Test.Value);
+  }
+
+  method() {
+  }
+}
     "#;
-    let module = parse_module(ParseParams {
+    let module = deno_ast::parse_script(ParseParams {
       specifier: specifier.as_str().to_string(),
       source: SourceTextInfo::from_string(source.to_string()),
       media_type: deno_ast::MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,
       scope_analysis: false,
-    })
-    .expect("could not parse module");
+    }).unwrap();
     let (code, maybe_map) = transpile(&module, &EmitOptions::default())
       .expect("could not strip types");
-    assert!(code.starts_with("var D;\n(function(D) {\n"));
+    let expected_text = r#"var D;
+(function(D) {
+    D[D["A"] = 0] = "A";
+    D[D["B"] = 1] = "B";
+})(D || (D = {
+}));
+var Test;
+(function(Test) {
+    Test.Value = 5;
+})(Test || (Test = {
+}));
+export class A {
+    d;
+    b;
+    c = 1;
+    e;
+    constructor(d = D.A){
+        this.d = d;
+        const e = "foo";
+        this.e = e;
+        console.log(Test.Value);
+    }
+}
+"#;
+    assert_eq!(&code[..expected_text.len()], expected_text);
     assert!(
       code.contains("\n//# sourceMappingURL=data:application/json;base64,")
     );
