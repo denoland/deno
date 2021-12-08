@@ -1778,6 +1778,15 @@ impl Inner {
           );
           params
         }
+      } else if let Some(docs_url) = data.docs {
+        CompletionItem {
+          documentation: self
+            .module_registries
+            .get_documentation(&docs_url)
+            .await,
+          data: None,
+          ..params
+        }
       } else {
         params
       }

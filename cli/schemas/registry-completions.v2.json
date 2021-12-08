@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://deno.land/x/deno/cli/schemas/registry-completions.v2.json",
+  "title": "Deno Registry Completion Schema",
+  "description": "A definition of meta data that allows a Deno language server form auto completion suggestions for modules within a module registry.",
+  "required": [
+    "version",
+    "registries"
+  ],
+  "type": "object",
+  "properties": {
+    "version": {
+      "description": "The version of the schema document.",
+      "type": "number",
+      "examples": [
+        2
+      ]
+    },
+    "registries": {
+      "default": [],
+      "description": "The registries that exist for this origin.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/registry"
+      }
+    }
+  },
+  "definitions": {
+    "registry": {
+      "type": "object",
+      "required": [
+        "schema",
+        "variables"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "description": "The Express-like path matching string, where a specifier in the editor will be matched against, and the variables interpolated to provide a completion suggestion.",
+          "examples": [
+            "/:package([a-z0-9_]*)/:path*",
+            "/:package([a-z0-9_]*)@:version?/:path*"
+          ]
+        },
+        "variables": {
+          "default": [],
+          "description": "The variables that are contained in the schema string.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/variable"
+          }
+        }
+      }
+    },
+    "variable": {
+      "type": "object",
+      "required": [
+        "key",
+        "url"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "The variable key name in the schema, which will be used to build the completion suggestions.",
+          "examples": [
+            "package",
+            "version",
+            "path"
+          ]
+        },
+        "details": {
+          "type": "string",
+          "description": "An optional \"endpoint\" to call to provide details for specified variable, which can be displayed to the client in the response. This can provide description information about the item.",
+          "examples": [
+            "https://example.com/api/modules/${module}/${{version}}/details/${path}"
+          ]
+        },
+        "parts": {
+          "type": "string",
+          "description": "An optional \"endpoint\" to call to provide incremental results of a complex variable, delimited by a path separator of \"/\".",
+          "examples": [
+            "https://example.com/api/modules/${module}/${{version}}/${path}"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "description": "The \"endpoint\" to call to provide values to complete the specifier. This endpoint should return an array of strings. Parsed values can be substituted using ${key} syntax.",
+          "examples": [
+            "https://example.com/api/packages",
+            "https://example.com/api/packages/{package}",
+            "https://example.com/api/packages/{package}/${{version}}"
+          ]
+        }
+      }
+    }
+  }
+}

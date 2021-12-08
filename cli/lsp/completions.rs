@@ -24,6 +24,8 @@ const LOCAL_PATHS: &[&str] = &[CURRENT_PATH, PARENT_PATH];
 #[serde(rename_all = "camelCase")]
 pub struct CompletionItemData {
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub docs: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub tsc: Option<tsc::CompletionItemData>,
 }
 
@@ -132,19 +134,22 @@ pub(crate) async fn get_import_completions(
     } else {
       0
     };
-    let maybe_items = state_snapshot
+    let maybe_list = state_snapshot
       .module_registries
       .get_completions(&text, offset, &range, |specifier| {
         state_snapshot.documents.contains_specifier(specifier)
       })
       .await;
-    let items = maybe_items.unwrap_or_else(|| {
-      get_workspace_completions(specifier, &text, &range, state_snapshot)
-    });
-    Some(lsp::CompletionResponse::List(lsp::CompletionList {
+    let list = maybe_list.unwrap_or_else(|| lsp::CompletionList {
+      items: get_workspace_completions(
+        specifier,
+        &text,
+        &range,
+        state_snapshot,
+      ),
       is_incomplete: false,
-      items,
-    }))
+    });
+    Some(lsp::CompletionResponse::List(list))
   } else {
     let mut items: Vec<lsp::CompletionItem> = LOCAL_PATHS
       .iter()
@@ -157,14 +162,16 @@ pub(crate) async fn get_import_completions(
         ..Default::default()
       })
       .collect();
+    let mut is_incomplete = false;
     if let Some(origin_items) = state_snapshot
       .module_registries
       .get_origin_completions(&text, &range)
     {
-      items.extend(origin_items);
+      is_incomplete = origin_items.is_incomplete;
+      items.extend(origin_items.items);
     }
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
-      is_incomplete: false,
+      is_incomplete,
       items,
     }))
     // TODO(@kitsonk) add bare specifiers from import map
