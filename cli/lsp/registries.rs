@@ -387,12 +387,14 @@ impl ModuleRegistry {
       .await;
     // if there is an error fetching, we will cache an empty file, so that
     // subsequent requests they are just an empty doc which will error without
-    // needing to connect to the remote URL
+    // needing to connect to the remote URL. We will cache it for 1 week.
     if fetch_result.is_err() {
+      let mut headers_map = HashMap::new();
+      headers_map.insert("cache-control".to_string(), "max-age=604800, immutable".to_string());
       self
         .file_fetcher
         .http_cache
-        .set(specifier, HashMap::default(), &[])?;
+        .set(specifier, headers_map, &[])?;
     }
     let file = fetch_result?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
