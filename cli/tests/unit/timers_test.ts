@@ -688,7 +688,7 @@ Deno.test({
 Deno.test({
   name: "unrefTimer - invalid calls do nothing",
   permissions: { run: true },
-  fn: async () => {
+  fn: () => {
     Deno.unrefTimer(NaN);
     Deno.refTimer(NaN);
   },
