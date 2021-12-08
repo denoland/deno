@@ -25,7 +25,6 @@ use deno_ast::swc::transforms::hygiene;
 use deno_ast::swc::transforms::pass::Optional;
 use deno_ast::swc::transforms::proposals;
 use deno_ast::swc::transforms::react;
-use deno_ast::swc::transforms::resolver::ts_resolver;
 use deno_ast::swc::transforms::resolver_with_mark;
 use deno_ast::swc::transforms::typescript;
 use deno_ast::swc::visit::FoldWith;
@@ -397,31 +396,27 @@ fn fold_program(
   comments: &SingleThreadedComments,
   top_level_mark: Mark,
 ) -> Result<Program, AnyError> {
-  let jsx_pass = chain!(
-    resolver_with_mark(top_level_mark),
-    react::react(
-      source_map.clone(),
-      Some(comments),
-      react::Options {
-        pragma: options.jsx_factory.clone(),
-        pragma_frag: options.jsx_fragment_factory.clone(),
-        // this will use `Object.assign()` instead of the `_extends` helper
-        // when spreading props.
-        use_builtins: true,
-        runtime: if options.jsx_automatic {
-          Some(react::Runtime::Automatic)
-        } else {
-          None
-        },
-        development: options.jsx_development,
-        import_source: options.jsx_import_source.clone().unwrap_or_default(),
-        ..Default::default()
+  let jsx_pass = react::react(
+    source_map.clone(),
+    Some(comments),
+    react::Options {
+      pragma: options.jsx_factory.clone(),
+      pragma_frag: options.jsx_fragment_factory.clone(),
+      // this will use `Object.assign()` instead of the `_extends` helper
+      // when spreading props.
+      use_builtins: true,
+      runtime: if options.jsx_automatic {
+        Some(react::Runtime::Automatic)
+      } else {
+        None
       },
-      top_level_mark,
-    ),
+      development: options.jsx_development,
+      import_source: options.jsx_import_source.clone().unwrap_or_default(),
+      ..Default::default()
+    },
+    top_level_mark,
   );
   let mut passes = chain!(
-    ts_resolver(top_level_mark),
     Optional::new(transforms::DownlevelImportsFolder, options.repl_imports),
     Optional::new(transforms::StripExportsFolder, options.repl_imports),
     proposals::decorators::decorators(proposals::decorators::Config {
@@ -429,10 +424,11 @@ fn fold_program(
       emit_metadata: options.emit_metadata
     }),
     helpers::inject_helpers(),
+    resolver_with_mark(top_level_mark),
     Optional::new(
       typescript::strip::strip_with_config(strip_config_from_emit_options(
         options
-      )),
+      ), top_level_mark),
       !options.transform_jsx
     ),
     Optional::new(
@@ -509,6 +505,8 @@ mod tests {
   use deno_ast::ParseParams;
   use deno_ast::SourceTextInfo;
 
+  use pretty_assertions::assert_eq;
+
   #[test]
   fn test_transpile() {
     let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
@@ -519,25 +517,25 @@ enum D {
   B,
 }
 
-namespace Test {
+namespace N {
+  export enum D {
+    A = "value"
+  }
   export const Value = 5;
 }
 
-class A {
+export class A {
   private b: string;
   protected c: number = 1;
   e: "foo";
   constructor (public d = D.A) {
     const e = "foo" as const;
     this.e = e;
-    console.log(Test.Value);
-  }
-
-  method() {
+    console.log(N.Value);
   }
 }
     "#;
-    let module = deno_ast::parse_script(ParseParams {
+    let module = deno_ast::parse_module(ParseParams {
       specifier: specifier.as_str().to_string(),
       source: SourceTextInfo::from_string(source.to_string()),
       media_type: deno_ast::MediaType::TypeScript,
@@ -553,10 +551,15 @@ class A {
     D[D["B"] = 1] = "B";
 })(D || (D = {
 }));
-var Test;
-(function(Test) {
-    Test.Value = 5;
-})(Test || (Test = {
+var N;
+(function(N1) {
+    let D;
+    (function(D) {
+        D["A"] = "value";
+    })(D = N1.D || (N1.D = {
+    }));
+    N1.Value = 5;
+})(N || (N = {
 }));
 export class A {
     d;
@@ -567,7 +570,7 @@ export class A {
         this.d = d;
         const e = "foo";
         this.e = e;
-        console.log(Test.Value);
+        console.log(N.Value);
     }
 }
 "#;
