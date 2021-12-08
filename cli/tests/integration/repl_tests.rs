@@ -63,12 +63,14 @@ fn pty_bad_input() {
 fn pty_syntax_error_input() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("('\\u')");
-    console.write_line("('");
+    console.write_line("'");
+    console.write_line("[{'a'}];");
     console.write_line("close();");
 
     let output = console.read_all_output();
+    assert!(output.contains("Expected 4 hex characters"));
     assert!(output.contains("Unterminated string constant"));
-    assert!(output.contains("Unexpected eof"));
+    assert!(output.contains("Expected a semicolon"));
   });
 }
 
@@ -268,7 +270,10 @@ fn typescript_declarations() {
     false,
   );
   let expected_end_text = "undefined\n0\n2\nundefined\nundefined\n";
-  assert_eq!(&out[out.len() - expected_end_text.len()..], expected_end_text);
+  assert_eq!(
+    &out[out.len() - expected_end_text.len()..],
+    expected_end_text
+  );
   assert!(err.is_empty());
 }
 
