@@ -24,7 +24,7 @@ const LOCAL_PATHS: &[&str] = &[CURRENT_PATH, PARENT_PATH];
 #[serde(rename_all = "camelCase")]
 pub struct CompletionItemData {
   #[serde(skip_serializing_if = "Option::is_none")]
-  pub docs: Option<String>,
+  pub documentation: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub tsc: Option<tsc::CompletionItemData>,
 }

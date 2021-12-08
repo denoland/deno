@@ -67,27 +67,22 @@
             "path"
           ]
         },
-        "details": {
+        "documentation": {
           "type": "string",
-          "description": "An optional \"endpoint\" to call to provide details for specified variable, which can be displayed to the client in the response. This can provide description information about the item.",
+          "description": "An optional \"endpoint\" to call to provide documentation for specified variable, which can be displayed to the client in the response. This can provide description information about the item. The value should contain the variable name in the template. Baseless URLs can be supplied and the host for the configuration file will be used as the base.",
           "examples": [
-            "https://example.com/api/modules/${module}/${{version}}/details/${path}"
-          ]
-        },
-        "parts": {
-          "type": "string",
-          "description": "An optional \"endpoint\" to call to provide incremental results of a complex variable, delimited by a path separator of \"/\".",
-          "examples": [
-            "https://example.com/api/modules/${module}/${{version}}/${path}"
+            "https://example.com/api/documentation/packages/${package}/${{version}}/${path}",
+            "/api/documentation/packages/${package}/${{version}}/${path}"
           ]
         },
         "url": {
           "type": "string",
-          "description": "The \"endpoint\" to call to provide values to complete the specifier. This endpoint should return an array of strings. Parsed values can be substituted using ${key} syntax.",
+          "description": "The \"endpoint\" to call to provide values to complete the specifier. This endpoint should return an array of strings. Parsed values can be substituted using ${key} syntax. In order to support incremental completions, the value should contain the variable name in the template. Baseless URLs can be supplied and the host for the configuration file will be used as the base.",
           "examples": [
             "https://example.com/api/packages",
-            "https://example.com/api/packages/{package}",
-            "https://example.com/api/packages/{package}/${{version}}"
+            "https://example.com/api/packages/${package}",
+            "https://example.com/api/packages/${package}/${{version}}",
+            "/api/packages/${package}/${{version}}/${path}"
           ]
         }
       }

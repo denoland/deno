@@ -147,10 +147,10 @@ fn get_data(
   variable: &Key,
   value: &str,
 ) -> Option<Value> {
-  let url = registry.get_details_url_for_key(variable)?;
+  let url = registry.get_documentation_url_for_key(variable)?;
   get_endpoint(url, base, variable, Some(value))
     .ok()
-    .map(|specifier| json!({ "registry": specifier }))
+    .map(|specifier| json!({ "documentation": specifier }))
 }
 
 /// Convert a single variable templated string into a fully qualified URL which
@@ -317,9 +317,9 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
 pub(crate) struct RegistryConfigurationVariable {
   /// The name of the variable.
   key: String,
-  /// An optional URL/API endpoint that can provide optional details for a
+  /// An optional URL/API endpoint that can provide optional documentation for a
   /// completion item when requested by the language server.
-  details: Option<String>,
+  documentation: Option<String>,
   /// The URL with variable substitutions of the endpoint that will provide
   /// completions for the variable.
   url: String,
@@ -344,10 +344,10 @@ impl RegistryConfiguration {
     })
   }
 
-  fn get_details_url_for_key(&self, key: &Key) -> Option<&str> {
+  fn get_documentation_url_for_key(&self, key: &Key) -> Option<&str> {
     self.variables.iter().find_map(|v| {
       if key.name == StringOrNumber::String(v.key.clone()) {
-        v.details.as_deref()
+        v.documentation.as_deref()
       } else {
         None
       }
@@ -784,8 +784,7 @@ impl ModuleRegistry {
                             let sort_text = Some(format!("{:0>10}", idx + 1));
                             let preselect =
                               get_preselect(item.clone(), preselect.clone());
-                            let data =
-                              get_data(registry, &specifier, k, &path);
+                            let data = get_data(registry, &specifier, k, &path);
                             completions.insert(
                               item.clone(),
                               lsp::CompletionItem {
@@ -964,12 +963,12 @@ mod tests {
         variables: vec![
           RegistryConfigurationVariable {
             key: "module".to_string(),
-            details: None,
+            documentation: None,
             url: "https://api.deno.land/modules?short".to_string(),
           },
           RegistryConfigurationVariable {
             key: "version".to_string(),
-            details: None,
+            documentation: None,
             url: "https://deno.land/_vsc1/module/${module}".to_string(),
           },
         ],
@@ -984,17 +983,17 @@ mod tests {
         variables: vec![
           RegistryConfigurationVariable {
             key: "module".to_string(),
-            details: None,
+            documentation: None,
             url: "https://api.deno.land/modules?short".to_string(),
           },
           RegistryConfigurationVariable {
             key: "version".to_string(),
-            details: None,
+            documentation: None,
             url: "https://deno.land/_vsc1/module/${module}/${path}".to_string(),
           },
           RegistryConfigurationVariable {
             key: "path".to_string(),
-            details: None,
+            documentation: None,
             url: "https://deno.land/_vsc1/module/${module}/v/${{version}}"
               .to_string(),
           },
@@ -1010,18 +1009,18 @@ mod tests {
         variables: vec![
           RegistryConfigurationVariable {
             key: "module".to_string(),
-            details: None,
+            documentation: None,
             url: "https://api.deno.land/modules?short".to_string(),
           },
           RegistryConfigurationVariable {
             key: "version".to_string(),
-            details: None,
+            documentation: None,
             url: "https://deno.land/_vsc1/module/${module}/v/${{version}}"
               .to_string(),
           },
           RegistryConfigurationVariable {
             key: "path".to_string(),
-            details: None,
+            documentation: None,
             url: "https://deno.land/_vsc1/module/${module}/v/${{version}}"
               .to_string(),
           },
@@ -1037,17 +1036,17 @@ mod tests {
         variables: vec![
           RegistryConfigurationVariable {
             key: "module".to_string(),
-            details: None,
+            documentation: None,
             url: "https://api.deno.land/modules?short".to_string(),
           },
           RegistryConfigurationVariable {
             key: "version".to_string(),
-            details: None,
+            documentation: None,
             url: "https://deno.land/_vsc1/module/${module}".to_string(),
           },
           RegistryConfigurationVariable {
             key: "path".to_string(),
-            details: None,
+            documentation: None,
             url: "https://deno.land/_vsc1/module/${module}/v/${{version}}"
               .to_string(),
           },

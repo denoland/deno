@@ -1778,12 +1778,9 @@ impl Inner {
           );
           params
         }
-      } else if let Some(docs_url) = data.docs {
+      } else if let Some(url) = data.documentation {
         CompletionItem {
-          documentation: self
-            .module_registries
-            .get_documentation(&docs_url)
-            .await,
+          documentation: self.module_registries.get_documentation(&url).await,
           data: None,
           ..params
         }
