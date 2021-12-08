@@ -48,6 +48,7 @@ deno_runtime = { version = "0.36.0", path = "../runtime" }
 
 atty = "=0.2.14"
 base64 = "=0.13.0"
+cache_control = "=0.2.0"
 chrono = "=0.4.19"
 clap = "=2.33.3"
 data-url = "=0.1.1"

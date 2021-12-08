@@ -1,6 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::auth_tokens::AuthToken;
 
+use cache_control::Cachability;
+use cache_control::CacheControl;
 use chrono::DateTime;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -13,7 +15,6 @@ use deno_runtime::deno_fetch::reqwest::header::LOCATION;
 use deno_runtime::deno_fetch::reqwest::Client;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
 use log::debug;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -50,45 +51,13 @@ fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
 // Vec<(String, String)>
 pub type HeadersMap = HashMap<String, String>;
 
-type CacheControl = HashMap<String, Option<String>>;
-
-fn parse_cache_control(header: &str) -> CacheControl {
-  let mut cc = CacheControl::new();
-  let mut is_valid = true;
-  for part in header.split(',') {
-    if part.trim().is_empty() {
-      continue;
-    }
-    let mut kv = part.splitn(2, '=');
-    let k = kv.next().unwrap().trim();
-    if k.is_empty() {
-      continue;
-    }
-    let v = kv.next().map(str::trim);
-    match cc.entry(k.into()) {
-      Entry::Occupied(e) => {
-        if e.get().as_deref() != v {
-          is_valid = false;
-        }
-      }
-      Entry::Vacant(e) => {
-        e.insert(v.map(|v| v.trim_matches('"')).map(From::from));
-      }
-    }
-  }
-  if !is_valid {
-    cc.insert("must-revalidate".into(), None);
-  }
-  cc
-}
-
 /// A structure used to determine if a entity in the http cache can be used.
 ///
 /// This is heavily influenced by
 /// https://github.com/kornelski/rusty-http-cache-semantics which is BSD
 /// 2-Clause Licensed and copyright Kornel Lesiński
 pub(crate) struct CacheSemantics {
-  cache_control: HashMap<String, Option<String>>,
+  cache_control: CacheControl,
   cached: SystemTime,
   headers: HashMap<String, String>,
   now: SystemTime,
@@ -102,7 +71,7 @@ impl CacheSemantics {
   ) -> Self {
     let cache_control = headers
       .get("cache-control")
-      .map(|v| parse_cache_control(v))
+      .map(|v| CacheControl::from_value(v).unwrap_or_default())
       .unwrap_or_default();
     Self {
       cache_control,
@@ -137,7 +106,7 @@ impl CacheSemantics {
   }
 
   fn max_age(&self) -> Duration {
-    if self.cache_control.contains_key("no-cache") {
+    if self.cache_control.cachability == Some(Cachability::NoCache) {
       return Duration::from_secs(0);
     }
 
@@ -145,10 +114,8 @@ impl CacheSemantics {
       return Duration::from_secs(0);
     }
 
-    if let Some(max_age) =
-      self.cache_control.get("max-age").and_then(|v| v.as_ref())
-    {
-      return Duration::from_secs(max_age.parse().unwrap_or(0));
+    if let Some(max_age) = self.cache_control.max_age {
+      return max_age;
     }
 
     let default_min_ttl = Duration::from_secs(0);
@@ -195,42 +162,29 @@ impl CacheSemantics {
   /// Returns true if the cached value is "fresh" respecting cached headers,
   /// otherwise returns false.
   pub fn should_use(&self) -> bool {
-    if self.cache_control.contains_key("no-cache") {
+    if self.cache_control.cachability == Some(Cachability::NoCache) {
       return false;
     }
 
-    if let Some(max_age) = self
-      .cache_control
-      .get("max-age")
-      .and_then(|v| v.as_ref())
-      .and_then(|p| p.parse().ok())
-    {
-      if self.age() > Duration::from_secs(max_age) {
+    if let Some(max_age) = self.cache_control.max_age {
+      if self.age() > max_age {
         return false;
       }
     }
 
-    if let Some(min_fresh) = self
-      .cache_control
-      .get("min-fresh")
-      .and_then(|v| v.as_ref())
-      .and_then(|p| p.parse().ok())
-    {
-      if self.time_to_live() < Duration::from_secs(min_fresh) {
+    if let Some(min_fresh) = self.cache_control.min_fresh {
+      if self.time_to_live() < min_fresh {
         return false;
       }
     }
 
     if self.is_stale() {
-      let max_stale = self.cache_control.get("max-stale");
-      let has_max_stale = max_stale.is_some();
-      let max_stale = max_stale
-        .and_then(|m| m.as_ref())
-        .and_then(|s| s.parse().ok());
+      let has_max_stale = self.cache_control.max_stale.is_some();
       let allows_stale = has_max_stale
-        && max_stale.map_or(true, |val| {
-          Duration::from_secs(val) > self.age() - self.max_age()
-        });
+        && self
+          .cache_control
+          .max_stale
+          .map_or(true, |val| val > self.age() - self.max_age());
       if !allows_stale {
         return false;
       }

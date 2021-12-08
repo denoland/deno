@@ -390,7 +390,10 @@ impl ModuleRegistry {
     // needing to connect to the remote URL. We will cache it for 1 week.
     if fetch_result.is_err() {
       let mut headers_map = HashMap::new();
-      headers_map.insert("cache-control".to_string(), "max-age=604800, immutable".to_string());
+      headers_map.insert(
+        "cache-control".to_string(),
+        "max-age=604800, immutable".to_string(),
+      );
       self
         .file_fetcher
         .http_cache
