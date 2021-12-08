@@ -78,7 +78,7 @@ where
         .ok_or_else(|| anyhow::anyhow!("missing capture"))?;
       content_length = content_length_match.as_str().parse::<usize>()?;
     }
-    if &buf == "\r\n" || buf.is_empty() {
+    if &buf == "\r\n" {
       break;
     }
   }
@@ -347,13 +347,10 @@ mod tests {
   }
 
   #[test]
+  #[should_panic(expected = "failed to fill whole buffer")]
   fn test_invalid_read_message() {
-    let msg1 = b"content-length: foo\r\n\r\nhello world";
+    let msg1 = b"content-length: 12\r\n\r\nhello world";
     let mut reader1 = std::io::Cursor::new(msg1);
-    assert_eq!(read_message(&mut reader1).unwrap(), b"");
-
-    let msg2 = b"hello world";
-    let mut reader2 = std::io::Cursor::new(msg2);
-    assert_eq!(read_message(&mut reader2).unwrap(), b"");
+    read_message(&mut reader1).unwrap();
   }
 }
