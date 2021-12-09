@@ -16,6 +16,7 @@
     // deno-lint-ignore camelcase
     NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
+    SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
   const { webidl } = window.__bootstrap;
@@ -87,7 +88,7 @@
    * The keys in this map correspond to the key ID's in the spec's map of active
    * timers. The values are the timeout's cancel rid.
    *
-   * @type {Map<number, number>}
+   * @type {Map<number, { cancelRid: number, isRef: boolean, promiseId: number }>}
    */
   const activeTimers = new Map();
 
@@ -112,20 +113,21 @@
     // previousId be an implementation-defined integer than is greater than zero
     // and does not already exist in global's map of active timers.
     let id;
-    let cancelRid;
+    let timerInfo;
     if (prevId !== undefined) {
       // `prevId` is only passed for follow-up calls on intervals
       assert(repeat);
       id = prevId;
-      cancelRid = MapPrototypeGet(activeTimers, id);
+      timerInfo = MapPrototypeGet(activeTimers, id);
     } else {
       // TODO(@andreubotella): Deal with overflow.
       // https://github.com/whatwg/html/issues/7358
       id = nextId++;
-      cancelRid = core.opSync("op_timer_handle");
+      const cancelRid = core.opSync("op_timer_handle");
+      timerInfo = { cancelRid, isRef: true, promiseId: -1 };
 
       // Step 4 in "run steps after a timeout".
-      MapPrototypeSet(activeTimers, id, cancelRid);
+      MapPrototypeSet(activeTimers, id, timerInfo);
     }
 
     // 3. If the surrounding agent's event loop's currently running task is a
@@ -175,7 +177,7 @@
           }
         } else {
           // 6. Otherwise, remove global's map of active timers[id].
-          core.tryClose(cancelRid);
+          core.tryClose(timerInfo.cancelRid);
           MapPrototypeDelete(activeTimers, id);
         }
       },
@@ -192,7 +194,7 @@
     runAfterTimeout(
       () => ArrayPrototypePush(timerTasks, task),
       timeout,
-      cancelRid,
+      timerInfo,
     );
 
     return id;
@@ -219,9 +221,17 @@
    * @param {() => void} cb Will be run after the timeout, if it hasn't been
    * cancelled.
    * @param {number} millis
-   * @param {number} cancelRid
+   * @param {{ cancelRid: number, isRef: boolean, promiseId: number }} timerInfo
    */
-  function runAfterTimeout(cb, millis, cancelRid) {
+  function runAfterTimeout(cb, millis, timerInfo) {
+    const cancelRid = timerInfo.cancelRid;
+    const sleepPromise = core.opAsync("op_sleep", millis, cancelRid);
+    timerInfo.promiseId =
+      sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
+    if (!timerInfo.isRef) {
+      core.unrefOp(timerInfo.promiseId);
+    }
+
     /** @type {ScheduledTimer} */
     const timerObject = {
       millis,
@@ -242,7 +252,7 @@
 
     // 1.
     PromisePrototypeThen(
-      core.opAsync("op_sleep", millis, cancelRid),
+      sleepPromise,
       () => {
         // 2. Wait until any invocations of this algorithm that had the same
         // global and orderingIdentifier, that started before this one, and
@@ -334,9 +344,9 @@
   function clearTimeout(id = 0) {
     checkThis(this);
     id = webidl.converters.long(id);
-    const cancelHandle = MapPrototypeGet(activeTimers, id);
-    if (cancelHandle !== undefined) {
-      core.tryClose(cancelHandle);
+    const timerInfo = MapPrototypeGet(activeTimers, id);
+    if (timerInfo !== undefined) {
+      core.tryClose(timerInfo.cancelRid);
       MapPrototypeDelete(activeTimers, id);
     }
   }
@@ -344,6 +354,24 @@
   function clearInterval(id = 0) {
     checkThis(this);
     clearTimeout(id);
+  }
+
+  function refTimer(id) {
+    const timerInfo = MapPrototypeGet(activeTimers, id);
+    if (timerInfo === undefined || timerInfo.isRef) {
+      return;
+    }
+    timerInfo.isRef = true;
+    core.refOp(timerInfo.promiseId);
+  }
+
+  function unrefTimer(id) {
+    const timerInfo = MapPrototypeGet(activeTimers, id);
+    if (timerInfo === undefined || !timerInfo.isRef) {
+      return;
+    }
+    timerInfo.isRef = false;
+    core.unrefOp(timerInfo.promiseId);
   }
 
   window.__bootstrap.timers = {
@@ -354,5 +382,7 @@
     handleTimerMacrotask,
     opNow,
     sleepSync,
+    refTimer,
+    unrefTimer,
   };
 })(this);
