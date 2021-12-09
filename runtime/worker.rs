@@ -135,7 +135,7 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      ops::os::init(),
+      ops::os::init(None),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),

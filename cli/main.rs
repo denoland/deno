@@ -149,6 +149,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
+      maybe_exit_code: args.maybe_exit_code,
     };
     let bootstrap_options = options.bootstrap.clone();
 

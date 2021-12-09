@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::env;
 use std::sync::atomic::Ordering::Relaxed;
 
-pub fn init() -> Extension {
+pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
   Extension::builder()
     .ops(vec![
       ("op_exit", op_sync(op_exit)),
@@ -27,8 +27,15 @@ pub fn init() -> Extension {
       ("op_set_exit_code", op_sync(op_set_exit_code)),
       ("op_system_memory_info", op_sync(op_system_memory_info)),
     ])
+    .state(move |state| {
+      let exit_code = maybe_exit_code.unwrap_or_default();
+      state.put::<ExitCode>(ExitCode(exit_code));
+    })
     .build()
 }
+
+#[derive(Clone)]
+pub struct ExitCode(pub Arc<AtomicI32>);
 
 fn op_exec_path(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
@@ -97,13 +104,17 @@ fn op_delete_env(
   Ok(())
 }
 
-fn op_set_exit_code(_: &mut OpState, code: i32, _: ()) -> Result<(), AnyError> {
-  crate::EXIT_CODE.store(code, Relaxed);
+fn op_set_exit_code(
+  state: &mut OpState,
+  code: i32,
+  _: (),
+) -> Result<(), AnyError> {
+  state.borrow_mut::<ExitCode>().store(code, Relaxed);
   Ok(())
 }
 
-fn op_exit(_: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
-  let code = crate::EXIT_CODE.load(Relaxed);
+fn op_exit(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
+  let code = state.borrow::<ExitCode>().load(Relaxed);
   std::process::exit(code)
 }
 

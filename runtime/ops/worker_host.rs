@@ -34,6 +34,7 @@ pub struct CreateWebWorkerArgs {
   pub main_module: ModuleSpecifier,
   pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
+  pub maybe_exit_code: Option<Arc<AtomicI32>>,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -166,7 +167,7 @@ fn op_create_worker(
     parent_permissions.clone()
   };
   let parent_permissions = parent_permissions.clone();
-
+  let maybe_exit_code = Some(state.borrow::<ExitCode>().clone().0);
   let worker_id = state.take::<WorkerId>();
   let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());
@@ -199,6 +200,7 @@ fn op_create_worker(
         main_module: module_specifier.clone(),
         use_deno_namespace,
         worker_type,
+        maybe_exit_code,
       });
 
     // Send thread safe handle from newly created worker to host thread
