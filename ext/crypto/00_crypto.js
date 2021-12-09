@@ -268,6 +268,18 @@
     return normalizedAlgorithm;
   }
 
+  /**
+   * @param {ArrayBufferView | ArrayBuffer} input
+   * @returns
+   */
+  function copyBuffer(input) {
+    return TypedArrayPrototypeSlice(
+      ArrayBufferIsView(input)
+        ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength)
+        : new Uint8Array(input),
+    );
+  }
+
   const _handle = Symbol("[[handle]]");
   const _algorithm = Symbol("[[algorithm]]");
   const _extractable = Symbol("[[extractable]]");
@@ -446,13 +458,7 @@
         context: "Argument 2",
       });
 
-      if (ArrayBufferIsView(data)) {
-        data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-      } else {
-        data = new Uint8Array(data);
-      }
-
-      data = TypedArrayPrototypeSlice(data);
+      data = copyBuffer(data);
 
       algorithm = normalizeAlgorithm(algorithm, "digest");
 
@@ -489,12 +495,7 @@
       });
 
       // 2.
-      if (ArrayBufferIsView(data)) {
-        data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-      } else {
-        data = new Uint8Array(data);
-      }
-      data = TypedArrayPrototypeSlice(data);
+      data = copyBuffer(data);
 
       // 3.
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "encrypt");
@@ -542,12 +543,7 @@
       });
 
       // 2.
-      if (ArrayBufferIsView(data)) {
-        data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-      } else {
-        data = new Uint8Array(data);
-      }
-      data = TypedArrayPrototypeSlice(data);
+      data = copyBuffer(data);
 
       // 3.
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "decrypt");
@@ -583,20 +579,7 @@
 
           // 2.
           if (normalizedAlgorithm.label) {
-            if (ArrayBufferIsView(normalizedAlgorithm.label)) {
-              normalizedAlgorithm.label = new Uint8Array(
-                normalizedAlgorithm.label.buffer,
-                normalizedAlgorithm.label.byteOffset,
-                normalizedAlgorithm.label.byteLength,
-              );
-            } else {
-              normalizedAlgorithm.label = new Uint8Array(
-                normalizedAlgorithm.label,
-              );
-            }
-            normalizedAlgorithm.label = TypedArrayPrototypeSlice(
-              normalizedAlgorithm.label,
-            );
+            normalizedAlgorithm.label = copyBuffer(normalizedAlgorithm.label);
           } else {
             normalizedAlgorithm.label = new Uint8Array();
           }
@@ -614,20 +597,7 @@
           return plainText.buffer;
         }
         case "AES-CBC": {
-          if (ArrayBufferIsView(normalizedAlgorithm.iv)) {
-            normalizedAlgorithm.iv = new Uint8Array(
-              normalizedAlgorithm.iv.buffer,
-              normalizedAlgorithm.iv.byteOffset,
-              normalizedAlgorithm.iv.byteLength,
-            );
-          } else {
-            normalizedAlgorithm.iv = new Uint8Array(
-              normalizedAlgorithm.iv,
-            );
-          }
-          normalizedAlgorithm.iv = TypedArrayPrototypeSlice(
-            normalizedAlgorithm.iv,
-          );
+          normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
 
           // 1.
           if (normalizedAlgorithm.iv.byteLength !== 16) {
@@ -676,12 +646,7 @@
       });
 
       // 1.
-      if (ArrayBufferIsView(data)) {
-        data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-      } else {
-        data = new Uint8Array(data);
-      }
-      data = TypedArrayPrototypeSlice(data);
+      data = copyBuffer(data);
 
       // 2.
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "sign");
@@ -822,16 +787,7 @@
       // 2.
       if (format !== "jwk") {
         if (ArrayBufferIsView(keyData) || keyData instanceof ArrayBuffer) {
-          if (ArrayBufferIsView(keyData)) {
-            keyData = new Uint8Array(
-              keyData.buffer,
-              keyData.byteOffset,
-              keyData.byteLength,
-            );
-          } else {
-            keyData = new Uint8Array(keyData);
-          }
-          keyData = TypedArrayPrototypeSlice(keyData);
+          keyData = copyBuffer(keyData);
         } else {
           throw new TypeError("keyData is a JsonWebKey");
         }
@@ -1333,24 +1289,10 @@
       });
 
       // 2.
-      if (ArrayBufferIsView(signature)) {
-        signature = new Uint8Array(
-          signature.buffer,
-          signature.byteOffset,
-          signature.byteLength,
-        );
-      } else {
-        signature = new Uint8Array(signature);
-      }
-      signature = TypedArrayPrototypeSlice(signature);
+      signature = copyBuffer(signature);
 
       // 3.
-      if (ArrayBufferIsView(data)) {
-        data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-      } else {
-        data = new Uint8Array(data);
-      }
-      data = TypedArrayPrototypeSlice(data);
+      data = copyBuffer(data);
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "verify");
 
@@ -1591,16 +1533,7 @@
       });
 
       // 2.
-      if (ArrayBufferIsView(wrappedKey)) {
-        wrappedKey = new Uint8Array(
-          wrappedKey.buffer,
-          wrappedKey.byteOffset,
-          wrappedKey.byteLength,
-        );
-      } else {
-        wrappedKey = new Uint8Array(wrappedKey);
-      }
-      wrappedKey = TypedArrayPrototypeSlice(wrappedKey);
+      wrappedKey = copyBuffer(wrappedKey);
 
       let normalizedAlgorithm;
 
@@ -2751,18 +2684,7 @@
         const handle = baseKey[_handle];
         const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
-        if (ArrayBufferIsView(normalizedAlgorithm.salt)) {
-          normalizedAlgorithm.salt = new Uint8Array(
-            normalizedAlgorithm.salt.buffer,
-            normalizedAlgorithm.salt.byteOffset,
-            normalizedAlgorithm.salt.byteLength,
-          );
-        } else {
-          normalizedAlgorithm.salt = new Uint8Array(normalizedAlgorithm.salt);
-        }
-        normalizedAlgorithm.salt = TypedArrayPrototypeSlice(
-          normalizedAlgorithm.salt,
-        );
+        normalizedAlgorithm.salt = copyBuffer(normalizedAlgorithm.salt);
 
         const buf = await core.opAsync("op_crypto_derive_bits", {
           key: keyData,
@@ -2835,31 +2757,9 @@
         const handle = baseKey[_handle];
         const keyDerivationKey = WeakMapPrototypeGet(KEY_STORE, handle);
 
-        if (ArrayBufferIsView(normalizedAlgorithm.salt)) {
-          normalizedAlgorithm.salt = new Uint8Array(
-            normalizedAlgorithm.salt.buffer,
-            normalizedAlgorithm.salt.byteOffset,
-            normalizedAlgorithm.salt.byteLength,
-          );
-        } else {
-          normalizedAlgorithm.salt = new Uint8Array(normalizedAlgorithm.salt);
-        }
-        normalizedAlgorithm.salt = TypedArrayPrototypeSlice(
-          normalizedAlgorithm.salt,
-        );
+        normalizedAlgorithm.salt = copyBuffer(normalizedAlgorithm.salt);
 
-        if (ArrayBufferIsView(normalizedAlgorithm.info)) {
-          normalizedAlgorithm.info = new Uint8Array(
-            normalizedAlgorithm.info.buffer,
-            normalizedAlgorithm.info.byteOffset,
-            normalizedAlgorithm.info.byteLength,
-          );
-        } else {
-          normalizedAlgorithm.info = new Uint8Array(normalizedAlgorithm.info);
-        }
-        normalizedAlgorithm.info = TypedArrayPrototypeSlice(
-          normalizedAlgorithm.info,
-        );
+        normalizedAlgorithm.info = copyBuffer(normalizedAlgorithm.info);
 
         const buf = await core.opAsync("op_crypto_derive_bits", {
           key: keyDerivationKey,
@@ -2892,20 +2792,7 @@
 
         // 2.
         if (normalizedAlgorithm.label) {
-          if (ArrayBufferIsView(normalizedAlgorithm.label)) {
-            normalizedAlgorithm.label = new Uint8Array(
-              normalizedAlgorithm.label.buffer,
-              normalizedAlgorithm.label.byteOffset,
-              normalizedAlgorithm.label.byteLength,
-            );
-          } else {
-            normalizedAlgorithm.label = new Uint8Array(
-              normalizedAlgorithm.label,
-            );
-          }
-          normalizedAlgorithm.label = TypedArrayPrototypeSlice(
-            normalizedAlgorithm.label,
-          );
+          normalizedAlgorithm.label = copyBuffer(normalizedAlgorithm.label);
         } else {
           normalizedAlgorithm.label = new Uint8Array();
         }
@@ -2922,20 +2809,7 @@
         return cipherText.buffer;
       }
       case "AES-CBC": {
-        if (ArrayBufferIsView(normalizedAlgorithm.iv)) {
-          normalizedAlgorithm.iv = new Uint8Array(
-            normalizedAlgorithm.iv.buffer,
-            normalizedAlgorithm.iv.byteOffset,
-            normalizedAlgorithm.iv.byteLength,
-          );
-        } else {
-          normalizedAlgorithm.iv = new Uint8Array(
-            normalizedAlgorithm.iv,
-          );
-        }
-        normalizedAlgorithm.iv = TypedArrayPrototypeSlice(
-          normalizedAlgorithm.iv,
-        );
+        normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
 
         // 1.
         if (normalizedAlgorithm.iv.byteLength !== 16) {
