@@ -826,7 +826,6 @@
             keyData,
             extractable,
             keyUsages,
-            ["sign"],
           );
         }
         case "RSA-OAEP": {
@@ -836,7 +835,6 @@
             keyData,
             extractable,
             keyUsages,
-            ["decrypt", "unwrapKey"],
           );
         }
         case "HKDF": {
@@ -2255,13 +2253,27 @@
     }
   }
 
+  const SUPPORTED_RSA_KEY_USAGES = {
+    "RSASSA-PKCS1-v1_5": {
+      spki: ["verify"],
+      pkcs8: ["sign"],
+    },
+    "RSA-PSS": {
+      spki: ["verify"],
+      pkcs8: ["sign"],
+    },
+    "RSA-OAEP": {
+      spki: ["encrypt", "wrapKey"],
+      pkcs8: ["decrypt", "unwrapKey"],
+    },
+  };
+
   async function importKeyRSA(
     format,
     normalizedAlgorithm,
     keyData,
     extractable,
     keyUsages,
-    supportedKeyUsages,
   ) {
     switch (format) {
       case "pkcs8": {
@@ -2269,7 +2281,11 @@
         if (
           ArrayPrototypeFind(
             keyUsages,
-            (u) => !ArrayPrototypeIncludes(supportedKeyUsages, u),
+            (u) =>
+              !ArrayPrototypeIncludes(
+                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].pkcs8,
+                u,
+              ),
           ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
@@ -2316,7 +2332,11 @@
         if (
           ArrayPrototypeFind(
             keyUsages,
-            (u) => !ArrayPrototypeIncludes(["verify"], u),
+            (u) =>
+              !ArrayPrototypeIncludes(
+                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].spki,
+                u,
+              ),
           ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
