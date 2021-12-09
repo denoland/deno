@@ -1531,8 +1531,6 @@
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
-          // TODO(@littledivy): Redundant break but deno_lint complains without it
-          break;
         }
         case "RSASSA-PKCS1-v1_5": {
           switch (format) {
