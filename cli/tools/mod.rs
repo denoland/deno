@@ -4,6 +4,7 @@ pub mod coverage;
 pub mod doc;
 pub mod fmt;
 pub mod installer;
+pub mod jupyter;
 pub mod lint;
 pub mod repl;
 pub mod standalone;

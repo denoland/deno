@@ -51,6 +51,7 @@ use crate::flags::Flags;
 use crate::flags::FmtFlags;
 use crate::flags::InfoFlags;
 use crate::flags::InstallFlags;
+use crate::flags::JupyterFlags;
 use crate::flags::LintFlags;
 use crate::flags::ReplFlags;
 use crate::flags::RunFlags;
@@ -545,6 +546,17 @@ async fn install_command(
     install_flags.root,
     install_flags.force,
   )
+}
+
+async fn jupyter_command(
+  flags: Flags,
+  jupyter_flags: JupyterFlags,
+) -> Result<(), AnyError> {
+  if jupyter_flags.install {
+    return tools::jupyter::install();
+  }
+
+  tools::jupyter::kernel(flags, jupyter_flags)
 }
 
 async fn uninstall_command(
@@ -1369,6 +1381,9 @@ fn get_subcommand(
     }
     DenoSubcommand::Install(install_flags) => {
       install_command(flags, install_flags).boxed_local()
+    }
+    DenoSubcommand::Jupyter(jupyter_flags) => {
+      jupyter_command(flags, jupyter_flags).boxed_local()
     }
     DenoSubcommand::Uninstall(uninstall_flags) => {
       uninstall_command(uninstall_flags).boxed_local()

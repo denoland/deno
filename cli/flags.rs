@@ -111,6 +111,12 @@ pub struct InstallFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct JupyterFlags {
+  pub install: bool,
+  pub conn_file: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct UninstallFlags {
   pub name: String,
   pub root: Option<PathBuf>,
@@ -172,6 +178,7 @@ pub enum DenoSubcommand {
   Fmt(FmtFlags),
   Info(InfoFlags),
   Install(InstallFlags),
+  Jupyter(JupyterFlags),
   Uninstall(UninstallFlags),
   Lsp,
   Lint(LintFlags),
@@ -472,6 +479,8 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     compile_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("lsp") {
     lsp_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("jupyter") {
+    jupyter_parse(&mut flags, m);
   } else {
     repl_parse(&mut flags, &matches);
   }
@@ -529,6 +538,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
+    .subcommand(jupyter_subcommand())
     .subcommand(uninstall_subcommand())
     .subcommand(lsp_subcommand())
     .subcommand(lint_subcommand())
@@ -1024,6 +1034,22 @@ The installation root is determined, in order of precedence:
   - $HOME/.deno
 
 These must be added to the path manually if required.")
+}
+
+fn jupyter_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("jupyter")
+    .arg(
+      Arg::with_name("install")
+        .long("install")
+    )
+    .arg(
+      Arg::with_name("conn")
+        .long("conn")
+        .help("Path to JSON file describing connection parameters, provided by Jupyter")
+        .takes_value(true)
+        .required(false)
+        .conflicts_with("install"))
+    .about("Jupyter kernel")
 }
 
 fn uninstall_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1973,6 +1999,20 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     root,
     force,
   });
+}
+
+fn jupyter_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let conn_file = if matches.is_present("conn") {
+    let conn_file = matches.value_of("conn").unwrap();
+    Some(PathBuf::from(conn_file))
+  } else {
+    None
+  };
+
+  let install = matches.is_present("install");
+
+  flags.subcommand =
+    DenoSubcommand::Jupyter(JupyterFlags { install, conn_file });
 }
 
 fn uninstall_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -4518,5 +4558,42 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn jupyter() {
+    let r = flags_from_vec(svec!["deno", "jupyter", "--install"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: true,
+          conn_file: None,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec(svec!["deno", "jupyter", "--conn", "path/to/conn/file"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: false,
+          conn_file: Some(PathBuf::from("path/to/conn/file")),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "jupyter",
+      "--install",
+      "--conn",
+      "path/to/conn/file"
+    ]);
+    r.unwrap_err();
   }
 }
