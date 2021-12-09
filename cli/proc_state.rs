@@ -590,7 +590,7 @@ impl ProcState {
             // graph. There shouldn't be any runtime statements in the source
             // file and if there was, users would be shown a `TS1036`
             // diagnostic. So just return an empty emit.
-            } else if !emit::is_emittable(&media_type, true) {
+            } else if !emit::is_emittable(media_type, true) {
               "".to_string()
             } else {
               unreachable!(
