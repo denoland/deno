@@ -825,7 +825,10 @@ impl JsRuntime {
     // TODO(andreubotella) The event loop will spin as long as there are pending
     // background tasks. We should look into having V8 notify us when a
     // background task is done.
-    if state.have_unpolled_ops || has_pending_background_tasks {
+    if state.have_unpolled_ops
+      || has_pending_background_tasks
+      || has_tick_scheduled
+    {
       state.waker.wake();
     }
 
@@ -834,10 +837,11 @@ impl JsRuntime {
         || has_pending_dyn_imports
         || has_pending_dyn_module_evaluation
         || has_pending_background_tasks
+        || has_tick_scheduled
       {
         // pass, will be polled again
       } else {
-        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promise.";
+        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promises.";
         return Poll::Ready(Err(generic_error(msg)));
       }
     }
@@ -846,10 +850,11 @@ impl JsRuntime {
       if has_pending_refed_ops
         || has_pending_dyn_imports
         || has_pending_background_tasks
+        || has_tick_scheduled
       {
         // pass, will be polled again
       } else if state.dyn_module_evaluate_idle_counter >= 1 {
-        let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.
+        let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promises.
 Pending dynamic modules:\n".to_string();
         for pending_evaluate in &state.pending_dyn_mod_evaluate {
           let module_info = module_map
@@ -1945,7 +1950,7 @@ pub mod tests {
 
   #[test]
   fn test_pre_dispatch() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute_script(
@@ -1961,7 +1966,7 @@ pub mod tests {
          "#,
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -1979,7 +1984,7 @@ pub mod tests {
 
   #[test]
   fn test_encode_decode() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute_script(
@@ -1987,7 +1992,7 @@ pub mod tests {
           include_str!("encode_decode_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -1995,7 +2000,7 @@ pub mod tests {
 
   #[test]
   fn test_serialize_deserialize() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute_script(
@@ -2003,7 +2008,7 @@ pub mod tests {
           include_str!("serialize_deserialize_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -2019,7 +2024,7 @@ pub mod tests {
       "DOMExceptionOperationError"
     }
 
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let mut runtime = JsRuntime::new(RuntimeOptions {
         get_error_class_fn: Some(&get_error_class_name),
         ..Default::default()
@@ -2032,7 +2037,7 @@ pub mod tests {
           include_str!("error_builder_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -2527,39 +2532,40 @@ assertEquals(1, notify_return_value);
     assert_eq!(state.js_nexttick_cbs.len(), 2);
   }
 
-  #[tokio::test]
-  async fn test_has_tick_scheduled() {
-    run_in_task(|cx| {
-      let macrotask = Arc::new(AtomicUsize::default());
-      let macrotask_ = Arc::clone(&macrotask);
+  #[test]
+  fn test_has_tick_scheduled() {
+    use futures::task::ArcWake;
 
-      let next_tick = Arc::new(AtomicUsize::default());
-      let next_tick_ = Arc::clone(&next_tick);
+    let macrotask = Arc::new(AtomicUsize::default());
+    let macrotask_ = Arc::clone(&macrotask);
 
-      let op_macrotask = move |_: &mut OpState, _: (), _: ()| {
-        macrotask_.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-      };
+    let next_tick = Arc::new(AtomicUsize::default());
+    let next_tick_ = Arc::clone(&next_tick);
 
-      let op_next_tick = move |_: &mut OpState, _: (), _: ()| {
-        next_tick_.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-      };
+    let op_macrotask = move |_: &mut OpState, _: (), _: ()| {
+      macrotask_.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    };
 
-      let extension = Extension::builder()
-        .ops(vec![("op_macrotask", op_sync(op_macrotask))])
-        .ops(vec![("op_next_tick", op_sync(op_next_tick))])
-        .build();
+    let op_next_tick = move |_: &mut OpState, _: (), _: ()| {
+      next_tick_.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    };
 
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![extension],
-        ..Default::default()
-      });
+    let extension = Extension::builder()
+      .ops(vec![("op_macrotask", op_sync(op_macrotask))])
+      .ops(vec![("op_next_tick", op_sync(op_next_tick))])
+      .build();
 
-      runtime
-        .execute_script(
-          "has_tick_scheduled.js",
-          r#"
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "has_tick_scheduled.js",
+        r#"
           Deno.core.setMacrotaskCallback(() => {
             Deno.core.opSync("op_macrotask");
             return true; // We're done.
@@ -2567,25 +2573,44 @@ assertEquals(1, notify_return_value);
           Deno.core.setNextTickCallback(() => Deno.core.opSync("op_next_tick"));
           Deno.core.setHasTickScheduled(true);
           "#,
-        )
-        .unwrap();
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      assert_eq!(1, macrotask.load(Ordering::Relaxed));
-      assert_eq!(1, next_tick.load(Ordering::Relaxed));
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      let state_rc = JsRuntime::state(runtime.v8_isolate());
-      state_rc.borrow_mut().has_tick_scheduled = false;
-      assert!(matches!(
-        runtime.poll_event_loop(cx, false),
-        Poll::Ready(Ok(()))
-      ));
-      assert!(matches!(
-        runtime.poll_event_loop(cx, false),
-        Poll::Ready(Ok(()))
-      ));
-    });
+      )
+      .unwrap();
+
+    struct ArcWakeImpl(Arc<AtomicUsize>);
+    impl ArcWake for ArcWakeImpl {
+      fn wake_by_ref(arc_self: &Arc<Self>) {
+        arc_self.0.fetch_add(1, Ordering::Relaxed);
+      }
+    }
+
+    let awoken_times = Arc::new(AtomicUsize::new(0));
+    let waker =
+      futures::task::waker(Arc::new(ArcWakeImpl(awoken_times.clone())));
+    let cx = &mut Context::from_waker(&waker);
+
+    assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+    assert_eq!(1, macrotask.load(Ordering::Relaxed));
+    assert_eq!(1, next_tick.load(Ordering::Relaxed));
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+    assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+    assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+    assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
+    state_rc.borrow_mut().has_tick_scheduled = false;
+    assert!(matches!(
+      runtime.poll_event_loop(cx, false),
+      Poll::Ready(Ok(()))
+    ));
+    assert_eq!(awoken_times.load(Ordering::Relaxed), 0);
+    assert!(matches!(
+      runtime.poll_event_loop(cx, false),
+      Poll::Ready(Ok(()))
+    ));
+    assert_eq!(awoken_times.load(Ordering::Relaxed), 0);
   }
 
   #[test]

@@ -25,13 +25,15 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_tls::create_http_client;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use http::header::CONTENT_LENGTH;
+use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
 use reqwest::header::HOST;
+use reqwest::header::USER_AGENT;
+use reqwest::redirect::Policy;
 use reqwest::Body;
 use reqwest::Client;
 use reqwest::Method;
@@ -57,6 +59,7 @@ pub use reqwest;
 
 pub use fs_fetch_handler::FsFetchHandler;
 
+#[derive(Clone)]
 pub struct Options {
   pub user_agent: String,
   pub root_cert_store: Option<RootCertStore>,
@@ -64,10 +67,8 @@ pub struct Options {
   pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
-  pub file_fetch_handler: Box<dyn FetchHandler>,
+  pub file_fetch_handler: Rc<dyn FetchHandler>,
 }
-
-struct BoxFetchHandler(Box<dyn FetchHandler>);
 
 impl Default for Options {
   fn default() -> Self {
@@ -78,7 +79,7 @@ impl Default for Options {
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
-      file_fetch_handler: Box::new(DefaultFileFetchHandler),
+      file_fetch_handler: Rc::new(DefaultFileFetchHandler),
     }
   }
 }
@@ -108,6 +109,7 @@ where
       ),
     ])
     .state(move |state| {
+      state.put::<Options>(options.clone());
       state.put::<reqwest::Client>({
         create_http_client(
           options.user_agent.clone(),
@@ -119,31 +121,9 @@ where
         )
         .unwrap()
       });
-      state.put::<HttpClientDefaults>(HttpClientDefaults {
-        user_agent: options.user_agent.clone(),
-        root_cert_store: options.root_cert_store.clone(),
-        proxy: options.proxy.clone(),
-        request_builder_hook: options.request_builder_hook,
-        unsafely_ignore_certificate_errors: options
-          .unsafely_ignore_certificate_errors
-          .clone(),
-        client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
-      });
-      state.put(BoxFetchHandler(dyn_clone::clone_box(
-        &*options.file_fetch_handler,
-      )));
       Ok(())
     })
     .build()
-}
-
-pub struct HttpClientDefaults {
-  pub user_agent: String,
-  pub root_cert_store: Option<RootCertStore>,
-  pub proxy: Option<Proxy>,
-  pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
-  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub client_cert_chain_and_key: Option<(String, String)>,
 }
 
 pub type CancelableResponseFuture =
@@ -154,7 +134,8 @@ pub trait FetchHandler: dyn_clone::DynClone {
   // cancelable response result, the optional fetch body resource and the
   // optional cancel handle.
   fn fetch_file(
-    &mut self,
+    &self,
+    state: &mut OpState,
     url: Url,
   ) -> (
     CancelableResponseFuture,
@@ -171,7 +152,8 @@ pub struct DefaultFileFetchHandler;
 
 impl FetchHandler for DefaultFileFetchHandler {
   fn fetch_file(
-    &mut self,
+    &self,
+    _state: &mut OpState,
     _url: Url,
   ) -> (
     CancelableResponseFuture,
@@ -251,10 +233,12 @@ where
         )));
       }
 
-      let BoxFetchHandler(file_fetch_handler) =
-        state.borrow_mut::<BoxFetchHandler>();
+      let Options {
+        file_fetch_handler, ..
+      } = state.borrow_mut::<Options>();
+      let file_fetch_handler = file_fetch_handler.clone();
       let (request, maybe_request_body, maybe_cancel_handle) =
-        file_fetch_handler.fetch_file(url);
+        file_fetch_handler.fetch_file(state, url);
       let request_rid = state.resource_table.add(FetchRequestResource(request));
       let maybe_request_body_rid =
         maybe_request_body.map(|r| state.resource_table.add(r));
@@ -317,8 +301,8 @@ where
         }
       }
 
-      let defaults = state.borrow::<HttpClientDefaults>();
-      if let Some(request_builder_hook) = defaults.request_builder_hook {
+      let options = state.borrow::<Options>();
+      if let Some(request_builder_hook) = options.request_builder_hook {
         request = request_builder_hook(request);
       }
 
@@ -575,7 +559,7 @@ where
     }
   };
 
-  let defaults = state.borrow::<HttpClientDefaults>();
+  let options = state.borrow::<Options>();
   let ca_certs = args
     .ca_certs
     .into_iter()
@@ -583,14 +567,53 @@ where
     .collect::<Vec<_>>();
 
   let client = create_http_client(
-    defaults.user_agent.clone(),
-    defaults.root_cert_store.clone(),
+    options.user_agent.clone(),
+    options.root_cert_store.clone(),
     ca_certs,
     args.proxy,
-    defaults.unsafely_ignore_certificate_errors.clone(),
+    options.unsafely_ignore_certificate_errors.clone(),
     client_cert_chain_and_key,
   )?;
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(rid)
+}
+
+/// Create new instance of async reqwest::Client. This client supports
+/// proxies and doesn't follow redirects.
+pub fn create_http_client(
+  user_agent: String,
+  root_cert_store: Option<RootCertStore>,
+  ca_certs: Vec<Vec<u8>>,
+  proxy: Option<Proxy>,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  client_cert_chain_and_key: Option<(String, String)>,
+) -> Result<Client, AnyError> {
+  let mut tls_config = deno_tls::create_client_config(
+    root_cert_store,
+    ca_certs,
+    unsafely_ignore_certificate_errors,
+    client_cert_chain_and_key,
+  )?;
+
+  tls_config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
+
+  let mut headers = HeaderMap::new();
+  headers.insert(USER_AGENT, user_agent.parse().unwrap());
+  let mut builder = Client::builder()
+    .redirect(Policy::none())
+    .default_headers(headers)
+    .use_preconfigured_tls(tls_config);
+
+  if let Some(proxy) = proxy {
+    let mut reqwest_proxy = reqwest::Proxy::all(&proxy.url)?;
+    if let Some(basic_auth) = &proxy.basic_auth {
+      reqwest_proxy =
+        reqwest_proxy.basic_auth(&basic_auth.username, &basic_auth.password);
+    }
+    builder = builder.proxy(reqwest_proxy);
+  }
+
+  // unwrap here because it can only fail when native TLS is used.
+  Ok(builder.build().unwrap())
 }

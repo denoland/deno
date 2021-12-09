@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast::transpile;
+use crate::ast::Diagnostics;
 use crate::ast::ImportsNotUsedAsValues;
 use crate::colors;
 use crate::proc_state::ProcState;
@@ -507,6 +508,16 @@ impl ReplSession {
     &mut self,
     line: &str,
   ) -> Result<EvaluationOutput, AnyError> {
+    fn format_diagnostic(diagnostic: &deno_ast::Diagnostic) -> String {
+      format!(
+        "{}: {} at {}:{}",
+        colors::red("parse error"),
+        diagnostic.message(),
+        diagnostic.display_position.line_number,
+        diagnostic.display_position.column_number,
+      )
+    }
+
     match self.evaluate_line_with_object_wrapping(line).await {
       Ok(evaluate_response) => {
         let evaluate_result = evaluate_response.get("result").unwrap();
@@ -528,14 +539,20 @@ impl ReplSession {
       Err(err) => {
         // handle a parsing diagnostic
         match err.downcast_ref::<deno_ast::Diagnostic>() {
-          Some(diagnostic) => Ok(EvaluationOutput::Error(format!(
-            "{}: {} at {}:{}",
-            colors::red("parse error"),
-            diagnostic.message(),
-            diagnostic.display_position.line_number,
-            diagnostic.display_position.column_number,
-          ))),
-          None => Err(err),
+          Some(diagnostic) => {
+            Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
+          }
+          None => match err.downcast_ref::<Diagnostics>() {
+            Some(diagnostics) => Ok(EvaluationOutput::Error(
+              diagnostics
+                .0
+                .iter()
+                .map(format_diagnostic)
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            )),
+            None => Err(err),
+          },
         }
       }
     }
@@ -545,8 +562,8 @@ impl ReplSession {
     &mut self,
     line: &str,
   ) -> Result<Value, AnyError> {
-    // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
-    // statement rather than an object literal so we interpret it as an expression statement
+    // Expressions like { "foo": "bar" } are interpreted as block expressions at the
+    // statement level rather than an object literal so we interpret it as an expression statement
     // to match the behavior found in a typical prompt including browser developer tools.
     let wrapped_line = if line.trim_start().starts_with('{')
       && !line.trim_end().ends_with(';')
@@ -556,20 +573,22 @@ impl ReplSession {
       line.to_string()
     };
 
-    let evaluate_response = self.evaluate_ts_expression(&wrapped_line).await?;
+    let evaluate_response = self.evaluate_ts_expression(&wrapped_line).await;
 
     // If that fails, we retry it without wrapping in parens letting the error bubble up to the
     // user if it is still an error.
-    let evaluate_response =
-      if evaluate_response.get("exceptionDetails").is_some()
-        && wrapped_line != line
-      {
-        self.evaluate_ts_expression(line).await?
-      } else {
-        evaluate_response
-      };
-
-    Ok(evaluate_response)
+    if wrapped_line != line
+      && (evaluate_response.is_err()
+        || evaluate_response
+          .as_ref()
+          .unwrap()
+          .get("exceptionDetails")
+          .is_some())
+    {
+      self.evaluate_ts_expression(line).await
+    } else {
+      evaluate_response
+    }
   }
 
   async fn set_last_thrown_error(

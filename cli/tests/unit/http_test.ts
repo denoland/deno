@@ -1055,12 +1055,16 @@ Deno.test(
 
       const { socket, response } = Deno.upgradeWebSocket(event1.request);
       socket.onmessage = (event) => socket.send(event.data);
+      const socketClosed = new Promise<void>((resolve) => {
+        socket.onclose = () => resolve();
+      });
       event1.respondWith(response);
 
       const event2 = await event2Promise;
       assertStrictEquals(event2, null);
 
       listener.close();
+      await socketClosed;
     }
 
     async function client() {
