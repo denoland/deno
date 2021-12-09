@@ -10,7 +10,7 @@ use crate::config_file::LintConfig;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::LintFlags;
 use crate::fmt_errors;
-use crate::fs_util::{collect_files, is_supported_ext};
+use crate::fs_util::{collect_files, is_supported_ext, specifier_to_file_path};
 use crate::tools::fmt::run_parallelized;
 use crate::{colors, file_watcher};
 use deno_ast::MediaType;
@@ -75,8 +75,8 @@ pub async fn lint(
         .files
         .include
         .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
 
     if exclude_files.is_empty() {
@@ -84,8 +84,8 @@ pub async fn lint(
         .files
         .exclude
         .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
   }
 
@@ -112,27 +112,25 @@ pub async fn lint(
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
-    let collect_files =
-      collect_files(&include_files, &exclude_files, is_supported_ext);
+    let result =
+      collect_files(&include_files, &exclude_files, is_supported_ext).map(
+        |files| {
+          if let Some(paths) = changed {
+            files
+              .iter()
+              .any(|path| paths.contains(path))
+              .then(|| files)
+              .unwrap_or_else(|| [].to_vec())
+          } else {
+            files
+          }
+        },
+      );
 
     let paths_to_watch = include_files.clone();
 
-    let (result, should_relint) = match collect_files {
-      Ok(value) => {
-        if let Some(paths) = changed {
-          (
-            Ok(value.clone()),
-            Some(value.iter().any(|path| paths.contains(path))),
-          )
-        } else {
-          (Ok(value), None)
-        }
-      }
-      Err(e) => (Err(e), None),
-    };
-
     async move {
-      if files_changed && matches!(should_relint, Some(false)) {
+      if files_changed && matches!(result, Ok(ref files) if files.is_empty()) {
         ResolutionResult::Ignore
       } else {
         ResolutionResult::Restart {

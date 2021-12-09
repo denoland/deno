@@ -1,11 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast::transpile;
+use crate::ast::Diagnostics;
 use crate::ast::ImportsNotUsedAsValues;
 use crate::colors;
 use crate::proc_state::ProcState;
 use deno_ast::swc::parser::error::SyntaxError;
-use deno_ast::swc::parser::token::{Token, Word};
+use deno_ast::swc::parser::token::Token;
+use deno_ast::swc::parser::token::Word;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -25,28 +27,27 @@ use rustyline::Context;
 use rustyline::Editor;
 use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::mpsc::channel;
-use tokio::sync::mpsc::unbounded_channel;
-use tokio::sync::mpsc::Receiver;
-use tokio::sync::mpsc::Sender;
-use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::mpsc::UnboundedSender;
+
+mod channel;
+
+use channel::rustyline_channel;
+use channel::RustylineSyncMessageHandler;
+use channel::RustylineSyncMessageSender;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
 #[derive(Helper, Hinter)]
 struct EditorHelper {
   context_id: u64,
-  message_tx: Sender<(String, Option<Value>)>,
-  response_rx: RefCell<UnboundedReceiver<Result<Value, AnyError>>>,
+  sync_sender: RustylineSyncMessageSender,
 }
 
 impl EditorHelper {
   pub fn get_global_lexical_scope_names(&self) -> Vec<String> {
     let evaluate_response = self
+      .sync_sender
       .post_message(
         "Runtime.globalLexicalScopeNames",
         Some(json!({
@@ -106,6 +107,7 @@ impl EditorHelper {
     let object_id = evaluate_result.get("result")?.get("objectId")?;
 
     let get_properties_response = self
+      .sync_sender
       .post_message(
         "Runtime.getProperties",
         Some(json!({
@@ -127,6 +129,7 @@ impl EditorHelper {
 
   fn evaluate_expression(&self, expr: &str) -> Option<Value> {
     let evaluate_response = self
+      .sync_sender
       .post_message(
         "Runtime.evaluate",
         Some(json!({
@@ -143,17 +146,6 @@ impl EditorHelper {
     } else {
       Some(evaluate_response)
     }
-  }
-
-  fn post_message(
-    &self,
-    method: &str,
-    params: Option<Value>,
-  ) -> Result<Value, AnyError> {
-    self
-      .message_tx
-      .blocking_send((method.to_string(), params))?;
-    self.response_rx.borrow_mut().blocking_recv().unwrap()
   }
 }
 
@@ -516,6 +508,16 @@ impl ReplSession {
     &mut self,
     line: &str,
   ) -> Result<EvaluationOutput, AnyError> {
+    fn format_diagnostic(diagnostic: &deno_ast::Diagnostic) -> String {
+      format!(
+        "{}: {} at {}:{}",
+        colors::red("parse error"),
+        diagnostic.message(),
+        diagnostic.display_position.line_number,
+        diagnostic.display_position.column_number,
+      )
+    }
+
     match self.evaluate_line_with_object_wrapping(line).await {
       Ok(evaluate_response) => {
         let evaluate_result = evaluate_response.get("result").unwrap();
@@ -537,14 +539,20 @@ impl ReplSession {
       Err(err) => {
         // handle a parsing diagnostic
         match err.downcast_ref::<deno_ast::Diagnostic>() {
-          Some(diagnostic) => Ok(EvaluationOutput::Error(format!(
-            "{}: {} at {}:{}",
-            colors::red("parse error"),
-            diagnostic.message(),
-            diagnostic.display_position.line_number,
-            diagnostic.display_position.column_number,
-          ))),
-          None => Err(err),
+          Some(diagnostic) => {
+            Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
+          }
+          None => match err.downcast_ref::<Diagnostics>() {
+            Some(diagnostics) => Ok(EvaluationOutput::Error(
+              diagnostics
+                .0
+                .iter()
+                .map(format_diagnostic)
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            )),
+            None => Err(err),
+          },
         }
       }
     }
@@ -554,8 +562,8 @@ impl ReplSession {
     &mut self,
     line: &str,
   ) -> Result<Value, AnyError> {
-    // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
-    // statement rather than an object literal so we interpret it as an expression statement
+    // Expressions like { "foo": "bar" } are interpreted as block expressions at the
+    // statement level rather than an object literal so we interpret it as an expression statement
     // to match the behavior found in a typical prompt including browser developer tools.
     let wrapped_line = if line.trim_start().starts_with('{')
       && !line.trim_end().ends_with(';')
@@ -565,20 +573,22 @@ impl ReplSession {
       line.to_string()
     };
 
-    let evaluate_response = self.evaluate_ts_expression(&wrapped_line).await?;
+    let evaluate_response = self.evaluate_ts_expression(&wrapped_line).await;
 
     // If that fails, we retry it without wrapping in parens letting the error bubble up to the
     // user if it is still an error.
-    let evaluate_response =
-      if evaluate_response.get("exceptionDetails").is_some()
-        && wrapped_line != line
-      {
-        self.evaluate_ts_expression(line).await?
-      } else {
-        evaluate_response
-      };
-
-    Ok(evaluate_response)
+    if wrapped_line != line
+      && (evaluate_response.is_err()
+        || evaluate_response
+          .as_ref()
+          .unwrap()
+          .get("exceptionDetails")
+          .is_some())
+    {
+      self.evaluate_ts_expression(line).await
+    } else {
+      evaluate_response
+    }
   }
 
   async fn set_last_thrown_error(
@@ -705,8 +715,7 @@ impl ReplSession {
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
-  message_rx: &mut Receiver<(String, Option<Value>)>,
-  response_tx: &UnboundedSender<Result<Value, AnyError>>,
+  message_handler: &mut RustylineSyncMessageHandler,
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
   let mut line_fut = tokio::task::spawn_blocking(move || editor.readline());
@@ -717,12 +726,12 @@ async fn read_line_and_poll(
       result = &mut line_fut => {
         return result.unwrap();
       }
-      result = message_rx.recv() => {
+      result = message_handler.recv() => {
         if let Some((method, params)) = result {
           let result = repl_session
             .post_message_with_event_loop(&method, params)
             .await;
-          response_tx.send(result).unwrap();
+          message_handler.send(result).unwrap();
         }
 
         poll_worker = true;
@@ -740,13 +749,11 @@ pub async fn run(
   maybe_eval: Option<String>,
 ) -> Result<(), AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
-  let (message_tx, mut message_rx) = channel(1);
-  let (response_tx, response_rx) = unbounded_channel();
+  let mut rustyline_channel = rustyline_channel();
 
   let helper = EditorHelper {
     context_id: repl_session.context_id,
-    message_tx,
-    response_rx: RefCell::new(response_rx),
+    sync_sender: rustyline_channel.0,
   };
 
   let history_file_path = ps.dir.root.join("deno_history.txt");
@@ -766,8 +773,7 @@ pub async fn run(
   loop {
     let line = read_line_and_poll(
       &mut repl_session,
-      &mut message_rx,
-      &response_tx,
+      &mut rustyline_channel.1,
       editor.clone(),
     )
     .await;

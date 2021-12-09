@@ -20,25 +20,28 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
-use deno_tls::webpki::DNSNameRef;
-
-use http::{Method, Request, Uri};
+use http::Method;
+use http::Request;
+use http::Uri;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::convert::TryFrom;
 use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
+use tokio_rustls::rustls::ServerName;
 use tokio_rustls::TlsConnector;
 use tokio_tungstenite::client_async;
-use tokio_tungstenite::tungstenite::{
-  handshake::client::Response, protocol::frame::coding::CloseCode,
-  protocol::CloseFrame, protocol::Role, Message,
-};
+use tokio_tungstenite::tungstenite::handshake::client::Response;
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::WebSocketStream;
 
@@ -239,6 +242,16 @@ where
       );
   }
 
+  let cancel_resource = if let Some(cancel_rid) = args.cancel_handle {
+    let r = state
+      .borrow_mut()
+      .resource_table
+      .get::<WsCancelResource>(cancel_rid)?;
+    Some(r)
+  } else {
+    None
+  };
+
   let unsafely_ignore_certificate_errors = state
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
@@ -271,9 +284,10 @@ where
         root_cert_store,
         vec![],
         unsafely_ignore_certificate_errors,
+        None,
       )?;
       let tls_connector = TlsConnector::from(Arc::new(tls_config));
-      let dnsname = DNSNameRef::try_from_ascii_str(domain)
+      let dnsname = ServerName::try_from(domain.as_str())
         .map_err(|_| invalid_hostname(domain))?;
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
       MaybeTlsStream::Rustls(tls_socket)
@@ -283,13 +297,9 @@ where
 
   let client = client_async(request, socket);
   let (stream, response): (WsStream, Response) =
-    if let Some(cancel_rid) = args.cancel_handle {
-      let r = state
-        .borrow_mut()
-        .resource_table
-        .get::<WsCancelResource>(cancel_rid)?;
+    if let Some(cancel_resource) = cancel_resource {
       client
-        .or_cancel(r.0.to_owned())
+        .or_cancel(cancel_resource.0.to_owned())
         .await
         .map_err(|_| DomExceptionAbortError::new("connection was aborted"))?
     } else {

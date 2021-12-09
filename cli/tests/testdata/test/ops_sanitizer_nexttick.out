@@ -1,0 +1,7 @@
+Check [WILDCARD]/testdata/test/ops_sanitizer_nexttick.ts
+running 2 tests from [WILDCARD]/testdata/test/ops_sanitizer_nexttick.ts
+test test 1 ... ok ([WILDCARD])
+test test 2 ... ok ([WILDCARD])
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

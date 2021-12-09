@@ -5,10 +5,9 @@ import {
   assertStringIncludes,
   assertThrows,
   deferred,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest({ permissions: { hrtime: false } }, async function performanceNow() {
+Deno.test({ permissions: { hrtime: false } }, async function performanceNow() {
   const resolvable = deferred();
   const start = performance.now();
   let totalTime = 0;
@@ -21,7 +20,7 @@ unitTest({ permissions: { hrtime: false } }, async function performanceNow() {
   assert(totalTime >= 10);
 });
 
-unitTest(function performanceMark() {
+Deno.test(function performanceMark() {
   const mark = performance.mark("test");
   assert(mark instanceof PerformanceMark);
   assertEquals(mark.detail, null);
@@ -35,7 +34,7 @@ unitTest(function performanceMark() {
   assert(markEntries[markEntries.length - 1] === mark);
 });
 
-unitTest(function performanceMeasure() {
+Deno.test(function performanceMeasure() {
   const markName1 = "mark1";
   const measureName1 = "measure1";
   const measureName2 = "measure2";
@@ -82,7 +81,7 @@ unitTest(function performanceMeasure() {
   });
 });
 
-unitTest(function performanceCustomInspectFunction() {
+Deno.test(function performanceCustomInspectFunction() {
   assertStringIncludes(Deno.inspect(performance), "Performance");
   assertStringIncludes(
     Deno.inspect(Performance.prototype),
@@ -90,7 +89,7 @@ unitTest(function performanceCustomInspectFunction() {
   );
 });
 
-unitTest(function performanceMarkCustomInspectFunction() {
+Deno.test(function performanceMarkCustomInspectFunction() {
   const mark1 = performance.mark("mark1");
   assertStringIncludes(Deno.inspect(mark1), "PerformanceMark");
   assertStringIncludes(
@@ -99,7 +98,7 @@ unitTest(function performanceMarkCustomInspectFunction() {
   );
 });
 
-unitTest(function performanceMeasureCustomInspectFunction() {
+Deno.test(function performanceMeasureCustomInspectFunction() {
   const measure1 = performance.measure("measure1");
   assertStringIncludes(Deno.inspect(measure1), "PerformanceMeasure");
   assertStringIncludes(
@@ -108,17 +107,17 @@ unitTest(function performanceMeasureCustomInspectFunction() {
   );
 });
 
-unitTest(function performanceIllegalConstructor() {
+Deno.test(function performanceIllegalConstructor() {
   assertThrows(() => new Performance(), TypeError, "Illegal constructor");
   assertEquals(Performance.length, 0);
 });
 
-unitTest(function performanceEntryIllegalConstructor() {
+Deno.test(function performanceEntryIllegalConstructor() {
   assertThrows(() => new PerformanceEntry(), TypeError, "Illegal constructor");
   assertEquals(PerformanceEntry.length, 0);
 });
 
-unitTest(function performanceMeasureIllegalConstructor() {
+Deno.test(function performanceMeasureIllegalConstructor() {
   assertThrows(
     () => new PerformanceMeasure(),
     TypeError,

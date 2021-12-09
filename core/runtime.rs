@@ -29,6 +29,7 @@ use futures::task::AtomicWaker;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::c_void;
 use std::mem::forget;
 use std::option::Option;
@@ -135,23 +136,6 @@ pub type SharedArrayBufferStore =
 
 pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
-struct AsyncOpIterator<'a, 'b, 'c> {
-  ops: &'b mut FuturesUnordered<PendingOpFuture>,
-  cx: &'a mut Context<'c>,
-}
-
-impl Iterator for AsyncOpIterator<'_, '_, '_> {
-  type Item = (PromiseId, OpId, OpResult);
-
-  #[inline]
-  fn next(&mut self) -> Option<Self::Item> {
-    match self.ops.poll_next_unpin(self.cx) {
-      Poll::Ready(Some(item)) => Some(item),
-      _ => None,
-    }
-  }
-}
-
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
@@ -160,6 +144,8 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_sync_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
+  pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_uncaught_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -171,7 +157,7 @@ pub(crate) struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
-  pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
+  pub(crate) unrefed_ops: HashSet<i32>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -367,11 +353,13 @@ impl JsRuntime {
       js_sync_cb: None,
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
+      js_promise_reject_cb: None,
+      js_uncaught_exception_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
-      pending_unref_ops: FuturesUnordered::new(),
+      unrefed_ops: HashSet::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
@@ -801,7 +789,8 @@ impl JsRuntime {
     let mut state = state_rc.borrow_mut();
     let module_map = module_map_rc.borrow();
 
-    let has_pending_ops = !state.pending_ops.is_empty();
+    let has_pending_refed_ops =
+      state.pending_ops.len() > state.unrefed_ops.len();
     let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
     let has_pending_dyn_module_evaluation =
       !state.pending_dyn_mod_evaluate.is_empty();
@@ -815,7 +804,7 @@ impl JsRuntime {
       .map(|i| i.has_active_sessions())
       .unwrap_or(false);
 
-    if !has_pending_ops
+    if !has_pending_refed_ops
       && !has_pending_dyn_imports
       && !has_pending_dyn_module_evaluation
       && !has_pending_module_evaluation
@@ -836,31 +825,36 @@ impl JsRuntime {
     // TODO(andreubotella) The event loop will spin as long as there are pending
     // background tasks. We should look into having V8 notify us when a
     // background task is done.
-    if state.have_unpolled_ops || has_pending_background_tasks {
+    if state.have_unpolled_ops
+      || has_pending_background_tasks
+      || has_tick_scheduled
+    {
       state.waker.wake();
     }
 
     if has_pending_module_evaluation {
-      if has_pending_ops
+      if has_pending_refed_ops
         || has_pending_dyn_imports
         || has_pending_dyn_module_evaluation
         || has_pending_background_tasks
+        || has_tick_scheduled
       {
         // pass, will be polled again
       } else {
-        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promise.";
+        let msg = "Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promises.";
         return Poll::Ready(Err(generic_error(msg)));
       }
     }
 
     if has_pending_dyn_module_evaluation {
-      if has_pending_ops
+      if has_pending_refed_ops
         || has_pending_dyn_imports
         || has_pending_background_tasks
+        || has_tick_scheduled
       {
         // pass, will be polled again
       } else if state.dyn_module_evaluate_idle_counter >= 1 {
-        let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.
+        let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promises.
 Pending dynamic modules:\n".to_string();
         for pending_evaluate in &state.pending_dyn_mod_evaluate {
           let module_info = module_map
@@ -1529,21 +1523,12 @@ impl JsRuntime {
       state.have_unpolled_ops = false;
 
       let op_state = state.op_state.clone();
-      let ops = AsyncOpIterator {
-        ops: &mut state.pending_ops,
-        cx,
-      };
-      for (promise_id, op_id, resp) in ops {
+
+      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
+      {
+        let (promise_id, op_id, resp) = item;
         op_state.borrow().tracker.track_async_completed(op_id);
-        args.push(v8::Integer::new(scope, promise_id as i32).into());
-        args.push(resp.to_v8(scope).unwrap());
-      }
-      let ops = AsyncOpIterator {
-        ops: &mut state.pending_unref_ops,
-        cx,
-      };
-      for (promise_id, op_id, resp) in ops {
-        op_state.borrow().tracker.track_unref_completed(op_id);
+        state.unrefed_ops.remove(&promise_id);
         args.push(v8::Integer::new(scope, promise_id as i32).into());
         args.push(resp.to_v8(scope).unwrap());
       }
@@ -1744,6 +1729,76 @@ pub mod tests {
   }
 
   #[test]
+  fn test_op_async_promise_id() {
+    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    runtime
+      .execute_script(
+        "filename.js",
+        r#"
+        const p = Deno.core.opAsync("op_test", 42);
+        if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
+          throw new Error("missing id on returned promise");
+        }
+        "#,
+      )
+      .unwrap();
+  }
+
+  #[test]
+  fn test_ref_unref_ops() {
+    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    runtime
+      .execute_script(
+        "filename.js",
+        r#"
+        var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
+        var p1 = Deno.core.opAsync("op_test", 42);
+        var p2 = Deno.core.opAsync("op_test", 42);
+        "#,
+      )
+      .unwrap();
+    {
+      let isolate = runtime.v8_isolate();
+      let state_rc = JsRuntime::state(isolate);
+      let state = state_rc.borrow();
+      assert_eq!(state.pending_ops.len(), 2);
+      assert_eq!(state.unrefed_ops.len(), 0);
+    }
+    runtime
+      .execute_script(
+        "filename.js",
+        r#"
+        Deno.core.unrefOp(p1[promiseIdSymbol]);
+        Deno.core.unrefOp(p2[promiseIdSymbol]);
+        "#,
+      )
+      .unwrap();
+    {
+      let isolate = runtime.v8_isolate();
+      let state_rc = JsRuntime::state(isolate);
+      let state = state_rc.borrow();
+      assert_eq!(state.pending_ops.len(), 2);
+      assert_eq!(state.unrefed_ops.len(), 2);
+    }
+    runtime
+      .execute_script(
+        "filename.js",
+        r#"
+        Deno.core.refOp(p1[promiseIdSymbol]);
+        Deno.core.refOp(p2[promiseIdSymbol]);
+        "#,
+      )
+      .unwrap();
+    {
+      let isolate = runtime.v8_isolate();
+      let state_rc = JsRuntime::state(isolate);
+      let state = state_rc.borrow();
+      assert_eq!(state.pending_ops.len(), 2);
+      assert_eq!(state.unrefed_ops.len(), 0);
+    }
+  }
+
+  #[test]
   fn test_dispatch_no_zero_copy_buf() {
     let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(false));
     runtime
@@ -1895,7 +1950,7 @@ pub mod tests {
 
   #[test]
   fn test_pre_dispatch() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute_script(
@@ -1911,7 +1966,7 @@ pub mod tests {
          "#,
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -1929,7 +1984,7 @@ pub mod tests {
 
   #[test]
   fn test_encode_decode() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute_script(
@@ -1937,7 +1992,7 @@ pub mod tests {
           include_str!("encode_decode_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -1945,7 +2000,7 @@ pub mod tests {
 
   #[test]
   fn test_serialize_deserialize() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute_script(
@@ -1953,7 +2008,7 @@ pub mod tests {
           include_str!("serialize_deserialize_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -1969,7 +2024,7 @@ pub mod tests {
       "DOMExceptionOperationError"
     }
 
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let mut runtime = JsRuntime::new(RuntimeOptions {
         get_error_class_fn: Some(&get_error_class_name),
         ..Default::default()
@@ -1982,7 +2037,7 @@ pub mod tests {
           include_str!("error_builder_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -2477,39 +2532,40 @@ assertEquals(1, notify_return_value);
     assert_eq!(state.js_nexttick_cbs.len(), 2);
   }
 
-  #[tokio::test]
-  async fn test_has_tick_scheduled() {
-    run_in_task(|cx| {
-      let macrotask = Arc::new(AtomicUsize::default());
-      let macrotask_ = Arc::clone(&macrotask);
+  #[test]
+  fn test_has_tick_scheduled() {
+    use futures::task::ArcWake;
 
-      let next_tick = Arc::new(AtomicUsize::default());
-      let next_tick_ = Arc::clone(&next_tick);
+    let macrotask = Arc::new(AtomicUsize::default());
+    let macrotask_ = Arc::clone(&macrotask);
 
-      let op_macrotask = move |_: &mut OpState, _: (), _: ()| {
-        macrotask_.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-      };
+    let next_tick = Arc::new(AtomicUsize::default());
+    let next_tick_ = Arc::clone(&next_tick);
 
-      let op_next_tick = move |_: &mut OpState, _: (), _: ()| {
-        next_tick_.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-      };
+    let op_macrotask = move |_: &mut OpState, _: (), _: ()| {
+      macrotask_.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    };
 
-      let extension = Extension::builder()
-        .ops(vec![("op_macrotask", op_sync(op_macrotask))])
-        .ops(vec![("op_next_tick", op_sync(op_next_tick))])
-        .build();
+    let op_next_tick = move |_: &mut OpState, _: (), _: ()| {
+      next_tick_.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    };
 
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![extension],
-        ..Default::default()
-      });
+    let extension = Extension::builder()
+      .ops(vec![("op_macrotask", op_sync(op_macrotask))])
+      .ops(vec![("op_next_tick", op_sync(op_next_tick))])
+      .build();
 
-      runtime
-        .execute_script(
-          "has_tick_scheduled.js",
-          r#"
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "has_tick_scheduled.js",
+        r#"
           Deno.core.setMacrotaskCallback(() => {
             Deno.core.opSync("op_macrotask");
             return true; // We're done.
@@ -2517,25 +2573,44 @@ assertEquals(1, notify_return_value);
           Deno.core.setNextTickCallback(() => Deno.core.opSync("op_next_tick"));
           Deno.core.setHasTickScheduled(true);
           "#,
-        )
-        .unwrap();
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      assert_eq!(1, macrotask.load(Ordering::Relaxed));
-      assert_eq!(1, next_tick.load(Ordering::Relaxed));
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      let state_rc = JsRuntime::state(runtime.v8_isolate());
-      state_rc.borrow_mut().has_tick_scheduled = false;
-      assert!(matches!(
-        runtime.poll_event_loop(cx, false),
-        Poll::Ready(Ok(()))
-      ));
-      assert!(matches!(
-        runtime.poll_event_loop(cx, false),
-        Poll::Ready(Ok(()))
-      ));
-    });
+      )
+      .unwrap();
+
+    struct ArcWakeImpl(Arc<AtomicUsize>);
+    impl ArcWake for ArcWakeImpl {
+      fn wake_by_ref(arc_self: &Arc<Self>) {
+        arc_self.0.fetch_add(1, Ordering::Relaxed);
+      }
+    }
+
+    let awoken_times = Arc::new(AtomicUsize::new(0));
+    let waker =
+      futures::task::waker(Arc::new(ArcWakeImpl(awoken_times.clone())));
+    let cx = &mut Context::from_waker(&waker);
+
+    assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+    assert_eq!(1, macrotask.load(Ordering::Relaxed));
+    assert_eq!(1, next_tick.load(Ordering::Relaxed));
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+    assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+    assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+    assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
+    assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
+
+    let state_rc = JsRuntime::state(runtime.v8_isolate());
+    state_rc.borrow_mut().has_tick_scheduled = false;
+    assert!(matches!(
+      runtime.poll_event_loop(cx, false),
+      Poll::Ready(Ok(()))
+    ));
+    assert_eq!(awoken_times.load(Ordering::Relaxed), 0);
+    assert!(matches!(
+      runtime.poll_event_loop(cx, false),
+      Poll::Ready(Ok(()))
+    ));
+    assert_eq!(awoken_times.load(Ordering::Relaxed), 0);
   }
 
   #[test]
@@ -2595,5 +2670,95 @@ assertEquals(1, notify_return_value);
       .unwrap_err()
       .to_string()
       .contains("JavaScript execution has been terminated"));
+  }
+
+  #[tokio::test]
+  async fn test_set_promise_reject_callback() {
+    let promise_reject = Arc::new(AtomicUsize::default());
+    let promise_reject_ = Arc::clone(&promise_reject);
+
+    let uncaught_exception = Arc::new(AtomicUsize::default());
+    let uncaught_exception_ = Arc::clone(&uncaught_exception);
+
+    let op_promise_reject = move |_: &mut OpState, _: (), _: ()| {
+      promise_reject_.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    };
+
+    let op_uncaught_exception = move |_: &mut OpState, _: (), _: ()| {
+      uncaught_exception_.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    };
+
+    let extension = Extension::builder()
+      .ops(vec![("op_promise_reject", op_sync(op_promise_reject))])
+      .ops(vec![(
+        "op_uncaught_exception",
+        op_sync(op_uncaught_exception),
+      )])
+      .build();
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "promise_reject_callback.js",
+        r#"
+        // Note: |promise| is not the promise created below, it's a child.
+        Deno.core.setPromiseRejectCallback((type, promise, reason) => {
+          if (type !== /* PromiseRejectWithNoHandler */ 0) {
+            throw Error("unexpected type: " + type);
+          }
+          if (reason.message !== "reject") {
+            throw Error("unexpected reason: " + reason);
+          }
+          Deno.core.opSync("op_promise_reject");
+          throw Error("promiseReject"); // Triggers uncaughtException handler.
+        });
+
+        Deno.core.setUncaughtExceptionCallback((err) => {
+          if (err.message !== "promiseReject") throw err;
+          Deno.core.opSync("op_uncaught_exception");
+        });
+
+        new Promise((_, reject) => reject(Error("reject")));
+        "#,
+      )
+      .unwrap();
+    runtime.run_event_loop(false).await.unwrap();
+
+    assert_eq!(1, promise_reject.load(Ordering::Relaxed));
+    assert_eq!(1, uncaught_exception.load(Ordering::Relaxed));
+
+    runtime
+      .execute_script(
+        "promise_reject_callback.js",
+        r#"
+        {
+          const prev = Deno.core.setPromiseRejectCallback((...args) => {
+            prev(...args);
+          });
+        }
+
+        {
+          const prev = Deno.core.setUncaughtExceptionCallback((...args) => {
+            prev(...args);
+            throw Error("fail");
+          });
+        }
+
+        new Promise((_, reject) => reject(Error("reject")));
+        "#,
+      )
+      .unwrap();
+    // Exception from uncaughtException handler doesn't bubble up but is
+    // printed to stderr.
+    runtime.run_event_loop(false).await.unwrap();
+
+    assert_eq!(2, promise_reject.load(Ordering::Relaxed));
+    assert_eq!(2, uncaught_exception.load(Ordering::Relaxed));
   }
 }

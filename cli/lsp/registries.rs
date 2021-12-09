@@ -282,7 +282,7 @@ impl Default for ModuleRegistry {
     let dir = deno_dir::DenoDir::new(None).unwrap();
     let location = dir.root.join("registries");
     let http_cache = HttpCache::new(&location);
-    let cache_setting = CacheSetting::Use;
+    let cache_setting = CacheSetting::RespectHeaders;
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_setting,
@@ -305,7 +305,7 @@ impl ModuleRegistry {
     let http_cache = HttpCache::new(location);
     let file_fetcher = FileFetcher::new(
       http_cache,
-      CacheSetting::Use,
+      CacheSetting::RespectHeaders,
       true,
       None,
       BlobStore::default(),
@@ -348,7 +348,7 @@ impl ModuleRegistry {
       s,
       lsp::CompletionItem {
         label,
-        kind: Some(lsp::CompletionItemKind::Folder),
+        kind: Some(lsp::CompletionItemKind::FOLDER),
         filter_text,
         sort_text: Some("1".to_string()),
         text_edit,
@@ -387,12 +387,17 @@ impl ModuleRegistry {
       .await;
     // if there is an error fetching, we will cache an empty file, so that
     // subsequent requests they are just an empty doc which will error without
-    // needing to connect to the remote URL
+    // needing to connect to the remote URL. We will cache it for 1 week.
     if fetch_result.is_err() {
+      let mut headers_map = HashMap::new();
+      headers_map.insert(
+        "cache-control".to_string(),
+        "max-age=604800, immutable".to_string(),
+      );
       self
         .file_fetcher
         .http_cache
-        .set(specifier, HashMap::default(), &[])?;
+        .set(specifier, headers_map, &[])?;
     }
     let file = fetch_result?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
@@ -508,9 +513,9 @@ impl ModuleRegistry {
                             item.clone()
                           };
                           let kind = if key.name == last_key_name {
-                            Some(lsp::CompletionItemKind::File)
+                            Some(lsp::CompletionItemKind::FILE)
                           } else {
-                            Some(lsp::CompletionItemKind::Folder)
+                            Some(lsp::CompletionItemKind::FOLDER)
                           };
                           let mut params = match_result.params.clone();
                           params.insert(
@@ -572,7 +577,7 @@ impl ModuleRegistry {
                   Token::String(s) => {
                     if s.starts_with(path) {
                       let label = s.to_string();
-                      let kind = Some(lsp::CompletionItemKind::Folder);
+                      let kind = Some(lsp::CompletionItemKind::FOLDER);
                       let mut url = specifier.clone();
                       url.set_path(s);
                       let full_text = url.as_str();
@@ -606,7 +611,7 @@ impl ModuleRegistry {
                           let base = Url::parse(&origin).ok()?;
                           for (idx, item) in items.into_iter().enumerate() {
                             let path = format!("{}{}", prefix, item);
-                            let kind = Some(lsp::CompletionItemKind::Folder);
+                            let kind = Some(lsp::CompletionItemKind::FOLDER);
                             let item_specifier = base.join(&path).ok()?;
                             let full_text = item_specifier.as_str();
                             let text_edit = Some(
@@ -687,7 +692,7 @@ impl ModuleRegistry {
           }));
           Some(lsp::CompletionItem {
             label: origin,
-            kind: Some(lsp::CompletionItemKind::Folder),
+            kind: Some(lsp::CompletionItemKind::FOLDER),
             detail: Some("(registry)".to_string()),
             sort_text: Some("2".to_string()),
             text_edit,
@@ -1036,10 +1041,10 @@ mod tests {
     let completions = completions.unwrap();
     assert_eq!(completions.len(), 2);
     assert_eq!(completions[0].detail, Some("(path)".to_string()));
-    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::File));
+    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
     assert!(completions[0].command.is_some());
     assert_eq!(completions[1].detail, Some("(path)".to_string()));
-    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::File));
+    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
     assert!(completions[1].command.is_some());
   }
 

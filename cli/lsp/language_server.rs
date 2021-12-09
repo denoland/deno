@@ -303,11 +303,7 @@ impl Inner {
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
           Ok(url)
         } else if let Some(root_uri) = maybe_root_uri {
-          let root_path = root_uri
-            .to_file_path()
-            .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
-          let config_path = root_path.join(config_str);
-          Url::from_file_path(config_path).map_err(|_| {
+          root_uri.join(config_str).map_err(|_| {
             anyhow!("Bad file path for configuration file: \"{}\"", config_str)
           })
         } else {
@@ -318,15 +314,7 @@ impl Inner {
         }?;
         info!("  Resolved configuration file: \"{}\"", config_url);
 
-        let config_file = {
-          let buffer = config_url
-            .to_file_path()
-            .map_err(|_| anyhow!("Bad uri: \"{}\"", config_url))?;
-          let path = buffer
-            .to_str()
-            .ok_or_else(|| anyhow!("Bad uri: \"{}\"", config_url))?;
-          ConfigFile::read(path)?
-        };
+        let config_file = ConfigFile::from_specifier(&config_url)?;
         return Ok(Some((config_file, config_url)));
       }
     }
@@ -404,9 +392,7 @@ impl Inner {
       let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
         Ok(url)
       } else if let Some(root_uri) = &maybe_root_uri {
-        let root_path = root_uri
-          .to_file_path()
-          .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
+        let root_path = fs_util::specifier_to_file_path(root_uri)?;
         let cache_path = root_path.join(cache_str);
         Url::from_file_path(cache_path).map_err(|_| {
           anyhow!("Bad file path for import path: {:?}", cache_str)
@@ -417,9 +403,7 @@ impl Inner {
           cache_str
         ))
       }?;
-      let cache_path = cache_url.to_file_path().map_err(|_| {
-        anyhow!("Cannot convert \"{}\" into a file path.", cache_url)
-      })?;
+      let cache_path = fs_util::specifier_to_file_path(&cache_url)?;
       info!(
         "  Resolved cache path: \"{}\"",
         cache_path.to_string_lossy()
@@ -464,9 +448,7 @@ impl Inner {
           anyhow!("Bad data url for import map: {:?}", import_map_str)
         })
       } else if let Some(root_uri) = &maybe_root_uri {
-        let root_path = root_uri
-          .to_file_path()
-          .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
+        let root_path = fs_util::specifier_to_file_path(root_uri)?;
         let import_map_path = root_path.join(import_map_str);
         Url::from_file_path(import_map_path).map_err(|_| {
           anyhow!("Bad file path for import map: {:?}", import_map_str)
@@ -481,9 +463,7 @@ impl Inner {
       let import_map_json = if import_map_url.scheme() == "data" {
         get_source_from_data_url(&import_map_url)?.0
       } else {
-        let import_map_path = import_map_url.to_file_path().map_err(|_| {
-          anyhow!("Cannot convert \"{}\" into a file path.", import_map_url)
-        })?;
+        let import_map_path = fs_util::specifier_to_file_path(&import_map_url)?;
         info!(
           "  Resolved import map: \"{}\"",
           import_map_path.to_string_lossy()
@@ -599,7 +579,7 @@ impl Inner {
       tsconfig.merge(&unstable_libs);
     }
     if let Err(err) = self.merge_user_tsconfig(&mut tsconfig) {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     let _ok: bool = self
       .ts_server
@@ -671,7 +651,12 @@ impl Inner {
 
     {
       let config = &mut self.config;
-      config.root_uri = params.root_uri;
+      // sometimes this root uri may not have a trailing slash, so force it to
+      config.root_uri = params
+        .root_uri
+        .map(|s| self.url_map.normalize_url(&s))
+        .map(fs_util::ensure_directory_specifier);
+
       if let Some(value) = params.initialization_options {
         config.set_workspace_settings(value).map_err(|err| {
           error!("Cannot set workspace settings: {}", err);
@@ -684,13 +669,13 @@ impl Inner {
     self.update_debug_flag();
     // Check to see if we need to change the cache path
     if let Err(err) = self.update_cache() {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_config_file() {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_tsconfig().await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
 
     if capabilities.code_action_provider.is_some() {
@@ -707,11 +692,11 @@ impl Inner {
 
     // Check to see if we need to setup the import map
     if let Err(err) = self.update_import_map().await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     // Check to see if we need to setup any module registries
     if let Err(err) = self.update_registries().await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     self.documents.update_config(
       self.maybe_import_map.clone(),
@@ -908,19 +893,19 @@ impl Inner {
 
     self.update_debug_flag();
     if let Err(err) = self.update_cache() {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_import_map().await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_registries().await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_config_file() {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.update_tsconfig().await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
     if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
@@ -941,23 +926,29 @@ impl Inner {
       .performance
       .mark("did_change_watched_files", Some(&params));
     let mut touched = false;
+    let changes: Vec<Url> = params
+      .changes
+      .iter()
+      .map(|f| self.url_map.normalize_url(&f.uri))
+      .collect();
+
     // if the current import map has changed, we need to reload it
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
-      if params.changes.iter().any(|fe| *import_map_uri == fe.uri) {
+      if changes.iter().any(|uri| import_map_uri == uri) {
         if let Err(err) = self.update_import_map().await {
-          self.client.show_message(MessageType::Warning, err).await;
+          self.client.show_message(MessageType::WARNING, err).await;
         }
         touched = true;
       }
     }
     // if the current tsconfig has changed, we need to reload it
     if let Some(config_uri) = &self.maybe_config_uri {
-      if params.changes.iter().any(|fe| *config_uri == fe.uri) {
+      if changes.iter().any(|uri| config_uri == uri) {
         if let Err(err) = self.update_config_file() {
-          self.client.show_message(MessageType::Warning, err).await;
+          self.client.show_message(MessageType::WARNING, err).await;
         }
         if let Err(err) = self.update_tsconfig().await {
-          self.client.show_message(MessageType::Warning, err).await;
+          self.client.show_message(MessageType::WARNING, err).await;
         }
         touched = true;
       }
@@ -1024,13 +1015,16 @@ impl Inner {
     };
     let mark = self.performance.mark("formatting", Some(&params));
     let file_path =
-      if let Ok(file_path) = params.text_document.uri.to_file_path() {
-        file_path
-      } else {
-        PathBuf::from(params.text_document.uri.path())
-      };
+      fs_util::specifier_to_file_path(&specifier).map_err(|err| {
+        error!("{}", err);
+        LspError::invalid_request()
+      })?;
 
     let fmt_options = if let Some(fmt_config) = self.maybe_fmt_config.as_ref() {
+      // skip formatting any files ignored by the config file
+      if !fmt_config.files.matches_specifier(&specifier) {
+        return Ok(None);
+      }
       fmt_config.options.clone()
     } else {
       Default::default()
@@ -1072,7 +1066,7 @@ impl Inner {
         Ok(Some(text_edits))
       }
     } else {
-      self.client.show_message(MessageType::Warning, format!("Unable to format \"{}\". Likely due to unrecoverable syntax errors in the file.", specifier)).await;
+      self.client.show_message(MessageType::WARNING, format!("Unable to format \"{}\". Likely due to unrecoverable syntax errors in the file.", specifier)).await;
       Ok(None)
     }
   }
@@ -1622,6 +1616,54 @@ impl Inner {
     }
   }
 
+  async fn goto_type_definition(
+    &mut self,
+    params: GotoTypeDefinitionParams,
+  ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
+    if !self.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
+      return Ok(None);
+    }
+
+    let mark = self.performance.mark("goto_definition", Some(&params));
+    let asset_or_doc = self.get_cached_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
+    let req = tsc::RequestMethod::GetTypeDefinition {
+      specifier,
+      position: line_index
+        .offset_tsc(params.text_document_position_params.position)?,
+    };
+    let maybe_definition_info: Option<Vec<tsc::DefinitionInfo>> = self
+      .ts_server
+      .request(self.snapshot()?, req)
+      .await
+      .map_err(|err| {
+        error!("Unable to get type definition from TypeScript: {}", err);
+        LspError::internal_error()
+      })?;
+
+    let response = if let Some(definition_info) = maybe_definition_info {
+      let mut location_links = Vec::new();
+      for info in definition_info {
+        if let Some(link) =
+          info.document_span.to_link(line_index.clone(), self).await
+        {
+          location_links.push(link);
+        }
+      }
+      Some(GotoTypeDefinitionResponse::Link(location_links))
+    } else {
+      None
+    };
+
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
   async fn completion(
     &mut self,
     params: CompletionParams,
@@ -1865,7 +1907,7 @@ impl Inner {
       .config
       .root_uri
       .as_ref()
-      .and_then(|uri| uri.to_file_path().ok());
+      .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyIncomingCall>::new();
     for item in incoming_calls.iter() {
       if let Some(resolved) = item
@@ -1914,7 +1956,7 @@ impl Inner {
       .config
       .root_uri
       .as_ref()
-      .and_then(|uri| uri.to_file_path().ok());
+      .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyOutgoingCall>::new();
     for item in outgoing_calls.iter() {
       if let Some(resolved) = item
@@ -1970,7 +2012,7 @@ impl Inner {
         .config
         .root_uri
         .as_ref()
-        .and_then(|uri| uri.to_file_path().ok());
+        .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
       let mut resolved_items = Vec::<CallHierarchyItem>::new();
       match one_or_many {
         tsc::OneOrMany::One(item) => {
@@ -2270,6 +2312,44 @@ impl Inner {
       Ok(None)
     }
   }
+
+  async fn symbol(
+    &mut self,
+    params: WorkspaceSymbolParams,
+  ) -> LspResult<Option<Vec<SymbolInformation>>> {
+    let mark = self.performance.mark("symbol", Some(&params));
+
+    let req = tsc::RequestMethod::GetNavigateToItems {
+      search: params.query,
+      // this matches vscode's hard coded result count
+      max_result_count: Some(256),
+      file: None,
+    };
+
+    let navigate_to_items: Vec<tsc::NavigateToItem> = self
+      .ts_server
+      .request(self.snapshot()?, req)
+      .await
+      .map_err(|err| {
+        error!("Failed request to tsserver: {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let maybe_symbol_information = if navigate_to_items.is_empty() {
+      None
+    } else {
+      let mut symbol_information = Vec::new();
+      for item in navigate_to_items {
+        if let Some(info) = item.to_symbol_information(self).await {
+          symbol_information.push(info);
+        }
+      }
+      Some(symbol_information)
+    };
+
+    self.performance.measure(mark);
+    Ok(maybe_symbol_information)
+  }
 }
 
 #[lspower::async_trait]
@@ -2390,6 +2470,13 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.goto_definition(params).await
   }
 
+  async fn goto_type_definition(
+    &self,
+    params: GotoTypeDefinitionParams,
+  ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
+    self.0.lock().await.goto_type_definition(params).await
+  }
+
   async fn completion(
     &self,
     params: CompletionParams,
@@ -2481,6 +2568,13 @@ impl lspower::LanguageServer for LanguageServer {
   ) -> LspResult<Option<SignatureHelp>> {
     self.0.lock().await.signature_help(params).await
   }
+
+  async fn symbol(
+    &self,
+    params: WorkspaceSymbolParams,
+  ) -> LspResult<Option<Vec<SymbolInformation>>> {
+    self.0.lock().await.symbol(params).await
+  }
 }
 
 // These are implementations of custom commands supported by the LSP
@@ -2519,7 +2613,7 @@ impl Inner {
     }
     let cache_server = self.maybe_cache_server.as_ref().unwrap();
     if let Err(err) = cache_server.cache(roots).await {
-      self.client.show_message(MessageType::Warning, err).await;
+      self.client.show_message(MessageType::WARNING, err).await;
     }
 
     // now that we have dependencies loaded, we need to re-analyze them and

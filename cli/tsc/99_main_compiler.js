@@ -743,6 +743,16 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getNavigateToItems": {
+        return respond(
+          id,
+          languageService.getNavigateToItems(
+            request.search,
+            request.maxResultCount,
+            request.fileName,
+          ),
+        );
+      }
       case "getNavigationTree": {
         return respond(
           id,
@@ -798,6 +808,15 @@ delete Object.prototype.__proto__;
         return respond(
           id,
           ts.getSupportedCodeFixes(),
+        );
+      }
+      case "getTypeDefinition": {
+        return respond(
+          id,
+          languageService.getTypeDefinitionAtPosition(
+            request.specifier,
+            request.position,
+          ),
         );
       }
       case "prepareCallHierarchy": {

@@ -14,6 +14,7 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const { byteLowerCase } = window.__bootstrap.infra;
   const { errorReadableStream } = window.__bootstrap.streams;
   const { InnerBody, extractBody } = window.__bootstrap.fetchBody;
   const {
@@ -36,6 +37,7 @@
     PromisePrototypeThen,
     PromisePrototypeCatch,
     String,
+    StringPrototypeStartsWith,
     StringPrototypeToLowerCase,
     TypedArrayPrototypeSubarray,
     TypeError,
@@ -331,7 +333,7 @@
   function httpRedirectFetch(request, response, terminator) {
     const locationHeaders = ArrayPrototypeFilter(
       response.headerList,
-      (entry) => entry[0] === "location",
+      (entry) => byteLowerCase(entry[0]) === "location",
     );
     if (locationHeaders.length === 0) {
       return response;
@@ -372,7 +374,7 @@
         if (
           ArrayPrototypeIncludes(
             REQUEST_BODY_HEADER_NAMES,
-            request.headerList[i][0],
+            byteLowerCase(request.headerList[i][0]),
           )
         ) {
           ArrayPrototypeSplice(request.headerList, i, 1);
@@ -418,8 +420,8 @@
       }
       requestObject.signal[abortSignal.add](onabort);
 
-      if (!requestObject.headers.has("accept")) {
-        ArrayPrototypePush(request.headerList, ["accept", "*/*"]);
+      if (!requestObject.headers.has("Accept")) {
+        ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
       }
 
       // 12.
@@ -497,12 +499,16 @@
         // The spec is ambiguous here, see
         // https://github.com/WebAssembly/spec/issues/1138. The WPT tests
         // expect the raw value of the Content-Type attribute lowercased.
-        const contentType = res.headers.get("Content-Type");
-        if (
-          typeof contentType !== "string" ||
-          StringPrototypeToLowerCase(contentType) !== "application/wasm"
-        ) {
-          throw new TypeError("Invalid WebAssembly content type.");
+        // We ignore this for file:// because file fetches don't have a
+        // Content-Type.
+        if (!StringPrototypeStartsWith(res.url, "file://")) {
+          const contentType = res.headers.get("Content-Type");
+          if (
+            typeof contentType !== "string" ||
+            StringPrototypeToLowerCase(contentType) !== "application/wasm"
+          ) {
+            throw new TypeError("Invalid WebAssembly content type.");
+          }
         }
 
         // 2.5.
