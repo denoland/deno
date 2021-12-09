@@ -5,6 +5,7 @@ use crate::config_file::IgnoredCompilerOptions;
 use crate::diagnostics::Diagnostics;
 use crate::emit;
 use crate::errors::get_error_class_name;
+use crate::flags;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -248,6 +249,7 @@ async fn op_emit(
         graph.clone(),
         cache.as_mut_cacher(),
         emit::CheckOptions {
+          check: flags::CheckFlag::All,
           debug,
           emit_with_diagnostics: true,
           maybe_config_specifier: None,
@@ -268,6 +270,7 @@ async fn op_emit(
         graph.clone(),
         cache.as_mut_cacher(),
         emit::CheckOptions {
+          check: flags::CheckFlag::All,
           debug,
           emit_with_diagnostics: true,
           maybe_config_specifier: None,

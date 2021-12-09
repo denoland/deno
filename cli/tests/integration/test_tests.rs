@@ -151,6 +151,22 @@ itest!(ops_sanitizer_unstable {
   output: "test/ops_sanitizer_unstable.out",
 });
 
+itest!(ops_sanitizer_timeout_failure {
+  args: "test test/ops_sanitizer_timeout_failure.ts",
+  output: "test/ops_sanitizer_timeout_failure.out",
+});
+
+itest!(ops_sanitizer_multiple_timeout_tests {
+  args: "test test/ops_sanitizer_multiple_timeout_tests.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_multiple_timeout_tests.out",
+});
+
+itest!(ops_sanitizer_nexttick {
+  args: "test test/ops_sanitizer_nexttick.ts",
+  output: "test/ops_sanitizer_nexttick.out",
+});
+
 itest!(exit_sanitizer {
   args: "test test/exit_sanitizer.ts",
   output: "test/exit_sanitizer.out",

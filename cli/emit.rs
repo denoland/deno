@@ -12,6 +12,7 @@ use crate::config_file::ConfigFile;
 use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
+use crate::flags;
 use crate::tsc;
 use crate::version;
 
@@ -293,6 +294,9 @@ fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
 /// Options for performing a check of a module graph. Note that the decision to
 /// emit or not is determined by the `ts_config` settings.
 pub(crate) struct CheckOptions {
+  /// The check flag from the option which can effect the filtering of
+  /// diagnostics in the emit result.
+  pub check: flags::CheckFlag,
   /// Set the debug flag on the TypeScript type checker.
   pub debug: bool,
   /// If true, any files emitted will be cached, even if there are diagnostics
@@ -357,9 +361,21 @@ pub(crate) fn check_and_maybe_emit(
     root_names,
   })?;
 
+  let diagnostics = if options.check == flags::CheckFlag::Local {
+    response.diagnostics.filter(|d| {
+      if let Some(file_name) = &d.file_name {
+        !file_name.starts_with("http")
+      } else {
+        true
+      }
+    })
+  } else {
+    response.diagnostics
+  };
+
   // sometimes we want to emit when there are diagnostics, and sometimes we
   // don't. tsc will always return an emit if there are diagnostics
-  if (response.diagnostics.is_empty() || options.emit_with_diagnostics)
+  if (diagnostics.is_empty() || options.emit_with_diagnostics)
     && !response.emitted_files.is_empty()
   {
     if let Some(info) = &response.maybe_tsbuildinfo {
@@ -414,7 +430,7 @@ pub(crate) fn check_and_maybe_emit(
   }
 
   Ok(CheckEmitResult {
-    diagnostics: response.diagnostics,
+    diagnostics,
     stats: response.stats,
   })
 }
