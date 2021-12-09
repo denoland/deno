@@ -3261,7 +3261,7 @@
               algorithm: algorithmName,
               format,
               keyType,
-              namedCurve: normalizedAlgorithm.namedCurve,
+              namedCurve,
             },
             { raw: { data: keyData } },
           );
@@ -3274,7 +3274,7 @@
 
         const algorithm = {
           name: algorithmName,
-          hash: normalizedAlgorithm.hash,
+          namedCurve,
         };
 
         const key = constructKey(
@@ -3294,7 +3294,7 @@
         if (
           !ArrayPrototypeIncludes(
             supportedNamedCurves,
-            normalizedAlgorithm.namedCurve,
+            namedCurve,
           )
         ) {
           throw new DOMException(
