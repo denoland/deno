@@ -1245,7 +1245,7 @@ pub async fn op_crypto_import_key(
           // 2-3.
           let pk_info =
             rsa::pkcs8::PrivateKeyInfo::from_der(data).map_err(|e| {
-              custom_error("DOMExceptionOperationError", e.to_string())
+              custom_error("DOMExceptionDataError", e.to_string())
             })?;
 
           // 4-5.
@@ -1284,7 +1284,7 @@ pub async fn op_crypto_import_key(
           // 8-9.
           let private_key =
             rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key).map_err(
-              |e| custom_error("DOMExceptionOperationError", e.to_string()),
+              |e| custom_error("DOMExceptionDataError", e.to_string()),
             )?;
 
           let bytes_consumed = private_key.encoded_len().map_err(|e| {
@@ -1334,7 +1334,12 @@ pub async fn op_crypto_import_key(
             SHA384_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha384),
             // sha512WithRSAEncryption
             SHA512_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha512),
-            _ => return Err(type_error("Unsupported algorithm".to_string())),
+            _ => {
+              return Err(custom_error(
+                "DOMExceptionDataError",
+                "Unsupported algorithm".to_string(),
+              ))
+            }
           };
 
           // 7.
@@ -1468,14 +1473,14 @@ pub async fn op_crypto_import_key(
           }
 
           // 8-9.
-          let private_key =
-            rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key).map_err(
-              |e| custom_error("DOMExceptionOperationError", e.to_string()),
-            )?;
+          let private_key = rsa::pkcs1::RsaPrivateKey::from_der(
+            pk_info.private_key,
+          )
+          .map_err(|e| custom_error("DOMExceptionDataError", e.to_string()))?;
 
-          let bytes_consumed = private_key
-            .encoded_len()
-            .map_err(|e| custom_error("DataError", e.to_string()))?;
+          let bytes_consumed = private_key.encoded_len().map_err(|e| {
+            custom_error("DOMExceptionDataError", e.to_string())
+          })?;
 
           if bytes_consumed
             != spki::der::Length::new(pk_info.private_key.len() as u16)
