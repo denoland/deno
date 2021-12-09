@@ -586,14 +586,17 @@ impl ProcState {
                 | MediaType::Mjs
             ) {
               module.source.as_str().to_string()
-            // The emit may also be missing when a `.dts` file is in the
+            // The emit may also be missing when a declaration file is in the
             // graph. There shouldn't be any runtime statements in the source
             // file and if there was, users would be shown a `TS1036`
             // diagnostic. So just return an empty emit.
-            } else if media_type == &MediaType::Dts {
+            } else if !emit::is_emittable(media_type, true) {
               "".to_string()
             } else {
-              unreachable!("unexpected missing emit: {}", specifier)
+              unreachable!(
+                "unexpected missing emit: {} media type: {}",
+                specifier, media_type
+              )
             };
             let dependencies = module.dependencies.clone();
             let module_entry = ModuleEntry::Module { code, dependencies };
