@@ -1520,6 +1520,46 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_respect_cache_revalidates() {
+    let _g = test_util::http_server();
+    let temp_dir = Rc::new(TempDir::new().unwrap());
+    let (file_fetcher, _) = setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
+    let specifier = ModuleSpecifier::parse("http://localhost:4545/dynamic").unwrap();
+    let result = file_fetcher.fetch(&specifier, &mut Permissions::allow_all()).await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    let first = file.source.as_str();
+
+    let (file_fetcher, _) = setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
+    let result = file_fetcher.fetch(&specifier, &mut Permissions::allow_all()).await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    let second = file.source.as_str();
+
+    assert_ne!(first, second);
+  }
+
+  #[tokio::test]
+  async fn test_respect_cache_still_fresh() {
+    let _g = test_util::http_server();
+    let temp_dir = Rc::new(TempDir::new().unwrap());
+    let (file_fetcher, _) = setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
+    let specifier = ModuleSpecifier::parse("http://localhost:4545/dynamic_cache").unwrap();
+    let result = file_fetcher.fetch(&specifier, &mut Permissions::allow_all()).await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    let first = file.source.as_str();
+
+    let (file_fetcher, _) = setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
+    let result = file_fetcher.fetch(&specifier, &mut Permissions::allow_all()).await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    let second = file.source.as_str();
+
+    assert_eq!(first, second);
+  }
+
+  #[tokio::test]
   async fn test_fetch_local_utf_16be() {
     let expected = String::from_utf8(
       b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A".to_vec(),
