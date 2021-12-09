@@ -144,31 +144,26 @@ fn get_tsc_media_type(specifier: &ModuleSpecifier) -> MediaType {
         if let Some(os_str) = path.file_stem() {
           if let Some(file_name) = os_str.to_str() {
             if file_name.ends_with(".d") {
-              // todo(#12410): Use Dmts for TS 4.5
-              return MediaType::Dts;
+              return MediaType::Dmts;
             }
           }
         }
-        // todo(#12410): Use Mts for TS 4.5
-        MediaType::TypeScript
+        MediaType::Mts
       }
       Some("cts") => {
         if let Some(os_str) = path.file_stem() {
           if let Some(file_name) = os_str.to_str() {
             if file_name.ends_with(".d") {
-              // todo(#12410): Use Dcts for TS 4.5
-              return MediaType::Dts;
+              return MediaType::Dcts;
             }
           }
         }
-        // todo(#12410): Use Cts for TS 4.5
-        MediaType::TypeScript
+        MediaType::Cts
       }
       Some("tsx") => MediaType::Tsx,
       Some("js") => MediaType::JavaScript,
-      // todo(#12410): Use correct media type for TS 4.5
-      Some("mjs") => MediaType::JavaScript,
-      Some("cjs") => MediaType::JavaScript,
+      Some("mjs") => MediaType::Mjs,
+      Some("cjs") => MediaType::Cjs,
       Some("jsx") => MediaType::Jsx,
       _ => MediaType::Unknown,
     },
