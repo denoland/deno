@@ -631,6 +631,16 @@ itest!(lock_check_err2 {
   http_server: true,
 });
 
+itest!(mts_dmts_mjs {
+  args: "run subdir/import.mts",
+  output: "mts_dmts_mjs.out",
+});
+
+itest!(mts_dmts_mjs_no_check {
+  args: "run --no-check subdir/import.mts",
+  output: "mts_dmts_mjs.out",
+});
+
 itest!(async_error {
   exit_code: 1,
   args: "run --reload async_error.ts",

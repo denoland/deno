@@ -250,9 +250,11 @@ fn get_root_names(
       .into_iter()
       .filter_map(|(_, r)| match r {
         Ok((s, mt)) => match &mt {
-          MediaType::TypeScript | MediaType::Tsx | MediaType::Jsx => {
-            Some((s, mt))
-          }
+          MediaType::TypeScript
+          | MediaType::Tsx
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Jsx => Some((s, mt)),
           _ => None,
         },
         _ => None,
@@ -279,7 +281,7 @@ fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
 }
 
 /// Determine if a given media type is emittable or not.
-fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
+pub(crate) fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
   match &media_type {
     MediaType::TypeScript
     | MediaType::Mts
