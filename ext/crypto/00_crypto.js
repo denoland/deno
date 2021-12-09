@@ -940,215 +940,12 @@
 
       switch (key[_algorithm].name) {
         case "HMAC": {
-          if (innerKey == null) {
-            throw new DOMException("Key is not available", "OperationError");
-          }
-          switch (format) {
-            // 3.
-            case "raw": {
-              const bits = innerKey.data;
-              for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
-                bits.push(0);
-              }
-              // 4-5.
-              return bits.buffer;
-            }
-            case "jwk": {
-              // 1-3.
-              const jwk = {
-                kty: "oct",
-                k: unpaddedBase64(innerKey.data),
-              };
-              // 4.
-              const algorithm = key[_algorithm];
-              // 5.
-              const hash = algorithm.hash;
-              // 6.
-              switch (hash.name) {
-                case "SHA-1":
-                  jwk.alg = "HS1";
-                  break;
-                case "SHA-256":
-                  jwk.alg = "HS256";
-                  break;
-                case "SHA-384":
-                  jwk.alg = "HS384";
-                  break;
-                case "SHA-512":
-                  jwk.alg = "HS512";
-                  break;
-                default:
-                  throw new DOMException(
-                    "Hash algorithm not supported",
-                    "NotSupportedError",
-                  );
-              }
-              // 7.
-              jwk.key_ops = key.usages;
-              // 8.
-              jwk.ext = key[_extractable];
-              // 9.
-              return jwk;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-          // TODO(@littledivy): Redundant break but deno_lint complains without it
-          break;
+          return exportKeyHMAC(format, key, innerKey);
         }
-        case "RSASSA-PKCS1-v1_5": {
-          switch (format) {
-            case "pkcs8": {
-              // 1.
-              if (key[_type] !== "private") {
-                throw new DOMException(
-                  "Key is not a private key",
-                  "InvalidAccessError",
-                );
-              }
-
-              // 2.
-              const data = await core.opAsync(
-                "op_crypto_export_key",
-                {
-                  key: innerKey,
-                  format: "pkcs8",
-                  algorithm: "RSASSA-PKCS1-v1_5",
-                },
-              );
-
-              // 3.
-              return data.buffer;
-            }
-            case "spki": {
-              // 1.
-              if (key[_type] !== "public") {
-                throw new DOMException(
-                  "Key is not a public key",
-                  "InvalidAccessError",
-                );
-              }
-
-              // 2.
-              const data = await core.opAsync(
-                "op_crypto_export_key",
-                {
-                  key: innerKey,
-                  format: "spki",
-                  algorithm: "RSASSA-PKCS1-v1_5",
-                },
-              );
-
-              // 3.
-              return data.buffer;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-        }
-        case "RSA-PSS": {
-          switch (format) {
-            case "pkcs8": {
-              // 1.
-              if (key[_type] !== "private") {
-                throw new DOMException(
-                  "Key is not a private key",
-                  "InvalidAccessError",
-                );
-              }
-
-              // 2.
-              const data = await core.opAsync(
-                "op_crypto_export_key",
-                {
-                  key: innerKey,
-                  format: "pkcs8",
-                  algorithm: "RSA-PSS",
-                  hash: key[_algorithm].hash.name,
-                },
-              );
-
-              // 3.
-              return data.buffer;
-            }
-            case "spki": {
-              // 1.
-              if (key[_type] !== "public") {
-                throw new DOMException(
-                  "Key is not a public key",
-                  "InvalidAccessError",
-                );
-              }
-
-              // 2.
-              const data = await core.opAsync(
-                "op_crypto_export_key",
-                {
-                  key: innerKey,
-                  format: "spki",
-                  algorithm: "RSA-PSS",
-                  hash: key[_algorithm].hash.name,
-                },
-              );
-
-              // 3.
-              return data.buffer;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
-        }
+        case "RSASSA-PKCS1-v1_5":
+        case "RSA-PSS":
         case "RSA-OAEP": {
-          switch (format) {
-            case "pkcs8": {
-              // 1.
-              if (key[_type] !== "private") {
-                throw new DOMException(
-                  "Key is not a private key",
-                  "InvalidAccessError",
-                );
-              }
-
-              // 2.
-              const data = await core.opAsync(
-                "op_crypto_export_key",
-                {
-                  key: innerKey,
-                  format: "pkcs8",
-                  algorithm: "RSA-PSS",
-                  hash: key[_algorithm].hash.name,
-                },
-              );
-
-              // 3.
-              return data.buffer;
-            }
-            case "spki": {
-              // 1.
-              if (key[_type] !== "public") {
-                throw new DOMException(
-                  "Key is not a public key",
-                  "InvalidAccessError",
-                );
-              }
-
-              // 2.
-              const data = await core.opAsync(
-                "op_crypto_export_key",
-                {
-                  key: innerKey,
-                  format: "spki",
-                  algorithm: "RSA-OAEP",
-                  hash: key[_algorithm].hash.name,
-                },
-              );
-
-              // 3.
-              return data.buffer;
-            }
-            default:
-              throw new DOMException("Not implemented", "NotSupportedError");
-          }
+          return await exportKeyRSA(format, key, innerKey);
         }
         case "AES-CTR":
         case "AES-CBC":
@@ -2695,6 +2492,111 @@
 
     // 10.
     return key;
+  }
+
+  function exportKeyHMAC(format, key, innerKey) {
+    // 1.
+    if (innerKey == null) {
+      throw new DOMException("Key is not available", "OperationError");
+    }
+
+    switch (format) {
+      // 3.
+      case "raw": {
+        const bits = innerKey.data;
+        for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
+          bits.push(0);
+        }
+        // 4-5.
+        return bits.buffer;
+      }
+      case "jwk": {
+        // 1-3.
+        const jwk = {
+          kty: "oct",
+          k: unpaddedBase64(innerKey.data),
+        };
+        // 4.
+        const algorithm = key[_algorithm];
+        // 5.
+        const hash = algorithm.hash;
+        // 6.
+        switch (hash.name) {
+          case "SHA-1":
+            jwk.alg = "HS1";
+            break;
+          case "SHA-256":
+            jwk.alg = "HS256";
+            break;
+          case "SHA-384":
+            jwk.alg = "HS384";
+            break;
+          case "SHA-512":
+            jwk.alg = "HS512";
+            break;
+          default:
+            throw new DOMException(
+              "Hash algorithm not supported",
+              "NotSupportedError",
+            );
+        }
+        // 7.
+        jwk.key_ops = key.usages;
+        // 8.
+        jwk.ext = key[_extractable];
+        // 9.
+        return jwk;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+  }
+
+  async function exportKeyRSA(format, key, innerKey) {
+    switch (format) {
+      case "pkcs8": {
+        // 1.
+        if (key[_type] !== "private") {
+          throw new DOMException(
+            "Key is not a private key",
+            "InvalidAccessError",
+          );
+        }
+
+        // 2.
+        const data = await core.opAsync("op_crypto_export_key", {
+          key: innerKey,
+          format: "pkcs8",
+          algorithm: key[_algorithm].name,
+          hash: key[_algorithm].hash.name,
+        });
+
+        // 3.
+        return data.buffer;
+      }
+      case "spki": {
+        // 1.
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        // 2.
+        const data = await core.opAsync("op_crypto_export_key", {
+          key: innerKey,
+          format: "spki",
+          algorithm: key[_algorithm].name,
+          hash: key[_algorithm].hash.name,
+        });
+
+        // 3.
+        return data.buffer;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
   }
 
   async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
