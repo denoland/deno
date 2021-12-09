@@ -149,7 +149,6 @@ mod tests {
   use super::*;
   use crate::version;
   use deno_runtime::deno_fetch::create_http_client;
-  use deno_runtime::deno_tls::rustls::RootCertStore;
   use std::fs::read;
 
   fn create_test_client() -> Client {
@@ -409,6 +408,8 @@ mod tests {
   #[cfg(not(windows))]
   #[tokio::test]
   async fn test_fetch_with_empty_certificate_store() {
+    use deno_runtime::deno_tls::rustls::RootCertStore;
+
     let _http_server_guard = test_util::http_server();
     // Relies on external http server with a valid mozilla root CA cert.
     let url = Url::parse("https://deno.land").unwrap();
