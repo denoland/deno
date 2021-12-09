@@ -1282,10 +1282,10 @@ pub async fn op_crypto_import_key(
           }
 
           // 8-9.
-          let private_key =
-            rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key).map_err(
-              |e| custom_error("DOMExceptionDataError", e.to_string()),
-            )?;
+          let private_key = rsa::pkcs1::RsaPrivateKey::from_der(
+            pk_info.private_key,
+          )
+          .map_err(|e| custom_error("DOMExceptionDataError", e.to_string()))?;
 
           let bytes_consumed = private_key.encoded_len().map_err(|e| {
             custom_error("DOMExceptionDataError", e.to_string())
