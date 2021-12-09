@@ -270,7 +270,7 @@
 
   /**
    * @param {ArrayBufferView | ArrayBuffer} input
-   * @returns
+   * @returns {Uint8Array}
    */
   function copyBuffer(input) {
     return TypedArrayPrototypeSlice(
@@ -826,7 +826,6 @@
             keyData,
             extractable,
             keyUsages,
-            ["sign"],
           );
         }
         case "RSA-OAEP": {
@@ -836,7 +835,6 @@
             keyData,
             extractable,
             keyUsages,
-            ["decrypt", "unwrapKey"],
           );
         }
         case "HKDF": {
@@ -1495,8 +1493,7 @@
         );
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          // PKCS#1 for RSA
-          type: "raw",
+          type: "private",
           data: keyData,
         });
 
@@ -1556,8 +1553,7 @@
         );
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          // PKCS#1 for RSA
-          type: "raw",
+          type: "private",
           data: keyData,
         });
 
@@ -1614,7 +1610,7 @@
             namedCurve: normalizedAlgorithm.namedCurve,
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "pkcs8",
+            type: "private",
             data: keyData,
           });
         } else {
@@ -1672,7 +1668,7 @@
             namedCurve: normalizedAlgorithm.namedCurve,
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "pkcs8",
+            type: "private",
             data: keyData,
           });
         } else {
@@ -1768,7 +1764,10 @@
           length,
         });
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, { type: "raw", data: keyData });
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: "secret",
+          data: keyData,
+        });
 
         // 6-10.
         const algorithm = {
@@ -1980,7 +1979,7 @@
 
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
-      type: "raw",
+      type: "secret",
       data,
     });
 
@@ -2165,13 +2164,9 @@
       length = normalizedAlgorithm.length;
     }
 
-    if (keyUsages.length == 0) {
-      throw new DOMException("Key usage is empty", "SyntaxError");
-    }
-
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
-      type: "raw",
+      type: "secret",
       data,
     });
 
@@ -2232,7 +2227,7 @@
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "raw",
+          type: "public",
           data,
         });
 
@@ -2258,13 +2253,27 @@
     }
   }
 
+  const SUPPORTED_RSA_KEY_USAGES = {
+    "RSASSA-PKCS1-v1_5": {
+      spki: ["verify"],
+      pkcs8: ["sign"],
+    },
+    "RSA-PSS": {
+      spki: ["verify"],
+      pkcs8: ["sign"],
+    },
+    "RSA-OAEP": {
+      spki: ["encrypt", "wrapKey"],
+      pkcs8: ["decrypt", "unwrapKey"],
+    },
+  };
+
   async function importKeyRSA(
     format,
     normalizedAlgorithm,
     keyData,
     extractable,
     keyUsages,
-    supportedKeyUsages,
   ) {
     switch (format) {
       case "pkcs8": {
@@ -2272,14 +2281,14 @@
         if (
           ArrayPrototypeFind(
             keyUsages,
-            (u) => !ArrayPrototypeIncludes(supportedKeyUsages, u),
+            (u) =>
+              !ArrayPrototypeIncludes(
+                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].pkcs8,
+                u,
+              ),
           ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
-        }
-
-        if (keyUsages.length == 0) {
-          throw new DOMException("Key usage is empty", "SyntaxError");
         }
 
         // 2-9.
@@ -2297,8 +2306,7 @@
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          // PKCS#1 for RSA
-          type: "raw",
+          type: "private",
           data,
         });
 
@@ -2311,6 +2319,57 @@
 
         const key = constructKey(
           "private",
+          extractable,
+          usageIntersection(keyUsages, recognisedUsages),
+          algorithm,
+          handle,
+        );
+
+        return key;
+      }
+      case "spki": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) =>
+              !ArrayPrototypeIncludes(
+                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].spki,
+                u,
+              ),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        // 2-9.
+        const { modulusLength, publicExponent, data } = await core
+          .opAsync(
+            "op_crypto_import_key",
+            {
+              algorithm: normalizedAlgorithm.name,
+              format: "spki",
+              // Needed to perform step 7 without normalization.
+              hash: normalizedAlgorithm.hash.name,
+            },
+            keyData,
+          );
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: "public",
+          data,
+        });
+
+        const algorithm = {
+          name: normalizedAlgorithm.name,
+          modulusLength,
+          publicExponent,
+          hash: normalizedAlgorithm.hash,
+        };
+
+        const key = constructKey(
+          "public",
           extractable,
           usageIntersection(keyUsages, recognisedUsages),
           algorithm,
@@ -2355,7 +2414,7 @@
     // 3.
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
-      type: "raw",
+      type: "secret",
       data: keyData,
     });
 
@@ -2407,7 +2466,7 @@
     // 4.
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
-      type: "raw",
+      type: "secret",
       data: keyData,
     });
 
@@ -2545,7 +2604,7 @@
     });
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
-      type: "raw",
+      type: "secret",
       data: keyData,
     });
 
@@ -2634,7 +2693,7 @@
         ) {
           const baseKeyhandle = baseKey[_handle];
           const baseKeyData = WeakMapPrototypeGet(KEY_STORE, baseKeyhandle);
-          const publicKeyhandle = baseKey[_handle];
+          const publicKeyhandle = publicKey[_handle];
           const publicKeyData = WeakMapPrototypeGet(KEY_STORE, publicKeyhandle);
 
           const buf = await core.opAsync("op_crypto_derive_bits", {
@@ -2705,6 +2764,7 @@
           key: keyData,
           algorithm: "RSA-OAEP",
           hash: hashAlgorithm,
+          label: normalizedAlgorithm.label,
         }, data);
 
         // 6.
