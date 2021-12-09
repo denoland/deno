@@ -67,24 +67,18 @@ fn check_alive_then_kill(mut child: std::process::Child) {
 fn child_lines(
   child: &mut std::process::Child,
 ) -> (impl Iterator<Item = String>, impl Iterator<Item = String>) {
-  const LOG: bool = false;
-
   let stdout_lines = std::io::BufReader::new(child.stdout.take().unwrap())
     .lines()
     .map(|r| {
       let line = r.unwrap();
-      if LOG {
-        println!("STDOUT: {}", line);
-      }
+      eprintln!("STDOUT: {}", line);
       line
     });
   let stderr_lines = std::io::BufReader::new(child.stderr.take().unwrap())
     .lines()
     .map(|r| {
       let line = r.unwrap();
-      if LOG {
-        println!("STERR: {}", line);
-      }
+      eprintln!("STERR: {}", line);
       line
     });
   (stdout_lines, stderr_lines)
