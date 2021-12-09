@@ -2227,16 +2227,13 @@
         }
 
         // 3.
-        const { data } = await core.opAsync("op_crypto_import_key", {
+        const { rawData } = await core.opAsync("op_crypto_import_key", {
           algorithm: "ECDSA",
           namedCurve: normalizedAlgorithm.namedCurve,
-        }, keyData);
+        }, { raw: keyData });
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "public",
-          data,
-        });
+        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
 
         // 4-5.
         const algorithm = {
@@ -2299,23 +2296,19 @@
         }
 
         // 2-9.
-        const { modulusLength, publicExponent, data } = await core
+        const { modulusLength, publicExponent, rawData } = await core
           .opAsync(
             "op_crypto_import_key",
             {
               algorithm: normalizedAlgorithm.name,
-              format: "pkcs8",
               // Needed to perform step 7 without normalization.
               hash: normalizedAlgorithm.hash.name,
             },
-            keyData,
+            { pkcs8: keyData },
           );
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "private",
-          data,
-        });
+        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
 
         const algorithm = {
           name: normalizedAlgorithm.name,
@@ -2350,23 +2343,19 @@
         }
 
         // 2-9.
-        const { modulusLength, publicExponent, data } = await core
+        const { modulusLength, publicExponent, rawData } = await core
           .opAsync(
             "op_crypto_import_key",
             {
               algorithm: normalizedAlgorithm.name,
-              format: "spki",
               // Needed to perform step 7 without normalization.
               hash: normalizedAlgorithm.hash.name,
             },
-            keyData,
+            { spki: keyData },
           );
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "public",
-          data,
-        });
+        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
 
         const algorithm = {
           name: normalizedAlgorithm.name,
