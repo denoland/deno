@@ -83,6 +83,7 @@ text-size = "=1.1.0"
 tokio = { version = "=1.14", features = ["full"] }
 uuid = { version = "=0.8.2", features = ["v4", "serde"] }
 walkdir = "=2.3.2"
+zeromq = "0.3.1"
 
 [target.'cfg(windows)'.dependencies]
 fwdansi = "=1.1.0"
