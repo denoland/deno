@@ -556,7 +556,7 @@ async fn jupyter_command(
     return tools::jupyter::install();
   }
 
-  tools::jupyter::kernel(flags, jupyter_flags)
+  tools::jupyter::kernel(flags, jupyter_flags).await
 }
 
 async fn uninstall_command(
