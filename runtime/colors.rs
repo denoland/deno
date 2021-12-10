@@ -9,11 +9,14 @@ use termcolor::{Ansi, ColorSpec, WriteColor};
 use termcolor::{BufferWriter, ColorChoice};
 
 lazy_static::lazy_static! {
+// checks if the output is piped to a tty
+  static ref IS_TTY: bool = atty::is(atty::Stream::Stdout);
   static ref NO_COLOR: bool = std::env::var_os("NO_COLOR").is_some();
 }
 
+// if the output is piped to a tty, use color
 pub fn use_color() -> bool {
-  !(*NO_COLOR)
+  !(*NO_COLOR) && *IS_TTY
 }
 
 #[cfg(windows)]

@@ -746,19 +746,24 @@ Deno.test(async function testUnwrapKey() {
 });
 
 Deno.test(async function testDecryptWithInvalidIntializationVector() {
-  const data = new Uint8Array([42, 42, 42, 42]);
-  const key = await crypto.subtle.generateKey(
+  // deno-fmt-ignore
+  const data = new Uint8Array([42,42,42,42,42,42,42,42,42,42,42,42,42,42,42]);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(16),
     { name: "AES-CBC", length: 256 },
     true,
     ["encrypt", "decrypt"],
   );
-  const initVector = crypto.getRandomValues(new Uint8Array(16));
+  // deno-fmt-ignore
+  const initVector = new Uint8Array([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
   const encrypted = await crypto.subtle.encrypt(
     { name: "AES-CBC", iv: initVector },
     key,
     data,
   );
-  const initVector2 = crypto.getRandomValues(new Uint8Array(16));
+  // deno-fmt-ignore
+  const initVector2 = new Uint8Array([15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0]);
   await assertRejects(async () => {
     await crypto.subtle.decrypt(
       { name: "AES-CBC", iv: initVector2 },

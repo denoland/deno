@@ -71,10 +71,18 @@ fn child_lines(
 ) -> (impl Iterator<Item = String>, impl Iterator<Item = String>) {
   let stdout_lines = std::io::BufReader::new(child.stdout.take().unwrap())
     .lines()
-    .map(|r| r.unwrap());
+    .map(|r| {
+      let line = r.unwrap();
+      eprintln!("STDOUT: {}", line);
+      line
+    });
   let stderr_lines = std::io::BufReader::new(child.stderr.take().unwrap())
     .lines()
-    .map(|r| r.unwrap());
+    .map(|r| {
+      let line = r.unwrap();
+      eprintln!("STERR: {}", line);
+      line
+    });
   (stdout_lines, stderr_lines)
 }
 
@@ -108,13 +116,7 @@ fn lint_watch_test() {
     .stderr(std::process::Stdio::piped())
     .spawn()
     .expect("Failed to spawn script");
-  let mut stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines = std::io::BufReader::new(&mut stderr)
-    .lines()
-    .map(|r| r.unwrap());
-
-  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Lint started");
@@ -134,7 +136,6 @@ fn lint_watch_test() {
   // Change content of the file again to be badly-linted1
   std::fs::copy(&badly_linted_fixed2, &badly_linted)
     .expect("Failed to copy file");
-  std::thread::sleep(std::time::Duration::from_secs(1));
 
   output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_fixed2_output).unwrap();
@@ -176,14 +177,7 @@ fn lint_watch_without_args_test() {
     .stderr(std::process::Stdio::piped())
     .spawn()
     .expect("Failed to spawn script");
-  let mut stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines = std::io::BufReader::new(&mut stderr)
-    .lines()
-    .map(|r| r.unwrap());
-
-  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
-  std::thread::sleep(std::time::Duration::from_secs(1));
-  let next_line = stderr_lines.next().unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
   assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
@@ -193,7 +187,6 @@ fn lint_watch_without_args_test() {
   // Change content of the file again to be badly-linted1
   std::fs::copy(&badly_linted_fixed1, &badly_linted)
     .expect("Failed to copy file");
-  std::thread::sleep(std::time::Duration::from_secs(1));
 
   output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_fixed1_output).unwrap();
@@ -242,18 +235,12 @@ fn lint_all_files_on_each_change_test() {
     .stderr(std::process::Stdio::piped())
     .spawn()
     .expect("Failed to spawn script");
-  let mut stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines = std::io::BufReader::new(&mut stderr)
-    .lines()
-    .map(|r| r.unwrap());
-
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 2 files");
 
   std::fs::copy(&badly_linted_fixed2, &badly_linted_2)
     .expect("Failed to copy file");
-  std::thread::sleep(std::time::Duration::from_secs(1));
 
   assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 2 files");
 
@@ -284,14 +271,14 @@ fn fmt_watch_test() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
-  std::thread::sleep(std::time::Duration::from_secs(1));
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Fmt started");
-  assert!(
-    skip_restarting_line(&mut stderr_lines).contains("badly_formatted.js")
+  assert_contains!(
+    skip_restarting_line(&mut stderr_lines),
+    "badly_formatted.js"
   );
+  assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 1 file");
 
   let expected = std::fs::read_to_string(fixed.clone()).unwrap();
   let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
@@ -301,7 +288,12 @@ fn fmt_watch_test() {
 
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  assert_contains!(
+    skip_restarting_line(&mut stderr_lines),
+    "badly_formatted.js"
+  );
+  assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 1 file");
 
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
@@ -334,14 +326,14 @@ fn fmt_watch_without_args_test() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
-  std::thread::sleep(std::time::Duration::from_secs(1));
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Fmt started");
-  assert!(
-    skip_restarting_line(&mut stderr_lines).contains("badly_formatted.js")
+  assert_contains!(
+    skip_restarting_line(&mut stderr_lines),
+    "badly_formatted.js"
   );
+  assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 1 file");
 
   let expected = std::fs::read_to_string(fixed.clone()).unwrap();
   let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
@@ -349,7 +341,11 @@ fn fmt_watch_without_args_test() {
 
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+  assert_contains!(
+    skip_restarting_line(&mut stderr_lines),
+    "badly_formatted.js"
+  );
+  assert_contains!(read_line("Checked", &mut stderr_lines), "Checked 1 file");
 
   // Check if file has been automatically formatted by watcher
   let expected = std::fs::read_to_string(fixed).unwrap();
@@ -381,9 +377,6 @@ fn fmt_check_all_files_on_each_change_test() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
-  std::thread::sleep(std::time::Duration::from_secs(1));
-
   assert_contains!(
     read_line("error", &mut stderr_lines),
     "Found 2 not formatted files in 2 files"
@@ -391,8 +384,6 @@ fn fmt_check_all_files_on_each_change_test() {
 
   // Change content of the file again to be badly formatted
   std::fs::copy(&badly_formatted_original, &badly_formatted_1).unwrap();
-
-  std::thread::sleep(std::time::Duration::from_secs(1));
 
   assert_contains!(
     read_line("error", &mut stderr_lines),
@@ -427,7 +418,6 @@ fn bundle_js_watch() {
 
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
-  std::thread::sleep(std::time::Duration::from_secs(1));
   assert_contains!(stderr_lines.next().unwrap(), "Check");
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
@@ -439,7 +429,7 @@ fn bundle_js_watch() {
   wait_for("Bundle finished", &mut stderr_lines);
 
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+
   assert_contains!(stderr_lines.next().unwrap(), "Check");
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
@@ -452,7 +442,7 @@ fn bundle_js_watch() {
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&file_to_watch, "syntax error ^^").unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+
   assert_contains!(stderr_lines.next().unwrap(), "File change detected!");
   assert_contains!(stderr_lines.next().unwrap(), "error: ");
   wait_for("Bundle failed", &mut stderr_lines);
@@ -481,7 +471,6 @@ fn bundle_watch_not_exit() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
-  std::thread::sleep(std::time::Duration::from_secs(1));
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Bundle started");
@@ -492,14 +481,16 @@ fn bundle_watch_not_exit() {
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
   write(&file_to_watch, "console.log(42);").unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+
   assert_contains!(stderr_lines.next().unwrap(), "Check");
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "File change detected!");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
   assert_contains!(stderr_lines.next().unwrap(), "target.js");
+
   wait_for("Bundle finished", &mut stderr_lines);
+
   // bundled file is created
   assert!(target_file.is_file());
   check_alive_then_kill(deno);
@@ -527,13 +518,8 @@ fn run_watch() {
   assert_contains!(stdout_lines.next().unwrap(), "Hello world");
   wait_for("Process finished", &mut stderr_lines);
 
-  // TODO(lucacasonato): remove this timeout. It seems to be needed on Linux.
-  std::thread::sleep(std::time::Duration::from_secs(1));
-
   // Change content of the file
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
-  // Events from the file watcher is "debounced", so we need to wait for the next execution to start
-  std::thread::sleep(std::time::Duration::from_secs(1));
 
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stdout_lines.next().unwrap(), "Hello world2");
@@ -547,21 +533,21 @@ fn run_watch() {
     "import { foo } from './another_file.js'; console.log(foo);",
   )
   .unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stdout_lines.next().unwrap(), '0');
   wait_for("Process finished", &mut stderr_lines);
 
   // Confirm that restarting occurs when a new file is updated
   write(&another_file, "export const foo = 42;").unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stdout_lines.next().unwrap(), "42");
   wait_for("Process finished", &mut stderr_lines);
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
   write(&file_to_watch, "syntax error ^^").unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   wait_for("Process failed", &mut stderr_lines);
@@ -572,21 +558,21 @@ fn run_watch() {
     "import { foo } from './another_file.js'; console.log(foo);",
   )
   .unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stdout_lines.next().unwrap(), "42");
   wait_for("Process finished", &mut stderr_lines);
 
   // Update the content of the imported file with invalid syntax
   write(&another_file, "syntax error ^^").unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   wait_for("Process failed", &mut stderr_lines);
 
   // Modify the imported file and make sure that restarting occurs
   write(&another_file, "export const foo = 'modified!';").unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
   assert_contains!(stdout_lines.next().unwrap(), "modified!");
   wait_for("Process finished", &mut stderr_lines);
@@ -643,9 +629,6 @@ fn run_watch_load_unload_events() {
   )
   .unwrap();
 
-  // Events from the file watcher is "debounced", so we need to wait for the next execution to start
-  std::thread::sleep(std::time::Duration::from_secs(1));
-
   // Wait for the restart
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
@@ -683,7 +666,6 @@ fn run_watch_not_exit() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  std::thread::sleep(std::time::Duration::from_secs(1));
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Process started");
@@ -692,7 +674,7 @@ fn run_watch_not_exit() {
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
   write(&file_to_watch, "console.log(42);").unwrap();
-  std::thread::sleep(std::time::Duration::from_secs(1));
+
   let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Restarting");
