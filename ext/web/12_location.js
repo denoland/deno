@@ -356,8 +356,8 @@
     },
   });
 
-  let location = null;
-  let workerLocation = null;
+  let location = undefined;
+  let workerLocation = undefined;
 
   function setLocationHref(href) {
     location = new Location(href, locationConstructorKey);
@@ -378,8 +378,9 @@
     locationDescriptor: {
       get() {
         if (location == null) {
-          throw new ReferenceError(
-            `Access to "location", run again with --location <href>.`,
+          console.warn(
+            "Warning: accessing undefined 'location' global, " +
+              "run again with --location <href>.",
           );
         }
         return location;
