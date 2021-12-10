@@ -12,7 +12,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
-  const { atob, btoa } = window.__bootstrap.base64;
+  const { btoa } = window.__bootstrap.base64;
 
   const {
     ArrayPrototypeFind,
@@ -23,7 +23,6 @@
     BigInt64Array,
     StringPrototypeToUpperCase,
     StringPrototypeReplace,
-    StringPrototypeCharCodeAt,
     StringFromCharCode,
     Symbol,
     SymbolFor,
@@ -168,23 +167,6 @@
       256: "A256KW",
     },
   };
-
-  // Decodes the unpadded base64 to the octet sequence containing key value `k` defined in RFC7518 Section 6.4
-  function decodeSymmetricKey(key) {
-    // Decode from base64url without `=` padding.
-    const base64 = StringPrototypeReplace(
-      StringPrototypeReplace(key, /\-/g, "+"),
-      /\_/g,
-      "/",
-    );
-    const decodedKey = atob(base64);
-    const keyLength = decodedKey.length;
-    const keyBytes = new Uint8Array(keyLength);
-    for (let i = 0; i < keyLength; i++) {
-      keyBytes[i] = StringPrototypeCharCodeAt(decodedKey, i);
-    }
-    return keyBytes;
-  }
 
   function unpaddedBase64(bytes) {
     let binaryString = "";
@@ -1901,7 +1883,12 @@
         }
 
         // 4.
-        data = decodeSymmetricKey(jwk.k);
+        const { rawData } = core.opSync(
+          "op_crypto_import_key",
+          { algorithm: "AES" },
+          { jwkSecret: jwk },
+        );
+        data = rawData.data;
 
         // 5.
         switch (data.byteLength * 8) {
@@ -2038,6 +2025,7 @@
       case "jwk": {
         // TODO(@littledivy): Why does the spec validate JWK twice?
         const jwk = keyData;
+
         // 2.
         if (jwk.kty !== "oct") {
           throw new DOMException(
@@ -2055,7 +2043,12 @@
         }
 
         // 4.
-        data = decodeSymmetricKey(jwk.k);
+        const { rawData } = core.opSync(
+          "op_crypto_import_key",
+          { algorithm: "HMAC" },
+          { jwkSecret: jwk },
+        );
+        data = rawData.data;
 
         // 5.
         hash = normalizedAlgorithm.hash;

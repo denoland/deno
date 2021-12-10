@@ -11,12 +11,12 @@ use crate::OaepPrivateKeyParameters;
 use crate::PssPrivateKeyParameters;
 
 #[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "camelCase")]
 pub enum KeyData {
   Spki(ZeroCopyBuf),
   Pkcs8(ZeroCopyBuf),
   Raw(ZeroCopyBuf),
-  Jwk { k: String },
+  JwkSecret { k: String },
 }
 
 #[derive(Deserialize)]
@@ -32,6 +32,10 @@ pub enum ImportKeyOptions {
   Ecdsa { named_curve: EcNamedCurve },
   #[serde(rename = "ECDH", rename_all = "camelCase")]
   Ecdh { named_curve: EcNamedCurve },
+  #[serde(rename = "AES", rename_all = "camelCase")]
+  Aes {},
+  #[serde(rename = "HMAC", rename_all = "camelCase")]
+  Hmac {},
 }
 
 #[derive(Serialize)]
@@ -45,6 +49,10 @@ pub enum ImportKeyResult {
   },
   #[serde(rename_all = "camelCase")]
   Ec { raw_data: RawKeyData },
+  #[serde(rename_all = "camelCase")]
+  Aes { raw_data: RawKeyData },
+  #[serde(rename_all = "camelCase")]
+  Hmac { raw_data: RawKeyData },
 }
 
 pub fn op_crypto_import_key(
@@ -62,6 +70,8 @@ pub fn op_crypto_import_key(
     | ImportKeyOptions::Ecdh { named_curve } => {
       import_key_ec(key_data, named_curve)
     }
+    ImportKeyOptions::Aes {} => import_key_aes(key_data),
+    ImportKeyOptions::Hmac {} => import_key_hmac(key_data),
   }
 }
 
@@ -571,6 +581,32 @@ fn import_key_ec(
       };
       ImportKeyResult::Ec {
         raw_data: RawKeyData::Public(data),
+      }
+    }
+    _ => return Err(unsupported_format()),
+  })
+}
+
+fn import_key_aes(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
+  Ok(match key_data {
+    KeyData::JwkSecret { k } => {
+      let data = base64::decode_config(k, base64::URL_SAFE)
+        .map_err(|_| data_error("invalid key data"))?;
+      ImportKeyResult::Hmac {
+        raw_data: RawKeyData::Secret(data.into()),
+      }
+    }
+    _ => return Err(unsupported_format()),
+  })
+}
+
+fn import_key_hmac(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
+  Ok(match key_data {
+    KeyData::JwkSecret { k } => {
+      let data = base64::decode_config(k, base64::URL_SAFE)
+        .map_err(|_| data_error("invalid key data"))?;
+      ImportKeyResult::Hmac {
+        raw_data: RawKeyData::Secret(data.into()),
       }
     }
     _ => return Err(unsupported_format()),
