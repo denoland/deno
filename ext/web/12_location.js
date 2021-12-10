@@ -9,7 +9,6 @@
   const {
     Error,
     ObjectDefineProperties,
-    ReferenceError,
     Symbol,
     SymbolFor,
     SymbolToStringTag,
