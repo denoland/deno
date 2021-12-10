@@ -168,7 +168,11 @@ fn op_create_worker(
     parent_permissions.clone()
   };
   let parent_permissions = parent_permissions.clone();
-  let maybe_exit_code = Some(state.borrow::<Arc<AtomicI32>>().clone());
+  // `try_borrow` here, because worker might have been started without
+  // access to `Deno` namespace.
+  // TODO(bartlomieju): can a situation happen when parent doesn't
+  // have access to `exit_code` but the child does?
+  let maybe_exit_code = state.try_borrow::<Arc<AtomicI32>>().cloned();
   let worker_id = state.take::<WorkerId>();
   let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());

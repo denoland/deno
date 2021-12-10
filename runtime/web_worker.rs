@@ -410,7 +410,9 @@ impl WebWorker {
           unstable,
           options.unsafely_ignore_certificate_errors.clone(),
         ),
-        ops::os::init(options.maybe_exit_code),
+        ops::os::init(Some(options.maybe_exit_code.expect(
+          "Worker has access to OS ops but exit code was not passed.",
+        ))),
         ops::permissions::init(),
         ops::process::init(),
         ops::signal::init(),
