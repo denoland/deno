@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use deno_core::error::custom_error;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
@@ -59,6 +60,22 @@ pub enum RawKeyData {
   Secret(ZeroCopyBuf),
   Private(ZeroCopyBuf),
   Public(ZeroCopyBuf),
+}
+
+impl RawKeyData {
+  pub fn public_key_data(&self) -> Result<&[u8], AnyError> {
+    match self {
+      RawKeyData::Public(data) => Ok(&data),
+      _ => Err(type_error("expected public key")),
+    }
+  }
+
+  pub fn private_key_data(&self) -> Result<&[u8], AnyError> {
+    match self {
+      RawKeyData::Private(data) => Ok(&data),
+      _ => Err(type_error("expected private key")),
+    }
+  }
 }
 
 pub fn data_error(msg: impl Into<Cow<'static, str>>) -> AnyError {
