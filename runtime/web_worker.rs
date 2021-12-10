@@ -38,6 +38,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
@@ -409,7 +410,7 @@ impl WebWorker {
           unstable,
           options.unsafely_ignore_certificate_errors.clone(),
         ),
-        ops::os::init(Some(options.exit_code)),
+        ops::os::init(options.maybe_exit_code),
         ops::permissions::init(),
         ops::process::init(),
         ops::signal::init(),

@@ -23,6 +23,7 @@ use log::debug;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
@@ -167,7 +168,7 @@ fn op_create_worker(
     parent_permissions.clone()
   };
   let parent_permissions = parent_permissions.clone();
-  let maybe_exit_code = Some(state.borrow::<ExitCode>().clone().0);
+  let maybe_exit_code = Some(state.borrow::<Arc<AtomicI32>>().clone());
   let worker_id = state.take::<WorkerId>();
   let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());

@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use std::sync::atomic::AtomicI32;
-
 pub use deno_broadcast_channel;
 pub use deno_console;
 pub use deno_core;

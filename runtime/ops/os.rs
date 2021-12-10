@@ -10,7 +10,9 @@ use deno_core::OpState;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
+use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering::Relaxed;
+use std::sync::Arc;
 
 pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
   Extension::builder()
@@ -28,14 +30,12 @@ pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
       ("op_system_memory_info", op_sync(op_system_memory_info)),
     ])
     .state(move |state| {
-      let exit_code = maybe_exit_code.unwrap_or_default();
-      state.put::<ExitCode>(ExitCode(exit_code));
+      let exit_code = maybe_exit_code.clone().unwrap_or_default();
+      state.put::<Arc<AtomicI32>>(exit_code);
+      Ok(())
     })
     .build()
 }
-
-#[derive(Clone)]
-pub struct ExitCode(pub Arc<AtomicI32>);
 
 fn op_exec_path(state: &mut OpState, _: (), _: ()) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
@@ -109,12 +109,12 @@ fn op_set_exit_code(
   code: i32,
   _: (),
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<ExitCode>().store(code, Relaxed);
+  state.borrow_mut::<Arc<AtomicI32>>().store(code, Relaxed);
   Ok(())
 }
 
 fn op_exit(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
-  let code = state.borrow::<ExitCode>().load(Relaxed);
+  let code = state.borrow::<Arc<AtomicI32>>().load(Relaxed);
   std::process::exit(code)
 }
 
