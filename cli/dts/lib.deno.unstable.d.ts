@@ -1023,6 +1023,18 @@ declare namespace Deno {
    */
   export function funlockSync(rid: number): void;
 
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Make the timer of the given id blocking the event loop from finishing
+   */
+  export function refTimer(id: number): void;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Make the timer of the given id not blocking the event loop from finishing
+   */
+  export function unrefTimer(id: number): void;
+
   export interface CommandOptions {
     /** Arguments to pass to the process. */
     args?: string[];
