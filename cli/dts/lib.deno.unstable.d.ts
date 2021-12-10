@@ -1113,7 +1113,9 @@ declare namespace Deno {
     kill(signo: Signal): void;
   }
 
-  export interface CommandOutput<T extends ProcessIoOptions = ProcessIoOptions> {
+  export interface CommandOutput<
+    T extends ProcessIoOptions = ProcessIoOptions,
+  > {
     status: ProcessStatus;
     stdout: T["stdin"] extends "piped" ? Uint8Array : null;
     stderr: T["stderr"] extends "piped" ? Uint8Array : null;
