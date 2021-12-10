@@ -65,14 +65,14 @@ pub enum RawKeyData {
 impl RawKeyData {
   pub fn public_key_data(&self) -> Result<&[u8], AnyError> {
     match self {
-      RawKeyData::Public(data) => Ok(&data),
+      RawKeyData::Public(data) => Ok(data),
       _ => Err(type_error("expected public key")),
     }
   }
 
   pub fn private_key_data(&self) -> Result<&[u8], AnyError> {
     match self {
-      RawKeyData::Private(data) => Ok(&data),
+      RawKeyData::Private(data) => Ok(data),
       _ => Err(type_error("expected private key")),
     }
   }

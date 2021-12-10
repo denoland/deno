@@ -108,6 +108,6 @@ fn export_key_rsa(
 
       Ok(ExportKeyResult::Pkcs8(pkcs8_der.into()))
     }
-    _ => return Err(unsupported_format()),
+    _ => Err(unsupported_format()),
   }
 }
