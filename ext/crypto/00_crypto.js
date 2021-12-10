@@ -1468,7 +1468,7 @@
         const keyData = await core.opAsync(
           "op_crypto_generate_key",
           {
-            name: algorithmName,
+            algorithm: "RSA",
             modulusLength: normalizedAlgorithm.modulusLength,
             publicExponent: normalizedAlgorithm.publicExponent,
           },
@@ -1528,7 +1528,7 @@
         const keyData = await core.opAsync(
           "op_crypto_generate_key",
           {
-            name: algorithmName,
+            algorithm: "RSA",
             modulusLength: normalizedAlgorithm.modulusLength,
             publicExponent: normalizedAlgorithm.publicExponent,
           },
@@ -1590,7 +1590,7 @@
           )
         ) {
           const keyData = await core.opAsync("op_crypto_generate_key", {
-            name: algorithmName,
+            algorithm: "EC",
             namedCurve,
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
@@ -1650,7 +1650,7 @@
           )
         ) {
           const keyData = await core.opAsync("op_crypto_generate_key", {
-            name: algorithmName,
+            algorithm: "EC",
             namedCurve,
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
@@ -1745,7 +1745,7 @@
 
         // 3-4.
         const keyData = await core.opAsync("op_crypto_generate_key", {
-          name: algorithmName,
+          algorithm: "HMAC",
           hash: normalizedAlgorithm.hash.name,
           length,
         });
@@ -2586,7 +2586,7 @@
 
     // 3.
     const keyData = await core.opAsync("op_crypto_generate_key", {
-      name: algorithmName,
+      algorithm: "AES",
       length: normalizedAlgorithm.length,
     });
     const handle = {};
