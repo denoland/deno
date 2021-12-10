@@ -759,6 +759,7 @@
      * @param {KeyUsages[]} keyUsages
      * @returns {Promise<any>}
      */
+    // deno-lint-ignore require-await
     async importKey(format, keyData, algorithm, extractable, keyUsages) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'importKey' on 'SubtleCrypto'";
@@ -812,7 +813,7 @@
           );
         }
         case "ECDSA": {
-          return await importKeyECDSA(
+          return importKeyECDSA(
             format,
             normalizedAlgorithm,
             keyData,
@@ -823,7 +824,7 @@
         case "RSASSA-PKCS1-v1_5":
         case "RSA-PSS":
         case "RSA-OAEP": {
-          return await importKeyRSA(
+          return importKeyRSA(
             format,
             normalizedAlgorithm,
             keyData,
@@ -850,7 +851,7 @@
           );
         }
         case "AES-KW": {
-          return await importKeyAES(
+          return importKeyAES(
             format,
             normalizedAlgorithm,
             keyData,
@@ -2194,7 +2195,7 @@
     return key;
   }
 
-  async function importKeyECDSA(
+  function importKeyECDSA(
     format,
     normalizedAlgorithm,
     keyData,
@@ -2227,16 +2228,13 @@
         }
 
         // 3.
-        const { data } = await core.opAsync("op_crypto_import_key", {
+        const { rawData } = core.opSync("op_crypto_import_key", {
           algorithm: "ECDSA",
           namedCurve: normalizedAlgorithm.namedCurve,
-        }, keyData);
+        }, { raw: keyData });
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "public",
-          data,
-        });
+        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
 
         // 4-5.
         const algorithm = {
@@ -2275,7 +2273,7 @@
     },
   };
 
-  async function importKeyRSA(
+  function importKeyRSA(
     format,
     normalizedAlgorithm,
     keyData,
@@ -2299,23 +2297,18 @@
         }
 
         // 2-9.
-        const { modulusLength, publicExponent, data } = await core
-          .opAsync(
-            "op_crypto_import_key",
-            {
-              algorithm: normalizedAlgorithm.name,
-              format: "pkcs8",
-              // Needed to perform step 7 without normalization.
-              hash: normalizedAlgorithm.hash.name,
-            },
-            keyData,
-          );
+        const { modulusLength, publicExponent, rawData } = core.opSync(
+          "op_crypto_import_key",
+          {
+            algorithm: normalizedAlgorithm.name,
+            // Needed to perform step 7 without normalization.
+            hash: normalizedAlgorithm.hash.name,
+          },
+          { pkcs8: keyData },
+        );
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "private",
-          data,
-        });
+        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
 
         const algorithm = {
           name: normalizedAlgorithm.name,
@@ -2350,23 +2343,18 @@
         }
 
         // 2-9.
-        const { modulusLength, publicExponent, data } = await core
-          .opAsync(
-            "op_crypto_import_key",
-            {
-              algorithm: normalizedAlgorithm.name,
-              format: "spki",
-              // Needed to perform step 7 without normalization.
-              hash: normalizedAlgorithm.hash.name,
-            },
-            keyData,
-          );
+        const { modulusLength, publicExponent, rawData } = core.opSync(
+          "op_crypto_import_key",
+          {
+            algorithm: normalizedAlgorithm.name,
+            // Needed to perform step 7 without normalization.
+            hash: normalizedAlgorithm.hash.name,
+          },
+          { spki: keyData },
+        );
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "public",
-          data,
-        });
+        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
 
         const algorithm = {
           name: normalizedAlgorithm.name,

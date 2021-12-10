@@ -293,6 +293,10 @@ interface AbortSignal extends EventTarget {
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions,
   ): void;
+
+  /** Throws this AbortSignal's abort reason, if its AbortController has
+   * signaled to abort; otherwise, does nothing. */
+  throwIfAborted(): void;
 }
 
 declare var AbortSignal: {
