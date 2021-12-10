@@ -60,7 +60,7 @@ fn export_key_rsa(
 ) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
   match format {
     ExportKeyFormat::Spki => {
-      let subject_public_key = key_data.public_key_data()?;
+      let subject_public_key = &key_data.public_key_data()?;
 
       // the SPKI structure
       let key_info = spki::SubjectPublicKeyInfo {

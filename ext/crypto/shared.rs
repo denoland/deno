@@ -4,6 +4,9 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::ZeroCopyBuf;
+use rsa::pkcs1::FromRsaPrivateKey;
+use rsa::pkcs1::ToRsaPublicKey;
+use rsa::RsaPrivateKey;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -63,9 +66,20 @@ pub enum RawKeyData {
 }
 
 impl RawKeyData {
-  pub fn public_key_data(&self) -> Result<&[u8], AnyError> {
+  pub fn public_key_data(&self) -> Result<Cow<'_, [u8]>, AnyError> {
     match self {
-      RawKeyData::Public(data) => Ok(data),
+      RawKeyData::Public(data) => Ok(Cow::Borrowed(&data)),
+      RawKeyData::Private(data) => {
+        let private_key = RsaPrivateKey::from_pkcs1_der(data)
+          .map_err(|_| type_error("expected valid private key"))?;
+
+        let public_key_doc = private_key
+          .to_public_key()
+          .to_pkcs1_der()
+          .map_err(|_| type_error("expected valid public key"))?;
+
+        Ok(Cow::Owned(public_key_doc.as_der().into()))
+      }
       _ => Err(type_error("expected public key")),
     }
   }
