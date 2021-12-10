@@ -1232,7 +1232,7 @@ mod tests {
     assert!(completions.is_some());
     let completions = completions.unwrap();
     assert_eq!(completions.items.len(), 2);
-    assert_eq!(completions.is_incomplete, true);
+    assert!(completions.is_incomplete);
     assert!(
       completions.items[0].label == *"a" || completions.items[0].label == *"b"
     );
@@ -1257,7 +1257,7 @@ mod tests {
     assert!(completions.is_some());
     let completions = completions.unwrap();
     assert_eq!(completions.items.len(), 4);
-    assert_eq!(completions.is_incomplete, false);
+    assert!(!completions.is_incomplete);
     assert_eq!(
       completions.items[0].data,
       Some(json!({
