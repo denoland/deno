@@ -12,11 +12,13 @@ lazy_static::lazy_static! {
 // checks if the output is piped to a tty
   static ref IS_TTY: bool = atty::is(atty::Stream::Stdout);
   static ref NO_COLOR: bool = std::env::var_os("NO_COLOR").is_some();
+// checks if the run is part of CI workflow to determine if we should use colors to the output
+  static ref IS_CI_WORKFLOW: bool = std::env::var_os("CI").is_some();
 }
 
-// if the output is piped to a tty, use color
+// if the output is piped to a tty or CI workfkow from Github Action, use color
 pub fn use_color() -> bool {
-  !(*NO_COLOR) && *IS_TTY
+  !(*NO_COLOR) && (*IS_TTY || *IS_CI_WORKFLOW)
 }
 
 #[cfg(windows)]
