@@ -4799,16 +4799,8 @@
     "abort": {
       "AbortSignal.any.html": true,
       "AbortSignal.any.worker.html": true,
-      "event.any.html": [
-        "throwIfAborted() should throw abort.reason if signal aborted",
-        "throwIfAborted() should throw primitive abort.reason if signal aborted",
-        "throwIfAborted() should not throw if signal not aborted"
-      ],
-      "event.any.worker.html": [
-        "throwIfAborted() should throw abort.reason if signal aborted",
-        "throwIfAborted() should throw primitive abort.reason if signal aborted",
-        "throwIfAborted() should not throw if signal not aborted"
-      ]
+      "event.any.html": true,
+      "event.any.worker.html": true
     },
     "events": {
       "AddEventListenerOptions-once.any.html": [
