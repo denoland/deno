@@ -1,6 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -50,8 +47,8 @@ pub enum ImportKeyResult {
   Ec { raw_data: RawKeyData },
 }
 
-pub async fn op_crypto_import_key(
-  _state: Rc<RefCell<OpState>>,
+pub fn op_crypto_import_key(
+  _state: &mut OpState,
   opts: ImportKeyOptions,
   key_data: KeyData,
 ) -> Result<ImportKeyResult, AnyError> {

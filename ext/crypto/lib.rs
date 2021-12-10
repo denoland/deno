@@ -92,7 +92,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_sign_key", op_async(op_crypto_sign_key)),
       ("op_crypto_verify_key", op_async(op_crypto_verify_key)),
       ("op_crypto_derive_bits", op_async(op_crypto_derive_bits)),
-      ("op_crypto_import_key", op_async(op_crypto_import_key)),
+      ("op_crypto_import_key", op_sync(op_crypto_import_key)),
       ("op_crypto_export_key", op_async(op_crypto_export_key)),
       ("op_crypto_encrypt_key", op_async(op_crypto_encrypt_key)),
       ("op_crypto_decrypt_key", op_async(op_crypto_decrypt_key)),
