@@ -947,7 +947,7 @@ async fn format_command(
   Ok(0)
 }
 
-async fn run_repl(
+async fn repl_command(
   flags: Flags,
   repl_flags: ReplFlags,
 ) -> Result<i32, AnyError> {
@@ -962,8 +962,7 @@ async fn run_repl(
   }
   worker.run_event_loop(false).await?;
 
-  tools::repl::run(&ps, worker, repl_flags.eval).await?;
-  Ok(0)
+  tools::repl::run(&ps, worker, repl_flags.eval).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
@@ -1002,9 +1001,11 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
     &located_script_name!(),
     "window.dispatchEvent(new Event('unload'))",
   )?;
-  Ok(0)
+  Ok(worker.get_exit_code())
 }
 
+// TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
+// code properly.
 async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   let resolver = |_| {
     let script1 = script.clone();
@@ -1258,7 +1259,7 @@ async fn run_command(
       .with_event_loop(coverage_collector.stop_collecting().boxed_local())
       .await?;
   }
-  Ok(0)
+  Ok(worker.get_exit_code())
 }
 
 async fn coverage_command(
@@ -1390,7 +1391,7 @@ fn get_subcommand(
       lint_command(flags, lint_flags).boxed_local()
     }
     DenoSubcommand::Repl(repl_flags) => {
-      run_repl(flags, repl_flags).boxed_local()
+      repl_command(flags, repl_flags).boxed_local()
     }
     DenoSubcommand::Run(run_flags) => {
       run_command(flags, run_flags).boxed_local()
