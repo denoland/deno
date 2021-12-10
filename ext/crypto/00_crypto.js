@@ -69,6 +69,7 @@
     Pbkdf2Params: { hash: "HashAlgorithmIdentifier", salt: "BufferSource" },
     RsaOaepParams: { label: "BufferSource" },
     RsaHashedImportParams: { hash: "HashAlgorithmIdentifier" },
+    EcKeyImportParams: {},
   };
 
   const supportedAlgorithms = {
@@ -106,6 +107,8 @@
       "RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
       "RSA-PSS": "RsaHashedImportParams",
       "RSA-OAEP": "RsaHashedImportParams",
+      "ECDSA": "EcKeyImportParams",
+      "ECDH": "EcKeyImportParams",
       "HMAC": "HmacImportParams",
       "HKDF": null,
       "PBKDF2": null,
@@ -794,8 +797,9 @@
             keyUsages,
           );
         }
-        case "ECDSA": {
-          return importKeyECDSA(
+        case "ECDSA":
+        case "ECDH": {
+          return importKeyEC(
             format,
             normalizedAlgorithm,
             keyData,
@@ -2189,7 +2193,7 @@
     return key;
   }
 
-  function importKeyECDSA(
+  function importKeyEC(
     format,
     normalizedAlgorithm,
     keyData,
@@ -2215,7 +2219,11 @@
         if (
           ArrayPrototypeFind(
             keyUsages,
-            (u) => !ArrayPrototypeIncludes(["verify"], u),
+            (u) =>
+              !ArrayPrototypeIncludes(
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].raw,
+                u,
+              ),
           ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
@@ -2223,7 +2231,7 @@
 
         // 3.
         const { rawData } = core.opSync("op_crypto_import_key", {
-          algorithm: "ECDSA",
+          algorithm: normalizedAlgorithm.name,
           namedCurve: normalizedAlgorithm.namedCurve,
         }, { raw: keyData });
 
@@ -2232,7 +2240,7 @@
 
         // 4-5.
         const algorithm = {
-          name: "ECDSA",
+          name: normalizedAlgorithm.name,
           namedCurve: normalizedAlgorithm.namedCurve,
         };
 
@@ -2252,7 +2260,7 @@
     }
   }
 
-  const SUPPORTED_RSA_KEY_USAGES = {
+  const SUPPORTED_KEY_USAGES = {
     "RSASSA-PKCS1-v1_5": {
       spki: ["verify"],
       pkcs8: ["sign"],
@@ -2264,6 +2272,12 @@
     "RSA-OAEP": {
       spki: ["encrypt", "wrapKey"],
       pkcs8: ["decrypt", "unwrapKey"],
+    },
+    "ECDSA": {
+      raw: ["verify"],
+    },
+    "ECDH": {
+      raw: ["deriveKey", "deriveBits"],
     },
   };
 
@@ -2282,7 +2296,7 @@
             keyUsages,
             (u) =>
               !ArrayPrototypeIncludes(
-                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].pkcs8,
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].pkcs8,
                 u,
               ),
           ) !== undefined
@@ -2328,7 +2342,7 @@
             keyUsages,
             (u) =>
               !ArrayPrototypeIncludes(
-                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].spki,
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].spki,
                 u,
               ),
           ) !== undefined

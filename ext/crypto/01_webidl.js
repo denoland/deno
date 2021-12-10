@@ -116,7 +116,22 @@
     "RsaHashedImportParams",
     dictRsaHashedImportParams,
   );
+
   webidl.converters.NamedCurve = webidl.converters.DOMString;
+
+  const dictEcKeyImportParams = [
+    ...dictAlgorithm,
+    {
+      key: "namedCurve",
+      converter: webidl.converters.NamedCurve,
+      required: true,
+    },
+  ];
+
+  webidl.converters.EcKeyImportParams = webidl.createDictionaryConverter(
+    "EcKeyImportParams",
+    dictEcKeyImportParams,
+  );
 
   const dictEcKeyGenParams = [
     ...dictAlgorithm,
