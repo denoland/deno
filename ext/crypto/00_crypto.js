@@ -2551,7 +2551,7 @@
         }, innerKey);
 
         // 3.
-        return data;
+        return data.buffer;
       }
       case "spki": {
         // 1.
@@ -2569,7 +2569,7 @@
         }, innerKey);
 
         // 3.
-        return data;
+        return data.buffer;
       }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");
