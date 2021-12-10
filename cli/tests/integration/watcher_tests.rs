@@ -178,6 +178,8 @@ fn lint_watch_without_args_test() {
     .spawn()
     .expect("Failed to spawn script");
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  let next_line = stderr_lines.next().unwrap();
   assert_contains!(&next_line, CLEAR_SCREEN);
   assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
