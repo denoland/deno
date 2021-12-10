@@ -68,7 +68,7 @@ pub enum RawKeyData {
 impl RawKeyData {
   pub fn as_rsa_public_key(&self) -> Result<Cow<'_, [u8]>, AnyError> {
     match self {
-      RawKeyData::Public(data) => Ok(Cow::Borrowed(&data)),
+      RawKeyData::Public(data) => Ok(Cow::Borrowed(data)),
       RawKeyData::Private(data) => {
         let private_key = RsaPrivateKey::from_pkcs1_der(data)
           .map_err(|_| type_error("expected valid private key"))?;
