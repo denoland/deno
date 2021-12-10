@@ -66,7 +66,7 @@ pub enum RawKeyData {
 }
 
 impl RawKeyData {
-  pub fn public_key_data(&self) -> Result<Cow<'_, [u8]>, AnyError> {
+  pub fn as_rsa_public_key(&self) -> Result<Cow<'_, [u8]>, AnyError> {
     match self {
       RawKeyData::Public(data) => Ok(Cow::Borrowed(&data)),
       RawKeyData::Private(data) => {
@@ -84,7 +84,7 @@ impl RawKeyData {
     }
   }
 
-  pub fn private_key_data(&self) -> Result<&[u8], AnyError> {
+  pub fn as_rsa_private_key(&self) -> Result<&[u8], AnyError> {
     match self {
       RawKeyData::Private(data) => Ok(data),
       _ => Err(type_error("expected private key")),
