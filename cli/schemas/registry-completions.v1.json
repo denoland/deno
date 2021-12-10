@@ -11,7 +11,9 @@
   "properties": {
     "version": {
       "description": "The version of the schema document.",
-      "type": "number",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1,
       "examples": [
         1
       ]

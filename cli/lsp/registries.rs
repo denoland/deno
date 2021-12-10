@@ -1053,7 +1053,49 @@ mod tests {
         ],
       }],
     };
-    validate_config(&cfg).unwrap();
+    assert!(validate_config(&cfg).is_ok());
+
+    let cfg: RegistryConfigurationJson = serde_json::from_value(json!({
+      "version": 2,
+      "registries": [
+        {
+          "schema": "/x/:module([a-z0-9_]+)@:version?/:path",
+          "variables": [
+            {
+              "key": "module",
+              "documentation": "/api/details/mods/${module}",
+              "url": "/api/mods/${module}"
+            },
+            {
+              "key": "version",
+              "documentation": "/api/details/mods/${module}/v/${{version}}",
+              "url": "/api/mods/${module}/v/${{version}}"
+            },
+            {
+              "key": "path",
+              "documentation": "/api/details/mods/${module}/v/${{version}}/p/${path}",
+              "url": "/api/mods/${module}/v/${{version}}/p/${path}"
+            }
+          ]
+        },
+        {
+          "schema": "/x/:module([a-z0-9_]+)/:path",
+          "variables": [
+            {
+              "key": "module",
+              "documentation": "/api/details/mods/${module}",
+              "url": "/api/mods/${module}"
+            },
+            {
+              "key": "path",
+              "documentation": "/api/details/mods/${module}/v/latest/p/${path}",
+              "url": "/api/mods/${module}/v/latest/p/${path}"
+            }
+          ]
+        }
+      ]
+    })).unwrap();
+    assert!(validate_config(&cfg).is_ok());
   }
 
   #[tokio::test]
@@ -1188,10 +1230,53 @@ mod tests {
       .get_completions("http://localhost:4545/x/", 24, &range, |_| false)
       .await;
     assert!(completions.is_some());
-    let completions = completions.unwrap().items;
-    assert_eq!(completions.len(), 2);
-    assert!(completions[0].label == *"a" || completions[0].label == *"b");
-    assert!(completions[1].label == *"a" || completions[1].label == *"b");
+    let completions = completions.unwrap();
+    assert_eq!(completions.items.len(), 2);
+    assert_eq!(completions.is_incomplete, true);
+    assert!(
+      completions.items[0].label == *"a" || completions.items[0].label == *"b"
+    );
+    assert!(
+      completions.items[1].label == *"a" || completions.items[1].label == *"b"
+    );
+
+    // testing for incremental searching for a module
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 45,
+      },
+    };
+    let completions = module_registry
+      .get_completions("http://localhost:4545/x/a", 25, &range, |_| false)
+      .await;
+    assert!(completions.is_some());
+    let completions = completions.unwrap();
+    assert_eq!(completions.items.len(), 4);
+    assert_eq!(completions.is_incomplete, false);
+    assert_eq!(
+      completions.items[0].data,
+      Some(json!({
+        "documentation": format!("http://localhost:4545/lsp/registries/doc_{}.json", completions.items[0].label),
+      }))
+    );
+
+    // testing getting the documentation
+    let documentation = module_registry
+      .get_documentation("http://localhost:4545/lsp/registries/doc_a.json")
+      .await;
+    assert_eq!(
+      documentation,
+      Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
+        kind: lsp::MarkupKind::Markdown,
+        value: "**a**".to_string(),
+      }))
+    );
+
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
