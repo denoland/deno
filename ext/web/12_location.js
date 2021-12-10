@@ -376,12 +376,6 @@
     },
     locationDescriptor: {
       get() {
-        if (location == null) {
-          console.warn(
-            "Warning: accessing undefined 'location' global, " +
-              "run again with --location <href>.",
-          );
-        }
         return location;
       },
       set() {

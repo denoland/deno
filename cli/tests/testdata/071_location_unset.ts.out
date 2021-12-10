@@ -1,4 +1,4 @@
 [WILDCARD][Function: Location]
 Location {}
-Warning: accessing undefined 'location' global, run again with --location <href>.
+undefined
 [WILDCARD]
