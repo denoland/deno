@@ -4799,8 +4799,16 @@
     "abort": {
       "AbortSignal.any.html": true,
       "AbortSignal.any.worker.html": true,
-      "event.any.html": true,
-      "event.any.worker.html": true
+      "event.any.html": [
+        "throwIfAborted() should throw abort.reason if signal aborted",
+        "throwIfAborted() should throw primitive abort.reason if signal aborted",
+        "throwIfAborted() should not throw if signal not aborted"
+      ],
+      "event.any.worker.html": [
+        "throwIfAborted() should throw abort.reason if signal aborted",
+        "throwIfAborted() should throw primitive abort.reason if signal aborted",
+        "throwIfAborted() should not throw if signal not aborted"
+      ]
     },
     "events": {
       "AddEventListenerOptions-once.any.html": [
@@ -7791,7 +7799,13 @@
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []",
       "Pattern: [{\"pathname\":\"(foo)(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
-      "Pattern: [{\"pathname\":\"{(foo)bar}(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]"
+      "Pattern: [{\"pathname\":\"{(foo)bar}(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}(barbaz)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{(.*)bar}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo\\\\bar}\"}] Inputs: [{\"pathname\":\"foobar\"}]"
     ],
     "urlpattern.any.worker.html": [
       "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
@@ -7801,7 +7815,13 @@
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []",
       "Pattern: [{\"pathname\":\"(foo)(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
-      "Pattern: [{\"pathname\":\"{(foo)bar}(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]"
+      "Pattern: [{\"pathname\":\"{(foo)bar}(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}(barbaz)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{(.*)bar}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo\\\\bar}\"}] Inputs: [{\"pathname\":\"foobar\"}]"
     ],
     "urlpattern.https.any.html": [
       "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
@@ -7811,7 +7831,13 @@
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []",
       "Pattern: [{\"pathname\":\"(foo)(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
-      "Pattern: [{\"pathname\":\"{(foo)bar}(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]"
+      "Pattern: [{\"pathname\":\"{(foo)bar}(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}(barbaz)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{(.*)bar}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo\\\\bar}\"}] Inputs: [{\"pathname\":\"foobar\"}]"
     ],
     "urlpattern.https.any.worker.html": [
       "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
@@ -7821,7 +7847,13 @@
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []",
       "Pattern: [{\"pathname\":\"(foo)(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
-      "Pattern: [{\"pathname\":\"{(foo)bar}(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]"
+      "Pattern: [{\"pathname\":\"{(foo)bar}(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}(.*)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}(barbaz)\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{(.*)bar}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo\\\\bar}\"}] Inputs: [{\"pathname\":\"foobar\"}]"
     ]
   }
 }
