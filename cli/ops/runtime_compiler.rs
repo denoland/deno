@@ -166,7 +166,9 @@ async fn op_emit(
     args.import_map_path
   {
     let import_map_specifier = resolve_url_or_path(&import_map_str)
-      .context(format!("Bad URL (\"{}\") for import map.", import_map_str))?;
+      .with_context(|| {
+        format!("Bad URL (\"{}\") for import map.", import_map_str)
+      })?;
     let import_map = if let Some(value) = args.import_map {
       ImportMap::from_json(import_map_specifier.as_str(), &value.to_string())?
     } else {

@@ -19,6 +19,7 @@ use crate::fs_util::specifier_to_file_path;
 use crate::fs_util::{collect_files, get_extension, is_supported_ext_fmt};
 use crate::text_encoding;
 use deno_ast::ParsedSource;
+use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
@@ -525,7 +526,8 @@ struct FileContents {
 }
 
 fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
-  let file_bytes = fs::read(&file_path)?;
+  let file_bytes = fs::read(&file_path)
+    .with_context(|| format!("Error reading {}", file_path.display()))?;
   let charset = text_encoding::detect_charset(&file_bytes);
   let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
   let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);
