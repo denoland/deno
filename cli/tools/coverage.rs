@@ -6,6 +6,7 @@ use crate::flags::Flags;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
 use crate::source_maps::SourceMapGetter;
+use crate::tools::fmt::format_json;
 
 use deno_ast::swc::common::Span;
 use deno_ast::MediaType;
@@ -158,8 +159,11 @@ impl CoverageCollector {
       let filepath = self.dir.join(filename);
 
       let mut out = BufWriter::new(File::create(filepath)?);
-      serde_json::to_writer_pretty(&mut out, &script_coverage)?;
-      out.write_all(b"\n")?;
+      let coverage = serde_json::to_string(&script_coverage)?;
+      let formated_coverage =
+        format_json(&coverage, &Default::default()).unwrap_or(coverage);
+
+      out.write_all(formated_coverage.as_bytes())?;
       out.flush()?;
     }
 

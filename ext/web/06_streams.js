@@ -55,7 +55,6 @@
     WeakMapPrototypeSet,
   } = globalThis.__bootstrap.primordials;
   const consoleInternal = window.__bootstrap.console;
-  const { DOMException } = window.__bootstrap.domException;
 
   class AssertionError extends Error {
     constructor(msg) {
@@ -1872,7 +1871,7 @@
     let abortAlgorithm;
     if (signal) {
       abortAlgorithm = () => {
-        const error = new DOMException("Aborted", "AbortError");
+        const error = signal.reason;
         /** @type {Array<() => Promise<void>>} */
         const actions = [];
         if (preventAbort === false) {
@@ -3343,7 +3342,7 @@
     if (state === "closed" || state === "errored") {
       return resolvePromiseWith(undefined);
     }
-    stream[_controller][_signal][signalAbort]();
+    stream[_controller][_signal][signalAbort](reason);
     if (state === "closed" || state === "errored") {
       return resolvePromiseWith(undefined);
     }

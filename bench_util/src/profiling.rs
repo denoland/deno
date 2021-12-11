@@ -54,7 +54,7 @@ fn run_profile(test: TestDescAndFn) {
       bencher::bench::run_once(|harness| bencher.run(harness));
     }
     StaticBenchFn(benchfn) => {
-      bencher::bench::run_once(|harness| benchfn(harness));
+      bencher::bench::run_once(benchfn);
     }
   };
 }
