@@ -6,6 +6,8 @@ use std::io::BufRead;
 use tempfile::TempDir;
 use test_util as util;
 
+const CLEAR_SCREEN: &str = r#"[2J"#;
+
 macro_rules! assert_contains {
   ($string:expr, $($test:expr),+) => {
     let string = $string; // This might be a function call or something
@@ -115,7 +117,9 @@ fn lint_watch_test() {
     .spawn()
     .expect("Failed to spawn script");
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
-
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
   assert_eq!(output, expected);
@@ -175,6 +179,9 @@ fn lint_watch_without_args_test() {
     .expect("Failed to spawn script");
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Lint started");
   let mut output = read_all_lints(&mut stderr_lines);
   let expected = std::fs::read_to_string(badly_linted_output).unwrap();
   assert_eq!(output, expected);
@@ -266,6 +273,9 @@ fn fmt_watch_test() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Fmt started");
   assert_contains!(
     skip_restarting_line(&mut stderr_lines),
     "badly_formatted.js"
@@ -312,6 +322,9 @@ fn fmt_watch_without_args_test() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Fmt started");
   assert_contains!(
     skip_restarting_line(&mut stderr_lines),
     "badly_formatted.js"
@@ -402,6 +415,9 @@ fn bundle_js_watch() {
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
   assert_contains!(stderr_lines.next().unwrap(), "Check");
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
   assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
   let file = PathBuf::from(&bundle);
@@ -411,7 +427,9 @@ fn bundle_js_watch() {
   write(&file_to_watch, "console.log('Hello world2');").unwrap();
 
   assert_contains!(stderr_lines.next().unwrap(), "Check");
-  assert_contains!(stderr_lines.next().unwrap(), "File change detected!");
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "File change detected!");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
   assert_contains!(stderr_lines.next().unwrap(), "mod6.bundle.js");
   let file = PathBuf::from(&bundle);
@@ -449,6 +467,9 @@ fn bundle_watch_not_exit() {
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut deno);
 
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Bundle started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   assert_contains!(stderr_lines.next().unwrap(), "Bundle failed");
   // the target file hasn't been created yet
@@ -458,7 +479,9 @@ fn bundle_watch_not_exit() {
   write(&file_to_watch, "console.log(42);").unwrap();
 
   assert_contains!(stderr_lines.next().unwrap(), "Check");
-  assert_contains!(stderr_lines.next().unwrap(), "File change detected!");
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "File change detected!");
   assert_contains!(stderr_lines.next().unwrap(), "file_to_watch.js");
   assert_contains!(stderr_lines.next().unwrap(), "target.js");
 
@@ -603,6 +626,9 @@ fn run_watch_load_unload_events() {
   .unwrap();
 
   // Wait for the restart
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "Restarting");
 
   // Confirm that the unload event was dispatched from the first run
@@ -636,13 +662,18 @@ fn run_watch_not_exit() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "error:");
   assert_contains!(stderr_lines.next().unwrap(), "Process failed");
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
   write(&file_to_watch, "console.log(42);").unwrap();
 
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Restarting");
   assert_contains!(stdout_lines.next().unwrap(), "42");
   wait_for("Process finished", &mut stderr_lines);
   check_alive_then_kill(child);
@@ -690,7 +721,9 @@ fn run_watch_with_import_map_and_relative_paths() {
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
-
+  let next_line = stderr_lines.next().unwrap();
+  assert_contains!(&next_line, CLEAR_SCREEN);
+  assert_contains!(&next_line, "Process started");
   assert_contains!(stderr_lines.next().unwrap(), "Process finished");
   assert_contains!(stdout_lines.next().unwrap(), "Hello world");
 
