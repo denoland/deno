@@ -907,6 +907,12 @@ itest!(set_exit_code_2 {
   exit_code: 42,
 });
 
+itest!(set_exit_code_in_worker {
+  args: "run --no-check --unstable --allow-read set_exit_code_in_worker.ts",
+  output: "empty.out",
+  exit_code: 42,
+});
+
 itest!(heapstats {
   args: "run --quiet --unstable --v8-flags=--expose-gc heapstats.js",
   output: "heapstats.js.out",

@@ -25,6 +25,8 @@ use deno_web::BlobStore;
 use log::debug;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -135,7 +137,7 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      ops::os::init(),
+      ops::os::init(None),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
@@ -288,6 +290,15 @@ impl MainWorker {
         _ = self.run_event_loop(false) => {}
       };
     }
+  }
+
+  /// Return exit code set by the executed code (either in main worker
+  /// or one of child web workers).
+  pub fn get_exit_code(&mut self) -> i32 {
+    let op_state_rc = self.js_runtime.op_state();
+    let op_state = op_state_rc.borrow();
+    let exit_code = op_state.borrow::<Arc<AtomicI32>>().load(Relaxed);
+    exit_code
   }
 }
 

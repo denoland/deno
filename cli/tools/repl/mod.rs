@@ -747,7 +747,7 @@ pub async fn run(
   ps: &ProcState,
   worker: MainWorker,
   maybe_eval: Option<String>,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
   let mut rustyline_channel = rustyline_channel();
 
@@ -807,5 +807,5 @@ pub async fn run(
 
   editor.save_history()?;
 
-  Ok(())
+  Ok(repl_session.worker.get_exit_code())
 }
