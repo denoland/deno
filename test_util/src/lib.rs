@@ -893,6 +893,25 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/dynamic") => {
+      let mut res = Response::new(Body::from(
+        serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
+      ));
+      res
+        .headers_mut()
+        .insert("cache-control", HeaderValue::from_static("no-cache"));
+      Ok(res)
+    }
+    (_, "/dynamic_cache") => {
+      let mut res = Response::new(Body::from(
+        serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
+      ));
+      res.headers_mut().insert(
+        "cache-control",
+        HeaderValue::from_static("public, max-age=604800, immutable"),
+      );
+      Ok(res)
+    }
     _ => {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);

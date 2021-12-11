@@ -85,6 +85,13 @@
       webidl.assertBranded(this, AbortSignal);
       return this[abortReason];
     }
+
+    throwIfAborted() {
+      webidl.assertBranded(this, AbortSignal);
+      if (this[abortReason] !== undefined) {
+        throw this[abortReason];
+      }
+    }
   }
   defineEventHandler(AbortSignal.prototype, "abort");
 
