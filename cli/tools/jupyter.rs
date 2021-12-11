@@ -7,8 +7,11 @@ use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use std::env::current_exe;
 use tempfile::TempDir;
+use zeromq::Socket;
+use zeromq::SocketSend;
 
 pub fn install() -> Result<(), AnyError> {
   let temp_dir = TempDir::new().unwrap();
@@ -69,28 +72,114 @@ pub async fn kernel(
     .context("Failed to parse connection file")?;
   eprintln!("[DENO] parsed conn file: {:#?}", conn_spec);
 
+  let metadata = KernelMetadata::default();
+  let iopub = PubComm::new(
+    conn_spec.ip.clone(),
+    conn_spec.iopub_port.to_string(),
+    metadata.session_id.clone(),
+    conn_spec.key.clone(),
+  );
+
   let kernel = Kernel {
-    metadata: KernelMetadata::default(),
+    metadata,
     conn_spec,
     state: KernelState::Idle,
+    iopub,
   };
 
-  eprintln!("[DENO] kernel created: {:#?}", kernel);
+  eprintln!("[DENO] kernel created: {:#?}", kernel.metadata.session_id);
 
   Ok(())
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum KernelState {
   Busy,
   Idle,
+  Starting,
 }
 
-#[derive(Debug)]
+impl std::fmt::Display for KernelState {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Busy => write!(f, "busy"),
+      Self::Idle => write!(f, "idle"),
+      Self::Starting => write!(f, "starting"),
+    }
+  }
+}
+
 struct Kernel {
   metadata: KernelMetadata,
   conn_spec: ConnectionSpec,
   state: KernelState,
+  iopub: PubComm,
+}
+
+impl Kernel {
+  async fn set_state(&mut self, state: KernelState, ctx: CommContext) {
+    if self.state == state {
+      return;
+    }
+
+    self.state = state;
+
+    let now = std::time::SystemTime::now();
+    let now: chrono::DateTime<chrono::Utc> = now.into();
+    let now = now.to_rfc3339();
+
+    let msg = Message {
+      is_reply: true,
+      r#type: "status".to_string(),
+      header: MessageHeader {
+        msg_id: uuid::Uuid::new_v4().to_string(),
+        session: ctx.session_id.clone(),
+        // FIXME:
+        username: "<TODO>".to_string(),
+        date: now.to_string(),
+        msg_type: "status".to_string(),
+        // TODO: this should be taken from a global,
+        version: "5.3".to_string(),
+      },
+      parent_header: Some(ctx.message.header),
+      session_id: ctx.session_id,
+      content: json!({
+        "execution_state": state.to_string(),
+      }),
+    };
+    // ignore any error when announcing changes
+    let _ = self.iopub.send(msg).await;
+  }
+
+  // TODO(bartlomieju): feels like this info should be a separate struct
+  // instead of KernelMetadata
+  fn get_kernel_info(&self) -> Value {
+    json!({
+      "status": "ok",
+      "protocol_version": self.metadata.protocol_version,
+      "implementation_version": self.metadata.kernel_version,
+      "implementation": self.metadata.implementation_name,
+      "language_info": {
+        "name": self.metadata.language,
+        "version": self.metadata.language_version,
+        "mime": self.metadata.mime,
+        "file_extension": self.metadata.file_ext,
+      },
+      "help_links": [{
+        "text": self.metadata.help_text,
+        "url": self.metadata.help_url
+      }],
+      "banner": self.metadata.banner,
+      "debugger": false
+    })
+  }
+
+  fn get_comm_info() -> Value {
+    json!({
+      "status": "ok",
+      "comms": {}
+    })
+  }
 }
 
 #[derive(Debug)]
@@ -140,4 +229,90 @@ struct ConnectionSpec {
   iopub_port: u32,
   signature_scheme: String,
   key: String,
+}
+
+struct CommContext {
+  message: Message,
+  hmac: String,
+  session_id: String,
+}
+
+struct MessageHeader {
+  msg_id: String,
+  session: String,
+  username: String,
+  date: String,
+  msg_type: String,
+  version: String,
+}
+
+struct Message {
+  is_reply: bool,
+  r#type: String,
+  header: MessageHeader,
+  parent_header: Option<MessageHeader>,
+  content: Value,
+  session_id: String,
+}
+
+impl Message {
+  fn new() -> Self {
+    todo!()
+  }
+
+  fn calc_hmac(&self, hmac: String) -> String {
+    todo!()
+  }
+
+  fn serialize(&self, hmac: String) -> Vec<u8> {
+    todo!()
+  }
+
+  fn hmac_verify(&self, expected_signature: Vec<u8>, hmac: String) {
+    todo!()
+  }
+
+  fn from_data(data: Vec<u8>, hmac: String) -> Result<Self, AnyError> {
+    todo!()
+  }
+}
+
+struct PubComm {
+  hostname: String,
+  port: String,
+  session_id: String,
+  hmac_key: String,
+  socket: zeromq::PubSocket,
+}
+
+impl PubComm {
+  pub fn new(
+    hostname: String,
+    port: String,
+    session_id: String,
+    hmac_key: String,
+  ) -> Self {
+    Self {
+      hostname,
+      port,
+      session_id,
+      hmac_key,
+      socket: zeromq::PubSocket::new(),
+    }
+  }
+
+  pub async fn connect(&mut self) -> Result<(), AnyError> {
+    self
+      .socket
+      .connect(&format!("tcp://{}:{}", self.hostname, self.port))
+      .await?;
+
+    Ok(())
+  }
+
+  pub async fn send(&mut self, msg: Message) -> Result<(), AnyError> {
+    let msg_str = msg.serialize(self.hmac_key.clone());
+    self.socket.send(msg_str.into()).await?;
+    Ok(())
+  }
 }
