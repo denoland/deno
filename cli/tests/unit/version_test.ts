@@ -8,6 +8,7 @@ Deno.test(function version() {
   assert(
     pattern.test(Deno.version.typescript) ||
       Deno.version.typescript === "0-dev" ||
-      Deno.version.typescript === "0-beta",
+      Deno.version.typescript === "0-beta" ||
+      Deno.version.typescript === "1-rc",
   );
 });

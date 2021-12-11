@@ -20,8 +20,6 @@ async function dlint() {
     ":!:cli/tests/testdata/swc_syntax_error.ts",
     ":!:cli/tests/testdata/038_checkjs.js",
     ":!:cli/tests/testdata/error_008_checkjs.js",
-    ":!:std/**/testdata/*",
-    ":!:std/**/node_modules/*",
     ":!:cli/bench/node*.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/dts/**",
@@ -31,6 +29,7 @@ async function dlint() {
     ":!:cli/tests/testdata/lint/**",
     ":!:cli/tests/testdata/tsc/**",
     ":!:cli/tsc/*typescript.js",
+    ":!:cli/tsc/compiler.d.ts",
     ":!:test_util/wpt/**",
   ]);
 

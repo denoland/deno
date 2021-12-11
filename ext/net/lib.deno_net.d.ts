@@ -139,10 +139,10 @@ declare namespace Deno {
      * If not specified, defaults to `127.0.0.1`. */
     hostname?: string;
     /**
+     * Server certificate file.
+     *
      * @deprecated This option is deprecated and will be removed in a future
      * release.
-     *
-     * Server certificate file.
      */
     certFile?: string;
     /** A list of root certificates that will be used in addition to the

@@ -165,14 +165,14 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    visitor.visit_f32(self.input.number_value(&mut self.scope).unwrap() as f32)
+    visitor.visit_f32(self.input.number_value(self.scope).unwrap() as f32)
   }
 
   fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
   where
     V: Visitor<'de>,
   {
-    visitor.visit_f64(self.input.number_value(&mut self.scope).unwrap())
+    visitor.visit_f64(self.input.number_value(self.scope).unwrap())
   }
 
   wip!(deserialize_char);
