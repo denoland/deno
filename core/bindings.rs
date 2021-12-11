@@ -26,6 +26,11 @@ use v8::SharedArrayBuffer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
+const UNDEFINED_OP_ID_MSG: &str =
+  "invalid op id: received `undefined` instead of an integer.
+This error is often caused by a typo in an op name, or not calling
+JsRuntime::sync_ops_cache() after JsRuntime initialization.";
+
 lazy_static::lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
     v8::ExternalReferences::new(&[
@@ -438,10 +443,7 @@ fn opcall_sync<'s>(
     Ok(op_id) => op_id,
     Err(err) => {
       let msg = if args.get(0).is_undefined() {
-        "invalid op id: received `undefined` instead of an integer. 
-        This error is often caused by a typo in an op name, or not calling 
-        JsRuntime::sync_ops_cache() after JsRuntime initialization."
-          .to_string()
+        UNDEFINED_OP_ID_MSG.to_string()
       } else {
         format!("invalid op id: {}", err)
       };
@@ -503,10 +505,7 @@ fn opcall_async<'s>(
     Ok(op_id) => op_id,
     Err(err) => {
       let msg = if args.get(0).is_undefined() {
-        "invalid op id: received `undefined` instead of an integer. 
-        This error is often caused by a typo in an op name, or not calling 
-        JsRuntime::sync_ops_cache() after JsRuntime initialization."
-          .to_string()
+        UNDEFINED_OP_ID_MSG.to_string()
       } else {
         format!("invalid op id: {}", err)
       };
