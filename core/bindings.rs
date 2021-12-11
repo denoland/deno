@@ -438,11 +438,10 @@ fn opcall_sync<'s>(
     Ok(op_id) => op_id,
     Err(err) => {
       let msg = if args.get(0).is_undefined() {
-        format!(
-          "invalid op id: received `undefined` instead of an integer. 
+        "invalid op id: received `undefined` instead of an integer. 
         This error is often caused by a typo in an op name, or not calling 
         JsRuntime::sync_ops_cache() after JsRuntime initialization."
-        )
+          .to_string()
       } else {
         format!("invalid op id: {}", err)
       };
@@ -504,11 +503,10 @@ fn opcall_async<'s>(
     Ok(op_id) => op_id,
     Err(err) => {
       let msg = if args.get(0).is_undefined() {
-        format!(
-          "invalid op id: received `undefined` instead of an integer. 
+        "invalid op id: received `undefined` instead of an integer. 
         This error is often caused by a typo in an op name, or not calling 
         JsRuntime::sync_ops_cache() after JsRuntime initialization."
-        )
+          .to_string()
       } else {
         format!("invalid op id: {}", err)
       };
