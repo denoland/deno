@@ -12,7 +12,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
-  const { atob, btoa } = window.__bootstrap.base64;
+  const { btoa } = window.__bootstrap.base64;
 
   const {
     ArrayPrototypeFind,
@@ -23,7 +23,6 @@
     BigInt64Array,
     StringPrototypeToUpperCase,
     StringPrototypeReplace,
-    StringPrototypeCharCodeAt,
     StringFromCharCode,
     Symbol,
     SymbolFor,
@@ -169,23 +168,6 @@
     },
   };
 
-  // Decodes the unpadded base64 to the octet sequence containing key value `k` defined in RFC7518 Section 6.4
-  function decodeSymmetricKey(key) {
-    // Decode from base64url without `=` padding.
-    const base64 = StringPrototypeReplace(
-      StringPrototypeReplace(key, /\-/g, "+"),
-      /\_/g,
-      "/",
-    );
-    const decodedKey = atob(base64);
-    const keyLength = decodedKey.length;
-    const keyBytes = new Uint8Array(keyLength);
-    for (let i = 0; i < keyLength; i++) {
-      keyBytes[i] = StringPrototypeCharCodeAt(decodedKey, i);
-    }
-    return keyBytes;
-  }
-
   function unpaddedBase64(bytes) {
     let binaryString = "";
     for (let i = 0; i < bytes.length; i++) {
@@ -270,7 +252,7 @@
 
   /**
    * @param {ArrayBufferView | ArrayBuffer} input
-   * @returns
+   * @returns {Uint8Array}
    */
   function copyBuffer(input) {
     return TypedArrayPrototypeSlice(
@@ -759,6 +741,7 @@
      * @param {KeyUsages[]} keyUsages
      * @returns {Promise<any>}
      */
+    // deno-lint-ignore require-await
     async importKey(format, keyData, algorithm, extractable, keyUsages) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'importKey' on 'SubtleCrypto'";
@@ -799,7 +782,9 @@
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
 
-      switch (normalizedAlgorithm.name) {
+      const algorithmName = normalizedAlgorithm.name;
+
+      switch (algorithmName) {
         case "HMAC": {
           return importKeyHMAC(
             format,
@@ -810,7 +795,7 @@
           );
         }
         case "ECDSA": {
-          return await importKeyECDSA(
+          return importKeyECDSA(
             format,
             normalizedAlgorithm,
             keyData,
@@ -819,24 +804,14 @@
           );
         }
         case "RSASSA-PKCS1-v1_5":
-        case "RSA-PSS": {
-          return await importKeyRSA(
-            format,
-            normalizedAlgorithm,
-            keyData,
-            extractable,
-            keyUsages,
-            ["sign"],
-          );
-        }
+        case "RSA-PSS":
         case "RSA-OAEP": {
-          return await importKeyRSA(
+          return importKeyRSA(
             format,
             normalizedAlgorithm,
             keyData,
             extractable,
             keyUsages,
-            ["decrypt", "unwrapKey"],
           );
         }
         case "HKDF": {
@@ -848,7 +823,7 @@
         case "AES-CTR":
         case "AES-CBC":
         case "AES-GCM": {
-          return await importKeyAES(
+          return importKeyAES(
             format,
             normalizedAlgorithm,
             keyData,
@@ -858,7 +833,7 @@
           );
         }
         case "AES-KW": {
-          return await importKeyAES(
+          return importKeyAES(
             format,
             normalizedAlgorithm,
             keyData,
@@ -894,7 +869,9 @@
       // 2.
       const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
 
-      switch (key[_algorithm].name) {
+      const algorithmName = key[_algorithm].name;
+
+      switch (algorithmName) {
         case "HMAC": {
           return exportKeyHMAC(format, key, innerKey);
         }
@@ -1471,7 +1448,9 @@
   }
 
   async function generateKey(normalizedAlgorithm, extractable, usages) {
-    switch (normalizedAlgorithm.name) {
+    const algorithmName = normalizedAlgorithm.name;
+
+    switch (algorithmName) {
       case "RSASSA-PKCS1-v1_5":
       case "RSA-PSS": {
         // 1.
@@ -1488,21 +1467,20 @@
         const keyData = await core.opAsync(
           "op_crypto_generate_key",
           {
-            name: normalizedAlgorithm.name,
+            name: algorithmName,
             modulusLength: normalizedAlgorithm.modulusLength,
             publicExponent: normalizedAlgorithm.publicExponent,
           },
         );
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          // PKCS#1 for RSA
-          type: "raw",
+          type: "private",
           data: keyData,
         });
 
         // 4-8.
         const algorithm = {
-          name: normalizedAlgorithm.name,
+          name: algorithmName,
           modulusLength: normalizedAlgorithm.modulusLength,
           publicExponent: normalizedAlgorithm.publicExponent,
           hash: normalizedAlgorithm.hash,
@@ -1549,21 +1527,20 @@
         const keyData = await core.opAsync(
           "op_crypto_generate_key",
           {
-            name: normalizedAlgorithm.name,
+            name: algorithmName,
             modulusLength: normalizedAlgorithm.modulusLength,
             publicExponent: normalizedAlgorithm.publicExponent,
           },
         );
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          // PKCS#1 for RSA
-          type: "raw",
+          type: "private",
           data: keyData,
         });
 
         // 4-8.
         const algorithm = {
-          name: normalizedAlgorithm.name,
+          name: algorithmName,
           modulusLength: normalizedAlgorithm.modulusLength,
           publicExponent: normalizedAlgorithm.publicExponent,
           hash: normalizedAlgorithm.hash,
@@ -1591,6 +1568,8 @@
         return { publicKey, privateKey };
       }
       case "ECDSA": {
+        const namedCurve = normalizedAlgorithm.namedCurve;
+
         // 1.
         if (
           ArrayPrototypeFind(
@@ -1606,15 +1585,15 @@
         if (
           ArrayPrototypeIncludes(
             supportedNamedCurves,
-            normalizedAlgorithm.namedCurve,
+            namedCurve,
           )
         ) {
           const keyData = await core.opAsync("op_crypto_generate_key", {
-            name: "ECDSA",
-            namedCurve: normalizedAlgorithm.namedCurve,
+            name: algorithmName,
+            namedCurve,
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "pkcs8",
+            type: "private",
             data: keyData,
           });
         } else {
@@ -1623,8 +1602,8 @@
 
         // 4-6.
         const algorithm = {
-          name: "ECDSA",
-          namedCurve: normalizedAlgorithm.namedCurve,
+          name: algorithmName,
+          namedCurve,
         };
 
         // 7-11.
@@ -1649,6 +1628,8 @@
         return { publicKey, privateKey };
       }
       case "ECDH": {
+        const namedCurve = normalizedAlgorithm.namedCurve;
+
         // 1.
         if (
           ArrayPrototypeFind(
@@ -1664,15 +1645,15 @@
         if (
           ArrayPrototypeIncludes(
             supportedNamedCurves,
-            normalizedAlgorithm.namedCurve,
+            namedCurve,
           )
         ) {
           const keyData = await core.opAsync("op_crypto_generate_key", {
-            name: "ECDH",
-            namedCurve: normalizedAlgorithm.namedCurve,
+            name: algorithmName,
+            namedCurve,
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: "pkcs8",
+            type: "private",
             data: keyData,
           });
         } else {
@@ -1681,8 +1662,8 @@
 
         // 4-6.
         const algorithm = {
-          name: "ECDH",
-          namedCurve: normalizedAlgorithm.namedCurve,
+          name: algorithmName,
+          namedCurve,
         };
 
         // 7-11.
@@ -1763,16 +1744,19 @@
 
         // 3-4.
         const keyData = await core.opAsync("op_crypto_generate_key", {
-          name: "HMAC",
+          name: algorithmName,
           hash: normalizedAlgorithm.hash.name,
           length,
         });
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, { type: "raw", data: keyData });
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: "secret",
+          data: keyData,
+        });
 
         // 6-10.
         const algorithm = {
-          name: "HMAC",
+          name: algorithmName,
           hash: {
             name: normalizedAlgorithm.hash.name,
           },
@@ -1811,6 +1795,10 @@
         // 1-3.
         const jwk = {
           kty: "oct",
+          // 5.
+          ext: key[_extractable],
+          // 6.
+          "key_ops": key.usages,
           k: unpaddedBase64(innerKey.data),
         };
 
@@ -1833,10 +1821,6 @@
             );
         }
 
-        // 5.
-        jwk.key_ops = key[_usages];
-        // 6.
-        jwk.ext = key[_extractable];
         // 7.
         return jwk;
       }
@@ -1863,8 +1847,11 @@
       throw new DOMException("Invalid key usages", "SyntaxError");
     }
 
+    const algorithmName = normalizedAlgorithm.name;
+
     // 2.
     let data = keyData;
+
     switch (format) {
       case "raw": {
         // 2.
@@ -1896,14 +1883,19 @@
         }
 
         // 4.
-        data = decodeSymmetricKey(jwk.k);
+        const { rawData } = core.opSync(
+          "op_crypto_import_key",
+          { algorithm: "AES" },
+          { jwkSecret: jwk },
+        );
+        data = rawData.data;
 
         // 5.
         switch (data.byteLength * 8) {
           case 128:
             if (
               jwk.alg !== undefined &&
-              jwk.alg !== aesJwkAlg[normalizedAlgorithm.name][128]
+              jwk.alg !== aesJwkAlg[algorithmName][128]
             ) {
               throw new DOMException("Invalid algorithm", "DataError");
             }
@@ -1911,7 +1903,7 @@
           case 192:
             if (
               jwk.alg !== undefined &&
-              jwk.alg !== aesJwkAlg[normalizedAlgorithm.name][192]
+              jwk.alg !== aesJwkAlg[algorithmName][192]
             ) {
               throw new DOMException("Invalid algorithm", "DataError");
             }
@@ -1919,7 +1911,7 @@
           case 256:
             if (
               jwk.alg !== undefined &&
-              jwk.alg !== aesJwkAlg[normalizedAlgorithm.name][256]
+              jwk.alg !== aesJwkAlg[algorithmName][256]
             ) {
               throw new DOMException("Invalid algorithm", "DataError");
             }
@@ -1980,13 +1972,13 @@
 
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
-      type: "raw",
+      type: "secret",
       data,
     });
 
     // 4-7.
     const algorithm = {
-      name: normalizedAlgorithm.name,
+      name: algorithmName,
       length: data.byteLength * 8,
     };
 
@@ -2033,6 +2025,7 @@
       case "jwk": {
         // TODO(@littledivy): Why does the spec validate JWK twice?
         const jwk = keyData;
+
         // 2.
         if (jwk.kty !== "oct") {
           throw new DOMException(
@@ -2050,9 +2043,16 @@
         }
 
         // 4.
-        data = decodeSymmetricKey(jwk.k);
+        const { rawData } = core.opSync(
+          "op_crypto_import_key",
+          { algorithm: "HMAC" },
+          { jwkSecret: jwk },
+        );
+        data = rawData.data;
+
         // 5.
         hash = normalizedAlgorithm.hash;
+
         // 6.
         switch (hash.name) {
           case "SHA-1": {
@@ -2165,13 +2165,9 @@
       length = normalizedAlgorithm.length;
     }
 
-    if (keyUsages.length == 0) {
-      throw new DOMException("Key usage is empty", "SyntaxError");
-    }
-
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
-      type: "raw",
+      type: "secret",
       data,
     });
 
@@ -2192,7 +2188,7 @@
     return key;
   }
 
-  async function importKeyECDSA(
+  function importKeyECDSA(
     format,
     normalizedAlgorithm,
     keyData,
@@ -2225,16 +2221,13 @@
         }
 
         // 3.
-        const { data } = await core.opAsync("op_crypto_import_key", {
+        const { rawData } = core.opSync("op_crypto_import_key", {
           algorithm: "ECDSA",
           namedCurve: normalizedAlgorithm.namedCurve,
-        }, keyData);
+        }, { raw: keyData });
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "raw",
-          data,
-        });
+        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
 
         // 4-5.
         const algorithm = {
@@ -2258,13 +2251,27 @@
     }
   }
 
-  async function importKeyRSA(
+  const SUPPORTED_RSA_KEY_USAGES = {
+    "RSASSA-PKCS1-v1_5": {
+      spki: ["verify"],
+      pkcs8: ["sign"],
+    },
+    "RSA-PSS": {
+      spki: ["verify"],
+      pkcs8: ["sign"],
+    },
+    "RSA-OAEP": {
+      spki: ["encrypt", "wrapKey"],
+      pkcs8: ["decrypt", "unwrapKey"],
+    },
+  };
+
+  function importKeyRSA(
     format,
     normalizedAlgorithm,
     keyData,
     extractable,
     keyUsages,
-    supportedKeyUsages,
   ) {
     switch (format) {
       case "pkcs8": {
@@ -2272,35 +2279,29 @@
         if (
           ArrayPrototypeFind(
             keyUsages,
-            (u) => !ArrayPrototypeIncludes(supportedKeyUsages, u),
+            (u) =>
+              !ArrayPrototypeIncludes(
+                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].pkcs8,
+                u,
+              ),
           ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
         }
 
-        if (keyUsages.length == 0) {
-          throw new DOMException("Key usage is empty", "SyntaxError");
-        }
-
         // 2-9.
-        const { modulusLength, publicExponent, data } = await core
-          .opAsync(
-            "op_crypto_import_key",
-            {
-              algorithm: normalizedAlgorithm.name,
-              format: "pkcs8",
-              // Needed to perform step 7 without normalization.
-              hash: normalizedAlgorithm.hash.name,
-            },
-            keyData,
-          );
+        const { modulusLength, publicExponent, rawData } = core.opSync(
+          "op_crypto_import_key",
+          {
+            algorithm: normalizedAlgorithm.name,
+            // Needed to perform step 7 without normalization.
+            hash: normalizedAlgorithm.hash.name,
+          },
+          { pkcs8: keyData },
+        );
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, {
-          // PKCS#1 for RSA
-          type: "raw",
-          data,
-        });
+        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
 
         const algorithm = {
           name: normalizedAlgorithm.name,
@@ -2311,6 +2312,52 @@
 
         const key = constructKey(
           "private",
+          extractable,
+          usageIntersection(keyUsages, recognisedUsages),
+          algorithm,
+          handle,
+        );
+
+        return key;
+      }
+      case "spki": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) =>
+              !ArrayPrototypeIncludes(
+                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].spki,
+                u,
+              ),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        // 2-9.
+        const { modulusLength, publicExponent, rawData } = core.opSync(
+          "op_crypto_import_key",
+          {
+            algorithm: normalizedAlgorithm.name,
+            // Needed to perform step 7 without normalization.
+            hash: normalizedAlgorithm.hash.name,
+          },
+          { spki: keyData },
+        );
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
+
+        const algorithm = {
+          name: normalizedAlgorithm.name,
+          modulusLength,
+          publicExponent,
+          hash: normalizedAlgorithm.hash,
+        };
+
+        const key = constructKey(
+          "public",
           extractable,
           usageIntersection(keyUsages, recognisedUsages),
           algorithm,
@@ -2355,7 +2402,7 @@
     // 3.
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
-      type: "raw",
+      type: "secret",
       data: keyData,
     });
 
@@ -2407,7 +2454,7 @@
     // 4.
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
-      type: "raw",
+      type: "secret",
       data: keyData,
     });
 
@@ -2533,6 +2580,8 @@
   }
 
   async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
+    const algorithmName = normalizedAlgorithm.name;
+
     // 2.
     if (!ArrayPrototypeIncludes([128, 192, 256], normalizedAlgorithm.length)) {
       throw new DOMException("Invalid key length", "OperationError");
@@ -2540,18 +2589,18 @@
 
     // 3.
     const keyData = await core.opAsync("op_crypto_generate_key", {
-      name: normalizedAlgorithm.name,
+      name: algorithmName,
       length: normalizedAlgorithm.length,
     });
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
-      type: "raw",
+      type: "secret",
       data: keyData,
     });
 
     // 6-8.
     const algorithm = {
-      name: normalizedAlgorithm.name,
+      name: algorithmName,
       length: normalizedAlgorithm.length,
     };
 
@@ -2634,7 +2683,7 @@
         ) {
           const baseKeyhandle = baseKey[_handle];
           const baseKeyData = WeakMapPrototypeGet(KEY_STORE, baseKeyhandle);
-          const publicKeyhandle = baseKey[_handle];
+          const publicKeyhandle = publicKey[_handle];
           const publicKeyData = WeakMapPrototypeGet(KEY_STORE, publicKeyhandle);
 
           const buf = await core.opAsync("op_crypto_derive_bits", {
@@ -2705,6 +2754,7 @@
           key: keyData,
           algorithm: "RSA-OAEP",
           hash: hashAlgorithm,
+          label: normalizedAlgorithm.label,
         }, data);
 
         // 6.
