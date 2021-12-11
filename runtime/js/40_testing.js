@@ -12,6 +12,7 @@
     AggregateError,
     ArrayPrototypeFilter,
     ArrayPrototypePush,
+    ArrayPrototypeShift,
     ArrayPrototypeSome,
     DateNow,
     Error,
@@ -34,7 +35,7 @@
     throw new Error(`Test file attempted to exit with exit code: ${exitCode}`);
   }
 
-  let opSanitizerDelayResolve = null;
+  const opSanitizerDelayResolveQueue = [];
 
   // Even if every resource is closed by the end of a test, there can be a delay
   // until the pending ops have all finished. This function returns a promise
@@ -46,23 +47,16 @@
   // before that, though, in order to give time for worker message ops to finish
   // (since timeouts of 0 don't queue tasks in the timer queue immediately).
   function opSanitizerDelay() {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       setTimeout(() => {
-        if (opSanitizerDelayResolve !== null) {
-          reject(new Error("There is an op sanitizer delay already."));
-        } else {
-          opSanitizerDelayResolve = resolve;
-        }
+        ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
       }, 0);
     });
   }
 
   function handleOpSanitizerDelayMacrotask() {
-    if (opSanitizerDelayResolve !== null) {
-      opSanitizerDelayResolve();
-      opSanitizerDelayResolve = null;
-    }
-    return true;
+    ArrayPrototypeShift(opSanitizerDelayResolveQueue)?.();
+    return opSanitizerDelayResolveQueue.length === 0;
   }
 
   // Wrap test function in additional assertion that makes sure

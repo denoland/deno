@@ -691,20 +691,79 @@ Deno.test(async function testAesKeyGen() {
   assertEquals(algorithm.length, 256);
 });
 
+Deno.test(async function testUnwrapKey() {
+  const subtle = crypto.subtle;
+
+  const AES_KEY: AesKeyAlgorithm & AesCbcParams = {
+    name: "AES-CBC",
+    length: 128,
+    iv: new Uint8Array(16),
+  };
+
+  const RSA_KEY: RsaHashedKeyGenParams & RsaOaepParams = {
+    name: "RSA-OAEP",
+    modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]),
+    hash: "SHA-1",
+  };
+
+  const aesKey = await subtle.generateKey(AES_KEY, true, [
+    "encrypt",
+    "decrypt",
+  ]);
+
+  const rsaKeyPair = await subtle.generateKey(
+    {
+      name: "RSA-OAEP",
+      hash: "SHA-1",
+      publicExponent: new Uint8Array([1, 0, 1]),
+      modulusLength: 2048,
+    },
+    false,
+    ["wrapKey", "encrypt", "unwrapKey", "decrypt"],
+  );
+
+  const enc = await subtle.wrapKey(
+    "raw",
+    aesKey,
+    rsaKeyPair.publicKey,
+    RSA_KEY,
+  );
+  const unwrappedKey = await subtle.unwrapKey(
+    "raw",
+    enc,
+    rsaKeyPair.privateKey,
+    RSA_KEY,
+    AES_KEY,
+    false,
+    ["encrypt", "decrypt"],
+  );
+
+  assert(unwrappedKey instanceof CryptoKey);
+  assertEquals(unwrappedKey.type, "secret");
+  assertEquals(unwrappedKey.extractable, false);
+  assertEquals(unwrappedKey.usages, ["encrypt", "decrypt"]);
+});
+
 Deno.test(async function testDecryptWithInvalidIntializationVector() {
-  const data = new Uint8Array([42, 42, 42, 42]);
-  const key = await crypto.subtle.generateKey(
+  // deno-fmt-ignore
+  const data = new Uint8Array([42,42,42,42,42,42,42,42,42,42,42,42,42,42,42]);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(16),
     { name: "AES-CBC", length: 256 },
     true,
     ["encrypt", "decrypt"],
   );
-  const initVector = crypto.getRandomValues(new Uint8Array(16));
+  // deno-fmt-ignore
+  const initVector = new Uint8Array([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
   const encrypted = await crypto.subtle.encrypt(
     { name: "AES-CBC", iv: initVector },
     key,
     data,
   );
-  const initVector2 = crypto.getRandomValues(new Uint8Array(16));
+  // deno-fmt-ignore
+  const initVector2 = new Uint8Array([15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0]);
   await assertRejects(async () => {
     await crypto.subtle.decrypt(
       { name: "AES-CBC", iv: initVector2 },

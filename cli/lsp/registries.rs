@@ -282,7 +282,7 @@ impl Default for ModuleRegistry {
     let dir = deno_dir::DenoDir::new(None).unwrap();
     let location = dir.root.join("registries");
     let http_cache = HttpCache::new(&location);
-    let cache_setting = CacheSetting::Use;
+    let cache_setting = CacheSetting::RespectHeaders;
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_setting,
@@ -305,7 +305,7 @@ impl ModuleRegistry {
     let http_cache = HttpCache::new(location);
     let file_fetcher = FileFetcher::new(
       http_cache,
-      CacheSetting::Use,
+      CacheSetting::RespectHeaders,
       true,
       None,
       BlobStore::default(),
@@ -387,12 +387,17 @@ impl ModuleRegistry {
       .await;
     // if there is an error fetching, we will cache an empty file, so that
     // subsequent requests they are just an empty doc which will error without
-    // needing to connect to the remote URL
+    // needing to connect to the remote URL. We will cache it for 1 week.
     if fetch_result.is_err() {
+      let mut headers_map = HashMap::new();
+      headers_map.insert(
+        "cache-control".to_string(),
+        "max-age=604800, immutable".to_string(),
+      );
       self
         .file_fetcher
         .http_cache
-        .set(specifier, HashMap::default(), &[])?;
+        .set(specifier, headers_map, &[])?;
     }
     let file = fetch_result?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;

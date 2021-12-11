@@ -9,7 +9,6 @@ use super::tsc::NavigationTree;
 
 use deno_ast::swc::ast;
 use deno_ast::swc::common::Span;
-use deno_ast::swc::visit::Node;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
 use deno_ast::ParsedSource;
@@ -129,7 +128,7 @@ impl DenoTestCollector {
 }
 
 impl Visit for DenoTestCollector {
-  fn visit_call_expr(&mut self, node: &ast::CallExpr, _parent: &dyn Node) {
+  fn visit_call_expr(&mut self, node: &ast::CallExpr) {
     if let ast::ExprOrSuper::Expr(callee_expr) = &node.callee {
       match callee_expr.as_ref() {
         ast::Expr::Ident(ident) => {
@@ -155,7 +154,7 @@ impl Visit for DenoTestCollector {
     }
   }
 
-  fn visit_var_decl(&mut self, node: &ast::VarDecl, _parent: &dyn Node) {
+  fn visit_var_decl(&mut self, node: &ast::VarDecl) {
     for decl in &node.decls {
       if let Some(init) = &decl.init {
         match init.as_ref() {
@@ -401,12 +400,7 @@ fn collect_test(
     if let Some(parsed_source) = parsed_source {
       let mut collector =
         DenoTestCollector::new(specifier.clone(), parsed_source.clone());
-      parsed_source.module().visit_with(
-        &ast::Invalid {
-          span: deno_ast::swc::common::DUMMY_SP,
-        },
-        &mut collector,
-      );
+      parsed_source.module().visit_with(&mut collector);
       return Ok(collector.take());
     }
   }
@@ -564,12 +558,7 @@ mod tests {
     .unwrap();
     let mut collector =
       DenoTestCollector::new(specifier, parsed_module.clone());
-    parsed_module.module().visit_with(
-      &ast::Invalid {
-        span: deno_ast::swc::common::DUMMY_SP,
-      },
-      &mut collector,
-    );
+    parsed_module.module().visit_with(&mut collector);
     assert_eq!(
       collector.take(),
       vec![

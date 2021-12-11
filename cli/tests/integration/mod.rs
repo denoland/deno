@@ -5,7 +5,7 @@ use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
-use deno_runtime::deno_tls::webpki;
+use deno_runtime::deno_tls::rustls_pemfile;
 use std::fs;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -1143,36 +1143,40 @@ async fn listen_tls_alpn() {
         .spawn()
         .unwrap();
       let stdout = child.stdout.as_mut().unwrap();
-      let mut buffer = [0; 5];
-      let read = stdout.read(&mut buffer).unwrap();
+      let mut msg = [0; 5];
+      let read = stdout.read(&mut msg).unwrap();
       assert_eq!(read, 5);
-      let msg = std::str::from_utf8(&buffer).unwrap();
-      assert_eq!(msg, "READY");
+      assert_eq!(&msg, b"READY");
 
-      let mut cfg = rustls::ClientConfig::new();
-      let reader = &mut BufReader::new(Cursor::new(include_bytes!(
+      let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
         "../testdata/tls/RootCA.crt"
       )));
-      cfg.root_store.add_pem_file(reader).unwrap();
-      cfg.alpn_protocols.push("foobar".as_bytes().to_vec());
+      let certs = rustls_pemfile::certs(&mut reader).unwrap();
+      let mut root_store = rustls::RootCertStore::empty();
+      root_store.add_parsable_certificates(&certs);
+      let mut cfg = rustls::ClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+      cfg.alpn_protocols.push(b"foobar".to_vec());
       let cfg = Arc::new(cfg);
 
-      let hostname =
-        webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
+      let hostname = rustls::ServerName::try_from("localhost").unwrap();
 
       let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
         .await
         .unwrap();
       let mut tls_stream =
-        TlsStream::new_client_side(tcp_stream, &cfg, hostname);
+        TlsStream::new_client_side(tcp_stream, cfg, hostname);
+
       tls_stream.handshake().await.unwrap();
-      let (_, session) = tls_stream.get_ref();
 
-      let alpn = session.get_alpn_protocol().unwrap();
-      assert_eq!(std::str::from_utf8(alpn).unwrap(), "foobar");
+      let (_, rustls_connection) = tls_stream.get_ref();
+      let alpn = rustls_connection.alpn_protocol().unwrap();
+      assert_eq!(alpn, b"foobar");
 
-      child.kill().unwrap();
-      child.wait().unwrap();
+      let status = child.wait().unwrap();
+      assert!(status.success());
     })
     .await;
 }
@@ -1190,41 +1194,45 @@ async fn listen_tls_alpn_fail() {
         .arg("--quiet")
         .arg("--allow-net")
         .arg("--allow-read")
-        .arg("./listen_tls_alpn.ts")
+        .arg("./listen_tls_alpn_fail.ts")
         .arg("4505")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
       let stdout = child.stdout.as_mut().unwrap();
-      let mut buffer = [0; 5];
-      let read = stdout.read(&mut buffer).unwrap();
+      let mut msg = [0; 5];
+      let read = stdout.read(&mut msg).unwrap();
       assert_eq!(read, 5);
-      let msg = std::str::from_utf8(&buffer).unwrap();
-      assert_eq!(msg, "READY");
+      assert_eq!(&msg, b"READY");
 
-      let mut cfg = rustls::ClientConfig::new();
-      let reader = &mut BufReader::new(Cursor::new(include_bytes!(
+      let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
         "../testdata/tls/RootCA.crt"
       )));
-      cfg.root_store.add_pem_file(reader).unwrap();
-      cfg.alpn_protocols.push("boofar".as_bytes().to_vec());
+      let certs = rustls_pemfile::certs(&mut reader).unwrap();
+      let mut root_store = rustls::RootCertStore::empty();
+      root_store.add_parsable_certificates(&certs);
+      let mut cfg = rustls::ClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+      cfg.alpn_protocols.push(b"boofar".to_vec());
       let cfg = Arc::new(cfg);
 
-      let hostname =
-        webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
+      let hostname = rustls::ServerName::try_from("localhost").unwrap();
 
       let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
         .await
         .unwrap();
       let mut tls_stream =
-        TlsStream::new_client_side(tcp_stream, &cfg, hostname);
-      tls_stream.handshake().await.unwrap();
-      let (_, session) = tls_stream.get_ref();
+        TlsStream::new_client_side(tcp_stream, cfg, hostname);
 
-      assert!(session.get_alpn_protocol().is_none());
+      tls_stream.handshake().await.unwrap_err();
 
-      child.kill().unwrap();
-      child.wait().unwrap();
+      let (_, rustls_connection) = tls_stream.get_ref();
+      assert!(rustls_connection.alpn_protocol().is_none());
+
+      let status = child.wait().unwrap();
+      assert!(status.success());
     })
     .await;
 }

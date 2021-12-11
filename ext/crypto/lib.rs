@@ -11,7 +11,6 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
-use serde::Serialize;
 
 use std::cell::RefCell;
 use std::num::NonZeroU32;
@@ -40,6 +39,7 @@ use rsa::padding::PaddingScheme;
 use rsa::pkcs1::der::Decodable;
 use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::FromRsaPrivateKey;
+use rsa::pkcs1::FromRsaPublicKey;
 use rsa::pkcs1::ToRsaPrivateKey;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::FromPrivateKey;
@@ -56,45 +56,25 @@ use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
+mod import_key;
 mod key;
+mod shared;
 
 use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
 
+pub use crate::import_key::op_crypto_import_key;
+use crate::shared::ID_MFG1;
+use crate::shared::ID_P_SPECIFIED;
+use crate::shared::ID_SHA1_OID;
+
 // Allowlist for RSA public exponents.
 lazy_static! {
   static ref PUB_EXPONENT_1: BigUint = BigUint::from_u64(3).unwrap();
   static ref PUB_EXPONENT_2: BigUint = BigUint::from_u64(65537).unwrap();
 }
-
-const RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1");
-const SHA1_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.5");
-const SHA256_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.11");
-const SHA384_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.12");
-const SHA512_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.13");
-const RSASSA_PSS_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.10");
-const ID_SHA1_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.3.14.3.2.26");
-const ID_SHA256_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("2.16.840.1.101.3.4.2.1");
-const ID_SHA384_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("2.16.840.1.101.3.4.2.2");
-const ID_SHA512_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("2.16.840.1.101.3.4.2.3");
-const ID_MFG1: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.8");
-const RSAES_OAEP_OID: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.7");
-const ID_P_SPECIFIED: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.9");
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
@@ -112,7 +92,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_sign_key", op_async(op_crypto_sign_key)),
       ("op_crypto_verify_key", op_async(op_crypto_verify_key)),
       ("op_crypto_derive_bits", op_async(op_crypto_derive_bits)),
-      ("op_crypto_import_key", op_async(op_crypto_import_key)),
+      ("op_crypto_import_key", op_sync(op_crypto_import_key)),
       ("op_crypto_export_key", op_async(op_crypto_export_key)),
       ("op_crypto_encrypt_key", op_async(op_crypto_encrypt_key)),
       ("op_crypto_decrypt_key", op_async(op_crypto_decrypt_key)),
@@ -277,10 +257,16 @@ pub enum KeyFormat {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
+pub enum KeyType {
+  Secret,
+  Private,
+  Public,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub struct KeyData {
-  // TODO(littledivy): Kept here to be used to importKey() in future.
-  #[allow(dead_code)]
-  r#type: KeyFormat,
+  r#type: KeyType,
   data: ZeroCopyBuf,
 }
 
@@ -458,8 +444,7 @@ pub async fn op_crypto_verify_key(
 
   let verification = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
-      let public_key: RsaPublicKey =
-        RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key();
+      let public_key = read_rsa_public_key(args.key)?;
       let (padding, hashed) = match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
@@ -515,8 +500,7 @@ pub async fn op_crypto_verify_key(
         .salt_length
         .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
         as usize;
-      let public_key: RsaPublicKey =
-        RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key();
+      let public_key = read_rsa_public_key(args.key)?;
 
       let rng = OsRng;
       let (padding, hashed) = match args
@@ -903,6 +887,17 @@ pub struct EncryptArg {
   length: Option<usize>,
 }
 
+fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, AnyError> {
+  let public_key = match key_data.r#type {
+    KeyType::Private => {
+      RsaPrivateKey::from_pkcs1_der(&*key_data.data)?.to_public_key()
+    }
+    KeyType::Public => RsaPublicKey::from_pkcs1_der(&*key_data.data)?,
+    KeyType::Secret => unreachable!("unexpected KeyType::Secret"),
+  };
+  Ok(public_key)
+}
+
 pub async fn op_crypto_encrypt_key(
   _state: Rc<RefCell<OpState>>,
   args: EncryptArg,
@@ -913,8 +908,7 @@ pub async fn op_crypto_encrypt_key(
 
   match algorithm {
     Algorithm::RsaOaep => {
-      let public_key: RsaPublicKey =
-        RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key();
+      let public_key = read_rsa_public_key(args.key)?;
       let label = args.label.map(|l| String::from_utf8_lossy(&*l).to_string());
       let mut rng = OsRng;
       let padding = match args
@@ -1158,370 +1152,6 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
         p_source_algorithm,
       })
     })
-  }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportKeyArg {
-  algorithm: Algorithm,
-  format: KeyFormat,
-  // RSASSA-PKCS1-v1_5
-  hash: Option<CryptoHash>,
-  // ECDSA
-  named_curve: Option<CryptoNamedCurve>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportKeyResult {
-  data: ZeroCopyBuf,
-  // RSASSA-PKCS1-v1_5
-  public_exponent: Option<ZeroCopyBuf>,
-  modulus_length: Option<usize>,
-}
-
-pub async fn op_crypto_import_key(
-  _state: Rc<RefCell<OpState>>,
-  args: ImportKeyArg,
-  zero_copy: ZeroCopyBuf,
-) -> Result<ImportKeyResult, AnyError> {
-  let data = &*zero_copy;
-  let algorithm = args.algorithm;
-
-  match algorithm {
-    Algorithm::Ecdsa => {
-      let curve = args.named_curve.ok_or_else(|| {
-        type_error("Missing argument named_curve".to_string())
-      })?;
-
-      match curve {
-        CryptoNamedCurve::P256 => {
-          // 1-2.
-          let point = p256::EncodedPoint::from_bytes(data)?;
-          // 3.
-          if point.is_identity() {
-            return Err(type_error("Invalid key data".to_string()));
-          }
-        }
-        CryptoNamedCurve::P384 => {
-          // 1-2.
-          let point = p384::EncodedPoint::from_bytes(data)?;
-          // 3.
-          if point.is_identity() {
-            return Err(type_error("Invalid key data".to_string()));
-          }
-        }
-      };
-
-      Ok(ImportKeyResult {
-        data: zero_copy,
-        modulus_length: None,
-        public_exponent: None,
-      })
-    }
-    Algorithm::RsassaPkcs1v15 => {
-      match args.format {
-        KeyFormat::Pkcs8 => {
-          let hash = args
-            .hash
-            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
-
-          // 2-3.
-          let pk_info =
-            rsa::pkcs8::PrivateKeyInfo::from_der(data).map_err(|e| {
-              custom_error("DOMExceptionOperationError", e.to_string())
-            })?;
-
-          // 4-5.
-          let alg = pk_info.algorithm.oid;
-
-          // 6.
-          let pk_hash = match alg {
-            // rsaEncryption
-            RSA_ENCRYPTION_OID => None,
-            // sha1WithRSAEncryption
-            SHA1_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha1),
-            // sha256WithRSAEncryption
-            SHA256_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha256),
-            // sha384WithRSAEncryption
-            SHA384_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha384),
-            // sha512WithRSAEncryption
-            SHA512_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha512),
-            _ => return Err(type_error("Unsupported algorithm".to_string())),
-          };
-
-          // 7.
-          if let Some(pk_hash) = pk_hash {
-            if pk_hash != hash {
-              return Err(custom_error(
-                "DOMExceptionDataError",
-                "Hash mismatch".to_string(),
-              ));
-            }
-          }
-
-          // 8-9.
-          let private_key =
-            rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key).map_err(
-              |e| custom_error("DOMExceptionOperationError", e.to_string()),
-            )?;
-
-          let bytes_consumed = private_key.encoded_len().map_err(|e| {
-            custom_error("DOMExceptionDataError", e.to_string())
-          })?;
-
-          if bytes_consumed
-            != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
-          {
-            return Err(custom_error(
-              "DOMExceptionDataError",
-              "Some bytes were not consumed".to_string(),
-            ));
-          }
-
-          Ok(ImportKeyResult {
-            data: pk_info.private_key.to_vec().into(),
-            public_exponent: Some(
-              private_key.public_exponent.as_bytes().to_vec().into(),
-            ),
-            modulus_length: Some(private_key.modulus.as_bytes().len() * 8),
-          })
-        }
-        // TODO(@littledivy): spki
-        // TODO(@littledivy): jwk
-        _ => Err(type_error("Unsupported format".to_string())),
-      }
-    }
-    Algorithm::RsaPss => {
-      match args.format {
-        KeyFormat::Pkcs8 => {
-          let hash = args
-            .hash
-            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
-
-          // 2-3.
-          let pk_info =
-            rsa::pkcs8::PrivateKeyInfo::from_der(data).map_err(|e| {
-              custom_error("DOMExceptionOperationError", e.to_string())
-            })?;
-
-          // 4-5.
-          let alg = pk_info.algorithm.oid;
-
-          // 6.
-          let pk_hash = match alg {
-            // rsaEncryption
-            RSA_ENCRYPTION_OID => None,
-            // id-RSASSA-PSS
-            RSASSA_PSS_OID => {
-              let params = PssPrivateKeyParameters::try_from(
-                pk_info.algorithm.parameters.ok_or_else(|| {
-                  custom_error(
-                    "DOMExceptionNotSupportedError",
-                    "Malformed parameters".to_string(),
-                  )
-                })?,
-              )
-              .map_err(|_| {
-                custom_error(
-                  "DOMExceptionNotSupportedError",
-                  "Malformed parameters".to_string(),
-                )
-              })?;
-
-              let hash_alg = params.hash_algorithm;
-              let hash = match hash_alg.oid {
-                // id-sha1
-                ID_SHA1_OID => Some(CryptoHash::Sha1),
-                // id-sha256
-                ID_SHA256_OID => Some(CryptoHash::Sha256),
-                // id-sha384
-                ID_SHA384_OID => Some(CryptoHash::Sha384),
-                // id-sha256
-                ID_SHA512_OID => Some(CryptoHash::Sha512),
-                _ => {
-                  return Err(custom_error(
-                    "DOMExceptionDataError",
-                    "Unsupported hash algorithm".to_string(),
-                  ))
-                }
-              };
-
-              if params.mask_gen_algorithm.oid != ID_MFG1 {
-                return Err(custom_error(
-                  "DOMExceptionNotSupportedError",
-                  "Unsupported hash algorithm".to_string(),
-                ));
-              }
-
-              hash
-            }
-            _ => {
-              return Err(custom_error(
-                "DOMExceptionDataError",
-                "Unsupported algorithm".to_string(),
-              ))
-            }
-          };
-
-          // 7.
-          if let Some(pk_hash) = pk_hash {
-            if pk_hash != hash {
-              return Err(custom_error(
-                "DOMExceptionDataError",
-                "Hash mismatch".to_string(),
-              ));
-            }
-          }
-
-          // 8-9.
-          let private_key =
-            rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key).map_err(
-              |e| custom_error("DOMExceptionOperationError", e.to_string()),
-            )?;
-
-          let bytes_consumed = private_key
-            .encoded_len()
-            .map_err(|e| custom_error("DataError", e.to_string()))?;
-
-          if bytes_consumed
-            != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
-          {
-            return Err(custom_error(
-              "DOMExceptionDataError",
-              "Some bytes were not consumed".to_string(),
-            ));
-          }
-
-          Ok(ImportKeyResult {
-            data: pk_info.private_key.to_vec().into(),
-            public_exponent: Some(
-              private_key.public_exponent.as_bytes().to_vec().into(),
-            ),
-            modulus_length: Some(private_key.modulus.as_bytes().len() * 8),
-          })
-        }
-        // TODO(@littledivy): spki
-        // TODO(@littledivy): jwk
-        _ => Err(type_error("Unsupported format".to_string())),
-      }
-    }
-    Algorithm::RsaOaep => {
-      match args.format {
-        KeyFormat::Pkcs8 => {
-          let hash = args
-            .hash
-            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
-
-          // 2-3.
-          let pk_info =
-            rsa::pkcs8::PrivateKeyInfo::from_der(data).map_err(|e| {
-              custom_error("DOMExceptionOperationError", e.to_string())
-            })?;
-
-          // 4-5.
-          let alg = pk_info.algorithm.oid;
-
-          // 6.
-          let pk_hash = match alg {
-            // rsaEncryption
-            RSA_ENCRYPTION_OID => None,
-            // id-RSAES-OAEP
-            RSAES_OAEP_OID => {
-              let params = OaepPrivateKeyParameters::try_from(
-                pk_info.algorithm.parameters.ok_or_else(|| {
-                  custom_error(
-                    "DOMExceptionNotSupportedError",
-                    "Malformed parameters".to_string(),
-                  )
-                })?,
-              )
-              .map_err(|_| {
-                custom_error(
-                  "DOMExceptionNotSupportedError",
-                  "Malformed parameters".to_string(),
-                )
-              })?;
-
-              let hash_alg = params.hash_algorithm;
-              let hash = match hash_alg.oid {
-                // id-sha1
-                ID_SHA1_OID => Some(CryptoHash::Sha1),
-                // id-sha256
-                ID_SHA256_OID => Some(CryptoHash::Sha256),
-                // id-sha384
-                ID_SHA384_OID => Some(CryptoHash::Sha384),
-                // id-sha256
-                ID_SHA512_OID => Some(CryptoHash::Sha512),
-                _ => {
-                  return Err(custom_error(
-                    "DOMExceptionDataError",
-                    "Unsupported hash algorithm".to_string(),
-                  ))
-                }
-              };
-
-              if params.mask_gen_algorithm.oid != ID_MFG1 {
-                return Err(custom_error(
-                  "DOMExceptionNotSupportedError",
-                  "Unsupported hash algorithm".to_string(),
-                ));
-              }
-
-              hash
-            }
-            _ => {
-              return Err(custom_error(
-                "DOMExceptionDataError",
-                "Unsupported algorithm".to_string(),
-              ))
-            }
-          };
-
-          // 7.
-          if let Some(pk_hash) = pk_hash {
-            if pk_hash != hash {
-              return Err(custom_error(
-                "DOMExceptionDataError",
-                "Hash mismatch".to_string(),
-              ));
-            }
-          }
-
-          // 8-9.
-          let private_key =
-            rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key).map_err(
-              |e| custom_error("DOMExceptionOperationError", e.to_string()),
-            )?;
-
-          let bytes_consumed = private_key.encoded_len().map_err(|e| {
-            custom_error("DOMExceptionDataError", e.to_string())
-          })?;
-
-          if bytes_consumed
-            != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
-          {
-            return Err(custom_error(
-              "DOMExceptionDataError",
-              "Some bytes were not consumed".to_string(),
-            ));
-          }
-
-          Ok(ImportKeyResult {
-            data: pk_info.private_key.to_vec().into(),
-            public_exponent: Some(
-              private_key.public_exponent.as_bytes().to_vec().into(),
-            ),
-            modulus_length: Some(private_key.modulus.as_bytes().len() * 8),
-          })
-        }
-        // TODO(@littledivy): spki
-        // TODO(@littledivy): jwk
-        _ => Err(type_error("Unsupported format".to_string())),
-      }
-    }
-    _ => Err(type_error("Unsupported algorithm".to_string())),
   }
 }
 
