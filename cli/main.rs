@@ -95,7 +95,6 @@ use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
 fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
@@ -150,6 +149,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
+      maybe_exit_code: args.maybe_exit_code,
     };
     let bootstrap_options = options.bootstrap.clone();
 
@@ -407,7 +407,7 @@ pub fn get_types(unstable: bool) -> String {
 async fn compile_command(
   flags: Flags,
   compile_flags: CompileFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
   let run_flags = tools::standalone::compile_to_runtime_flags(
@@ -467,13 +467,13 @@ async fn compile_command(
   )
   .await?;
 
-  Ok(())
+  Ok(0)
 }
 
 async fn info_command(
   flags: Flags,
   info_flags: InfoFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
@@ -513,21 +513,21 @@ async fn info_command(
     .await;
 
     if info_flags.json {
-      write_json_to_stdout(&json!(graph))
+      write_json_to_stdout(&json!(graph))?;
     } else {
-      write_to_stdout_ignore_sigpipe(graph.to_string().as_bytes())
-        .map_err(|err| err.into())
+      write_to_stdout_ignore_sigpipe(graph.to_string().as_bytes())?;
     }
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&ps, info_flags.json, ps.flags.location.as_ref())
+    print_cache_info(&ps, info_flags.json, ps.flags.location.as_ref())?;
   }
+  Ok(0)
 }
 
 async fn install_command(
   flags: Flags,
   install_flags: InstallFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let mut preload_flags = flags.clone();
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
@@ -545,7 +545,8 @@ async fn install_command(
     install_flags.name,
     install_flags.root,
     install_flags.force,
-  )
+  )?;
+  Ok(0)
 }
 
 async fn jupyter_command(
@@ -561,22 +562,24 @@ async fn jupyter_command(
 
 async fn uninstall_command(
   uninstall_flags: UninstallFlags,
-) -> Result<(), AnyError> {
-  tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)
+) -> Result<i32, AnyError> {
+  tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)?;
+  Ok(0)
 }
 
-async fn lsp_command() -> Result<(), AnyError> {
-  lsp::start().await
+async fn lsp_command() -> Result<i32, AnyError> {
+  lsp::start().await?;
+  Ok(0)
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn lint_command(
   flags: Flags,
   lint_flags: LintFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   if lint_flags.rules {
     tools::lint::print_rules_list(lint_flags.json);
-    return Ok(());
+    return Ok(0);
   }
 
   let ps = ProcState::build(flags.clone()).await?;
@@ -586,13 +589,14 @@ async fn lint_command(
     None
   };
 
-  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch).await
+  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch).await?;
+  Ok(0)
 }
 
 async fn cache_command(
   flags: Flags,
   cache_flags: CacheFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let lib = if flags.unstable {
     emit::TypeLib::UnstableDenoWindow
   } else {
@@ -613,13 +617,13 @@ async fn cache_command(
     .await?;
   }
 
-  Ok(())
+  Ok(0)
 }
 
 async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   // deno_graph works off of extensions for local files to determine the media
   // type, and so our "fake" specifier needs to have the proper extension.
   let main_module =
@@ -662,7 +666,7 @@ async fn eval_command(
     &located_script_name!(),
     "window.dispatchEvent(new Event('unload'))",
   )?;
-  Ok(())
+  Ok(0)
 }
 
 async fn create_graph_and_maybe_check(
@@ -813,7 +817,7 @@ fn human_size(size: f64) -> String {
 async fn bundle_command(
   flags: Flags,
   bundle_flags: BundleFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
   let resolver = |_| {
@@ -914,13 +918,13 @@ async fn bundle_command(
     operation(module_graph).await?;
   }
 
-  Ok(())
+  Ok(0)
 }
 
 async fn doc_command(
   flags: Flags,
   doc_flags: DocFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   tools::doc::print_docs(
     flags,
     doc_flags.source_file,
@@ -928,13 +932,14 @@ async fn doc_command(
     doc_flags.filter,
     doc_flags.private,
   )
-  .await
+  .await?;
+  Ok(0)
 }
 
 async fn format_command(
   flags: Flags,
   fmt_flags: FmtFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
   let maybe_fmt_config = if let Some(config_file) = &ps.maybe_config_file {
     config_file.to_fmt_config()?
@@ -943,17 +948,21 @@ async fn format_command(
   };
 
   if fmt_flags.files.len() == 1 && fmt_flags.files[0].to_string_lossy() == "-" {
-    return tools::fmt::format_stdin(
+    tools::fmt::format_stdin(
       fmt_flags,
       maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
-    );
+    )?;
+    return Ok(0);
   }
 
   tools::fmt::format(fmt_flags, flags.watch, maybe_fmt_config).await?;
-  Ok(())
+  Ok(0)
 }
 
-async fn run_repl(flags: Flags, repl_flags: ReplFlags) -> Result<(), AnyError> {
+async fn repl_command(
+  flags: Flags,
+  repl_flags: ReplFlags,
+) -> Result<i32, AnyError> {
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
   let ps = ProcState::build(flags.clone()).await?;
@@ -968,7 +977,7 @@ async fn run_repl(flags: Flags, repl_flags: ReplFlags) -> Result<(), AnyError> {
   tools::repl::run(&ps, worker, repl_flags.eval).await
 }
 
-async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
+async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let main_module = resolve_url_or_path("./$deno$stdin.ts").unwrap();
@@ -1004,10 +1013,12 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     &located_script_name!(),
     "window.dispatchEvent(new Event('unload'))",
   )?;
-  Ok(())
+  Ok(worker.get_exit_code())
 }
 
-async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
+// TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
+// code properly.
+async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   let resolver = |_| {
     let script1 = script.clone();
     let script2 = script.clone();
@@ -1168,13 +1179,14 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     }
   };
 
-  file_watcher::watch_func(resolver, operation, "Process").await
+  file_watcher::watch_func(resolver, operation, "Process").await?;
+  Ok(0)
 }
 
 async fn run_command(
   flags: Flags,
   run_flags: RunFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   // Read script content from stdin
   if run_flags.script == "-" {
     return run_from_stdin(flags).await;
@@ -1259,13 +1271,13 @@ async fn run_command(
       .with_event_loop(coverage_collector.stop_collecting().boxed_local())
       .await?;
   }
-  Ok(())
+  Ok(worker.get_exit_code())
 }
 
 async fn coverage_command(
   flags: Flags,
   coverage_flags: CoverageFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   if coverage_flags.files.is_empty() {
     return Err(generic_error("No matching coverage profiles found"));
   }
@@ -1278,13 +1290,14 @@ async fn coverage_command(
     coverage_flags.exclude,
     coverage_flags.lcov,
   )
-  .await
+  .await?;
+  Ok(0)
 }
 
 async fn test_command(
   flags: Flags,
   test_flags: TestFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
     std::fs::create_dir_all(&coverage_dir)?;
     env::set_var(
@@ -1307,7 +1320,7 @@ async fn test_command(
     )
     .await?;
 
-    return Ok(());
+    return Ok(0);
   }
 
   tools::test::run_tests(
@@ -1324,7 +1337,7 @@ async fn test_command(
   )
   .await?;
 
-  Ok(())
+  Ok(0)
 }
 
 fn init_v8_flags(v8_flags: &[String]) {
@@ -1353,7 +1366,7 @@ fn init_v8_flags(v8_flags: &[String]) {
 
 fn get_subcommand(
   flags: Flags,
-) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+) -> Pin<Box<dyn Future<Output = Result<i32, AnyError>>>> {
   match flags.clone().subcommand {
     DenoSubcommand::Bundle(bundle_flags) => {
       bundle_command(flags, bundle_flags).boxed_local()
@@ -1393,7 +1406,7 @@ fn get_subcommand(
       lint_command(flags, lint_flags).boxed_local()
     }
     DenoSubcommand::Repl(repl_flags) => {
-      run_repl(flags, repl_flags).boxed_local()
+      repl_command(flags, repl_flags).boxed_local()
     }
     DenoSubcommand::Run(run_flags) => {
       run_command(flags, run_flags).boxed_local()
@@ -1425,9 +1438,13 @@ fn get_subcommand(
         output,
         ca_file,
       } = upgrade_flags;
-      tools::upgrade::upgrade_command(
-        dry_run, force, canary, version, output, ca_file,
-      )
+      async move {
+        tools::upgrade::upgrade_command(
+          dry_run, force, canary, version, output, ca_file,
+        )
+        .await?;
+        Ok(0)
+      }
       .boxed_local()
     }
   }
@@ -1492,8 +1509,7 @@ pub fn main() {
 
   logger::init(flags.log_level);
 
-  unwrap_or_exit(run_basic(get_subcommand(flags)));
+  let exit_code = unwrap_or_exit(run_basic(get_subcommand(flags)));
 
-  let code = deno_runtime::EXIT_CODE.load(Relaxed);
-  std::process::exit(code);
+  std::process::exit(exit_code);
 }

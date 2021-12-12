@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use std::sync::atomic::AtomicI32;
-
 pub use deno_broadcast_channel;
 pub use deno_console;
 pub use deno_core;
@@ -32,12 +30,3 @@ pub mod worker;
 
 mod worker_bootstrap;
 pub use worker_bootstrap::BootstrapOptions;
-
-// The global may not be very elegant but:
-//
-// 1. op_exit() calls std::process::exit() so there is not much point storing
-//    the exit code in runtime state
-//
-// 2. storing it in runtime state makes retrieving it again in cli/main.rs
-//    unduly complicated
-pub static EXIT_CODE: AtomicI32 = AtomicI32::new(0);
