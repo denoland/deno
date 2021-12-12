@@ -31,6 +31,7 @@ use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
+use deno_core::ModuleType;
 use deno_core::SharedArrayBufferStore;
 use deno_graph::create_graph;
 use deno_graph::Dependency;
@@ -722,6 +723,9 @@ impl ProcState {
         code: code.clone(),
         module_url_specified: specifier.to_string(),
         module_url_found: found_specifier.to_string(),
+        // FIXME(bartlomieju): this should actually get module type from
+        // the media type of the file.
+        module_type: ModuleType::JavaScript,
       }),
       _ => Err(anyhow!(
         "Loading unprepared module: {}",

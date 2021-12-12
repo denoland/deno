@@ -1630,6 +1630,7 @@ pub mod tests {
   use crate::error::custom_error;
   use crate::modules::ModuleSource;
   use crate::modules::ModuleSourceFuture;
+  use crate::modules::ModuleType;
   use crate::op_async;
   use crate::op_sync;
   use crate::ZeroCopyBuf;
@@ -2642,6 +2643,7 @@ assertEquals(1, notify_return_value);
             code: "console.log('hello world');".to_string(),
             module_url_specified: "file:///main.js".to_string(),
             module_url_found: "file:///main.js".to_string(),
+            module_type: ModuleType::JavaScript,
           })
         }
         .boxed_local()
