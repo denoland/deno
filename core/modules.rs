@@ -577,6 +577,41 @@ impl ModuleMap {
       let import_specifier = module_request
         .get_specifier()
         .to_rust_string_lossy(tc_scope);
+      
+      let import_assertions = module_request.get_import_assertions();
+
+      // let mut assertions = HashMap::default();
+
+      // "type" keyword, value and source offset of assertion
+      let no_of_assertions = import_assertions.length() / 3;
+      for i in 0..no_of_assertions {
+        let assert_key = import_assertions.get(tc_scope, 3 * i).unwrap();
+        let assert_key_val =
+          v8::Local::<v8::Value>::try_from(assert_key).unwrap();
+        let assert_key_str = assert_key_val.to_rust_string_lossy(tc_scope);
+
+        let assert_value =
+          import_assertions.get(tc_scope, (3 * i) + 1).unwrap();
+        let assert_value_val =
+          v8::Local::<v8::Value>::try_from(assert_value).unwrap();
+        let assert_value_str = assert_value_val.to_rust_string_lossy(tc_scope);
+        
+        // we're not interested in source code offset, so skipping it
+
+        if assert_key_str == "type" {
+          // TODO(bartlomieju): store in a const list of supported values
+          if assert_value_str != "json" {
+            let message = v8::String::new(tc_scope, &format!("\"{}\" is not a valid module type.", assert_value_str)).unwrap();
+            let exception = v8::Exception::type_error(tc_scope, message);
+            tc_scope.throw_exception(exception);
+            let e = tc_scope.exception().unwrap();
+            return exception_to_err_result(tc_scope, e, false);
+          }
+        }
+
+        // assertions.insert(assert_key_str, assert_value_str);
+      }
+
       let module_specifier =
         self.loader.resolve(&import_specifier, name, false)?;
       import_specifiers.push(module_specifier);
