@@ -74,39 +74,51 @@ pub async fn kernel(
   eprintln!("[DENO] parsed conn file: {:#?}", conn_spec);
 
   let metadata = KernelMetadata::default();
-  let iopub = PubComm::new(
+  let iopub_comm = PubComm::new(
     create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.iopub_port),
     metadata.session_id.clone(),
     conn_spec.key.clone(),
   );
-
-  let shell_conn_str =
-    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.shell_port);
-  let control_conn_str = create_conn_str(
-    &conn_spec.transport,
-    &conn_spec.ip,
-    conn_spec.control_port,
+  let shell_comm = DealerComm::new(
+    "shell",
+    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.shell_port),
+    metadata.session_id.clone(),
+    conn_spec.key.clone(),
   );
-  let stdin_conn_str =
-    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.stdin_port);
+  let control_comm = DealerComm::new(
+    "control",
+    create_conn_str(
+      &conn_spec.transport,
+      &conn_spec.ip,
+      conn_spec.control_port,
+    ),
+    metadata.session_id.clone(),
+    conn_spec.key.clone(),
+  );
+  let stdin_comm = DealerComm::new(
+    "stdin",
+    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.stdin_port),
+    metadata.session_id.clone(),
+    conn_spec.key.clone(),
+  );
+
   let hb_conn_str =
     create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.hb_port);
 
-  let kernel = Kernel {
+  let mut kernel = Kernel {
     metadata,
     conn_spec,
     state: KernelState::Idle,
-    iopub,
+    iopub_comm,
+    shell_comm,
+    control_comm,
+    stdin_comm,
   };
 
   eprintln!("[DENO] kernel created: {:#?}", kernel.metadata.session_id);
 
-  let (_first, _second, _fourth, _fifth) = join!(
-    create_zmq_dealer("shell", &shell_conn_str),
-    create_zmq_dealer("control", &control_conn_str),
-    create_zmq_dealer("stdin", &stdin_conn_str),
-    create_zmq_reply("hb", &hb_conn_str),
-  );
+  let (_first, _second) =
+    join!(kernel.run(), create_zmq_reply("hb", &hb_conn_str),);
 
   Ok(())
 }
@@ -132,10 +144,40 @@ struct Kernel {
   metadata: KernelMetadata,
   conn_spec: ConnectionSpec,
   state: KernelState,
-  iopub: PubComm,
+  iopub_comm: PubComm,
+  shell_comm: DealerComm,
+  control_comm: DealerComm,
+  stdin_comm: DealerComm,
 }
 
 impl Kernel {
+  async fn run(&mut self) -> Result<(), AnyError> {
+    let (iopub_res, shell_res, control_res, stdin_res) = join!(
+      self.iopub_comm.connect(),
+      self.shell_comm.connect(),
+      self.control_comm.connect(),
+      self.stdin_comm.connect(),
+    );
+    iopub_res?;
+    shell_res?;
+    control_res?;
+    stdin_res?;
+
+    loop {
+      tokio::select! {
+        shell_msg = self.shell_comm.recv() => {
+          eprintln!("shell got packet: {:#?}", shell_msg);
+        },
+        control_msg = self.control_comm.recv() => {
+          eprintln!("control got packet: {:#?}", control_msg);
+        },
+        stdin_msg = self.stdin_comm.recv() => {
+          eprintln!("stdin got packet: {:#?}", stdin_msg);
+        },
+      }
+    }
+  }
+
   async fn set_state(&mut self, state: KernelState, ctx: CommContext) {
     if self.state == state {
       return;
@@ -167,7 +209,7 @@ impl Kernel {
       }),
     };
     // ignore any error when announcing changes
-    let _ = self.iopub.send(msg).await;
+    let _ = self.iopub_comm.send(msg).await;
   }
 
   // TODO(bartlomieju): feels like this info should be a separate struct
@@ -328,20 +370,46 @@ impl PubComm {
   }
 }
 
-async fn create_zmq_dealer(name: &str, conn_str: &str) -> Result<(), AnyError> {
-  println!("dealer '{}' connection string: {}", name, conn_str);
+struct DealerComm {
+  name: String,
+  conn_str: String,
+  session_id: String,
+  hmac_key: String,
+  socket: zeromq::DealerSocket,
+}
 
-  let mut sock = zeromq::DealerSocket::new();
-  sock.monitor();
-  sock.bind(conn_str).await?;
+impl DealerComm {
+  pub fn new(
+    name: &str,
+    conn_str: String,
+    session_id: String,
+    hmac_key: String,
+  ) -> Self {
+    println!("dealer '{}' connection: {}", name, conn_str);
+    Self {
+      name: name.to_string(),
+      conn_str,
+      session_id,
+      hmac_key,
+      socket: zeromq::DealerSocket::new(),
+    }
+  }
 
-  // TODO(apowers313) pop this out into it's own function: we need to send on sock, as well as receive
-  loop {
-    let data = sock.recv().await?;
-    dbg!(&data);
-    println!("{} got packet!", name);
-    println!("size is: {}", data.len());
-    parse_zmq_packet(&data)?;
+  pub async fn connect(&mut self) -> Result<(), AnyError> {
+    self.socket.bind(&self.conn_str).await?;
+
+    Ok(())
+  }
+
+  pub async fn recv(&mut self) -> Result<ZmqMessage, AnyError> {
+    let msg = self.socket.recv().await?;
+    Ok(msg)
+  }
+
+  pub async fn send(&mut self, msg: Message) -> Result<(), AnyError> {
+    let msg_str = msg.serialize(self.hmac_key.clone());
+    self.socket.send(msg_str.into()).await?;
+    Ok(())
   }
 }
 
