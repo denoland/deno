@@ -74,12 +74,11 @@ pub async fn kernel(
   eprintln!("[DENO] parsed conn file: {:#?}", conn_spec);
 
   let metadata = KernelMetadata::default();
-  // let iopub = PubComm::new(
-  //   conn_spec.ip.clone(),
-  //   conn_spec.iopub_port.to_string(),
-  //   metadata.session_id.clone(),
-  //   conn_spec.key.clone(),
-  // );
+  let iopub = PubComm::new(
+    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.iopub_port),
+    metadata.session_id.clone(),
+    conn_spec.key.clone(),
+  );
 
   let shell_conn_str =
     create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.shell_port);
@@ -88,8 +87,6 @@ pub async fn kernel(
     &conn_spec.ip,
     conn_spec.control_port,
   );
-  let iopub_conn_str =
-    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.iopub_port);
   let stdin_conn_str =
     create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.stdin_port);
   let hb_conn_str =
@@ -99,15 +96,14 @@ pub async fn kernel(
     metadata,
     conn_spec,
     state: KernelState::Idle,
-    // iopub,
+    iopub,
   };
 
   eprintln!("[DENO] kernel created: {:#?}", kernel.metadata.session_id);
 
-  let (_first, _second, _third, _fourth, _fifth) = join!(
+  let (_first, _second, _fourth, _fifth) = join!(
     create_zmq_dealer("shell", &shell_conn_str),
     create_zmq_dealer("control", &control_conn_str),
-    create_zmq_publisher("iopub", &iopub_conn_str),
     create_zmq_dealer("stdin", &stdin_conn_str),
     create_zmq_reply("hb", &hb_conn_str),
   );
@@ -136,7 +132,7 @@ struct Kernel {
   metadata: KernelMetadata,
   conn_spec: ConnectionSpec,
   state: KernelState,
-  // iopub: PubComm,
+  iopub: PubComm,
 }
 
 impl Kernel {
@@ -171,7 +167,7 @@ impl Kernel {
       }),
     };
     // ignore any error when announcing changes
-    // let _ = self.iopub.send(msg).await;
+    let _ = self.iopub.send(msg).await;
   }
 
   // TODO(bartlomieju): feels like this info should be a separate struct
@@ -302,23 +298,17 @@ impl Message {
 }
 
 struct PubComm {
-  hostname: String,
-  port: String,
+  conn_str: String,
   session_id: String,
   hmac_key: String,
   socket: zeromq::PubSocket,
 }
 
 impl PubComm {
-  pub fn new(
-    hostname: String,
-    port: String,
-    session_id: String,
-    hmac_key: String,
-  ) -> Self {
+  pub fn new(conn_str: String, session_id: String, hmac_key: String) -> Self {
+    println!("iopub connection: {}", conn_str);
     Self {
-      hostname,
-      port,
+      conn_str,
       session_id,
       hmac_key,
       socket: zeromq::PubSocket::new(),
@@ -326,10 +316,7 @@ impl PubComm {
   }
 
   pub async fn connect(&mut self) -> Result<(), AnyError> {
-    self
-      .socket
-      .connect(&format!("tcp://{}:{}", self.hostname, self.port))
-      .await?;
+    self.socket.bind(&self.conn_str).await?;
 
     Ok(())
   }
@@ -356,20 +343,6 @@ async fn create_zmq_dealer(name: &str, conn_str: &str) -> Result<(), AnyError> {
     println!("size is: {}", data.len());
     parse_zmq_packet(&data)?;
   }
-}
-
-async fn create_zmq_publisher(
-  name: &str,
-  conn_str: &str,
-) -> Result<zeromq::PubSocket, AnyError> {
-  println!("iopub {} connection string: {}", name, conn_str);
-
-  let mut sock = zeromq::PubSocket::new();
-  sock.bind(conn_str).await?;
-
-  // no loop, only used for broadcasting status to Jupyter frontends
-
-  Ok(sock)
 }
 
 async fn create_zmq_reply(name: &str, conn_str: &str) -> Result<(), AnyError> {
