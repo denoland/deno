@@ -6834,14 +6834,7 @@
     "semantics": {
       "scripting-1": {
         "the-script-element": {
-          "import-assertions": {
-            "dynamic-import-with-assertion-argument.any.html": [
-              "Dynamic import with an unsupported type assertion should fail"
-            ],
-            "dynamic-import-with-assertion-argument.any.worker.html": [
-              "Dynamic import with an unsupported type assertion should fail"
-            ]
-          },
+          "import-assertions": true,
           "json-module": {
             "charset-bom.any.html": [
               "UTF-8 BOM should be stripped when decoding JSON module script",
