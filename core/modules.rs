@@ -25,6 +25,28 @@ use std::task::Poll;
 pub type ModuleId = i32;
 pub type ModuleLoadId = i32;
 
+/// Throws V8 exception if assertions are invalid
+pub(crate) fn validate_import_assertions(
+  scope: &mut v8::HandleScope,
+  assertions: HashMap<String, String>,
+) {
+  for (key, value) in assertions {
+    if key == "type" {
+      // TODO(bartlomieju): store in a const list of supported values
+      if value != "json" {
+        let message = v8::String::new(
+          scope,
+          &format!("\"{}\" is not a valid module type.", value),
+        )
+        .unwrap();
+        let exception = v8::Exception::type_error(scope, message);
+        scope.throw_exception(exception);
+        return;
+      }
+    }
+  }
+}
+
 /// A type of module to be executed.
 ///
 /// Currently only `JavaScript` variant is supported,
@@ -577,10 +599,10 @@ impl ModuleMap {
       let import_specifier = module_request
         .get_specifier()
         .to_rust_string_lossy(tc_scope);
-      
+
       let import_assertions = module_request.get_import_assertions();
 
-      // let mut assertions = HashMap::default();
+      let mut assertions = HashMap::default();
 
       // "type" keyword, value and source offset of assertion
       let no_of_assertions = import_assertions.length() / 3;
@@ -595,21 +617,18 @@ impl ModuleMap {
         let assert_value_val =
           v8::Local::<v8::Value>::try_from(assert_value).unwrap();
         let assert_value_str = assert_value_val.to_rust_string_lossy(tc_scope);
-        
+
         // we're not interested in source code offset, so skipping it
 
-        if assert_key_str == "type" {
-          // TODO(bartlomieju): store in a const list of supported values
-          if assert_value_str != "json" {
-            let message = v8::String::new(tc_scope, &format!("\"{}\" is not a valid module type.", assert_value_str)).unwrap();
-            let exception = v8::Exception::type_error(tc_scope, message);
-            tc_scope.throw_exception(exception);
-            let e = tc_scope.exception().unwrap();
-            return exception_to_err_result(tc_scope, e, false);
-          }
-        }
+        assertions.insert(assert_key_str, assert_value_str);
+      }
 
-        // assertions.insert(assert_key_str, assert_value_str);
+      // FIXME(bartomieju): there are no stack frames if exception
+      // is thrown here
+      validate_import_assertions(tc_scope, assertions);
+      if tc_scope.has_caught() {
+        let e = tc_scope.exception().unwrap();
+        return exception_to_err_result(tc_scope, e, false);
       }
 
       let module_specifier =
