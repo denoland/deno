@@ -60,6 +60,7 @@ pub(crate) fn validate_import_assertions(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ModuleType {
   JavaScript,
+  Json,
 }
 
 /// EsModule source code that will be loaded into V8.
@@ -191,10 +192,20 @@ impl ModuleLoader for FsModuleLoader {
           module_specifier
         ))
       })?;
+      let module_type = if let Some(extension) = path.extension() {
+        if extension == "json" {
+          ModuleType::Json
+        } else {
+          ModuleType::JavaScript
+        }
+      } else {
+        ModuleType::JavaScript
+      };
+
       let code = std::fs::read_to_string(path)?;
       let module = ModuleSource {
         code,
-        module_type: ModuleType::JavaScript,
+        module_type,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
       };

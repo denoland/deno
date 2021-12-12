@@ -645,7 +645,7 @@ dependencies = [
  "deno_crypto",
  "deno_doc",
  "deno_fetch",
- "deno_graph 0.13.0",
+ "deno_graph",
  "deno_lint",
  "deno_net",
  "deno_runtime",
@@ -795,7 +795,7 @@ checksum = "366a584bf4486c7d5674e398c7bb8e6c55a871822cea9d217236933d85e25b98"
 dependencies = [
  "cfg-if 1.0.0",
  "deno_ast",
- "deno_graph 0.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "deno_graph",
  "futures",
  "lazy_static",
  "regex",
@@ -831,25 +831,6 @@ dependencies = [
  "serde",
  "tokio",
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "deno_graph"
-version = "0.13.0"
-dependencies = [
- "anyhow",
- "cfg-if 1.0.0",
- "data-url",
- "deno_ast",
- "futures",
- "lazy_static",
- "parking_lot",
- "regex",
- "ring",
- "serde",
- "serde_json",
- "termcolor",
- "url",
 ]
 
 [[package]]
