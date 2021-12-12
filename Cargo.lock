@@ -3659,9 +3659,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_dep_graph"
-version = "0.50.0"
+version = "0.50.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a47d0548c1d6fcc44f15462828af696cc335cfa3c36bff98900b851074fad546"
+checksum = "f07f7c6513e4eb53f92d116c1aaeff9e6b7eba969635d8b61af4da35f1f2cacf"
 dependencies = [
  "swc_atoms",
  "swc_common",
