@@ -10,8 +10,9 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use std::env::current_exe;
 use tempfile::TempDir;
-use zeromq::Socket;
-use zeromq::SocketSend;
+use tokio::join;
+use zeromq::prelude::*;
+use zeromq::ZmqMessage;
 
 pub fn install() -> Result<(), AnyError> {
   let temp_dir = TempDir::new().unwrap();
@@ -22,7 +23,7 @@ pub fn install() -> Result<(), AnyError> {
   // FIXME(bartlomieju): replace `current_exe`
   let json_data = json!({
       "argv": [current_exe().unwrap().to_string_lossy(), "jupyter", "--conn", "{connection_file}"],
-      "display_name": "Deno",
+      "display_name": "Deno (Rust)",
       "language": "typescript",
   });
 
@@ -34,7 +35,7 @@ pub fn install() -> Result<(), AnyError> {
       "kernelspec",
       "install",
       "--name",
-      "deno",
+      "rusty_deno",
       &temp_dir.path().to_string_lossy(),
     ])
     .spawn();
@@ -73,21 +74,43 @@ pub async fn kernel(
   eprintln!("[DENO] parsed conn file: {:#?}", conn_spec);
 
   let metadata = KernelMetadata::default();
-  let iopub = PubComm::new(
-    conn_spec.ip.clone(),
-    conn_spec.iopub_port.to_string(),
-    metadata.session_id.clone(),
-    conn_spec.key.clone(),
+  // let iopub = PubComm::new(
+  //   conn_spec.ip.clone(),
+  //   conn_spec.iopub_port.to_string(),
+  //   metadata.session_id.clone(),
+  //   conn_spec.key.clone(),
+  // );
+
+  let shell_conn_str =
+    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.shell_port);
+  let control_conn_str = create_conn_str(
+    &conn_spec.transport,
+    &conn_spec.ip,
+    conn_spec.control_port,
   );
+  let iopub_conn_str =
+    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.iopub_port);
+  let stdin_conn_str =
+    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.stdin_port);
+  let hb_conn_str =
+    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.hb_port);
 
   let kernel = Kernel {
     metadata,
     conn_spec,
     state: KernelState::Idle,
-    iopub,
+    // iopub,
   };
 
   eprintln!("[DENO] kernel created: {:#?}", kernel.metadata.session_id);
+
+  let (_first, _second, _third, _fourth, _fifth) = join!(
+    create_zmq_dealer("shell", &shell_conn_str),
+    create_zmq_dealer("control", &control_conn_str),
+    create_zmq_publisher("iopub", &iopub_conn_str),
+    create_zmq_dealer("stdin", &stdin_conn_str),
+    create_zmq_reply("hb", &hb_conn_str),
+  );
 
   Ok(())
 }
@@ -113,7 +136,7 @@ struct Kernel {
   metadata: KernelMetadata,
   conn_spec: ConnectionSpec,
   state: KernelState,
-  iopub: PubComm,
+  // iopub: PubComm,
 }
 
 impl Kernel {
@@ -148,7 +171,7 @@ impl Kernel {
       }),
     };
     // ignore any error when announcing changes
-    let _ = self.iopub.send(msg).await;
+    // let _ = self.iopub.send(msg).await;
   }
 
   // TODO(bartlomieju): feels like this info should be a separate struct
@@ -237,6 +260,7 @@ struct CommContext {
   session_id: String,
 }
 
+#[derive(Debug, Deserialize)]
 struct MessageHeader {
   msg_id: String,
   session: String,
@@ -315,4 +339,72 @@ impl PubComm {
     self.socket.send(msg_str.into()).await?;
     Ok(())
   }
+}
+
+async fn create_zmq_dealer(name: &str, conn_str: &str) -> Result<(), AnyError> {
+  println!("dealer '{}' connection string: {}", name, conn_str);
+
+  let mut sock = zeromq::DealerSocket::new();
+  sock.monitor();
+  sock.bind(conn_str).await?;
+
+  // TODO(apowers313) pop this out into it's own function: we need to send on sock, as well as receive
+  loop {
+    let data = sock.recv().await?;
+    dbg!(&data);
+    println!("{} got packet!", name);
+    println!("size is: {}", data.len());
+    parse_zmq_packet(&data)?;
+  }
+}
+
+async fn create_zmq_publisher(
+  name: &str,
+  conn_str: &str,
+) -> Result<zeromq::PubSocket, AnyError> {
+  println!("iopub {} connection string: {}", name, conn_str);
+
+  let mut sock = zeromq::PubSocket::new();
+  sock.bind(conn_str).await?;
+
+  // no loop, only used for broadcasting status to Jupyter frontends
+
+  Ok(sock)
+}
+
+async fn create_zmq_reply(name: &str, conn_str: &str) -> Result<(), AnyError> {
+  println!("reply '{}' connection string: {}", name, conn_str);
+
+  let mut sock = zeromq::RepSocket::new(); // TODO(apowers313) exact same as dealer, refactor
+  sock.monitor();
+  sock.bind(conn_str).await?;
+
+  loop {
+    let msg = sock.recv().await?;
+    dbg!(&msg);
+    println!("{} got packet!", name);
+  }
+}
+
+fn create_conn_str(transport: &str, ip: &str, port: u32) -> String {
+  format!("{}://{}:{}", transport, ip, port)
+}
+
+fn parse_zmq_packet(data: &ZmqMessage) -> Result<(), AnyError> {
+  let _delim = data.get(0);
+  let _hmac = data.get(1);
+  let header = data.get(2).unwrap();
+  let _parent_header = data.get(3);
+  let _metadata = data.get(4);
+  let _content = data.get(5);
+
+  println!("header:");
+  dbg!(header);
+  let header_str = std::str::from_utf8(&header).unwrap();
+  let header_value: MessageHeader = serde_json::from_str(header_str).unwrap();
+  println!("header_value");
+  dbg!(&header_value);
+  // validate_header(&header_value)?;
+
+  Ok(())
 }

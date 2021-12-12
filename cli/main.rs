@@ -552,12 +552,15 @@ async fn install_command(
 async fn jupyter_command(
   flags: Flags,
   jupyter_flags: JupyterFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   if jupyter_flags.install {
-    return tools::jupyter::install();
+    tools::jupyter::install()?;
+    return Ok(0);
   }
 
-  tools::jupyter::kernel(flags, jupyter_flags).await
+  tools::jupyter::kernel(flags, jupyter_flags).await?;
+
+  Ok(0)
 }
 
 async fn uninstall_command(
