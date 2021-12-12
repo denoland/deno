@@ -9,7 +9,7 @@ use std::rc::Rc;
 fn main() -> Result<(), Error> {
   let args: Vec<String> = std::env::args().collect();
   if args.len() < 2 {
-    println!("Usage: target/examples/debug/fs_module_loading <path_to_module>");
+    println!("Usage: target/examples/debug/fs_module_loader <path_to_module>");
     std::process::exit(1);
   }
   let main_url = args[1].clone();
@@ -28,20 +28,9 @@ fn main() -> Result<(), Error> {
 
   let future = async move {
     let mod_id = js_runtime.load_main_module(&main_module, None).await?;
-
-    let mut receiver = js_runtime.mod_evaluate(mod_id);
-    tokio::select! {
-      maybe_result = &mut receiver => {
-        maybe_result.expect("Module evaluation result not provided.")
-      }
-
-      event_loop_result = js_runtime.run_event_loop(false) => {
-        event_loop_result?;
-        let maybe_result = receiver.await;
-        maybe_result.expect("Module evaluation result not provided.")
-      }
-    }
+    let _ = js_runtime.mod_evaluate(mod_id);
+    js_runtime.run_event_loop(false).await?;
+    Ok(())
   };
-  runtime.block_on(future)?;
-  Ok(())
+  runtime.block_on(future)
 }
