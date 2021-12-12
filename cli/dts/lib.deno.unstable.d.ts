@@ -434,7 +434,7 @@ declare namespace Deno {
      */
     types?: string[];
     /** Emit class fields with ECMAScript-standard semantics. Defaults to
-     * `false`. */
+     * `true`. */
     useDefineForClassFields?: boolean;
   }
 
