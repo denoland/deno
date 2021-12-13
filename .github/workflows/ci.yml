@@ -2,6 +2,9 @@ name: ci
 
 on: [push, pull_request]
 
+env:
+  DENO_TERM_COLOR: always
+
 jobs:
   build:
     name: ${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}
@@ -237,6 +240,7 @@ jobs:
             export LD=ld.lld-13       # Use the lld linker.
 
             # Miscellaneous flags.
+            export DENO_TERM_COLOR=always
             export CARGO_TERM_COLOR=always
             export CI=true
           ___
