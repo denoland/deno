@@ -10,6 +10,7 @@ use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use export_key::op_crypto_export_key;
 use serde::Deserialize;
 
 use std::cell::RefCell;
@@ -56,6 +57,7 @@ use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
+mod export_key;
 mod import_key;
 mod key;
 mod shared;
@@ -93,7 +95,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_verify_key", op_async(op_crypto_verify_key)),
       ("op_crypto_derive_bits", op_async(op_crypto_derive_bits)),
       ("op_crypto_import_key", op_sync(op_crypto_import_key)),
-      ("op_crypto_export_key", op_async(op_crypto_export_key)),
+      ("op_crypto_export_key", op_sync(op_crypto_export_key)),
       ("op_crypto_encrypt_key", op_async(op_crypto_encrypt_key)),
       ("op_crypto_decrypt_key", op_async(op_crypto_decrypt_key)),
       ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
@@ -567,205 +569,6 @@ pub async fn op_crypto_verify_key(
   };
 
   Ok(verification)
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExportKeyArg {
-  key: KeyData,
-  algorithm: Algorithm,
-  format: KeyFormat,
-  // RSA-PSS
-  hash: Option<CryptoHash>,
-}
-
-pub async fn op_crypto_export_key(
-  _state: Rc<RefCell<OpState>>,
-  args: ExportKeyArg,
-  _: (),
-) -> Result<ZeroCopyBuf, AnyError> {
-  let algorithm = args.algorithm;
-  match algorithm {
-    Algorithm::RsassaPkcs1v15 => {
-      match args.format {
-        KeyFormat::Pkcs8 => {
-          // private_key is a PKCS#1 DER-encoded private key
-
-          let private_key = &args.key.data;
-
-          // the PKCS#8 v1 structure
-          // PrivateKeyInfo ::= SEQUENCE {
-          //   version                   Version,
-          //   privateKeyAlgorithm       PrivateKeyAlgorithmIdentifier,
-          //   privateKey                PrivateKey,
-          //   attributes           [0]  IMPLICIT Attributes OPTIONAL }
-
-          // version is 0 when publickey is None
-
-          let pk_info = rsa::pkcs8::PrivateKeyInfo {
-            attributes: None,
-            public_key: None,
-            algorithm: rsa::pkcs8::AlgorithmIdentifier {
-              // rsaEncryption(1)
-              oid: rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
-              // parameters field should not be ommited (None).
-              // It MUST have ASN.1 type NULL as per defined in RFC 3279 Section 2.3.1
-              parameters: Some(asn1::Any::from(asn1::Null)),
-            },
-            private_key,
-          };
-
-          Ok(pk_info.to_der().as_ref().to_vec().into())
-        }
-        KeyFormat::Spki => {
-          // public_key is a PKCS#1 DER-encoded public key
-
-          let subject_public_key = &args.key.data;
-
-          // the SPKI structure
-          let key_info = spki::SubjectPublicKeyInfo {
-            algorithm: spki::AlgorithmIdentifier {
-              // rsaEncryption(1)
-              oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
-              // parameters field should not be ommited (None).
-              // It MUST have ASN.1 type NULL.
-              parameters: Some(asn1::Any::from(asn1::Null)),
-            },
-            subject_public_key,
-          };
-
-          // Infallible based on spec because of the way we import and generate keys.
-          let spki_der = key_info.to_vec().unwrap();
-          Ok(spki_der.into())
-        }
-        // TODO(@littledivy): jwk
-        _ => unreachable!(),
-      }
-    }
-    Algorithm::RsaPss => {
-      match args.format {
-        KeyFormat::Pkcs8 => {
-          // Intentionally unused but required. Not encoded into PKCS#8 (see below).
-          let _hash = args
-            .hash
-            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
-
-          // private_key is a PKCS#1 DER-encoded private key
-          let private_key = &args.key.data;
-
-          // version is 0 when publickey is None
-
-          let pk_info = rsa::pkcs8::PrivateKeyInfo {
-            attributes: None,
-            public_key: None,
-            algorithm: rsa::pkcs8::AlgorithmIdentifier {
-              // Spec wants the OID to be id-RSASSA-PSS (1.2.840.113549.1.1.10) but ring and RSA do not support it.
-              // Instead, we use rsaEncryption (1.2.840.113549.1.1.1) as specified in RFC 3447.
-              // Node, Chromium and Firefox also use rsaEncryption (1.2.840.113549.1.1.1) and do not support id-RSASSA-PSS.
-
-              // parameters are set to NULL opposed to what spec wants (see above)
-              oid: rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
-              // parameters field should not be ommited (None).
-              // It MUST have ASN.1 type NULL as per defined in RFC 3279 Section 2.3.1
-              parameters: Some(asn1::Any::from(asn1::Null)),
-            },
-            private_key,
-          };
-
-          Ok(pk_info.to_der().as_ref().to_vec().into())
-        }
-        KeyFormat::Spki => {
-          // Intentionally unused but required. Not encoded into SPKI (see below).
-          let _hash = args
-            .hash
-            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
-
-          // public_key is a PKCS#1 DER-encoded public key
-          let subject_public_key = &args.key.data;
-
-          // the SPKI structure
-          let key_info = spki::SubjectPublicKeyInfo {
-            algorithm: spki::AlgorithmIdentifier {
-              // rsaEncryption(1)
-              oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
-              // parameters field should not be ommited (None).
-              // It MUST have ASN.1 type NULL.
-              parameters: Some(asn1::Any::from(asn1::Null)),
-            },
-            subject_public_key,
-          };
-
-          // Infallible based on spec because of the way we import and generate keys.
-          let spki_der = key_info.to_vec().unwrap();
-          Ok(spki_der.into())
-        }
-        // TODO(@littledivy): jwk
-        _ => unreachable!(),
-      }
-    }
-    Algorithm::RsaOaep => {
-      match args.format {
-        KeyFormat::Pkcs8 => {
-          // Intentionally unused but required. Not encoded into PKCS#8 (see below).
-          let _hash = args
-            .hash
-            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
-
-          // private_key is a PKCS#1 DER-encoded private key
-          let private_key = &args.key.data;
-
-          // version is 0 when publickey is None
-
-          let pk_info = rsa::pkcs8::PrivateKeyInfo {
-            attributes: None,
-            public_key: None,
-            algorithm: rsa::pkcs8::AlgorithmIdentifier {
-              // Spec wants the OID to be id-RSAES-OAEP (1.2.840.113549.1.1.10) but ring and RSA crate do not support it.
-              // Instead, we use rsaEncryption (1.2.840.113549.1.1.1) as specified in RFC 3447.
-              // Chromium and Firefox also use rsaEncryption (1.2.840.113549.1.1.1) and do not support id-RSAES-OAEP.
-
-              // parameters are set to NULL opposed to what spec wants (see above)
-              oid: rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
-              // parameters field should not be ommited (None).
-              // It MUST have ASN.1 type NULL as per defined in RFC 3279 Section 2.3.1
-              parameters: Some(asn1::Any::from(asn1::Null)),
-            },
-            private_key,
-          };
-
-          Ok(pk_info.to_der().as_ref().to_vec().into())
-        }
-        KeyFormat::Spki => {
-          // Intentionally unused but required. Not encoded into SPKI (see below).
-          let _hash = args
-            .hash
-            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
-
-          // public_key is a PKCS#1 DER-encoded public key
-          let subject_public_key = &args.key.data;
-
-          // the SPKI structure
-          let key_info = spki::SubjectPublicKeyInfo {
-            algorithm: spki::AlgorithmIdentifier {
-              // rsaEncryption(1)
-              oid: spki::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
-              // parameters field should not be ommited (None).
-              // It MUST have ASN.1 type NULL.
-              parameters: Some(asn1::Any::from(asn1::Null)),
-            },
-            subject_public_key,
-          };
-
-          // Infallible based on spec because of the way we import and generate keys.
-          let spki_der = key_info.to_vec().unwrap();
-          Ok(spki_der.into())
-        }
-        // TODO(@littledivy): jwk
-        _ => unreachable!(),
-      }
-    }
-    _ => Err(type_error("Unsupported algorithm".to_string())),
-  }
 }
 
 #[derive(Deserialize)]
