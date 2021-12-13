@@ -111,12 +111,12 @@
 
     getArrayBuffer(byteLength, offset = 0) {
       const uint8array = new Uint8Array(byteLength);
-      this.copy(uint8array, offset);
+      this.copyInto(uint8array, offset);
       return uint8array.buffer;
     }
 
-    copy(destination, offset = 0) {
-      core.opSync("op_ffi_buf_copy", [
+    copyInto(destination, offset = 0) {
+      core.opSync("op_ffi_buf_copy_into", [
         packU64(this.pointer.value + BigInt(offset)),
         destination,
         destination.byteLength,
@@ -161,7 +161,7 @@
             const type = types[i];
             const arg = args[i];
 
-            if (type === "buffer") {
+            if (type === "pointer") {
               if (
                 arg?.buffer instanceof ArrayBuffer &&
                 arg.byteLength !== undefined
@@ -192,7 +192,7 @@
               buffers,
             });
 
-            if (symbols[symbol].result === "buffer") {
+            if (symbols[symbol].result === "pointer") {
               return promise.then((value) =>
                 new UnsafePointer(unpackU64(value))
               );
@@ -207,7 +207,7 @@
               buffers,
             });
 
-            if (symbols[symbol].result === "buffer") {
+            if (symbols[symbol].result === "pointer") {
               return new UnsafePointer(unpackU64(result));
             }
 

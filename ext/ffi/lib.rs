@@ -113,7 +113,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       ("op_ffi_call", op_sync(op_ffi_call)),
       ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
       ("op_ffi_ptr_of", op_sync(op_ffi_ptr_of)),
-      ("op_ffi_buf_copy", op_sync(op_ffi_buf_copy)),
+      ("op_ffi_buf_copy_into", op_sync(op_ffi_buf_copy_into)),
       ("op_ffi_cstr_read", op_sync(op_ffi_cstr_read)),
       ("op_ffi_read_u8", op_sync(op_ffi_read_u8)),
       ("op_ffi_read_i8", op_sync(op_ffi_read_i8)),
@@ -149,7 +149,7 @@ enum NativeType {
   ISize,
   F32,
   F64,
-  Buffer,
+  Pointer,
 }
 
 impl From<NativeType> for libffi::middle::Type {
@@ -168,7 +168,7 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::ISize => libffi::middle::Type::isize(),
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
-      NativeType::Buffer => libffi::middle::Type::pointer(),
+      NativeType::Pointer => libffi::middle::Type::pointer(),
     }
   }
 }
@@ -188,7 +188,7 @@ union NativeValue {
   isize_value: isize,
   f32_value: f32,
   f64_value: f64,
-  buffer: *const u8,
+  pointer: *const u8,
 }
 
 impl NativeValue {
@@ -231,14 +231,14 @@ impl NativeValue {
       NativeType::F64 => Self {
         f64_value: value_as_f64(value),
       },
-      NativeType::Buffer => {
+      NativeType::Pointer => {
         if value.is_null() {
           Self {
-            buffer: ptr::null(),
+            pointer: ptr::null(),
           }
         } else {
           Self {
-            buffer: u64::from(
+            pointer: u64::from(
               serde_json::from_value::<U32x2>(value)
               .expect("Expected ffi arg value to be a tuple of the low and high bits of a pointer address")
             ) as *const u8,
@@ -249,7 +249,7 @@ impl NativeValue {
   }
 
   fn buffer(ptr: *const u8) -> Self {
-    Self { buffer: ptr }
+    Self { pointer: ptr }
   }
 
   unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
@@ -267,7 +267,7 @@ impl NativeValue {
       NativeType::ISize => Arg::new(&self.isize_value),
       NativeType::F32 => Arg::new(&self.f32_value),
       NativeType::F64 => Arg::new(&self.f64_value),
-      NativeType::Buffer => Arg::new(&self.buffer),
+      NativeType::Pointer => Arg::new(&self.pointer),
     }
   }
 }
@@ -453,7 +453,7 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     .iter()
     .zip(args.parameters.into_iter())
     .map(|(&native_type, value)| {
-      if let NativeType::Buffer = native_type {
+      if let NativeType::Pointer = native_type {
         if let Some(idx) = value.as_u64() {
           if let Some(&Some(buf)) = buffers.get(idx as usize) {
             return NativeValue::buffer(buf.as_ptr());
@@ -514,7 +514,7 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     NativeType::F64 => {
       json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
     }
-    NativeType::Buffer => {
+    NativeType::Pointer => {
       json!(U32x2::from(unsafe {
         symbol.cif.call::<*const u8>(symbol.ptr, &call_args)
       } as u64))
@@ -568,7 +568,7 @@ fn op_ffi_ptr_of(
   Ok(U32x2::from(buf.as_ptr() as u64))
 }
 
-fn op_ffi_buf_copy(
+fn op_ffi_buf_copy_into(
   _state: &mut deno_core::OpState,
   (src, mut dst, len): (U32x2, ZeroCopyBuf, usize),
   _: (),

@@ -118,7 +118,7 @@ declare namespace Deno {
     | "isize"
     | "f32"
     | "f64"
-    | "buffer";
+    | "pointer";
 
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction {
@@ -141,7 +141,10 @@ declare namespace Deno {
     | BigInt64Array
     | BigUint64Array;
 
-  /** An unsafe pointer to an memory location for passing and returning pointers to and from the ffi */
+  /** **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * An unsafe pointer to a memory location for passing and returning pointers to and from the ffi
+   */
   export class UnsafePointer {
     constructor(value: bigint);
 
@@ -153,21 +156,49 @@ declare namespace Deno {
     static of(typedArray: TypedArray): UnsafePointer;
 
     /**
-     * Reads memory at the pointer into a typed array.
-     * Length is determined from the typed array's `byteLength`.
-     * Also takes optional offset.
-     */
-    read(destination: TypedArray, offset?: bigint | number): void;
-
-    /**
-     * Reads a C string at the pointer taking an optional offset.
-     */
-    readCString(offset?: bigint | number): string;
-
-    /**
      * Returns the value of the pointer which is useful in certain scenarios.
      */
     valueOf(): bigint;
+  }
+
+  /** **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * An unsafe pointer view to a memory location as specified by the `pointer`
+   * value. The `UnsafePointerView` API mimics the standard built in interface
+   * `DataView` for accessing the underlying types at an memory location
+   * (numbers, strings and raw bytes).
+   */
+  export class UnsafePointerView {
+    constructor(pointer: UnsafePointer);
+
+    pointer: UnsafePointer;
+
+    /** Gets an unsigned 8-bit integer at the specified byte offset from the pointer. */
+    getUint8(offset?: number): number;
+    /** Gets a signed 8-bit integer at the specified byte offset from the pointer. */
+    getInt8(offset?: number): number;
+    /** Gets an unsigned 16-bit integer at the specified byte offset from the pointer. */
+    getUint16(offset?: number): number;
+    /** Gets a signed 16-bit integer at the specified byte offset from the pointer. */
+    getInt16(offset?: number): number;
+    /** Gets an unsigned 32-bit integer at the specified byte offset from the pointer. */
+    getUint32(offset?: number): number;
+    /** Gets a signed 32-bit integer at the specified byte offset from the pointer. */
+    getInt32(offset?: number): number;
+    /** Gets an unsigned 64-bit integer at the specified byte offset from the pointer. */
+    getBigUint64(offset?: number): bigint;
+    /** Gets a signed 64-bit integer at the specified byte offset from the pointer. */
+    getBigInt64(offset?: number): bigint;
+    /** Gets a signed 32-bit float at the specified byte offset from the pointer. */
+    getFloat32(offset?: number): number;
+    /** Gets a signed 64-bit float at the specified byte offset from the pointer. */
+    getFloat64(offset?: number): number;
+    /** Gets a C string (null terminated string) at the specified byte offset from the pointer. */
+    getCString(offset?: number): string;
+    /** Gets an ArrayBuffer of length `byteLength` at the specified byte offset from the pointer. */
+    getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
+    /** Copies the memory of the pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional offset from the pointer. */
+    copyInto(destination: TypedArray, offset?: number): void;
   }
 
   /** A dynamic library resource */
@@ -178,7 +209,7 @@ declare namespace Deno {
     close(): void;
   }
 
-  /** **UNSTABLE**: new API
+  /** **UNSTABLE**: Unsafe and new API, beware!
    *
    * Opens a dynamic library and registers symbols
    */
