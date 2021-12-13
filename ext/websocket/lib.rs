@@ -298,10 +298,7 @@ where
   let client = client_async(request, socket);
   let (stream, response): (WsStream, Response) =
     if let Some(cancel_resource) = cancel_resource {
-      client
-        .or_cancel(cancel_resource.0.to_owned())
-        .await
-        .map_err(|_| DomExceptionAbortError::new("connection was aborted"))?
+      client.or_cancel(cancel_resource.0.to_owned()).await?
     } else {
       client.await
     }
