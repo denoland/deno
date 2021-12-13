@@ -15,6 +15,7 @@ use lspower::lsp::CompletionParams;
 use lspower::lsp::CompletionResponse;
 use lspower::lsp::CompletionTextEdit;
 use lspower::lsp::DidChangeTextDocumentParams;
+use lspower::lsp::DidCloseTextDocumentParams;
 use lspower::lsp::DidOpenTextDocumentParams;
 use lspower::lsp::InitializeParams;
 use lspower::lsp::InitializedParams;
@@ -44,10 +45,10 @@ pub struct ReplCompletionItem {
 
 pub struct ReplLanguageServer {
   language_server: super::language_server::LanguageServer,
-  document_specifier: ModuleSpecifier,
   document_version: i32,
   document_text: String,
   pending_text: String,
+  cwd_uri: ModuleSpecifier,
 }
 
 impl ReplLanguageServer {
@@ -56,10 +57,7 @@ impl ReplLanguageServer {
       let language_server =
         super::language_server::LanguageServer::new(Client::new_for_repl());
 
-      // todo(dsherret): handle if someone changes their directory via Deno.chdir
-      let cwd = std::env::current_dir()?;
-      let cwd_uri = ModuleSpecifier::from_directory_path(&cwd)
-        .map_err(|_| anyhow!("Could not get URI from {}", cwd.display()))?;
+      let cwd_uri = get_cwd_uri()?;
 
       #[allow(deprecated)]
       language_server
@@ -90,27 +88,16 @@ impl ReplLanguageServer {
 
       language_server.initialized(InitializedParams {}).await;
 
-      let document_version = 0;
-      let document_specifier = cwd_uri.join("$deno$repl.ts").unwrap();
-      let document_text = "".to_string();
-      language_server
-        .did_open(DidOpenTextDocumentParams {
-          text_document: TextDocumentItem {
-            uri: document_specifier.clone(),
-            language_id: "typescript".to_string(),
-            version: document_version,
-            text: document_text.clone(),
-          },
-        })
-        .await;
-
-      Ok(ReplLanguageServer {
+      let server = ReplLanguageServer {
         language_server,
-        document_specifier,
-        document_version,
-        document_text,
+        document_version: 0,
+        document_text: String::new(),
         pending_text: String::new(),
-      })
+        cwd_uri,
+      };
+      server.open_current_document().await;
+
+      Ok(server)
     })
     .await
   }
@@ -143,7 +130,7 @@ impl ReplLanguageServer {
         .completion(CompletionParams {
           text_document_position: TextDocumentPositionParams {
             text_document: TextDocumentIdentifier {
-              uri: self.document_specifier.clone(),
+              uri: self.get_document_specifier(),
             },
             position: Position {
               line: line_and_column.line_index as u32,
@@ -199,6 +186,7 @@ impl ReplLanguageServer {
   }
 
   async fn did_change(&mut self, new_text: &str) {
+    self.check_cwd_change().await;
     let new_text = if new_text.ends_with('\n') {
       new_text.to_string()
     } else {
@@ -213,7 +201,7 @@ impl ReplLanguageServer {
       .language_server
       .did_change(DidChangeTextDocumentParams {
         text_document: VersionedTextDocumentIdentifier {
-          uri: self.document_specifier.clone(),
+          uri: self.get_document_specifier(),
           version: self.document_version,
         },
         content_changes: vec![TextDocumentContentChangeEvent {
@@ -228,6 +216,42 @@ impl ReplLanguageServer {
       .await;
     self.pending_text = new_text;
   }
+
+  async fn check_cwd_change(&mut self) {
+    // handle if the cwd changes
+    let cwd_uri = get_cwd_uri().unwrap();
+    if self.cwd_uri != cwd_uri {
+      self
+        .language_server
+        .did_close(DidCloseTextDocumentParams {
+          text_document: TextDocumentIdentifier {
+            uri: self.get_document_specifier(),
+          },
+        })
+        .await;
+      self.cwd_uri = cwd_uri;
+      self.document_version = 0;
+      self.open_current_document().await;
+    }
+  }
+
+  async fn open_current_document(&self) {
+    self
+      .language_server
+      .did_open(DidOpenTextDocumentParams {
+        text_document: TextDocumentItem {
+          uri: self.get_document_specifier(),
+          language_id: "typescript".to_string(),
+          version: self.document_version,
+          text: format!("{}{}", self.document_text, self.pending_text),
+        },
+      })
+      .await;
+  }
+
+  fn get_document_specifier(&self) -> ModuleSpecifier {
+    self.cwd_uri.join("$deno$repl.ts").unwrap()
+  }
 }
 
 async fn with_logging_disabled<TReturn>(
@@ -238,6 +262,26 @@ async fn with_logging_disabled<TReturn>(
   // ensure this is set back even on error of a Result
   logger::set_logging_enabled(true);
   result
+}
+
+fn lsp_range_to_span(text_info: &SourceTextInfo, range: &Range) -> Span {
+  Span::new(
+    text_info.byte_index(LineAndColumnIndex {
+      line_index: range.start.line as usize,
+      column_index: range.start.character as usize,
+    }),
+    text_info.byte_index(LineAndColumnIndex {
+      line_index: range.end.line as usize,
+      column_index: range.end.character as usize,
+    }),
+    Default::default(),
+  )
+}
+
+fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
+  let cwd = std::env::current_dir()?;
+  ModuleSpecifier::from_directory_path(&cwd)
+    .map_err(|_| anyhow!("Could not get URI from {}", cwd.display()))
 }
 
 pub fn get_repl_workspace_settings() -> WorkspaceSettings {
@@ -261,18 +305,4 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
       },
     },
   }
-}
-
-fn lsp_range_to_span(text_info: &SourceTextInfo, range: &Range) -> Span {
-  Span::new(
-    text_info.byte_index(LineAndColumnIndex {
-      line_index: range.start.line as usize,
-      column_index: range.start.character as usize,
-    }),
-    text_info.byte_index(LineAndColumnIndex {
-      line_index: range.end.line as usize,
-      column_index: range.end.character as usize,
-    }),
-    Default::default(),
-  )
 }
