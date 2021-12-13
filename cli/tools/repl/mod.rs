@@ -440,7 +440,7 @@ impl std::fmt::Display for EvaluationOutput {
   }
 }
 
-struct EvaluateTsResponse {
+struct TsEvaluateResponse {
   ts_code: String,
   value: Value,
 }
@@ -586,7 +586,7 @@ impl ReplSession {
   async fn evaluate_line_with_object_wrapping(
     &mut self,
     line: &str,
-  ) -> Result<EvaluateTsResponse, AnyError> {
+  ) -> Result<TsEvaluateResponse, AnyError> {
     // Expressions like { "foo": "bar" } are interpreted as block expressions at the
     // statement level rather than an object literal so we interpret it as an expression statement
     // to match the behavior found in a typical prompt including browser developer tools.
@@ -684,7 +684,7 @@ impl ReplSession {
   async fn evaluate_ts_expression(
     &mut self,
     expression: &str,
-  ) -> Result<EvaluateTsResponse, AnyError> {
+  ) -> Result<TsEvaluateResponse, AnyError> {
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: "repl.ts".to_string(),
       source: deno_ast::SourceTextInfo::from_string(expression.to_string()),
@@ -721,7 +721,7 @@ impl ReplSession {
       ))
       .await?;
 
-    Ok(EvaluateTsResponse {
+    Ok(TsEvaluateResponse {
       ts_code: expression.to_string(),
       value,
     })
