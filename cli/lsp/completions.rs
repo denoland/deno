@@ -105,20 +105,21 @@ fn to_narrow_lsp_range(
     column_index: range.end.character,
   });
   let text_bytes = text_info.text_str().as_bytes();
-  let end_character =
-    if matches!(text_bytes[end_byte_index.0 as usize - 1], (b'"' | b'\'')) {
-      range.end.character - 1
-    } else {
-      range.end.character
-    };
+  let has_trailing_quote =
+    matches!(text_bytes[end_byte_index.0 as usize - 1], (b'"' | b'\''));
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
+      // skip the leading quote
       character: (range.start.character + 1) as u32,
     },
     end: lsp::Position {
       line: range.end.line as u32,
-      character: end_character as u32,
+      character: if has_trailing_quote {
+        range.end.character - 1 // do not include it
+      } else {
+        range.end.character
+      } as u32,
     },
   }
 }
