@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use std::ffi::OsString;
 use std::fmt;
 use std::io::Write;
 use termcolor::Color::{Ansi256, Black, Blue, Cyan, Green, Red, White, Yellow};
@@ -14,9 +15,9 @@ lazy_static::lazy_static! {
 }
 
 pub fn use_color() -> bool {
-  let color_flag =
-    std::env::var("DENO_TERM_COLOR").unwrap_or_else(|_| "auto".to_string());
-  let preferece = match color_flag.as_str() {
+  let color_flag = std::env::var_os("DENO_TERM_COLOR")
+    .unwrap_or_else(|| OsString::from("auto"));
+  let preferece = match color_flag.into_string().unwrap().as_str() {
     "always" => true,
     "never" => false,
     "auto" => *IS_TTY,

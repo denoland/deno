@@ -13,6 +13,7 @@ use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use std::env;
+use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
@@ -218,11 +219,30 @@ pub enum ColorFlag {
   Never,
 }
 
+// default value is set based on the --color or DENO_TERM_COLOR env variable
+// just  to avoid setting --color in all tests
+// for instance in CI workflow DENO_TERM_COLOR is set to 'always' but if `--color` is not set explicitly as --always in tests
+// then tests will fail to avoid this we set default value based on the --color or DENO_TERM_COLOR env variable
+// if neither is set then defaults to Auto
 impl Default for ColorFlag {
   fn default() -> Self {
-    Self::Auto
+    let preference = std::env::var_os("DENO_TERM_COLOR")
+      .unwrap_or_else(|| OsString::from("auto"))
+      .into_string()
+      .unwrap();
+    match_color_preferance(&preference)
   }
 }
+
+fn match_color_preferance(s: &str) -> ColorFlag {
+  match s.to_lowercase().as_ref() {
+    "auto" => ColorFlag::Auto,
+    "always" => ColorFlag::Always,
+    "never" => ColorFlag::Never,
+    _ => unreachable!(),
+  }
+}
+
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
@@ -446,14 +466,11 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
 
   if matches.is_present("color") {
     let preferece = matches.value_of("color").unwrap().to_string();
-    flags.color = match preferece.as_str() {
-      "auto" => ColorFlag::Auto,
-      "always" => ColorFlag::Always,
-      "never" => ColorFlag::Never,
-      _ => unreachable!(),
-    };
-    // DENO_COLOR env var is created to let runtime/color.rs know about the color flag
-    env::set_var("DENO_TERM_COLOR", preferece);
+    // DENO_TERM_COLOR env var is created to let runtime/color.rs know about the color flag
+    if env::var_os("DENO_TERM_COLOR").is_none() {
+      env::set_var("DENO_TERM_COLOR", &preferece);
+    }
+    flags.color = match_color_preferance(&preferece);
   }
 
   if matches.is_present("unstable") {
