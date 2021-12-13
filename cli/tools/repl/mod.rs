@@ -4,7 +4,6 @@ use crate::ast::transpile;
 use crate::ast::Diagnostics;
 use crate::ast::ImportsNotUsedAsValues;
 use crate::colors;
-use crate::logger;
 use crate::lsp::ReplLanguageServer;
 use crate::proc_state::ProcState;
 use crate::tools::repl::channel::RustylineSyncMessage;
@@ -455,9 +454,7 @@ struct ReplSession {
 
 impl ReplSession {
   pub async fn initialize(mut worker: MainWorker) -> Result<Self, AnyError> {
-    logger::set_logging_enabled(false);
     let language_server = ReplLanguageServer::new_initialized().await?;
-    logger::set_logging_enabled(true);
     let mut session = worker.create_inspector_session().await;
 
     worker
@@ -550,12 +547,10 @@ impl ReplSession {
         if evaluate_exception_details.is_some() {
           self.set_last_thrown_error(evaluate_result).await?;
         } else {
-          logger::set_logging_enabled(false);
           self
             .language_server
             .commit_text(&evaluate_response.ts_code)
             .await;
-          logger::set_logging_enabled(true);
 
           self.set_last_eval_result(evaluate_result).await?;
         }
@@ -777,9 +772,7 @@ async fn read_line_and_poll(
             line_text,
             position,
           }) => {
-            logger::set_logging_enabled(false);
             let result = repl_session.language_server.completions(&line_text, position).await;
-            logger::set_logging_enabled(true);
             message_handler.send(RustylineSyncResponse::LspCompletions(result)).unwrap();
           }
           None => {}, // channel closed
