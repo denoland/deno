@@ -81,8 +81,6 @@
     } finally {
       file.close();
     }
-
-    signal?.throwIfAborted();
   }
 
   function writeTextFileSync(
