@@ -4,10 +4,12 @@ use crate::ast::transpile;
 use crate::ast::Diagnostics;
 use crate::ast::ImportsNotUsedAsValues;
 use crate::colors;
+use crate::lsp::ReplLanguageServer;
 use crate::proc_state::ProcState;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -428,14 +430,27 @@ impl std::fmt::Display for EvaluationOutput {
   }
 }
 
+struct EvaluateResponse {
+  code: String,
+  value: Value,
+}
+
+impl EvaluateResponse {
+  pub fn get(&self, property_name: &str) -> Option<&Value> {
+    self.value.get(property_name)
+  }
+}
+
 struct ReplSession {
   worker: MainWorker,
   session: LocalInspectorSession,
   pub context_id: u64,
+  language_server: ReplLanguageServer,
 }
 
 impl ReplSession {
   pub async fn initialize(mut worker: MainWorker) -> Result<Self, AnyError> {
+    let language_server = ReplLanguageServer::new_initialized().await?;
     let mut session = worker.create_inspector_session().await;
 
     worker
@@ -467,6 +482,7 @@ impl ReplSession {
       worker,
       session,
       context_id,
+      language_server,
     };
 
     // inject prelude
@@ -527,6 +543,9 @@ impl ReplSession {
         if evaluate_exception_details.is_some() {
           self.set_last_thrown_error(evaluate_result).await?;
         } else {
+          self.language_server.update_current_text(&evaluate_response.code).await;
+          self.language_server.commit_current_text();
+
           self.set_last_eval_result(evaluate_result).await?;
         }
 
@@ -561,7 +580,7 @@ impl ReplSession {
   async fn evaluate_line_with_object_wrapping(
     &mut self,
     line: &str,
-  ) -> Result<Value, AnyError> {
+  ) -> Result<EvaluateResponse, AnyError> {
     // Expressions like { "foo": "bar" } are interpreted as block expressions at the
     // statement level rather than an object literal so we interpret it as an expression statement
     // to match the behavior found in a typical prompt including browser developer tools.
@@ -658,7 +677,7 @@ impl ReplSession {
   async fn evaluate_ts_expression(
     &mut self,
     expression: &str,
-  ) -> Result<Value, AnyError> {
+  ) -> Result<EvaluateResponse, AnyError> {
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: "repl.ts".to_string(),
       source: deno_ast::SourceTextInfo::from_string(expression.to_string()),
@@ -699,8 +718,8 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<Value, AnyError> {
-    self
+  ) -> Result<EvaluateResponse, AnyError> {
+    let value = self
       .post_message_with_event_loop(
         "Runtime.evaluate",
         Some(json!({
@@ -709,7 +728,12 @@ impl ReplSession {
           "replMode": true,
         })),
       )
-      .await
+      .await?;
+
+    Ok(EvaluateResponse {
+      code: expression.to_string(),
+      value,
+    })
   }
 }
 

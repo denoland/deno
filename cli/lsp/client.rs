@@ -4,8 +4,13 @@ use std::sync::Arc;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use lspower::lsp;
+
+use crate::lsp::config::SETTINGS_SECTION;
+use crate::lsp::repl::get_repl_workspace_settings;
 
 use super::lsp_custom;
 
@@ -21,6 +26,10 @@ impl std::fmt::Debug for Client {
 impl Client {
   pub fn from_lspower(client: lspower::Client) -> Client {
     Client(Arc::new(LspowerClient(client)))
+  }
+
+  pub fn new_for_repl() -> Client {
+    Client(Arc::new(ReplClient))
   }
 
   pub async fn publish_diagnostics(
@@ -65,7 +74,7 @@ impl Client {
   }
 }
 
-type FutureReturn<T> = Pin<Box<dyn Future<Output = T> + 'static + Send>>;
+type AsyncReturn<T> = Pin<Box<dyn Future<Output = T> + 'static + Send>>;
 
 trait ClientTrait: Send + Sync {
   fn publish_diagnostics(
@@ -73,25 +82,24 @@ trait ClientTrait: Send + Sync {
     uri: lsp::Url,
     diagnostics: Vec<lsp::Diagnostic>,
     version: Option<i32>,
-  ) -> FutureReturn<()>;
+  ) -> AsyncReturn<()>;
   fn send_registry_state_notification(
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
-  ) -> FutureReturn<()>;
-  // todo(dsherret): how to return `AnyError` or something similar instead of `String` here?
+  ) -> AsyncReturn<()>;
   fn configuration(
     &self,
     items: Vec<lsp::ConfigurationItem>,
-  ) -> FutureReturn<Result<Vec<serde_json::Value>, AnyError>>;
+  ) -> AsyncReturn<Result<Vec<serde_json::Value>, AnyError>>;
   fn show_message(
     &self,
     message_type: lsp::MessageType,
     text: String,
-  ) -> FutureReturn<()>;
+  ) -> AsyncReturn<()>;
   fn register_capability(
     &self,
     registrations: Vec<lsp::Registration>,
-  ) -> FutureReturn<Result<(), AnyError>>;
+  ) -> AsyncReturn<Result<(), AnyError>>;
 }
 
 #[derive(Clone)]
@@ -103,7 +111,7 @@ impl ClientTrait for LspowerClient {
     uri: lsp::Url,
     diagnostics: Vec<lsp::Diagnostic>,
     version: Option<i32>,
-  ) -> FutureReturn<()> {
+  ) -> AsyncReturn<()> {
     let client = self.0.clone();
     Box::pin(async move {
       client.publish_diagnostics(uri, diagnostics, version).await
@@ -113,7 +121,7 @@ impl ClientTrait for LspowerClient {
   fn send_registry_state_notification(
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
-  ) -> FutureReturn<()> {
+  ) -> AsyncReturn<()> {
     let client = self.0.clone();
     Box::pin(async move {
       client
@@ -127,7 +135,7 @@ impl ClientTrait for LspowerClient {
   fn configuration(
     &self,
     items: Vec<lsp::ConfigurationItem>,
-  ) -> FutureReturn<Result<Vec<serde_json::Value>, AnyError>> {
+  ) -> AsyncReturn<Result<Vec<serde_json::Value>, AnyError>> {
     let client = self.0.clone();
     Box::pin(async move {
       match client.configuration(items).await {
@@ -141,7 +149,7 @@ impl ClientTrait for LspowerClient {
     &self,
     message_type: lsp::MessageType,
     message: String,
-  ) -> FutureReturn<()> {
+  ) -> AsyncReturn<()> {
     let client = self.0.clone();
     Box::pin(async move { client.show_message(message_type, message).await })
   }
@@ -149,7 +157,7 @@ impl ClientTrait for LspowerClient {
   fn register_capability(
     &self,
     registrations: Vec<lsp::Registration>,
-  ) -> FutureReturn<Result<(), AnyError>> {
+  ) -> AsyncReturn<Result<(), AnyError>> {
     let client = self.0.clone();
     Box::pin(async move {
       match client.register_capability(registrations).await {
@@ -157,5 +165,57 @@ impl ClientTrait for LspowerClient {
         Err(err) => Err(anyhow!("{}", err.to_string())),
       }
     })
+  }
+}
+
+#[derive(Clone)]
+struct ReplClient;
+
+impl ClientTrait for ReplClient {
+  fn publish_diagnostics(
+    &self,
+    _uri: lsp::Url,
+    _diagnostics: Vec<lsp::Diagnostic>,
+    _version: Option<i32>,
+  ) -> AsyncReturn<()> {
+    Box::pin(future::ready(()))
+  }
+
+  fn send_registry_state_notification(
+    &self,
+    _params: lsp_custom::RegistryStateNotificationParams,
+  ) -> AsyncReturn<()> {
+    Box::pin(future::ready(()))
+  }
+
+  fn configuration(
+    &self,
+    items: Vec<lsp::ConfigurationItem>,
+  ) -> AsyncReturn<Result<Vec<serde_json::Value>, AnyError>> {
+    let is_global_config_request = items.len() == 1 && items[0].scope_uri.is_none() && items[0].section == Some(SETTINGS_SECTION.to_string());
+    let response = if is_global_config_request {
+      vec![serde_json::to_value(get_repl_workspace_settings()).unwrap()]
+    } else {
+      // all specifiers are enabled for the REPL
+      items.into_iter().map(|_| json!({
+        "enable": true,
+      })).collect()
+    };
+    Box::pin(future::ready(Ok(response)))
+  }
+
+  fn show_message(
+    &self,
+    _message_type: lsp::MessageType,
+    _message: String,
+  ) -> AsyncReturn<()> {
+    Box::pin(future::ready(()))
+  }
+
+  fn register_capability(
+    &self,
+    _registrations: Vec<lsp::Registration>,
+  ) -> AsyncReturn<Result<(), AnyError>> {
+    Box::pin(future::ready(Ok(())))
   }
 }

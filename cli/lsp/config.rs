@@ -286,31 +286,37 @@ impl Config {
               if settings_ref.read().specifiers.contains_key(&specifier) {
                 continue;
               }
-              if let Ok(value) = client
+              match client
                 .configuration(vec![lsp::ConfigurationItem {
                   scope_uri: Some(uri.clone()),
                   section: Some(SETTINGS_SECTION.to_string()),
                 }])
                 .await
               {
-                match serde_json::from_value::<SpecifierSettings>(
-                  value[0].clone(),
-                ) {
-                  Ok(specifier_settings) => {
-                    settings_ref
-                      .write()
-                      .specifiers
-                      .insert(specifier, (uri, specifier_settings));
+                Ok(values) => {
+                  if let Some(value) = values.first() {
+                    match serde_json::from_value::<SpecifierSettings>(value.clone()) {
+                      Ok(specifier_settings) => {
+                        settings_ref
+                          .write()
+                          .specifiers
+                          .insert(specifier, (uri, specifier_settings));
+                      }
+                      Err(err) => {
+                        error!("Error converting specifier settings ({}): {}", specifier, err);
+                      }
+                    }
+                  } else {
+                    error!("Expected the client to return a configuration item for specifier: {}", specifier);
                   }
-                  Err(err) => {
-                    error!("Error converting specifier settings: {}", err);
-                  }
+                },
+                Err(err) => {
+                  error!(
+                    "Error retrieving settings for specifier ({}): {}",
+                    specifier,
+                    err,
+                  );
                 }
-              } else {
-                error!(
-                  "Error retrieving settings for specifier: {}",
-                  specifier
-                );
               }
             }
           }

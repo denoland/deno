@@ -8,6 +8,7 @@ use lspower::LspService;
 use lspower::Server;
 
 use self::client::Client;
+pub use repl::ReplLanguageServer;
 
 mod analysis;
 mod cache;
@@ -24,6 +25,7 @@ mod parent_process_checker;
 mod path_to_regex;
 mod performance;
 mod refactor;
+mod repl;
 mod registries;
 mod semantic_tokens;
 mod text;
