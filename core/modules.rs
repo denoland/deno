@@ -25,13 +25,15 @@ use std::task::Poll;
 pub type ModuleId = i32;
 pub type ModuleLoadId = i32;
 
+const SUPPORTED_TYPE_ASSERTIONS: &[&str] = &["json"];
+
 /// Throws V8 exception if assertions are invalid
 pub(crate) fn validate_import_assertions(
   scope: &mut v8::HandleScope,
   assertions: HashMap<String, String>,
 ) {
   for (key, value) in assertions {
-    if key == "type" {
+    if !SUPPORTED_TYPE_ASSERTIONS.contains(&key.as_str()) {
       // TODO(bartlomieju): store in a const list of supported values
       if value != "json" {
         let message = v8::String::new(
@@ -45,6 +47,43 @@ pub(crate) fn validate_import_assertions(
       }
     }
   }
+}
+
+// Clippy thinks the return value doesn't need to be an Option, it's unaware
+// of the mapping that MapFnFrom<F> does for ResolveModuleCallback.
+#[allow(clippy::unnecessary_wraps)]
+fn json_module_evaluation_steps<'a>(
+  context: v8::Local<'a, v8::Context>,
+  module: v8::Local<v8::Module>,
+) -> Option<v8::Local<'a, v8::Value>> {
+  let scope = &mut unsafe { v8::CallbackScope::new(context) };
+  let tc_scope = &mut v8::TryCatch::new(scope);
+  let module_map = tc_scope
+    .get_slot::<Rc<RefCell<ModuleMap>>>()
+    .unwrap()
+    .clone();
+
+  let handle = v8::Global::<v8::Module>::new(tc_scope, module);
+  let value_handle = module_map
+    .borrow_mut()
+    .json_value_store
+    .remove(&handle)
+    .unwrap();
+  let value_local = v8::Local::new(tc_scope, value_handle);
+
+  let name = v8::String::new(tc_scope, "default").unwrap();
+  // This should never fail
+  assert!(
+    module.set_synthetic_module_export(tc_scope, name, value_local)
+      == Some(true)
+  );
+  assert!(!tc_scope.has_caught());
+
+  // Since TLA is active we need to return a promise.
+  let resolver = v8::PromiseResolver::new(tc_scope).unwrap();
+  let undefined = v8::undefined(tc_scope);
+  resolver.resolve(tc_scope, undefined.into());
+  Some(resolver.get_promise(tc_scope).into())
 }
 
 /// A type of module to be executed.
@@ -537,6 +576,11 @@ pub struct ModuleMap {
     FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
   pub(crate) pending_dynamic_imports:
     FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
+
+  // This store is used temporarly, to forward parsed JSON
+  // value from `new_json_module` to `json_module_evaluation_steps`
+  json_value_store:
+    HashMap<v8::Global<v8::Module>, v8::Global<v8::Value>>,
 }
 
 impl ModuleMap {
@@ -556,6 +600,7 @@ impl ModuleMap {
       dynamic_import_map: HashMap::new(),
       preparing_dynamic_imports: FuturesUnordered::new(),
       pending_dynamic_imports: FuturesUnordered::new(),
+      json_value_store: HashMap::new(),
     }
   }
 
@@ -572,6 +617,68 @@ impl ModuleMap {
         SymbolicModule::Mod(mod_id) => return Some(*mod_id),
       }
     }
+  }
+
+  fn new_json_module(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    name: &str,
+    source: &str,
+  ) -> Result<ModuleId, Error> {
+    let name_str = v8::String::new(scope, name).unwrap();
+    let source_str = v8::String::new(scope, source).unwrap();
+
+    let tc_scope = &mut v8::TryCatch::new(scope);
+
+    let parsed_json = match v8::json::parse(tc_scope, source_str) {
+      Some(parsed_json) => parsed_json,
+      None => {
+        let message = v8::String::new(
+          tc_scope,
+          &format!("\"{}\" is not a valid JSON.", name),
+        )
+        .unwrap();
+        let exception = v8::Exception::type_error(tc_scope, message);
+        tc_scope.throw_exception(exception);
+        let e = tc_scope.exception().unwrap();
+        return exception_to_err_result(tc_scope, e, false);
+      }
+    };
+
+    let export_names = [v8::String::new(tc_scope, "default").unwrap()];
+    let module = v8::Module::create_synthetic_module(
+      tc_scope,
+      name_str,
+      &export_names,
+      json_module_evaluation_steps,
+    );
+
+    // TODO: need to store parsed JSON somewhere so that `synthethic_evaluation_steps`
+    // can access it
+    let handle = v8::Global::<v8::Module>::new(tc_scope, module);
+    let value_handle = v8::Global::<v8::Value>::new(tc_scope, parsed_json);
+    self
+      .json_value_store
+      .insert(handle.clone(), value_handle);
+
+    let id = self.next_module_id;
+    self.next_module_id += 1;
+    self
+      .by_name
+      .insert(name.to_string(), SymbolicModule::Mod(id));
+    self.handles_by_id.insert(id, handle.clone());
+    self.ids_by_handle.insert(handle, id);
+    self.info.insert(
+      id,
+      ModuleInfo {
+        id,
+        main: false,
+        name: name.to_string(),
+        import_specifiers: vec![],
+      },
+    );
+
+    Ok(id)
   }
 
   // Create and compile an ES module.
@@ -1165,6 +1272,106 @@ mod tests {
 
     let _ = runtime.mod_evaluate(mod_a);
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+  }
+
+  #[test]
+  fn test_json_module() {
+    #[derive(Default)]
+    struct ModsLoader {
+      pub count: Arc<AtomicUsize>,
+    }
+
+    impl ModuleLoader for ModsLoader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, Error> {
+        self.count.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(specifier, "./b.json");
+        assert_eq!(referrer, "file:///a.js");
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        unreachable!()
+      }
+    }
+
+    let loader = Rc::new(ModsLoader::default());
+
+    let resolve_count = loader.count.clone();
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "setup.js",
+        r#"
+          function assert(cond) {
+            if (!cond) {
+              throw Error("assert");
+            }
+          }
+          "#,
+      )
+      .unwrap();
+
+    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+
+    let (mod_a, mod_b) = {
+      let scope = &mut runtime.handle_scope();
+      let mut module_map = module_map_rc.borrow_mut();
+      let specifier_a = "file:///a.js".to_string();
+      let mod_a = module_map
+        .new_module(
+          scope,
+          true,
+          &specifier_a,
+          r#"
+            import jsonData from './b.json' assert {type: "json"};
+            assert(jsonData.a == "b");
+            assert(jsonData.c.d == 10);
+          "#,
+        )
+        .unwrap();
+
+      let imports = module_map.get_children(mod_a);
+      assert_eq!(
+        imports,
+        Some(&vec![crate::resolve_url("file:///b.json").unwrap()])
+      );
+
+      let mod_b = module_map
+        .new_json_module(
+          scope,
+          "file:///b.json",
+          "{\"a\": \"b\", \"c\": {\"d\": 10}}",
+        )
+        .unwrap();
+      let imports = module_map.get_children(mod_b).unwrap();
+      assert_eq!(imports.len(), 0);
+      (mod_a, mod_b)
+    };
+
+    runtime.instantiate_module(mod_b).unwrap();
+    assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
+
+    runtime.instantiate_module(mod_a).unwrap();
+
+    let receiver = runtime.mod_evaluate(mod_a);
+    futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
+    futures::executor::block_on(receiver).unwrap().unwrap();
   }
 
   #[test]
