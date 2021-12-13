@@ -505,29 +505,3 @@ pub fn get_network_error_class_name(e: &AnyError) -> Option<&'static str> {
   e.downcast_ref::<DomExceptionNetworkError>()
     .map(|_| "DOMExceptionNetworkError")
 }
-
-#[derive(Debug)]
-pub struct DomExceptionAbortError {
-  pub msg: String,
-}
-
-impl DomExceptionAbortError {
-  pub fn new(msg: &str) -> Self {
-    DomExceptionAbortError {
-      msg: msg.to_string(),
-    }
-  }
-}
-
-impl fmt::Display for DomExceptionAbortError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.pad(&self.msg)
-  }
-}
-
-impl std::error::Error for DomExceptionAbortError {}
-
-pub fn get_abort_error_class_name(e: &AnyError) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionAbortError>()
-    .map(|_| "DOMExceptionAbortError")
-}
