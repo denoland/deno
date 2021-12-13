@@ -192,14 +192,21 @@ impl ClientTrait for ReplClient {
     &self,
     items: Vec<lsp::ConfigurationItem>,
   ) -> AsyncReturn<Result<Vec<serde_json::Value>, AnyError>> {
-    let is_global_config_request = items.len() == 1 && items[0].scope_uri.is_none() && items[0].section == Some(SETTINGS_SECTION.to_string());
+    let is_global_config_request = items.len() == 1
+      && items[0].scope_uri.is_none()
+      && items[0].section == Some(SETTINGS_SECTION.to_string());
     let response = if is_global_config_request {
       vec![serde_json::to_value(get_repl_workspace_settings()).unwrap()]
     } else {
       // all specifiers are enabled for the REPL
-      items.into_iter().map(|_| json!({
-        "enable": true,
-      })).collect()
+      items
+        .into_iter()
+        .map(|_| {
+          json!({
+            "enable": true,
+          })
+        })
+        .collect()
     };
     Box::pin(future::ready(Ok(response)))
   }

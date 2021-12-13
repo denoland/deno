@@ -494,16 +494,9 @@ impl Inner {
     Ok(())
   }
 
-  pub fn update_debug_flag(&self) -> bool {
+  pub fn update_debug_flag(&self) {
     let internal_debug = self.config.get_workspace_settings().internal_debug;
-    logger::LSP_DEBUG_FLAG
-      .compare_exchange(
-        !internal_debug,
-        internal_debug,
-        Ordering::Acquire,
-        Ordering::Relaxed,
-      )
-      .is_ok()
+    logger::set_lsp_debug_flag(internal_debug)
   }
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {

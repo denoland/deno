@@ -4,6 +4,7 @@ use crate::ast::transpile;
 use crate::ast::Diagnostics;
 use crate::ast::ImportsNotUsedAsValues;
 use crate::colors;
+use crate::logger;
 use crate::lsp::ReplLanguageServer;
 use crate::proc_state::ProcState;
 use crate::tools::repl::channel::RustylineSyncMessage;
@@ -184,7 +185,15 @@ impl Completer for EditorHelper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    self.sync_sender.lsp_completions(line, pos);
+    let lsp_completions = self.sync_sender.lsp_completions(line, pos);
+    if !lsp_completions.is_empty() {
+      // assumes all lsp completions have the same start position
+      return Ok((
+        lsp_completions[0].span.lo.0 as usize,
+        lsp_completions.into_iter().map(|c| c.new_text).collect(),
+      ));
+    }
+
     let expr = get_expr_from_line_at_pos(line, pos);
 
     // check if the expression is in the form `obj.prop`
@@ -432,15 +441,9 @@ impl std::fmt::Display for EvaluationOutput {
   }
 }
 
-struct EvaluateResponse {
-  code: String,
+struct EvaluateTsResponse {
+  ts_code: String,
   value: Value,
-}
-
-impl EvaluateResponse {
-  pub fn get(&self, property_name: &str) -> Option<&Value> {
-    self.value.get(property_name)
-  }
 }
 
 struct ReplSession {
@@ -452,7 +455,9 @@ struct ReplSession {
 
 impl ReplSession {
   pub async fn initialize(mut worker: MainWorker) -> Result<Self, AnyError> {
+    logger::set_logging_enabled(false);
     let language_server = ReplLanguageServer::new_initialized().await?;
+    logger::set_logging_enabled(true);
     let mut session = worker.create_inspector_session().await;
 
     worker
@@ -538,14 +543,19 @@ impl ReplSession {
 
     match self.evaluate_line_with_object_wrapping(line).await {
       Ok(evaluate_response) => {
-        let evaluate_result = evaluate_response.get("result").unwrap();
+        let evaluate_result = evaluate_response.value.get("result").unwrap();
         let evaluate_exception_details =
-          evaluate_response.get("exceptionDetails");
+          evaluate_response.value.get("exceptionDetails");
 
         if evaluate_exception_details.is_some() {
           self.set_last_thrown_error(evaluate_result).await?;
         } else {
-          self.language_server.commit_text(&evaluate_response.code).await;
+          logger::set_logging_enabled(false);
+          self
+            .language_server
+            .commit_text(&evaluate_response.ts_code)
+            .await;
+          logger::set_logging_enabled(true);
 
           self.set_last_eval_result(evaluate_result).await?;
         }
@@ -581,7 +591,7 @@ impl ReplSession {
   async fn evaluate_line_with_object_wrapping(
     &mut self,
     line: &str,
-  ) -> Result<EvaluateResponse, AnyError> {
+  ) -> Result<EvaluateTsResponse, AnyError> {
     // Expressions like { "foo": "bar" } are interpreted as block expressions at the
     // statement level rather than an object literal so we interpret it as an expression statement
     // to match the behavior found in a typical prompt including browser developer tools.
@@ -602,6 +612,7 @@ impl ReplSession {
         || evaluate_response
           .as_ref()
           .unwrap()
+          .value
           .get("exceptionDetails")
           .is_some())
     {
@@ -678,7 +689,7 @@ impl ReplSession {
   async fn evaluate_ts_expression(
     &mut self,
     expression: &str,
-  ) -> Result<EvaluateResponse, AnyError> {
+  ) -> Result<EvaluateTsResponse, AnyError> {
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: "repl.ts".to_string(),
       source: deno_ast::SourceTextInfo::from_string(expression.to_string()),
@@ -708,19 +719,24 @@ impl ReplSession {
     )?
     .0;
 
-    self
+    let value = self
       .evaluate_expression(&format!(
         "'use strict'; void 0;\n{}",
         transpiled_src
       ))
-      .await
+      .await?;
+
+    Ok(EvaluateTsResponse {
+      ts_code: expression.to_string(),
+      value,
+    })
   }
 
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<EvaluateResponse, AnyError> {
-    let value = self
+  ) -> Result<Value, AnyError> {
+    self
       .post_message_with_event_loop(
         "Runtime.evaluate",
         Some(json!({
@@ -729,12 +745,7 @@ impl ReplSession {
           "replMode": true,
         })),
       )
-      .await?;
-
-    Ok(EvaluateResponse {
-      code: expression.to_string(),
-      value,
-    })
+      .await
   }
 }
 
@@ -766,7 +777,10 @@ async fn read_line_and_poll(
             line_text,
             position,
           }) => {
-            repl_session.language_server.completions(&line_text, position).await;
+            logger::set_logging_enabled(false);
+            let result = repl_session.language_server.completions(&line_text, position).await;
+            logger::set_logging_enabled(true);
+            message_handler.send(RustylineSyncResponse::LspCompletions(result)).unwrap();
           }
           None => {}, // channel closed
         }

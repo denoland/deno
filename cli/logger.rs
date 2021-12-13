@@ -3,10 +3,18 @@
 use std::io::Write;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 lazy_static::lazy_static! {
-  pub static ref LSP_DEBUG_FLAG: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+  static ref LSP_DEBUG_FLAG: AtomicBool = AtomicBool::new(false);
+  static ref LOGGING_ENABLED_FLAG: AtomicBool = AtomicBool::new(true);
+}
+
+pub fn set_lsp_debug_flag(value: bool) {
+  LSP_DEBUG_FLAG.store(value, Ordering::Relaxed)
+}
+
+pub fn set_logging_enabled(value: bool) {
+  LOGGING_ENABLED_FLAG.store(value, Ordering::Relaxed)
 }
 
 struct CliLogger(env_logger::Logger);
@@ -23,13 +31,15 @@ impl CliLogger {
 
 impl log::Log for CliLogger {
   fn enabled(&self, metadata: &log::Metadata) -> bool {
-    if metadata.target() == "deno::lsp::performance"
+    let inner_enabled = if metadata.target() == "deno::lsp::performance"
       && metadata.level() == log::Level::Debug
     {
       LSP_DEBUG_FLAG.load(Ordering::Relaxed)
     } else {
       self.0.enabled(metadata)
-    }
+    };
+
+    inner_enabled && LOGGING_ENABLED_FLAG.load(Ordering::Relaxed)
   }
 
   fn log(&self, record: &log::Record) {
