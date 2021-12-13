@@ -57,11 +57,11 @@ const into2 = new Uint8Array(3);
 const into2ptr = Deno.UnsafePointer.of(into2);
 const into2ptrView = new Deno.UnsafePointerView(into2ptr);
 const into3 = new Uint8Array(3);
-ptrView.copy(into);
+ptrView.copyInto(into);
 console.log([...into]);
-ptrView.copy(into2, 3);
+ptrView.copyInto(into2, 3);
 console.log([...into2]);
-into2ptrView.copy(into3);
+into2ptrView.copyInto(into3);
 console.log([...into3]);
 const string = new Uint8Array([
   ...new TextEncoder().encode("Hello from pointer!"),
