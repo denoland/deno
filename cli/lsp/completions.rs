@@ -448,6 +448,7 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use deno_core::resolve_url;
+  use deno_graph::Range;
   use std::collections::HashMap;
   use std::path::Path;
   use std::sync::Arc;
@@ -688,6 +689,54 @@ mod tests {
         })),
         ..Default::default()
       }]
+    );
+  }
+
+  #[test]
+  fn test_to_narrow_lsp_range() {
+    let text_info = SourceTextInfo::from_string(r#""te""#.to_string());
+    let range = to_narrow_lsp_range(
+      &text_info,
+      &Range {
+        specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
+        start: deno_graph::Position {
+          line: 0,
+          character: 0,
+        },
+        end: deno_graph::Position {
+          line: 0,
+          character: text_info.text_str().chars().count(),
+        },
+      },
+    );
+    assert_eq!(range.start.character, 1);
+    assert_eq!(
+      range.end.character,
+      (text_info.text_str().chars().count() - 1) as u32
+    );
+  }
+
+  #[test]
+  fn test_to_narrow_lsp_range_no_trailing_quote() {
+    let text_info = SourceTextInfo::from_string(r#""te"#.to_string());
+    let range = to_narrow_lsp_range(
+      &text_info,
+      &Range {
+        specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
+        start: deno_graph::Position {
+          line: 0,
+          character: 0,
+        },
+        end: deno_graph::Position {
+          line: 0,
+          character: text_info.text_str().chars().count(),
+        },
+      },
+    );
+    assert_eq!(range.start.character, 1);
+    assert_eq!(
+      range.end.character,
+      text_info.text_str().chars().count() as u32
     );
   }
 }
