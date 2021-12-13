@@ -10,7 +10,6 @@ use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use export_key::op_crypto_export_key;
 use serde::Deserialize;
 
 use std::cell::RefCell;
@@ -31,7 +30,6 @@ use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::hmac::Key as HmacKey;
 use ring::pbkdf2;
 use ring::rand as RingRand;
-use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
 use ring::signature::EcdsaVerificationAlgorithm;
@@ -41,7 +39,6 @@ use rsa::pkcs1::der::Decodable;
 use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::FromRsaPublicKey;
-use rsa::pkcs1::ToRsaPrivateKey;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::FromPrivateKey;
 use rsa::BigUint;
@@ -58,16 +55,19 @@ use std::path::PathBuf;
 pub use rand; // Re-export rand
 
 mod export_key;
+mod generate_key;
 mod import_key;
 mod key;
 mod shared;
 
+pub use crate::export_key::op_crypto_export_key;
+pub use crate::generate_key::op_crypto_generate_key;
+pub use crate::import_key::op_crypto_import_key;
 use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
 
-pub use crate::import_key::op_crypto_import_key;
 use crate::shared::ID_MFG1;
 use crate::shared::ID_P_SPECIFIED;
 use crate::shared::ID_SHA1_OID;
@@ -131,122 +131,6 @@ pub fn op_crypto_get_random_values(
   }
 
   Ok(())
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AlgorithmArg {
-  name: Algorithm,
-  modulus_length: Option<u32>,
-  public_exponent: Option<ZeroCopyBuf>,
-  named_curve: Option<CryptoNamedCurve>,
-  hash: Option<CryptoHash>,
-  length: Option<usize>,
-}
-
-pub async fn op_crypto_generate_key(
-  _state: Rc<RefCell<OpState>>,
-  args: AlgorithmArg,
-  _: (),
-) -> Result<ZeroCopyBuf, AnyError> {
-  let algorithm = args.name;
-
-  let key = match algorithm {
-    Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss | Algorithm::RsaOaep => {
-      let public_exponent = args.public_exponent.ok_or_else(not_supported)?;
-      let modulus_length = args.modulus_length.ok_or_else(not_supported)?;
-
-      let exponent = BigUint::from_bytes_be(&public_exponent);
-      if exponent != *PUB_EXPONENT_1 && exponent != *PUB_EXPONENT_2 {
-        return Err(custom_error(
-          "DOMExceptionOperationError",
-          "Bad public exponent",
-        ));
-      }
-
-      let mut rng = OsRng;
-
-      let private_key: RsaPrivateKey = tokio::task::spawn_blocking(
-        move || -> Result<RsaPrivateKey, rsa::errors::Error> {
-          RsaPrivateKey::new_with_exp(
-            &mut rng,
-            modulus_length as usize,
-            &exponent,
-          )
-        },
-      )
-      .await
-      .unwrap()
-      .map_err(|e| custom_error("DOMExceptionOperationError", e.to_string()))?;
-
-      private_key.to_pkcs1_der()?.as_ref().to_vec()
-    }
-    Algorithm::Ecdsa | Algorithm::Ecdh => {
-      let curve: &EcdsaSigningAlgorithm =
-        args.named_curve.ok_or_else(not_supported)?.into();
-      let rng = RingRand::SystemRandom::new();
-      let private_key: Vec<u8> = tokio::task::spawn_blocking(
-        move || -> Result<Vec<u8>, ring::error::Unspecified> {
-          let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)?;
-          Ok(pkcs8.as_ref().to_vec())
-        },
-      )
-      .await
-      .unwrap()
-      .map_err(|_| {
-        custom_error("DOMExceptionOperationError", "Key generation failed")
-      })?;
-
-      private_key
-    }
-    Algorithm::AesCtr
-    | Algorithm::AesCbc
-    | Algorithm::AesGcm
-    | Algorithm::AesKw => {
-      let length = args.length.ok_or_else(not_supported)?;
-      // Caller must guarantee divisibility by 8
-      let mut key_data = vec![0u8; length / 8];
-      let rng = RingRand::SystemRandom::new();
-      rng.fill(&mut key_data).map_err(|_| {
-        custom_error("DOMExceptionOperationError", "Key generation failed")
-      })?;
-      key_data
-    }
-    Algorithm::Hmac => {
-      let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
-
-      let length = if let Some(length) = args.length {
-        if (length % 8) != 0 {
-          return Err(custom_error(
-            "DOMExceptionOperationError",
-            "hmac block length must be byte aligned",
-          ));
-        }
-        let length = length / 8;
-        if length > ring::digest::MAX_BLOCK_LEN {
-          return Err(custom_error(
-            "DOMExceptionOperationError",
-            "hmac block length is too large",
-          ));
-        }
-        length
-      } else {
-        hash.digest_algorithm().block_len
-      };
-
-      let rng = RingRand::SystemRandom::new();
-      let mut key_bytes = [0; ring::digest::MAX_BLOCK_LEN];
-      let key_bytes = &mut key_bytes[..length];
-      rng.fill(key_bytes).map_err(|_| {
-        custom_error("DOMExceptionOperationError", "Key generation failed")
-      })?;
-
-      key_bytes.to_vec()
-    }
-    _ => return Err(not_supported()),
-  };
-
-  Ok(key.into())
 }
 
 #[derive(Deserialize)]
