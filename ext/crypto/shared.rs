@@ -100,6 +100,10 @@ pub fn not_supported_error(msg: impl Into<Cow<'static, str>>) -> AnyError {
   custom_error("DOMExceptionNotSupportedError", msg)
 }
 
+pub fn operation_error(msg: impl Into<Cow<'static, str>>) -> AnyError {
+  custom_error("DOMExceptionOperationError", msg)
+}
+
 pub fn unsupported_format() -> AnyError {
   not_supported_error("unsupported format")
 }
