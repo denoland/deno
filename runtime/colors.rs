@@ -9,11 +9,20 @@ use termcolor::{Ansi, ColorSpec, WriteColor};
 use termcolor::{BufferWriter, ColorChoice};
 
 lazy_static::lazy_static! {
+  static ref IS_TTY: bool = atty::is(atty::Stream::Stdout);
   static ref NO_COLOR: bool = std::env::var_os("NO_COLOR").is_some();
 }
 
 pub fn use_color() -> bool {
-  !(*NO_COLOR)
+  let color_flag =
+    std::env::var("DENO_TERM_COLOR").unwrap_or_else(|_| "auto".to_string());
+  let preferece = match color_flag.as_str() {
+    "always" => true,
+    "never" => false,
+    "auto" => *IS_TTY,
+    _ => unreachable!(),
+  };
+  preferece && !*NO_COLOR
 }
 
 #[cfg(windows)]

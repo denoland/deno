@@ -240,5 +240,6 @@ pub fn compile_to_runtime_flags(
     v8_flags: flags.v8_flags,
     version: false,
     watch: false,
+    color: flags.color,
   })
 }
