@@ -7,6 +7,9 @@ use super::tsc;
 use crate::fs_util::is_supported_ext;
 use crate::fs_util::specifier_to_file_path;
 
+use deno_ast::swc::common::BytePos;
+use deno_ast::LineAndColumnIndex;
+use deno_ast::SourceTextInfo;
 use deno_core::normalize_path;
 use deno_core::resolve_path;
 use deno_core::resolve_url;
@@ -91,9 +94,23 @@ async fn check_auto_config_registry(
   }
 }
 
-/// Ranges from the graph for specifiers include the leading and trailing quote,
+/// Ranges from the graph for specifiers include the leading and maybe trailing quote,
 /// which we want to ignore when replacing text.
-fn to_narrow_lsp_range(range: &deno_graph::Range) -> lsp::Range {
+fn to_narrow_lsp_range(
+  text_info: &SourceTextInfo,
+  range: &deno_graph::Range,
+) -> lsp::Range {
+  let end_byte_index = text_info.byte_index(LineAndColumnIndex {
+    line_index: range.end.line,
+    column_index: range.end.character,
+  });
+  let text_bytes = text_info.text_str().as_bytes();
+  let end_character =
+    if matches!(text_bytes[end_byte_index.0 as usize - 1], (b'"' | b'\'')) {
+      range.end.character - 1
+    } else {
+      range.end.character
+    };
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
@@ -101,7 +118,7 @@ fn to_narrow_lsp_range(range: &deno_graph::Range) -> lsp::Range {
     },
     end: lsp::Position {
       line: range.end.line as u32,
-      character: (range.end.character - 1) as u32,
+      character: end_character as u32,
     },
   }
 }
@@ -117,7 +134,7 @@ pub(crate) async fn get_import_completions(
 ) -> Option<lsp::CompletionResponse> {
   let document = state_snapshot.documents.get(specifier)?;
   let (text, _, range) = document.get_maybe_dependency(position)?;
-  let range = to_narrow_lsp_range(&range);
+  let range = to_narrow_lsp_range(&document.text_info(), &range);
   // completions for local relative modules
   if text.starts_with("./") || text.starts_with("../") {
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
