@@ -852,6 +852,7 @@
      * @param {CryptoKey} key
      * @returns {Promise<any>}
      */
+    // deno-lint-ignore require-await
     async exportKey(format, key) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'exportKey' on 'SubtleCrypto'";
@@ -878,7 +879,7 @@
         case "RSASSA-PKCS1-v1_5":
         case "RSA-PSS":
         case "RSA-OAEP": {
-          return await exportKeyRSA(format, key, innerKey);
+          return exportKeyRSA(format, key, innerKey);
         }
         case "AES-CTR":
         case "AES-CBC":
@@ -2532,7 +2533,7 @@
     }
   }
 
-  async function exportKeyRSA(format, key, innerKey) {
+  function exportKeyRSA(format, key, innerKey) {
     switch (format) {
       case "pkcs8": {
         // 1.
@@ -2544,12 +2545,10 @@
         }
 
         // 2.
-        const data = await core.opAsync("op_crypto_export_key", {
-          key: innerKey,
-          format: "pkcs8",
+        const data = core.opSync("op_crypto_export_key", {
           algorithm: key[_algorithm].name,
-          hash: key[_algorithm].hash.name,
-        });
+          format: "pkcs8",
+        }, innerKey);
 
         // 3.
         return data.buffer;
@@ -2564,12 +2563,10 @@
         }
 
         // 2.
-        const data = await core.opAsync("op_crypto_export_key", {
-          key: innerKey,
-          format: "spki",
+        const data = core.opSync("op_crypto_export_key", {
           algorithm: key[_algorithm].name,
-          hash: key[_algorithm].hash.name,
-        });
+          format: "spki",
+        }, innerKey);
 
         // 3.
         return data.buffer;

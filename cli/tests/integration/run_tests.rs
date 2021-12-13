@@ -233,7 +233,6 @@ itest!(_070_location {
 itest!(_071_location_unset {
   args: "run 071_location_unset.ts",
   output: "071_location_unset.ts.out",
-  exit_code: 1,
 });
 
 itest!(_072_location_relative_fetch {
@@ -903,6 +902,12 @@ itest!(set_exit_code_1 {
 
 itest!(set_exit_code_2 {
   args: "run --no-check --unstable set_exit_code_2.ts",
+  output: "empty.out",
+  exit_code: 42,
+});
+
+itest!(set_exit_code_in_worker {
+  args: "run --no-check --unstable --allow-read set_exit_code_in_worker.ts",
   output: "empty.out",
   exit_code: 42,
 });
