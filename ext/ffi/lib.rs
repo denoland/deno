@@ -42,7 +42,7 @@ fn check_unstable(state: &OpState, api_name: &str) {
 }
 
 pub trait FfiPermissions {
-  fn check(&mut self, path: &Path) -> Result<(), AnyError>;
+  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError>;
 }
 
 #[derive(Clone)]
@@ -112,18 +112,18 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       ("op_ffi_load", op_sync(op_ffi_load::<P>)),
       ("op_ffi_call", op_sync(op_ffi_call)),
       ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
-      ("op_ffi_ptr_of", op_sync(op_ffi_ptr_of)),
-      ("op_ffi_buf_copy_into", op_sync(op_ffi_buf_copy_into)),
-      ("op_ffi_cstr_read", op_sync(op_ffi_cstr_read)),
-      ("op_ffi_read_u8", op_sync(op_ffi_read_u8)),
-      ("op_ffi_read_i8", op_sync(op_ffi_read_i8)),
-      ("op_ffi_read_u16", op_sync(op_ffi_read_u16)),
-      ("op_ffi_read_i16", op_sync(op_ffi_read_i16)),
-      ("op_ffi_read_u32", op_sync(op_ffi_read_u32)),
-      ("op_ffi_read_i32", op_sync(op_ffi_read_i32)),
-      ("op_ffi_read_u64", op_sync(op_ffi_read_u64)),
-      ("op_ffi_read_f32", op_sync(op_ffi_read_f32)),
-      ("op_ffi_read_f64", op_sync(op_ffi_read_f64)),
+      ("op_ffi_ptr_of", op_sync(op_ffi_ptr_of::<P>)),
+      ("op_ffi_buf_copy_into", op_sync(op_ffi_buf_copy_into::<P>)),
+      ("op_ffi_cstr_read", op_sync(op_ffi_cstr_read::<P>)),
+      ("op_ffi_read_u8", op_sync(op_ffi_read_u8::<P>)),
+      ("op_ffi_read_i8", op_sync(op_ffi_read_i8::<P>)),
+      ("op_ffi_read_u16", op_sync(op_ffi_read_u16::<P>)),
+      ("op_ffi_read_i16", op_sync(op_ffi_read_i16::<P>)),
+      ("op_ffi_read_u32", op_sync(op_ffi_read_u32::<P>)),
+      ("op_ffi_read_i32", op_sync(op_ffi_read_i32::<P>)),
+      ("op_ffi_read_u64", op_sync(op_ffi_read_u64::<P>)),
+      ("op_ffi_read_f32", op_sync(op_ffi_read_f32::<P>)),
+      ("op_ffi_read_f64", op_sync(op_ffi_read_f64::<P>)),
     ])
     .state(move |state| {
       // Stolen from deno_webgpu, is there a better option?
@@ -411,7 +411,7 @@ where
 
   check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(&PathBuf::from(&path))?;
+  permissions.check(Some(&PathBuf::from(&path)))?;
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen::Error::OpeningLibraryError(std::io::Error::new(
@@ -560,102 +560,174 @@ async fn op_ffi_call_nonblocking(
     .unwrap()
 }
 
-fn op_ffi_ptr_of(
-  _state: &mut deno_core::OpState,
+fn op_ffi_ptr_of<FP>(
+  state: &mut deno_core::OpState,
   buf: ZeroCopyBuf,
   _: (),
-) -> Result<U32x2, AnyError> {
+) -> Result<U32x2, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   Ok(U32x2::from(buf.as_ptr() as u64))
 }
 
-fn op_ffi_buf_copy_into(
-  _state: &mut deno_core::OpState,
+fn op_ffi_buf_copy_into<FP>(
+  state: &mut deno_core::OpState,
   (src, mut dst, len): (U32x2, ZeroCopyBuf, usize),
   _: (),
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   let src = u64::from(src) as *const u8;
   unsafe { ptr::copy(src, dst.as_mut_ptr(), len) };
   Ok(())
 }
 
-fn op_ffi_cstr_read(
-  _state: &mut deno_core::OpState,
+fn op_ffi_cstr_read<FP>(
+  state: &mut deno_core::OpState,
   ptr: U32x2,
   _: (),
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   let ptr = u64::from(ptr) as *const i8;
   Ok(unsafe { CStr::from_ptr(ptr) }.to_str()?.to_string())
 }
 
-fn op_ffi_read_u8(
-  _state: &mut deno_core::OpState,
+fn op_ffi_read_u8<FP>(
+  state: &mut deno_core::OpState,
   ptr: U32x2,
   _: (),
-) -> Result<u8, AnyError> {
+) -> Result<u8, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   Ok(unsafe { *(u64::from(ptr) as *const u8) })
 }
 
-fn op_ffi_read_i8(
-  _state: &mut deno_core::OpState,
+fn op_ffi_read_i8<FP>(
+  state: &mut deno_core::OpState,
   ptr: U32x2,
   _: (),
-) -> Result<i8, AnyError> {
+) -> Result<i8, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   Ok(unsafe { *(u64::from(ptr) as *const i8) })
 }
 
-fn op_ffi_read_u16(
-  _state: &mut deno_core::OpState,
+fn op_ffi_read_u16<FP>(
+  state: &mut deno_core::OpState,
   ptr: U32x2,
   _: (),
-) -> Result<u16, AnyError> {
+) -> Result<u16, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   Ok(unsafe { *(u64::from(ptr) as *const u16) })
 }
 
-fn op_ffi_read_i16(
-  _state: &mut deno_core::OpState,
+fn op_ffi_read_i16<FP>(
+  state: &mut deno_core::OpState,
   ptr: U32x2,
   _: (),
-) -> Result<i16, AnyError> {
+) -> Result<i16, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   Ok(unsafe { *(u64::from(ptr) as *const i16) })
 }
 
-fn op_ffi_read_u32(
-  _state: &mut deno_core::OpState,
+fn op_ffi_read_u32<FP>(
+  state: &mut deno_core::OpState,
   ptr: U32x2,
   _: (),
-) -> Result<u32, AnyError> {
+) -> Result<u32, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   Ok(unsafe { *(u64::from(ptr) as *const u32) })
 }
 
-fn op_ffi_read_i32(
-  _state: &mut deno_core::OpState,
+fn op_ffi_read_i32<FP>(
+  state: &mut deno_core::OpState,
   ptr: U32x2,
   _: (),
-) -> Result<i32, AnyError> {
+) -> Result<i32, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   Ok(unsafe { *(u64::from(ptr) as *const i32) })
 }
 
-fn op_ffi_read_u64(
-  _state: &mut deno_core::OpState,
+fn op_ffi_read_u64<FP>(
+  state: &mut deno_core::OpState,
   ptr: U32x2,
   _: (),
-) -> Result<U32x2, AnyError> {
+) -> Result<U32x2, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   Ok(U32x2::from(unsafe { *(u64::from(ptr) as *const u64) }))
 }
 
-fn op_ffi_read_f32(
-  _state: &mut deno_core::OpState,
+fn op_ffi_read_f32<FP>(
+  state: &mut deno_core::OpState,
   ptr: U32x2,
   _: (),
-) -> Result<f32, AnyError> {
+) -> Result<f32, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   Ok(unsafe { *(u64::from(ptr) as *const f32) })
 }
 
-fn op_ffi_read_f64(
-  _state: &mut deno_core::OpState,
+fn op_ffi_read_f64<FP>(
+  state: &mut deno_core::OpState,
   ptr: U32x2,
   _: (),
-) -> Result<f64, AnyError> {
+) -> Result<f64, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
   Ok(unsafe { *(u64::from(ptr) as *const f64) })
 }
 
