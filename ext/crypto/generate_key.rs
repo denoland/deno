@@ -65,7 +65,7 @@ fn generate_key_rsa(
   modulus_length: u32,
   public_exponent: &[u8],
 ) -> Result<Vec<u8>, AnyError> {
-  let exponent = BigUint::from_bytes_be(&public_exponent);
+  let exponent = BigUint::from_bytes_be(public_exponent);
   if exponent != *PUB_EXPONENT_1 && exponent != *PUB_EXPONENT_2 {
     return Err(operation_error("Bad public exponent"));
   }
