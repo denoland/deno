@@ -73,7 +73,6 @@ impl ReplLanguageServer {
             text_document: None,
             window: None,
             general: None,
-            //offset_encoding: None,
             experimental: None,
           },
           trace: None,

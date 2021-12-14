@@ -72,7 +72,7 @@ impl RustylineSyncMessageSender {
     } else {
       match self.response_rx.borrow_mut().blocking_recv().unwrap() {
         RustylineSyncResponse::PostMessage(result) => result,
-        _ => unreachable!(),
+        RustylineSyncResponse::LspCompletions(_) => unreachable!(),
       }
     }
   }
@@ -94,7 +94,7 @@ impl RustylineSyncMessageSender {
     } else {
       match self.response_rx.borrow_mut().blocking_recv().unwrap() {
         RustylineSyncResponse::LspCompletions(result) => result,
-        _ => unreachable!(),
+        RustylineSyncResponse::PostMessage(_) => unreachable!(),
       }
     }
   }

@@ -24,12 +24,12 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
-  pub fn from_lspower(client: lspower::Client) -> Client {
-    Client(Arc::new(LspowerClient(client)))
+  pub fn from_lspower(client: lspower::Client) -> Self {
+    Self(Arc::new(LspowerClient(client)))
   }
 
-  pub fn new_for_repl() -> Client {
-    Client(Arc::new(ReplClient))
+  pub fn new_for_repl() -> Self {
+    Self(Arc::new(ReplClient))
   }
 
   pub async fn publish_diagnostics(
@@ -138,10 +138,7 @@ impl ClientTrait for LspowerClient {
   ) -> AsyncReturn<Result<Vec<serde_json::Value>, AnyError>> {
     let client = self.0.clone();
     Box::pin(async move {
-      match client.configuration(items).await {
-        Ok(result) => Ok(result),
-        Err(err) => Err(anyhow!("{}", err.to_string())),
-      }
+      client.configuration(items).await.map_err(|err| anyhow!("{}", err)
     })
   }
 
@@ -194,7 +191,7 @@ impl ClientTrait for ReplClient {
   ) -> AsyncReturn<Result<Vec<serde_json::Value>, AnyError>> {
     let is_global_config_request = items.len() == 1
       && items[0].scope_uri.is_none()
-      && items[0].section == Some(SETTINGS_SECTION.to_string());
+      && items[0].section.as_deref() == Some(SETTINGS_SECTION);
     let response = if is_global_config_request {
       vec![serde_json::to_value(get_repl_workspace_settings()).unwrap()]
     } else {
