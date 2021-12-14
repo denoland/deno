@@ -2464,27 +2464,52 @@
         let hash;
 
         // 8.
-        switch (jwk.alg) {
-          case undefined:
-            hash = undefined;
-            break;
-          case "RS1":
-            hash = "SHA-1";
-            break;
-          case "RS256":
-            hash = "SHA-256";
-            break;
-          case "RS384":
-            hash = "SHA-384";
-            break;
-          case "RS512":
-            hash = "SHA-512";
-            break;
-          default:
-            throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'RS1', 'RS256', 'RS384', 'RS512'`,
-              "DataError",
-            );
+        if (normalizedAlgorithm.name === "RSA-OAEP") {
+          switch (jwk.alg) {
+            case undefined:
+              hash = undefined;
+              break;
+            case "RSA-OAEP":
+              hash = "SHA-1";
+              break;
+            case "RSA-OAEP-256":
+              hash = "SHA-256";
+              break;
+            case "RSA-OAEP-384":
+              hash = "SHA-384";
+              break;
+            case "RSA-OAEP-512":
+              hash = "SHA-512";
+              break;
+            default:
+              throw new DOMException(
+                `'alg' property of JsonWebKey must be one of 'RSA-OAEP', 'RSA-OAEP-256', 'RSA-OAEP-384', or 'RSA-OAEP-512'`,
+                "DataError",
+              );
+          }
+        } else {
+          switch (jwk.alg) {
+            case undefined:
+              hash = undefined;
+              break;
+            case "RS1":
+              hash = "SHA-1";
+              break;
+            case "RS256":
+              hash = "SHA-256";
+              break;
+            case "RS384":
+              hash = "SHA-384";
+              break;
+            case "RS512":
+              hash = "SHA-512";
+              break;
+            default:
+              throw new DOMException(
+                `'alg' property of JsonWebKey must be one of 'RS1', 'RS256', 'RS384', 'RS512'`,
+                "DataError",
+              );
+          }
         }
 
         // 9.
@@ -2821,6 +2846,73 @@
 
         // 3.
         return data.buffer;
+      }
+      case "jwk": {
+        // 1-2.
+        const jwk = {
+          kty: "RSA",
+        };
+
+        // 3.
+        const hash = key[_algorithm].hash.name;
+
+        // 4.
+        if (key[_algorithm].name === "RSA-OAEP") {
+          switch (hash) {
+            case "SHA-1":
+              jwk.alg = "RSA-OAEP";
+              break;
+            case "SHA-256":
+              jwk.alg = "RSA-OAEP-256";
+              break;
+            case "SHA-384":
+              jwk.alg = "RSA-OAEP-384";
+              break;
+            case "SHA-512":
+              jwk.alg = "RSA-OAEP-512";
+              break;
+            default:
+              throw new DOMException(
+                "Hash algorithm not supported",
+                "NotSupportedError",
+              );
+          }
+        } else {
+          switch (hash) {
+            case "SHA-1":
+              jwk.alg = "RS1";
+              break;
+            case "SHA-256":
+              jwk.alg = "RS256";
+              break;
+            case "SHA-384":
+              jwk.alg = "RS384";
+              break;
+            case "SHA-512":
+              jwk.alg = "RS512";
+              break;
+            default:
+              throw new DOMException(
+                "Hash algorithm not supported",
+                "NotSupportedError",
+              );
+          }
+        }
+
+        // 5-6.
+        const data = core.opSync("op_crypto_export_key", {
+          format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
+          algorithm: key[_algorithm].name,
+        }, innerKey);
+        Object.assign(jwk, data);
+
+        // 7.
+        jwk.key_ops = key.usages;
+
+        // 8.
+        jwk.ext = key[_extractable];
+
+        return jwk;
       }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");
