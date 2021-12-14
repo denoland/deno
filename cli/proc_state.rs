@@ -562,7 +562,8 @@ impl ProcState {
           MediaType::JavaScript
           | MediaType::Unknown
           | MediaType::Cjs
-          | MediaType::Mjs => code.as_ref().clone(),
+          | MediaType::Mjs
+          | MediaType::Json => code.as_ref().clone(),
           MediaType::Dts => "".to_string(),
           _ => {
             let emit_path = self

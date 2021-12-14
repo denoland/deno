@@ -820,6 +820,7 @@ pub(crate) fn to_file_map(
         MediaType::JavaScript
           | MediaType::Mjs
           | MediaType::Cjs
+          | MediaType::Json
           | MediaType::Unknown
       ) {
         if let Some(module) = graph.get(&specifier) {
