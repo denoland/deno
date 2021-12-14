@@ -845,7 +845,7 @@ const jwtRSAKeys = {
   },
 };
 
-Deno.test(async function testImportRsaJwk(t) {
+Deno.test(async function testImportRsaJwk() {
   const subtle = window.crypto.subtle;
   assert(subtle);
 
