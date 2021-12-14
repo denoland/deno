@@ -147,7 +147,7 @@ fn export_key_rsa(
     }
     ExportKeyFormat::JwkPrivate => {
       let private_key = key_data.as_rsa_private_key()?;
-      let private_key = rsa::pkcs1::RsaPrivateKey::from_der(&private_key)
+      let private_key = rsa::pkcs1::RsaPrivateKey::from_der(private_key)
         .map_err(|_| {
           custom_error(
             "DOMExceptionOperationError",
