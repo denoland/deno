@@ -12,7 +12,7 @@ pub fn set_lsp_debug_flag(value: bool) {
 }
 
 pub fn lsp_debug_enabled() -> bool {
-  LSP_DEBUG_FLAG.load(std::sync::atomic::Ordering::SeqCst)
+  LSP_DEBUG_FLAG.load(Ordering::SeqCst)
 }
 
 pub fn set_lsp_log_level(level: log::Level) {
@@ -20,7 +20,7 @@ pub fn set_lsp_log_level(level: log::Level) {
 }
 
 pub fn lsp_log_level() -> log::Level {
-  let level = LSP_LOG_LEVEL.load(std::sync::atomic::Ordering::SeqCst);
+  let level = LSP_LOG_LEVEL.load(Ordering::SeqCst);
   match level {
     level if level == log::Level::Info as usize => log::Level::Info,
     level if level == log::Level::Debug as usize => log::Level::Debug,
