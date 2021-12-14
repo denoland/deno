@@ -2465,30 +2465,7 @@
         let hash;
 
         // 8.
-        if (normalizedAlgorithm.name === "RSA-OAEP") {
-          switch (jwk.alg) {
-            case undefined:
-              hash = undefined;
-              break;
-            case "RSA-OAEP":
-              hash = "SHA-1";
-              break;
-            case "RSA-OAEP-256":
-              hash = "SHA-256";
-              break;
-            case "RSA-OAEP-384":
-              hash = "SHA-384";
-              break;
-            case "RSA-OAEP-512":
-              hash = "SHA-512";
-              break;
-            default:
-              throw new DOMException(
-                `'alg' property of JsonWebKey must be one of 'RSA-OAEP', 'RSA-OAEP-256', 'RSA-OAEP-384', or 'RSA-OAEP-512'`,
-                "DataError",
-              );
-          }
-        } else {
+        if (normalizedAlgorithm.name === "RSASSA-PKCS1-v1_5") {
           switch (jwk.alg) {
             case undefined:
               hash = undefined;
@@ -2508,6 +2485,52 @@
             default:
               throw new DOMException(
                 `'alg' property of JsonWebKey must be one of 'RS1', 'RS256', 'RS384', 'RS512'`,
+                "DataError",
+              );
+          }
+        } else if (normalizedAlgorithm.name === "RSA-PSS") {
+          switch (jwk.alg) {
+            case undefined:
+              hash = undefined;
+              break;
+            case "PS1":
+              hash = "SHA-1";
+              break;
+            case "PS256":
+              hash = "SHA-256";
+              break;
+            case "PS384":
+              hash = "SHA-384";
+              break;
+            case "PS512":
+              hash = "SHA-512";
+              break;
+            default:
+              throw new DOMException(
+                `'alg' property of JsonWebKey must be one of 'PS1', 'PS256', 'PS384', 'PS512'`,
+                "DataError",
+              );
+          }
+        } else {
+          switch (jwk.alg) {
+            case undefined:
+              hash = undefined;
+              break;
+            case "RSA-OAEP":
+              hash = "SHA-1";
+              break;
+            case "RSA-OAEP-256":
+              hash = "SHA-256";
+              break;
+            case "RSA-OAEP-384":
+              hash = "SHA-384";
+              break;
+            case "RSA-OAEP-512":
+              hash = "SHA-512";
+              break;
+            default:
+              throw new DOMException(
+                `'alg' property of JsonWebKey must be one of 'RSA-OAEP', 'RSA-OAEP-256', 'RSA-OAEP-384', or 'RSA-OAEP-512'`,
                 "DataError",
               );
           }
@@ -2858,27 +2881,7 @@
         const hash = key[_algorithm].hash.name;
 
         // 4.
-        if (key[_algorithm].name === "RSA-OAEP") {
-          switch (hash) {
-            case "SHA-1":
-              jwk.alg = "RSA-OAEP";
-              break;
-            case "SHA-256":
-              jwk.alg = "RSA-OAEP-256";
-              break;
-            case "SHA-384":
-              jwk.alg = "RSA-OAEP-384";
-              break;
-            case "SHA-512":
-              jwk.alg = "RSA-OAEP-512";
-              break;
-            default:
-              throw new DOMException(
-                "Hash algorithm not supported",
-                "NotSupportedError",
-              );
-          }
-        } else {
+        if (key[_algorithm].name === "RSASSA-PKCS1-v1_5") {
           switch (hash) {
             case "SHA-1":
               jwk.alg = "RS1";
@@ -2891,6 +2894,46 @@
               break;
             case "SHA-512":
               jwk.alg = "RS512";
+              break;
+            default:
+              throw new DOMException(
+                "Hash algorithm not supported",
+                "NotSupportedError",
+              );
+          }
+        } else if (key[_algorithm].name === "RSA-PSS") {
+          switch (hash) {
+            case "SHA-1":
+              jwk.alg = "PS1";
+              break;
+            case "SHA-256":
+              jwk.alg = "PS256";
+              break;
+            case "SHA-384":
+              jwk.alg = "PS384";
+              break;
+            case "SHA-512":
+              jwk.alg = "PS512";
+              break;
+            default:
+              throw new DOMException(
+                "Hash algorithm not supported",
+                "NotSupportedError",
+              );
+          }
+        } else {
+          switch (hash) {
+            case "SHA-1":
+              jwk.alg = "RSA-OAEP";
+              break;
+            case "SHA-256":
+              jwk.alg = "RSA-OAEP-256";
+              break;
+            case "SHA-384":
+              jwk.alg = "RSA-OAEP-384";
+              break;
+            case "SHA-512":
+              jwk.alg = "RSA-OAEP-512";
               break;
             default:
               throw new DOMException(
