@@ -576,6 +576,43 @@ fn run_watch() {
 }
 
 #[test]
+fn run_watch_external_watch_files() {
+  let t = TempDir::new().unwrap();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  write(&file_to_watch, "console.log('Hello world');").unwrap();
+
+  let external_file_to_watch = t.path().join("external_file_to_watch.txt");
+  write(&external_file_to_watch, "Hello world").unwrap();
+
+  let mut watch_arg = "--watch=".to_owned();
+  let external_file_to_watch_str = external_file_to_watch.clone().into_os_string().into_string().unwrap();
+  watch_arg.push_str(&external_file_to_watch_str);
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(watch_arg)
+    .arg("--unstable")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  assert_contains!(stdout_lines.next().unwrap(), "Hello world");
+  wait_for("Process finished", &mut stderr_lines);
+
+  // Change content of the external file
+  write(&external_file_to_watch, "Hello world2").unwrap();
+
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  wait_for("Process finished", &mut stderr_lines);
+  check_alive_then_kill(child);
+}
+
+#[test]
 fn run_watch_load_unload_events() {
   let t = TempDir::new().unwrap();
   let file_to_watch = t.path().join("file_to_watch.js");
