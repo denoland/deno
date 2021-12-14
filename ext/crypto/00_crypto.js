@@ -15,30 +15,32 @@
   const { btoa } = window.__bootstrap.base64;
 
   const {
-    ArrayPrototypeFind,
-    ArrayPrototypeEvery,
-    ArrayPrototypeIncludes,
     ArrayBuffer,
     ArrayBufferIsView,
+    ArrayPrototypeEvery,
+    ArrayPrototypeFind,
+    ArrayPrototypeIncludes,
     BigInt64Array,
-    StringPrototypeToUpperCase,
-    StringPrototypeReplace,
+    Int16Array,
+    Int32Array,
+    Int8Array,
+    ObjectAssign,
     StringFromCharCode,
+    StringPrototypeReplace,
+    StringPrototypeToLowerCase,
+    StringPrototypeToUpperCase,
     Symbol,
     SymbolFor,
     SyntaxError,
+    TypedArrayPrototypeSlice,
+    TypeError,
+    Uint16Array,
+    Uint32Array,
+    Uint8Array,
+    Uint8ClampedArray,
     WeakMap,
     WeakMapPrototypeGet,
     WeakMapPrototypeSet,
-    Int8Array,
-    Uint8Array,
-    TypedArrayPrototypeSlice,
-    Int16Array,
-    Uint16Array,
-    Int32Array,
-    Uint32Array,
-    Uint8ClampedArray,
-    TypeError,
   } = window.__bootstrap.primordials;
 
   // P-521 is not yet supported.
@@ -2254,16 +2256,19 @@
 
   const SUPPORTED_RSA_KEY_USAGES = {
     "RSASSA-PKCS1-v1_5": {
-      spki: ["verify"],
-      pkcs8: ["sign"],
+      public: ["verify"],
+      private: ["sign"],
+      jwtUse: "sig",
     },
     "RSA-PSS": {
-      spki: ["verify"],
-      pkcs8: ["sign"],
+      public: ["verify"],
+      private: ["sign"],
+      jwtUse: "sig",
     },
     "RSA-OAEP": {
-      spki: ["encrypt", "wrapKey"],
-      pkcs8: ["decrypt", "unwrapKey"],
+      public: ["encrypt", "wrapKey"],
+      private: ["decrypt", "unwrapKey"],
+      jwtUse: "enc",
     },
   };
 
@@ -2282,7 +2287,7 @@
             keyUsages,
             (u) =>
               !ArrayPrototypeIncludes(
-                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].pkcs8,
+                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].private,
                 u,
               ),
           ) !== undefined
@@ -2328,7 +2333,7 @@
             keyUsages,
             (u) =>
               !ArrayPrototypeIncludes(
-                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].spki,
+                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].public,
                 u,
               ),
           ) !== undefined
@@ -2366,6 +2371,301 @@
         );
 
         return key;
+      }
+      case "jwk": {
+        // 1.
+        const jwk = keyData;
+
+        // 2.
+        if (jwk.d !== undefined) {
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) =>
+                !ArrayPrototypeIncludes(
+                  SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].private,
+                  u,
+                ),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+        } else {
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) =>
+                !ArrayPrototypeIncludes(
+                  SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].public,
+                  u,
+                ),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+        }
+
+        // 3.
+        if (StringPrototypeToUpperCase(jwk.kty) !== "RSA") {
+          throw new DOMException(
+            "'kty' property of JsonWebKey must be 'RSA'",
+            "DataError",
+          );
+        }
+
+        // 4.
+        if (
+          keyUsages.length > 0 && jwk.use !== undefined &&
+          StringPrototypeToLowerCase(jwk.use) !==
+            SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].jwtUse
+        ) {
+          throw new DOMException(
+            `'use' property of JsonWebKey must be '${
+              SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].jwtUse
+            }'`,
+            "DataError",
+          );
+        }
+
+        // 5.
+        if (jwk.key_ops !== undefined) {
+          if (
+            ArrayPrototypeFind(
+              jwk.key_ops,
+              (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+            ) !== undefined
+          ) {
+            throw new DOMException(
+              "'key_ops' property of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+
+          if (
+            !ArrayPrototypeEvery(
+              jwk.key_ops,
+              (u) => ArrayPrototypeIncludes(keyUsages, u),
+            )
+          ) {
+            throw new DOMException(
+              "'key_ops' property of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+        }
+
+        if (jwk.ext === false && extractable === true) {
+          throw new DOMException(
+            "'ext' property of JsonWebKey must not be false if extractable is true",
+            "DataError",
+          );
+        }
+
+        // 7.
+        let hash;
+
+        // 8.
+        if (normalizedAlgorithm.name === "RSASSA-PKCS1-v1_5") {
+          switch (jwk.alg) {
+            case undefined:
+              hash = undefined;
+              break;
+            case "RS1":
+              hash = "SHA-1";
+              break;
+            case "RS256":
+              hash = "SHA-256";
+              break;
+            case "RS384":
+              hash = "SHA-384";
+              break;
+            case "RS512":
+              hash = "SHA-512";
+              break;
+            default:
+              throw new DOMException(
+                `'alg' property of JsonWebKey must be one of 'RS1', 'RS256', 'RS384', 'RS512'`,
+                "DataError",
+              );
+          }
+        } else if (normalizedAlgorithm.name === "RSA-PSS") {
+          switch (jwk.alg) {
+            case undefined:
+              hash = undefined;
+              break;
+            case "PS1":
+              hash = "SHA-1";
+              break;
+            case "PS256":
+              hash = "SHA-256";
+              break;
+            case "PS384":
+              hash = "SHA-384";
+              break;
+            case "PS512":
+              hash = "SHA-512";
+              break;
+            default:
+              throw new DOMException(
+                `'alg' property of JsonWebKey must be one of 'PS1', 'PS256', 'PS384', 'PS512'`,
+                "DataError",
+              );
+          }
+        } else {
+          switch (jwk.alg) {
+            case undefined:
+              hash = undefined;
+              break;
+            case "RSA-OAEP":
+              hash = "SHA-1";
+              break;
+            case "RSA-OAEP-256":
+              hash = "SHA-256";
+              break;
+            case "RSA-OAEP-384":
+              hash = "SHA-384";
+              break;
+            case "RSA-OAEP-512":
+              hash = "SHA-512";
+              break;
+            default:
+              throw new DOMException(
+                `'alg' property of JsonWebKey must be one of 'RSA-OAEP', 'RSA-OAEP-256', 'RSA-OAEP-384', or 'RSA-OAEP-512'`,
+                "DataError",
+              );
+          }
+        }
+
+        // 9.
+        if (hash !== undefined) {
+          // 9.1.
+          const normalizedHash = normalizeAlgorithm(hash, "digest");
+
+          // 9.2.
+          if (normalizedHash.name !== normalizedAlgorithm.hash.name) {
+            throw new DOMException(
+              `'alg' property of JsonWebKey must be '${normalizedAlgorithm.name}'`,
+              "DataError",
+            );
+          }
+        }
+
+        // 10.
+        if (jwk.d !== undefined) {
+          // Private key
+          const optimizationsPresent = jwk.p !== undefined ||
+            jwk.q !== undefined || jwk.dp !== undefined ||
+            jwk.dq !== undefined || jwk.qi !== undefined;
+          if (optimizationsPresent) {
+            if (jwk.q === undefined) {
+              throw new DOMException(
+                "'q' property of JsonWebKey is required for private keys",
+                "DataError",
+              );
+            }
+            if (jwk.dp === undefined) {
+              throw new DOMException(
+                "'dp' property of JsonWebKey is required for private keys",
+                "DataError",
+              );
+            }
+            if (jwk.dq === undefined) {
+              throw new DOMException(
+                "'dq' property of JsonWebKey is required for private keys",
+                "DataError",
+              );
+            }
+            if (jwk.qi === undefined) {
+              throw new DOMException(
+                "'qi' property of JsonWebKey is required for private keys",
+                "DataError",
+              );
+            }
+            if (jwk.oth !== undefined) {
+              throw new DOMException(
+                "'oth' property of JsonWebKey is not supported",
+                "NotSupportedError",
+              );
+            }
+          } else {
+            throw new DOMException(
+              "only optimized private keys are supported",
+              "NotSupportedError",
+            );
+          }
+
+          const { modulusLength, publicExponent, rawData } = core.opSync(
+            "op_crypto_import_key",
+            {
+              algorithm: normalizedAlgorithm.name,
+              hash: normalizedAlgorithm.hash.name,
+            },
+            { jwkPrivateRsa: jwk },
+          );
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, rawData);
+
+          const algorithm = {
+            name: normalizedAlgorithm.name,
+            modulusLength,
+            publicExponent,
+            hash: normalizedAlgorithm.hash,
+          };
+
+          const key = constructKey(
+            "private",
+            extractable,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+
+          return key;
+        } else {
+          // Validate that this is a valid public key.
+          if (jwk.n === undefined) {
+            throw new DOMException(
+              "'n' property of JsonWebKey is required for public keys",
+              "DataError",
+            );
+          }
+          if (jwk.e === undefined) {
+            throw new DOMException(
+              "'e' property of JsonWebKey is required for public keys",
+              "DataError",
+            );
+          }
+
+          const { modulusLength, publicExponent, rawData } = core.opSync(
+            "op_crypto_import_key",
+            {
+              algorithm: normalizedAlgorithm.name,
+              hash: normalizedAlgorithm.hash.name,
+            },
+            { jwkPublicRsa: jwk },
+          );
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, rawData);
+
+          const algorithm = {
+            name: normalizedAlgorithm.name,
+            modulusLength,
+            publicExponent,
+            hash: normalizedAlgorithm.hash,
+          };
+
+          const key = constructKey(
+            "public",
+            extractable,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+
+          return key;
+        }
       }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");
@@ -2570,6 +2870,93 @@
 
         // 3.
         return data.buffer;
+      }
+      case "jwk": {
+        // 1-2.
+        const jwk = {
+          kty: "RSA",
+        };
+
+        // 3.
+        const hash = key[_algorithm].hash.name;
+
+        // 4.
+        if (key[_algorithm].name === "RSASSA-PKCS1-v1_5") {
+          switch (hash) {
+            case "SHA-1":
+              jwk.alg = "RS1";
+              break;
+            case "SHA-256":
+              jwk.alg = "RS256";
+              break;
+            case "SHA-384":
+              jwk.alg = "RS384";
+              break;
+            case "SHA-512":
+              jwk.alg = "RS512";
+              break;
+            default:
+              throw new DOMException(
+                "Hash algorithm not supported",
+                "NotSupportedError",
+              );
+          }
+        } else if (key[_algorithm].name === "RSA-PSS") {
+          switch (hash) {
+            case "SHA-1":
+              jwk.alg = "PS1";
+              break;
+            case "SHA-256":
+              jwk.alg = "PS256";
+              break;
+            case "SHA-384":
+              jwk.alg = "PS384";
+              break;
+            case "SHA-512":
+              jwk.alg = "PS512";
+              break;
+            default:
+              throw new DOMException(
+                "Hash algorithm not supported",
+                "NotSupportedError",
+              );
+          }
+        } else {
+          switch (hash) {
+            case "SHA-1":
+              jwk.alg = "RSA-OAEP";
+              break;
+            case "SHA-256":
+              jwk.alg = "RSA-OAEP-256";
+              break;
+            case "SHA-384":
+              jwk.alg = "RSA-OAEP-384";
+              break;
+            case "SHA-512":
+              jwk.alg = "RSA-OAEP-512";
+              break;
+            default:
+              throw new DOMException(
+                "Hash algorithm not supported",
+                "NotSupportedError",
+              );
+          }
+        }
+
+        // 5-6.
+        const data = core.opSync("op_crypto_export_key", {
+          format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
+          algorithm: key[_algorithm].name,
+        }, innerKey);
+        ObjectAssign(jwk, data);
+
+        // 7.
+        jwk.key_ops = key.usages;
+
+        // 8.
+        jwk.ext = key[_extractable];
+
+        return jwk;
       }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");

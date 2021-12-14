@@ -101,6 +101,10 @@ interface HmacImportParams extends Algorithm {
   length?: number;
 }
 
+interface RsaHashedImportParams extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+}
+
 interface EcKeyAlgorithm extends KeyAlgorithm {
   namedCurve: NamedCurve;
 }
@@ -191,7 +195,7 @@ interface SubtleCrypto {
   importKey(
     format: "jwk",
     keyData: JsonWebKey,
-    algorithm: AlgorithmIdentifier | HmacImportParams,
+    algorithm: AlgorithmIdentifier | HmacImportParams | RsaHashedImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;

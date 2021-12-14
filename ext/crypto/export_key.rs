@@ -1,9 +1,12 @@
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use rsa::pkcs1::UIntBytes;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::asn1;
+use spki::der::Decodable;
 use spki::der::Encodable;
 
 use crate::shared::*;
@@ -21,7 +24,8 @@ pub struct ExportKeyOptions {
 pub enum ExportKeyFormat {
   Pkcs8,
   Spki,
-  Jwk,
+  JwkPublic,
+  JwkPrivate,
 }
 
 #[derive(Deserialize)]
@@ -40,6 +44,20 @@ pub enum ExportKeyAlgorithm {
 pub enum ExportKeyResult {
   Pkcs8(ZeroCopyBuf),
   Spki(ZeroCopyBuf),
+  JwkPublicRsa {
+    n: String,
+    e: String,
+  },
+  JwkPrivateRsa {
+    n: String,
+    e: String,
+    d: String,
+    p: String,
+    q: String,
+    dp: String,
+    dq: String,
+    qi: String,
+  },
 }
 
 pub fn op_crypto_export_key(
@@ -52,6 +70,10 @@ pub fn op_crypto_export_key(
     | ExportKeyAlgorithm::RsaPss {}
     | ExportKeyAlgorithm::RsaOaep {} => export_key_rsa(opts.format, key_data),
   }
+}
+
+fn uint_to_b64(bytes: UIntBytes) -> String {
+  base64::encode_config(bytes.as_bytes(), base64::URL_SAFE_NO_PAD)
 }
 
 fn export_key_rsa(
@@ -108,6 +130,41 @@ fn export_key_rsa(
 
       Ok(ExportKeyResult::Pkcs8(pkcs8_der.into()))
     }
-    _ => Err(unsupported_format()),
+    ExportKeyFormat::JwkPublic => {
+      let public_key = key_data.as_rsa_public_key()?;
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(&public_key)
+        .map_err(|_| {
+          custom_error(
+            "DOMExceptionOperationError",
+            "failed to decode public key",
+          )
+        })?;
+
+      Ok(ExportKeyResult::JwkPublicRsa {
+        n: uint_to_b64(public_key.modulus),
+        e: uint_to_b64(public_key.public_exponent),
+      })
+    }
+    ExportKeyFormat::JwkPrivate => {
+      let private_key = key_data.as_rsa_private_key()?;
+      let private_key = rsa::pkcs1::RsaPrivateKey::from_der(private_key)
+        .map_err(|_| {
+          custom_error(
+            "DOMExceptionOperationError",
+            "failed to decode private key",
+          )
+        })?;
+
+      Ok(ExportKeyResult::JwkPrivateRsa {
+        n: uint_to_b64(private_key.modulus),
+        e: uint_to_b64(private_key.public_exponent),
+        d: uint_to_b64(private_key.private_exponent),
+        p: uint_to_b64(private_key.prime1),
+        q: uint_to_b64(private_key.prime2),
+        dp: uint_to_b64(private_key.exponent1),
+        dq: uint_to_b64(private_key.exponent2),
+        qi: uint_to_b64(private_key.coefficient),
+      })
+    }
   }
 }
