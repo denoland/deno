@@ -41,8 +41,8 @@ winres = "=0.1.11"
 [dependencies]
 deno_ast = { version = "0.7.0", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core = { version = "0.110.0", path = "../core" }
-deno_doc = { git = "https://github.com/kitsonk/deno_doc", branch = "import_assertions" }
-deno_graph = { git = "https://github.com/kitsonk/deno_graph", branch = "kitsonk/issue77" }
+deno_doc = "0.23.0"
+deno_graph = "0.14.0"
 deno_lint = { version = "0.20.0", features = ["docs"] }
 deno_runtime = { version = "0.36.0", path = "../runtime" }
 
