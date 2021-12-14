@@ -264,7 +264,11 @@ fn get_root_names(
     graph
       .roots
       .iter()
-      .filter_map(|s| graph.get(s).map(|m| (m.specifier.clone(), m.media_type)))
+      .filter_map(|s| {
+        graph
+          .get(s)
+          .map(|m| (m.specifier().clone(), *m.media_type()))
+      })
       .collect()
   }
 }
@@ -394,7 +398,7 @@ pub(crate) fn check_and_maybe_emit(
         // resolve it via the graph.
         let specifier = graph.resolve(&specifiers[0]);
         let (media_type, source) = if let Some(module) = graph.get(&specifier) {
-          (&module.media_type, module.source.clone())
+          (module.media_type(), module.maybe_source().unwrap_or(""))
         } else {
           log::debug!("module missing, skipping emit for {}", specifier);
           continue;
@@ -479,8 +483,8 @@ impl swc::bundler::Load for BundleLoader<'_> {
         if let Some(m) = self.graph.get(specifier) {
           let (fm, module) = ast::transpile_module(
             specifier,
-            &m.source,
-            m.media_type,
+            m.maybe_source().unwrap_or(""),
+            *m.media_type(),
             self.emit_options,
             self.cm.clone(),
           )?;
@@ -725,7 +729,11 @@ pub(crate) fn valid_emit(
           false
         } else if let Some(version) = cache.get(CacheType::Version, s) {
           if let Some(module) = graph.get(s) {
-            version == get_version(module.source.as_bytes(), &config_bytes)
+            version
+              == get_version(
+                module.maybe_source().unwrap_or("").as_bytes(),
+                &config_bytes,
+              )
           } else {
             // We have a source module in the graph we can't find, so the emit is
             // clearly wrong
@@ -798,7 +806,10 @@ pub(crate) fn to_file_map(
           | MediaType::Unknown
       ) {
         if let Some(module) = graph.get(&specifier) {
-          files.insert(specifier.to_string(), module.source.to_string());
+          files.insert(
+            specifier.to_string(),
+            module.maybe_source().unwrap_or("").to_string(),
+          );
         }
       }
       if let Some(declaration) = cache.get(CacheType::Declaration, &specifier) {

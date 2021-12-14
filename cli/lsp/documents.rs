@@ -22,6 +22,7 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
+use deno_graph::Module;
 use lspower::lsp;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -253,7 +254,7 @@ struct DocumentInner {
   maybe_language_id: Option<LanguageId>,
   maybe_lsp_version: Option<i32>,
   maybe_module:
-    Option<Result<deno_graph::Module, deno_graph::ModuleGraphError>>,
+    Option<Result<deno_graph::EsModule, deno_graph::ModuleGraphError>>,
   maybe_navigation_tree: Option<Arc<tsc::NavigationTree>>,
   maybe_warning: Option<String>,
   specifier: ModuleSpecifier,
@@ -278,13 +279,16 @@ impl Document {
     // we only ever do `Document::new` on on disk resources that are supposed to
     // be diagnosable, unlike `Document::open`, so it is safe to unconditionally
     // parse the module.
-    let maybe_module = Some(deno_graph::parse_module(
+    let maybe_module = match deno_graph::parse_module(
       &specifier,
       maybe_headers,
       content.clone(),
       maybe_resolver,
       Some(&parser),
-    ));
+    ) {
+      Ok(m) => m.to_maybe_es_module().map(Ok),
+      Err(err) => Some(Err(err)),
+    };
     let dependencies = if let Some(Ok(module)) = &maybe_module {
       Arc::new(module.dependencies.clone())
     } else {
@@ -316,13 +320,16 @@ impl Document {
     let maybe_headers = language_id.as_headers();
     let parser = SourceParser::default();
     let maybe_module = if language_id.is_diagnosable() {
-      Some(deno_graph::parse_module(
+      match deno_graph::parse_module(
         &specifier,
         maybe_headers,
         content.clone(),
         maybe_resolver,
         Some(&parser),
-      ))
+      ) {
+        Ok(m) => m.to_maybe_es_module().map(Ok),
+        Err(err) => Some(Err(err)),
+      }
     } else {
       None
     };
@@ -384,13 +391,16 @@ impl Document {
         .map(|li| li.as_headers())
         .flatten();
       let parser = SourceParser::default();
-      Some(deno_graph::parse_module(
+      match deno_graph::parse_module(
         &self.0.specifier,
         maybe_headers,
         content.clone(),
         maybe_resolver,
         Some(&parser),
-      ))
+      ) {
+        Ok(m) => m.to_maybe_es_module().map(Ok),
+        Err(err) => Some(Err(err)),
+      }
     } else {
       None
     };
@@ -495,7 +505,7 @@ impl Document {
 
   fn maybe_module(
     &self,
-  ) -> Option<&Result<deno_graph::Module, deno_graph::ModuleGraphError>> {
+  ) -> Option<&Result<deno_graph::EsModule, deno_graph::ModuleGraphError>> {
     self.0.maybe_module.as_ref()
   }
 
