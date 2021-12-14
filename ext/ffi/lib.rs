@@ -1,6 +1,7 @@
 // Copyright 2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::range_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op_async;
@@ -301,7 +302,7 @@ struct U32x2(u32, u32);
 
 impl From<u64> for U32x2 {
   fn from(value: u64) -> Self {
-    U32x2((value >> 32) as u32, value as u32)
+    Self((value >> 32) as u32, value as u32)
   }
 }
 
@@ -585,9 +586,15 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let src = u64::from(src) as *const u8;
-  unsafe { ptr::copy(src, dst.as_mut_ptr(), len) };
-  Ok(())
+  if dst.len() < len {
+    Err(range_error(
+      "Destination length is smaller than source length",
+    ))
+  } else {
+    let src = u64::from(src) as *const u8;
+    unsafe { ptr::copy(src, dst.as_mut_ptr(), len) };
+    Ok(())
+  }
 }
 
 fn op_ffi_cstr_read<FP>(
@@ -616,7 +623,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { *(u64::from(ptr) as *const u8) })
+  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u8) })
 }
 
 fn op_ffi_read_i8<FP>(
@@ -630,7 +637,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { *(u64::from(ptr) as *const i8) })
+  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i8) })
 }
 
 fn op_ffi_read_u16<FP>(
@@ -644,7 +651,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { *(u64::from(ptr) as *const u16) })
+  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u16) })
 }
 
 fn op_ffi_read_i16<FP>(
@@ -658,7 +665,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { *(u64::from(ptr) as *const i16) })
+  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i16) })
 }
 
 fn op_ffi_read_u32<FP>(
@@ -672,7 +679,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { *(u64::from(ptr) as *const u32) })
+  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const u32) })
 }
 
 fn op_ffi_read_i32<FP>(
@@ -686,7 +693,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { *(u64::from(ptr) as *const i32) })
+  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const i32) })
 }
 
 fn op_ffi_read_u64<FP>(
@@ -700,7 +707,9 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(U32x2::from(unsafe { *(u64::from(ptr) as *const u64) }))
+  Ok(U32x2::from(unsafe {
+    ptr::read_unaligned(u64::from(ptr) as *const u64)
+  }))
 }
 
 fn op_ffi_read_f32<FP>(
@@ -714,7 +723,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { *(u64::from(ptr) as *const f32) })
+  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const f32) })
 }
 
 fn op_ffi_read_f64<FP>(
@@ -728,7 +737,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  Ok(unsafe { *(u64::from(ptr) as *const f64) })
+  Ok(unsafe { ptr::read_unaligned(u64::from(ptr) as *const f64) })
 }
 
 #[cfg(test)]
