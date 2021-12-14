@@ -585,7 +585,7 @@ impl ProcState {
                 | MediaType::Cjs
                 | MediaType::Mjs
             ) {
-              module.source.as_str().to_string()
+              module.maybe_source().unwrap_or("").to_string()
             // The emit may also be missing when a declaration file is in the
             // graph. There shouldn't be any runtime statements in the source
             // file and if there was, users would be shown a `TS1036`
@@ -598,17 +598,23 @@ impl ProcState {
                 specifier, media_type
               )
             };
-            let dependencies = module.dependencies.clone();
-            let module_entry = ModuleEntry::Module { code, dependencies };
-            graph_data.modules.insert(specifier.clone(), module_entry);
-            for dep in module.dependencies.values() {
-              #[allow(clippy::manual_flatten)]
-              for resolved in [&dep.maybe_code, &dep.maybe_type] {
-                if let Some(Ok((specifier, referrer_range))) = resolved {
-                  let specifier =
-                    graph.redirects.get(specifier).unwrap_or(specifier);
-                  let entry = graph_data.referrer_map.entry(specifier.clone());
-                  entry.or_insert_with(|| referrer_range.clone());
+            let dependencies =
+              module.maybe_dependencies().cloned().unwrap_or_default();
+            graph_data.modules.insert(
+              specifier.clone(),
+              ModuleEntry::Module { code, dependencies },
+            );
+            if let Some(dependencies) = module.maybe_dependencies() {
+              for dep in dependencies.values() {
+                #[allow(clippy::manual_flatten)]
+                for resolved in [&dep.maybe_code, &dep.maybe_type] {
+                  if let Some(Ok((specifier, referrer_range))) = resolved {
+                    let specifier =
+                      graph.redirects.get(specifier).unwrap_or(specifier);
+                    let entry =
+                      graph_data.referrer_map.entry(specifier.clone());
+                    entry.or_insert_with(|| referrer_range.clone());
+                  }
                 }
               }
             }
