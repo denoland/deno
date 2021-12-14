@@ -21,12 +21,7 @@ pub fn set_lsp_log_level(level: log::Level) {
 
 pub fn lsp_log_level() -> log::Level {
   let level = LSP_LOG_LEVEL.load(Ordering::SeqCst);
-  match level {
-    level if level == log::Level::Info as usize => log::Level::Info,
-    level if level == log::Level::Debug as usize => log::Level::Debug,
-    level if level == log::Level::Trace as usize => log::Level::Trace,
-    _ => unimplemented!(),
-  }
+  unsafe { std::mem::transmute(level) }
 }
 
 /// Use this macro to do "info" logs in the lsp code. This allows
