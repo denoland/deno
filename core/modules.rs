@@ -579,8 +579,7 @@ pub struct ModuleMap {
 
   // This store is used temporarly, to forward parsed JSON
   // value from `new_json_module` to `json_module_evaluation_steps`
-  json_value_store:
-    HashMap<v8::Global<v8::Module>, v8::Global<v8::Value>>,
+  json_value_store: HashMap<v8::Global<v8::Module>, v8::Global<v8::Value>>,
 }
 
 impl ModuleMap {
@@ -657,9 +656,7 @@ impl ModuleMap {
     // can access it
     let handle = v8::Global::<v8::Module>::new(tc_scope, module);
     let value_handle = v8::Global::<v8::Value>::new(tc_scope, parsed_json);
-    self
-      .json_value_store
-      .insert(handle.clone(), value_handle);
+    self.json_value_store.insert(handle.clone(), value_handle);
 
     let id = self.next_module_id;
     self.next_module_id += 1;
