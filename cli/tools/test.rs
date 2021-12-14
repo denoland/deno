@@ -32,6 +32,7 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
+use deno_graph::Module;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use log::Level;
@@ -1159,7 +1160,7 @@ pub async fn run_tests_with_watch(
           // otherwise this will cause a stack overflow with circular dependencies
           output: &mut HashSet<&'a ModuleSpecifier>,
         ) {
-          if let Some(module) = maybe_module {
+          if let Some(Module::Es(module)) = maybe_module {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {

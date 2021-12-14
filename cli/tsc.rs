@@ -384,8 +384,8 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
       specifier
     };
     let maybe_source = if let Some(module) = state.graph.get(&specifier) {
-      media_type = module.media_type;
-      Some(module.source.as_str().to_string())
+      media_type = *module.media_type();
+      module.maybe_source().map(String::from)
     } else {
       media_type = MediaType::Unknown;
       None
@@ -416,7 +416,7 @@ fn resolve_specifier(
   let media_type = state
     .graph
     .get(specifier)
-    .map_or(&MediaType::Unknown, |m| &m.media_type);
+    .map_or(&MediaType::Unknown, |m| m.media_type());
   let specifier_str = match specifier.scheme() {
     "data" | "blob" => {
       let specifier_str = hash_url(specifier, media_type);

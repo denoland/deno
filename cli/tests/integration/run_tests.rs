@@ -233,7 +233,6 @@ itest!(_070_location {
 itest!(_071_location_unset {
   args: "run 071_location_unset.ts",
   output: "071_location_unset.ts.out",
-  exit_code: 1,
 });
 
 itest!(_072_location_relative_fetch {

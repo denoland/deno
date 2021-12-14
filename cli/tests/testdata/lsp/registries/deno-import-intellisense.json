@@ -1,20 +1,21 @@
 {
-  "version": 1,
+  "version": 2,
   "registries": [
     {
       "schema": "/x/:module([a-z0-9_]*)@:version?/:path*",
       "variables": [
         {
           "key": "module",
-          "url": "http://localhost:4545/lsp/registries/modules.json"
+          "documentation": "/lsp/registries/doc_${module}.json",
+          "url": "/lsp/registries/modules_${module}.json"
         },
         {
           "key": "version",
-          "url": "http://localhost:4545/lsp/registries/${module}_versions.json"
+          "url": "/lsp/registries/${module}_versions.json"
         },
         {
           "key": "path",
-          "url": "http://localhost:4545/lsp/registries/${module}_${{version}}.json"
+          "url": "/lsp/registries/${module}_${{version}}.json"
         }
       ]
     },
@@ -23,11 +24,12 @@
       "variables": [
         {
           "key": "module",
-          "url": "http://localhost:4545/lsp/registries/modules.json"
+          "documentation": "/lsp/registries/doc_${module}.json",
+          "url": "/lsp/registries/modules_${module}.json"
         },
         {
           "key": "path",
-          "url": "http://localhost:4545/lsp/registries/${module}_latest.json"
+          "url": "/lsp/registries/${module}_latest.json"
         }
       ]
     }

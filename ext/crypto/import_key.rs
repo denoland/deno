@@ -1,6 +1,7 @@
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use rsa::pkcs1::UIntBytes;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::Decodable;
@@ -16,7 +17,23 @@ pub enum KeyData {
   Spki(ZeroCopyBuf),
   Pkcs8(ZeroCopyBuf),
   Raw(ZeroCopyBuf),
-  JwkSecret { k: String },
+  JwkSecret {
+    k: String,
+  },
+  JwkPublicRsa {
+    n: String,
+    e: String,
+  },
+  JwkPrivateRsa {
+    n: String,
+    e: String,
+    d: String,
+    p: String,
+    q: String,
+    dp: String,
+    dq: String,
+    qi: String,
+  },
 }
 
 #[derive(Deserialize)]
@@ -72,6 +89,89 @@ pub fn op_crypto_import_key(
     }
     ImportKeyOptions::Aes {} => import_key_aes(key_data),
     ImportKeyOptions::Hmac {} => import_key_hmac(key_data),
+  }
+}
+
+macro_rules! jwt_b64_int_or_err {
+  ($name:ident, $b64:expr, $err:expr) => {
+    let bytes = base64::decode_config($b64, base64::URL_SAFE)
+      .map_err(|_| data_error($err))?;
+    let $name = UIntBytes::new(&bytes).map_err(|_| data_error($err))?;
+  };
+}
+
+fn import_key_rsa_jwk(
+  key_data: KeyData,
+) -> Result<ImportKeyResult, deno_core::anyhow::Error> {
+  match key_data {
+    KeyData::JwkPublicRsa { n, e } => {
+      jwt_b64_int_or_err!(modulus, &n, "invalid modulus");
+      jwt_b64_int_or_err!(public_exponent, &e, "invalid public exponent");
+
+      let public_key = rsa::pkcs1::RsaPublicKey {
+        modulus,
+        public_exponent,
+      };
+
+      let data = public_key
+        .to_vec()
+        .map_err(|_| data_error("invalid rsa public key"))?;
+      let public_exponent =
+        public_key.public_exponent.as_bytes().to_vec().into();
+      let modulus_length = public_key.modulus.as_bytes().len() * 8;
+
+      Ok(ImportKeyResult::Rsa {
+        raw_data: RawKeyData::Public(data.into()),
+        modulus_length,
+        public_exponent,
+      })
+    }
+    KeyData::JwkPrivateRsa {
+      n,
+      e,
+      d,
+      p,
+      q,
+      dp,
+      dq,
+      qi,
+    } => {
+      jwt_b64_int_or_err!(modulus, &n, "invalid modulus");
+      jwt_b64_int_or_err!(public_exponent, &e, "invalid public exponent");
+      jwt_b64_int_or_err!(private_exponent, &d, "invalid private exponent");
+      jwt_b64_int_or_err!(prime1, &p, "invalid first prime factor");
+      jwt_b64_int_or_err!(prime2, &q, "invalid second prime factor");
+      jwt_b64_int_or_err!(exponent1, &dp, "invalid first CRT exponent");
+      jwt_b64_int_or_err!(exponent2, &dq, "invalid second CRT exponent");
+      jwt_b64_int_or_err!(coefficient, &qi, "invalid CRT coefficient");
+
+      let private_key = rsa::pkcs1::RsaPrivateKey {
+        version: rsa::pkcs1::Version::TwoPrime,
+        modulus,
+        public_exponent,
+        private_exponent,
+        prime1,
+        prime2,
+        exponent1,
+        exponent2,
+        coefficient,
+      };
+
+      let data = private_key
+        .to_vec()
+        .map_err(|_| data_error("invalid rsa private key"))?;
+
+      let public_exponent =
+        private_key.public_exponent.as_bytes().to_vec().into();
+      let modulus_length = private_key.modulus.as_bytes().len() * 8;
+
+      Ok(ImportKeyResult::Rsa {
+        raw_data: RawKeyData::Private(data.into()),
+        modulus_length,
+        public_exponent,
+      })
+    }
+    _ => unreachable!(),
   }
 }
 
@@ -192,7 +292,9 @@ fn import_key_rsassa(
         public_exponent,
       })
     }
-    // TODO(lucacasonato): support JWK encoding
+    KeyData::JwkPublicRsa { .. } | KeyData::JwkPrivateRsa { .. } => {
+      import_key_rsa_jwk(key_data)
+    }
     _ => Err(unsupported_format()),
   }
 }
@@ -369,7 +471,9 @@ fn import_key_rsapss(
         public_exponent,
       })
     }
-    // TODO(lucacasonato): support JWK encoding
+    KeyData::JwkPublicRsa { .. } | KeyData::JwkPrivateRsa { .. } => {
+      import_key_rsa_jwk(key_data)
+    }
     _ => Err(unsupported_format()),
   }
 }
@@ -546,7 +650,9 @@ fn import_key_rsaoaep(
         public_exponent,
       })
     }
-    // TODO(lucacasonato): support JWK encoding
+    KeyData::JwkPublicRsa { .. } | KeyData::JwkPrivateRsa { .. } => {
+      import_key_rsa_jwk(key_data)
+    }
     _ => Err(unsupported_format()),
   }
 }

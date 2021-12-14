@@ -28,6 +28,7 @@ rand = "0.8.4"
 ring = { version = "0.16.20", features = ["std"] }
 rsa = { version = "0.5.0", default-features = false, features = ["std"] }
 serde = { version = "1.0.129", features = ["derive"] }
+serde_bytes = "0.11"
 sha-1 = "0.9.7"
 sha2 = "0.9.5"
 spki = "0.4.1"
