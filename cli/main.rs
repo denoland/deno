@@ -577,7 +577,8 @@ async fn lint_command(
     None
   };
 
-  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch.is_some()).await?;
+  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch.is_some())
+    .await?;
   Ok(0)
 }
 
@@ -943,7 +944,8 @@ async fn format_command(
     return Ok(0);
   }
 
-  tools::fmt::format(fmt_flags, flags.watch.is_some(), maybe_fmt_config).await?;
+  tools::fmt::format(fmt_flags, flags.watch.is_some(), maybe_fmt_config)
+    .await?;
   Ok(0)
 }
 

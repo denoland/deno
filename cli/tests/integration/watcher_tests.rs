@@ -585,7 +585,11 @@ fn run_watch_external_watch_files() {
   write(&external_file_to_watch, "Hello world").unwrap();
 
   let mut watch_arg = "--watch=".to_owned();
-  let external_file_to_watch_str = external_file_to_watch.clone().into_os_string().into_string().unwrap();
+  let external_file_to_watch_str = external_file_to_watch
+    .clone()
+    .into_os_string()
+    .into_string()
+    .unwrap();
   watch_arg.push_str(&external_file_to_watch_str);
 
   let mut child = util::deno_cmd()

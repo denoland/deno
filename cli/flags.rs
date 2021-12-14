@@ -2415,7 +2415,11 @@ fn inspect_arg_validate(val: String) -> Result<(), String> {
   }
 }
 
-fn watch_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches, allow_extra: bool) {
+fn watch_arg_parse(
+  flags: &mut Flags,
+  matches: &clap::ArgMatches,
+  allow_extra: bool,
+) {
   flags.watch = match matches.values_of("watch") {
     Some(f) => {
       let extra_files = f.map(PathBuf::from).collect();
@@ -2424,7 +2428,7 @@ fn watch_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches, allow_extra: b
       } else {
         Some(vec![])
       }
-    },
+    }
     None => None,
   };
 }
