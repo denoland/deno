@@ -23,6 +23,7 @@ use log::debug;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
@@ -34,6 +35,7 @@ pub struct CreateWebWorkerArgs {
   pub main_module: ModuleSpecifier,
   pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
+  pub maybe_exit_code: Option<Arc<AtomicI32>>,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -166,7 +168,11 @@ fn op_create_worker(
     parent_permissions.clone()
   };
   let parent_permissions = parent_permissions.clone();
-
+  // `try_borrow` here, because worker might have been started without
+  // access to `Deno` namespace.
+  // TODO(bartlomieju): can a situation happen when parent doesn't
+  // have access to `exit_code` but the child does?
+  let maybe_exit_code = state.try_borrow::<Arc<AtomicI32>>().cloned();
   let worker_id = state.take::<WorkerId>();
   let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());
@@ -199,6 +205,7 @@ fn op_create_worker(
         main_module: module_specifier.clone(),
         use_deno_namespace,
         worker_type,
+        maybe_exit_code,
       });
 
     // Send thread safe handle from newly created worker to host thread

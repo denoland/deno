@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-window-prefix
 console.log("sync 1");
 setTimeout(() => {
   console.log("setTimeout 1");

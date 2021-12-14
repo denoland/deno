@@ -2,8 +2,8 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertStringIncludes,
-  assertThrowsAsync,
 } from "../../../test_util/std/testing/asserts.ts";
 
 Deno.test({
@@ -268,7 +268,7 @@ Deno.test({
       Object.keys(files).sort(),
       ["deno:///bundle.js", "deno:///bundle.js.map"].sort(),
     );
-    assert(files["deno:///bundle.js"].includes(`const bar1 = "bar"`));
+    assert(files["deno:///bundle.js"].includes(`const bar = "bar"`));
   },
 });
 
@@ -312,7 +312,7 @@ Deno.test({
       Object.keys(files).sort(),
       ["deno:///bundle.js.map", "deno:///bundle.js"].sort(),
     );
-    assert(files["deno:///bundle.js"].includes(`const bar1 = "bar"`));
+    assert(files["deno:///bundle.js"].includes(`const bar = "bar"`));
   },
 });
 
@@ -430,7 +430,7 @@ Deno.test({
 Deno.test({
   name: `Deno.emit() - throws descriptive error when unable to load import map`,
   async fn() {
-    await assertThrowsAsync(
+    await assertRejects(
       async () => {
         await Deno.emit("/a.ts", {
           bundle: "classic",
@@ -566,7 +566,7 @@ Deno.test({
       {
         sources: {
           "file:///a.tsx": `/** @jsxImportSource https://example.com/jsx */
-          
+
           export function App() {
             return (
               <div><></></div>

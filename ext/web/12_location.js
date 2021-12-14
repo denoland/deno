@@ -9,7 +9,6 @@
   const {
     Error,
     ObjectDefineProperties,
-    ReferenceError,
     Symbol,
     SymbolFor,
     SymbolToStringTag,
@@ -356,8 +355,8 @@
     },
   });
 
-  let location = null;
-  let workerLocation = null;
+  let location = undefined;
+  let workerLocation = undefined;
 
   function setLocationHref(href) {
     location = new Location(href, locationConstructorKey);
@@ -377,11 +376,6 @@
     },
     locationDescriptor: {
       get() {
-        if (location == null) {
-          throw new ReferenceError(
-            `Access to "location", run again with --location <href>.`,
-          );
-        }
         return location;
       },
       set() {

@@ -326,12 +326,17 @@ impl Inner {
     if specifier.scheme() == "asset" {
       matches!(
         MediaType::from(specifier),
-        // todo(#12410): Update with new media types for TS 4.5
         MediaType::JavaScript
           | MediaType::Jsx
+          | MediaType::Mjs
+          | MediaType::Cjs
           | MediaType::TypeScript
           | MediaType::Tsx
+          | MediaType::Mts
+          | MediaType::Cts
           | MediaType::Dts
+          | MediaType::Dmts
+          | MediaType::Dcts
       )
     } else {
       self
@@ -1772,6 +1777,12 @@ impl Inner {
             "Received an undefined response from tsc for completion details."
           );
           params
+        }
+      } else if let Some(url) = data.documentation {
+        CompletionItem {
+          documentation: self.module_registries.get_documentation(&url).await,
+          data: None,
+          ..params
         }
       } else {
         params

@@ -129,7 +129,6 @@
 
   webidl.converters.EcKeyGenParams = webidl
     .createDictionaryConverter("EcKeyGenParams", dictEcKeyGenParams);
-
   const dictEcImportParams = [
     ...dictAlgorithm,
     {
