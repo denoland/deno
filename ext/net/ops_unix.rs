@@ -91,8 +91,11 @@ pub(crate) async fn accept_unix(
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Listener already in use"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let (unix_stream, _socket_addr) =
-    listener.accept().try_or_cancel(cancel).await?;
+  let (unix_stream, _socket_addr) = listener
+    .accept()
+    .try_or_cancel(cancel)
+    .await
+    .map_err(crate::ops::accept_err)?;
 
   let local_addr = unix_stream.local_addr()?;
   let remote_addr = unix_stream.peer_addr()?;
