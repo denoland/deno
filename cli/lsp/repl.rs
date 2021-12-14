@@ -13,9 +13,11 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use lspower::lsp::ClientCapabilities;
 use lspower::lsp::ClientInfo;
+use lspower::lsp::CompletionContext;
 use lspower::lsp::CompletionParams;
 use lspower::lsp::CompletionResponse;
 use lspower::lsp::CompletionTextEdit;
+use lspower::lsp::CompletionTriggerKind;
 use lspower::lsp::DidChangeTextDocumentParams;
 use lspower::lsp::DidCloseTextDocumentParams;
 use lspower::lsp::DidOpenTextDocumentParams;
@@ -138,7 +140,10 @@ impl ReplLanguageServer {
         partial_result_params: PartialResultParams {
           partial_result_token: None,
         },
-        context: None,
+        context: Some(CompletionContext {
+          trigger_kind: CompletionTriggerKind::INVOKED,
+          trigger_character: None,
+        }),
       })
       .await
       .ok()
