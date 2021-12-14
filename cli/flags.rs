@@ -251,7 +251,7 @@ pub struct Flags {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
   pub version: bool,
-  pub watch: bool,
+  pub watch: Option<Vec<PathBuf>>,
 }
 
 fn join_paths(allowlist: &[PathBuf], d: &str) -> String {
@@ -1643,10 +1643,16 @@ fn compat_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("watch")
     .long("watch")
+    .value_name("FILES")
+    .min_values(0)
+    .takes_value(true)
+    .use_delimiter(true)
+    .require_equals(true)
     .help("UNSTABLE: Watch for file changes and restart process automatically")
     .long_help(
       "UNSTABLE: Watch for file changes and restart process automatically.
-Only local files from entry point module graph are watched.",
+Watches used script files by default, or listed files when specified.
+Passing values only has an effect on the 'deno run' command.",
     )
 }
 
@@ -1743,7 +1749,7 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
-  flags.watch = matches.is_present("watch");
+  watch_arg_parse(flags, matches, false);
 
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     source_file,
@@ -1874,7 +1880,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
-  flags.watch = matches.is_present("watch");
+  watch_arg_parse(flags, matches, false);
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -1996,7 +2002,7 @@ fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
-  flags.watch = matches.is_present("watch");
+  watch_arg_parse(flags, matches, false);
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -2061,7 +2067,7 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.argv.push(v);
   }
 
-  flags.watch = matches.is_present("watch");
+  watch_arg_parse(flags, matches, true);
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
 }
 
@@ -2135,7 +2141,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 
   flags.coverage_dir = matches.value_of("coverage").map(String::from);
-  flags.watch = matches.is_present("watch");
+  watch_arg_parse(flags, matches, false);
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
@@ -2409,6 +2415,20 @@ fn inspect_arg_validate(val: String) -> Result<(), String> {
   }
 }
 
+fn watch_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches, allow_extra: bool) {
+  flags.watch = match matches.values_of("watch") {
+    Some(f) => {
+      let extra_files = f.map(PathBuf::from).collect();
+      if allow_extra {
+        Some(extra_files)
+      } else {
+        Some(vec![])
+      }
+    },
+    None => None,
+  };
+}
+
 // TODO(ry) move this to utility module and add test.
 /// Strips fragment part of URL. Panics on bad URL.
 pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
@@ -2513,7 +2533,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        watch: true,
+        watch: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -2746,7 +2766,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
         }),
-        watch: true,
+        watch: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -2773,7 +2793,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
         }),
-        watch: true,
+        watch: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -2821,7 +2841,7 @@ mod tests {
           prose_wrap: None,
         }),
         config_path: Some("deno.jsonc".to_string()),
-        watch: true,
+        watch: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -3543,7 +3563,7 @@ mod tests {
           source_file: "source.ts".to_string(),
           out_file: None,
         }),
-        watch: true,
+        watch: Some(vec![]),
         ..Flags::default()
       }
     )
@@ -4280,7 +4300,7 @@ mod tests {
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
-        watch: false,
+        watch: None,
         ..Flags::default()
       }
     );
@@ -4303,7 +4323,7 @@ mod tests {
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         }),
-        watch: true,
+        watch: Some(vec![]),
         ..Flags::default()
       }
     );
