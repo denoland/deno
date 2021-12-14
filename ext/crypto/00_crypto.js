@@ -15,31 +15,32 @@
   const { btoa } = window.__bootstrap.base64;
 
   const {
-    ArrayPrototypeFind,
-    ArrayPrototypeEvery,
-    ArrayPrototypeIncludes,
     ArrayBuffer,
     ArrayBufferIsView,
+    ArrayPrototypeEvery,
+    ArrayPrototypeFind,
+    ArrayPrototypeIncludes,
     BigInt64Array,
+    Int16Array,
+    Int32Array,
+    Int8Array,
+    ObjectAssign,
+    StringFromCharCode,
+    StringPrototypeReplace,
     StringPrototypeToLowerCase,
     StringPrototypeToUpperCase,
-    StringPrototypeReplace,
-    StringFromCharCode,
     Symbol,
     SymbolFor,
     SyntaxError,
+    TypedArrayPrototypeSlice,
+    TypeError,
+    Uint16Array,
+    Uint32Array,
+    Uint8Array,
+    Uint8ClampedArray,
     WeakMap,
     WeakMapPrototypeGet,
     WeakMapPrototypeSet,
-    Int8Array,
-    Uint8Array,
-    TypedArrayPrototypeSlice,
-    Int16Array,
-    Uint16Array,
-    Int32Array,
-    Uint32Array,
-    Uint8ClampedArray,
-    TypeError,
   } = window.__bootstrap.primordials;
 
   // P-521 is not yet supported.
@@ -2904,7 +2905,7 @@
           format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
           algorithm: key[_algorithm].name,
         }, innerKey);
-        Object.assign(jwk, data);
+        ObjectAssign(jwk, data);
 
         // 7.
         jwk.key_ops = key.usages;
