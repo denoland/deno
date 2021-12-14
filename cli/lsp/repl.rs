@@ -285,7 +285,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
       auto_imports: false,
       imports: ImportCompletionSettings {
         auto_discover: true,
-        hosts: HashMap::from([("https://deno.land/x/".to_string(), true)]),
+        hosts: HashMap::from([("https://deno.land".to_string(), true)]),
       },
     },
   }
