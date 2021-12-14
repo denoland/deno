@@ -217,8 +217,9 @@ impl ReplLanguageServer {
   }
 
   async fn check_cwd_change(&mut self) {
-    // handle if the cwd changes
-    let cwd_uri = get_cwd_uri().unwrap();
+    // handle if the cwd changes, if the cwd is deleted in the case of
+    // get_cwd_uri() erroring, then keep using it as the base
+    let cwd_uri = get_cwd_uri().unwrap_or_else(|_| self.cwd_uri.clone());
     if self.cwd_uri != cwd_uri {
       self
         .language_server
