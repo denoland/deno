@@ -11,6 +11,13 @@ use crate::shared::*;
 use crate::OaepPrivateKeyParameters;
 use crate::PssPrivateKeyParameters;
 
+use p256::elliptic_curve::sec1::ToEncodedPoint;
+use pkcs8::{FromPrivateKey, ToPrivateKey};
+
+use p256::elliptic_curve::generic_array::{
+  typenum::U32, ArrayLength, GenericArray,
+};
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum KeyData {
@@ -33,6 +40,15 @@ pub enum KeyData {
     dp: String,
     dq: String,
     qi: String,
+  },
+  JwkPublicEc {
+    x: String,
+    y: String,
+  },
+  JwkPrivateEc {
+    x: String,
+    y: String,
+    d: String,
   },
 }
 
@@ -657,11 +673,103 @@ fn import_key_rsaoaep(
   }
 }
 
+fn decode_b64url_to_gen_array<T: ArrayLength<u8>>(
+  b64: &str,
+) -> Result<GenericArray<u8, T>, deno_core::anyhow::Error> {
+  jwt_b64_int_or_err!(val, b64, "invalid b64 coordenate");
+
+  let mut bytes: GenericArray<u8, T> = GenericArray::default();
+  bytes[..val.as_bytes().len()].copy_from_slice(val.as_bytes());
+
+  Ok(bytes)
+}
+
+fn import_key_ec_jwk_to_point(
+  x: String,
+  y: String,
+  named_curve: EcNamedCurve,
+) -> Result<Vec<u8>, deno_core::anyhow::Error> {
+  let point_bytes = match named_curve {
+    EcNamedCurve::P256 => {
+      let x = decode_b64url_to_gen_array(&x)?;
+      let y = decode_b64url_to_gen_array(&y)?;
+
+      p256::EncodedPoint::from_affine_coordinates(&x, &y, false).to_bytes()
+    }
+    EcNamedCurve::P384 => {
+      let x = decode_b64url_to_gen_array(&x)?;
+      let y = decode_b64url_to_gen_array(&y)?;
+
+      p384::EncodedPoint::from_affine_coordinates(&x, &y, false).to_bytes()
+    }
+  };
+
+  Ok(point_bytes.to_vec())
+}
+
+fn import_key_ec_jwk(
+  key_data: KeyData,
+  named_curve: EcNamedCurve,
+) -> Result<ImportKeyResult, deno_core::anyhow::Error> {
+  match key_data {
+    KeyData::JwkPublicEc { x, y } => {
+      let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
+
+      Ok(ImportKeyResult::Ec {
+        raw_data: RawKeyData::Public(point_bytes.to_vec().into()),
+      })
+    }
+    KeyData::JwkPrivateEc { d, x, y } => {
+      let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
+
+      let d = decode_b64url_to_gen_array::<U32>(&d)?;
+
+      let secret_key_der = match named_curve {
+        EcNamedCurve::P256 => {
+          let secret_key = p256::SecretKey::from_bytes(&d)?;
+
+          secret_key.to_pkcs8_der().unwrap()
+        }
+        //@todo(sean) - build p384 secret key from jwk, when crate implements to_pkcs8_der
+        /*EcNamedCurve::P384 => {
+          let secret_key = p384::SecretKey::from_bytes(&d)?;
+
+          secret_key.to_pkcs8_der().unwrap()
+        }*/
+        _ => {
+          return Err(data_error("Unsupported namedCurve"));
+        }
+      };
+
+      let oid =
+        <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::OID;
+
+      let pki = p256::pkcs8::PrivateKeyInfo::new(
+        p256::pkcs8::AlgorithmIdentifier {
+          oid,
+          parameters: None,
+        },
+        secret_key_der.as_ref(),
+      );
+
+      let pki = p256::pkcs8::PrivateKeyInfo {
+        public_key: Some(&point_bytes),
+        ..pki
+      };
+
+      Ok(ImportKeyResult::Ec {
+        raw_data: RawKeyData::Private(pki.private_key.to_vec().into()),
+      })
+    }
+    _ => unreachable!(),
+  }
+}
+
 fn import_key_ec(
   key_data: KeyData,
   named_curve: EcNamedCurve,
 ) -> Result<ImportKeyResult, AnyError> {
-  Ok(match key_data {
+  match key_data {
     KeyData::Raw(data) => {
       // The point is parsed and validated, ultimately the original data is
       // returned though.
@@ -685,12 +793,81 @@ fn import_key_ec(
           }
         }
       };
-      ImportKeyResult::Ec {
+      Ok(ImportKeyResult::Ec {
         raw_data: RawKeyData::Public(data),
-      }
+      })
     }
-    _ => return Err(unsupported_format()),
-  })
+    KeyData::Pkcs8(data) => {
+      match named_curve {
+        EcNamedCurve::P256 => {
+          let secret_key = p256::SecretKey::from_pkcs8_der(&data).unwrap();
+
+          let point =
+            secret_key.public_key().as_affine().to_encoded_point(false);
+
+          // 3.
+          if point.is_identity() {
+            return Err(data_error("Invalid key data"));
+          }
+        }
+        EcNamedCurve::P384 => {
+          //@todo(sean-wykes) Validate P384 secret-key on import(pkcs8)
+          /*let secret_key =
+            p384::SecretKey::from_pkcs8_der(&raw_data.data).unwrap();
+
+          let point =
+            secret_key.public_key().as_affine().to_encoded_point(false);
+          // 3.
+          if point.is_identity() {
+            return Err(type_error("Invalid key data".to_string()));
+          }*/
+
+          // for now, just use PKCS8 bytes
+        }
+      };
+
+      Ok(ImportKeyResult::Ec {
+        raw_data: RawKeyData::Public(data),
+      })
+    }
+    KeyData::Spki(data) => {
+      let pk_info: spki::SubjectPublicKeyInfo =
+        spki::SubjectPublicKeyInfo::try_from(data.as_ref()).unwrap();
+      let pk = pk_info.subject_public_key;
+
+      let encoded_key = pk.to_vec();
+
+      match named_curve {
+        EcNamedCurve::P256 => {
+          // 1-2.
+          let point = p256::EncodedPoint::from_bytes(&*encoded_key)
+            .map_err(|_| data_error("invalid P-256 eliptic curve SPKI data"))?;
+
+          // 3.
+          if point.is_identity() {
+            return Err(data_error("invalid P-256 eliptic curve point"));
+          }
+        }
+        EcNamedCurve::P384 => {
+          // 2.
+          let point = p384::EncodedPoint::from_bytes(&*encoded_key)
+            .map_err(|_| data_error("invalid P-384 eliptic curve SPKI data"))?;
+          // 3.
+          if point.is_identity() {
+            return Err(data_error("invalid P-384 eliptic curve point"));
+          }
+        }
+      };
+
+      Ok(ImportKeyResult::Ec {
+        raw_data: RawKeyData::Public(encoded_key.to_vec().into()),
+      })
+    }
+    KeyData::JwkPublicEc { .. } | KeyData::JwkPrivateEc { .. } => {
+      import_key_ec_jwk(key_data, named_curve)
+    }
+    _ => Err(unsupported_format()),
+  }
 }
 
 fn import_key_aes(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {

@@ -442,8 +442,20 @@ pub async fn op_crypto_verify_key(
       let verify_alg: &EcdsaVerificationAlgorithm =
         args.named_curve.ok_or_else(not_supported)?.try_into()?;
 
-      let private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &*args.key.data)?;
-      let public_key_bytes = private_key.public_key().as_ref();
+      let private_key;
+
+      let public_key_bytes = match args.key.r#type {
+        KeyType::Private => {
+          private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &*args.key.data)?;
+
+          private_key.public_key().as_ref()
+        }
+        KeyType::Public => &*args.key.data,
+        _ => return Err(type_error("Invalid Key format".to_string())),
+      };
+
+      //let private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &*args.key.data)?;
+      //let public_key_bytes = private_key.public_key().as_ref();
       let public_key =
         ring::signature::UnparsedPublicKey::new(verify_alg, public_key_bytes);
 
@@ -511,8 +523,15 @@ pub async fn op_crypto_derive_bits(
       match named_curve {
         CryptoNamedCurve::P256 => {
           let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)?;
-          let public_key =
-            p256::SecretKey::from_pkcs8_der(&public_key.data)?.public_key();
+          let public_key = match public_key.r#type {
+            KeyType::Private => {
+              p256::SecretKey::from_pkcs8_der(&public_key.data)?.public_key()
+            }
+            //KeyType::Public => {
+            //  elliptic_curve::PublicKey::from_affine(public_key.data)
+            //}
+            _ => unreachable!(),
+          };
 
           let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
             secret_key.to_secret_scalar(),
