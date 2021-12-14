@@ -7,7 +7,6 @@ use deno_core::error::AnyError;
 use lspower::LspService;
 use lspower::Server;
 
-use self::client::Client;
 pub use repl::ReplCompletionItem;
 pub use repl::ReplLanguageServer;
 
@@ -21,6 +20,7 @@ mod config;
 mod diagnostics;
 mod documents;
 pub(crate) mod language_server;
+mod logging;
 mod lsp_custom;
 mod parent_process_checker;
 mod path_to_regex;
@@ -38,7 +38,7 @@ pub async fn start() -> Result<(), AnyError> {
   let stdout = tokio::io::stdout();
 
   let (service, messages) = LspService::new(|client| {
-    language_server::LanguageServer::new(Client::from_lspower(client))
+    language_server::LanguageServer::new(client::Client::from_lspower(client))
   });
   Server::new(stdin, stdout)
     .interleave(messages)

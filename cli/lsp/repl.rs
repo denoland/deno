@@ -1,3 +1,5 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::HashMap;
 use std::future::Future;
 
@@ -53,61 +55,56 @@ pub struct ReplLanguageServer {
 
 impl ReplLanguageServer {
   pub async fn new_initialized() -> Result<ReplLanguageServer, AnyError> {
-    with_logging_disabled(async {
-      let language_server =
-        super::language_server::LanguageServer::new(Client::new_for_repl());
+    super::logging::set_lsp_log_level(log::Level::Debug);
+    let language_server =
+      super::language_server::LanguageServer::new(Client::new_for_repl());
 
-      let cwd_uri = get_cwd_uri()?;
+    let cwd_uri = get_cwd_uri()?;
 
-      #[allow(deprecated)]
-      language_server
-        .initialize(InitializeParams {
-          process_id: None,
-          root_path: None,
-          root_uri: Some(cwd_uri.clone()),
-          initialization_options: Some(
-            serde_json::to_value(get_repl_workspace_settings()).unwrap(),
-          ),
-          capabilities: ClientCapabilities {
-            workspace: None,
-            text_document: None,
-            window: None,
-            general: None,
-            experimental: None,
-          },
-          trace: None,
-          workspace_folders: None,
-          client_info: Some(ClientInfo {
-            name: "Deno REPL".to_string(),
-            version: None,
-          }),
-          locale: None,
-        })
-        .await?;
+    #[allow(deprecated)]
+    language_server
+      .initialize(InitializeParams {
+        process_id: None,
+        root_path: None,
+        root_uri: Some(cwd_uri.clone()),
+        initialization_options: Some(
+          serde_json::to_value(get_repl_workspace_settings()).unwrap(),
+        ),
+        capabilities: ClientCapabilities {
+          workspace: None,
+          text_document: None,
+          window: None,
+          general: None,
+          experimental: None,
+        },
+        trace: None,
+        workspace_folders: None,
+        client_info: Some(ClientInfo {
+          name: "Deno REPL".to_string(),
+          version: None,
+        }),
+        locale: None,
+      })
+      .await?;
 
-      language_server.initialized(InitializedParams {}).await;
+    language_server.initialized(InitializedParams {}).await;
 
-      let server = ReplLanguageServer {
-        language_server,
-        document_version: 0,
-        document_text: String::new(),
-        pending_text: String::new(),
-        cwd_uri,
-      };
-      server.open_current_document().await;
+    let server = ReplLanguageServer {
+      language_server,
+      document_version: 0,
+      document_text: String::new(),
+      pending_text: String::new(),
+      cwd_uri,
+    };
+    server.open_current_document().await;
 
-      Ok(server)
-    })
-    .await
+    Ok(server)
   }
 
   pub async fn commit_text(&mut self, line_text: &str) {
-    with_logging_disabled(async {
-      self.did_change(line_text).await;
-      self.document_text.push_str(&self.pending_text);
-      self.pending_text = String::new();
-    })
-    .await
+    self.did_change(line_text).await;
+    self.document_text.push_str(&self.pending_text);
+    self.pending_text = String::new();
   }
 
   pub async fn completions(
@@ -115,73 +112,70 @@ impl ReplLanguageServer {
     line_text: &str,
     position: usize,
   ) -> Vec<ReplCompletionItem> {
-    with_logging_disabled(async {
-      self.did_change(line_text).await;
-      let before_line_len = BytePos(self.document_text.len() as u32);
-      let position = before_line_len + BytePos(position as u32);
-      let text_info = deno_ast::SourceTextInfo::from_string(format!(
-        "{}{}",
-        self.document_text, self.pending_text
-      ));
-      let line_and_column = text_info.line_and_column_index(position);
-      let response = self
-        .language_server
-        .completion(CompletionParams {
-          text_document_position: TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier {
-              uri: self.get_document_specifier(),
-            },
-            position: Position {
-              line: line_and_column.line_index as u32,
-              character: line_and_column.column_index as u32,
-            },
+    self.did_change(line_text).await;
+    let before_line_len = BytePos(self.document_text.len() as u32);
+    let position = before_line_len + BytePos(position as u32);
+    let text_info = deno_ast::SourceTextInfo::from_string(format!(
+      "{}{}",
+      self.document_text, self.pending_text
+    ));
+    let line_and_column = text_info.line_and_column_index(position);
+    let response = self
+      .language_server
+      .completion(CompletionParams {
+        text_document_position: TextDocumentPositionParams {
+          text_document: TextDocumentIdentifier {
+            uri: self.get_document_specifier(),
           },
-          work_done_progress_params: WorkDoneProgressParams {
-            work_done_token: None,
+          position: Position {
+            line: line_and_column.line_index as u32,
+            character: line_and_column.column_index as u32,
           },
-          partial_result_params: PartialResultParams {
-            partial_result_token: None,
-          },
-          context: None,
-        })
-        .await
-        .ok()
-        .unwrap_or_default();
+        },
+        work_done_progress_params: WorkDoneProgressParams {
+          work_done_token: None,
+        },
+        partial_result_params: PartialResultParams {
+          partial_result_token: None,
+        },
+        context: None,
+      })
+      .await
+      .ok()
+      .unwrap_or_default();
 
-      let items = match response {
-        Some(CompletionResponse::Array(items)) => items,
-        Some(CompletionResponse::List(list)) => list.items,
-        None => Vec::new(),
-      };
-      items
-        .into_iter()
-        .filter_map(|item| {
-          item.text_edit.and_then(|edit| match edit {
-            CompletionTextEdit::Edit(edit) => Some(ReplCompletionItem {
-              new_text: edit.new_text,
-              span: lsp_range_to_span(&text_info, &edit.range),
-            }),
-            CompletionTextEdit::InsertAndReplace(_) => None,
-          })
+    let items = match response {
+      Some(CompletionResponse::Array(items)) => items,
+      Some(CompletionResponse::List(list)) => list.items,
+      None => Vec::new(),
+    };
+    items
+      .into_iter()
+      .filter_map(|item| {
+        item.text_edit.and_then(|edit| match edit {
+          CompletionTextEdit::Edit(edit) => Some(ReplCompletionItem {
+            new_text: edit.new_text,
+            span: lsp_range_to_span(&text_info, &edit.range),
+          }),
+          CompletionTextEdit::InsertAndReplace(_) => None,
         })
-        .filter(|item| {
-          // filter the results to only exact matches
-          let text = &text_info.text_str()
-            [item.span.lo.0 as usize..item.span.hi.0 as usize];
-          item.new_text.starts_with(text)
-        })
-        .map(|mut item| {
-          // convert back to a line position
-          item.span = Span::new(
-            item.span.lo - before_line_len,
-            item.span.hi - before_line_len,
-            Default::default(),
-          );
-          item
-        })
-        .collect()
-    })
-    .await
+      })
+      .filter(|item| {
+        // filter the results to only exact matches
+        let text = &text_info.text_str()
+          [item.span.lo.0 as usize..item.span.hi.0 as usize];
+        item.new_text.starts_with(text)
+      })
+      .map(|mut item| {
+        // convert back to a line position
+        item.span = Span::new(
+          item.span.lo - before_line_len,
+          item.span.hi - before_line_len,
+          Default::default(),
+        );
+        item
+      })
+      .collect()
   }
 
   async fn did_change(&mut self, new_text: &str) {
@@ -252,16 +246,6 @@ impl ReplLanguageServer {
   fn get_document_specifier(&self) -> ModuleSpecifier {
     self.cwd_uri.join("$deno$repl.ts").unwrap()
   }
-}
-
-async fn with_logging_disabled<TReturn>(
-  future: impl Future<Output = TReturn>,
-) -> TReturn {
-  logger::set_logging_enabled(false);
-  let result = future.await;
-  // ensure this is set back even on error of a Result
-  logger::set_logging_enabled(true);
-  result
 }
 
 fn lsp_range_to_span(text_info: &SourceTextInfo, range: &Range) -> Span {

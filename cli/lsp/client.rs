@@ -138,7 +138,10 @@ impl ClientTrait for LspowerClient {
   ) -> AsyncReturn<Result<Vec<serde_json::Value>, AnyError>> {
     let client = self.0.clone();
     Box::pin(async move {
-      client.configuration(items).await.map_err(|err| anyhow!("{}", err))
+      client
+        .configuration(items)
+        .await
+        .map_err(|err| anyhow!("{}", err))
     })
   }
 
@@ -157,7 +160,10 @@ impl ClientTrait for LspowerClient {
   ) -> AsyncReturn<Result<(), AnyError>> {
     let client = self.0.clone();
     Box::pin(async move {
-      client.register_capability(registrations).await.map_err(|err| anyhow!("{}", err))
+      client
+        .register_capability(registrations)
+        .await
+        .map_err(|err| anyhow!("{}", err))
     })
   }
 }

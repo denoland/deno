@@ -61,6 +61,7 @@ use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
 use crate::logger;
+use crate::lsp::logging::lsp_log;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 
@@ -299,7 +300,7 @@ impl Inner {
     let maybe_config = workspace_settings.config;
     if let Some(config_str) = &maybe_config {
       if !config_str.is_empty() {
-        info!("Setting TypeScript configuration from: \"{}\"", config_str);
+        lsp_log!("Setting TypeScript configuration from: \"{}\"", config_str);
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
           Ok(url)
         } else if let Some(root_uri) = maybe_root_uri {
@@ -312,7 +313,7 @@ impl Inner {
             config_str
           ))
         }?;
-        info!("  Resolved configuration file: \"{}\"", config_url);
+        lsp_log!("  Resolved configuration file: \"{}\"", config_url);
 
         let config_file = ConfigFile::from_specifier(&config_url)?;
         return Ok(Some((config_file, config_url)));
@@ -393,7 +394,7 @@ impl Inner {
       )
     };
     let maybe_cache_path = if let Some(cache_str) = &maybe_cache {
-      info!("Setting cache path from: \"{}\"", cache_str);
+      lsp_log!("Setting cache path from: \"{}\"", cache_str);
       let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
         Ok(url)
       } else if let Some(root_uri) = &maybe_root_uri {
@@ -409,7 +410,7 @@ impl Inner {
         ))
       }?;
       let cache_path = fs_util::specifier_to_file_path(&cache_url)?;
-      info!(
+      lsp_log!(
         "  Resolved cache path: \"{}\"",
         cache_path.to_string_lossy()
       );
@@ -444,7 +445,7 @@ impl Inner {
       )
     };
     if let Some(import_map_str) = &maybe_import_map {
-      info!("Setting import map from: \"{}\"", import_map_str);
+      lsp_log!("Setting import map from: \"{}\"", import_map_str);
       let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str)
       {
         Ok(url)
@@ -469,7 +470,7 @@ impl Inner {
         get_source_from_data_url(&import_map_url)?.0
       } else {
         let import_map_path = fs_util::specifier_to_file_path(&import_map_url)?;
-        info!(
+        lsp_log!(
           "  Resolved import map: \"{}\"",
           import_map_path.to_string_lossy()
         );
@@ -496,7 +497,7 @@ impl Inner {
 
   pub fn update_debug_flag(&self) {
     let internal_debug = self.config.get_workspace_settings().internal_debug;
-    logger::set_lsp_debug_flag(internal_debug)
+    super::logging::set_lsp_debug_flag(internal_debug)
   }
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
@@ -510,7 +511,7 @@ impl Inner {
       .iter()
     {
       if *enabled {
-        info!("Enabling import suggestions for: {}", registry);
+        lsp_log!("Enabling import suggestions for: {}", registry);
         self.module_registries.enable(registry).await?;
       } else {
         self.module_registries.disable(registry).await?;
@@ -613,7 +614,7 @@ impl Inner {
     &mut self,
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
-    info!("Starting Deno language server...");
+    lsp_log!("Starting Deno language server...");
     let mark = self.performance.mark("initialize", Some(&params));
 
     // exit this process when the parent is lost
@@ -629,9 +630,9 @@ impl Inner {
       env!("PROFILE"),
       env!("TARGET")
     );
-    info!("  version: {}", version);
+    lsp_log!("  version: {}", version);
     if let Ok(path) = std::env::current_exe() {
-      info!("  executable: {}", path.to_string_lossy());
+      lsp_log!("  executable: {}", path.to_string_lossy());
     }
 
     let server_info = ServerInfo {
@@ -640,7 +641,7 @@ impl Inner {
     };
 
     if let Some(client_info) = params.client_info {
-      info!(
+      lsp_log!(
         "Connected to \"{}\" {}",
         client_info.name,
         client_info.version.unwrap_or_default(),
@@ -738,7 +739,7 @@ impl Inner {
       }
     }
 
-    info!("Server ready.");
+    lsp_log!("Server ready.");
   }
 
   async fn shutdown(&self) -> LspResult<()> {
