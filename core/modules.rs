@@ -60,13 +60,25 @@ pub(crate) fn validate_import_assertions(
   }
 }
 
+pub(crate) enum ImportAssertionsKind {
+  StaticImport,
+  DynamicImport,
+}
+
 pub(crate) fn parse_import_assertions(
   scope: &mut v8::HandleScope,
   import_assertions: v8::Local<v8::FixedArray>,
-  assertions_per_line: usize,
+  kind: ImportAssertionsKind,
 ) -> HashMap<String, String> {
   let mut assertions: HashMap<String, String> = HashMap::default();
 
+  let assertions_per_line = match kind {
+    // For static imports, assertions are triples of (keyword, value and source offset)
+    ImportAssertionsKind::StaticImport => 3,
+    // For dynamic imports, assertions are tuples of (keyword, value)
+    ImportAssertionsKind::DynamicImport => 2,
+  };
+  assert_eq!(import_assertions.length() % assertions_per_line, 0);
   let no_of_assertions = import_assertions.length() / assertions_per_line;
 
   for i in 0..no_of_assertions {
@@ -294,7 +306,8 @@ impl ModuleLoader for FsModuleLoader {
         ))
       })?;
       let module_type = if let Some(extension) = path.extension() {
-        if extension == "json" {
+        let ext = extension.to_string_lossy().to_lowercase();
+        if ext == "json" {
           ModuleType::Json
         } else {
           ModuleType::JavaScript
@@ -851,8 +864,11 @@ impl ModuleMap {
 
       let import_assertions = module_request.get_import_assertions();
 
-      // For static imports, assertions are triples of (keyword, value and source offset)
-      let assertions = parse_import_assertions(tc_scope, import_assertions, 3);
+      let assertions = parse_import_assertions(
+        tc_scope,
+        import_assertions,
+        ImportAssertionsKind::StaticImport,
+      );
 
       // FIXME(bartomieju): there are no stack frames if exception
       // is thrown here

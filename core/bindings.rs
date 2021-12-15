@@ -4,6 +4,7 @@ use crate::error::is_instance_of_error;
 use crate::modules::get_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
+use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
@@ -270,8 +271,11 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
-  // For dynamic imports, assertions are tuples of (keyword, value)
-  let assertions = parse_import_assertions(scope, import_assertions, 2);
+  let assertions = parse_import_assertions(
+    scope,
+    import_assertions,
+    ImportAssertionsKind::DynamicImport,
+  );
 
   {
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -1361,7 +1365,11 @@ pub fn module_resolve_callback<'s>(
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  let assertions = parse_import_assertions(scope, import_assertions, 2);
+  let assertions = parse_import_assertions(
+    scope,
+    import_assertions,
+    ImportAssertionsKind::DynamicImport,
+  );
   let maybe_module = module_map.resolve_callback(
     scope,
     &specifier_str,
