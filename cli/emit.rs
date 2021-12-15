@@ -360,7 +360,7 @@ pub(crate) fn check_and_maybe_emit(
   ) {
     return Ok(Default::default());
   }
-  let tsc_roots = get_tsc_roots(roots, &segment_graph_data, check_js);
+  let root_names = get_tsc_roots(roots, &segment_graph_data, check_js);
   if options.log_checks {
     for root in roots {
       let root_str = root.to_string();
@@ -394,7 +394,7 @@ pub(crate) fn check_and_maybe_emit(
     hash_data,
     maybe_config_specifier: options.maybe_config_specifier,
     maybe_tsbuildinfo,
-    root_names: tsc_roots,
+    root_names,
   })?;
 
   let diagnostics = if options.check == flags::CheckFlag::Local {
