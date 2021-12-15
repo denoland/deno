@@ -549,7 +549,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
         .required(true),
     )
     .arg(Arg::with_name("out_file").takes_value(true).required(false))
-    .arg(watch_arg())
+    .arg(watch_arg(false))
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -882,7 +882,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .multiple(true)
         .required(false),
     )
-    .arg(watch_arg())
+    .arg(watch_arg(false))
     .arg(
       Arg::with_name("options-use-tabs")
         .long("options-use-tabs")
@@ -1158,7 +1158,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .multiple(true)
         .required(false),
     )
-    .arg(watch_arg())
+    .arg(watch_arg(false))
 }
 
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1177,7 +1177,7 @@ fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
 fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("run"), true, true)
     .arg(
-      watch_arg()
+      watch_arg(true)
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk"),
     )
@@ -1305,7 +1305,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .multiple(true),
     )
     .arg(
-      watch_arg()
+      watch_arg(false)
         .conflicts_with("no-run")
         .conflicts_with("coverage"),
     )
@@ -1640,20 +1640,29 @@ fn compat_arg<'a, 'b>() -> Arg<'a, 'b> {
     .help("Node compatibility mode. Currently only enables built-in node modules like 'fs' and globals like 'process'.")
 }
 
-fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
-  Arg::with_name("watch")
+fn watch_arg<'a, 'b>(takes_files: bool) -> Arg<'a, 'b> {
+  let arg = Arg::with_name("watch")
     .long("watch")
-    .value_name("FILES")
-    .min_values(0)
-    .takes_value(true)
-    .use_delimiter(true)
-    .require_equals(true)
-    .help("UNSTABLE: Watch for file changes and restart process automatically")
-    .long_help(
-      "UNSTABLE: Watch for file changes and restart process automatically.
+    .help("UNSTABLE: Watch for file changes and restart process automatically");
+
+  if takes_files {
+    arg
+      .value_name("FILES")
+      .min_values(0)
+      .takes_value(true)
+      .use_delimiter(true)
+      .require_equals(true)
+      .long_help(
+        "UNSTABLE: Watch for file changes and restart process automatically.
 Local files from entry point module graph are watched by default.
 Additional paths might be watched by passing them as arguments to this flag.",
+      )
+  } else {
+    arg.long_help(
+      "UNSTABLE: Watch for file changes and restart process automatically.
+Only local files from entry point module graph are watched.",
     )
+  }
 }
 
 fn no_check_arg<'a, 'b>() -> Arg<'a, 'b> {
