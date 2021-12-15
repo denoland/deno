@@ -569,6 +569,7 @@ impl Inner {
       "lib": ["deno.ns", "deno.window"],
       "module": "esnext",
       "noEmit": true,
+      "resolveJsonModule": true,
       "strict": true,
       "target": "esnext",
       "useDefineForClassFields": true,
