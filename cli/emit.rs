@@ -405,14 +405,15 @@ pub(crate) fn check_and_maybe_emit(
           log::debug!("module missing, skipping emit for {}", specifier);
           continue;
         };
-        // Sometimes if `tsc` sees a CommonJS file it will _helpfully_ output it
-        // to ESM, which we don't really want to do unless someone has enabled
-        // check_js.
-        if !check_js
-          && matches!(
-            media_type,
-            MediaType::JavaScript | MediaType::Cjs | MediaType::Mjs
-          )
+        // Sometimes if `tsc` sees a CommonJS file or a JSON module, it will
+        // _helpfully_ output it, which we don't really want to do unless
+        // someone has enabled check_js.
+        if matches!(media_type, MediaType::Json)
+          || (!check_js
+            && matches!(
+              media_type,
+              MediaType::JavaScript | MediaType::Cjs | MediaType::Mjs
+            ))
         {
           log::debug!("skipping emit for {}", specifier);
           continue;
@@ -431,7 +432,10 @@ pub(crate) fn check_and_maybe_emit(
           MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
             cache.set(CacheType::Declaration, &specifier, emit.data)?;
           }
-          _ => unreachable!(),
+          _ => unreachable!(
+            "unexpected media_type {} {}",
+            emit.media_type, specifier
+          ),
         }
       }
     }
