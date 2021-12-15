@@ -35,7 +35,7 @@ pub enum EncryptAlgorithm {
     #[serde(with = "serde_bytes")]
     label: Vec<u8>,
   },
-  #[serde(rename = "AES", rename_all = "camelCase")]
+  #[serde(rename = "AES-CBC", rename_all = "camelCase")]
   AesCbc {
     #[serde(with = "serde_bytes")]
     iv: Vec<u8>,
