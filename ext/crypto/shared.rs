@@ -90,6 +90,13 @@ impl RawKeyData {
       _ => Err(type_error("expected private key")),
     }
   }
+
+  pub fn as_secret_key(&self) -> Result<&[u8], AnyError> {
+    match self {
+      RawKeyData::Secret(data) => Ok(data),
+      _ => Err(type_error("expected secret key")),
+    }
+  }
 }
 
 pub fn data_error(msg: impl Into<Cow<'static, str>>) -> AnyError {
