@@ -1465,7 +1465,7 @@ Deno.test(async function testImportEcSpkiPkcs8() {
       continue;
     }
 
-    const _privateKeyECDSA = await subtle.importKey(
+    const privateKeyECDSA = await subtle.importKey(
       "pkcs8",
       pkcs8,
       { name: "ECDSA", namedCurve },
@@ -1480,13 +1480,34 @@ Deno.test(async function testImportEcSpkiPkcs8() {
 
     assertEquals(new Uint8Array(expPrivateKeyPKCS8), pkcs8);*/
 
-    const _publicKeyECDSA = await subtle.importKey(
+    const publicKeyECDSA = await subtle.importKey(
       "spki",
       spki,
       { name: "ECDSA", namedCurve },
       true,
       ["verify"],
     );
+
+    for (
+      const hash of [/*"SHA-1", */ "SHA-256"/*"SHA-384", "SHA-512"*/
+      ]
+    ) {
+      console.log(hash);
+
+      const signatureECDSA = await subtle.sign(
+        { name: "ECDSA", hash },
+        privateKeyECDSA,
+        new Uint8Array([1, 2, 3, 4]),
+      );
+
+      const verifyECDSA = await subtle.verify(
+        { name: "ECDSA", hash },
+        publicKeyECDSA,
+        signatureECDSA,
+        new Uint8Array([1, 2, 3, 4]),
+      );
+      assert(verifyECDSA);
+    }
 
     /*const expPublicKeySPKI = await subtle.exportKey(
       "spki",

@@ -1147,6 +1147,7 @@
           }
           // 2.
           const hash = normalizedAlgorithm.hash.name;
+
           // 3-8.
           return await core.opAsync("op_crypto_verify_key", {
             key: keyData,
@@ -2278,10 +2279,6 @@
           throw new DOMException("Invalid key usages", "SyntaxError");
         }
 
-        if (keyUsages.length == 0) {
-          throw new DOMException("Key usage is empty", "SyntaxError");
-        }
-
         // 2-9.
         const { rawData } = core.opSync("op_crypto_import_key", {
           algorithm: normalizedAlgorithm.name,
@@ -2316,10 +2313,6 @@
             ) !== undefined
           ) {
             throw new DOMException("Invalid key usages", "SyntaxError");
-          }
-
-          if (keyUsages.length == 0) {
-            throw new DOMException("Key usage is empty", "SyntaxError");
           }
         } else if (keyUsages.length != 0) {
           throw new DOMException("Key usage must be empty", "SyntaxError");

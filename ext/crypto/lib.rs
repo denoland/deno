@@ -19,6 +19,7 @@ use std::rc::Rc;
 use block_modes::BlockMode;
 use lazy_static::lazy_static;
 use num_traits::cast::FromPrimitive;
+use p256::elliptic_curve::sec1::FromEncodedPoint;
 use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
@@ -51,7 +52,6 @@ use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
 use std::path::PathBuf;
-use p256::elliptic_curve::sec1::FromEncodedPoint;
 
 pub use rand; // Re-export rand
 
@@ -455,8 +455,6 @@ pub async fn op_crypto_verify_key(
         _ => return Err(type_error("Invalid Key format".to_string())),
       };
 
-      //let private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &*args.key.data)?;
-      //let public_key_bytes = private_key.public_key().as_ref();
       let public_key =
         ring::signature::UnparsedPublicKey::new(verify_alg, public_key_bytes);
 
@@ -531,7 +529,8 @@ pub async fn op_crypto_derive_bits(
             KeyType::Public => {
               let point = p256::EncodedPoint::from_bytes(public_key.data)?;
               p256::PublicKey::from_encoded_point(&point)
-                .ok_or_else(|| type_error("Missing argument namedCurve")).unwrap()
+                .ok_or_else(|| type_error("Missing argument namedCurve"))
+                .unwrap()
             }
             _ => unreachable!(),
           };
