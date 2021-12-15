@@ -3,6 +3,8 @@
 use std::thread::sleep;
 use std::time::Duration;
 
+static BUFFER: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+
 #[no_mangle]
 pub extern "C" fn print_something() {
   println!("something");
@@ -26,6 +28,16 @@ pub extern "C" fn print_buffer2(
   let buf1 = unsafe { std::slice::from_raw_parts(ptr1, len1) };
   let buf2 = unsafe { std::slice::from_raw_parts(ptr2, len2) };
   println!("{:?} {:?}", buf1, buf2);
+}
+
+#[no_mangle]
+pub extern "C" fn return_buffer() -> *const u8 {
+  BUFFER.as_ptr()
+}
+
+#[no_mangle]
+pub extern "C" fn is_null_ptr(ptr: *const u8) -> u8 {
+  ptr.is_null() as u8
 }
 
 #[no_mangle]

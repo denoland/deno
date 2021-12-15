@@ -147,7 +147,8 @@ Deno.test(
     listener.close();
     await assertRejects(
       () => p,
-      Deno.errors.Interrupted,
+      Deno.errors.BadResource,
+      "Listener has been closed",
     );
   },
 );
@@ -185,7 +186,7 @@ Deno.test(
     const listener = Deno.listen({ transport: "unix", path: filePath });
     let acceptErrCount = 0;
     const checkErr = (e: Error) => {
-      if (e instanceof Deno.errors.Interrupted) { // "operation canceled"
+      if (e.message === "Listener has been closed") {
         assertEquals(acceptErrCount, 1);
       } else if (e instanceof Deno.errors.Busy) { // "Listener already in use"
         acceptErrCount++;
