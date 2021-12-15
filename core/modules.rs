@@ -35,9 +35,8 @@ pub(crate) fn validate_import_assertions(
   assertions: &HashMap<String, String>,
 ) {
   for (key, value) in assertions {
-    if !SUPPORTED_TYPE_ASSERTIONS.contains(&key.as_str()) {
-      // TODO(bartlomieju): store in a const list of supported values
-      if value != "json" {
+    if key == "type" {
+      if !SUPPORTED_TYPE_ASSERTIONS.contains(&key.as_str()) {
         let message = v8::String::new(
           scope,
           &format!("\"{}\" is not a valid module type.", value),
