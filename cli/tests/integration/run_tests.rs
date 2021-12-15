@@ -2434,3 +2434,9 @@ itest!(import_assertions_dynamic_error {
   output: "import_assertions/dynamic_error.out",
   exit_code: 1,
 });
+
+itest!(import_assertions_type_check {
+  args: "run --allow-read import_assertions/type_check.ts",
+  output: "import_assertions/type_check.out",
+  exit_code: 1,
+});
