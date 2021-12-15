@@ -12,11 +12,12 @@ use crate::OaepPrivateKeyParameters;
 use crate::PssPrivateKeyParameters;
 
 use p256::elliptic_curve::sec1::ToEncodedPoint;
-use pkcs8::{FromPrivateKey, ToPrivateKey};
+use pkcs8::FromPrivateKey;
+use pkcs8::ToPrivateKey;
 
-use p256::elliptic_curve::generic_array::{
-  typenum::U32, ArrayLength, GenericArray,
-};
+use p256::elliptic_curve::generic_array::typenum::U32;
+use p256::elliptic_curve::generic_array::ArrayLength;
+use p256::elliptic_curve::generic_array::GenericArray;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

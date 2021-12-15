@@ -2346,7 +2346,7 @@
       case "jwk": {
         const jwk = keyData;
 
-        const keyType = (jwk.d != undefined) ? "private" : "public";
+        const keyType = (jwk.d !== undefined) ? "private" : "public";
 
         // 2.
         if (
@@ -2361,13 +2361,13 @@
         // 3.
         if (jwk.kty !== "EC") {
           throw new DOMException(
-            "`kty` member of JsonWebKey must be `RSA`",
+            "'kty' property of JsonWebKey must be 'EC'",
             "DataError",
           );
         }
 
         // 4.
-        if (keyUsages.length > 0 && jwk.use) {
+        if (keyUsages.length > 0 && jwk.use !== undefined) {
           if (jwk.use !== supportedUsages.jwkUse) {
             throw new DOMException(
               `'use' property of JsonWebKey must be '${supportedUsages.jwkUse}'`,
@@ -2378,7 +2378,7 @@
 
         // 5.
         // Section 4.3 of RFC7517
-        if (jwk.key_ops) {
+        if (jwk.key_ops !== undefined) {
           if (
             ArrayPrototypeFind(
               jwk.key_ops,
@@ -2405,15 +2405,15 @@
         }
 
         // 6.
-        if (jwk.ext === false && extractable == true) {
+        if (jwk.ext === false && extractable === true) {
           throw new DOMException(
-            "`ext` member of JsonWebKey is invalid",
+            "'ext' property of JsonWebKey must not be false if extractable is true",
             "DataError",
           );
         }
 
         // 9.
-        if (jwk.alg && normalizedAlgorithm.name == "ECDSA") {
+        if (jwk.alg !== undefined && normalizedAlgorithm.name == "ECDSA") {
           let algNamedCurve;
 
           switch (jwk.alg) {
@@ -2439,7 +2439,7 @@
           if (algNamedCurve) {
             if (algNamedCurve !== normalizedAlgorithm.namedCurve) {
               throw new DOMException(
-                "Mismatched curve algorithm for JWK.alg",
+                "Mismatched curve algorithm",
                 "DataError",
               );
             }
