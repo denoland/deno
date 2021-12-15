@@ -3136,7 +3136,7 @@
 
         // 3-5.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const cipherText = await core.opAsync("op_crypto_encrypt_key", {
+        const cipherText = await core.opAsync("op_crypto_encrypt", {
           key: keyData,
           algorithm: "RSA-OAEP",
           hash: hashAlgorithm,
@@ -3158,7 +3158,7 @@
         }
 
         // 2.
-        const cipherText = await core.opAsync("op_crypto_encrypt_key", {
+        const cipherText = await core.opAsync("op_crypto_encrypt", {
           key: keyData,
           algorithm: "AES-CBC",
           length: key[_algorithm].length,
