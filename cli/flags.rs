@@ -2548,10 +2548,10 @@ mod tests {
     );
   }
 
-
   #[test]
   fn run_watch_with_external() {
-    let r = flags_from_vec(svec!["deno", "run", "--watch=file1,file2", "script.ts"]);
+    let r =
+      flags_from_vec(svec!["deno", "run", "--watch=file1,file2", "script.ts"]);
     let flags = r.unwrap();
     assert_eq!(
       flags,
