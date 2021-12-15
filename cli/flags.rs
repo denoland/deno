@@ -2429,17 +2429,13 @@ fn watch_arg_parse(
   matches: &clap::ArgMatches,
   allow_extra: bool,
 ) {
-  flags.watch = match matches.values_of("watch") {
-    Some(f) => {
-      let extra_files = f.map(PathBuf::from).collect();
-      if allow_extra {
-        Some(extra_files)
-      } else {
-        Some(vec![])
-      }
+  if allow_extra {
+    if let Some(f) = matches.values_of("watch") {
+      flags.watch = Some(f.map(PathBuf::from).collect());
     }
-    None => None,
-  };
+  } else if matches.is_present("watch") {
+    flags.watch = Some(vec![]);
+  }
 }
 
 // TODO(ry) move this to utility module and add test.
