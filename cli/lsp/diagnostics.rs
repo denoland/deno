@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
+use super::client::Client;
 use super::documents;
 use super::documents::Documents;
 use super::language_server;
@@ -125,7 +126,7 @@ impl DiagnosticsServer {
   pub(crate) fn start(
     &mut self,
     language_server: Arc<Mutex<language_server::Inner>>,
-    client: lspower::Client,
+    client: Client,
     ts_server: Arc<tsc::TsServer>,
   ) {
     let (tx, mut rx) = mpsc::unbounded_channel::<()>();
@@ -530,7 +531,7 @@ async fn generate_deps_diagnostics(
 
 /// Publishes diagnostics to the client.
 async fn publish_diagnostics(
-  client: &lspower::Client,
+  client: &Client,
   collection: &mut DiagnosticCollection,
   snapshot: &language_server::StateSnapshot,
 ) {
@@ -569,7 +570,7 @@ async fn publish_diagnostics(
 /// Updates diagnostics for any specifiers that don't have the correct version
 /// generated and publishes the diagnostics to the client.
 async fn update_diagnostics(
-  client: &lspower::Client,
+  client: &Client,
   collection: Arc<Mutex<DiagnosticCollection>>,
   snapshot: Arc<language_server::StateSnapshot>,
   ts_server: &tsc::TsServer,
