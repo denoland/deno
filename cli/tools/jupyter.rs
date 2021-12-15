@@ -2,12 +2,14 @@
 
 use crate::flags::Flags;
 use crate::flags::JupyterFlags;
+use data_encoding::HEXLOWER;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use ring::hmac;
 use std::env::current_exe;
 use tempfile::TempDir;
 use tokio::join;
@@ -448,6 +450,100 @@ fn parse_zmq_packet(data: &ZmqMessage) -> Result<(), AnyError> {
   // validate_header(&header_value)?;
 
   Ok(())
+}
+
+#[allow(dead_code)]
+fn hmac_sign(zmq: &ZmqMessage, key: hmac::Key) -> String {
+    let mut hmac_ctx = hmac::Context::with_key(&key);
+    hmac_ctx.update(zmq.get(2).unwrap()); // header
+    hmac_ctx.update(zmq.get(3).unwrap()); // parent header
+    hmac_ctx.update(zmq.get(4).unwrap()); // metadata
+    hmac_ctx.update(zmq.get(5).unwrap()); // content
+    let tag = hmac_ctx.sign();
+    dbg!(tag);
+    let sig = HEXLOWER.encode(tag.as_ref());
+
+    return sig;
+}
+
+#[allow(dead_code)]
+fn hmac_verify(
+    zmq: &ZmqMessage,
+    key: hmac::Key,
+    sig_str: String,
+) -> Result<(), ring::error::Unspecified> {
+    dbg!(&zmq);
+    let mut msg = Vec::<u8>::new();
+    msg.extend(zmq.get(2).unwrap()); // header
+    msg.extend(zmq.get(3).unwrap()); // parent header
+    msg.extend(zmq.get(4).unwrap()); // metadata
+    msg.extend(zmq.get(5).unwrap()); // content
+    let sig = HEXLOWER.decode(sig_str.as_bytes()).unwrap();
+    hmac::verify(&key, &msg.as_ref(), &sig.as_ref())?;
+
+    Ok(())
+}
+
+#[test]
+fn hmac_verify_test() {
+    let key_value = "1f5cec86-8eaa942eef7f5a35b51ddcf5";
+    let key = hmac::Key::new(hmac::HMAC_SHA256, key_value.as_ref());
+
+    let delim = "<IDS|MSG>".as_bytes().to_vec();
+    let hash = "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"
+        .as_bytes()
+        .to_vec();
+    let header = "{\"msg_id\":\"c0fd20872c1b4d1c87e7fc814b75c93e_0\",\"msg_type\":\"kernel_info_request\",\"username\":\"ampower\",\"session\":\"c0fd20872c1b4d1c87e7fc814b75c93e\",\"date\":\"2021-12-10T06:20:40.259695Z\",\"version\":\"5.3\"}".as_bytes().to_vec();
+    let parent_header = "{}".as_bytes().to_vec();
+    let metadata = "{}".as_bytes().to_vec();
+    let content = "{}".as_bytes().to_vec();
+
+    let mut test_msg = ZmqMessage::from(delim);
+    test_msg.push_back(hash.into());
+    test_msg.push_back(header.into());
+    test_msg.push_back(parent_header.into());
+    test_msg.push_back(metadata.into());
+    test_msg.push_back(content.into());
+
+    dbg!(test_msg.clone());
+    match hmac_verify(
+        &test_msg,
+        key,
+        String::from("43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"),
+    ) {
+        Ok(_) => assert!(true),
+        Err(_) => assert!(false, "signature validation failed"),
+    }
+}
+
+#[test]
+fn hmac_sign_test() {
+    let key_value = "1f5cec86-8eaa942eef7f5a35b51ddcf5";
+    let key = hmac::Key::new(hmac::HMAC_SHA256, key_value.as_ref());
+
+    let delim = "<IDS|MSG>";
+    let hash = "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"
+        .as_bytes()
+        .to_vec();
+    let header = "{\"msg_id\":\"c0fd20872c1b4d1c87e7fc814b75c93e_0\",\"msg_type\":\"kernel_info_request\",\"username\":\"ampower\",\"session\":\"c0fd20872c1b4d1c87e7fc814b75c93e\",\"date\":\"2021-12-10T06:20:40.259695Z\",\"version\":\"5.3\"}".as_bytes().to_vec();
+    let parent_header = "{}".as_bytes().to_vec();
+    let metadata = "{}".as_bytes().to_vec();
+    let content = "{}".as_bytes().to_vec();
+
+    let mut test_msg = ZmqMessage::from(delim);
+    test_msg.push_back(hash.into());
+    test_msg.push_back(header.into());
+    test_msg.push_back(parent_header.into());
+    test_msg.push_back(metadata.into());
+    test_msg.push_back(content.into());
+
+    dbg!(test_msg.clone());
+    let sig = hmac_sign(&test_msg, key);
+    println!("Signature: {}", sig);
+    assert_eq!(
+        sig,
+        "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"
+    );
 }
 
 // /* *****************
