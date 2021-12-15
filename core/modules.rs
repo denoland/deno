@@ -3,6 +3,8 @@
 use crate::bindings;
 use crate::error::generic_error;
 use crate::module_specifier::ModuleSpecifier;
+use crate::resolve_import;
+use crate::resolve_url;
 use crate::runtime::exception_to_err_result;
 use crate::OpState;
 use anyhow::Error;
@@ -261,7 +263,7 @@ impl ModuleLoader for FsModuleLoader {
     referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, Error> {
-    Ok(crate::resolve_import(specifier, referrer)?)
+    Ok(resolve_import(specifier, referrer)?)
   }
 
   fn load(
@@ -482,8 +484,7 @@ impl RecursiveModuleLoad {
     //    recursed synchronously here.
     // This robustly ensures that the whole graph is in the module map before
     // `LoadState::Done` is set.
-    let specifier =
-      crate::resolve_url(&module_source.module_url_found).unwrap();
+    let specifier = resolve_url(&module_source.module_url_found).unwrap();
     let mut already_registered = VecDeque::new();
     already_registered.push_back((module_id, specifier.clone()));
     self.visited.insert(specifier);
@@ -564,7 +565,7 @@ impl Stream for RecursiveModuleLoad {
         } else {
           let maybe_referrer = match inner.init {
             LoadInit::DynamicImport(_, ref referrer) => {
-              crate::resolve_url(referrer).ok()
+              resolve_url(referrer).ok()
             }
             _ => None,
           };
@@ -1089,7 +1090,7 @@ mod tests {
 
       eprintln!(">> RESOLVING, S: {}, R: {}", specifier, referrer);
 
-      let output_specifier = match crate::resolve_import(specifier, referrer) {
+      let output_specifier = match resolve_import(specifier, referrer) {
         Ok(specifier) => specifier,
         Err(..) => return Err(MockError::ResolveErr.into()),
       };
@@ -1153,7 +1154,7 @@ mod tests {
       module_loader: Some(loader),
       ..Default::default()
     });
-    let spec = crate::resolve_url("file:///a.js").unwrap();
+    let spec = resolve_url("file:///a.js").unwrap();
     let a_id_fut = runtime.load_main_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
@@ -1181,11 +1182,11 @@ mod tests {
       modules.get_requested_modules(a_id),
       Some(&vec![
         ModuleRequest {
-          specifier: crate::resolve_url("file:///b.js").unwrap(),
+          specifier: resolve_url("file:///b.js").unwrap(),
           module_type: ModuleType::JavaScript,
         },
         ModuleRequest {
-          specifier: crate::resolve_url("file:///c.js").unwrap(),
+          specifier: resolve_url("file:///c.js").unwrap(),
           module_type: ModuleType::JavaScript,
         },
       ])
@@ -1193,14 +1194,14 @@ mod tests {
     assert_eq!(
       modules.get_requested_modules(b_id),
       Some(&vec![ModuleRequest {
-        specifier: crate::resolve_url("file:///c.js").unwrap(),
+        specifier: resolve_url("file:///c.js").unwrap(),
         module_type: ModuleType::JavaScript,
       },])
     );
     assert_eq!(
       modules.get_requested_modules(c_id),
       Some(&vec![ModuleRequest {
-        specifier: crate::resolve_url("file:///d.js").unwrap(),
+        specifier: resolve_url("file:///d.js").unwrap(),
         module_type: ModuleType::JavaScript,
       },])
     );
@@ -1240,7 +1241,7 @@ mod tests {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.js");
         assert_eq!(referrer, "file:///a.js");
-        let s = crate::resolve_import(specifier, referrer).unwrap();
+        let s = resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -1315,7 +1316,7 @@ mod tests {
       assert_eq!(
         imports,
         Some(&vec![ModuleRequest {
-          specifier: crate::resolve_url("file:///b.js").unwrap(),
+          specifier: resolve_url("file:///b.js").unwrap(),
           module_type: ModuleType::JavaScript,
         },])
       );
@@ -1361,7 +1362,7 @@ mod tests {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "./b.json");
         assert_eq!(referrer, "file:///a.js");
-        let s = crate::resolve_import(specifier, referrer).unwrap();
+        let s = resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -1420,7 +1421,7 @@ mod tests {
       assert_eq!(
         imports,
         Some(&vec![ModuleRequest {
-          specifier: crate::resolve_url("file:///b.json").unwrap(),
+          specifier: resolve_url("file:///b.json").unwrap(),
           module_type: ModuleType::Json,
         },])
       );
@@ -1464,7 +1465,7 @@ mod tests {
         self.count.fetch_add(1, Ordering::Relaxed);
         assert_eq!(specifier, "/foo.js");
         assert_eq!(referrer, "file:///dyn_import2.js");
-        let s = crate::resolve_import(specifier, referrer).unwrap();
+        let s = resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -1525,7 +1526,7 @@ mod tests {
       assert!(c < 7);
       assert_eq!(specifier, "./b.js");
       assert_eq!(referrer, "file:///dyn_import3.js");
-      let s = crate::resolve_import(specifier, referrer).unwrap();
+      let s = resolve_import(specifier, referrer).unwrap();
       Ok(s)
     }
 
@@ -1659,7 +1660,7 @@ mod tests {
         _is_main: bool,
       ) -> Result<ModuleSpecifier, Error> {
         self.resolve_count.fetch_add(1, Ordering::Relaxed);
-        let s = crate::resolve_import(specifier, referrer).unwrap();
+        let s = resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
@@ -1725,7 +1726,7 @@ mod tests {
     });
 
     let fut = async move {
-      let spec = crate::resolve_url("file:///circular1.js").unwrap();
+      let spec = resolve_url("file:///circular1.js").unwrap();
       let result = runtime.load_main_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
@@ -1751,7 +1752,7 @@ mod tests {
       assert_eq!(
         modules.get_requested_modules(circular1_id),
         Some(&vec![ModuleRequest {
-          specifier: crate::resolve_url("file:///circular2.js").unwrap(),
+          specifier: resolve_url("file:///circular2.js").unwrap(),
           module_type: ModuleType::JavaScript,
         }])
       );
@@ -1759,7 +1760,7 @@ mod tests {
       assert_eq!(
         modules.get_requested_modules(circular2_id),
         Some(&vec![ModuleRequest {
-          specifier: crate::resolve_url("file:///circular3.js").unwrap(),
+          specifier: resolve_url("file:///circular3.js").unwrap(),
           module_type: ModuleType::JavaScript,
         }])
       );
@@ -1770,11 +1771,11 @@ mod tests {
         modules.get_requested_modules(circular3_id),
         Some(&vec![
           ModuleRequest {
-            specifier: crate::resolve_url("file:///circular1.js").unwrap(),
+            specifier: resolve_url("file:///circular1.js").unwrap(),
             module_type: ModuleType::JavaScript,
           },
           ModuleRequest {
-            specifier: crate::resolve_url("file:///circular2.js").unwrap(),
+            specifier: resolve_url("file:///circular2.js").unwrap(),
             module_type: ModuleType::JavaScript,
           }
         ])
@@ -1809,7 +1810,7 @@ mod tests {
     });
 
     let fut = async move {
-      let spec = crate::resolve_url("file:///redirect1.js").unwrap();
+      let spec = resolve_url("file:///redirect1.js").unwrap();
       let result = runtime.load_main_module(&spec, None).await;
       println!(">> result {:?}", result);
       assert!(result.is_ok());
@@ -1874,7 +1875,7 @@ mod tests {
         module_loader: Some(loader),
         ..Default::default()
       });
-      let spec = crate::resolve_url("file:///main.js").unwrap();
+      let spec = resolve_url("file:///main.js").unwrap();
       let mut recursive_load =
         runtime.load_main_module(&spec, None).boxed_local();
 
@@ -1923,7 +1924,7 @@ mod tests {
         module_loader: Some(loader),
         ..Default::default()
       });
-      let spec = crate::resolve_url("file:///bad_import.js").unwrap();
+      let spec = resolve_url("file:///bad_import.js").unwrap();
       let mut load_fut = runtime.load_main_module(&spec, None).boxed_local();
       let result = load_fut.poll_unpin(cx);
       if let Poll::Ready(Err(err)) = result {
@@ -1957,7 +1958,7 @@ mod tests {
     // In default resolution code should be empty.
     // Instead we explicitly pass in our own code.
     // The behavior should be very similar to /a.js.
-    let spec = crate::resolve_url("file:///main_with_code.js").unwrap();
+    let spec = resolve_url("file:///main_with_code.js").unwrap();
     let main_id_fut = runtime
       .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
       .boxed_local();
@@ -1985,11 +1986,11 @@ mod tests {
       modules.get_requested_modules(main_id),
       Some(&vec![
         ModuleRequest {
-          specifier: crate::resolve_url("file:///b.js").unwrap(),
+          specifier: resolve_url("file:///b.js").unwrap(),
           module_type: ModuleType::JavaScript,
         },
         ModuleRequest {
-          specifier: crate::resolve_url("file:///c.js").unwrap(),
+          specifier: resolve_url("file:///c.js").unwrap(),
           module_type: ModuleType::JavaScript,
         }
       ])
@@ -1997,14 +1998,14 @@ mod tests {
     assert_eq!(
       modules.get_requested_modules(b_id),
       Some(&vec![ModuleRequest {
-        specifier: crate::resolve_url("file:///c.js").unwrap(),
+        specifier: resolve_url("file:///c.js").unwrap(),
         module_type: ModuleType::JavaScript,
       }])
     );
     assert_eq!(
       modules.get_requested_modules(c_id),
       Some(&vec![ModuleRequest {
-        specifier: crate::resolve_url("file:///d.js").unwrap(),
+        specifier: resolve_url("file:///d.js").unwrap(),
         module_type: ModuleType::JavaScript,
       }])
     );
@@ -2015,8 +2016,8 @@ mod tests {
   fn main_and_side_module() {
     struct ModsLoader {}
 
-    let main_specifier = crate::resolve_url("file:///main_module.js").unwrap();
-    let side_specifier = crate::resolve_url("file:///side_module.js").unwrap();
+    let main_specifier = resolve_url("file:///main_module.js").unwrap();
+    let side_specifier = resolve_url("file:///side_module.js").unwrap();
 
     impl ModuleLoader for ModsLoader {
       fn resolve(
@@ -2025,7 +2026,7 @@ mod tests {
         referrer: &str,
         _is_main: bool,
       ) -> Result<ModuleSpecifier, Error> {
-        let s = crate::resolve_import(specifier, referrer).unwrap();
+        let s = resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
 
