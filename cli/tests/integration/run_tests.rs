@@ -2407,3 +2407,36 @@ fn issue12807() {
     .unwrap();
   assert!(status.success());
 }
+
+itest!(import_assertions_static_import {
+  args: "run --allow-read import_assertions/static_import.ts",
+  output: "import_assertions/static_import.out",
+});
+
+itest!(import_assertions_static_export {
+  args: "run --allow-read import_assertions/static_export.ts",
+  output: "import_assertions/static_export.out",
+});
+
+itest!(import_assertions_static_error {
+  args: "run --allow-read import_assertions/static_error.ts",
+  output: "import_assertions/static_error.out",
+  exit_code: 1,
+});
+
+itest!(import_assertions_dynamic_import {
+  args: "run --allow-read import_assertions/dynamic_import.ts",
+  output: "import_assertions/dynamic_import.out",
+});
+
+itest!(import_assertions_dynamic_error {
+  args: "run --allow-read import_assertions/dynamic_error.ts",
+  output: "import_assertions/dynamic_error.out",
+  exit_code: 1,
+});
+
+itest!(import_assertions_type_check {
+  args: "run --allow-read import_assertions/type_check.ts",
+  output: "import_assertions/type_check.out",
+  exit_code: 1,
+});

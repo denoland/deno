@@ -6352,52 +6352,25 @@
     "semantics": {
       "scripting-1": {
         "the-script-element": {
-          "import-assertions": {
-            "dynamic-import-with-assertion-argument.any.html": [
-              "Dynamic import with an unsupported type assertion should fail"
-            ],
-            "dynamic-import-with-assertion-argument.any.worker.html": [
-              "Dynamic import with an unsupported type assertion should fail"
-            ]
-          },
+          "import-assertions": true,
           "json-module": {
             "charset-bom.any.html": [
-              "UTF-8 BOM should be stripped when decoding JSON module script",
               "UTF-16BE BOM should result in parse error in JSON module script",
               "UTF-16LE BOM should result in parse error in JSON module script"
             ],
             "charset-bom.any.worker.html": [
-              "UTF-8 BOM should be stripped when decoding JSON module script",
               "UTF-16BE BOM should result in parse error in JSON module script",
               "UTF-16LE BOM should result in parse error in JSON module script"
             ],
             "invalid-content-type.any.html": true,
             "invalid-content-type.any.worker.html": true,
-            "non-object.any.html": [
-              "Non-object: null",
-              "Non-object: true",
-              "Non-object: false",
-              "Non-object: string",
-              "Non-object: array"
-            ],
-            "non-object.any.worker.html": [
-              "Non-object: null",
-              "Non-object: true",
-              "Non-object: false",
-              "Non-object: string",
-              "Non-object: array"
-            ],
+            "non-object.any.html": true,
+            "non-object.any.worker.html": true,
             "repeated-imports.any.html": [
-              "Importing a specifier that previously failed due to an incorrect type assertion can succeed if the correct assertion is later given",
-              "Importing a specifier that previously succeeded with the correct type assertion should fail if the incorrect assertion is later given",
-              "Two modules of different type with the same specifier can load if the server changes its responses",
-              "If an import previously succeeded for a given specifier/type assertion pair, future uses of that pair should yield the same result"
+              "Two modules of different type with the same specifier can load if the server changes its responses"
             ],
             "repeated-imports.any.worker.html": [
-              "Importing a specifier that previously failed due to an incorrect type assertion can succeed if the correct assertion is later given",
-              "Importing a specifier that previously succeeded with the correct type assertion should fail if the incorrect assertion is later given",
-              "Two modules of different type with the same specifier can load if the server changes its responses",
-              "If an import previously succeeded for a given specifier/type assertion pair, future uses of that pair should yield the same result"
+              "Two modules of different type with the same specifier can load if the server changes its responses"
             ]
           },
           "microtasks": {
