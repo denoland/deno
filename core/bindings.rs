@@ -270,10 +270,8 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
-  // For dynamic imports, assertions are tuples of ("type" keyword, value)
-  let no_of_assertions = import_assertions.length() / 2;
-  let assertions =
-    parse_import_assertions(scope, import_assertions, no_of_assertions);
+  // For dynamic imports, assertions are tuples of (keyword, value)
+  let assertions = parse_import_assertions(scope, import_assertions, 2);
 
   {
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -1347,9 +1345,7 @@ pub fn module_resolve_callback<'s>(
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  let no_of_assertions = import_assertions.length() / 2;
-  let assertions =
-    parse_import_assertions(scope, import_assertions, no_of_assertions);
+  let assertions = parse_import_assertions(scope, import_assertions, 2);
   let maybe_module = module_map.resolve_callback(
     scope,
     &specifier_str,

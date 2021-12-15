@@ -1420,7 +1420,7 @@ impl JsRuntime {
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
-      module_map_rc.borrow_mut().new_module(
+      module_map_rc.borrow_mut().new_es_module(
         &mut self.handle_scope(),
         // main module
         true,
@@ -1457,7 +1457,7 @@ impl JsRuntime {
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
-      module_map_rc.borrow_mut().new_module(
+      module_map_rc.borrow_mut().new_es_module(
         &mut self.handle_scope(),
         // not main module
         false,
