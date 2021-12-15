@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
+use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
@@ -18,7 +19,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::option::Option;
 use url::Url;
 use v8::HandleScope;
@@ -269,21 +269,10 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
-  let mut assertions: HashMap<String, String> = HashMap::default();
-  // "type" keyword, value
+  // For dynamic imports, assertions are tuples of ("type" keyword, value)
   let no_of_assertions = import_assertions.length() / 2;
-  for i in 0..no_of_assertions {
-    let assert_key = import_assertions.get(scope, 2 * i).unwrap();
-    let assert_key_val = v8::Local::<v8::Value>::try_from(assert_key).unwrap();
-    let assert_value = import_assertions.get(scope, (2 * i) + 1).unwrap();
-    let assert_value_val =
-      v8::Local::<v8::Value>::try_from(assert_value).unwrap();
-    // skip parsing offset from assertion
-    assertions.insert(
-      assert_key_val.to_rust_string_lossy(scope),
-      assert_value_val.to_rust_string_lossy(scope),
-    );
-  }
+  let assertions =
+    parse_import_assertions(scope, import_assertions, no_of_assertions);
 
   {
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -1338,7 +1327,7 @@ fn create_host_object(
 pub fn module_resolve_callback<'s>(
   context: v8::Local<'s, v8::Context>,
   specifier: v8::Local<'s, v8::String>,
-  _import_assertions: v8::Local<'s, v8::FixedArray>,
+  import_assertions: v8::Local<'s, v8::FixedArray>,
   referrer: v8::Local<'s, v8::Module>,
 ) -> Option<v8::Local<'s, v8::Module>> {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
@@ -1355,8 +1344,15 @@ pub fn module_resolve_callback<'s>(
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  let maybe_module =
-    module_map.resolve_callback(scope, &specifier_str, &referrer_name);
+  let no_of_assertions = import_assertions.length() / 2;
+  let assertions =
+    parse_import_assertions(scope, import_assertions, no_of_assertions);
+  let maybe_module = module_map.resolve_callback(
+    scope,
+    &specifier_str,
+    &referrer_name,
+    assertions,
+  );
   if let Some(module) = maybe_module {
     return Some(module);
   }

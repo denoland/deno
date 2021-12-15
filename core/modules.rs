@@ -49,6 +49,34 @@ pub(crate) fn validate_import_assertions(
   }
 }
 
+pub(crate) fn parse_import_assertions(
+  scope: &mut v8::HandleScope,
+  import_assertions: v8::Local<v8::FixedArray>,
+  no_of_assertions: usize,
+) -> HashMap<String, String> {
+  let mut assertions: HashMap<String, String> = HashMap::default();
+
+  let assertions_per_line = import_assertions.length() / no_of_assertions;
+
+  for i in 0..no_of_assertions {
+    let assert_key = import_assertions
+      .get(scope, assertions_per_line * i)
+      .unwrap();
+    let assert_key_val = v8::Local::<v8::Value>::try_from(assert_key).unwrap();
+    let assert_value = import_assertions
+      .get(scope, (assertions_per_line * i) + 1)
+      .unwrap();
+    let assert_value_val =
+      v8::Local::<v8::Value>::try_from(assert_value).unwrap();
+    assertions.insert(
+      assert_key_val.to_rust_string_lossy(scope),
+      assert_value_val.to_rust_string_lossy(scope),
+    );
+  }
+
+  assertions
+}
+
 // Clippy thinks the return value doesn't need to be an Option, it's unaware
 // of the mapping that MapFnFrom<F> does for ResolveModuleCallback.
 #[allow(clippy::unnecessary_wraps)]
@@ -545,6 +573,7 @@ pub struct ModuleInfo {
   pub main: bool,
   pub name: String,
   pub import_specifiers: Vec<ModuleSpecifier>,
+  pub module_type: ModuleType,
 }
 
 /// A symbolic module entity.
@@ -652,8 +681,6 @@ impl ModuleMap {
       json_module_evaluation_steps,
     );
 
-    // TODO: need to store parsed JSON somewhere so that `synthethic_evaluation_steps`
-    // can access it
     let handle = v8::Global::<v8::Module>::new(tc_scope, module);
     let value_handle = v8::Global::<v8::Value>::new(tc_scope, parsed_json);
     self.json_value_store.insert(handle.clone(), value_handle);
@@ -672,6 +699,7 @@ impl ModuleMap {
         main: false,
         name: name.to_string(),
         import_specifiers: vec![],
+        module_type: ModuleType::Json,
       },
     );
 
@@ -717,26 +745,10 @@ impl ModuleMap {
 
       let import_assertions = module_request.get_import_assertions();
 
-      let mut assertions = HashMap::default();
-
-      // "type" keyword, value and source offset of assertion
+      // For static imports, assertions are triples of ("type" keyword, value and source offset)
       let no_of_assertions = import_assertions.length() / 3;
-      for i in 0..no_of_assertions {
-        let assert_key = import_assertions.get(tc_scope, 3 * i).unwrap();
-        let assert_key_val =
-          v8::Local::<v8::Value>::try_from(assert_key).unwrap();
-        let assert_key_str = assert_key_val.to_rust_string_lossy(tc_scope);
-
-        let assert_value =
-          import_assertions.get(tc_scope, (3 * i) + 1).unwrap();
-        let assert_value_val =
-          v8::Local::<v8::Value>::try_from(assert_value).unwrap();
-        let assert_value_str = assert_value_val.to_rust_string_lossy(tc_scope);
-
-        // we're not interested in source code offset, so skipping it
-
-        assertions.insert(assert_key_str, assert_value_str);
-      }
+      let assertions =
+        parse_import_assertions(tc_scope, import_assertions, no_of_assertions);
 
       // FIXME(bartomieju): there are no stack frames if exception
       // is thrown here
@@ -777,6 +789,7 @@ impl ModuleMap {
         main,
         name: name.to_string(),
         import_specifiers,
+        module_type: ModuleType::JavaScript,
       },
     );
 
@@ -888,13 +901,31 @@ impl ModuleMap {
     scope: &mut v8::HandleScope<'s>,
     specifier: &str,
     referrer: &str,
+    import_assertions: HashMap<String, String>,
   ) -> Option<v8::Local<'s, v8::Module>> {
     let resolved_specifier = self
       .loader
       .resolve(specifier, referrer, false)
       .expect("Module should have been already resolved");
 
+    let module_type = import_assertions
+      .get("type")
+      .map(|ty| {
+        if ty == "json" {
+          ModuleType::Json
+        } else {
+          ModuleType::JavaScript
+        }
+      })
+      .unwrap_or(ModuleType::JavaScript);
+
     if let Some(id) = self.get_id(resolved_specifier.as_str()) {
+      let info = self.get_info_by_id(&id).unwrap();
+
+      if info.module_type != module_type {
+        return None;
+      }
+
       if let Some(handle) = self.get_handle(id) {
         return Some(v8::Local::new(scope, handle));
       }
