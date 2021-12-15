@@ -577,7 +577,8 @@ async fn lint_command(
     None
   };
 
-  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch).await?;
+  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch.is_some())
+    .await?;
   Ok(0)
 }
 
@@ -894,7 +895,7 @@ async fn bundle_command(
     }
   };
 
-  if flags.watch {
+  if flags.watch.is_some() {
     file_watcher::watch_func(resolver, operation, "Bundle").await?;
   } else {
     let module_graph =
@@ -943,7 +944,8 @@ async fn format_command(
     return Ok(0);
   }
 
-  tools::fmt::format(fmt_flags, flags.watch, maybe_fmt_config).await?;
+  tools::fmt::format(fmt_flags, flags.watch.is_some(), maybe_fmt_config)
+    .await?;
   Ok(0)
 }
 
@@ -1011,6 +1013,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     let script1 = script.clone();
     let script2 = script.clone();
     let flags = flags.clone();
+    let watch_flag = flags.watch.clone();
     async move {
       let main_module = resolve_url_or_path(&script1)?;
       let ps = ProcState::build(flags).await?;
@@ -1066,6 +1069,11 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
             .flatten()
         })
         .collect();
+
+      // Add the extra files listed in the watch flag
+      if let Some(watch_paths) = watch_flag {
+        paths_to_watch.extend(watch_paths);
+      }
 
       if let Some(import_map) = ps.flags.import_map_path.as_ref() {
         paths_to_watch
@@ -1180,7 +1188,7 @@ async fn run_command(
     return run_from_stdin(flags).await;
   }
 
-  if flags.watch {
+  if flags.watch.is_some() {
     return run_with_watch(flags, run_flags.script).await;
   }
 
@@ -1294,7 +1302,7 @@ async fn test_command(
     );
   }
 
-  if flags.watch {
+  if flags.watch.is_some() {
     tools::test::run_tests_with_watch(
       flags,
       test_flags.include,
