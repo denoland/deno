@@ -312,7 +312,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
     let arg = args.get(0);
     if is_instance_of_error(scope, arg) {
       let e: crate::error::NativeJsError =
-        serde_v8::from_v8(scope, arg.into()).unwrap();
+        serde_v8::from_v8(scope, arg).unwrap();
       let name = e.name.unwrap_or_else(|| "Error".to_string());
       let message = v8::Exception::create_message(scope, arg);
       if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
