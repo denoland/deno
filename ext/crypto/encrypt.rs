@@ -95,7 +95,7 @@ fn encrypt_rsa_oaep(
     },
   };
   let encrypted = public_key
-    .encrypt(&mut rng, padding, &data)
+    .encrypt(&mut rng, padding, data)
     .map_err(|_| operation_error("Encryption failed"))?;
   Ok(encrypted)
 }
