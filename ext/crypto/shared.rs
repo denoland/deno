@@ -38,8 +38,8 @@ pub const ID_P_SPECIFIED: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.9");
 
 pub const EC_PUBLIC_KEY_STR: &str = "1.2.840.10045.2.1";
-pub const ID_SECP256R1_OID_STR: &str  ="1.2.840.10045.3.1.7";
-pub const ID_SECP384R1_OID_STR: &str  = "1.3.132.0.34";
+pub const ID_SECP256R1_OID_STR: &str = "1.2.840.10045.3.1.7";
+pub const ID_SECP384R1_OID_STR: &str = "1.3.132.0.34";
 /*Not yet supported
 pub const ID_SECP521R1_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new("1.3.132.0.35");*/

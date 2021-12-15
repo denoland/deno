@@ -866,9 +866,10 @@ fn import_key_ec(
       if let Some(pk_named_curve) = pk_named_curve {
         match pk_named_curve {
           EcNamedCurve::P256 => {
-            let secret_key = p256::SecretKey::from_pkcs8_der(&data).map_err(|_| {
-              data_error("invalid P-256 elliptic curve PKCS8 data")
-            })?;
+            let secret_key =
+              p256::SecretKey::from_pkcs8_der(&data).map_err(|_| {
+                data_error("invalid P-256 elliptic curve PKCS8 data")
+              })?;
 
             let point =
               secret_key.public_key().as_affine().to_encoded_point(false);
@@ -921,10 +922,11 @@ fn import_key_ec(
       }
 
       // 5-7.
-      let params = ECParametersSpki::try_from(pk_info
-        .algorithm
-        .parameters
-        .ok_or_else(|| data_error("malformed parameters"))?      
+      let params = ECParametersSpki::try_from(
+        pk_info
+          .algorithm
+          .parameters
+          .ok_or_else(|| data_error("malformed parameters"))?,
       )
       .map_err(|_| data_error("malformed parameters"))?;
 
@@ -966,7 +968,7 @@ fn import_key_ec(
                 data_error("invalid P-384 eliptic curve SPKI data")
               })?;
 
-              if point.is_identity() {
+            if point.is_identity() {
               return Err(data_error("invalid P-384 eliptic curve point"));
             }
 
@@ -974,8 +976,7 @@ fn import_key_ec(
           }
         };
 
-        if bytes_consumed != pk_info.subject_public_key.len()
-        {
+        if bytes_consumed != pk_info.subject_public_key.len() {
           return Err(data_error("public key is invalid (too long)"));
         }
 
