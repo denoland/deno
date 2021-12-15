@@ -35,17 +35,15 @@ pub(crate) fn validate_import_assertions(
   assertions: &HashMap<String, String>,
 ) {
   for (key, value) in assertions {
-    if key == "type" {
-      if !SUPPORTED_TYPE_ASSERTIONS.contains(&key.as_str()) {
-        let message = v8::String::new(
-          scope,
-          &format!("\"{}\" is not a valid module type.", value),
-        )
-        .unwrap();
-        let exception = v8::Exception::type_error(scope, message);
-        scope.throw_exception(exception);
-        return;
-      }
+    if key == "type" && !SUPPORTED_TYPE_ASSERTIONS.contains(&value.as_str()) {
+      let message = v8::String::new(
+        scope,
+        &format!("\"{}\" is not a valid module type.", value),
+      )
+      .unwrap();
+      let exception = v8::Exception::type_error(scope, message);
+      scope.throw_exception(exception);
+      return;
     }
   }
 }
