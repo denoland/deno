@@ -276,7 +276,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
 
   {
     let tc_scope = &mut v8::TryCatch::new(scope);
-    validate_import_assertions(tc_scope, assertions);
+    validate_import_assertions(tc_scope, &assertions);
     if tc_scope.has_caught() {
       let e = tc_scope.exception().unwrap();
       resolver.reject(tc_scope, e);
