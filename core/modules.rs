@@ -747,7 +747,7 @@ impl ModuleMap {
           &format!("\"{}\" is not a valid JSON.", name),
         )
         .unwrap();
-        let exception = v8::Exception::type_error(tc_scope, message);
+        let exception = v8::Exception::syntax_error(tc_scope, message);
         tc_scope.throw_exception(exception);
         let e = tc_scope.exception().unwrap();
         return exception_to_err_result(tc_scope, e, false);
