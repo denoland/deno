@@ -2548,6 +2548,23 @@ mod tests {
     );
   }
 
+
+  #[test]
+  fn run_watch_with_external() {
+    let r = flags_from_vec(svec!["deno", "run", "--watch=file1,file2", "script.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        watch: Some(vec![PathBuf::from("file1"), PathBuf::from("file2")]),
+        ..Flags::default()
+      }
+    );
+  }
+
   #[test]
   fn run_reload_allow_write() {
     let r =
