@@ -69,6 +69,7 @@ pub struct ProcState(Arc<Inner>);
 enum ModuleEntry {
   Module {
     code: String,
+    media_type: MediaType,
     dependencies: BTreeMap<String, Dependency>,
   },
   Error(ModuleGraphError),
@@ -585,6 +586,7 @@ impl ProcState {
                 | MediaType::Unknown
                 | MediaType::Cjs
                 | MediaType::Mjs
+                | MediaType::Json
             ) {
               module.maybe_source().unwrap_or("").to_string()
             // The emit may also be missing when a declaration file is in the
@@ -603,7 +605,11 @@ impl ProcState {
               module.maybe_dependencies().cloned().unwrap_or_default();
             graph_data.modules.insert(
               specifier.clone(),
-              ModuleEntry::Module { code, dependencies },
+              ModuleEntry::Module {
+                code,
+                dependencies,
+                media_type: *media_type,
+              },
             );
             if let Some(dependencies) = module.maybe_dependencies() {
               for dep in dependencies.values() {
@@ -725,13 +731,16 @@ impl ProcState {
       _ => &specifier,
     };
     match graph_data.modules.get(found_specifier) {
-      Some(ModuleEntry::Module { code, .. }) => Ok(ModuleSource {
+      Some(ModuleEntry::Module {
+        code, media_type, ..
+      }) => Ok(ModuleSource {
         code: code.clone(),
         module_url_specified: specifier.to_string(),
         module_url_found: found_specifier.to_string(),
-        // FIXME(bartlomieju): this should actually get module type from
-        // the media type of the file.
-        module_type: ModuleType::JavaScript,
+        module_type: match media_type {
+          MediaType::Json => ModuleType::Json,
+          _ => ModuleType::JavaScript,
+        },
       }),
       _ => Err(anyhow!(
         "Loading unprepared module: {}",

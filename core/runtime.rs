@@ -1259,12 +1259,15 @@ impl JsRuntime {
 
         if let Some(load_stream_result) = maybe_result {
           match load_stream_result {
-            Ok(info) => {
+            Ok((request, info)) => {
               // A module (not necessarily the one dynamically imported) has been
               // fetched. Create and register it, and if successful, poll for the
               // next recursive-load event related to this dynamic import.
-              let register_result =
-                load.register_and_recurse(&mut self.handle_scope(), &info);
+              let register_result = load.register_and_recurse(
+                &mut self.handle_scope(),
+                &request,
+                &info,
+              );
 
               match register_result {
                 Ok(()) => {
@@ -1429,10 +1432,10 @@ impl JsRuntime {
     let mut load =
       ModuleMap::load_main(module_map_rc.clone(), specifier.as_str()).await?;
 
-    while let Some(info_result) = load.next().await {
-      let info = info_result?;
+    while let Some(load_result) = load.next().await {
+      let (request, info) = load_result?;
       let scope = &mut self.handle_scope();
-      load.register_and_recurse(scope, &info)?;
+      load.register_and_recurse(scope, &request, &info)?;
     }
 
     let root_id = load.root_module_id.expect("Root module should be loaded");
@@ -1466,10 +1469,10 @@ impl JsRuntime {
     let mut load =
       ModuleMap::load_side(module_map_rc.clone(), specifier.as_str()).await?;
 
-    while let Some(info_result) = load.next().await {
-      let info = info_result?;
+    while let Some(load_result) = load.next().await {
+      let (request, info) = load_result?;
       let scope = &mut self.handle_scope();
-      load.register_and_recurse(scope, &info)?;
+      load.register_and_recurse(scope, &request, &info)?;
     }
 
     let root_id = load.root_module_id.expect("Root module should be loaded");

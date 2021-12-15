@@ -83,7 +83,7 @@ pub(crate) fn parse_import_assertions(
   assertions
 }
 
-fn get_module_type_from_assertions(
+pub(crate) fn get_module_type_from_assertions(
   assertions: &HashMap<String, String>,
 ) -> ModuleType {
   assertions
@@ -145,10 +145,19 @@ fn json_module_evaluation_steps<'a>(
 /// how to interpret the module; it is only used to validate
 /// the module against an import assertion (if one is present
 /// in the import statement).
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ModuleType {
   JavaScript,
   Json,
+}
+
+impl std::fmt::Display for ModuleType {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    match self {
+      Self::JavaScript => write!(f, "JavaScript"),
+      Self::Json => write!(f, "JSON"),
+    }
+  }
 }
 
 /// EsModule source code that will be loaded into V8.
@@ -177,6 +186,9 @@ pub struct ModuleSource {
 pub type PrepareLoadFuture =
   dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, Error>)>;
 pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, Error>>;
+
+type ModuleLoadFuture =
+  dyn Future<Output = Result<(ModuleRequest, ModuleSource), Error>>;
 
 pub trait ModuleLoader {
   /// Returns an absolute URL.
@@ -310,8 +322,9 @@ enum LoadInit {
   Main(String),
   /// Module specifier for side module.
   Side(String),
-  /// Dynamic import specifier with referrer.
-  DynamicImport(String, String),
+  /// Dynamic import specifier with referrer and expected
+  /// module type (which is determined by import assertion).
+  DynamicImport(String, String, ModuleType),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -335,8 +348,8 @@ pub struct RecursiveModuleLoad {
   // of time to avoid already-borrowed errors.
   pub op_state: Rc<RefCell<OpState>>,
   pub loader: Rc<dyn ModuleLoader>,
-  pub pending: FuturesUnordered<Pin<Box<ModuleSourceFuture>>>,
-  pub visited: HashSet<ModuleSpecifier>,
+  pub pending: FuturesUnordered<Pin<Box<ModuleLoadFuture>>>,
+  pub visited: HashSet<ModuleRequest>,
 }
 
 impl RecursiveModuleLoad {
@@ -352,10 +365,14 @@ impl RecursiveModuleLoad {
   pub fn dynamic_import(
     specifier: &str,
     referrer: &str,
+    module_type: ModuleType,
     module_map_rc: Rc<RefCell<ModuleMap>>,
   ) -> Self {
-    let init =
-      LoadInit::DynamicImport(specifier.to_string(), referrer.to_string());
+    let init = LoadInit::DynamicImport(
+      specifier.to_string(),
+      referrer.to_string(),
+      module_type,
+    );
     Self::new(init, module_map_rc)
   }
 
@@ -402,7 +419,7 @@ impl RecursiveModuleLoad {
       LoadInit::Side(ref specifier) => {
         self.loader.resolve(specifier, ".", false)
       }
-      LoadInit::DynamicImport(ref specifier, ref referrer) => {
+      LoadInit::DynamicImport(ref specifier, ref referrer, _) => {
         self.loader.resolve(specifier, referrer, false)
       }
     }
@@ -419,7 +436,7 @@ impl RecursiveModuleLoad {
         let spec = self.loader.resolve(specifier, ".", false)?;
         (spec, None)
       }
-      LoadInit::DynamicImport(ref specifier, ref referrer) => {
+      LoadInit::DynamicImport(ref specifier, ref referrer, _) => {
         let spec = self.loader.resolve(specifier, referrer, false)?;
         (spec, Some(referrer.to_string()))
       }
@@ -446,8 +463,16 @@ impl RecursiveModuleLoad {
   pub fn register_and_recurse(
     &mut self,
     scope: &mut v8::HandleScope,
+    module_request: &ModuleRequest,
     module_source: &ModuleSource,
   ) -> Result<(), Error> {
+    if module_request.module_type != module_source.module_type {
+      return Err(generic_error(format!(
+        "Expected a \"{}\" module but loaded a \"{}\" module.",
+        module_request.module_type, module_source.module_type,
+      )));
+    }
+
     // Register the module in the module map unless it's already there. If the
     // specified URL and the "true" URL are different, register the alias.
     if module_source.module_url_specified != module_source.module_url_found {
@@ -468,12 +493,19 @@ impl RecursiveModuleLoad {
         );
         id
       }
-      None => self.module_map_rc.borrow_mut().new_module(
-        scope,
-        self.is_currently_loading_main_module(),
-        &module_source.module_url_found,
-        &module_source.code,
-      )?,
+      None => match module_source.module_type {
+        ModuleType::JavaScript => self.module_map_rc.borrow_mut().new_module(
+          scope,
+          self.is_currently_loading_main_module(),
+          &module_source.module_url_found,
+          &module_source.code,
+        )?,
+        ModuleType::Json => self.module_map_rc.borrow_mut().new_json_module(
+          scope,
+          &module_source.module_url_found,
+          &module_source.code,
+        )?,
+      },
     };
 
     // Recurse the module's imports. There are two cases for each import:
@@ -484,11 +516,12 @@ impl RecursiveModuleLoad {
     //    recursed synchronously here.
     // This robustly ensures that the whole graph is in the module map before
     // `LoadState::Done` is set.
-    let specifier = resolve_url(&module_source.module_url_found).unwrap();
     let mut already_registered = VecDeque::new();
-    already_registered.push_back((module_id, specifier.clone()));
-    self.visited.insert(specifier);
-    while let Some((module_id, referrer)) = already_registered.pop_front() {
+    already_registered.push_back((module_id, module_request.clone()));
+    self.visited.insert(module_request.clone());
+    while let Some((module_id, module_request)) = already_registered.pop_front()
+    {
+      let referrer = module_request.specifier.clone();
       let imports = self
         .module_map_rc
         .borrow()
@@ -496,23 +529,31 @@ impl RecursiveModuleLoad {
         .unwrap()
         .clone();
       for module_request in imports {
-        if !self.visited.contains(&module_request.specifier) {
+        if !self.visited.contains(&module_request) {
           if let Some(module_id) = self
             .module_map_rc
             .borrow()
             .get_id(module_request.specifier.as_str())
           {
-            already_registered
-              .push_back((module_id, module_request.specifier.clone()));
+            already_registered.push_back((module_id, module_request.clone()));
           } else {
-            let fut = self.loader.load(
-              &module_request.specifier,
-              Some(referrer.clone()),
-              self.is_dynamic_import(),
-            );
+            let referrer = referrer.clone();
+            let request = module_request.clone();
+            let loader = self.loader.clone();
+            let is_dynamic_import = self.is_dynamic_import();
+            let fut = async move {
+              let load_result = loader
+                .load(
+                  &request.specifier,
+                  Some(referrer.clone()),
+                  is_dynamic_import,
+                )
+                .await;
+              load_result.map(|s| (request, s))
+            };
             self.pending.push(fut.boxed_local());
           }
-          self.visited.insert(module_request.specifier);
+          self.visited.insert(module_request);
         }
       }
     }
@@ -531,7 +572,7 @@ impl RecursiveModuleLoad {
 }
 
 impl Stream for RecursiveModuleLoad {
-  type Item = Result<ModuleSource, Error>;
+  type Item = Result<(ModuleRequest, ModuleSource), Error>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -553,26 +594,43 @@ impl Stream for RecursiveModuleLoad {
           // like the bottom of `RecursiveModuleLoad::register_and_recurse()`.
           // But the module map cannot be borrowed here. Instead fake a load
           // event so it gets passed to that function and recursed eventually.
-          futures::future::ok(ModuleSource {
+          let module_request = ModuleRequest {
+            specifier: module_specifier.clone(),
+            module_type: ModuleType::JavaScript,
+          };
+          let module_source = ModuleSource {
             module_url_specified: module_specifier.to_string(),
             module_url_found: module_specifier.to_string(),
             // The code will be discarded, since this module is already in the
             // module map.
             code: Default::default(),
             module_type: ModuleType::JavaScript,
-          })
-          .boxed()
+          };
+          futures::future::ok((module_request, module_source)).boxed()
         } else {
           let maybe_referrer = match inner.init {
-            LoadInit::DynamicImport(_, ref referrer) => {
+            LoadInit::DynamicImport(_, ref referrer, _) => {
               resolve_url(referrer).ok()
             }
             _ => None,
           };
-          inner
-            .loader
-            .load(&module_specifier, maybe_referrer, inner.is_dynamic_import())
-            .boxed_local()
+          let module_type = match inner.init {
+            LoadInit::DynamicImport(_, _, module_type) => module_type,
+            _ => ModuleType::JavaScript,
+          };
+          let module_request = ModuleRequest {
+            specifier: module_specifier.clone(),
+            module_type,
+          };
+          let loader = inner.loader.clone();
+          let is_dynamic_import = inner.is_dynamic_import();
+          async move {
+            let result = loader
+              .load(&module_specifier, maybe_referrer, is_dynamic_import)
+              .await;
+            result.map(|s| (module_request, s))
+          }
+          .boxed_local()
         };
         inner.pending.push(load_fut);
         inner.state = LoadState::LoadingRoot;
@@ -590,7 +648,10 @@ impl Stream for RecursiveModuleLoad {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+/// Describes what is the expected type of module, usually
+/// it's `ModuleType::JavaScript`, but if there were import assertions
+/// it might be `ModuleType::Json`.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ModuleRequest {
   pub specifier: ModuleSpecifier,
   pub module_type: ModuleType,
@@ -895,11 +956,13 @@ impl ModuleMap {
     module_map_rc: Rc<RefCell<ModuleMap>>,
     specifier: &str,
     referrer: &str,
+    module_type: ModuleType,
     resolver_handle: v8::Global<v8::PromiseResolver>,
   ) {
     let load = RecursiveModuleLoad::dynamic_import(
       specifier,
       referrer,
+      module_type,
       module_map_rc.clone(),
     );
     module_map_rc

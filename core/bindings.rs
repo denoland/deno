@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
+use crate::modules::get_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
 use crate::modules::ModuleMap;
@@ -282,6 +283,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
       resolver.reject(tc_scope, e);
     }
   }
+  let module_type = get_module_type_from_assertions(&assertions);
 
   let resolver_handle = v8::Global::new(scope, resolver);
   {
@@ -296,6 +298,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
       module_map_rc,
       &specifier_str,
       &referrer_name_str,
+      module_type,
       resolver_handle,
     );
     state_rc.borrow_mut().notify_new_dynamic_import();
