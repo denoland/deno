@@ -153,6 +153,7 @@ pub(crate) fn get_ts_config(
         "isolatedModules": true,
         "lib": lib,
         "module": "esnext",
+        "resolveJsonModule": true,
         "strict": true,
         "target": "esnext",
         "tsBuildInfoFile": "deno:///.tsbuildinfo",
@@ -186,6 +187,7 @@ pub(crate) fn get_ts_config(
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
+      "resolveJsonModule": true,
     })),
     ConfigType::RuntimeEmit { tsc_emit } => {
       let mut ts_config = TsConfig::new(json!({

@@ -1,0 +1,7 @@
+[WILDCARD]
+error: Uncaught (in promise) TypeError: An unsupported media type was attempted to be imported as a module.
+  Specifier: [WILDCARD]data.json
+  MediaType: Json
+const data = await import("./data.json");
+             ^
+    at async [WILDCARD]dynamic_error.ts:1:14
