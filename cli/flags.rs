@@ -1651,8 +1651,7 @@ fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
     .help("UNSTABLE: Watch for file changes and restart process automatically")
     .long_help(
       "UNSTABLE: Watch for file changes and restart process automatically.
-Watches used script files by default, or listed files when specified.
-Passing values only has an effect on the 'deno run' command.",
+Local files from entry point module graph are watched by default. Additional paths might be watched by passing them as arguments to this flag.
     )
 }
 
