@@ -38,7 +38,7 @@ pub(crate) fn validate_import_assertions(
     if key == "type" && !SUPPORTED_TYPE_ASSERTIONS.contains(&value.as_str()) {
       let message = v8::String::new(
         scope,
-        &format!("{:?} is not a valid module type.", value),
+        &format!("\"{}\" is not a valid module type.", value),
       )
       .unwrap();
       let exception = v8::Exception::type_error(scope, message);
@@ -457,7 +457,7 @@ impl RecursiveModuleLoad {
   ) -> Result<(), Error> {
     if module_request.expected_module_type != module_source.module_type {
       return Err(generic_error(format!(
-        "Expected a {:?} module but loaded a {:?} module.",
+        "Expected a \"{}\" module but loaded a \"{}\" module.",
         module_request.expected_module_type, module_source.module_type,
       )));
     }
