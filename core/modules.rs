@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
+use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
@@ -26,6 +27,17 @@ use std::task::Poll;
 
 pub type ModuleId = i32;
 pub type ModuleLoadId = i32;
+
+pub const BOM_CHAR: char = '\u{FEFF}';
+
+/// Strips the byte order mark from the provided text if it exists.
+pub fn strip_bom(text: &str) -> &str {
+  if text.starts_with(BOM_CHAR) {
+    &text[BOM_CHAR.len_utf8()..]
+  } else {
+    text
+  }
+}
 
 const SUPPORTED_TYPE_ASSERTIONS: &[&str] = &["json"];
 
@@ -735,22 +747,18 @@ impl ModuleMap {
     source: &str,
   ) -> Result<ModuleId, Error> {
     let name_str = v8::String::new(scope, name).unwrap();
-    let source_str = v8::String::new(scope, source).unwrap();
+    let source_str = v8::String::new(scope, strip_bom(source)).unwrap();
 
     let tc_scope = &mut v8::TryCatch::new(scope);
 
     let parsed_json = match v8::json::parse(tc_scope, source_str) {
       Some(parsed_json) => parsed_json,
       None => {
-        let message = v8::String::new(
-          tc_scope,
-          &format!("\"{}\" is not a valid JSON.", name),
-        )
-        .unwrap();
-        let exception = v8::Exception::syntax_error(tc_scope, message);
-        tc_scope.throw_exception(exception);
-        let e = tc_scope.exception().unwrap();
-        return exception_to_err_result(tc_scope, e, false);
+        assert!(tc_scope.has_caught());
+        let exception = tc_scope.exception().unwrap();
+        let err = exception_to_err_result(tc_scope, exception, false)
+          .map_err(|err| attach_handle_to_error(tc_scope, err, exception));
+        return err;
       }
     };
 

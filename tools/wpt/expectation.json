@@ -6355,12 +6355,10 @@
           "import-assertions": true,
           "json-module": {
             "charset-bom.any.html": [
-              "UTF-8 BOM should be stripped when decoding JSON module script",
               "UTF-16BE BOM should result in parse error in JSON module script",
               "UTF-16LE BOM should result in parse error in JSON module script"
             ],
             "charset-bom.any.worker.html": [
-              "UTF-8 BOM should be stripped when decoding JSON module script",
               "UTF-16BE BOM should result in parse error in JSON module script",
               "UTF-16LE BOM should result in parse error in JSON module script"
             ],

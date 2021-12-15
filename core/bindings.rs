@@ -311,13 +311,29 @@ pub extern "C" fn host_import_module_dynamically_callback(
                  _rv: v8::ReturnValue| {
     let arg = args.get(0);
     if is_instance_of_error(scope, arg) {
+      let e: crate::error::NativeJsError =
+        serde_v8::from_v8(scope, arg.into()).unwrap();
+      let name = e.name.unwrap_or_else(|| "Error".to_string());
       let message = v8::Exception::create_message(scope, arg);
       if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
         let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
         let message_key = v8::String::new(scope, "message").unwrap();
         let message = arg.get(scope, message_key.into()).unwrap();
-        let exception =
-          v8::Exception::type_error(scope, message.try_into().unwrap());
+        let exception = match name.as_str() {
+          "RangeError" => {
+            v8::Exception::range_error(scope, message.try_into().unwrap())
+          }
+          "TypeError" => {
+            v8::Exception::type_error(scope, message.try_into().unwrap())
+          }
+          "SyntaxError" => {
+            v8::Exception::syntax_error(scope, message.try_into().unwrap())
+          }
+          "ReferenceError" => {
+            v8::Exception::reference_error(scope, message.try_into().unwrap())
+          }
+          _ => v8::Exception::error(scope, message.try_into().unwrap()),
+        };
         let code_key = v8::String::new(scope, "code").unwrap();
         let code_value =
           v8::String::new(scope, "ERR_MODULE_NOT_FOUND").unwrap();
