@@ -1651,7 +1651,8 @@ fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
     .help("UNSTABLE: Watch for file changes and restart process automatically")
     .long_help(
       "UNSTABLE: Watch for file changes and restart process automatically.
-Local files from entry point module graph are watched by default. Additional paths might be watched by passing them as arguments to this flag.
+Local files from entry point module graph are watched by default.
+Additional paths might be watched by passing them as arguments to this flag.",
     )
 }
 
