@@ -51,6 +51,7 @@ use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
 use std::path::PathBuf;
+use p256::elliptic_curve::sec1::FromEncodedPoint;
 
 pub use rand; // Re-export rand
 
@@ -518,7 +519,7 @@ pub async fn op_crypto_derive_bits(
 
       let public_key = args
         .public_key
-        .ok_or_else(|| type_error("Missing argument publicKey".to_string()))?;
+        .ok_or_else(|| type_error("Missing argument publicKey"))?;
 
       match named_curve {
         CryptoNamedCurve::P256 => {
@@ -527,9 +528,11 @@ pub async fn op_crypto_derive_bits(
             KeyType::Private => {
               p256::SecretKey::from_pkcs8_der(&public_key.data)?.public_key()
             }
-            //KeyType::Public => {
-            //  elliptic_curve::PublicKey::from_affine(public_key.data)
-            //}
+            KeyType::Public => {
+              let point = p256::EncodedPoint::from_bytes(public_key.data)?;
+              p256::PublicKey::from_encoded_point(&point)
+                .ok_or_else(|| type_error("Missing argument namedCurve")).unwrap()
+            }
             _ => unreachable!(),
           };
 
