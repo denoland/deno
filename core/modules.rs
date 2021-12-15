@@ -60,6 +60,7 @@ pub(crate) fn validate_import_assertions(
   }
 }
 
+#[derive(Debug)]
 pub(crate) enum ImportAssertionsKind {
   StaticImport,
   DynamicImport,
@@ -74,6 +75,7 @@ pub(crate) fn parse_import_assertions(
 
   let assertions_per_line = match kind {
     // For static imports, assertions are triples of (keyword, value and source offset)
+    // Also used in `module_resolve_callback`.
     ImportAssertionsKind::StaticImport => 3,
     // For dynamic imports, assertions are tuples of (keyword, value)
     ImportAssertionsKind::DynamicImport => 2,

@@ -1368,7 +1368,7 @@ pub fn module_resolve_callback<'s>(
   let assertions = parse_import_assertions(
     scope,
     import_assertions,
-    ImportAssertionsKind::DynamicImport,
+    ImportAssertionsKind::StaticImport,
   );
   let maybe_module = module_map.resolve_callback(
     scope,
