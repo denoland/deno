@@ -2370,8 +2370,7 @@
         if (keyUsages.length > 0 && jwk.use) {
           if (jwk.use !== supportedUsages.jwkUse) {
             throw new DOMException(
-              "`use` member of JsonWebKey must be `" + supportedUsages.jwkUse +
-                "`",
+              `'use' property of JsonWebKey must be '${supportedUsages.jwkUse}'`,
               "DataError",
             );
           }
