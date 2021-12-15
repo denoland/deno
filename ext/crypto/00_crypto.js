@@ -2319,7 +2319,7 @@
         }
 
         // 2-12
-        const { rawData, namedCurve } = core.opSync("op_crypto_import_key", {
+        const { rawData } = core.opSync("op_crypto_import_key", {
           algorithm: normalizedAlgorithm.name,
           namedCurve: normalizedAlgorithm.namedCurve,
         }, { spki: keyData });
@@ -2367,7 +2367,10 @@
         }
 
         // 4.
-        if (keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== supportedUsages.jwkUse) {
+        if (
+          keyUsages.length > 0 && jwk.use !== undefined &&
+          jwk.use !== supportedUsages.jwkUse
+        ) {
           throw new DOMException(
             `'use' property of JsonWebKey must be '${supportedUsages.jwkUse}'`,
             "DataError",

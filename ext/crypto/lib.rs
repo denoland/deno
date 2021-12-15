@@ -20,6 +20,7 @@ use block_modes::BlockMode;
 use lazy_static::lazy_static;
 use num_traits::cast::FromPrimitive;
 use p256::elliptic_curve::sec1::FromEncodedPoint;
+use p256::pkcs8::DecodePrivateKey;
 use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
@@ -41,7 +42,6 @@ use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::FromRsaPublicKey;
 use rsa::pkcs8::der::asn1;
-use rsa::pkcs8::FromPrivateKey;
 use rsa::BigUint;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
@@ -521,22 +521,39 @@ pub async fn op_crypto_derive_bits(
 
       match named_curve {
         CryptoNamedCurve::P256 => {
-          let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)?;
+          let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
+            .map_err(|_| type_error("Unexpected error decoding private key"))?;
+
           let public_key = match public_key.r#type {
             KeyType::Private => {
-              p256::SecretKey::from_pkcs8_der(&public_key.data)?.public_key()
+              p256::SecretKey::from_pkcs8_der(&public_key.data)
+                .map_err(|_| {
+                  type_error("Unexpected error decoding private key")
+                })?
+                .public_key()
             }
             KeyType::Public => {
-              let point = p256::EncodedPoint::from_bytes(public_key.data)?;
-              p256::PublicKey::from_encoded_point(&point)
-                .ok_or_else(|| type_error("Missing argument namedCurve"))
-                .unwrap()
+              let point = p256::EncodedPoint::from_bytes(public_key.data)
+                .map_err(|_| {
+                  type_error("Unexpected error decoding private key")
+                })?;
+
+              let pk: Option<p256::PublicKey> =
+                p256::PublicKey::from_encoded_point(&point).into();
+
+              if let Some(pk) = pk {
+                pk
+              } else {
+                return Err(type_error(
+                  "Unexpected error decoding private key",
+                ));
+              }
             }
             _ => unreachable!(),
           };
 
           let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
-            secret_key.to_secret_scalar(),
+            secret_key.to_nonzero_scalar(),
             public_key.as_affine(),
           );
 

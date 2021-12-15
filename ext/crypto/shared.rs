@@ -47,7 +47,6 @@ pub const ID_SECP384R1_OID: rsa::pkcs8::ObjectIdentifier =
 pub const ID_SECP521R1_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new("1.3.132.0.35");*/
 
-
 #[derive(Serialize, Deserialize, Copy, Clone, PartialEq)]
 pub enum ShaHash {
   #[serde(rename = "SHA-1")]
