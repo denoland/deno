@@ -103,6 +103,15 @@ pub(crate) struct AcceptArgs {
   pub transport: String,
 }
 
+pub(crate) fn accept_err(e: std::io::Error) -> AnyError {
+  // FIXME(bartlomieju): compatibility with current JS implementation
+  if let std::io::ErrorKind::Interrupted = e.kind() {
+    bad_resource("Listener has been closed")
+  } else {
+    e.into()
+  }
+}
+
 async fn accept_tcp(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
@@ -119,15 +128,11 @@ async fn accept_tcp(
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let (tcp_stream, _socket_addr) =
-    listener.accept().try_or_cancel(cancel).await.map_err(|e| {
-      // FIXME(bartlomieju): compatibility with current JS implementation
-      if let std::io::ErrorKind::Interrupted = e.kind() {
-        bad_resource("Listener has been closed")
-      } else {
-        e.into()
-      }
-    })?;
+  let (tcp_stream, _socket_addr) = listener
+    .accept()
+    .try_or_cancel(cancel)
+    .await
+    .map_err(accept_err)?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 

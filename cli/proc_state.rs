@@ -34,6 +34,7 @@ use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
+use deno_core::ModuleType;
 use deno_core::SharedArrayBufferStore;
 use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
@@ -583,6 +584,10 @@ impl ProcState {
           code,
           module_url_specified: specifier.to_string(),
           module_url_found: found.to_string(),
+          module_type: match media_type {
+            MediaType::Json => ModuleType::Json,
+            _ => ModuleType::JavaScript,
+          },
         })
       }
       _ => Err(anyhow!(

@@ -395,29 +395,14 @@ impl Default for ModuleRegistry {
     // custom root.
     let dir = deno_dir::DenoDir::new(None).unwrap();
     let location = dir.root.join("registries");
-    let http_cache = HttpCache::new(&location);
-    let cache_setting = CacheSetting::RespectHeaders;
-    let file_fetcher = FileFetcher::new(
-      http_cache,
-      cache_setting,
-      true,
-      None,
-      BlobStore::default(),
-      None,
-    )
-    .unwrap();
-
-    Self {
-      origins: HashMap::new(),
-      file_fetcher,
-    }
+    Self::new(&location)
   }
 }
 
 impl ModuleRegistry {
   pub fn new(location: &Path) -> Self {
     let http_cache = HttpCache::new(location);
-    let file_fetcher = FileFetcher::new(
+    let mut file_fetcher = FileFetcher::new(
       http_cache,
       CacheSetting::RespectHeaders,
       true,
@@ -427,6 +412,7 @@ impl ModuleRegistry {
     )
     .context("Error creating file fetcher in module registry.")
     .unwrap();
+    file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
     Self {
       origins: HashMap::new(),

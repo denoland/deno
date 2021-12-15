@@ -41,6 +41,15 @@ fn basic() {
     something\n\
     [1, 2, 3, 4, 5, 6, 7, 8]\n\
     [1, 2, 3, 4, 5, 6, 7, 8] [9, 10]\n\
+    [1, 2, 3, 4, 5, 6, 7, 8]\n\
+    [ 1, 2, 3, 4, 5, 6 ]\n\
+    [ 4, 5, 6 ]\n\
+    [ 4, 5, 6 ]\n\
+    Hello from pointer!\n\
+    pointer!\n\
+    false\n\
+    true\n\
+    false\n\
     579\n\
     579\n\
     579\n\

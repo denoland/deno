@@ -123,6 +123,44 @@ fn pty_complete_primitives() {
 }
 
 #[test]
+fn pty_complete_imports() {
+  util::with_pty(&["repl"], |mut console| {
+    // single quotes
+    console.write_line("import './001_hel\t'");
+    // double quotes
+    console.write_line("import { output } from \"./045_out\t\"");
+    console.write_line("output('testing output');");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("Hello World"));
+    assert!(output.contains("\ntesting output"));
+  });
+
+  // ensure when the directory changes that the suggestions come from the cwd
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("Deno.chdir('./subdir');");
+    console.write_line("import '../001_hel\t'");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("Hello World"));
+  });
+
+  // ensure nothing too bad happens when deleting the cwd
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("Deno.mkdirSync('./temp-repl-lsp-dir');");
+    console.write_line("Deno.chdir('./temp-repl-lsp-dir');");
+    console.write_line("Deno.removeSync('../temp-repl-lsp-dir');");
+    console.write_line("import '../001_hello\t'");
+    console.write_line("close();");
+
+    let output = console.read_all_output();
+    assert!(output.contains("Hello World"));
+  });
+}
+
+#[test]
 fn pty_ignore_symbols() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("Array.Symbol\t");
