@@ -2217,21 +2217,21 @@
   ) {
     const supportedUsages = SUPPORTED_EC_KEY_USAGES[normalizedAlgorithm.name];
 
-    // 1.
-    if (
-      !ArrayPrototypeIncludes(
-        supportedNamedCurves,
-        normalizedAlgorithm.namedCurve,
-      )
-    ) {
-      throw new DOMException(
-        "Invalid namedCurve",
-        "DataError",
-      );
-    }
-
     switch (format) {
       case "raw": {
+        // 1.
+        if (
+          !ArrayPrototypeIncludes(
+            supportedNamedCurves,
+            normalizedAlgorithm.namedCurve,
+          )
+        ) {
+          throw new DOMException(
+            "Invalid namedCurve",
+            "DataError",
+          );
+        }
+
         // 2.
         if (
           ArrayPrototypeFind(
@@ -2304,7 +2304,7 @@
         return key;
       }
       case "spki": {
-        // 2.
+        // 1.
         if (normalizedAlgorithm.name == "ECDSA") {
           if (
             ArrayPrototypeFind(
@@ -2318,8 +2318,8 @@
           throw new DOMException("Key usage must be empty", "SyntaxError");
         }
 
-        // 3.
-        const { rawData } = core.opSync("op_crypto_import_key", {
+        // 2-12
+        const { rawData, namedCurve } = core.opSync("op_crypto_import_key", {
           algorithm: normalizedAlgorithm.name,
           namedCurve: normalizedAlgorithm.namedCurve,
         }, { spki: keyData });
@@ -2367,13 +2367,11 @@
         }
 
         // 4.
-        if (keyUsages.length > 0 && jwk.use !== undefined) {
-          if (jwk.use !== supportedUsages.jwkUse) {
-            throw new DOMException(
-              `'use' property of JsonWebKey must be '${supportedUsages.jwkUse}'`,
-              "DataError",
-            );
-          }
+        if (keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== supportedUsages.jwkUse) {
+          throw new DOMException(
+            `'use' property of JsonWebKey must be '${supportedUsages.jwkUse}'`,
+            "DataError",
+          );
         }
 
         // 5.
@@ -2485,20 +2483,6 @@
 
           return key;
         } else {
-          // Validate that this is a valid public key.
-          if (jwk.x === undefined) {
-            throw new DOMException(
-              "'x' property of JsonWebKey is required for public keys",
-              "DataError",
-            );
-          }
-          if (jwk.y === undefined) {
-            throw new DOMException(
-              "'y' property of JsonWebKey is required for public keys",
-              "DataError",
-            );
-          }
-
           const { rawData } = core.opSync("op_crypto_import_key", {
             algorithm: normalizedAlgorithm.name,
             namedCurve: normalizedAlgorithm.namedCurve,
