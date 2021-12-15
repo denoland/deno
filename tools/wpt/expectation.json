@@ -6367,11 +6367,9 @@
             "non-object.any.html": true,
             "non-object.any.worker.html": true,
             "repeated-imports.any.html": [
-              "Importing a specifier that previously succeeded with the correct type assertion should fail if the incorrect assertion is later given",
               "Two modules of different type with the same specifier can load if the server changes its responses"
             ],
             "repeated-imports.any.worker.html": [
-              "Importing a specifier that previously succeeded with the correct type assertion should fail if the incorrect assertion is later given",
               "Two modules of different type with the same specifier can load if the server changes its responses"
             ]
           },
