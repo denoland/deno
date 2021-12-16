@@ -10,6 +10,8 @@ use serde::Serialize;
 use spki::der::asn1;
 use spki::der::Decodable;
 use spki::der::Encodable;
+use spki::AlgorithmIdentifier;
+use spki::ObjectIdentifier;
 
 use crate::shared::*;
 
@@ -86,7 +88,7 @@ pub fn op_crypto_export_key(
     | ExportKeyAlgorithm::RsaOaep {} => export_key_rsa(opts.format, key_data),
     ExportKeyAlgorithm::Ecdh { named_curve }
     | ExportKeyAlgorithm::Ecdsa { named_curve } => {
-      export_key_ec(opts.format, key_data, named_curve)
+      export_key_ec(opts.format, key_data, opts.algorithm, named_curve)
     }
   }
 }
@@ -195,6 +197,7 @@ fn bytes_to_b64(bytes: Vec<u8>) -> String {
 fn export_key_ec(
   format: ExportKeyFormat,
   key_data: RawKeyData,
+  algorithm: ExportKeyAlgorithm,
   named_curve: EcNamedCurve,
 ) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
   match format {
@@ -215,6 +218,14 @@ fn export_key_ec(
       let alg_id = match named_curve {
         EcNamedCurve::P256 => <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::algorithm_identifier(),
         EcNamedCurve::P384 => <p384::NistP384 as p384::elliptic_curve::AlgorithmParameters>::algorithm_identifier(),
+      };
+
+      let alg_id = match algorithm {
+        ExportKeyAlgorithm::Ecdh { .. } => AlgorithmIdentifier {
+          oid: ObjectIdentifier::new("1.3.132.1.12"),
+          parameters: alg_id.parameters,
+        },
+        _ => alg_id,
       };
 
       // the SPKI structure
