@@ -213,11 +213,13 @@ fn export_key_ec(
 
           point.as_ref().to_vec()
         }
+        _ => return Err(data_error("Unsupported named curve")),
       };
 
       let alg_id = match named_curve {
         EcNamedCurve::P256 => <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::algorithm_identifier(),
         EcNamedCurve::P384 => <p384::NistP384 as p384::elliptic_curve::AlgorithmParameters>::algorithm_identifier(),
+        _ => return Err(data_error("Unsupported named curve"))
       };
 
       let alg_id = match algorithm {
@@ -281,6 +283,7 @@ fn export_key_ec(
           ))
         }
       }
+      _ => Err(data_error("Unsupported named curve")),
     },
     ExportKeyFormat::JwkPrivate => {
       let private_key = key_data.as_ec_private_key()?;
