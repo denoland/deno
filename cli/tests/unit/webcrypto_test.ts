@@ -1027,3 +1027,286 @@ Deno.test(async function testImportRsaJwk() {
     }
   }
 });
+
+const jwtECKeys = {
+  "256": {
+    size: 256,
+    algo: "ES256",
+    publicJWK: {
+      kty: "EC",
+      crv: "P-256",
+      x: "0hCwpvnZ8BKGgFi0P6T0cQGFQ7ugDJJQ35JXwqyuXdE",
+      y: "zgN1UtSBRQzjm00QlXAbF1v6s0uObAmeGPHBmDWDYeg",
+    },
+    privateJWK: {
+      kty: "EC",
+      crv: "P-256",
+      x: "0hCwpvnZ8BKGgFi0P6T0cQGFQ7ugDJJQ35JXwqyuXdE",
+      y: "zgN1UtSBRQzjm00QlXAbF1v6s0uObAmeGPHBmDWDYeg",
+      d: "E9M6LVq_nPnrsh_4YNSu_m5W53eQ9N7ptAiE69M1ROo",
+    },
+  },
+  "384": {
+    size: 384,
+    algo: "ES384",
+    publicJWK: {
+      kty: "EC",
+      crv: "P-384",
+      x: "IZwU1mYXs27G2IVrOFtzp000T9iude8EZDXdpU47RL1fvevR0I3Wni19wdwhjLQ1",
+      y: "vSgTjMd4M3qEL2vWGyQOdCSfJGZ8KlgQp2v8KOAzX4imUB3sAZdtqFr7AIactqzo",
+    },
+    privateJWK: {
+      kty: "EC",
+      crv: "P-384",
+      x: "IZwU1mYXs27G2IVrOFtzp000T9iude8EZDXdpU47RL1fvevR0I3Wni19wdwhjLQ1",
+      y: "vSgTjMd4M3qEL2vWGyQOdCSfJGZ8KlgQp2v8KOAzX4imUB3sAZdtqFr7AIactqzo",
+      d: "RTe1mQeE08LSLpao-S-hqkku6HPldqQVguFEGDyYiNEOa560ztSyzEAS5KxeqEBz",
+    },
+  },
+};
+
+type JWK = Record<string, string>;
+
+function _equalJwk(expected: JWK, got: JWK): boolean {
+  const fields = Object.keys(expected);
+
+  for (let i = 0; i < fields.length; i++) {
+    const fieldName = fields[i];
+
+    if (!(fieldName in got)) {
+      return false;
+    }
+    if (expected[fieldName] !== got[fieldName]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+Deno.test(async function testImportExportEcDsaJwk() {
+  const subtle = crypto.subtle;
+  assert(subtle);
+
+  for (
+    const [_key, keyData] of Object.entries(jwtECKeys)
+  ) {
+    const { size, publicJWK, privateJWK, algo } = keyData;
+    if (size != 256) {
+      continue;
+    }
+
+    // 1. Test import EcDsa
+    const privateKeyECDSA = await subtle.importKey(
+      "jwk",
+      {
+        alg: algo,
+        ...privateJWK,
+        ext: true,
+        "key_ops": ["sign"],
+      },
+      { name: "ECDSA", namedCurve: privateJWK.crv },
+      true,
+      ["sign"],
+    );
+    /*const expPrivateKeyJWK = await subtle.exportKey(
+      "jwk",
+      privateKeyECDSA,
+    );
+    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));*/
+
+    const publicKeyECDSA = await subtle.importKey(
+      "jwk",
+      {
+        alg: algo,
+        ...publicJWK,
+        ext: true,
+        "key_ops": ["verify"],
+      },
+      { name: "ECDSA", namedCurve: publicJWK.crv },
+      true,
+      ["verify"],
+    );
+
+    /*const expPublicKeyJWK = await subtle.exportKey(
+      "jwk",
+      publicKeyECDSA,
+    );
+
+    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));*/
+
+    const signatureECDSA = await subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      privateKeyECDSA,
+      new Uint8Array([1, 2, 3, 4]),
+    );
+
+    const verifyECDSA = await subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      publicKeyECDSA,
+      signatureECDSA,
+      new Uint8Array([1, 2, 3, 4]),
+    );
+    assert(verifyECDSA);
+  }
+});
+
+Deno.test(async function testImportEcDhJwk() {
+  const subtle = crypto.subtle;
+  assert(subtle);
+
+  for (
+    const [_key, jwkData] of Object.entries(jwtECKeys)
+  ) {
+    const { size, publicJWK, privateJWK } = jwkData;
+    if (size != 256) {
+      continue;
+    }
+
+    // 1. Test import EcDsa
+    const privateKeyECDH = await subtle.importKey(
+      "jwk",
+      {
+        ...privateJWK,
+        ext: true,
+        "key_ops": ["deriveBits"],
+      },
+      { name: "ECDH", namedCurve: privateJWK.crv },
+      true,
+      ["deriveBits"],
+    );
+
+    /*    const expPrivateKeyJWK = await subtle.exportKey(
+      "jwk",
+      privateKeyECDH,
+    );
+    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));*/
+
+    const publicKeyECDH = await subtle.importKey(
+      "jwk",
+      {
+        ...publicJWK,
+        ext: true,
+        "key_ops": [],
+      },
+      { name: "ECDH", namedCurve: publicJWK.crv },
+      true,
+      [],
+    );
+    /*    const expPublicKeyJWK = await subtle.exportKey(
+      "jwk",
+      publicKeyECDH,
+    );
+    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));*/
+
+    const derivedKey = await subtle.deriveBits(
+      {
+        name: "ECDH",
+        public: publicKeyECDH,
+      },
+      privateKeyECDH,
+      256,
+    );
+
+    assert(derivedKey instanceof ArrayBuffer);
+    assertEquals(derivedKey.byteLength, 256 / 8);
+  }
+});
+
+const ecTestKeys = {
+  "256": {
+    size: 256,
+    namedCurve: "P-256",
+    // deno-fmt-ignore
+    spki: new Uint8Array([
+      48, 89, 48, 19, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 8, 42, 134, 72, 206,
+      61, 3, 1, 7, 3, 66, 0, 4, 210, 16, 176, 166, 249, 217, 240, 18, 134, 128,
+      88, 180, 63, 164, 244, 113, 1, 133, 67, 187, 160, 12, 146, 80, 223, 146,
+      87, 194, 172, 174, 93, 209, 206, 3, 117, 82, 212, 129, 69, 12, 227, 155,
+      77, 16, 149, 112, 27, 23, 91, 250, 179, 75, 142, 108, 9, 158, 24, 241,
+      193, 152, 53, 131, 97, 232,
+    ]),
+    // deno-fmt-ignore
+    pkcs8: new Uint8Array([
+      48, 129, 135, 2, 1, 0, 48, 19, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 8, 42,
+      134, 72, 206, 61, 3, 1, 7, 4, 109, 48, 107, 2, 1, 1, 4, 32, 19, 211, 58,
+      45, 90, 191, 156, 249, 235, 178, 31, 248, 96, 212, 174, 254, 110, 86, 231,
+      119, 144, 244, 222, 233, 180, 8, 132, 235, 211, 53, 68, 234, 161, 68, 3,
+      66, 0, 4, 210, 16, 176, 166, 249, 217, 240, 18, 134, 128, 88, 180, 63,
+      164, 244, 113, 1, 133, 67, 187, 160, 12, 146, 80, 223, 146, 87, 194, 172,
+      174, 93, 209, 206, 3, 117, 82, 212, 129, 69, 12, 227, 155, 77, 16, 149,
+      112, 27, 23, 91, 250, 179, 75, 142, 108, 9, 158, 24, 241, 193, 152, 53,
+      131, 97, 232,
+    ]),
+  },
+};
+
+Deno.test(async function testImportEcSpkiPkcs8() {
+  const subtle = window.crypto.subtle;
+  assert(subtle);
+
+  for (
+    const [_key, keyData] of Object.entries(ecTestKeys)
+  ) {
+    const { size, namedCurve, spki, pkcs8 } = keyData;
+    if (size != 256) {
+      continue;
+    }
+
+    const privateKeyECDSA = await subtle.importKey(
+      "pkcs8",
+      pkcs8,
+      { name: "ECDSA", namedCurve },
+      true,
+      ["sign"],
+    );
+
+    /*const expPrivateKeyPKCS8 = await subtle.exportKey(
+      "pkcs8",
+      privateKeyECDSA,
+    );
+
+    assertEquals(new Uint8Array(expPrivateKeyPKCS8), pkcs8);*/
+
+    const publicKeyECDSA = await subtle.importKey(
+      "spki",
+      spki,
+      { name: "ECDSA", namedCurve },
+      true,
+      ["verify"],
+    );
+
+    for (
+      const hash of [/*"SHA-1", */ "SHA-256" /*"SHA-384", "SHA-512"*/]
+    ) {
+      console.log(hash);
+
+      const signatureECDSA = await subtle.sign(
+        { name: "ECDSA", hash },
+        privateKeyECDSA,
+        new Uint8Array([1, 2, 3, 4]),
+      );
+
+      const verifyECDSA = await subtle.verify(
+        { name: "ECDSA", hash },
+        publicKeyECDSA,
+        signatureECDSA,
+        new Uint8Array([1, 2, 3, 4]),
+      );
+      assert(verifyECDSA);
+    }
+
+    /*const expPublicKeySPKI = await subtle.exportKey(
+      "spki",
+      publicKeyECDSA,
+    );
+
+    assertEquals(new Uint8Array(expPublicKeySPKI), spki);
+
+    /*const expPrivateKeySPKI = await subtle.exportKey(
+      "spki",
+      privateKeyECDSA,
+    );
+    assertEquals(new Uint8Array(expPrivateKeySPKI), spki);*/
+  }
+});

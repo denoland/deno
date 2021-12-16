@@ -19,6 +19,8 @@ use std::rc::Rc;
 use block_modes::BlockMode;
 use lazy_static::lazy_static;
 use num_traits::cast::FromPrimitive;
+use p256::elliptic_curve::sec1::FromEncodedPoint;
+use p256::pkcs8::FromPrivateKey;
 use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
@@ -40,7 +42,6 @@ use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::FromRsaPublicKey;
 use rsa::pkcs8::der::asn1;
-use rsa::pkcs8::FromPrivateKey;
 use rsa::BigUint;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
@@ -443,8 +444,18 @@ pub async fn op_crypto_verify_key(
       let verify_alg: &EcdsaVerificationAlgorithm =
         args.named_curve.ok_or_else(not_supported)?.try_into()?;
 
-      let private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &*args.key.data)?;
-      let public_key_bytes = private_key.public_key().as_ref();
+      let private_key;
+
+      let public_key_bytes = match args.key.r#type {
+        KeyType::Private => {
+          private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &*args.key.data)?;
+
+          private_key.public_key().as_ref()
+        }
+        KeyType::Public => &*args.key.data,
+        _ => return Err(type_error("Invalid Key format".to_string())),
+      };
+
       let public_key =
         ring::signature::UnparsedPublicKey::new(verify_alg, public_key_bytes);
 
@@ -507,13 +518,40 @@ pub async fn op_crypto_derive_bits(
 
       let public_key = args
         .public_key
-        .ok_or_else(|| type_error("Missing argument publicKey".to_string()))?;
+        .ok_or_else(|| type_error("Missing argument publicKey"))?;
 
       match named_curve {
         CryptoNamedCurve::P256 => {
-          let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)?;
-          let public_key =
-            p256::SecretKey::from_pkcs8_der(&public_key.data)?.public_key();
+          let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
+            .map_err(|_| type_error("Unexpected error decoding private key"))?;
+
+          let public_key = match public_key.r#type {
+            KeyType::Private => {
+              p256::SecretKey::from_pkcs8_der(&public_key.data)
+                .map_err(|_| {
+                  type_error("Unexpected error decoding private key")
+                })?
+                .public_key()
+            }
+            KeyType::Public => {
+              let point = p256::EncodedPoint::from_bytes(public_key.data)
+                .map_err(|_| {
+                  type_error("Unexpected error decoding private key")
+                })?;
+
+              let pk: Option<p256::PublicKey> =
+                p256::PublicKey::from_encoded_point(&point);
+
+              if let Some(pk) = pk {
+                pk
+              } else {
+                return Err(type_error(
+                  "Unexpected error decoding private key",
+                ));
+              }
+            }
+            _ => unreachable!(),
+          };
 
           let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
             secret_key.to_secret_scalar(),
