@@ -101,7 +101,7 @@
     }
 
     async setNoDelay(noDelay) {
-      return await opSetNoDelay(this.rid, noDelay)
+      return await opSetNoDelay(this.rid, noDelay);
     }
   }
 

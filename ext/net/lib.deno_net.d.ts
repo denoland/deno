@@ -50,6 +50,8 @@ declare namespace Deno {
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
+    /** Enable/disable the use of Nagle's algorithm. */
+    setNoDelay(nodelay: boolean): Promise<void>;
   }
 
   // deno-lint-ignore no-empty-interface
