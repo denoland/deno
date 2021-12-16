@@ -934,7 +934,8 @@ fn import_key_ec(
         ID_SECP256R1_OID => Some(EcNamedCurve::P256),
         // id-secp384r1
         ID_SECP384R1_OID => Some(EcNamedCurve::P384),
-        //ID_SECP521R1_OID => Some(EcNamedCurve::P521),
+        // id-secp521r1
+        ID_SECP521R1_OID => Some(EcNamedCurve::P521),
         _ => None,
       };
 

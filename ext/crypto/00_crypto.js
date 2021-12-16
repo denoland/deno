@@ -2391,7 +2391,7 @@
             ) !== undefined
           ) {
             throw new DOMException(
-              "`key_ops` member of JsonWebKey is invalid",
+              "'key_ops' member of JsonWebKey is invalid",
               "DataError",
             );
           }
@@ -2403,7 +2403,7 @@
             )
           ) {
             throw new DOMException(
-              "`key_ops` member of JsonWebKey is invalid",
+              "'key_ops' member of JsonWebKey is invalid",
               "DataError",
             );
           }
