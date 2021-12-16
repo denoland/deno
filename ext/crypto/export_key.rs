@@ -8,6 +8,8 @@ use serde::Serialize;
 use spki::der::asn1;
 use spki::der::Decodable;
 use spki::der::Encodable;
+use p256::pkcs8::FromPrivateKey;
+use elliptic_curve::sec1::ToEncodedPoint;
 
 use crate::shared::*;
 
@@ -37,6 +39,10 @@ pub enum ExportKeyAlgorithm {
   RsaPss {},
   #[serde(rename = "RSA-OAEP")]
   RsaOaep {},
+  #[serde(rename = "ECDSA", rename_all = "camelCase")]
+  Ecdsa { named_curve: EcNamedCurve },
+  #[serde(rename = "ECDH", rename_all = "camelCase")]
+  Ecdh { named_curve: EcNamedCurve },
 }
 
 #[derive(Serialize)]
@@ -58,6 +64,15 @@ pub enum ExportKeyResult {
     dq: String,
     qi: String,
   },
+  JwkPublicEc {
+    x: String,
+    y: String,
+  },
+  JwkPrivateEc {
+    x: String,
+    y: String,
+    d: String,
+  },
 }
 
 pub fn op_crypto_export_key(
@@ -69,6 +84,10 @@ pub fn op_crypto_export_key(
     ExportKeyAlgorithm::RsassaPkcs1v15 {}
     | ExportKeyAlgorithm::RsaPss {}
     | ExportKeyAlgorithm::RsaOaep {} => export_key_rsa(opts.format, key_data),
+    ExportKeyAlgorithm::Ecdh { named_curve }
+    | ExportKeyAlgorithm::Ecdsa { named_curve } => {
+      export_key_ec(opts.format, key_data, named_curve)
+    }
   }
 }
 
@@ -165,6 +184,136 @@ fn export_key_rsa(
         dq: uint_to_b64(private_key.exponent2),
         qi: uint_to_b64(private_key.coefficient),
       })
+    }
+  }
+}
+
+fn bytes_to_b64(bytes: Vec<u8>) -> String {
+  base64::encode_config(bytes, base64::URL_SAFE_NO_PAD)
+}
+
+fn export_key_ec(
+  format: ExportKeyFormat,
+  key_data: RawKeyData,
+  named_curve: EcNamedCurve,
+) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
+  match format {
+    ExportKeyFormat::Spki => {
+      /*let point = match key_data {
+        RawKeyData::Public(data) => {
+          // public_key is a serialized EncodedPoint
+          p256::EncodedPoint::from_bytes(&data)
+            .map_err(|_| data_error("EC PublicKey format error"))?
+        }
+        _ => unreachable!(),
+      };*/
+
+      let point = key_data.as_ec_public_key()?;
+
+      let oid =
+        <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::OID;
+      let oid_bytes = spki::der::asn1::Any::new(
+        spki::der::Tag::ObjectIdentifier,
+        oid.as_bytes(),
+      )
+      .unwrap();
+
+      // the SPKI structure
+      let key_info = spki::SubjectPublicKeyInfo {
+        algorithm: spki::AlgorithmIdentifier {
+          // ecPublicKey(1)
+          oid: "1.2.840.10045.2.1".parse().unwrap(),
+          parameters: Some(oid_bytes),
+        },
+        subject_public_key: point.as_ref(),
+      };
+
+      // Infallible based on spec because of the way we import and generate keys.
+      let spki_der = key_info.to_vec().unwrap();
+
+      Ok(ExportKeyResult::Spki(spki_der.into()))
+    }
+    ExportKeyFormat::Pkcs8 => {
+      // private_key is a PKCS#8 DER-encoded private key
+      let private_key = key_data.as_ec_private_key()?;
+      /*let private_key = match key_data {
+        RawKeyData::Private(data) => data,
+        _ => unreachable!(),
+      };*/
+
+      Ok(ExportKeyResult::Pkcs8(private_key.to_vec().into()))
+    }
+    ExportKeyFormat::JwkPublic => {
+      let point = key_data.as_ec_public_key()?;
+      let coords = point.coordinates();
+
+      if let p256::elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
+        coords
+      {
+        Ok(ExportKeyResult::JwkPublicEc {
+          x: bytes_to_b64(x.to_vec()),
+          y: bytes_to_b64(y.to_vec()),
+        })
+      } else {
+        Err(custom_error(
+          "DOMExceptionOperationError",
+          "failed to decode public key",
+        ))
+      }
+    }
+    ExportKeyFormat::JwkPrivate => {
+      let private_key = key_data.as_ec_private_key()?;
+
+      let public_key;
+
+      let d = match named_curve {
+        EcNamedCurve::P256 => {
+          let secret_key = p256::SecretKey::from_pkcs8_der(private_key)
+            .map_err(|_| {
+              custom_error(
+                "DOMExceptionOperationError",
+                "failed to decode private key",
+              )
+            })?;
+
+          public_key = secret_key.public_key();
+
+          secret_key.to_bytes()
+        }
+        /*CryptoNamedCurve::P384 => {
+          let secret_key = p384::SecretKey::from_pkcs8_der(&private_key).map_err(|_| {
+            custom_error(
+              "DOMExceptionOperationError",
+              "failed to decode private key",
+            )
+          })?;
+
+          public_key = secret_key.public_key();
+
+          secret_key.to_bytes()
+        }*/
+        _ => {
+          return Err(not_supported_error("Unsupported namedCurve"));
+        }
+      };
+
+      let pk = public_key.as_affine().to_encoded_point(false);
+      let coords = pk.coordinates();
+
+      if let p256::elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
+        coords
+      {
+        Ok(ExportKeyResult::JwkPrivateEc {
+          x: bytes_to_b64(x.to_vec()),
+          y: bytes_to_b64(y.to_vec()),
+          d: bytes_to_b64(d.to_vec()),
+        })
+      } else {
+        Err(custom_error(
+          "DOMExceptionOperationError",
+          "failed to decode private key",
+        ))
+      }
     }
   }
 }
