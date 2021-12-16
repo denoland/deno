@@ -9,6 +9,7 @@ use super::tsc;
 
 use crate::diagnostics;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
@@ -439,6 +440,8 @@ fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   documents: &Documents,
   resolved: &deno_graph::Resolved,
+  is_dynamic: bool,
+  maybe_assert_type: Option<&str>,
 ) {
   match resolved {
     Some(Ok((specifier, range))) => {
@@ -452,6 +455,34 @@ fn diagnose_dependency(
             message,
             ..Default::default()
           })
+        }
+        if doc.media_type() == MediaType::Json {
+          match maybe_assert_type {
+            // The module has the correct assertion type, no diagnostic
+            Some("json") => (),
+            // The dynamic import statement is missing an assertion type, which
+            // we might not be able to statically detect, therefore we will
+            // not provide a potentially incorrect diagnostic.
+            None if is_dynamic => (),
+            // The module has an incorrect assertion type, diagnostic
+            Some(assert_type) => diagnostics.push(lsp::Diagnostic {
+              range: documents::to_lsp_range(range),
+              severity: Some(lsp::DiagnosticSeverity::ERROR),
+              code: Some(lsp::NumberOrString::String("invalid-assert-type".to_string())),
+              source: Some("deno".to_string()),
+              message: format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{}\".", assert_type),
+              ..Default::default()
+            }),
+            // The module is missing an assertion type, diagnostic
+            None => diagnostics.push(lsp::Diagnostic {
+              range: documents::to_lsp_range(range),
+              severity: Some(lsp::DiagnosticSeverity::ERROR),
+              code: Some(lsp::NumberOrString::String("no-assert-type".to_string())),
+              source: Some("deno".to_string()),
+              message: "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(),
+              ..Default::default()
+            }),
+          }
         }
       } else {
         let (code, message) = match specifier.scheme() {
@@ -508,11 +539,15 @@ async fn generate_deps_diagnostics(
             &mut diagnostics,
             &snapshot.documents,
             &dependency.maybe_code,
+            dependency.is_dynamic,
+            dependency.maybe_assert_type.as_deref(),
           );
           diagnose_dependency(
             &mut diagnostics,
             &snapshot.documents,
             &dependency.maybe_type,
+            dependency.is_dynamic,
+            dependency.maybe_assert_type.as_deref(),
           );
         }
         diagnostics_vec.push((
