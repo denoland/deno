@@ -27,7 +27,6 @@
     abortedNetworkError,
   } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
-  const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayPrototypePush,
     ArrayPrototypeSplice,
