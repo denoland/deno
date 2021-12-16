@@ -38,11 +38,9 @@ use deno_graph::MediaType;
 use deno_graph::ModuleGraphError;
 use deno_graph::Range;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
-use deno_runtime::deno_tls::rustls_pemfile;
-use deno_runtime::deno_tls::webpki_roots;
+use deno_runtime::deno_tls::webpki_roots::TLS_SERVER_ROOTS;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
@@ -208,24 +206,13 @@ impl ProcState {
     for store in ca_stores.iter() {
       match store.as_str() {
         "mozilla" => {
-          root_cert_store.add_server_trust_anchors(
-            webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
-              rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-                ta.subject,
-                ta.spki,
-                ta.name_constraints,
-              )
-            }),
-          );
+          root_cert_store.add_server_trust_anchors(&TLS_SERVER_ROOTS);
         }
         "system" => {
-          let roots =
-            load_native_certs().expect("could not load platform certs");
-          for root in roots {
-            root_cert_store
-              .add(&rustls::Certificate(root.0))
-              .expect("Failed to add platform cert to root cert store");
-          }
+          let roots = load_native_certs()
+            .expect("could not load platform certs")
+            .roots;
+          root_cert_store.roots.extend(roots);
         }
         _ => {
           return Err(anyhow!("Unknown certificate store \"{}\" specified (allowed: \"system,mozilla\")", store));
@@ -238,16 +225,9 @@ impl ProcState {
       let certfile = File::open(&ca_file)?;
       let mut reader = BufReader::new(certfile);
 
-      match rustls_pemfile::certs(&mut reader) {
-        Ok(certs) => {
-          root_cert_store.add_parsable_certificates(&certs);
-        }
-        Err(e) => {
-          return Err(anyhow!(
-            "Unable to add pem file to certificate store: {}",
-            e
-          ));
-        }
+      // This function does not return specific errors, if it fails give a generic message.
+      if let Err(_err) = root_cert_store.add_pem_file(&mut reader) {
+        return Err(anyhow!("Unable to add pem file to certificate store"));
       }
     }
 

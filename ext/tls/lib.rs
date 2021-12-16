@@ -2,7 +2,6 @@
 
 pub use rustls;
 pub use rustls_native_certs;
-pub use rustls_pemfile;
 pub use webpki;
 pub use webpki_roots;
 
@@ -12,26 +11,27 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::Extension;
 
-use rustls::client::ServerCertVerified;
-use rustls::client::ServerCertVerifier;
-use rustls::client::StoresClientSessions;
-use rustls::client::WebPkiVerifier;
+use rustls::internal::msgs::handshake::DigitallySignedStruct;
+use rustls::internal::pemfile::certs;
+use rustls::internal::pemfile::pkcs8_private_keys;
+use rustls::internal::pemfile::rsa_private_keys;
 use rustls::Certificate;
 use rustls::ClientConfig;
-use rustls::Error;
+use rustls::HandshakeSignatureValid;
 use rustls::PrivateKey;
 use rustls::RootCertStore;
-use rustls::ServerName;
-use rustls_pemfile::certs;
-use rustls_pemfile::pkcs8_private_keys;
-use rustls_pemfile::rsa_private_keys;
+use rustls::ServerCertVerified;
+use rustls::ServerCertVerifier;
+use rustls::StoresClientSessions;
+use rustls::TLSError;
+use rustls::WebPKIVerifier;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::sync::Arc;
-use std::time::SystemTime;
+use webpki::DNSNameRef;
 
 /// This extension has no runtime apis, it only exports some shared native functions.
 pub fn init() -> Extension {
@@ -43,34 +43,41 @@ pub struct NoCertificateVerification(pub Vec<String>);
 impl ServerCertVerifier for NoCertificateVerification {
   fn verify_server_cert(
     &self,
-    end_entity: &Certificate,
-    intermediates: &[Certificate],
-    server_name: &ServerName,
-    scts: &mut dyn Iterator<Item = &[u8]>,
-    ocsp_response: &[u8],
-    now: SystemTime,
-  ) -> Result<ServerCertVerified, Error> {
-    if let ServerName::DnsName(dns_name) = server_name {
-      let dns_name = dns_name.as_ref().to_owned();
-      if self.0.is_empty() || self.0.contains(&dns_name) {
-        Ok(ServerCertVerified::assertion())
-      } else {
-        let root_store = create_default_root_cert_store();
-        let verifier = WebPkiVerifier::new(root_store, None);
-        verifier.verify_server_cert(
-          end_entity,
-          intermediates,
-          server_name,
-          scts,
-          ocsp_response,
-          now,
-        )
-      }
+    roots: &RootCertStore,
+    presented_certs: &[Certificate],
+    dns_name_ref: DNSNameRef<'_>,
+    ocsp: &[u8],
+  ) -> Result<ServerCertVerified, TLSError> {
+    let dns_name: &str = dns_name_ref.into();
+    let dns_name: String = dns_name.to_owned();
+    if self.0.is_empty() || self.0.contains(&dns_name) {
+      Ok(ServerCertVerified::assertion())
     } else {
-      // NOTE(bartlomieju): `ServerName` is a non-exhaustive enum
-      // so we have this catch all error here.
-      Err(Error::General("Unknown `ServerName` variant".to_string()))
+      WebPKIVerifier::new().verify_server_cert(
+        roots,
+        presented_certs,
+        dns_name_ref,
+        ocsp,
+      )
     }
+  }
+
+  fn verify_tls12_signature(
+    &self,
+    _message: &[u8],
+    _cert: &Certificate,
+    _dss: &DigitallySignedStruct,
+  ) -> Result<HandshakeSignatureValid, TLSError> {
+    Ok(HandshakeSignatureValid::assertion())
+  }
+
+  fn verify_tls13_signature(
+    &self,
+    _message: &[u8],
+    _cert: &Certificate,
+    _dss: &DigitallySignedStruct,
+  ) -> Result<HandshakeSignatureValid, TLSError> {
+    Ok(HandshakeSignatureValid::assertion())
   }
 }
 
@@ -117,15 +124,7 @@ impl StoresClientSessions for ClientSessionMemoryCache {
 pub fn create_default_root_cert_store() -> RootCertStore {
   let mut root_cert_store = RootCertStore::empty();
   // TODO(@justinmchase): Consider also loading the system keychain here
-  root_cert_store.add_server_trust_anchors(
-    webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
-      rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-        ta.subject,
-        ta.spki,
-        ta.name_constraints,
-      )
-    }),
-  );
+  root_cert_store.add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
   root_cert_store
 }
 
@@ -135,73 +134,39 @@ pub fn create_client_config(
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
   client_cert_chain_and_key: Option<(String, String)>,
 ) -> Result<ClientConfig, AnyError> {
-  let maybe_cert_chain_and_key =
-    if let Some((cert_chain, private_key)) = client_cert_chain_and_key {
-      // The `remove` is safe because load_private_keys checks that there is at least one key.
-      let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
-      let cert_chain = load_certs(&mut cert_chain.as_bytes())?;
-      Some((cert_chain, private_key))
-    } else {
-      None
-    };
+  let mut tls_config = ClientConfig::new();
+  tls_config.set_persistence(CLIENT_SESSION_MEMORY_CACHE.clone());
+  tls_config.root_store =
+    root_cert_store.unwrap_or_else(create_default_root_cert_store);
 
-  if let Some(ic_allowlist) = unsafely_ignore_certificate_errors {
-    let client_config = ClientConfig::builder()
-      .with_safe_defaults()
-      .with_custom_certificate_verifier(Arc::new(NoCertificateVerification(
-        ic_allowlist,
-      )));
-
-    // NOTE(bartlomieju): this if/else is duplicated at the end of the body of this function.
-    // However it's not really feasible to deduplicate it as the `client_config` instances
-    // are not type-compatible - one wants "client cert", the other wants "transparency policy
-    // or client cert".
-    let client =
-      if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key {
-        client_config
-          .with_single_cert(cert_chain, private_key)
-          .expect("invalid client key or certificate")
-      } else {
-        client_config.with_no_client_auth()
-      };
-
-    return Ok(client);
+  // If custom certs are specified, add them to the store
+  for cert in ca_certs {
+    let reader = &mut BufReader::new(Cursor::new(cert));
+    // This function does not return specific errors, if it fails give a generic message.
+    if let Err(()) = tls_config.root_store.add_pem_file(reader) {
+      return Err(anyhow!("Unable to add pem file to certificate store"));
+    }
   }
 
-  let client_config = ClientConfig::builder()
-    .with_safe_defaults()
-    .with_root_certificates({
-      let mut root_cert_store =
-        root_cert_store.unwrap_or_else(create_default_root_cert_store);
-      // If custom certs are specified, add them to the store
-      for cert in ca_certs {
-        let reader = &mut BufReader::new(Cursor::new(cert));
-        // This function does not return specific errors, if it fails give a generic message.
-        match rustls_pemfile::certs(reader) {
-          Ok(certs) => {
-            root_cert_store.add_parsable_certificates(&certs);
-          }
-          Err(e) => {
-            return Err(anyhow!(
-              "Unable to add pem file to certificate store: {}",
-              e
-            ));
-          }
-        }
-      }
-      root_cert_store
-    });
+  if let Some(ic_allowlist) = unsafely_ignore_certificate_errors {
+    tls_config.dangerous().set_certificate_verifier(Arc::new(
+      NoCertificateVerification(ic_allowlist),
+    ));
+  }
 
-  let client = if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key
-  {
-    client_config
-      .with_single_cert(cert_chain, private_key)
-      .expect("invalid client key or certificate")
-  } else {
-    client_config.with_no_client_auth()
-  };
+  if let Some((cert_chain, private_key)) = client_cert_chain_and_key {
+    // The `remove` is safe because load_private_keys checks that there is at least one key.
+    let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
 
-  Ok(client)
+    tls_config
+      .set_single_client_cert(
+        load_certs(&mut cert_chain.as_bytes())?,
+        private_key,
+      )
+      .expect("invalid client key or certificate");
+  }
+
+  Ok(tls_config)
 }
 
 pub fn load_certs(
@@ -215,7 +180,7 @@ pub fn load_certs(
     return Err(e);
   }
 
-  Ok(certs.into_iter().map(Certificate).collect())
+  Ok(certs)
 }
 
 fn key_decode_err() -> AnyError {
@@ -229,13 +194,13 @@ fn key_not_found_err() -> AnyError {
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
 fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = rsa_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys.into_iter().map(PrivateKey).collect())
+  Ok(keys)
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
 fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = pkcs8_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys.into_iter().map(PrivateKey).collect())
+  Ok(keys)
 }
 
 pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
