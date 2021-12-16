@@ -55,6 +55,7 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
     ("op_dgram_recv", op_async(op_dgram_recv)),
     ("op_dgram_send", op_async(op_dgram_send::<P>)),
     ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
+    ("op_set_nodelay", op_async(op_set_nodelay::<P>))
   ]
 }
 
@@ -663,6 +664,13 @@ where
     .collect();
 
   Ok(results)
+}
+
+pub async fn op_set_nodelay<NP>(state: Rc<RefCell<OpState>>, rid: ResourceId, nodelay: bool) -> Result<(), AnyError> {
+  let resource: Rc<TcpStreamResource> = state.borrow_mut()
+    .resource_table
+    .get::<TcpStreamResource>(rid)?;
+  resource.set_nodelay(nodelay).await
 }
 
 fn rdata_to_return_record(

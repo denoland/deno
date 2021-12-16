@@ -118,6 +118,15 @@ impl Resource for TcpStreamResource {
   }
 }
 
+impl TcpStreamResource {
+
+  pub async fn set_nodelay(self: Rc<Self>, nodelay: bool) -> Result<(), AnyError> {
+    let wr = self.wr_borrow_mut().await;
+    let stream = wr.as_ref().as_ref();
+    Ok(stream.set_nodelay(nodelay)?)
+  }
+}
+
 #[cfg(unix)]
 pub type UnixStreamResource =
   FullDuplexResource<unix::OwnedReadHalf, unix::OwnedWriteHalf>;
