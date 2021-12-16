@@ -87,6 +87,7 @@ fn generate_key_ec(named_curve: EcNamedCurve) -> Result<Vec<u8>, AnyError> {
   let curve = match named_curve {
     EcNamedCurve::P256 => &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
     EcNamedCurve::P384 => &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING,
+    _ => return Err(not_supported_error("Unsupported named curve")),
   };
 
   let rng = ring::rand::SystemRandom::new();

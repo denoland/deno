@@ -18,6 +18,7 @@ mod flags;
 mod flags_allow_net;
 mod fmt_errors;
 mod fs_util;
+mod graph_util;
 mod http_cache;
 mod http_util;
 mod lockfile;
@@ -58,6 +59,8 @@ use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
+use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::graph_valid;
 use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
@@ -70,6 +73,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
+use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -705,15 +709,10 @@ async fn create_graph_and_maybe_check(
     .await,
   );
 
-  // Ensure that all non-dynamic, non-type only imports are properly loaded and
-  // if not, error with the first issue encountered.
-  graph.valid().map_err(emit::GraphError::from)?;
-  // If there was a locker, validate the integrity of all the modules in the
-  // locker.
-  emit::lock(graph.as_ref());
+  graph_valid(&graph, ps.flags.check != CheckFlag::None)?;
+  graph_lock_or_exit(&graph);
 
   if ps.flags.check != CheckFlag::None {
-    graph.valid_types_only().map_err(emit::GraphError::from)?;
     let lib = if ps.flags.unstable {
       emit::TypeLib::UnstableDenoWindow
     } else {
@@ -727,14 +726,14 @@ async fn create_graph_and_maybe_check(
       ps.maybe_config_file.as_ref(),
       None,
     )?;
-    log::info!("{} {}", colors::green("Check"), graph.roots[0]);
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
     let maybe_config_specifier =
       ps.maybe_config_file.as_ref().map(|cf| cf.specifier.clone());
     let check_result = emit::check_and_maybe_emit(
-      graph.clone(),
+      &graph.roots,
+      Arc::new(RwLock::new(graph.as_ref().into())),
       &mut cache,
       emit::CheckOptions {
         check: ps.flags.check.clone(),
@@ -742,7 +741,9 @@ async fn create_graph_and_maybe_check(
         emit_with_diagnostics: false,
         maybe_config_specifier,
         ts_config,
+        log_checks: true,
         reload: ps.flags.reload,
+        reload_exclusions: Default::default(),
       },
     )?;
     debug!("{}", check_result.stats);
@@ -1056,7 +1057,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         None,
       )
       .await;
-      graph.valid()?;
+      graph_valid(&graph, ps.flags.check != flags::CheckFlag::None)?;
 
       // Find all local files in graph
       let mut paths_to_watch: Vec<PathBuf> = graph

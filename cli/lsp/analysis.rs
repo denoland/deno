@@ -384,31 +384,51 @@ pub struct CodeActionCollection {
 impl CodeActionCollection {
   pub(crate) fn add_deno_fix_action(
     &mut self,
+    specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) -> Result<(), AnyError> {
-    if let Some(data) = diagnostic.data.clone() {
-      let fix_data: DenoFixData = serde_json::from_value(data)?;
-      let title = if matches!(&diagnostic.code, Some(lsp::NumberOrString::String(code)) if code == "no-cache-data")
-      {
-        "Cache the data URL and its dependencies.".to_string()
-      } else {
-        format!("Cache \"{}\" and its dependencies.", fix_data.specifier)
-      };
-      let code_action = lsp::CodeAction {
-        title,
-        kind: Some(lsp::CodeActionKind::QUICKFIX),
-        diagnostics: Some(vec![diagnostic.clone()]),
-        edit: None,
-        command: Some(lsp::Command {
-          title: "".to_string(),
-          command: "deno.cache".to_string(),
-          arguments: Some(vec![json!([fix_data.specifier])]),
-        }),
-        is_preferred: None,
-        disabled: None,
-        data: None,
-      };
-      self.actions.push(CodeActionKind::Deno(code_action));
+    if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
+      if code == "no-assert-type" {
+        let code_action = lsp::CodeAction {
+          title: "Insert import assertion.".to_string(),
+          kind: Some(lsp::CodeActionKind::QUICKFIX),
+          diagnostics: Some(vec![diagnostic.clone()]),
+          edit: Some(lsp::WorkspaceEdit {
+            changes: Some(HashMap::from([(
+              specifier.clone(),
+              vec![lsp::TextEdit {
+                new_text: " assert { type: \"json\" }".to_string(),
+                range: lsp::Range {
+                  start: diagnostic.range.end,
+                  end: diagnostic.range.end,
+                },
+              }],
+            )])),
+            ..Default::default()
+          }),
+          ..Default::default()
+        };
+        self.actions.push(CodeActionKind::Deno(code_action));
+      } else if let Some(data) = diagnostic.data.clone() {
+        let fix_data: DenoFixData = serde_json::from_value(data)?;
+        let title = if code == "no-cache-data" {
+          "Cache the data URL and its dependencies.".to_string()
+        } else {
+          format!("Cache \"{}\" and its dependencies.", fix_data.specifier)
+        };
+        let code_action = lsp::CodeAction {
+          title,
+          kind: Some(lsp::CodeActionKind::QUICKFIX),
+          diagnostics: Some(vec![diagnostic.clone()]),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![json!([fix_data.specifier])]),
+          }),
+          ..Default::default()
+        };
+        self.actions.push(CodeActionKind::Deno(code_action));
+      }
     }
     Ok(())
   }
