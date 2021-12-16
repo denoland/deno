@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.16.4"
+version = "1.17.0"
 authors = ["the Deno authors"]
 default-run = "deno"
 edition = "2021"
