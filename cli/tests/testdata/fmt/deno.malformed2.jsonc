@@ -1,0 +1,12 @@
+{
+  "fmt": {
+    "files": {
+      "include": ["fmt_with_config/"],
+      "exclude": ["fmt_with_config/b.ts"],
+      "dont_know_this_field": {}
+    },
+    "options": {
+      "useTabs": true
+    }
+  }
+}

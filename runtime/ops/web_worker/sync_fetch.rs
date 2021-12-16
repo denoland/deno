@@ -38,6 +38,8 @@ pub fn op_worker_sync_fetch(
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
   assert_eq!(handle.worker_type, WebWorkerType::Classic);
 
+  let client = state.borrow::<reqwest::Client>().clone();
+
   // TODO(andreubotella) It's not good to throw an exception related to blob
   // URLs when none of the script URLs use the blob scheme.
   // Also, in which contexts are blob URLs not supported?
@@ -59,6 +61,7 @@ pub fn op_worker_sync_fetch(
     let handles: Vec<_> = scripts
       .into_iter()
       .map(|script| -> JoinHandle<Result<SyncFetchScript, AnyError>> {
+        let client = client.clone();
         let blob_store = blob_store.clone();
         runtime.spawn(async move {
           let script_url = Url::parse(&script)
@@ -66,7 +69,8 @@ pub fn op_worker_sync_fetch(
 
           let (body, mime_type, res_url) = match script_url.scheme() {
             "http" | "https" => {
-              let resp = reqwest::get(script_url).await?.error_for_status()?;
+              let resp =
+                client.get(script_url).send().await?.error_for_status()?;
 
               let res_url = resp.url().to_string();
 

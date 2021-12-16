@@ -5,12 +5,26 @@ use deno_bench_util::bencher::{benchmark_group, Bencher};
 use deno_bench_util::{bench_js_async, bench_js_sync};
 use deno_web::BlobStore;
 
+struct Permissions;
+
+impl deno_timers::TimersPermission for Permissions {
+  fn allow_hrtime(&mut self) -> bool {
+    true
+  }
+  fn check_unstable(
+    &self,
+    _state: &deno_core::OpState,
+    _api_name: &'static str,
+  ) {
+  }
+}
+
 fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::init(),
     deno_url::init(),
     deno_web::init(BlobStore::default(), None),
-    deno_timers::init::<deno_timers::NoTimersPermission>(),
+    deno_timers::init::<Permissions>(),
     Extension::builder()
     .js(vec![
       ("setup",
@@ -21,7 +35,7 @@ fn setup() -> Vec<Extension> {
       ),
     ])
     .state(|state| {
-      state.put(deno_timers::NoTimersPermission{});
+      state.put(Permissions{});
       Ok(())
     })
     .build()

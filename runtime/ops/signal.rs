@@ -4,7 +4,7 @@ use deno_core::error::generic_error;
 #[cfg(not(target_os = "windows"))]
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op_async_unref;
+use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -33,7 +33,7 @@ pub fn init() -> Extension {
     .ops(vec![
       ("op_signal_bind", op_sync(op_signal_bind)),
       ("op_signal_unbind", op_sync(op_signal_unbind)),
-      ("op_signal_poll", op_async_unref(op_signal_poll)),
+      ("op_signal_poll", op_async(op_signal_poll)),
     ])
     .build()
 }
@@ -54,6 +54,46 @@ impl Resource for SignalStreamResource {
 
   fn close(self: Rc<Self>) {
     self.cancel.cancel();
+  }
+}
+
+#[cfg(target_os = "freebsd")]
+pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
+  match s {
+    "SIGHUP" => Ok(1),
+    "SIGINT" => Ok(2),
+    "SIGQUIT" => Ok(3),
+    "SIGILL" => Ok(4),
+    "SIGTRAP" => Ok(5),
+    "SIGABRT" => Ok(6),
+    "SIGEMT" => Ok(7),
+    "SIGFPE" => Ok(8),
+    "SIGKILL" => Ok(9),
+    "SIGBUS" => Ok(10),
+    "SIGSEGV" => Ok(11),
+    "SIGSYS" => Ok(12),
+    "SIGPIPE" => Ok(13),
+    "SIGALRM" => Ok(14),
+    "SIGTERM" => Ok(15),
+    "SIGURG" => Ok(16),
+    "SIGSTOP" => Ok(17),
+    "SIGTSTP" => Ok(18),
+    "SIGCONT" => Ok(19),
+    "SIGCHLD" => Ok(20),
+    "SIGTTIN" => Ok(21),
+    "SIGTTOU" => Ok(22),
+    "SIGIO" => Ok(23),
+    "SIGXCPU" => Ok(24),
+    "SIGXFSZ" => Ok(25),
+    "SIGVTALRM" => Ok(26),
+    "SIGPROF" => Ok(27),
+    "SIGWINCH" => Ok(28),
+    "SIGINFO" => Ok(29),
+    "SIGUSR1" => Ok(30),
+    "SIGUSR2" => Ok(31),
+    "SIGTHR" => Ok(32),
+    "SIGLIBRT" => Ok(33),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
   }
 }
 
@@ -129,13 +169,8 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGINFO" => Ok(29),
     "SIGUSR1" => Ok(30),
     "SIGUSR2" => Ok(31),
-    _ => Err(type_error(format!("Invalid signal : {}", s))),
+    _ => Err(type_error(format!("Invalid signal: {}", s))),
   }
-}
-
-#[cfg(target_os = "windows")]
-pub fn signal_str_to_int(_s: &str) -> Result<libc::c_int, AnyError> {
-  Err(generic_error("not implemented"))
 }
 
 #[cfg(unix)]
@@ -189,7 +224,7 @@ pub fn op_signal_unbind(
 #[cfg(not(unix))]
 pub fn op_signal_bind(
   _state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
@@ -198,7 +233,7 @@ pub fn op_signal_bind(
 #[cfg(not(unix))]
 fn op_signal_unbind(
   _state: &mut OpState,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   Err(generic_error("not implemented"))
@@ -207,7 +242,7 @@ fn op_signal_unbind(
 #[cfg(not(unix))]
 async fn op_signal_poll(
   _state: Rc<RefCell<OpState>>,
-  _args: (),
+  _: (),
   _: (),
 ) -> Result<(), AnyError> {
   Err(generic_error("not implemented"))

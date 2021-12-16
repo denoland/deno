@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::invalid_hostname;
-use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
@@ -22,8 +21,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
-use deno_tls::webpki::DNSNameRef;
-
 use http::header::HeaderName;
 use http::HeaderValue;
 use http::Method;
@@ -33,19 +30,23 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::convert::TryFrom;
 use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
+use tokio_rustls::rustls::ServerName;
 use tokio_rustls::TlsConnector;
-use tokio_tungstenite::tungstenite::{
-  handshake::client::Response, protocol::frame::coding::CloseCode,
-  protocol::CloseFrame, Message,
-};
+use tokio_tungstenite::client_async;
+use tokio_tungstenite::tungstenite::handshake::client::Response;
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::MaybeTlsStream;
-use tokio_tungstenite::{client_async, WebSocketStream};
+use tokio_tungstenite::WebSocketStream;
 
 pub use tokio_tungstenite; // Re-export tokio_tungstenite
 
@@ -64,15 +65,6 @@ pub trait WebSocketPermissions {
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 
-/// For use with `op_websocket_*` when the user does not want permissions.
-pub struct NoWebSocketPermissions;
-
-impl WebSocketPermissions for NoWebSocketPermissions {
-  fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError> {
-    Ok(())
-  }
-}
-
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 pub enum WebSocketStreamType {
   Client {
@@ -87,6 +79,27 @@ pub enum WebSocketStreamType {
   },
 }
 
+pub async fn ws_create_server_stream(
+  state: &Rc<RefCell<OpState>>,
+  transport: hyper::upgrade::Upgraded,
+) -> Result<ResourceId, AnyError> {
+  let ws_stream =
+    WebSocketStream::from_raw_socket(transport, Role::Server, None).await;
+  let (ws_tx, ws_rx) = ws_stream.split();
+
+  let ws_resource = WsStreamResource {
+    stream: WebSocketStreamType::Server {
+      tx: AsyncRefCell::new(ws_tx),
+      rx: AsyncRefCell::new(ws_rx),
+    },
+    cancel: Default::default(),
+  };
+
+  let resource_table = &mut state.borrow_mut().resource_table;
+  let rid = resource_table.add(ws_resource);
+  Ok(rid)
+}
+
 pub struct WsStreamResource {
   pub stream: WebSocketStreamType,
   // When a `WsStreamResource` resource is closed, all pending 'read' ops are
@@ -97,7 +110,8 @@ pub struct WsStreamResource {
 
 impl WsStreamResource {
   async fn send(self: &Rc<Self>, message: Message) -> Result<(), AnyError> {
-    match self.stream {
+    use tokio_tungstenite::tungstenite::Error;
+    let res = match self.stream {
       WebSocketStreamType::Client { .. } => {
         let mut tx = RcRef::map(self, |r| match &r.stream {
           WebSocketStreamType::Client { tx, .. } => tx,
@@ -105,7 +119,7 @@ impl WsStreamResource {
         })
         .borrow_mut()
         .await;
-        tx.send(message).await?;
+        tx.send(message).await
       }
       WebSocketStreamType::Server { .. } => {
         let mut tx = RcRef::map(self, |r| match &r.stream {
@@ -114,11 +128,15 @@ impl WsStreamResource {
         })
         .borrow_mut()
         .await;
-        tx.send(message).await?;
+        tx.send(message).await
       }
-    }
+    };
 
-    Ok(())
+    match res {
+      Ok(()) => Ok(()),
+      Err(Error::ConnectionClosed) => Ok(()),
+      Err(err) => Err(err.into()),
+    }
   }
 
   async fn next_message(
@@ -228,11 +246,20 @@ where
       );
   }
 
+  let cancel_resource = if let Some(cancel_rid) = args.cancel_handle {
+    let r = state
+      .borrow_mut()
+      .resource_table
+      .get::<WsCancelResource>(cancel_rid)?;
+    Some(r)
+  } else {
+    None
+  };
+
   let unsafely_ignore_certificate_errors = state
     .borrow()
-    .borrow::<UnsafelyIgnoreCertificateErrors>()
-    .0
-    .clone();
+    .try_borrow::<UnsafelyIgnoreCertificateErrors>()
+    .and_then(|it| it.0.clone());
   let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = args.url.parse()?;
@@ -281,11 +308,12 @@ where
     Some("wss") => {
       let tls_config = create_client_config(
         root_cert_store,
-        None,
+        vec![],
         unsafely_ignore_certificate_errors,
+        None,
       )?;
       let tls_connector = TlsConnector::from(Arc::new(tls_config));
-      let dnsname = DNSNameRef::try_from_ascii_str(domain)
+      let dnsname = ServerName::try_from(domain.as_str())
         .map_err(|_| invalid_hostname(domain))?;
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
       MaybeTlsStream::Rustls(tls_socket)
@@ -295,13 +323,9 @@ where
 
   let client = client_async(request, socket);
   let (stream, response): (WsStream, Response) =
-    if let Some(cancel_rid) = args.cancel_handle {
-      let r = state
-        .borrow_mut()
-        .resource_table
-        .get::<WsCancelResource>(cancel_rid)?;
+    if let Some(cancel_resource) = cancel_resource {
       client
-        .or_cancel(r.0.to_owned())
+        .or_cancel(cancel_resource.0.to_owned())
         .await
         .map_err(|_| DomExceptionAbortError::new("connection was aborted"))?
     } else {
@@ -347,29 +371,28 @@ where
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SendArgs {
-  rid: ResourceId,
-  kind: String,
-  text: Option<String>,
+#[serde(tag = "kind", content = "value", rename_all = "camelCase")]
+pub enum SendValue {
+  Text(String),
+  Binary(ZeroCopyBuf),
+  Pong,
 }
 
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
-  args: SendArgs,
-  buf: Option<ZeroCopyBuf>,
+  rid: ResourceId,
+  value: SendValue,
 ) -> Result<(), AnyError> {
-  let msg = match args.kind.as_str() {
-    "text" => Message::Text(args.text.unwrap()),
-    "binary" => Message::Binary(buf.ok_or_else(null_opbuf)?.to_vec()),
-    "pong" => Message::Pong(vec![]),
-    _ => unreachable!(),
+  let msg = match value {
+    SendValue::Text(text) => Message::Text(text),
+    SendValue::Binary(buf) => Message::Binary(buf.to_vec()),
+    SendValue::Pong => Message::Pong(vec![]),
   };
 
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(args.rid)?;
+    .get::<WsStreamResource>(rid)?;
   resource.send(msg).await?;
   Ok(())
 }

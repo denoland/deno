@@ -1,4 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+use crate::flags::CheckFlag;
 use crate::flags::Flags;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
@@ -135,8 +137,59 @@ pub fn infer_name_from_url(url: &Url) -> Option<String> {
       stem = parent_name.to_string_lossy().to_string();
     }
   }
-  let stem = stem.splitn(2, '@').next().unwrap().to_string();
+  let stem = stem.split_once('@').map_or(&*stem, |x| x.0).to_string();
   Some(stem)
+}
+
+pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
+  let root = if let Some(root) = root {
+    canonicalize_path(&root)?
+  } else {
+    get_installer_root()?
+  };
+  let installation_dir = root.join("bin");
+
+  // ensure directory exists
+  if let Ok(metadata) = fs::metadata(&installation_dir) {
+    if !metadata.is_dir() {
+      return Err(generic_error("Installation path is not a directory"));
+    }
+  }
+
+  let mut file_path = installation_dir.join(&name);
+
+  let mut removed = false;
+
+  if file_path.exists() {
+    fs::remove_file(&file_path)?;
+    println!("deleted {}", file_path.to_string_lossy());
+    removed = true
+  };
+
+  if cfg!(windows) {
+    file_path = file_path.with_extension("cmd");
+    if file_path.exists() {
+      fs::remove_file(&file_path)?;
+      println!("deleted {}", file_path.to_string_lossy());
+      removed = true
+    }
+  }
+
+  if !removed {
+    return Err(generic_error(format!("No installation found for {}", name)));
+  }
+
+  // There might be some extra files to delete
+  for ext in ["tsconfig.json", "lock.json"] {
+    file_path = file_path.with_extension(ext);
+    if file_path.exists() {
+      fs::remove_file(&file_path)?;
+      println!("deleted {}", file_path.to_string_lossy());
+    }
+  }
+
+  println!("✅ Successfully uninstalled {}", name);
+  Ok(())
 }
 
 pub fn install(
@@ -216,8 +269,12 @@ pub fn install(
     }
   }
 
-  if flags.no_check {
-    executable_args.push("--no-check".to_string());
+  // we should avoid a default branch here to ensure we continue to cover any
+  // changes to this flag.
+  match flags.check {
+    CheckFlag::All => (),
+    CheckFlag::None => executable_args.push("--no-check".to_string()),
+    CheckFlag::Local => executable_args.push("--no-check=remote".to_string()),
   }
 
   if flags.unstable {
@@ -636,7 +693,7 @@ mod tests {
       Flags {
         allow_net: Some(vec![]),
         allow_read: Some(vec![]),
-        no_check: true,
+        check: CheckFlag::None,
         log_level: Some(Level::Error),
         ..Flags::default()
       },
@@ -925,5 +982,37 @@ mod tests {
 
     let content = fs::read_to_string(file_path).unwrap();
     assert!(content.contains(&expected_string));
+  }
+
+  #[test]
+  fn uninstall_basic() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+
+    let mut file_path = bin_dir.join("echo_test");
+    File::create(&file_path).unwrap();
+    if cfg!(windows) {
+      file_path = file_path.with_extension("cmd");
+      File::create(&file_path).unwrap();
+    }
+
+    // create extra files
+    file_path = file_path.with_extension("tsconfig.json");
+    File::create(&file_path).unwrap();
+    file_path = file_path.with_extension("lock.json");
+    File::create(&file_path).unwrap();
+
+    uninstall("echo_test".to_string(), Some(temp_dir.path().to_path_buf()))
+      .expect("Uninstall failed");
+
+    assert!(!file_path.exists());
+    assert!(!file_path.with_extension("tsconfig.json").exists());
+    assert!(!file_path.with_extension("lock.json").exists());
+
+    if cfg!(windows) {
+      file_path = file_path.with_extension("cmd");
+      assert!(!file_path.exists());
+    }
   }
 }

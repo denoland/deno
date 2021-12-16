@@ -6,7 +6,6 @@ use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
-use std::convert::{TryFrom, TryInto};
 
 use crate::sampler::GpuCompareFunction;
 use crate::texture::GpuTextureFormat;

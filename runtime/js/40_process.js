@@ -15,7 +15,7 @@
   } = window.__bootstrap.primordials;
 
   function opKill(pid, signo) {
-    core.opSync("op_kill", { pid, signo });
+    core.opSync("op_kill", pid, signo);
   }
 
   function opRunStatus(rid) {
@@ -102,6 +102,8 @@
     cwd = undefined,
     clearEnv = false,
     env = {},
+    gid = undefined,
+    uid = undefined,
     stdout = "inherit",
     stderr = "inherit",
     stdin = "inherit",
@@ -114,6 +116,8 @@
       cwd,
       clearEnv,
       env: ObjectEntries(env),
+      gid,
+      uid,
       stdin: isRid(stdin) ? "" : stdin,
       stdout: isRid(stdout) ? "" : stdout,
       stderr: isRid(stderr) ? "" : stderr,

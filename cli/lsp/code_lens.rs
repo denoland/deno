@@ -9,7 +9,6 @@ use super::tsc::NavigationTree;
 
 use deno_ast::swc::ast;
 use deno_ast::swc::common::Span;
-use deno_ast::swc::visit::Node;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
 use deno_ast::ParsedSource;
@@ -25,6 +24,7 @@ use regex::Regex;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
+use std::sync::Arc;
 
 lazy_static::lazy_static! {
   static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
@@ -61,18 +61,15 @@ fn span_to_range(span: &Span, parsed_source: &ParsedSource) -> lsp::Range {
   }
 }
 
-struct DenoTestCollector<'a> {
+struct DenoTestCollector {
   code_lenses: Vec<lsp::CodeLens>,
-  parsed_source: &'a ParsedSource,
+  parsed_source: ParsedSource,
   specifier: ModuleSpecifier,
   test_vars: HashSet<String>,
 }
 
-impl<'a> DenoTestCollector<'a> {
-  pub fn new(
-    specifier: ModuleSpecifier,
-    parsed_source: &'a ParsedSource,
-  ) -> Self {
+impl DenoTestCollector {
+  pub fn new(specifier: ModuleSpecifier, parsed_source: ParsedSource) -> Self {
     Self {
       code_lenses: Vec::new(),
       parsed_source,
@@ -82,7 +79,7 @@ impl<'a> DenoTestCollector<'a> {
   }
 
   fn add_code_lens<N: AsRef<str>>(&mut self, name: N, span: &Span) {
-    let range = span_to_range(span, self.parsed_source);
+    let range = span_to_range(span, &self.parsed_source);
     self.code_lenses.push(lsp::CodeLens {
       range,
       command: Some(lsp::Command {
@@ -130,8 +127,8 @@ impl<'a> DenoTestCollector<'a> {
   }
 }
 
-impl<'a> Visit for DenoTestCollector<'a> {
-  fn visit_call_expr(&mut self, node: &ast::CallExpr, _parent: &dyn Node) {
+impl Visit for DenoTestCollector {
+  fn visit_call_expr(&mut self, node: &ast::CallExpr) {
     if let ast::ExprOrSuper::Expr(callee_expr) = &node.callee {
       match callee_expr.as_ref() {
         ast::Expr::Ident(ident) => {
@@ -157,7 +154,7 @@ impl<'a> Visit for DenoTestCollector<'a> {
     }
   }
 
-  fn visit_var_decl(&mut self, node: &ast::VarDecl, _parent: &dyn Node) {
+  fn visit_var_decl(&mut self, node: &ast::VarDecl) {
     for decl in &node.decls {
       if let Some(init) = &decl.init {
         match init.as_ref() {
@@ -222,9 +219,9 @@ async fn resolve_implementation_code_lens(
   data: CodeLensData,
   language_server: &mut language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
-  let line_index = language_server
-    .get_line_index_sync(&data.specifier)
-    .unwrap();
+  let asset_or_doc =
+    language_server.get_cached_asset_or_document(&data.specifier)?;
+  let line_index = asset_or_doc.line_index();
   let req = tsc::RequestMethod::GetImplementation((
     data.specifier.clone(),
     line_index.offset_tsc(code_lens.range.start)?,
@@ -238,7 +235,7 @@ async fn resolve_implementation_code_lens(
       let implementation_specifier =
         resolve_url(&implementation.document_span.file_name)?;
       let implementation_location =
-        implementation.to_location(&line_index, language_server);
+        implementation.to_location(line_index.clone(), language_server);
       if !(implementation_specifier == data.specifier
         && implementation_location.range.start == code_lens.range.start)
       {
@@ -291,9 +288,9 @@ async fn resolve_references_code_lens(
   data: CodeLensData,
   language_server: &mut language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
-  let line_index = language_server
-    .get_line_index_sync(&data.specifier)
-    .unwrap();
+  let asset_or_document =
+    language_server.get_cached_asset_or_document(&data.specifier)?;
+  let line_index = asset_or_document.line_index();
   let req = tsc::RequestMethod::GetReferences((
     data.specifier.clone(),
     line_index.offset_tsc(code_lens.range.start)?,
@@ -309,9 +306,12 @@ async fn resolve_references_code_lens(
       }
       let reference_specifier =
         resolve_url(&reference.document_span.file_name)?;
-      let line_index =
-        language_server.get_line_index(reference_specifier).await?;
-      locations.push(reference.to_location(&line_index, language_server));
+      let asset_or_doc = language_server
+        .get_asset_or_document(&reference_specifier)
+        .await?;
+      locations.push(
+        reference.to_location(asset_or_doc.line_index(), language_server),
+      );
     }
     let command = if !locations.is_empty() {
       let title = if locations.len() > 1 {
@@ -372,9 +372,9 @@ pub(crate) async fn resolve_code_lens(
 
 pub(crate) async fn collect(
   specifier: &ModuleSpecifier,
-  parsed_source: Option<&ParsedSource>,
+  parsed_source: Option<ParsedSource>,
   config: &Config,
-  line_index: &LineIndex,
+  line_index: Arc<LineIndex>,
   navigation_tree: &NavigationTree,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   let mut code_lenses = collect_test(specifier, parsed_source, config)?;
@@ -393,19 +393,14 @@ pub(crate) async fn collect(
 
 fn collect_test(
   specifier: &ModuleSpecifier,
-  parsed_source: Option<&ParsedSource>,
+  parsed_source: Option<ParsedSource>,
   config: &Config,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   if config.specifier_code_lens_test(specifier) {
     if let Some(parsed_source) = parsed_source {
       let mut collector =
-        DenoTestCollector::new(specifier.clone(), parsed_source);
-      parsed_source.module().visit_with(
-        &ast::Invalid {
-          span: deno_ast::swc::common::DUMMY_SP,
-        },
-        &mut collector,
-      );
+        DenoTestCollector::new(specifier.clone(), parsed_source.clone());
+      parsed_source.module().visit_with(&mut collector);
       return Ok(collector.take());
     }
   }
@@ -416,7 +411,7 @@ fn collect_test(
 async fn collect_tsc(
   specifier: &ModuleSpecifier,
   workspace_settings: &WorkspaceSettings,
-  line_index: &LineIndex,
+  line_index: Arc<LineIndex>,
   navigation_tree: &NavigationTree,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   let code_lenses = Rc::new(RefCell::new(Vec::new()));
@@ -428,7 +423,11 @@ async fn collect_tsc(
       let source = CodeLensSource::Implementations;
       match i.kind {
         tsc::ScriptElementKind::InterfaceElement => {
-          code_lenses.push(i.to_code_lens(line_index, specifier, &source));
+          code_lenses.push(i.to_code_lens(
+            line_index.clone(),
+            specifier,
+            &source,
+          ));
         }
         tsc::ScriptElementKind::ClassElement
         | tsc::ScriptElementKind::MemberFunctionElement
@@ -436,7 +435,11 @@ async fn collect_tsc(
         | tsc::ScriptElementKind::MemberGetAccessorElement
         | tsc::ScriptElementKind::MemberSetAccessorElement => {
           if ABSTRACT_MODIFIER.is_match(&i.kind_modifiers) {
-            code_lenses.push(i.to_code_lens(line_index, specifier, &source));
+            code_lenses.push(i.to_code_lens(
+              line_index.clone(),
+              specifier,
+              &source,
+            ));
           }
         }
         _ => (),
@@ -448,31 +451,51 @@ async fn collect_tsc(
       let source = CodeLensSource::References;
       if let Some(parent) = &mp {
         if parent.kind == tsc::ScriptElementKind::EnumElement {
-          code_lenses.push(i.to_code_lens(line_index, specifier, &source));
+          code_lenses.push(i.to_code_lens(
+            line_index.clone(),
+            specifier,
+            &source,
+          ));
         }
       }
       match i.kind {
         tsc::ScriptElementKind::FunctionElement => {
           if workspace_settings.code_lens.references_all_functions {
-            code_lenses.push(i.to_code_lens(line_index, specifier, &source));
+            code_lenses.push(i.to_code_lens(
+              line_index.clone(),
+              specifier,
+              &source,
+            ));
           }
         }
         tsc::ScriptElementKind::ConstElement
         | tsc::ScriptElementKind::LetElement
         | tsc::ScriptElementKind::VariableElement => {
           if EXPORT_MODIFIER.is_match(&i.kind_modifiers) {
-            code_lenses.push(i.to_code_lens(line_index, specifier, &source));
+            code_lenses.push(i.to_code_lens(
+              line_index.clone(),
+              specifier,
+              &source,
+            ));
           }
         }
         tsc::ScriptElementKind::ClassElement => {
           if i.text != "<class>" {
-            code_lenses.push(i.to_code_lens(line_index, specifier, &source));
+            code_lenses.push(i.to_code_lens(
+              line_index.clone(),
+              specifier,
+              &source,
+            ));
           }
         }
         tsc::ScriptElementKind::InterfaceElement
         | tsc::ScriptElementKind::TypeElement
         | tsc::ScriptElementKind::EnumElement => {
-          code_lenses.push(i.to_code_lens(line_index, specifier, &source));
+          code_lenses.push(i.to_code_lens(
+            line_index.clone(),
+            specifier,
+            &source,
+          ));
         }
         tsc::ScriptElementKind::LocalFunctionElement
         | tsc::ScriptElementKind::MemberGetAccessorElement
@@ -485,8 +508,11 @@ async fn collect_tsc(
                 tsc::ScriptElementKind::ClassElement
                 | tsc::ScriptElementKind::InterfaceElement
                 | tsc::ScriptElementKind::TypeElement => {
-                  code_lenses
-                    .push(i.to_code_lens(line_index, specifier, &source));
+                  code_lenses.push(i.to_code_lens(
+                    line_index.clone(),
+                    specifier,
+                    &source,
+                  ));
                 }
                 _ => (),
               }
@@ -510,27 +536,29 @@ mod tests {
   #[test]
   fn test_deno_test_collector() {
     let specifier = resolve_url("https://deno.land/x/mod.ts").unwrap();
-    let source = r#"
+    let source = Arc::new(
+      r#"
       Deno.test({
         name: "test a",
         fn() {}
       });
 
       Deno.test("test b", function anotherTest() {});
-    "#;
-    let parsed_module = crate::lsp::analysis::parse_module(
-      &specifier,
-      SourceTextInfo::from_string(source.to_string()),
-      MediaType::TypeScript,
-    )
-    .unwrap();
-    let mut collector = DenoTestCollector::new(specifier, &parsed_module);
-    parsed_module.module().visit_with(
-      &ast::Invalid {
-        span: deno_ast::swc::common::DUMMY_SP,
-      },
-      &mut collector,
+    "#
+      .to_string(),
     );
+    let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: specifier.to_string(),
+      source: SourceTextInfo::new(source),
+      media_type: MediaType::TypeScript,
+      capture_tokens: true,
+      scope_analysis: true,
+      maybe_syntax: None,
+    })
+    .unwrap();
+    let mut collector =
+      DenoTestCollector::new(specifier, parsed_module.clone());
+    parsed_module.module().visit_with(&mut collector);
     assert_eq!(
       collector.take(),
       vec![

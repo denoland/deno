@@ -9,7 +9,9 @@
   "json": {
     "deno": true
   },
-  "includes": ["**/*.{ts,tsx,js,jsx,json,md,toml}"],
+  "includes": [
+    "**/*.{ts,tsx,js,jsx,json,md,toml}"
+  ],
   "excludes": [
     ".cargo_home",
     ".git",
@@ -24,6 +26,8 @@
     "cli/tests/testdata/badly_formatted.md",
     "cli/tests/testdata/badly_formatted.json",
     "cli/tests/testdata/byte_order_mark.ts",
+    "cli/tests/testdata/fmt/*",
+    "cli/tests/testdata/test/markdown_windows.md",
     "cli/tsc/*typescript.js",
     "test_util/std",
     "test_util/wpt",
@@ -34,9 +38,9 @@
     "tools/wpt/manifest.json"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.54.0.wasm",
-    "https://plugins.dprint.dev/json-0.13.0.wasm",
-    "https://plugins.dprint.dev/markdown-0.10.0.wasm",
-    "https://plugins.dprint.dev/toml-0.5.1.wasm"
+    "https://plugins.dprint.dev/typescript-0.60.0.wasm",
+    "https://plugins.dprint.dev/json-0.13.2.wasm",
+    "https://plugins.dprint.dev/markdown-0.11.3.wasm",
+    "https://plugins.dprint.dev/toml-0.5.3.wasm"
   ]
 }

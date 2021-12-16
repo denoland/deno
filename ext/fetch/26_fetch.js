@@ -14,6 +14,7 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const { byteLowerCase } = window.__bootstrap.infra;
   const { errorReadableStream } = window.__bootstrap.streams;
   const { InnerBody, extractBody } = window.__bootstrap.fetchBody;
   const {
@@ -36,10 +37,16 @@
     PromisePrototypeThen,
     PromisePrototypeCatch,
     String,
+    StringPrototypeStartsWith,
     StringPrototypeToLowerCase,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
+    WeakMap,
+    WeakMapPrototypeDelete,
+    WeakMapPrototypeGet,
+    WeakMapPrototypeHas,
+    WeakMapPrototypeSet,
   } = window.__bootstrap.primordials;
 
   const REQUEST_BODY_HEADER_NAMES = [
@@ -48,6 +55,8 @@
     "content-location",
     "content-type",
   ];
+
+  const requestBodyReaders = new WeakMap();
 
   /**
    * @param {{ method: string, url: string, headers: [string, string][], clientRid: number | null, hasBody: boolean }} args
@@ -64,24 +73,6 @@
    */
   function opFetchSend(rid) {
     return core.opAsync("op_fetch_send", rid);
-  }
-
-  /**
-   * @param {number} rid
-   * @param {Uint8Array} body
-   * @returns {Promise<void>}
-   */
-  function opFetchRequestWrite(rid, body) {
-    return core.opAsync("op_fetch_request_write", rid, body);
-  }
-
-  /**
-   * @param {number} rid
-   * @param {Uint8Array} body
-   * @returns {Promise<number>}
-   */
-  function opFetchResponseRead(rid, body) {
-    return core.opAsync("op_fetch_response_read", rid, body);
   }
 
   // A finalization registry to clean up underlying fetch resources that are GC'ed.
@@ -113,7 +104,8 @@
           // This is the largest possible size for a single packet on a TLS
           // stream.
           const chunk = new Uint8Array(16 * 1024 + 256);
-          const read = await opFetchResponseRead(
+          // TODO(@AaronO): switch to handle nulls if that's moved to core
+          const read = await core.read(
             responseBodyRid,
             chunk,
           );
@@ -193,6 +185,7 @@
           reqBody = req.body.stream;
         } else {
           const reader = req.body.stream.getReader();
+          WeakMapPrototypeSet(requestBodyReaders, req, reader);
           const r1 = await reader.read();
           if (r1.done) {
             reqBody = new Uint8Array(0);
@@ -201,10 +194,13 @@
             const r2 = await reader.read();
             if (!r2.done) throw new TypeError("Unreachable");
           }
+          WeakMapPrototypeDelete(requestBodyReaders, req);
         }
       } else {
         req.body.streamOrStatic.consumed = true;
         reqBody = req.body.streamOrStatic.body;
+        // TODO(@AaronO): plumb support for StringOrBuffer all the way
+        reqBody = typeof reqBody === "string" ? core.encode(reqBody) : reqBody;
       }
     }
 
@@ -232,6 +228,7 @@
         throw new TypeError("Unreachable");
       }
       const reader = reqBody.getReader();
+      WeakMapPrototypeSet(requestBodyReaders, req, reader);
       (async () => {
         while (true) {
           const { value, done } = await PromisePrototypeCatch(
@@ -248,7 +245,7 @@
           }
           try {
             await PromisePrototypeCatch(
-              opFetchRequestWrite(requestBodyRid, value),
+              core.write(requestBodyRid, value),
               (err) => {
                 if (terminator.aborted) return;
                 throw err;
@@ -260,6 +257,7 @@
             break;
           }
         }
+        WeakMapPrototypeDelete(requestBodyReaders, req);
         core.tryClose(requestBodyRid);
       })();
     }
@@ -335,7 +333,7 @@
   function httpRedirectFetch(request, response, terminator) {
     const locationHeaders = ArrayPrototypeFilter(
       response.headerList,
-      (entry) => entry[0] === "location",
+      (entry) => byteLowerCase(entry[0]) === "location",
     );
     if (locationHeaders.length === 0) {
       return response;
@@ -376,7 +374,7 @@
         if (
           ArrayPrototypeIncludes(
             REQUEST_BODY_HEADER_NAMES,
-            request.headerList[i][0],
+            byteLowerCase(request.headerList[i][0]),
           )
         ) {
           ArrayPrototypeSplice(request.headerList, i, 1);
@@ -398,18 +396,9 @@
    */
   function fetch(input, init = {}) {
     // 1.
-    const p = new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const prefix = "Failed to call 'fetch'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      input = webidl.converters["RequestInfo"](input, {
-        prefix,
-        context: "Argument 1",
-      });
-      init = webidl.converters["RequestInit"](init, {
-        prefix,
-        context: "Argument 2",
-      });
-
       // 2.
       const requestObject = new Request(input, init);
       // 3.
@@ -431,8 +420,8 @@
       }
       requestObject.signal[abortSignal.add](onabort);
 
-      if (!requestObject.headers.has("accept")) {
-        ArrayPrototypePush(request.headerList, ["accept", "*/*"]);
+      if (!requestObject.headers.has("Accept")) {
+        ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
       }
 
       // 12.
@@ -468,12 +457,17 @@
         },
       );
     });
-    return p;
   }
 
   function abortFetch(request, responseObject) {
     const error = new DOMException("Ongoing fetch was aborted.", "AbortError");
-    if (request.body !== null) request.body.cancel(error);
+    if (request.body !== null) {
+      if (WeakMapPrototypeHas(requestBodyReaders, request)) {
+        WeakMapPrototypeGet(requestBodyReaders, request).cancel(error);
+      } else {
+        request.body.cancel(error);
+      }
+    }
     if (responseObject !== null) {
       const response = toInnerResponse(responseObject);
       if (response.body !== null) response.body.error(error);
@@ -488,8 +482,8 @@
    *
    * @param {any} source The source parameter that the WebAssembly
    * streaming API was called with.
-   * @param {number} rid An rid that can be used with
-   * `Deno.core.wasmStreamingFeed`.
+   * @param {number} rid An rid that represents the wasm streaming
+   * resource.
    */
   function handleWasmStreaming(source, rid) {
     // This implements part of
@@ -505,18 +499,25 @@
         // The spec is ambiguous here, see
         // https://github.com/WebAssembly/spec/issues/1138. The WPT tests
         // expect the raw value of the Content-Type attribute lowercased.
-        const contentType = res.headers.get("Content-Type");
-        if (
-          typeof contentType !== "string" ||
-          StringPrototypeToLowerCase(contentType) !== "application/wasm"
-        ) {
-          throw new TypeError("Invalid WebAssembly content type.");
+        // We ignore this for file:// because file fetches don't have a
+        // Content-Type.
+        if (!StringPrototypeStartsWith(res.url, "file://")) {
+          const contentType = res.headers.get("Content-Type");
+          if (
+            typeof contentType !== "string" ||
+            StringPrototypeToLowerCase(contentType) !== "application/wasm"
+          ) {
+            throw new TypeError("Invalid WebAssembly content type.");
+          }
         }
 
         // 2.5.
         if (!res.ok) {
           throw new TypeError(`HTTP status code ${res.status}`);
         }
+
+        // Pass the resolved URL to v8.
+        core.opSync("op_wasm_streaming_set_url", rid, res.url);
 
         // 2.6.
         // Rather than consuming the body as an ArrayBuffer, this passes each
@@ -526,15 +527,15 @@
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            core.wasmStreamingFeed(rid, "bytes", chunk);
+            core.opSync("op_wasm_streaming_feed", rid, chunk);
           }
         }
 
         // 2.7.
-        core.wasmStreamingFeed(rid, "finish");
+        core.close(rid);
       } catch (err) {
         // 2.8 and 3
-        core.wasmStreamingFeed(rid, "abort", err);
+        core.opSync("op_wasm_streaming_abort", rid, err);
       }
     })();
   }

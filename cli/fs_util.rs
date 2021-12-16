@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
-use deno_core::error::Context;
+use deno_core::anyhow::Context;
+use deno_core::error::{uri_error, AnyError};
 pub use deno_core::normalize_path;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
@@ -67,16 +67,52 @@ pub fn write_file_2<T: AsRef<[u8]>>(
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
-  let mut canonicalized_path = path.canonicalize()?;
-  if cfg!(windows) {
-    canonicalized_path = PathBuf::from(
-      canonicalized_path
-        .display()
-        .to_string()
-        .trim_start_matches("\\\\?\\"),
-    );
+  let path = path.canonicalize()?;
+  #[cfg(windows)]
+  return Ok(strip_unc_prefix(path));
+  #[cfg(not(windows))]
+  return Ok(path);
+}
+
+#[cfg(windows)]
+fn strip_unc_prefix(path: PathBuf) -> PathBuf {
+  use std::path::Component;
+  use std::path::Prefix;
+
+  let mut components = path.components();
+  match components.next() {
+    Some(Component::Prefix(prefix)) => {
+      match prefix.kind() {
+        // \\?\device
+        Prefix::Verbatim(device) => {
+          let mut path = PathBuf::new();
+          path.push(format!(r"\\{}\", device.to_string_lossy()));
+          path.extend(components.filter(|c| !matches!(c, Component::RootDir)));
+          path
+        }
+        // \\?\c:\path
+        Prefix::VerbatimDisk(_) => {
+          let mut path = PathBuf::new();
+          path.push(prefix.as_os_str().to_string_lossy().replace(r"\\?\", ""));
+          path.extend(components);
+          path
+        }
+        // \\?\UNC\hostname\share_name\path
+        Prefix::VerbatimUNC(hostname, share_name) => {
+          let mut path = PathBuf::new();
+          path.push(format!(
+            r"\\{}\{}\",
+            hostname.to_string_lossy(),
+            share_name.to_string_lossy()
+          ));
+          path.extend(components.filter(|c| !matches!(c, Component::RootDir)));
+          path
+        }
+        _ => path,
+      }
+    }
+    _ => path,
   }
-  Ok(canonicalized_path)
 }
 
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
@@ -106,7 +142,19 @@ pub fn is_supported_ext_fmt(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
-      "ts" | "tsx" | "js" | "jsx" | "mjs" | "md" | "json" | "jsonc"
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "json"
+        | "jsonc"
+        | "md"
+        | "mkd"
+        | "mkdn"
+        | "mdwn"
+        | "mdown"
+        | "markdown"
     )
   } else {
     false
@@ -143,7 +191,20 @@ pub fn is_supported_test_path(path: &Path) -> bool {
 /// Checks if the path has an extension Deno supports for tests.
 pub fn is_supported_test_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
-    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "md")
+    matches!(
+      ext.as_str(),
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "md"
+        | "mkd"
+        | "mkdn"
+        | "mdwn"
+        | "mdown"
+        | "markdown"
+    )
   } else {
     false
   }
@@ -172,17 +233,14 @@ where
   // retain only the paths which exist and ignore the rest
   let canonicalized_ignore: Vec<PathBuf> = ignore
     .iter()
-    .filter_map(|i| i.canonicalize().ok())
+    .filter_map(|i| canonicalize_path(i).ok())
     .collect();
-
-  let cur_dir = [std::env::current_dir()?];
-  let files = if files.is_empty() { &cur_dir } else { files };
 
   for file in files {
     for entry in WalkDir::new(file)
       .into_iter()
       .filter_entry(|e| {
-        e.path().canonicalize().map_or(false, |c| {
+        canonicalize_path(e.path()).map_or(false, |c| {
           !canonicalized_ignore.iter().any(|i| c.starts_with(i))
         })
       })
@@ -191,7 +249,7 @@ where
         _ => None,
       })
     {
-      target_files.push(entry.into_path().canonicalize()?)
+      target_files.push(canonicalize_path(entry.path())?)
     }
   }
 
@@ -240,14 +298,87 @@ where
   Ok(prepared)
 }
 
-// Asynchronously removes a directory and all its descendants, but does not error
-// when the directory does not exist.
+/// Asynchronously removes a directory and all its descendants, but does not error
+/// when the directory does not exist.
 pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
   let result = tokio::fs::remove_dir_all(path).await;
   match result {
     Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
     _ => result,
   }
+}
+
+/// Attempts to convert a specifier to a file path. By default, uses the Url
+/// crate's `to_file_path()` method, but falls back to try and resolve unix-style
+/// paths on Windows.
+pub fn specifier_to_file_path(
+  specifier: &ModuleSpecifier,
+) -> Result<PathBuf, AnyError> {
+  let result = if cfg!(windows) {
+    match specifier.to_file_path() {
+      Ok(path) => Ok(path),
+      Err(()) => {
+        // This might be a unix-style path which is used in the tests even on Windows.
+        // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
+        // once/if https://github.com/servo/rust-url/issues/730 is implemented.
+        if specifier.scheme() == "file"
+          && specifier.host().is_none()
+          && specifier.port().is_none()
+          && specifier.path_segments().is_some()
+        {
+          let path_str = specifier.path();
+          match String::from_utf8(
+            percent_encoding::percent_decode(path_str.as_bytes()).collect(),
+          ) {
+            Ok(path_str) => Ok(PathBuf::from(path_str)),
+            Err(_) => Err(()),
+          }
+        } else {
+          Err(())
+        }
+      }
+    }
+  } else {
+    specifier.to_file_path()
+  };
+  match result {
+    Ok(path) => Ok(path),
+    Err(()) => Err(uri_error(format!(
+      "Invalid file path.\n  Specifier: {}",
+      specifier
+    ))),
+  }
+}
+
+/// Ensures a specifier that will definitely be a directory has a trailing slash.
+pub fn ensure_directory_specifier(
+  mut specifier: ModuleSpecifier,
+) -> ModuleSpecifier {
+  let path = specifier.path();
+  if !path.ends_with('/') {
+    let new_path = format!("{}/", path);
+    specifier.set_path(&new_path);
+  }
+  specifier
+}
+
+/// Gets the parent of this module specifier.
+pub fn specifier_parent(specifier: &ModuleSpecifier) -> ModuleSpecifier {
+  let mut specifier = specifier.clone();
+  // don't use specifier.segments() because it will strip the leading slash
+  let mut segments = specifier.path().split('/').collect::<Vec<_>>();
+  if segments.iter().all(|s| s.is_empty()) {
+    return specifier;
+  }
+  if let Some(last) = segments.last() {
+    if last.is_empty() {
+      segments.pop();
+    }
+    segments.pop();
+    let new_path = format!("{}/", segments.join("/"));
+    specifier.set_path(&new_path);
+  }
+  specifier
 }
 
 #[cfg(test)]
@@ -320,6 +451,11 @@ mod tests {
     assert!(!is_supported_ext_fmt(Path::new("tests/subdir/redirects")));
     assert!(is_supported_ext_fmt(Path::new("README.md")));
     assert!(is_supported_ext_fmt(Path::new("readme.MD")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mkd")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mkdn")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mdwn")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
+    assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
     assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
     assert!(is_supported_ext_fmt(Path::new("testdata/001_hello.js")));
     assert!(is_supported_ext_fmt(Path::new("testdata/002_hello.ts")));
@@ -342,6 +478,11 @@ mod tests {
     assert!(!is_supported_test_ext(Path::new("tests/subdir/redirects")));
     assert!(is_supported_test_ext(Path::new("README.md")));
     assert!(is_supported_test_ext(Path::new("readme.MD")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mkd")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mkdn")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mdwn")));
+    assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
+    assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
     assert!(is_supported_test_ext(Path::new("lib/typescript.d.ts")));
     assert!(is_supported_test_ext(Path::new("testdata/001_hello.js")));
     assert!(is_supported_test_ext(Path::new("testdata/002_hello.ts")));
@@ -524,5 +665,89 @@ mod tests {
     .collect::<Vec<ModuleSpecifier>>();
 
     assert_eq!(result, expected);
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn test_strip_unc_prefix() {
+    run_test(r"C:\", r"C:\");
+    run_test(r"C:\test\file.txt", r"C:\test\file.txt");
+
+    run_test(r"\\?\C:\", r"C:\");
+    run_test(r"\\?\C:\test\file.txt", r"C:\test\file.txt");
+
+    run_test(r"\\.\C:\", r"\\.\C:\");
+    run_test(r"\\.\C:\Test\file.txt", r"\\.\C:\Test\file.txt");
+
+    run_test(r"\\?\UNC\localhost\", r"\\localhost");
+    run_test(r"\\?\UNC\localhost\c$\", r"\\localhost\c$");
+    run_test(
+      r"\\?\UNC\localhost\c$\Windows\file.txt",
+      r"\\localhost\c$\Windows\file.txt",
+    );
+    run_test(r"\\?\UNC\wsl$\deno.json", r"\\wsl$\deno.json");
+
+    run_test(r"\\?\server1", r"\\server1");
+    run_test(r"\\?\server1\e$\", r"\\server1\e$\");
+    run_test(
+      r"\\?\server1\e$\test\file.txt",
+      r"\\server1\e$\test\file.txt",
+    );
+
+    fn run_test(input: &str, expected: &str) {
+      assert_eq!(
+        strip_unc_prefix(PathBuf::from(input)),
+        PathBuf::from(expected)
+      );
+    }
+  }
+
+  #[test]
+  fn test_specifier_to_file_path() {
+    run_success_test("file:///", "/");
+    run_success_test("file:///test", "/test");
+    run_success_test("file:///dir/test/test.txt", "/dir/test/test.txt");
+    run_success_test(
+      "file:///dir/test%20test/test.txt",
+      "/dir/test test/test.txt",
+    );
+
+    fn run_success_test(specifier: &str, expected_path: &str) {
+      let result =
+        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
+          .unwrap();
+      assert_eq!(result, PathBuf::from(expected_path));
+    }
+  }
+
+  #[test]
+  fn test_ensure_directory_specifier() {
+    run_test("file:///", "file:///");
+    run_test("file:///test", "file:///test/");
+    run_test("file:///test/", "file:///test/");
+    run_test("file:///test/other", "file:///test/other/");
+    run_test("file:///test/other/", "file:///test/other/");
+
+    fn run_test(specifier: &str, expected: &str) {
+      let result =
+        ensure_directory_specifier(ModuleSpecifier::parse(specifier).unwrap());
+      assert_eq!(result.to_string(), expected);
+    }
+  }
+
+  #[test]
+  fn test_specifier_parent() {
+    run_test("file:///", "file:///");
+    run_test("file:///test", "file:///");
+    run_test("file:///test/", "file:///");
+    run_test("file:///test/other", "file:///test/");
+    run_test("file:///test/other.txt", "file:///test/");
+    run_test("file:///test/other/", "file:///test/");
+
+    fn run_test(specifier: &str, expected: &str) {
+      let result =
+        specifier_parent(&ModuleSpecifier::parse(specifier).unwrap());
+      assert_eq!(result.to_string(), expected);
+    }
   }
 }

@@ -31,7 +31,6 @@
     queueMicrotask,
     StringFromCodePoint,
     Symbol,
-    SymbolToStringTag,
     TypedArrayPrototypeSet,
     TypeError,
     Uint8Array,
@@ -41,12 +40,9 @@
   const result = Symbol("[[result]]");
   const error = Symbol("[[error]]");
   const aborted = Symbol("[[aborted]]");
+  const handlerSymbol = Symbol("eventHandlers");
 
   class FileReader extends EventTarget {
-    get [SymbolToStringTag]() {
-      return "FileReader";
-    }
-
     /** @type {"empty" | "loading" | "done"} */
     [state] = "empty";
     /** @type {null | string | ArrayBuffer} */
@@ -263,6 +259,32 @@
       })();
     }
 
+    #getEventHandlerFor(name) {
+      webidl.assertBranded(this, FileReader);
+
+      const maybeMap = this[handlerSymbol];
+      if (!maybeMap) return null;
+
+      return MapPrototypeGet(maybeMap, name)?.handler ?? null;
+    }
+
+    #setEventHandlerFor(name, value) {
+      webidl.assertBranded(this, FileReader);
+
+      if (!this[handlerSymbol]) {
+        this[handlerSymbol] = new Map();
+      }
+      let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
+      if (handlerWrapper) {
+        handlerWrapper.handler = value;
+      } else {
+        handlerWrapper = makeWrappedHandler(value);
+        this.addEventListener(name, handlerWrapper);
+      }
+
+      MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
+    }
+
     constructor() {
       super();
       this[webidl.brand] = webidl.brand;
@@ -345,7 +367,7 @@
     /** @param {Blob} blob */
     readAsDataURL(blob) {
       webidl.assertBranded(this, FileReader);
-      const prefix = "Failed to execute 'readAsBinaryString' on 'FileReader'";
+      const prefix = "Failed to execute 'readAsDataURL' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // alias for readAsArrayBuffer
       this.#readOperation(blob, { kind: "DataUrl" });
@@ -357,7 +379,7 @@
      */
     readAsText(blob, encoding = undefined) {
       webidl.assertBranded(this, FileReader);
-      const prefix = "Failed to execute 'readAsBinaryString' on 'FileReader'";
+      const prefix = "Failed to execute 'readAsText' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       if (encoding !== undefined) {
         encoding = webidl.converters["DOMString"](encoding, {
@@ -367,6 +389,48 @@
       }
       // alias for readAsArrayBuffer
       this.#readOperation(blob, { kind: "Text", encoding });
+    }
+
+    get onerror() {
+      return this.#getEventHandlerFor("error");
+    }
+    set onerror(value) {
+      this.#setEventHandlerFor("error", value);
+    }
+
+    get onloadstart() {
+      return this.#getEventHandlerFor("loadstart");
+    }
+    set onloadstart(value) {
+      this.#setEventHandlerFor("loadstart", value);
+    }
+
+    get onload() {
+      return this.#getEventHandlerFor("load");
+    }
+    set onload(value) {
+      this.#setEventHandlerFor("load", value);
+    }
+
+    get onloadend() {
+      return this.#getEventHandlerFor("loadend");
+    }
+    set onloadend(value) {
+      this.#setEventHandlerFor("loadend", value);
+    }
+
+    get onprogress() {
+      return this.#getEventHandlerFor("progress");
+    }
+    set onprogress(value) {
+      this.#setEventHandlerFor("progress", value);
+    }
+
+    get onabort() {
+      return this.#getEventHandlerFor("abort");
+    }
+    set onabort(value) {
+      this.#setEventHandlerFor("abort", value);
     }
   }
 
@@ -409,8 +473,6 @@
     value: 2,
   });
 
-  const handlerSymbol = Symbol("eventHandlers");
-
   function makeWrappedHandler(handler) {
     function wrappedHandler(...args) {
       if (typeof wrappedHandler.handler !== "function") {
@@ -421,39 +483,6 @@
     wrappedHandler.handler = handler;
     return wrappedHandler;
   }
-  // TODO(benjamingr) reuse when we can reuse code between web crates
-  function defineEventHandler(emitter, name) {
-    // HTML specification section 8.1.5.1
-    ObjectDefineProperty(emitter, `on${name}`, {
-      get() {
-        const maybeMap = this[handlerSymbol];
-        if (!maybeMap) return null;
-
-        return MapPrototypeGet(maybeMap, name)?.handler ?? null;
-      },
-      set(value) {
-        if (!this[handlerSymbol]) {
-          this[handlerSymbol] = new Map();
-        }
-        let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
-        if (handlerWrapper) {
-          handlerWrapper.handler = value;
-        } else {
-          handlerWrapper = makeWrappedHandler(value);
-          this.addEventListener(name, handlerWrapper);
-        }
-        MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
-      },
-      configurable: true,
-      enumerable: true,
-    });
-  }
-  defineEventHandler(FileReader.prototype, "error");
-  defineEventHandler(FileReader.prototype, "loadstart");
-  defineEventHandler(FileReader.prototype, "load");
-  defineEventHandler(FileReader.prototype, "loadend");
-  defineEventHandler(FileReader.prototype, "progress");
-  defineEventHandler(FileReader.prototype, "abort");
 
   window.__bootstrap.fileReader = {
     FileReader,
