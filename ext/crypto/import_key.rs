@@ -1,24 +1,19 @@
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use elliptic_curve::pkcs8::der::Decodable as Pkcs8Decodable;
+use elliptic_curve::pkcs8::PrivateKeyInfo;
+use elliptic_curve::sec1::ToEncodedPoint;
+use p256::pkcs8::FromPrivateKey;
+use p256::pkcs8::ToPrivateKey;
 use rsa::pkcs1::UIntBytes;
 use serde::Deserialize;
 use serde::Serialize;
-use spki::der::Decodable;
 use spki::der::Encodable;
 
 use crate::shared::*;
 use crate::OaepPrivateKeyParameters;
 use crate::PssPrivateKeyParameters;
-
-use p256::elliptic_curve::sec1::ToEncodedPoint;
-use p256::pkcs8::DecodePrivateKey;
-use p256::pkcs8::EncodePrivateKey;
-use pkcs8::der::Decodable as Pkcs8Decodable;
-
-use p256::elliptic_curve::generic_array::typenum::U32;
-use p256::elliptic_curve::generic_array::ArrayLength;
-use p256::elliptic_curve::generic_array::GenericArray;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -256,7 +251,7 @@ fn import_key_rsassa(
     }
     KeyData::Pkcs8(data) => {
       // 2-3.
-      let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(&data)
+      let pk_info = PrivateKeyInfo::from_der(&data)
         .map_err(|e| data_error(e.to_string()))?;
 
       // 4-5.
@@ -407,7 +402,7 @@ fn import_key_rsapss(
     }
     KeyData::Pkcs8(data) => {
       // 2-3.
-      let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(&data)
+      let pk_info = PrivateKeyInfo::from_der(&data)
         .map_err(|e| data_error(e.to_string()))?;
 
       // 4-5.
@@ -586,7 +581,7 @@ fn import_key_rsaoaep(
     }
     KeyData::Pkcs8(data) => {
       // 2-3.
-      let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(&data)
+      let pk_info = PrivateKeyInfo::from_der(&data)
         .map_err(|e| data_error(e.to_string()))?;
 
       // 4-5.
@@ -675,13 +670,17 @@ fn import_key_rsaoaep(
   }
 }
 
-fn decode_b64url_to_gen_array<T: ArrayLength<u8>>(
+fn decode_b64url_to_field_bytes<C: elliptic_curve::Curve>(
   b64: &str,
-) -> Result<GenericArray<u8, T>, deno_core::anyhow::Error> {
+) -> Result<elliptic_curve::FieldBytes<C>, deno_core::anyhow::Error> {
   jwt_b64_int_or_err!(val, b64, "invalid b64 coordinate");
 
-  let mut bytes: GenericArray<u8, T> = GenericArray::default();
-  bytes[..val.as_bytes().len()].copy_from_slice(val.as_bytes());
+  let mut bytes = elliptic_curve::FieldBytes::<C>::default();
+  let val = val.as_bytes();
+  if val.len() != bytes.len() {
+    return Err(data_error("invalid b64 coordinate"));
+  }
+  bytes.copy_from_slice(val);
 
   Ok(bytes)
 }
@@ -693,14 +692,14 @@ fn import_key_ec_jwk_to_point(
 ) -> Result<Vec<u8>, deno_core::anyhow::Error> {
   let point_bytes = match named_curve {
     EcNamedCurve::P256 => {
-      let x = decode_b64url_to_gen_array(&x)?;
-      let y = decode_b64url_to_gen_array(&y)?;
+      let x = decode_b64url_to_field_bytes::<p256::NistP256>(&x)?;
+      let y = decode_b64url_to_field_bytes::<p256::NistP256>(&y)?;
 
       p256::EncodedPoint::from_affine_coordinates(&x, &y, false).to_bytes()
     }
     EcNamedCurve::P384 => {
-      let x = decode_b64url_to_gen_array(&x)?;
-      let y = decode_b64url_to_gen_array(&y)?;
+      let x = decode_b64url_to_field_bytes::<p384::NistP384>(&x)?;
+      let y = decode_b64url_to_field_bytes::<p384::NistP384>(&y)?;
 
       p384::EncodedPoint::from_affine_coordinates(&x, &y, false).to_bytes()
     }
@@ -724,13 +723,11 @@ fn import_key_ec_jwk(
     KeyData::JwkPrivateEc { d, x, y } => {
       let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
 
-      let d = decode_b64url_to_gen_array::<U32>(&d)?;
-
       let secret_key_der = match named_curve {
         EcNamedCurve::P256 => {
-          let secret_key = p256::SecretKey::from_be_bytes(&d)?;
-
-          secret_key.to_pkcs8_der().unwrap()
+          let d = decode_b64url_to_field_bytes::<p256::NistP256>(&d)?;
+          let secret_key = p256::SecretKey::from_bytes(&d)?;
+          ToPrivateKey::to_pkcs8_der(&secret_key).unwrap()
         }
         //@todo(sean) - build p384 secret key from jwk, when crate implements to_pkcs8_der
         //Problem: p384 crate does not implement ProjectiveArithmetic
@@ -768,9 +765,6 @@ fn import_key_ec_jwk(
   }
 }
 
-pub struct ECParametersSpki {
-  pub named_curve_alg: spki::der::asn1::ObjectIdentifier,
-}
 pub struct ECParametersPkcs8 {
   pub named_curve_alg: p256::pkcs8::der::asn1::ObjectIdentifier,
 }
@@ -785,6 +779,10 @@ impl<'a> TryFrom<p256::pkcs8::der::asn1::Any<'a>> for ECParametersPkcs8 {
 
     Ok(Self { named_curve_alg: x })
   }
+}
+
+pub struct ECParametersSpki {
+  pub named_curve_alg: spki::der::asn1::ObjectIdentifier,
 }
 
 impl<'a> TryFrom<spki::der::asn1::Any<'a>> for ECParametersSpki {
@@ -833,13 +831,13 @@ fn import_key_ec(
     }
     KeyData::Pkcs8(data) => {
       // 2-3.
-      let pk_info = pkcs8::PrivateKeyInfo::from_der(&data)
+      let pk_info = PrivateKeyInfo::from_der(&data)
         .map_err(|e| data_error(e.to_string()))?;
 
       // 4-5.
       let alg = pk_info.algorithm.oid;
       // id-ecPublicKey
-      if alg != pkcs8::der::asn1::ObjectIdentifier::new(EC_PUBLIC_KEY_STR) {
+      if alg != elliptic_curve::ALGORITHM_OID {
         return Err(data_error("unsupported algorithm"));
       }
 
@@ -853,11 +851,11 @@ fn import_key_ec(
       .map_err(|_| data_error("malformed parameters"))?;
 
       // 8-9.
-      let pk_named_curve = match params.named_curve_alg.to_string().as_str() {
+      let pk_named_curve = match params.named_curve_alg {
         // id-secp256r1
-        ID_SECP256R1_OID_STR => Some(EcNamedCurve::P256),
+        ID_SECP256R1_OID => Some(EcNamedCurve::P256),
         // id-secp384r1
-        ID_SECP384R1_OID_STR => Some(EcNamedCurve::P384),
+        ID_SECP384R1_OID => Some(EcNamedCurve::P384),
         //ID_SECP521R1_OID_STR => Some(EcNamedCurve::P521),
         _ => None,
       };
@@ -917,7 +915,7 @@ fn import_key_ec(
       // 4.
       let alg = pk_info.algorithm.oid;
       // id-ecPublicKey
-      if alg != spki::ObjectIdentifier::new(EC_PUBLIC_KEY_STR) {
+      if alg != elliptic_curve::ALGORITHM_OID {
         return Err(data_error("unsupported algorithm"));
       }
 
@@ -932,11 +930,11 @@ fn import_key_ec(
 
       // 8-9.
       let named_curve_alg = params.named_curve_alg;
-      let pk_named_curve = match named_curve_alg.to_string().as_str() {
+      let pk_named_curve = match named_curve_alg {
         // id-secp256r1
-        ID_SECP256R1_OID_STR => Some(EcNamedCurve::P256),
+        ID_SECP256R1_OID => Some(EcNamedCurve::P256),
         // id-secp384r1
-        ID_SECP384R1_OID_STR => Some(EcNamedCurve::P384),
+        ID_SECP384R1_OID => Some(EcNamedCurve::P384),
         //ID_SECP521R1_OID => Some(EcNamedCurve::P521),
         _ => None,
       };

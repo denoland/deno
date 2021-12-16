@@ -20,7 +20,7 @@ use block_modes::BlockMode;
 use lazy_static::lazy_static;
 use num_traits::cast::FromPrimitive;
 use p256::elliptic_curve::sec1::FromEncodedPoint;
-use p256::pkcs8::DecodePrivateKey;
+use p256::pkcs8::FromPrivateKey;
 use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
@@ -553,7 +553,7 @@ pub async fn op_crypto_derive_bits(
           };
 
           let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
-            secret_key.to_nonzero_scalar(),
+            secret_key.to_secret_scalar(),
             public_key.as_affine(),
           );
 
