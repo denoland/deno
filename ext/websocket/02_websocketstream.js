@@ -147,7 +147,7 @@
               ? ArrayPrototypeJoin(options.protocols, ", ")
               : "",
             cancelHandle: cancelRid,
-            headers: options.headers,
+            headers: [...new Headers(options.headers).entries()],
           }),
           (create) => {
             options.signal?.[remove](abort);
