@@ -703,6 +703,7 @@ fn import_key_ec_jwk_to_point(
 
       p384::EncodedPoint::from_affine_coordinates(&x, &y, false).to_bytes()
     }
+    _ => return Err(not_supported_error("Unsupported named curve")),
   };
 
   Ok(point_bytes.to_vec())
@@ -736,9 +737,7 @@ fn import_key_ec_jwk(
 
           secret_key.to_pkcs8_der().unwrap()
         }*/
-        _ => {
-          return Err(data_error("Unsupported namedCurve"));
-        }
+        _ => return Err(not_supported_error("Unsupported named curve")),
       };
 
       let oid =
@@ -824,6 +823,7 @@ fn import_key_ec(
             return Err(data_error("invalid P-384 eliptic curve point"));
           }
         }
+        _ => return Err(not_supported_error("Unsupported named curve")),
       };
       Ok(ImportKeyResult::Ec {
         raw_data: RawKeyData::Public(data),
@@ -856,7 +856,8 @@ fn import_key_ec(
         ID_SECP256R1_OID => Some(EcNamedCurve::P256),
         // id-secp384r1
         ID_SECP384R1_OID => Some(EcNamedCurve::P384),
-        //ID_SECP521R1_OID_STR => Some(EcNamedCurve::P521),
+        // id-secp384r1
+        ID_SECP521R1_OID => Some(EcNamedCurve::P521),
         _ => None,
       };
 
@@ -891,16 +892,14 @@ fn import_key_ec(
               return Err(type_error("Invalid key data".to_string()));
             }
           }*/
-          _ => {
-            return Err(data_error("Unsupported namedCurve"));
-          }
+          _ => return Err(data_error("Unsupported named curve")),
         }
         // 11.
         if named_curve != pk_named_curve {
           return Err(data_error("curve mismatch"));
         }
       } else {
-        return Err(data_error("unsupported named curve"));
+        return Err(data_error("Unsupported named curve"));
       }
 
       Ok(ImportKeyResult::Ec {
@@ -972,6 +971,7 @@ fn import_key_ec(
 
             point.as_bytes().len()
           }
+          _ => return Err(not_supported_error("Unsupported named curve")),
         };
 
         if bytes_consumed != pk_info.subject_public_key.len() {
@@ -983,7 +983,7 @@ fn import_key_ec(
           return Err(data_error("curve mismatch"));
         }
       } else {
-        return Err(data_error("unsupported named curve"));
+        return Err(data_error("Unsupported named curve"));
       }
 
       Ok(ImportKeyResult::Ec {

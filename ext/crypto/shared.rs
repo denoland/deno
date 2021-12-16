@@ -41,6 +41,8 @@ pub const ID_SECP256R1_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new("1.2.840.10045.3.1.7");
 pub const ID_SECP384R1_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new("1.3.132.0.34");
+pub const ID_SECP521R1_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("1.3.132.0.35");
 
 #[derive(Serialize, Deserialize, Copy, Clone, PartialEq)]
 pub enum ShaHash {
@@ -60,8 +62,8 @@ pub enum EcNamedCurve {
   P256,
   #[serde(rename = "P-384")]
   P384,
-  //#[serde(rename = "P-521")]
-  //P521,
+  #[serde(rename = "P-521")]
+  P521,
 }
 
 #[derive(Serialize, Deserialize)]

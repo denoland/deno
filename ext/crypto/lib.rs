@@ -539,7 +539,7 @@ pub async fn op_crypto_derive_bits(
                 })?;
 
               let pk: Option<p256::PublicKey> =
-                p256::PublicKey::from_encoded_point(&point).into();
+                p256::PublicKey::from_encoded_point(&point);
 
               if let Some(pk) = pk {
                 pk
