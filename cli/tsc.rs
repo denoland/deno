@@ -352,6 +352,24 @@ struct LoadArgs {
   specifier: String,
 }
 
+fn as_ts_script_kind(media_type: &MediaType) -> i32 {
+  match media_type {
+    MediaType::JavaScript => 1,
+    MediaType::Jsx => 2,
+    MediaType::Mjs => 1,
+    MediaType::Cjs => 1,
+    MediaType::TypeScript => 3,
+    MediaType::Mts => 3,
+    MediaType::Cts => 3,
+    MediaType::Dts => 3,
+    MediaType::Dmts => 3,
+    MediaType::Dcts => 3,
+    MediaType::Tsx => 4,
+    MediaType::Json => 6,
+    _ => 0,
+  }
+}
+
 fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: LoadArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_load\".")?;
@@ -395,7 +413,7 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   };
 
   Ok(
-    json!({ "data": data, "hash": hash, "scriptKind": media_type.as_ts_script_kind() }),
+    json!({ "data": data, "hash": hash, "scriptKind": as_ts_script_kind(&media_type) }),
   )
 }
 

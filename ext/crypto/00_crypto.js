@@ -1873,10 +1873,11 @@
       case "jwk": {
         // 1.
         const jwk = keyData;
+
         // 2.
         if (jwk.kty !== "oct") {
           throw new DOMException(
-            "`kty` member of JsonWebKey must be `oct`",
+            "'kty' property of JsonWebKey must be 'oct'",
             "DataError",
           );
         }
@@ -1884,7 +1885,7 @@
         // Section 6.4.1 of RFC7518
         if (jwk.k === undefined) {
           throw new DOMException(
-            "`k` member of JsonWebKey must be present",
+            "'k' property of JsonWebKey must be present",
             "DataError",
           );
         }
@@ -1931,13 +1932,15 @@
         }
 
         // 6.
-        if (keyUsages.length > 0 && jwk.use && jwk.use !== "enc") {
+        if (
+          keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "enc"
+        ) {
           throw new DOMException("Invalid key usages", "DataError");
         }
 
         // 7.
         // Section 4.3 of RFC7517
-        if (jwk.key_ops) {
+        if (jwk.key_ops !== undefined) {
           if (
             ArrayPrototypeFind(
               jwk.key_ops,
@@ -1945,7 +1948,7 @@
             ) !== undefined
           ) {
             throw new DOMException(
-              "`key_ops` member of JsonWebKey is invalid",
+              "'key_ops' property of JsonWebKey is invalid",
               "DataError",
             );
           }
@@ -1957,16 +1960,16 @@
             )
           ) {
             throw new DOMException(
-              "`key_ops` member of JsonWebKey is invalid",
+              "'key_ops' property of JsonWebKey is invalid",
               "DataError",
             );
           }
         }
 
         // 8.
-        if (jwk.ext === false && extractable == true) {
+        if (jwk.ext === false && extractable === true) {
           throw new DOMException(
-            "`ext` member of JsonWebKey is invalid",
+            "'ext' property of JsonWebKey must not be false if extractable is true",
             "DataError",
           );
         }
@@ -2030,21 +2033,20 @@
         break;
       }
       case "jwk": {
-        // TODO(@littledivy): Why does the spec validate JWK twice?
         const jwk = keyData;
 
         // 2.
         if (jwk.kty !== "oct") {
           throw new DOMException(
-            "`kty` member of JsonWebKey must be `oct`",
+            "'kty' property of JsonWebKey must be 'oct'",
             "DataError",
           );
         }
 
         // Section 6.4.1 of RFC7518
-        if (!jwk.k) {
+        if (jwk.k === undefined) {
           throw new DOMException(
-            "`k` member of JsonWebKey must be present",
+            "'k' property of JsonWebKey must be present",
             "DataError",
           );
         }
@@ -2065,7 +2067,7 @@
           case "SHA-1": {
             if (jwk.alg !== undefined && jwk.alg !== "HS1") {
               throw new DOMException(
-                "`alg` member of JsonWebKey must be `HS1`",
+                "'alg' property of JsonWebKey must be 'HS1'",
                 "DataError",
               );
             }
@@ -2074,7 +2076,7 @@
           case "SHA-256": {
             if (jwk.alg !== undefined && jwk.alg !== "HS256") {
               throw new DOMException(
-                "`alg` member of JsonWebKey must be `HS256`",
+                "'alg' property of JsonWebKey must be 'HS256'",
                 "DataError",
               );
             }
@@ -2083,7 +2085,7 @@
           case "SHA-384": {
             if (jwk.alg !== undefined && jwk.alg !== "HS384") {
               throw new DOMException(
-                "`alg` member of JsonWebKey must be `HS384`",
+                "'alg' property of JsonWebKey must be 'HS384'",
                 "DataError",
               );
             }
@@ -2092,7 +2094,7 @@
           case "SHA-512": {
             if (jwk.alg !== undefined && jwk.alg !== "HS512") {
               throw new DOMException(
-                "`alg` member of JsonWebKey must be `HS512`",
+                "'alg' property of JsonWebKey must be 'HS512'",
                 "DataError",
               );
             }
@@ -2103,16 +2105,18 @@
         }
 
         // 7.
-        if (keyUsages.length > 0 && jwk.use && jwk.use !== "sign") {
+        if (
+          keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sign"
+        ) {
           throw new DOMException(
-            "`use` member of JsonWebKey must be `sign`",
+            "'use' property of JsonWebKey must be 'sign'",
             "DataError",
           );
         }
 
         // 8.
         // Section 4.3 of RFC7517
-        if (jwk.key_ops) {
+        if (jwk.key_ops !== undefined) {
           if (
             ArrayPrototypeFind(
               jwk.key_ops,
@@ -2120,7 +2124,7 @@
             ) !== undefined
           ) {
             throw new DOMException(
-              "`key_ops` member of JsonWebKey is invalid",
+              "'key_ops' property of JsonWebKey is invalid",
               "DataError",
             );
           }
@@ -2132,16 +2136,16 @@
             )
           ) {
             throw new DOMException(
-              "`key_ops` member of JsonWebKey is invalid",
+              "'key_ops' property of JsonWebKey is invalid",
               "DataError",
             );
           }
         }
 
         // 9.
-        if (jwk.ext === false && extractable == true) {
+        if (jwk.ext === false && extractable === true) {
           throw new DOMException(
-            "`ext` member of JsonWebKey is invalid",
+            "'ext' property of JsonWebKey must not be false if extractable is true",
             "DataError",
           );
         }
@@ -2651,19 +2655,17 @@
           ) {
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
-        } else {
-          if (
-            ArrayPrototypeFind(
-              keyUsages,
-              (u) =>
-                !ArrayPrototypeIncludes(
-                  SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].public,
-                  u,
-                ),
-            ) !== undefined
-          ) {
-            throw new DOMException("Invalid key usages", "SyntaxError");
-          }
+        } else if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) =>
+              !ArrayPrototypeIncludes(
+                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].public,
+                u,
+              ),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
         }
 
         // 3.

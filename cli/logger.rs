@@ -1,13 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Write;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-
-lazy_static::lazy_static! {
-  pub static ref LSP_DEBUG_FLAG: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-}
 
 struct CliLogger(env_logger::Logger);
 
@@ -23,13 +16,7 @@ impl CliLogger {
 
 impl log::Log for CliLogger {
   fn enabled(&self, metadata: &log::Metadata) -> bool {
-    if metadata.target() == "deno::lsp::performance"
-      && metadata.level() == log::Level::Debug
-    {
-      LSP_DEBUG_FLAG.load(Ordering::Relaxed)
-    } else {
-      self.0.enabled(metadata)
-    }
+    self.0.enabled(metadata)
   }
 
   fn log(&self, record: &log::Record) {

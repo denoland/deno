@@ -1044,22 +1044,39 @@ impl UnaryPermission<FfiDescriptor> {
     self.query(path)
   }
 
-  pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
-    let (resolved_path, display_path) = resolved_and_display_path(path);
-    let (result, prompted) = self.query(Some(&resolved_path)).check(
-      self.name,
-      Some(&format!("\"{}\"", display_path.display())),
-      self.prompt,
-    );
-    if prompted {
-      if result.is_ok() {
-        self.granted_list.insert(FfiDescriptor(resolved_path));
-      } else {
-        self.denied_list.insert(FfiDescriptor(resolved_path));
-        self.global_state = PermissionState::Denied;
+  pub fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    if let Some(path) = path {
+      let (resolved_path, display_path) = resolved_and_display_path(path);
+      let (result, prompted) = self.query(Some(&resolved_path)).check(
+        self.name,
+        Some(&format!("\"{}\"", display_path.display())),
+        self.prompt,
+      );
+
+      if prompted {
+        if result.is_ok() {
+          self.granted_list.insert(FfiDescriptor(resolved_path));
+        } else {
+          self.denied_list.insert(FfiDescriptor(resolved_path));
+          self.global_state = PermissionState::Denied;
+        }
       }
+
+      result
+    } else {
+      let (result, prompted) =
+        self.query(None).check(self.name, None, self.prompt);
+
+      if prompted {
+        if result.is_ok() {
+          self.global_state = PermissionState::Granted;
+        } else {
+          self.global_state = PermissionState::Denied;
+        }
+      }
+
+      result
     }
-    result
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
@@ -1314,7 +1331,7 @@ impl deno_websocket::WebSocketPermissions for Permissions {
 }
 
 impl deno_ffi::FfiPermissions for Permissions {
-  fn check(&mut self, path: &Path) -> Result<(), AnyError> {
+  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
     self.ffi.check(path)
   }
 }
@@ -1740,7 +1757,7 @@ pub fn create_child_permissions(
         .ffi
         .granted_list
         .iter()
-        .all(|desc| main_perms.ffi.check(&desc.0).is_ok())
+        .all(|desc| main_perms.ffi.check(Some(&desc.0)).is_ok())
       {
         return Err(escalation_error());
       }
