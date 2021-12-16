@@ -668,14 +668,22 @@ where
 
 pub async fn op_set_nodelay<NP>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  nodelay: bool,
+  args: NoDelayArgs,
+  _: (),
 ) -> Result<(), AnyError> {
+  let rid = args.rid;
+  let nodelay = args.nodelay;
   let resource: Rc<TcpStreamResource> = state
     .borrow_mut()
     .resource_table
     .get::<TcpStreamResource>(rid)?;
   resource.set_nodelay(nodelay).await
+}
+
+#[derive(Deserialize)]
+pub struct NoDelayArgs {
+  rid: ResourceId,
+  nodelay: bool,
 }
 
 fn rdata_to_return_record(
