@@ -2,14 +2,14 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use elliptic_curve::sec1::ToEncodedPoint;
+use p256::pkcs8::FromPrivateKey;
 use rsa::pkcs1::UIntBytes;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::asn1;
 use spki::der::Decodable;
 use spki::der::Encodable;
-use p256::pkcs8::FromPrivateKey;
-use elliptic_curve::sec1::ToEncodedPoint;
 
 use crate::shared::*;
 
@@ -199,36 +199,30 @@ fn export_key_ec(
 ) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
   match format {
     ExportKeyFormat::Spki => {
-      /*let point = match key_data {
-        RawKeyData::Public(data) => {
-          // public_key is a serialized EncodedPoint
-          p256::EncodedPoint::from_bytes(&data)
-            .map_err(|_| data_error("EC PublicKey format error"))?
+      let subject_public_key = match named_curve {
+        EcNamedCurve::P256 => {
+          let point = key_data.as_ec_public_key_p256()?;
+
+          point.as_ref().to_vec()
         }
-        _ => unreachable!(),
-      };*/
+        EcNamedCurve::P384 => {
+          let point = key_data.as_ec_public_key_p384()?;
 
-      let point = key_data.as_ec_public_key()?;
+          point.as_ref().to_vec()
+        }
+      };
 
-      let oid =
-        <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::OID;
-      let oid_bytes = spki::der::asn1::Any::new(
-        spki::der::Tag::ObjectIdentifier,
-        oid.as_bytes(),
-      )
-      .unwrap();
+      let alg_id = match named_curve {
+        EcNamedCurve::P256 => <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::algorithm_identifier(),
+        EcNamedCurve::P384 => <p384::NistP384 as p384::elliptic_curve::AlgorithmParameters>::algorithm_identifier(),
+      };
 
       // the SPKI structure
       let key_info = spki::SubjectPublicKeyInfo {
-        algorithm: spki::AlgorithmIdentifier {
-          // ecPublicKey(1)
-          oid: "1.2.840.10045.2.1".parse().unwrap(),
-          parameters: Some(oid_bytes),
-        },
-        subject_public_key: point.as_ref(),
+        algorithm: alg_id,
+        subject_public_key: &subject_public_key,
       };
 
-      // Infallible based on spec because of the way we import and generate keys.
       let spki_der = key_info.to_vec().unwrap();
 
       Ok(ExportKeyResult::Spki(spki_der.into()))
@@ -236,31 +230,47 @@ fn export_key_ec(
     ExportKeyFormat::Pkcs8 => {
       // private_key is a PKCS#8 DER-encoded private key
       let private_key = key_data.as_ec_private_key()?;
-      /*let private_key = match key_data {
-        RawKeyData::Private(data) => data,
-        _ => unreachable!(),
-      };*/
 
       Ok(ExportKeyResult::Pkcs8(private_key.to_vec().into()))
     }
-    ExportKeyFormat::JwkPublic => {
-      let point = key_data.as_ec_public_key()?;
-      let coords = point.coordinates();
+    ExportKeyFormat::JwkPublic => match named_curve {
+      EcNamedCurve::P256 => {
+        let point = key_data.as_ec_public_key_p256()?;
+        let coords = point.coordinates();
 
-      if let p256::elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
-        coords
-      {
-        Ok(ExportKeyResult::JwkPublicEc {
-          x: bytes_to_b64(x.to_vec()),
-          y: bytes_to_b64(y.to_vec()),
-        })
-      } else {
-        Err(custom_error(
-          "DOMExceptionOperationError",
-          "failed to decode public key",
-        ))
+        if let p256::elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
+          coords
+        {
+          Ok(ExportKeyResult::JwkPublicEc {
+            x: bytes_to_b64(x.to_vec()),
+            y: bytes_to_b64(y.to_vec()),
+          })
+        } else {
+          Err(custom_error(
+            "DOMExceptionOperationError",
+            "failed to decode public key",
+          ))
+        }
       }
-    }
+      EcNamedCurve::P384 => {
+        let point = key_data.as_ec_public_key_p384()?;
+        let coords = point.coordinates();
+
+        if let p384::elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
+          coords
+        {
+          Ok(ExportKeyResult::JwkPublicEc {
+            x: bytes_to_b64(x.to_vec()),
+            y: bytes_to_b64(y.to_vec()),
+          })
+        } else {
+          Err(custom_error(
+            "DOMExceptionOperationError",
+            "failed to decode public key",
+          ))
+        }
+      }
+    },
     ExportKeyFormat::JwkPrivate => {
       let private_key = key_data.as_ec_private_key()?;
 
@@ -297,6 +307,7 @@ fn export_key_ec(
         }
       };
 
+      // Code only for p256 .. clean up after P384 implemented above ...
       let pk = public_key.as_affine().to_encoded_point(false);
       let coords = pk.coordinates();
 
