@@ -96,25 +96,23 @@ Deno.test("aborting immediately throws an AbortError", async () => {
 });
 
 Deno.test("headers", async () => {
+  const listener = Deno.listen({ port: 4501 });
   const promise = (async () => {
-    const listener = Deno.listen({ port: 4501 });
-    for await (const conn of listener) {
-      const httpConn = Deno.serveHttp(conn);
-      const { request, respondWith } = (await httpConn.nextRequest())!;
-      assertEquals(request.headers.get("x-some-header"), "foo");
-      const {
-        response,
-        socket,
-      } = Deno.upgradeWebSocket(request);
-      socket.onopen = () => socket.close();
-      await respondWith(response);
-      break;
-    }
+    const httpConn = Deno.serveHttp(await listener.accept());
+    const { request, respondWith } = (await httpConn.nextRequest())!;
+    assertEquals(request.headers.get("x-some-header"), "foo");
+    const {
+      response,
+      socket,
+    } = Deno.upgradeWebSocket(request);
+    socket.onopen = () => socket.close();
+    await respondWith(response);
   })();
 
   const ws = new WebSocketStream("ws://localhost:4501", {
     headers: [["x-some-header", "foo"]],
   });
-  await ws.closed;
   await promise;
+  await ws.closed;
+  listener.close();
 });
