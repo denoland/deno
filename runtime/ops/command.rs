@@ -56,21 +56,28 @@ impl Resource for CommandResource {
   }
 }
 
-fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
+fn subprocess_stdio_map(s: &Stdio) -> Result<std::process::Stdio, AnyError> {
   match s {
-    "inherit" => Ok(std::process::Stdio::inherit()),
-    "piped" => Ok(std::process::Stdio::piped()),
-    "null" => Ok(std::process::Stdio::null()),
-    _ => Err(type_error("Invalid resource for stdio")),
+    Stdio::Inherit => Ok(std::process::Stdio::inherit()),
+    Stdio::Piped => Ok(std::process::Stdio::piped()),
+    Stdio::Null => Ok(std::process::Stdio::null()),
   }
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub enum Stdio {
+  Inherit,
+  Piped,
+  Null,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommandIoArgs {
-  stdin: Option<String>,
-  stdout: Option<String>,
-  stderr: Option<String>,
+  stdin: Option<Stdio>,
+  stdout: Option<Stdio>,
+  stderr: Option<Stdio>,
 }
 
 fn handle_io_args(
