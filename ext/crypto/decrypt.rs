@@ -93,11 +93,9 @@ fn decrypt_rsa_oaep(
     },
   };
 
-  Ok(
-    private_key
-      .decrypt(padding, data)
-      .map_err(|e| custom_error("DOMExceptionOperationError", e.to_string()))?,
-  )
+  private_key
+    .decrypt(padding, data)
+    .map_err(|e| custom_error("DOMExceptionOperationError", e.to_string()))
 }
 
 fn decrypt_aes_cbc(
