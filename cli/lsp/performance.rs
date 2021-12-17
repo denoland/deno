@@ -4,7 +4,6 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
-use log::debug;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -12,6 +11,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+
+use super::logging::lsp_debug;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -156,7 +157,7 @@ impl Performance {
         "name": name,
       })
     };
-    debug!("{},", msg);
+    lsp_debug!("{},", msg);
     PerformanceMark {
       name: name.to_string(),
       count: *count,
@@ -169,7 +170,7 @@ impl Performance {
   /// measurement to the internal buffer.
   pub fn measure(&self, mark: PerformanceMark) -> Duration {
     let measure = PerformanceMeasure::from(mark);
-    debug!(
+    lsp_debug!(
       "{},",
       json!({
         "type": "measure",

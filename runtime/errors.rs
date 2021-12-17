@@ -158,7 +158,6 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| deno_web::get_error_class_name(e))
     .or_else(|| deno_webstorage::get_not_supported_error_class_name(e))
     .or_else(|| deno_websocket::get_network_error_class_name(e))
-    .or_else(|| deno_websocket::get_abort_error_class_name(e))
     .or_else(|| {
       e.downcast_ref::<dlopen::Error>()
         .map(get_dlopen_error_class)

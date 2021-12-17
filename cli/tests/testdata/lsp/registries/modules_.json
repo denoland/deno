@@ -1,0 +1,8 @@
+{
+  "items": [
+    "a",
+    "b"
+  ],
+  "isIncomplete": true,
+  "preselect": "a"
+}

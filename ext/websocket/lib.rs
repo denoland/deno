@@ -298,10 +298,7 @@ where
   let client = client_async(request, socket);
   let (stream, response): (WsStream, Response) =
     if let Some(cancel_resource) = cancel_resource {
-      client
-        .or_cancel(cancel_resource.0.to_owned())
-        .await
-        .map_err(|_| DomExceptionAbortError::new("connection was aborted"))?
+      client.or_cancel(cancel_resource.0.to_owned()).await?
     } else {
       client.await
     }
@@ -507,30 +504,4 @@ impl std::error::Error for DomExceptionNetworkError {}
 pub fn get_network_error_class_name(e: &AnyError) -> Option<&'static str> {
   e.downcast_ref::<DomExceptionNetworkError>()
     .map(|_| "DOMExceptionNetworkError")
-}
-
-#[derive(Debug)]
-pub struct DomExceptionAbortError {
-  pub msg: String,
-}
-
-impl DomExceptionAbortError {
-  pub fn new(msg: &str) -> Self {
-    DomExceptionAbortError {
-      msg: msg.to_string(),
-    }
-  }
-}
-
-impl fmt::Display for DomExceptionAbortError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.pad(&self.msg)
-  }
-}
-
-impl std::error::Error for DomExceptionAbortError {}
-
-pub fn get_abort_error_class_name(e: &AnyError) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionAbortError>()
-    .map(|_| "DOMExceptionAbortError")
 }

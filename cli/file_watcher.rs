@@ -21,6 +21,7 @@ use tokio::select;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 
+const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
 
 struct DebouncedReceiver {
@@ -90,6 +91,8 @@ where
         paths_to_watch,
         result,
       } => {
+        // Clear screen first
+        eprint!("{}", CLEAR_SCREEN);
         info!(
           "{} File change detected! Restarting!",
           colors::intense_blue("Watcher"),
@@ -155,6 +158,10 @@ where
       resolution_result = result;
     }
   };
+
+  // Clear screen first
+  eprint!("{}", CLEAR_SCREEN);
+  info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
   loop {
     let watcher = new_watcher(&paths_to_watch, sender.clone())?;
