@@ -3183,7 +3183,7 @@
 
         // 2.
         // We only support 96-bit nonce for now.
-        if (normalizedAlgorithm.iv.byteLength !== 16) {
+        if (normalizedAlgorithm.iv.byteLength !== 12) {
           throw new DOMException(
             "Initialization vector length not supported",
             "NotSupportedError",

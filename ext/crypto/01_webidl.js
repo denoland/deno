@@ -401,7 +401,7 @@
     {
       key: "additionalData",
       converter: webidl.converters["BufferSource"],
-    }
+    },
   ];
 
   webidl.converters.AesDerivedKeyParams = webidl
