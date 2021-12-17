@@ -16,7 +16,6 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
-use block_modes::BlockMode;
 use lazy_static::lazy_static;
 use num_traits::cast::FromPrimitive;
 use p256::elliptic_curve::sec1::FromEncodedPoint;
@@ -55,19 +54,19 @@ use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
-mod encrypt;
 mod decrypt;
+mod encrypt;
 mod export_key;
 mod generate_key;
 mod import_key;
 mod key;
 mod shared;
 
+pub use crate::decrypt::op_crypto_decrypt;
 pub use crate::encrypt::op_crypto_encrypt;
 pub use crate::export_key::op_crypto_export_key;
 pub use crate::generate_key::op_crypto_generate_key;
 pub use crate::import_key::op_crypto_import_key;
-pub use crate::decrypt::op_crypto_decrypt;
 use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
@@ -101,7 +100,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_import_key", op_sync(op_crypto_import_key)),
       ("op_crypto_export_key", op_sync(op_crypto_export_key)),
       ("op_crypto_encrypt", op_async(op_crypto_encrypt)),
-      ("op_crypto_decrypt_key", op_async(op_crypto_decrypt_key)),
+      ("op_crypto_decrypt_key", op_async(op_crypto_decrypt)),
       ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
       ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
     ])
