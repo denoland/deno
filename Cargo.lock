@@ -776,6 +776,7 @@ dependencies = [
  "cache_control",
  "chrono",
  "clap",
+ "data-encoding",
  "data-url",
  "deno_ast",
  "deno_broadcast_channel",

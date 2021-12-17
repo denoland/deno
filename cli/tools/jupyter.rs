@@ -2,12 +2,14 @@
 
 use crate::flags::Flags;
 use crate::flags::JupyterFlags;
+use data_encoding::HEXLOWER;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use ring::hmac;
 use std::env::current_exe;
 use tempfile::TempDir;
 use tokio::join;
@@ -448,4 +450,399 @@ fn parse_zmq_packet(data: &ZmqMessage) -> Result<(), AnyError> {
   // validate_header(&header_value)?;
 
   Ok(())
+}
+
+#[allow(dead_code)]
+fn hmac_sign(zmq: &ZmqMessage, key: hmac::Key) -> String {
+    let mut hmac_ctx = hmac::Context::with_key(&key);
+    hmac_ctx.update(zmq.get(2).unwrap()); // header
+    hmac_ctx.update(zmq.get(3).unwrap()); // parent header
+    hmac_ctx.update(zmq.get(4).unwrap()); // metadata
+    hmac_ctx.update(zmq.get(5).unwrap()); // content
+    let tag = hmac_ctx.sign();
+    dbg!(tag);
+    let sig = HEXLOWER.encode(tag.as_ref());
+
+    return sig;
+}
+
+#[allow(dead_code)]
+fn hmac_verify(
+    zmq: &ZmqMessage,
+    key: hmac::Key,
+    sig_str: String,
+) -> Result<(), ring::error::Unspecified> {
+    dbg!(&zmq);
+    let mut msg = Vec::<u8>::new();
+    msg.extend(zmq.get(2).unwrap()); // header
+    msg.extend(zmq.get(3).unwrap()); // parent header
+    msg.extend(zmq.get(4).unwrap()); // metadata
+    msg.extend(zmq.get(5).unwrap()); // content
+    let sig = HEXLOWER.decode(sig_str.as_bytes()).unwrap();
+    hmac::verify(&key, &msg.as_ref(), &sig.as_ref())?;
+
+    Ok(())
+}
+
+#[test]
+fn hmac_verify_test() {
+    let key_value = "1f5cec86-8eaa942eef7f5a35b51ddcf5";
+    let key = hmac::Key::new(hmac::HMAC_SHA256, key_value.as_ref());
+
+    let delim = "<IDS|MSG>".as_bytes().to_vec();
+    let hash = "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"
+        .as_bytes()
+        .to_vec();
+    let header = "{\"msg_id\":\"c0fd20872c1b4d1c87e7fc814b75c93e_0\",\"msg_type\":\"kernel_info_request\",\"username\":\"ampower\",\"session\":\"c0fd20872c1b4d1c87e7fc814b75c93e\",\"date\":\"2021-12-10T06:20:40.259695Z\",\"version\":\"5.3\"}".as_bytes().to_vec();
+    let parent_header = "{}".as_bytes().to_vec();
+    let metadata = "{}".as_bytes().to_vec();
+    let content = "{}".as_bytes().to_vec();
+
+    let mut test_msg = ZmqMessage::from(delim);
+    test_msg.push_back(hash.into());
+    test_msg.push_back(header.into());
+    test_msg.push_back(parent_header.into());
+    test_msg.push_back(metadata.into());
+    test_msg.push_back(content.into());
+
+    dbg!(test_msg.clone());
+    match hmac_verify(
+        &test_msg,
+        key,
+        String::from("43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"),
+    ) {
+        Ok(_) => assert!(true),
+        Err(_) => assert!(false, "signature validation failed"),
+    }
+}
+
+#[test]
+fn hmac_sign_test() {
+    let key_value = "1f5cec86-8eaa942eef7f5a35b51ddcf5";
+    let key = hmac::Key::new(hmac::HMAC_SHA256, key_value.as_ref());
+
+    let delim = "<IDS|MSG>";
+    let hash = "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"
+        .as_bytes()
+        .to_vec();
+    let header = "{\"msg_id\":\"c0fd20872c1b4d1c87e7fc814b75c93e_0\",\"msg_type\":\"kernel_info_request\",\"username\":\"ampower\",\"session\":\"c0fd20872c1b4d1c87e7fc814b75c93e\",\"date\":\"2021-12-10T06:20:40.259695Z\",\"version\":\"5.3\"}".as_bytes().to_vec();
+    let parent_header = "{}".as_bytes().to_vec();
+    let metadata = "{}".as_bytes().to_vec();
+    let content = "{}".as_bytes().to_vec();
+
+    let mut test_msg = ZmqMessage::from(delim);
+    test_msg.push_back(hash.into());
+    test_msg.push_back(header.into());
+    test_msg.push_back(parent_header.into());
+    test_msg.push_back(metadata.into());
+    test_msg.push_back(content.into());
+
+    dbg!(test_msg.clone());
+    let sig = hmac_sign(&test_msg, key);
+    println!("Signature: {}", sig);
+    assert_eq!(
+        sig,
+        "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"
+    );
+}
+
+// /* *****************
+//  * SHELL MESSAGES
+//  * *****************/
+
+// Shell Request Message Types
+// "execute_request" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#execute
+// "inspect_request" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#introspection
+// "complete_request" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#completion
+// "history_request" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#history
+// "is_complete_request" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#code-completeness
+// "comm_info_request" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#comm-info
+// "kernel_info_request" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
+
+// Shell Reply Message Types
+// "execute_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#execution-results
+// "inspect_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#introspection
+// "complete_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#completion
+// "history_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#history
+// "is_complete_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#code-completeness
+// "comm_info_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#comm-info
+// "kernel_info_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#execute
+struct ExecuteRequestContent {
+    code: String,
+    silent: bool,
+    store_history: bool,
+    user_expressions: Value,
+    allow_stdin: bool,
+    stop_on_error: bool,
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#execution-results
+struct ExecuteReplyContent {
+    status: String,
+    execution_count: u32,
+    payload: Option<Vec<String>>,
+    user_expressions: Option<Value>,
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#introspection
+struct InspectRequestContent {
+    code: String,
+    cursor_pos: u32,
+    detail_level: u8, // 0 = Low, 1 = High
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#introspection
+struct InspectReplyContent {
+    status: String,
+    found: bool,
+    data: Option<Value>,
+    metadata: Option<Value>,
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#completion
+struct CompleteRequestContent {
+    code: String,
+    cursor_pos: u32,
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#completion
+struct CompleteReplyContent {
+    status: String,
+    matches: Option<Value>,
+    cursor_start: u32,
+    cursor_end: u32,
+    metadata: Option<Value>
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#history
+struct HistoryRequestContent {
+    output: bool,
+    raw: bool,
+    hist_access_type: String, // "range" | "tail" | "search"
+    session: u32,
+    start: u32,
+    stop: u32,
+    n: u32,
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#history
+struct HistoryReplyContent {
+    status: String,
+    history: Option<Value>
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#code-completeness
+struct CodeCompleteRequestContent {
+    code: String
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#code-completeness
+struct CodeCompleteReplyContent {
+    status: String, // "complete" | "incomplete" | "invalid" | "unknown"
+    indent: String,
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#comm-info
+struct CommInfoRequestContent {
+    target_name: String
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#comm-info
+struct CommInfoReplyContent {
+    status: String,
+    comms: Option<Value>,
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
+// struct KernelInfoRequest {} // empty
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
+struct KernelInfoReply {
+    status: String,
+    protocol_version: String,
+    implementation: String,
+    implementation_version: String,
+    language_info: KernelLanguageInfo,
+    banner: String,
+    debugger: bool,
+    help_links: Vec<KernelHelpLink>
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
+struct KernelLanguageInfo {
+    name: String,
+    version: String,
+    mimetype: String,
+    file_extension: String,
+    pygments_lexer: String,
+    codemirror_mode: Option<Value>,
+    nbconvert_exporter: String
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
+struct KernelHelpLink {
+    text: String,
+    url: String,
+}
+
+/* *****************
+ * CONTROL MESSAGES
+ * *****************/
+
+// Control Request Message Types
+// "shutdown_request" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-shutdown
+// "interrupt_request" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-interrupt
+// "debug_request" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#debug-request
+
+// Control Reply Message Types
+// "shutdown_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-shutdown
+// "interrupt_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-interrupt
+// "debug_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#debug-request
+
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-shutdown
+struct ShutdownRequestContent {
+    restart: bool
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-shutdown
+struct ShutdownReplyContent {
+    status: String,
+    restart: bool
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-interrupt
+// struct InterruptRequestContent {} // empty
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-interrupt
+struct InterruptReplyContent {
+    status: String
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#debug-request
+// struct DebugRequestContent {} // See Debug Adapter Protocol (DAP) 1.39 or later
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#debug-request
+// struct DebugReplyContent {} // See Debug Adapter Protocol (DAP) 1.39 or later
+
+
+/* *****************
+ * IOPUB MESSAGES
+ * *****************/
+
+// Io Pub Message Types
+// "stream" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#streams-stdout-stderr-etc
+// "display_data" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#display-data
+// "update_display_data" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#update-display-data
+// "execute_input" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#code-inputs
+// "execute_result" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#id6
+// "error" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#execution-errors
+// "status" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-status
+// "clear_output" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#clear-output
+// "debug_event" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#debug-event
+// "comm_open" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#opening-a-comm
+// "comm_msg" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#comm-messages
+// "comm_close" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#tearing-down-comms
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#request-reply
+struct ErrorStatusContent {
+    status: String, // "error"
+    ename: String,
+    evalue: String,
+    traceback: Vec<String>,
+    execution_count: Option<u32>
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#request-reply
+struct StatusContent {
+    status: String, // "ok" | "abort"
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#streams-stdout-stderr-etc
+struct StreamContent {
+    name: String, // "stdout" | "stderr"
+    text: String
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#display-data
+struct DisplayDataContent {
+    data: Value,
+    metadata: Option<Value>,
+    transient: Option<Value>
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#update-display-data
+// struct UpdateDisplayDataContent {} // same as DisplayDataContent
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#code-inputs
+struct ExecuteInputContent {
+    code: String,
+    execution_count: u32
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#id6
+struct ExecuteResultContent {
+    execution_count: u32,
+    data: Option<Value>,
+    metadata: Option<Value>
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#execution-errors
+struct ErrorContent {
+    payload: Option<Vec<String>>,
+    user_expressions: Option<Value>,
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-status
+struct KernelStatusContent {
+    execution_state: String, // "busy" | "idle" | "starting"
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#clear-output
+struct ClearOutputContent {
+    wait: bool
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#debug-event
+// struct DebugEventContent {} // see Event message from the Debug Adapter Protocol (DAP)
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#opening-a-comm
+struct CommOpenMessage {
+    comm_id: uuid::Uuid,
+    target_name: String,
+    data: Option<Value>,
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#comm-messages
+struct CommMsgMessage {
+    comm_id: uuid::Uuid,
+    data: Option<Value>,
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#comm-messages
+struct CommCloseMessage {
+    comm_id: uuid::Uuid,
+    data: Option<Value>,
+}
+
+/* *****************
+ * STDIN MESSAGES
+ * *****************/
+// Stdin Request Message Types
+// "input_request" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-stdin-router-dealer-channel
+
+// Stdin Reply Message Types
+// "input_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-stdin-router-dealer-channel
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-stdin-router-dealer-channel
+struct InputRequestContent {
+    prompt: String,
+    password: bool
+}
+
+// https://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-stdin-router-dealer-channel
+struct InputReplyContent {
+    value: String
 }
