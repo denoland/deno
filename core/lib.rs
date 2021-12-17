@@ -61,6 +61,7 @@ pub use crate::modules::ModuleLoadId;
 pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
+pub use crate::modules::ModuleType;
 pub use crate::modules::NoopModuleLoader;
 pub use crate::runtime::CompiledWasmModuleStore;
 pub use crate::runtime::SharedArrayBufferStore;

@@ -18,6 +18,7 @@ mod flags;
 mod flags_allow_net;
 mod fmt_errors;
 mod fs_util;
+mod graph_util;
 mod http_cache;
 mod http_util;
 mod lockfile;
@@ -59,6 +60,8 @@ use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
+use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::graph_valid;
 use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
@@ -71,6 +74,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
+use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -592,7 +596,8 @@ async fn lint_command(
     None
   };
 
-  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch).await?;
+  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch.is_some())
+    .await?;
   Ok(0)
 }
 
@@ -719,15 +724,10 @@ async fn create_graph_and_maybe_check(
     .await,
   );
 
-  // Ensure that all non-dynamic, non-type only imports are properly loaded and
-  // if not, error with the first issue encountered.
-  graph.valid().map_err(emit::GraphError::from)?;
-  // If there was a locker, validate the integrity of all the modules in the
-  // locker.
-  emit::lock(graph.as_ref());
+  graph_valid(&graph, ps.flags.check != CheckFlag::None)?;
+  graph_lock_or_exit(&graph);
 
   if ps.flags.check != CheckFlag::None {
-    graph.valid_types_only().map_err(emit::GraphError::from)?;
     let lib = if ps.flags.unstable {
       emit::TypeLib::UnstableDenoWindow
     } else {
@@ -741,14 +741,14 @@ async fn create_graph_and_maybe_check(
       ps.maybe_config_file.as_ref(),
       None,
     )?;
-    log::info!("{} {}", colors::green("Check"), graph.roots[0]);
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
     let maybe_config_specifier =
       ps.maybe_config_file.as_ref().map(|cf| cf.specifier.clone());
     let check_result = emit::check_and_maybe_emit(
-      graph.clone(),
+      &graph.roots,
+      Arc::new(RwLock::new(graph.as_ref().into())),
       &mut cache,
       emit::CheckOptions {
         check: ps.flags.check.clone(),
@@ -756,7 +756,9 @@ async fn create_graph_and_maybe_check(
         emit_with_diagnostics: false,
         maybe_config_specifier,
         ts_config,
+        log_checks: true,
         reload: ps.flags.reload,
+        reload_exclusions: Default::default(),
       },
     )?;
     debug!("{}", check_result.stats);
@@ -909,7 +911,7 @@ async fn bundle_command(
     }
   };
 
-  if flags.watch {
+  if flags.watch.is_some() {
     file_watcher::watch_func(resolver, operation, "Bundle").await?;
   } else {
     let module_graph =
@@ -958,7 +960,8 @@ async fn format_command(
     return Ok(0);
   }
 
-  tools::fmt::format(fmt_flags, flags.watch, maybe_fmt_config).await?;
+  tools::fmt::format(fmt_flags, flags.watch.is_some(), maybe_fmt_config)
+    .await?;
   Ok(0)
 }
 
@@ -1026,6 +1029,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     let script1 = script.clone();
     let script2 = script.clone();
     let flags = flags.clone();
+    let watch_flag = flags.watch.clone();
     async move {
       let main_module = resolve_url_or_path(&script1)?;
       let ps = ProcState::build(flags).await?;
@@ -1068,7 +1072,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         None,
       )
       .await;
-      graph.valid()?;
+      graph_valid(&graph, ps.flags.check != flags::CheckFlag::None)?;
 
       // Find all local files in graph
       let mut paths_to_watch: Vec<PathBuf> = graph
@@ -1081,6 +1085,11 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
             .flatten()
         })
         .collect();
+
+      // Add the extra files listed in the watch flag
+      if let Some(watch_paths) = watch_flag {
+        paths_to_watch.extend(watch_paths);
+      }
 
       if let Some(import_map) = ps.flags.import_map_path.as_ref() {
         paths_to_watch
@@ -1195,7 +1204,7 @@ async fn run_command(
     return run_from_stdin(flags).await;
   }
 
-  if flags.watch {
+  if flags.watch.is_some() {
     return run_with_watch(flags, run_flags.script).await;
   }
 
@@ -1309,7 +1318,7 @@ async fn test_command(
     );
   }
 
-  if flags.watch {
+  if flags.watch.is_some() {
     tools::test::run_tests_with_watch(
       flags,
       test_flags.include,

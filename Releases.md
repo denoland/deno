@@ -6,6 +6,61 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.17.0 / 2021.12.16
+
+- feat: add `--no-check=remote` flag (#12766)
+- feat: Add support for import assertions and JSON modules (#12866)
+- feat: REPL import specifier auto-completions (#13078)
+- feat: support abort reasons in Deno APIs and `WebSocketStream` (#13066)
+- feat: support compat mode in REPL (#12882)
+- feat(cli): update to TypeScript 4.5 (#12410)
+- feat(core): Add ability to "ref" and "unref" pending ops (#12889)
+- feat(core): intercept unhandled promise rejections (#12910)
+- feat(ext/crypto): implement unwrapKey (#12539)
+- feat(ext/crypto): support `importKey` in SPKI format (#12921)
+- feat(ext/crypto): support exporting RSA JWKs (#13081)
+- feat(ext/crypto): support importing ECSDA and ECDH (#13088)
+- feat(ext/crypto): support importing exporting AES JWK keys (#12444)
+- feat(ext/crypto): support importing RSA JWKs (#13071)
+- feat(ext/fetch): Support `WebAssembly.instantiateStreaming` for file fetches
+  (#12901)
+- feat(ext/fetch): support abort reasons in fetch (#13106)
+- feat(ext/ffi): implement UnsafePointer and UnsafePointerView (#12828)
+- feat(ext/net): ALPN support in `Deno.connectTls()` (#12786)
+- feat(ext/net): enable sending to broadcast address (#12860)
+- feat(ext/timers): add refTimer, unrefTimer API (#12953)
+- feat(ext/web): implement `AbortSignal.prototype.throwIfAborted()` (#13044)
+- feat(lsp): add type definition provider (#12789)
+- feat(lsp): add workspace symbol provider (#12787)
+- feat(lsp): improve registry completion suggestions (#13023)
+- feat(lsp): registry suggestion cache respects cache headers (#13010)
+- feat(repl): add --unsafe-ignore-certificate-errors flag (#13045)
+- feat(runtime): add op_set_exit_code (#12911)
+- feat(streams): support abort reasons in streams (#12991)
+- feat(test): Add more overloads for "Deno.test" (#12749)
+- feat(watch): clear screen on each restart (#12613)
+- feat(watch): support watching external files (#13087)
+- fix: support "other" event type in FSWatcher (#12836)
+- fix(cli): config file should resolve paths relative to the config file
+  (#12867)
+- fix(cli): don't add colors for non-tty outputs (#13031)
+- fix(cli): don't cache .tsbuildinfo unless emitting (#12830)
+- fix(cli): fix slow test, unbreak ci (#12897)
+- fix(cli): skip bundling for pre-bundled code in "compile" (#12687)
+- fix(ext/crypto): throw on key & op algo mismatch (#12838)
+- fix(ext/crypto): various cleanup in JWK imports (#13092)
+- fix(ext/net): make unix and tcp identical on close (#13075)
+- fix(ext/timers): fix flakiness of `httpConnAutoCloseDelayedOnUpgrade` test
+  (#13017)
+- fix(ext/web): set location undefined when `--location` is not specified
+  (#13046)
+- fix(lsp): handle import specifier not having a trailing quote (#13074)
+- fix(lsp): lsp should respect include/exclude files in format config (#12876)
+- fix(lsp): normalize urls in did_change_watched_files (#12873)
+- fix(lsp): provide diagnostics for import assertions (#13105)
+- fix(workers): Make `worker.terminate()` not immediately kill the isolate
+  (#12831)
+
 ### 1.16.4 / 2021.12.03
 
 - fix(core): Wake up the runtime if there are ticks scheduled (#12933)

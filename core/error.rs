@@ -158,9 +158,9 @@ fn get_property<'a>(
 }
 
 #[derive(serde::Deserialize)]
-struct NativeJsError {
-  name: Option<String>,
-  message: Option<String>,
+pub(crate) struct NativeJsError {
+  pub name: Option<String>,
+  pub message: Option<String>,
   // Warning! .stack is special so handled by itself
   // stack: Option<String>,
 }

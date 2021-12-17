@@ -1,9 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 import {
+  assert,
   assertEquals,
   assertRejects,
   assertThrows,
+  unreachable,
 } from "../../../test_util/std/testing/asserts.ts";
 
 Deno.test("fragment", () => {
@@ -89,8 +91,49 @@ Deno.test("aborting immediately throws an AbortError", async () => {
   controller.abort();
   await assertRejects(
     () => wss.connection,
-    DOMException,
-    "connection was aborted",
+    (error: Error) => {
+      assert(error instanceof DOMException);
+      assertEquals(error.name, "AbortError");
+    },
   );
-  await assertRejects(() => wss.closed, DOMException, "connection was aborted");
+  await assertRejects(
+    () => wss.closed,
+    (error: Error) => {
+      assert(error instanceof DOMException);
+      assertEquals(error.name, "AbortError");
+    },
+  );
+});
+
+Deno.test("aborting immediately with a reason throws that reason", async () => {
+  const controller = new AbortController();
+  const wss = new WebSocketStream("ws://localhost:4242", {
+    signal: controller.signal,
+  });
+  const abortReason = new Error();
+  controller.abort(abortReason);
+  await assertRejects(
+    () => wss.connection,
+    (error: Error) => assertEquals(error, abortReason),
+  );
+  await assertRejects(
+    () => wss.closed,
+    (error: Error) => assertEquals(error, abortReason),
+  );
+});
+
+Deno.test("aborting immediately with a primitive as reason throws that primitive", async () => {
+  const controller = new AbortController();
+  const wss = new WebSocketStream("ws://localhost:4242", {
+    signal: controller.signal,
+  });
+  controller.abort("Some string");
+  await wss.connection.then(
+    () => unreachable(),
+    (e) => assertEquals(e, "Some string"),
+  );
+  await wss.closed.then(
+    () => unreachable(),
+    (e) => assertEquals(e, "Some string"),
+  );
 });
