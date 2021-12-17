@@ -345,7 +345,7 @@ async fn pump_websocket_messages(
     .map_err(|_| ());
 
   let inbound_pump = async move {
-    let result = websocket_rx
+    let _result = websocket_rx
       .map_ok(|msg| msg.into_data())
       .map_err(AnyError::from)
       .map_ok(|msg| {
@@ -354,10 +354,9 @@ async fn pump_websocket_messages(
       .try_collect::<()>()
       .await;
 
-    match result {
-      Ok(_) => eprintln!("Debugger session ended"),
-      Err(err) => eprintln!("Debugger session ended: {}.", err),
-    };
+    // Users don't care if there was an error coming from debugger,
+    // just about the fact that debugger did disconnect.
+    eprintln!("Debugger session ended");
 
     Ok(())
   };
