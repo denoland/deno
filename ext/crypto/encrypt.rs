@@ -2,6 +2,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::shared::*;
+
+use aes_gcm::aead::generic_array::typenum::U12;
+use aes_gcm::aes::Aes192;
+use aes_gcm::AeadInPlace;
+use aes_gcm::Aes128Gcm;
+use aes_gcm::Aes256Gcm;
+use aes_gcm::NewAead;
+use aes_gcm::Nonce;
 use block_modes::BlockMode;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -160,11 +168,6 @@ fn encrypt_aes_gcm(
   additional_data: Vec<u8>,
   data: &[u8],
 ) -> Result<Vec<u8>, deno_core::anyhow::Error> {
-  use aes_gcm::aead::generic_array::typenum::U12;
-  use aes_gcm::aes::Aes192;
-  use aes_gcm::AeadInPlace;
-  use aes_gcm::{Aes128Gcm, Aes256Gcm, NewAead, Nonce};
-
   let key = key.as_secret_key()?;
 
   // Fixed 96-bit nonce
@@ -177,7 +180,7 @@ fn encrypt_aes_gcm(
   let mut ciphertext = data.to_vec();
   let tag = match length {
     128 => {
-      let cipher = Aes128Gcm::new_from_slice(&key)
+      let cipher = Aes128Gcm::new_from_slice(key)
         .map_err(|_| operation_error("Encryption failed"))?;
       cipher
         .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
@@ -186,14 +189,14 @@ fn encrypt_aes_gcm(
     192 => {
       type Aes192Gcm = aes_gcm::AesGcm<Aes192, U12>;
 
-      let cipher = Aes192Gcm::new_from_slice(&key)
+      let cipher = Aes192Gcm::new_from_slice(key)
         .map_err(|_| operation_error("Encryption failed"))?;
       cipher
         .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
         .map_err(|_| operation_error("Encryption failed"))?
     }
     256 => {
-      let cipher = Aes256Gcm::new_from_slice(&key)
+      let cipher = Aes256Gcm::new_from_slice(key)
         .map_err(|_| operation_error("Encryption failed"))?;
       cipher
         .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
