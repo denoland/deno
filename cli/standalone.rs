@@ -22,6 +22,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_tls::create_default_root_cert_store;
+use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsOptions;
@@ -163,6 +164,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
       Ok(deno_core::ModuleSource {
         code,
+        module_type: deno_core::ModuleType::JavaScript,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
       })
@@ -221,9 +223,16 @@ pub async fn run(
 
   if let Some(cert) = metadata.ca_data {
     let reader = &mut BufReader::new(Cursor::new(cert));
-    // This function does not return specific errors, if it fails give a generic message.
-    if let Err(_err) = root_cert_store.add_pem_file(reader) {
-      return Err(anyhow!("Unable to add pem file to certificate store"));
+    match rustls_pemfile::certs(reader) {
+      Ok(certs) => {
+        root_cert_store.add_parsable_certificates(&certs);
+      }
+      Err(e) => {
+        return Err(anyhow!(
+          "Unable to add pem file to certificate store: {}",
+          e
+        ));
+      }
     }
   }
 

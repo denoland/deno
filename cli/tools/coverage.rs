@@ -6,6 +6,7 @@ use crate::flags::Flags;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
 use crate::source_maps::SourceMapGetter;
+use crate::tools::fmt::format_json;
 
 use deno_ast::swc::common::Span;
 use deno_ast::MediaType;
@@ -158,8 +159,11 @@ impl CoverageCollector {
       let filepath = self.dir.join(filename);
 
       let mut out = BufWriter::new(File::create(filepath)?);
-      serde_json::to_writer_pretty(&mut out, &script_coverage)?;
-      out.write_all(b"\n")?;
+      let coverage = serde_json::to_string(&script_coverage)?;
+      let formated_coverage =
+        format_json(&coverage, &Default::default()).unwrap_or(coverage);
+
+      out.write_all(formated_coverage.as_bytes())?;
       out.flush()?;
     }
 
@@ -227,9 +231,12 @@ impl CoverageReporter for LcovCoverageReporter {
         continue;
       }
 
-      let source_line = script_source[0..function.ranges[0].start_offset]
-        .split('\n')
-        .count();
+      let source_line = script_source
+        .chars()
+        .take(function.ranges[0].start_offset)
+        .filter(|c| *c == '\n')
+        .count()
+        + 1;
 
       let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
         source_map
@@ -273,8 +280,12 @@ impl CoverageReporter for LcovCoverageReporter {
     {
       let block_hits = function.ranges[0].count;
       for (branch_number, range) in function.ranges[1..].iter().enumerate() {
-        let source_line =
-          script_source[0..range.start_offset].split('\n').count();
+        let source_line = script_source
+          .chars()
+          .take(range.start_offset)
+          .filter(|c| *c == '\n')
+          .count()
+          + 1;
 
         let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
           source_map

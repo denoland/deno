@@ -1,9 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast::transpile;
+use crate::ast::Diagnostics;
 use crate::ast::ImportsNotUsedAsValues;
 use crate::colors;
+use crate::lsp::ReplLanguageServer;
 use crate::proc_state::ProcState;
+use crate::tools::repl::channel::RustylineSyncMessage;
+use crate::tools::repl::channel::RustylineSyncResponse;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
@@ -180,6 +184,15 @@ impl Completer for EditorHelper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
+    let lsp_completions = self.sync_sender.lsp_completions(line, pos);
+    if !lsp_completions.is_empty() {
+      // assumes all lsp completions have the same start position
+      return Ok((
+        lsp_completions[0].span.lo.0 as usize,
+        lsp_completions.into_iter().map(|c| c.new_text).collect(),
+      ));
+    }
+
     let expr = get_expr_from_line_at_pos(line, pos);
 
     // check if the expression is in the form `obj.prop`
@@ -427,14 +440,21 @@ impl std::fmt::Display for EvaluationOutput {
   }
 }
 
+struct TsEvaluateResponse {
+  ts_code: String,
+  value: Value,
+}
+
 struct ReplSession {
   worker: MainWorker,
   session: LocalInspectorSession,
   pub context_id: u64,
+  language_server: ReplLanguageServer,
 }
 
 impl ReplSession {
   pub async fn initialize(mut worker: MainWorker) -> Result<Self, AnyError> {
+    let language_server = ReplLanguageServer::new_initialized().await?;
     let mut session = worker.create_inspector_session().await;
 
     worker
@@ -466,6 +486,7 @@ impl ReplSession {
       worker,
       session,
       context_id,
+      language_server,
     };
 
     // inject prelude
@@ -507,15 +528,30 @@ impl ReplSession {
     &mut self,
     line: &str,
   ) -> Result<EvaluationOutput, AnyError> {
+    fn format_diagnostic(diagnostic: &deno_ast::Diagnostic) -> String {
+      format!(
+        "{}: {} at {}:{}",
+        colors::red("parse error"),
+        diagnostic.message(),
+        diagnostic.display_position.line_number,
+        diagnostic.display_position.column_number,
+      )
+    }
+
     match self.evaluate_line_with_object_wrapping(line).await {
       Ok(evaluate_response) => {
-        let evaluate_result = evaluate_response.get("result").unwrap();
+        let evaluate_result = evaluate_response.value.get("result").unwrap();
         let evaluate_exception_details =
-          evaluate_response.get("exceptionDetails");
+          evaluate_response.value.get("exceptionDetails");
 
         if evaluate_exception_details.is_some() {
           self.set_last_thrown_error(evaluate_result).await?;
         } else {
+          self
+            .language_server
+            .commit_text(&evaluate_response.ts_code)
+            .await;
+
           self.set_last_eval_result(evaluate_result).await?;
         }
 
@@ -528,14 +564,20 @@ impl ReplSession {
       Err(err) => {
         // handle a parsing diagnostic
         match err.downcast_ref::<deno_ast::Diagnostic>() {
-          Some(diagnostic) => Ok(EvaluationOutput::Error(format!(
-            "{}: {} at {}:{}",
-            colors::red("parse error"),
-            diagnostic.message(),
-            diagnostic.display_position.line_number,
-            diagnostic.display_position.column_number,
-          ))),
-          None => Err(err),
+          Some(diagnostic) => {
+            Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
+          }
+          None => match err.downcast_ref::<Diagnostics>() {
+            Some(diagnostics) => Ok(EvaluationOutput::Error(
+              diagnostics
+                .0
+                .iter()
+                .map(format_diagnostic)
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            )),
+            None => Err(err),
+          },
         }
       }
     }
@@ -544,9 +586,9 @@ impl ReplSession {
   async fn evaluate_line_with_object_wrapping(
     &mut self,
     line: &str,
-  ) -> Result<Value, AnyError> {
-    // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
-    // statement rather than an object literal so we interpret it as an expression statement
+  ) -> Result<TsEvaluateResponse, AnyError> {
+    // Expressions like { "foo": "bar" } are interpreted as block expressions at the
+    // statement level rather than an object literal so we interpret it as an expression statement
     // to match the behavior found in a typical prompt including browser developer tools.
     let wrapped_line = if line.trim_start().starts_with('{')
       && !line.trim_end().ends_with(';')
@@ -556,20 +598,23 @@ impl ReplSession {
       line.to_string()
     };
 
-    let evaluate_response = self.evaluate_ts_expression(&wrapped_line).await?;
+    let evaluate_response = self.evaluate_ts_expression(&wrapped_line).await;
 
     // If that fails, we retry it without wrapping in parens letting the error bubble up to the
     // user if it is still an error.
-    let evaluate_response =
-      if evaluate_response.get("exceptionDetails").is_some()
-        && wrapped_line != line
-      {
-        self.evaluate_ts_expression(line).await?
-      } else {
-        evaluate_response
-      };
-
-    Ok(evaluate_response)
+    if wrapped_line != line
+      && (evaluate_response.is_err()
+        || evaluate_response
+          .as_ref()
+          .unwrap()
+          .value
+          .get("exceptionDetails")
+          .is_some())
+    {
+      self.evaluate_ts_expression(line).await
+    } else {
+      evaluate_response
+    }
   }
 
   async fn set_last_thrown_error(
@@ -639,7 +684,7 @@ impl ReplSession {
   async fn evaluate_ts_expression(
     &mut self,
     expression: &str,
-  ) -> Result<Value, AnyError> {
+  ) -> Result<TsEvaluateResponse, AnyError> {
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: "repl.ts".to_string(),
       source: deno_ast::SourceTextInfo::from_string(expression.to_string()),
@@ -669,12 +714,17 @@ impl ReplSession {
     )?
     .0;
 
-    self
+    let value = self
       .evaluate_expression(&format!(
         "'use strict'; void 0;\n{}",
         transpiled_src
       ))
-      .await
+      .await?;
+
+    Ok(TsEvaluateResponse {
+      ts_code: expression.to_string(),
+      value,
+    })
   }
 
   async fn evaluate_expression(
@@ -708,11 +758,24 @@ async fn read_line_and_poll(
         return result.unwrap();
       }
       result = message_handler.recv() => {
-        if let Some((method, params)) = result {
-          let result = repl_session
-            .post_message_with_event_loop(&method, params)
-            .await;
-          message_handler.send(result).unwrap();
+        match result {
+          Some(RustylineSyncMessage::PostMessage {
+            method,
+            params
+          }) => {
+            let result = repl_session
+              .post_message_with_event_loop(&method, params)
+              .await;
+            message_handler.send(RustylineSyncResponse::PostMessage(result)).unwrap();
+          },
+          Some(RustylineSyncMessage::LspCompletions {
+            line_text,
+            position,
+          }) => {
+            let result = repl_session.language_server.completions(&line_text, position).await;
+            message_handler.send(RustylineSyncResponse::LspCompletions(result)).unwrap();
+          }
+          None => {}, // channel closed
         }
 
         poll_worker = true;
@@ -728,7 +791,7 @@ pub async fn run(
   ps: &ProcState,
   worker: MainWorker,
   maybe_eval: Option<String>,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
   let mut rustyline_channel = rustyline_channel();
 
@@ -788,5 +851,5 @@ pub async fn run(
 
   editor.save_history()?;
 
-  Ok(())
+  Ok(repl_session.worker.get_exit_code())
 }

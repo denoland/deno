@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_tls"
-version = "0.14.0"
+version = "0.16.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -14,10 +14,11 @@ description = "TLS for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.109.0", path = "../../core" }
+deno_core = { version = "0.111.0", path = "../../core" }
 lazy_static = "1.4.0"
-rustls = { version = "0.19.1", features = ["dangerous_configuration"] }
-rustls-native-certs = "0.5.0"
+rustls = { version = "0.20", features = ["dangerous_configuration"] }
+rustls-native-certs = "0.6.1"
+rustls-pemfile = "0.2.1"
 serde = { version = "1.0.129", features = ["derive"] }
-webpki = "0.21.4"
-webpki-roots = "0.21.1"
+webpki = "0.22"
+webpki-roots = "0.22"

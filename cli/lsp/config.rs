@@ -19,6 +19,8 @@ use std::sync::Arc;
 use std::thread;
 use tokio::sync::mpsc;
 
+use super::client::Client;
+
 pub const SETTINGS_SECTION: &str = "deno";
 
 #[derive(Debug, Clone, Default)]
@@ -229,7 +231,7 @@ pub struct Config {
 }
 
 impl Config {
-  pub fn new(client: lspower::Client) -> Self {
+  pub fn new(client: Client) -> Self {
     let (tx, mut rx) = mpsc::channel::<ConfigRequest>(100);
     let settings = Arc::new(RwLock::new(Settings::default()));
     let settings_ref = settings.clone();
@@ -284,31 +286,37 @@ impl Config {
               if settings_ref.read().specifiers.contains_key(&specifier) {
                 continue;
               }
-              if let Ok(value) = client
+              match client
                 .configuration(vec![lsp::ConfigurationItem {
                   scope_uri: Some(uri.clone()),
                   section: Some(SETTINGS_SECTION.to_string()),
                 }])
                 .await
               {
-                match serde_json::from_value::<SpecifierSettings>(
-                  value[0].clone(),
-                ) {
-                  Ok(specifier_settings) => {
-                    settings_ref
-                      .write()
-                      .specifiers
-                      .insert(specifier, (uri, specifier_settings));
+                Ok(values) => {
+                  if let Some(value) = values.first() {
+                    match serde_json::from_value::<SpecifierSettings>(value.clone()) {
+                      Ok(specifier_settings) => {
+                        settings_ref
+                          .write()
+                          .specifiers
+                          .insert(specifier, (uri, specifier_settings));
+                      }
+                      Err(err) => {
+                        error!("Error converting specifier settings ({}): {}", specifier, err);
+                      }
+                    }
+                  } else {
+                    error!("Expected the client to return a configuration item for specifier: {}", specifier);
                   }
-                  Err(err) => {
-                    error!("Error converting specifier settings: {}", err);
-                  }
+                },
+                Err(err) => {
+                  error!(
+                    "Error retrieving settings for specifier ({}): {}",
+                    specifier,
+                    err,
+                  );
                 }
-              } else {
-                error!(
-                  "Error retrieving settings for specifier: {}",
-                  specifier
-                );
               }
             }
           }
@@ -453,9 +461,9 @@ mod tests {
   }
 
   fn setup() -> Config {
-    let mut maybe_client: Option<lspower::Client> = None;
+    let mut maybe_client: Option<Client> = None;
     let (_service, _) = lspower::LspService::new(|client| {
-      maybe_client = Some(client);
+      maybe_client = Some(Client::from_lspower(client));
       MockLanguageServer::default()
     });
     Config::new(maybe_client.unwrap())

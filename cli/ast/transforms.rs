@@ -17,7 +17,7 @@ impl Fold for DownlevelImportsFolder {
   ) -> swc_ast::ModuleItem {
     use deno_ast::swc::ast::*;
 
-    match &module_item {
+    match module_item {
       ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) => {
         // Handle type only imports
         if import_decl.type_only {
@@ -26,7 +26,8 @@ impl Fold for DownlevelImportsFolder {
         }
 
         // The initializer (ex. `await import('./mod.ts')`)
-        let initializer = create_await_import_expr(&import_decl.src.value);
+        let initializer =
+          create_await_import_expr(&import_decl.src.value, import_decl.asserts);
 
         // Handle imports for the side effects
         // ex. `import "module.ts"` -> `await import("module.ts");`
@@ -123,14 +124,17 @@ impl Fold for StripExportsFolder {
       ModuleItem::ModuleDecl(ModuleDecl::ExportAll(export_all)) => {
         ModuleItem::Stmt(Stmt::Expr(ExprStmt {
           span: DUMMY_SP,
-          expr: create_await_import_expr(&export_all.src.value),
+          expr: create_await_import_expr(
+            &export_all.src.value,
+            export_all.asserts,
+          ),
         }))
       }
       ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export_named)) => {
         if let Some(src) = export_named.src {
           ModuleItem::Stmt(Stmt::Expr(ExprStmt {
             span: DUMMY_SP,
-            expr: create_await_import_expr(&src.value),
+            expr: create_await_import_expr(&src.value, export_named.asserts),
           }))
         } else {
           create_empty_stmt()
@@ -212,8 +216,39 @@ fn create_key_value(key: String, value: String) -> swc_ast::ObjectPatProp {
   })
 }
 
-fn create_await_import_expr(module_specifier: &str) -> Box<swc_ast::Expr> {
+fn create_await_import_expr(
+  module_specifier: &str,
+  maybe_asserts: Option<swc_ast::ObjectLit>,
+) -> Box<swc_ast::Expr> {
   use swc_ast::*;
+  let mut args = vec![ExprOrSpread {
+    spread: None,
+    expr: Box::new(Expr::Lit(Lit::Str(Str {
+      span: DUMMY_SP,
+      has_escape: false,
+      kind: StrKind::Normal {
+        contains_quote: false,
+      },
+      value: module_specifier.into(),
+    }))),
+  }];
+
+  // add assert object if it exists
+  if let Some(asserts) = maybe_asserts {
+    args.push(ExprOrSpread {
+      spread: None,
+      expr: Box::new(Expr::Object(ObjectLit {
+        span: DUMMY_SP,
+        props: vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(
+          KeyValueProp {
+            key: PropName::Ident(create_ident("assert".to_string())),
+            value: Box::new(Expr::Object(asserts)),
+          },
+        )))],
+      })),
+    })
+  }
+
   Box::new(Expr::Await(AwaitExpr {
     span: DUMMY_SP,
     arg: Box::new(Expr::Call(CallExpr {
@@ -223,17 +258,7 @@ fn create_await_import_expr(module_specifier: &str) -> Box<swc_ast::Expr> {
         sym: "import".into(),
         optional: false,
       }))),
-      args: vec![ExprOrSpread {
-        spread: None,
-        expr: Box::new(Expr::Lit(Lit::Str(Str {
-          span: DUMMY_SP,
-          has_escape: false,
-          kind: StrKind::Normal {
-            contains_quote: false,
-          },
-          value: module_specifier.into(),
-        }))),
-      }],
+      args,
       type_args: None,
     })),
   }))
@@ -261,6 +286,7 @@ mod test {
   use deno_ast::swc::visit::Fold;
   use deno_ast::swc::visit::FoldWith;
   use deno_ast::ModuleSpecifier;
+  use pretty_assertions::assert_eq;
   use std::rc::Rc;
 
   use super::*;
@@ -344,6 +370,15 @@ mod test {
   }
 
   #[test]
+  fn test_downlevel_imports_assertions() {
+    test_transform(
+      DownlevelImportsFolder,
+      r#"import data from "./mod.json" assert { type: "json" };"#,
+      "const { default: data  } = await import(\"./mod.json\", {\n    assert: {\n        type: \"json\"\n    }\n});",
+    );
+  }
+
+  #[test]
   fn test_strip_exports_export_all() {
     test_transform(
       StripExportsFolder,
@@ -361,6 +396,25 @@ mod test {
     );
 
     test_transform(StripExportsFolder, r#"export { test };"#, ";");
+  }
+
+  #[test]
+  fn test_strip_exports_assertions() {
+    test_transform(
+      StripExportsFolder,
+      r#"export { default as data } from "./mod.json" assert { type: "json" };"#,
+      "await import(\"./mod.json\", {\n    assert: {\n        type: \"json\"\n    }\n});",
+    );
+  }
+
+  #[test]
+  fn test_strip_exports_export_all_assertions() {
+    // even though this doesn't really make sense for someone to do
+    test_transform(
+      StripExportsFolder,
+      r#"export * from "./mod.json" assert { type: "json" };"#,
+      "await import(\"./mod.json\", {\n    assert: {\n        type: \"json\"\n    }\n});",
+    );
   }
 
   #[test]

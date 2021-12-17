@@ -239,6 +239,6 @@ pub fn compile_to_runtime_flags(
     unstable: flags.unstable,
     v8_flags: flags.v8_flags,
     version: false,
-    watch: false,
+    watch: None,
   })
 }

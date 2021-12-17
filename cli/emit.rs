@@ -13,6 +13,8 @@ use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::flags;
+use crate::graph_util::GraphData;
+use crate::graph_util::ModuleEntry;
 use crate::tsc;
 use crate::version;
 
@@ -20,6 +22,7 @@ use deno_ast::swc;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::RwLock;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
@@ -153,6 +156,7 @@ pub(crate) fn get_ts_config(
         "isolatedModules": true,
         "lib": lib,
         "module": "esnext",
+        "resolveJsonModule": true,
         "strict": true,
         "target": "esnext",
         "tsBuildInfoFile": "deno:///.tsbuildinfo",
@@ -186,6 +190,7 @@ pub(crate) fn get_ts_config(
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
+      "resolveJsonModule": true,
     })),
     ConfigType::RuntimeEmit { tsc_emit } => {
       let mut ts_config = TsConfig::new(json!({
@@ -240,29 +245,36 @@ pub(crate) fn get_ts_config(
 /// redirects resolved. If we aren't checking JavaScript, we need to include all
 /// the emittable files in the roots, so they get type checked and optionally
 /// emitted, otherwise they would be ignored if only imported into JavaScript.
-fn get_root_names(
-  graph: &ModuleGraph,
+fn get_tsc_roots(
+  roots: &[ModuleSpecifier],
+  graph_data: &GraphData,
   check_js: bool,
 ) -> Vec<(ModuleSpecifier, MediaType)> {
   if !check_js {
-    graph
-      .specifiers()
+    graph_data
+      .entries()
       .into_iter()
-      .filter_map(|(_, r)| match r {
-        Ok((s, mt)) => match &mt {
-          MediaType::TypeScript | MediaType::Tsx | MediaType::Jsx => {
-            Some((s, mt))
-          }
+      .filter_map(|(specifier, module_entry)| match module_entry {
+        ModuleEntry::Module { media_type, .. } => match &media_type {
+          MediaType::TypeScript
+          | MediaType::Tsx
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Jsx => Some((specifier.clone(), *media_type)),
           _ => None,
         },
         _ => None,
       })
       .collect()
   } else {
-    graph
-      .roots
+    roots
       .iter()
-      .filter_map(|s| graph.get(s).map(|m| (m.specifier.clone(), m.media_type)))
+      .filter_map(|specifier| match graph_data.get(specifier) {
+        Some(ModuleEntry::Module { media_type, .. }) => {
+          Some((specifier.clone(), *media_type))
+        }
+        _ => None,
+      })
       .collect()
   }
 }
@@ -279,7 +291,7 @@ fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
 }
 
 /// Determine if a given media type is emittable or not.
-fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
+pub(crate) fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
   match &media_type {
     MediaType::TypeScript
     | MediaType::Mts
@@ -308,8 +320,11 @@ pub(crate) struct CheckOptions {
   pub maybe_config_specifier: Option<ModuleSpecifier>,
   /// The derived tsconfig that should be used when checking.
   pub ts_config: TsConfig,
-  /// If true, existing `.tsbuildinfo` files will be ignored.
+  /// If true, `Check <specifier>` will be written to stdout for each root.
+  pub log_checks: bool,
+  /// If true, valid existing emits and `.tsbuildinfo` files will be ignored.
   pub reload: bool,
+  pub reload_exclusions: HashSet<ModuleSpecifier>,
 }
 
 /// The result of a check or emit of a module graph. Note that the actual
@@ -320,27 +335,50 @@ pub(crate) struct CheckEmitResult {
   pub stats: Stats,
 }
 
-/// Given a module graph, type check the module graph and optionally emit
-/// modules, updating the cache as appropriate. Emitting is determined by the
-/// `ts_config` supplied in the options, and if emitting, the files are stored
-/// in the cache.
+/// Given a set of roots and graph data, type check the module graph and
+/// optionally emit modules, updating the cache as appropriate. Emitting is
+/// determined by the `ts_config` supplied in the options, and if emitting, the
+/// files are stored in the cache.
 ///
 /// It is expected that it is determined if a check and/or emit is validated
 /// before the function is called.
 pub(crate) fn check_and_maybe_emit(
-  graph: Arc<ModuleGraph>,
+  roots: &[ModuleSpecifier],
+  graph_data: Arc<RwLock<GraphData>>,
   cache: &mut dyn Cacher,
   options: CheckOptions,
 ) -> Result<CheckEmitResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
-  let root_names = get_root_names(&graph, check_js);
+  let segment_graph_data = {
+    let graph_data = graph_data.read();
+    graph_data.graph_segment(roots).unwrap()
+  };
+  if valid_emit(
+    &segment_graph_data,
+    cache,
+    &options.ts_config,
+    options.reload,
+    &options.reload_exclusions,
+  ) {
+    return Ok(Default::default());
+  }
+  let root_names = get_tsc_roots(roots, &segment_graph_data, check_js);
+  if options.log_checks {
+    for root in roots {
+      let root_str = root.to_string();
+      // `$deno` specifiers are internal, don't print them.
+      if !root_str.contains("$deno") {
+        log::info!("{} {}", colors::green("Check"), root);
+      }
+    }
+  }
   // while there might be multiple roots, we can't "merge" the build info, so we
   // try to retrieve the build info for first root, which is the most common use
   // case.
   let maybe_tsbuildinfo = if options.reload {
     None
   } else {
-    cache.get(CacheType::TypeScriptBuildInfo, &graph.roots[0])
+    cache.get(CacheType::TypeScriptBuildInfo, &roots[0])
   };
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
@@ -354,7 +392,7 @@ pub(crate) fn check_and_maybe_emit(
   let response = tsc::exec(tsc::Request {
     config: options.ts_config,
     debug: options.debug,
-    graph: graph.clone(),
+    graph_data: graph_data.clone(),
     hash_data,
     maybe_config_specifier: options.maybe_config_specifier,
     maybe_tsbuildinfo,
@@ -381,7 +419,7 @@ pub(crate) fn check_and_maybe_emit(
     if let Some(info) = &response.maybe_tsbuildinfo {
       // while we retrieve the build info for just the first module, it can be
       // used for all the roots in the graph, so we will cache it for all roots
-      for root in &graph.roots {
+      for root in roots {
         cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
       }
     }
@@ -390,28 +428,33 @@ pub(crate) fn check_and_maybe_emit(
         assert!(specifiers.len() == 1);
         // The emitted specifier might not be the file specifier we want, so we
         // resolve it via the graph.
-        let specifier = graph.resolve(&specifiers[0]);
-        let (media_type, source) = if let Some(module) = graph.get(&specifier) {
-          (&module.media_type, module.source.clone())
-        } else {
-          log::debug!("module missing, skipping emit for {}", specifier);
-          continue;
+        let graph_data = graph_data.read();
+        let specifier = graph_data.follow_redirect(&specifiers[0]);
+        let (source_bytes, media_type) = match graph_data.get(&specifier) {
+          Some(ModuleEntry::Module {
+            code, media_type, ..
+          }) => (code.as_bytes(), *media_type),
+          _ => {
+            log::debug!("skipping emit for {}", specifier);
+            continue;
+          }
         };
-        // Sometimes if `tsc` sees a CommonJS file it will _helpfully_ output it
-        // to ESM, which we don't really want to do unless someone has enabled
-        // check_js.
-        if !check_js
-          && matches!(
-            media_type,
-            MediaType::JavaScript | MediaType::Cjs | MediaType::Mjs
-          )
+        // Sometimes if `tsc` sees a CommonJS file or a JSON module, it will
+        // _helpfully_ output it, which we don't really want to do unless
+        // someone has enabled check_js.
+        if matches!(media_type, MediaType::Json)
+          || (!check_js
+            && matches!(
+              media_type,
+              MediaType::JavaScript | MediaType::Cjs | MediaType::Mjs
+            ))
         {
           log::debug!("skipping emit for {}", specifier);
           continue;
         }
         match emit.media_type {
           MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
-            let version = get_version(source.as_bytes(), &config_bytes);
+            let version = get_version(source_bytes, &config_bytes);
             cache.set(CacheType::Version, &specifier, version)?;
             cache.set(CacheType::Emit, &specifier, emit.data)?;
           }
@@ -423,7 +466,10 @@ pub(crate) fn check_and_maybe_emit(
           MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
             cache.set(CacheType::Declaration, &specifier, emit.data)?;
           }
-          _ => unreachable!(),
+          _ => unreachable!(
+            "unexpected media_type {} {}",
+            emit.media_type, specifier
+          ),
         }
       }
     }
@@ -477,8 +523,8 @@ impl swc::bundler::Load for BundleLoader<'_> {
         if let Some(m) = self.graph.get(specifier) {
           let (fm, module) = ast::transpile_module(
             specifier,
-            &m.source,
-            m.media_type,
+            m.maybe_source().unwrap_or(""),
+            *m.media_type(),
             self.emit_options,
             self.cm.clone(),
           )?;
@@ -624,11 +670,13 @@ pub(crate) fn bundle(
 
 pub(crate) struct EmitOptions {
   pub ts_config: TsConfig,
-  pub reload_exclusions: HashSet<ModuleSpecifier>,
   pub reload: bool,
+  pub reload_exclusions: HashSet<ModuleSpecifier>,
 }
 
 /// Given a module graph, emit any appropriate modules and cache them.
+// TODO(nayeemrmn): This would ideally take `GraphData` like
+// `check_and_maybe_emit()`, but the AST isn't stored in that. Cleanup.
 pub(crate) fn emit(
   graph: &ModuleGraph,
   cache: &mut dyn Cacher,
@@ -681,21 +729,12 @@ pub(crate) fn emit(
   })
 }
 
-/// Check the sub-resource integrity of a module graph, exiting if the graph is
-/// not valid.
-pub(crate) fn lock(graph: &ModuleGraph) {
-  if let Err(err) = graph.lock() {
-    log::error!("{} {}", colors::red("error:"), err);
-    std::process::exit(10);
-  }
-}
-
 /// Check a module graph to determine if the graph contains anything that
 /// is required to be emitted to be valid. It determines what modules in the
 /// graph are emittable and for those that are emittable, if there is currently
 /// a valid emit in the cache.
-pub(crate) fn valid_emit(
-  graph: &ModuleGraph,
+fn valid_emit(
+  graph_data: &GraphData,
   cache: &dyn Cacher,
   ts_config: &TsConfig,
   reload: bool,
@@ -703,43 +742,37 @@ pub(crate) fn valid_emit(
 ) -> bool {
   let config_bytes = ts_config.as_bytes();
   let emit_js = ts_config.get_check_js();
-  graph
-    .specifiers()
-    .iter()
-    .filter(|(_, r)| match r {
-      Ok((_, MediaType::TypeScript | MediaType::Mts | MediaType::Cts))
-      | Ok((_, MediaType::Tsx))
-      | Ok((_, MediaType::Jsx)) => true,
-      Ok((_, MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs)) => {
-        emit_js
-      }
-      _ => false,
-    })
-    .all(|(_, r)| {
-      if let Ok((s, _)) = r {
-        if reload && !reload_exclusions.contains(s) {
-          // we are reloading and the specifier isn't excluded from being
-          // reloaded
-          false
-        } else if let Some(version) = cache.get(CacheType::Version, s) {
-          if let Some(module) = graph.get(s) {
-            version == get_version(module.source.as_bytes(), &config_bytes)
-          } else {
-            // We have a source module in the graph we can't find, so the emit is
-            // clearly wrong
-            false
+  for (specifier, module_entry) in graph_data.entries() {
+    if let ModuleEntry::Module {
+      code, media_type, ..
+    } = module_entry
+    {
+      match media_type {
+        MediaType::TypeScript
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Tsx
+        | MediaType::Jsx => {}
+        MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+          if !emit_js {
+            continue;
           }
-        } else {
-          // A module that requires emitting doesn't have a version, so it doesn't
-          // have a valid emit
-          false
+        }
+        _ => continue,
+      }
+      if reload && !reload_exclusions.contains(specifier) {
+        return false;
+      }
+      if let Some(version) = cache.get(CacheType::Version, specifier) {
+        if version != get_version(code.as_bytes(), &config_bytes) {
+          return false;
         }
       } else {
-        // Something in the module graph is missing, but that doesn't mean the
-        // emit is invalid
-        true
+        return false;
       }
-    })
+    }
+  }
+  true
 }
 
 /// An adapter struct to make a deno_graph::ModuleGraphError display as expected
@@ -793,10 +826,14 @@ pub(crate) fn to_file_map(
         MediaType::JavaScript
           | MediaType::Mjs
           | MediaType::Cjs
+          | MediaType::Json
           | MediaType::Unknown
       ) {
         if let Some(module) = graph.get(&specifier) {
-          files.insert(specifier.to_string(), module.source.to_string());
+          files.insert(
+            specifier.to_string(),
+            module.maybe_source().unwrap_or("").to_string(),
+          );
         }
       }
       if let Some(declaration) = cache.get(CacheType::Declaration, &specifier) {

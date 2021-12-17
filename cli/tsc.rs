@@ -3,6 +3,8 @@
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::emit;
+use crate::graph_util::GraphData;
+use crate::graph_util::ModuleEntry;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -10,6 +12,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op_sync;
+use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -22,7 +25,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
-use deno_graph::ModuleGraph;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -144,31 +146,26 @@ fn get_tsc_media_type(specifier: &ModuleSpecifier) -> MediaType {
         if let Some(os_str) = path.file_stem() {
           if let Some(file_name) = os_str.to_str() {
             if file_name.ends_with(".d") {
-              // todo(#12410): Use Dmts for TS 4.5
-              return MediaType::Dts;
+              return MediaType::Dmts;
             }
           }
         }
-        // todo(#12410): Use Mts for TS 4.5
-        MediaType::TypeScript
+        MediaType::Mts
       }
       Some("cts") => {
         if let Some(os_str) = path.file_stem() {
           if let Some(file_name) = os_str.to_str() {
             if file_name.ends_with(".d") {
-              // todo(#12410): Use Dcts for TS 4.5
-              return MediaType::Dts;
+              return MediaType::Dcts;
             }
           }
         }
-        // todo(#12410): Use Cts for TS 4.5
-        MediaType::TypeScript
+        MediaType::Cts
       }
       Some("tsx") => MediaType::Tsx,
       Some("js") => MediaType::JavaScript,
-      // todo(#12410): Use correct media type for TS 4.5
-      Some("mjs") => MediaType::JavaScript,
-      Some("cjs") => MediaType::JavaScript,
+      Some("mjs") => MediaType::Mjs,
+      Some("cjs") => MediaType::Cjs,
       Some("jsx") => MediaType::Jsx,
       _ => MediaType::Unknown,
     },
@@ -190,7 +187,7 @@ pub struct Request {
   pub config: TsConfig,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
-  pub graph: Arc<ModuleGraph>,
+  pub(crate) graph_data: Arc<RwLock<GraphData>>,
   pub hash_data: Vec<Vec<u8>>,
   pub maybe_config_specifier: Option<ModuleSpecifier>,
   pub maybe_tsbuildinfo: Option<String>,
@@ -216,7 +213,7 @@ struct State {
   data_url_map: HashMap<String, ModuleSpecifier>,
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
-  graph: Arc<ModuleGraph>,
+  graph_data: Arc<RwLock<GraphData>>,
   maybe_config_specifier: Option<ModuleSpecifier>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
@@ -225,7 +222,7 @@ struct State {
 
 impl State {
   pub fn new(
-    graph: Arc<ModuleGraph>,
+    graph_data: Arc<RwLock<GraphData>>,
     hash_data: Vec<Vec<u8>>,
     maybe_config_specifier: Option<ModuleSpecifier>,
     maybe_tsbuildinfo: Option<String>,
@@ -236,7 +233,7 @@ impl State {
       data_url_map,
       hash_data,
       emitted_files: Default::default(),
-      graph,
+      graph_data,
       maybe_config_specifier,
       maybe_tsbuildinfo,
       maybe_response: None,
@@ -340,11 +337,15 @@ struct ExistsArgs {
 }
 
 fn op_exists(state: &mut State, args: ExistsArgs) -> Result<bool, AnyError> {
+  let graph_data = state.graph_data.read();
   if let Ok(specifier) = normalize_specifier(&args.specifier) {
     if specifier.scheme() == "asset" || specifier.scheme() == "data" {
       Ok(true)
     } else {
-      Ok(state.graph.contains(&specifier))
+      Ok(matches!(
+        graph_data.get(&graph_data.follow_redirect(&specifier)),
+        Some(ModuleEntry::Module { .. })
+      ))
     }
   } else {
     Ok(false)
@@ -355,6 +356,24 @@ fn op_exists(state: &mut State, args: ExistsArgs) -> Result<bool, AnyError> {
 struct LoadArgs {
   /// The fully qualified specifier that should be loaded.
   specifier: String,
+}
+
+fn as_ts_script_kind(media_type: &MediaType) -> i32 {
+  match media_type {
+    MediaType::JavaScript => 1,
+    MediaType::Jsx => 2,
+    MediaType::Mjs => 1,
+    MediaType::Cjs => 1,
+    MediaType::TypeScript => 3,
+    MediaType::Mts => 3,
+    MediaType::Cts => 3,
+    MediaType::Dts => 3,
+    MediaType::Dmts => 3,
+    MediaType::Dcts => 3,
+    MediaType::Tsx => 4,
+    MediaType::Json => 6,
+    _ => 0,
+  }
 }
 
 fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
@@ -388,9 +407,16 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     } else {
       specifier
     };
-    let maybe_source = if let Some(module) = state.graph.get(&specifier) {
-      media_type = module.media_type;
-      Some(module.source.as_str().to_string())
+    let graph_data = state.graph_data.read();
+    let maybe_source = if let Some(ModuleEntry::Module {
+      code,
+      media_type: mt,
+      ..
+    }) =
+      graph_data.get(&graph_data.follow_redirect(&specifier))
+    {
+      media_type = *mt;
+      Some(code.as_ref().clone())
     } else {
       media_type = MediaType::Unknown;
       None
@@ -400,7 +426,7 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   };
 
   Ok(
-    json!({ "data": data, "hash": hash, "scriptKind": media_type.as_ts_script_kind() }),
+    json!({ "data": data, "hash": hash, "scriptKind": as_ts_script_kind(&media_type) }),
   )
 }
 
@@ -412,27 +438,6 @@ pub struct ResolveArgs {
   pub base: String,
   /// A list of specifiers that should be resolved.
   pub specifiers: Vec<String>,
-}
-
-fn resolve_specifier(
-  state: &mut State,
-  specifier: &ModuleSpecifier,
-) -> (String, String) {
-  let media_type = state
-    .graph
-    .get(specifier)
-    .map_or(&MediaType::Unknown, |m| &m.media_type);
-  let specifier_str = match specifier.scheme() {
-    "data" | "blob" => {
-      let specifier_str = hash_url(specifier, media_type);
-      state
-        .data_url_map
-        .insert(specifier_str.clone(), specifier.clone());
-      specifier_str
-    }
-    _ => specifier.to_string(),
-  };
-  (specifier_str, media_type.as_ts_extension().into())
 }
 
 fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
@@ -455,32 +460,62 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         MediaType::from(specifier).as_ts_extension().to_string(),
       ));
     } else {
-      // here, we try to resolve the specifier via the referrer, but if we can't
-      // we will try to resolve the specifier via the configuration file, if
-      // present, finally defaulting to a "placeholder" specifier. This handles
-      // situations like the jsxImportSource, which tsc tries to resolve the
-      // import source from a JSX module, but the module graph only contains the
-      // import as a dependency of the configuration file.
-      let resolved_dependency = if let Some(resolved_specifier) = state
-        .graph
-        .resolve_dependency(specifier, &referrer, true)
-        .cloned()
-      {
-        resolve_specifier(state, &resolved_specifier)
-      } else if let Some(resolved_specifier) = state
-        .maybe_config_specifier
-        .as_ref()
-        .map(|cf| state.graph.resolve_dependency(specifier, cf, true).cloned())
-        .flatten()
-      {
-        resolve_specifier(state, &resolved_specifier)
-      } else {
-        (
+      let graph_data = state.graph_data.read();
+      let referrer = graph_data.follow_redirect(&referrer);
+      let resolved_dep = match graph_data.get(&referrer) {
+        Some(ModuleEntry::Module { dependencies, .. }) => {
+          dependencies.get(specifier).and_then(|d| {
+            d.maybe_type.as_ref().or_else(|| d.maybe_code.as_ref())
+          })
+        }
+        Some(ModuleEntry::Configuration { dependencies }) => {
+          dependencies.get(specifier)
+        }
+        _ => None,
+      };
+      let maybe_result = match resolved_dep {
+        Some(Ok((specifier, _))) => {
+          let specifier = graph_data.follow_redirect(specifier);
+          match graph_data.get(&specifier) {
+            Some(ModuleEntry::Module {
+              media_type,
+              maybe_types,
+              ..
+            }) => match maybe_types {
+              Some(Ok((types, _))) => {
+                let types = graph_data.follow_redirect(types);
+                match graph_data.get(&types) {
+                  Some(ModuleEntry::Module { media_type, .. }) => {
+                    Some((types, media_type))
+                  }
+                  _ => None,
+                }
+              }
+              _ => Some((specifier, media_type)),
+            },
+            _ => None,
+          }
+        }
+        _ => None,
+      };
+      let result = match maybe_result {
+        Some((specifier, media_type)) => {
+          let specifier_str = match specifier.scheme() {
+            "data" | "blob" => {
+              let specifier_str = hash_url(&specifier, media_type);
+              state.data_url_map.insert(specifier_str.clone(), specifier);
+              specifier_str
+            }
+            _ => specifier.to_string(),
+          };
+          (specifier_str, media_type.as_ts_extension().into())
+        }
+        None => (
           "deno:///missing_dependency.d.ts".to_string(),
           ".d.ts".to_string(),
-        )
+        ),
       };
-      resolved.push(resolved_dependency);
+      resolved.push(result);
     }
   }
 
@@ -540,7 +575,7 @@ pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     op_state.put(State::new(
-      request.graph,
+      request.graph_data,
       request.hash_data.clone(),
       request.maybe_config_specifier.clone(),
       request.maybe_tsbuildinfo.clone(),
@@ -643,20 +678,18 @@ mod tests {
     let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let graph = Arc::new(
-      deno_graph::create_graph(
-        vec![specifier],
-        false,
-        None,
-        &mut loader,
-        None,
-        None,
-        None,
-      )
-      .await,
-    );
+    let graph = deno_graph::create_graph(
+      vec![specifier],
+      false,
+      None,
+      &mut loader,
+      None,
+      None,
+      None,
+    )
+    .await;
     State::new(
-      graph,
+      Arc::new(RwLock::new((&graph).into())),
       hash_data,
       None,
       maybe_tsbuildinfo,
@@ -671,18 +704,16 @@ mod tests {
     let hash_data = vec![b"something".to_vec()];
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let graph = Arc::new(
-      deno_graph::create_graph(
-        vec![specifier.clone()],
-        false,
-        None,
-        &mut loader,
-        None,
-        None,
-        None,
-      )
-      .await,
-    );
+    let graph = deno_graph::create_graph(
+      vec![specifier.clone()],
+      false,
+      None,
+      &mut loader,
+      None,
+      None,
+      None,
+    )
+    .await;
     let config = TsConfig::new(json!({
       "allowJs": true,
       "checkJs": false,
@@ -703,7 +734,7 @@ mod tests {
     let request = Request {
       config,
       debug: false,
-      graph,
+      graph_data: Arc::new(RwLock::new((&graph).into())),
       hash_data,
       maybe_config_specifier: None,
       maybe_tsbuildinfo: None,
@@ -756,16 +787,16 @@ mod tests {
   fn test_get_tsc_media_type() {
     let fixtures = vec![
       ("file:///a.ts", MediaType::TypeScript),
-      ("file:///a.cts", MediaType::TypeScript),
-      ("file:///a.mts", MediaType::TypeScript),
+      ("file:///a.cts", MediaType::Cts),
+      ("file:///a.mts", MediaType::Mts),
       ("file:///a.tsx", MediaType::Tsx),
       ("file:///a.d.ts", MediaType::Dts),
-      ("file:///a.d.cts", MediaType::Dts),
-      ("file:///a.d.mts", MediaType::Dts),
+      ("file:///a.d.cts", MediaType::Dcts),
+      ("file:///a.d.mts", MediaType::Dmts),
       ("file:///a.js", MediaType::JavaScript),
       ("file:///a.jsx", MediaType::Jsx),
-      ("file:///a.cjs", MediaType::JavaScript),
-      ("file:///a.mjs", MediaType::JavaScript),
+      ("file:///a.cjs", MediaType::Cjs),
+      ("file:///a.mjs", MediaType::Mjs),
       ("file:///a.json", MediaType::Unknown),
       ("file:///a.wasm", MediaType::Unknown),
       ("file:///a.js.map", MediaType::Unknown),

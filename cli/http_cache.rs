@@ -17,6 +17,7 @@ use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 pub const CACHE_PERM: u32 = 0o644;
 
@@ -81,6 +82,8 @@ pub struct HttpCache {
 pub struct Metadata {
   pub headers: HeadersMap,
   pub url: String,
+  #[serde(default = "SystemTime::now")]
+  pub now: SystemTime,
 }
 
 impl Metadata {
@@ -138,7 +141,10 @@ impl HttpCache {
   // TODO(bartlomieju): this method should check headers file
   // and validate against ETAG/Last-modified-as headers.
   // ETAG check is currently done in `cli/file_fetcher.rs`.
-  pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), AnyError> {
+  pub fn get(
+    &self,
+    url: &Url,
+  ) -> Result<(File, HeadersMap, SystemTime), AnyError> {
     let cache_filename = self.location.join(
       url_to_filename(url)
         .ok_or_else(|| generic_error("Can't convert url to filename."))?,
@@ -147,7 +153,7 @@ impl HttpCache {
     let file = File::open(cache_filename)?;
     let metadata = fs::read_to_string(metadata_filename)?;
     let metadata: Metadata = serde_json::from_str(&metadata)?;
-    Ok((file, metadata.headers))
+    Ok((file, metadata.headers, metadata.now))
   }
 
   pub fn set(
@@ -169,6 +175,7 @@ impl HttpCache {
     fs_util::atomic_write_file(&cache_filename, content, CACHE_PERM)?;
 
     let metadata = Metadata {
+      now: SystemTime::now(),
       url: url.to_string(),
       headers: headers_map,
     };
@@ -227,7 +234,7 @@ mod tests {
     assert!(r.is_ok());
     let r = cache.get(&url);
     assert!(r.is_ok());
-    let (mut file, headers) = r.unwrap();
+    let (mut file, headers, _) = r.unwrap();
     let mut content = String::new();
     file.read_to_string(&mut content).unwrap();
     assert_eq!(content, "Hello world");

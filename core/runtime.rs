@@ -1259,12 +1259,15 @@ impl JsRuntime {
 
         if let Some(load_stream_result) = maybe_result {
           match load_stream_result {
-            Ok(info) => {
+            Ok((request, info)) => {
               // A module (not necessarily the one dynamically imported) has been
               // fetched. Create and register it, and if successful, poll for the
               // next recursive-load event related to this dynamic import.
-              let register_result =
-                load.register_and_recurse(&mut self.handle_scope(), &info);
+              let register_result = load.register_and_recurse(
+                &mut self.handle_scope(),
+                &request,
+                &info,
+              );
 
               match register_result {
                 Ok(()) => {
@@ -1417,7 +1420,7 @@ impl JsRuntime {
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
-      module_map_rc.borrow_mut().new_module(
+      module_map_rc.borrow_mut().new_es_module(
         &mut self.handle_scope(),
         // main module
         true,
@@ -1429,10 +1432,10 @@ impl JsRuntime {
     let mut load =
       ModuleMap::load_main(module_map_rc.clone(), specifier.as_str()).await?;
 
-    while let Some(info_result) = load.next().await {
-      let info = info_result?;
+    while let Some(load_result) = load.next().await {
+      let (request, info) = load_result?;
       let scope = &mut self.handle_scope();
-      load.register_and_recurse(scope, &info)?;
+      load.register_and_recurse(scope, &request, &info)?;
     }
 
     let root_id = load.root_module_id.expect("Root module should be loaded");
@@ -1454,7 +1457,7 @@ impl JsRuntime {
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
-      module_map_rc.borrow_mut().new_module(
+      module_map_rc.borrow_mut().new_es_module(
         &mut self.handle_scope(),
         // not main module
         false,
@@ -1466,10 +1469,10 @@ impl JsRuntime {
     let mut load =
       ModuleMap::load_side(module_map_rc.clone(), specifier.as_str()).await?;
 
-    while let Some(info_result) = load.next().await {
-      let info = info_result?;
+    while let Some(load_result) = load.next().await {
+      let (request, info) = load_result?;
       let scope = &mut self.handle_scope();
-      load.register_and_recurse(scope, &info)?;
+      load.register_and_recurse(scope, &request, &info)?;
     }
 
     let root_id = load.root_module_id.expect("Root module should be loaded");
@@ -1630,6 +1633,7 @@ pub mod tests {
   use crate::error::custom_error;
   use crate::modules::ModuleSource;
   use crate::modules::ModuleSourceFuture;
+  use crate::modules::ModuleType;
   use crate::op_async;
   use crate::op_sync;
   use crate::ZeroCopyBuf;
@@ -1950,7 +1954,7 @@ pub mod tests {
 
   #[test]
   fn test_pre_dispatch() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute_script(
@@ -1966,7 +1970,7 @@ pub mod tests {
          "#,
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -1984,7 +1988,7 @@ pub mod tests {
 
   #[test]
   fn test_encode_decode() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute_script(
@@ -1992,7 +1996,7 @@ pub mod tests {
           include_str!("encode_decode_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -2000,7 +2004,7 @@ pub mod tests {
 
   #[test]
   fn test_serialize_deserialize() {
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
         .execute_script(
@@ -2008,7 +2012,7 @@ pub mod tests {
           include_str!("serialize_deserialize_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -2024,7 +2028,7 @@ pub mod tests {
       "DOMExceptionOperationError"
     }
 
-    run_in_task(|mut cx| {
+    run_in_task(|cx| {
       let mut runtime = JsRuntime::new(RuntimeOptions {
         get_error_class_fn: Some(&get_error_class_name),
         ..Default::default()
@@ -2037,7 +2041,7 @@ pub mod tests {
           include_str!("error_builder_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
         unreachable!();
       }
     });
@@ -2642,6 +2646,7 @@ assertEquals(1, notify_return_value);
             code: "console.log('hello world');".to_string(),
             module_url_specified: "file:///main.js".to_string(),
             module_url_found: "file:///main.js".to_string(),
+            module_type: ModuleType::JavaScript,
           })
         }
         .boxed_local()
