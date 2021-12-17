@@ -4,7 +4,6 @@ use super::io::ChildStderrResource;
 use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use crate::permissions::Permissions;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op_async;
 use deno_core::op_sync;
@@ -352,15 +351,7 @@ async fn op_command_child_output(
 
   Ok(CommandOutput {
     status: output.status.into(),
-    stdout: if args.stdout_rid.is_some() {
-      Some(output.stdout.into())
-    } else {
-      None
-    },
-    stderr: if args.stderr_rid.is_some() {
-      Some(output.stderr.into())
-    } else {
-      None
-    },
+    stdout: args.stdout_rid.map(|_| output.stdout.into()),
+    stderr: args.stderr_rid.map(|_| output.stderr.into()),
   })
 }
