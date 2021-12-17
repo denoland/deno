@@ -56,6 +56,7 @@ use std::path::PathBuf;
 pub use rand; // Re-export rand
 
 mod encrypt;
+mod decrypt;
 mod export_key;
 mod generate_key;
 mod import_key;
