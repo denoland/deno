@@ -54,7 +54,7 @@ pub enum EncryptAlgorithm {
     #[serde(with = "serde_bytes")]
     iv: Vec<u8>,
     #[serde(with = "serde_bytes")]
-    additional_data: Vec<u8>,
+    additional_data: Option<Vec<u8>>,
     length: usize,
     tag_length: usize,
   },
@@ -165,10 +165,11 @@ fn encrypt_aes_gcm(
   length: usize,
   tag_length: usize,
   iv: Vec<u8>,
-  additional_data: Vec<u8>,
+  additional_data: Option<Vec<u8>>,
   data: &[u8],
 ) -> Result<Vec<u8>, deno_core::anyhow::Error> {
   let key = key.as_secret_key()?;
+  let additional_data = additional_data.unwrap_or_default();
 
   // Fixed 96-bit nonce
   if iv.len() != 12 {

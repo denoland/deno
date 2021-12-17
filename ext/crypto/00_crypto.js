@@ -3191,7 +3191,7 @@
         }
 
         // 3.
-        if (normalizedAlgorithm.additionalData) {
+        if (normalizedAlgorithm.additionalData !== undefined) {
           if (normalizedAlgorithm.additionalData.byteLength > (2 ** 64) - 1) {
             throw new DOMException(
               "Additional data too large",
@@ -3221,7 +3221,6 @@
             normalizedAlgorithm.additionalData,
           );
         }
-
         // 6-7.
         const cipherText = await core.opAsync("op_crypto_encrypt", {
           key: keyData,

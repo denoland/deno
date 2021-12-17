@@ -75,6 +75,7 @@
     Uint8ClampedArray,
   } = window.__bootstrap.primordials;
 
+  class SharedArrayBuffer {}
   function makeException(ErrorType, message, opts = {}) {
     return new ErrorType(
       `${opts.prefix ? opts.prefix + ": " : ""}${
