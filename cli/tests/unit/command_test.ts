@@ -118,8 +118,8 @@ Deno.test(
 
 Deno.test({ permissions: { run: true } }, async function runNotFound() {
   let error;
+  const cmd = new Deno.Command("this file hopefully doesn't exist");
   try {
-    const cmd = new Deno.Command("this file hopefully doesn't exist");
     await cmd.status();
   } catch (e) {
     error = e;
