@@ -41,6 +41,15 @@ pub enum EncryptAlgorithm {
     iv: Vec<u8>,
     length: usize,
   },
+  #[serde(rename = "AES-GCM", rename_all = "camelCase")]
+  AesGcm {
+    #[serde(with = "serde_bytes")]
+    iv: Vec<u8>,
+    #[serde(with = "serde_bytes")]
+    additional_data: Vec<u8>,
+    length: usize,
+    tag_length: usize,
+  },
 }
 pub async fn op_crypto_encrypt(
   _state: Rc<RefCell<OpState>>,
@@ -55,6 +64,12 @@ pub async fn op_crypto_encrypt(
     EncryptAlgorithm::AesCbc { iv, length } => {
       encrypt_aes_cbc(key, length, iv, &data)
     }
+    EncryptAlgorithm::AesGcm {
+      iv,
+      additional_data,
+      length,
+      tag_length,
+    } => encrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
   };
   let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
@@ -134,5 +149,65 @@ fn encrypt_aes_cbc(
     }
     _ => return Err(type_error("invalid length")),
   };
+  Ok(ciphertext)
+}
+
+fn encrypt_aes_gcm(
+  key: RawKeyData,
+  length: usize,
+  tag_length: usize,
+  iv: Vec<u8>,
+  additional_data: Vec<u8>,
+  data: &[u8],
+) -> Result<Vec<u8>, deno_core::anyhow::Error> {
+  use aes_gcm::aead::generic_array::typenum::U12;
+  use aes_gcm::aes::Aes192;
+  use aes_gcm::AeadInPlace;
+  use aes_gcm::{Aes128Gcm, Aes256Gcm, NewAead, Nonce};
+
+  let key = key.as_secret_key()?;
+
+  // Fixed 96-bit nonce
+  if iv.len() != 12 {
+    return Err(type_error("iv length not equal to 12"));
+  }
+
+  let nonce = Nonce::from_slice(&iv);
+
+  let mut ciphertext = data.to_vec();
+  let tag = match length {
+    128 => {
+      let cipher = Aes128Gcm::new_from_slice(&key)
+        .map_err(|_| operation_error("Encryption failed"))?;
+      cipher
+        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
+        .map_err(|_| operation_error("Encryption failed"))?
+    }
+    192 => {
+      type Aes192Gcm = aes_gcm::AesGcm<Aes192, U12>;
+
+      let cipher = Aes192Gcm::new_from_slice(&key)
+        .map_err(|_| operation_error("Encryption failed"))?;
+      cipher
+        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
+        .map_err(|_| operation_error("Encryption failed"))?
+    }
+    256 => {
+      let cipher = Aes256Gcm::new_from_slice(&key)
+        .map_err(|_| operation_error("Encryption failed"))?;
+      cipher
+        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
+        .map_err(|_| operation_error("Encryption failed"))?
+    }
+    _ => return Err(type_error("invalid length")),
+  };
+
+  // Truncated tag to the specified tag length.
+  // `tag` is fixed to be 16 bytes long and (tag_length / 8) is always <= 16
+  let tag = &tag[..(tag_length / 8)];
+
+  // C | T
+  ciphertext.extend_from_slice(tag);
+
   Ok(ciphertext)
 }
