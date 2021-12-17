@@ -1,10 +1,14 @@
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use elliptic_curve::pkcs8::der::Decodable as Pkcs8Decodable;
+use elliptic_curve::pkcs8::PrivateKeyInfo;
+use elliptic_curve::sec1::ToEncodedPoint;
+use p256::pkcs8::FromPrivateKey;
+use p256::pkcs8::ToPrivateKey;
 use rsa::pkcs1::UIntBytes;
 use serde::Deserialize;
 use serde::Serialize;
-use spki::der::Decodable;
 use spki::der::Encodable;
 
 use crate::shared::*;
@@ -33,6 +37,15 @@ pub enum KeyData {
     dp: String,
     dq: String,
     qi: String,
+  },
+  JwkPublicEc {
+    x: String,
+    y: String,
+  },
+  JwkPrivateEc {
+    x: String,
+    y: String,
+    d: String,
   },
 }
 
@@ -238,7 +251,7 @@ fn import_key_rsassa(
     }
     KeyData::Pkcs8(data) => {
       // 2-3.
-      let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(&data)
+      let pk_info = PrivateKeyInfo::from_der(&data)
         .map_err(|e| data_error(e.to_string()))?;
 
       // 4-5.
@@ -389,7 +402,7 @@ fn import_key_rsapss(
     }
     KeyData::Pkcs8(data) => {
       // 2-3.
-      let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(&data)
+      let pk_info = PrivateKeyInfo::from_der(&data)
         .map_err(|e| data_error(e.to_string()))?;
 
       // 4-5.
@@ -568,7 +581,7 @@ fn import_key_rsaoaep(
     }
     KeyData::Pkcs8(data) => {
       // 2-3.
-      let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(&data)
+      let pk_info = PrivateKeyInfo::from_der(&data)
         .map_err(|e| data_error(e.to_string()))?;
 
       // 4-5.
@@ -657,11 +670,137 @@ fn import_key_rsaoaep(
   }
 }
 
+fn decode_b64url_to_field_bytes<C: elliptic_curve::Curve>(
+  b64: &str,
+) -> Result<elliptic_curve::FieldBytes<C>, deno_core::anyhow::Error> {
+  jwt_b64_int_or_err!(val, b64, "invalid b64 coordinate");
+
+  let mut bytes = elliptic_curve::FieldBytes::<C>::default();
+  let val = val.as_bytes();
+  if val.len() != bytes.len() {
+    return Err(data_error("invalid b64 coordinate"));
+  }
+  bytes.copy_from_slice(val);
+
+  Ok(bytes)
+}
+
+fn import_key_ec_jwk_to_point(
+  x: String,
+  y: String,
+  named_curve: EcNamedCurve,
+) -> Result<Vec<u8>, deno_core::anyhow::Error> {
+  let point_bytes = match named_curve {
+    EcNamedCurve::P256 => {
+      let x = decode_b64url_to_field_bytes::<p256::NistP256>(&x)?;
+      let y = decode_b64url_to_field_bytes::<p256::NistP256>(&y)?;
+
+      p256::EncodedPoint::from_affine_coordinates(&x, &y, false).to_bytes()
+    }
+    EcNamedCurve::P384 => {
+      let x = decode_b64url_to_field_bytes::<p384::NistP384>(&x)?;
+      let y = decode_b64url_to_field_bytes::<p384::NistP384>(&y)?;
+
+      p384::EncodedPoint::from_affine_coordinates(&x, &y, false).to_bytes()
+    }
+    _ => return Err(not_supported_error("Unsupported named curve")),
+  };
+
+  Ok(point_bytes.to_vec())
+}
+
+fn import_key_ec_jwk(
+  key_data: KeyData,
+  named_curve: EcNamedCurve,
+) -> Result<ImportKeyResult, deno_core::anyhow::Error> {
+  match key_data {
+    KeyData::JwkPublicEc { x, y } => {
+      let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
+
+      Ok(ImportKeyResult::Ec {
+        raw_data: RawKeyData::Public(point_bytes.to_vec().into()),
+      })
+    }
+    KeyData::JwkPrivateEc { d, x, y } => {
+      let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
+
+      let secret_key_der = match named_curve {
+        EcNamedCurve::P256 => {
+          let d = decode_b64url_to_field_bytes::<p256::NistP256>(&d)?;
+          let secret_key = p256::SecretKey::from_bytes(&d)?;
+          ToPrivateKey::to_pkcs8_der(&secret_key).unwrap()
+        }
+        //@todo(sean) - build p384 secret key from jwk, when crate implements to_pkcs8_der
+        //Problem: p384 crate does not implement ProjectiveArithmetic
+        /*EcNamedCurve::P384 => {
+          let secret_key = p384::SecretKey::from_be_bytes(&d)?;
+
+          secret_key.to_pkcs8_der().unwrap()
+        }*/
+        _ => return Err(not_supported_error("Unsupported named curve")),
+      };
+
+      let oid =
+        <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::OID;
+
+      let pki = p256::pkcs8::PrivateKeyInfo::new(
+        p256::pkcs8::AlgorithmIdentifier {
+          oid,
+          parameters: None,
+        },
+        secret_key_der.as_ref(),
+      );
+
+      let pki = p256::pkcs8::PrivateKeyInfo {
+        public_key: Some(&point_bytes),
+        ..pki
+      };
+
+      Ok(ImportKeyResult::Ec {
+        raw_data: RawKeyData::Private(pki.private_key.to_vec().into()),
+      })
+    }
+    _ => unreachable!(),
+  }
+}
+
+pub struct ECParametersPkcs8 {
+  pub named_curve_alg: p256::pkcs8::der::asn1::ObjectIdentifier,
+}
+
+impl<'a> TryFrom<p256::pkcs8::der::asn1::Any<'a>> for ECParametersPkcs8 {
+  type Error = p256::pkcs8::der::Error;
+
+  fn try_from(
+    any: p256::pkcs8::der::asn1::Any<'a>,
+  ) -> p256::pkcs8::der::Result<ECParametersPkcs8> {
+    let x = any.oid()?;
+
+    Ok(Self { named_curve_alg: x })
+  }
+}
+
+pub struct ECParametersSpki {
+  pub named_curve_alg: spki::der::asn1::ObjectIdentifier,
+}
+
+impl<'a> TryFrom<spki::der::asn1::Any<'a>> for ECParametersSpki {
+  type Error = spki::der::Error;
+
+  fn try_from(
+    any: spki::der::asn1::Any<'a>,
+  ) -> spki::der::Result<ECParametersSpki> {
+    let x = any.oid()?;
+
+    Ok(Self { named_curve_alg: x })
+  }
+}
+
 fn import_key_ec(
   key_data: KeyData,
   named_curve: EcNamedCurve,
 ) -> Result<ImportKeyResult, AnyError> {
-  Ok(match key_data {
+  match key_data {
     KeyData::Raw(data) => {
       // The point is parsed and validated, ultimately the original data is
       // returned though.
@@ -684,13 +823,179 @@ fn import_key_ec(
             return Err(data_error("invalid P-384 eliptic curve point"));
           }
         }
+        _ => return Err(not_supported_error("Unsupported named curve")),
       };
-      ImportKeyResult::Ec {
+      Ok(ImportKeyResult::Ec {
         raw_data: RawKeyData::Public(data),
-      }
+      })
     }
-    _ => return Err(unsupported_format()),
-  })
+    KeyData::Pkcs8(data) => {
+      // 2-3.
+      let pk_info = PrivateKeyInfo::from_der(&data)
+        .map_err(|e| data_error(e.to_string()))?;
+
+      // 4-5.
+      let alg = pk_info.algorithm.oid;
+      // id-ecPublicKey
+      if alg != elliptic_curve::ALGORITHM_OID {
+        return Err(data_error("unsupported algorithm"));
+      }
+
+      // 5-7.
+      let params = ECParametersPkcs8::try_from(
+        pk_info
+          .algorithm
+          .parameters
+          .ok_or_else(|| data_error("malformed parameters"))?,
+      )
+      .map_err(|_| data_error("malformed parameters"))?;
+
+      // 8-9.
+      let pk_named_curve = match params.named_curve_alg {
+        // id-secp256r1
+        ID_SECP256R1_OID => Some(EcNamedCurve::P256),
+        // id-secp384r1
+        ID_SECP384R1_OID => Some(EcNamedCurve::P384),
+        // id-secp384r1
+        ID_SECP521R1_OID => Some(EcNamedCurve::P521),
+        _ => None,
+      };
+
+      // 10.
+      if let Some(pk_named_curve) = pk_named_curve {
+        match pk_named_curve {
+          EcNamedCurve::P256 => {
+            let secret_key =
+              p256::SecretKey::from_pkcs8_der(&data).map_err(|_| {
+                data_error("invalid P-256 elliptic curve PKCS8 data")
+              })?;
+
+            let point =
+              secret_key.public_key().as_affine().to_encoded_point(false);
+
+            // 12 - not sure if this is correct.
+            if point.is_identity() {
+              return Err(data_error("Invalid key data"));
+            }
+          }
+          //@todo(sean) Validate P384 secret-key on import(pkcs8)
+          //Problem: Nist384 Curve from p384 crate does not implement ProjectiveArithmetic
+          //so cannot extract PublicKey from SecretKey.
+          /*EcNamedCurve::P384 => {
+            let secret_key =
+              p384::SecretKey::from_pkcs8_der(&data).unwrap();
+
+            let point =
+              secret_key.public_key().as_affine().to_encoded_point(false);
+            // 3.
+            if point.is_identity() {
+              return Err(type_error("Invalid key data".to_string()));
+            }
+          }*/
+          _ => return Err(data_error("Unsupported named curve")),
+        }
+        // 11.
+        if named_curve != pk_named_curve {
+          return Err(data_error("curve mismatch"));
+        }
+      } else {
+        return Err(data_error("Unsupported named curve"));
+      }
+
+      Ok(ImportKeyResult::Ec {
+        raw_data: RawKeyData::Private(data),
+      })
+    }
+    KeyData::Spki(data) => {
+      // 2-3.
+      let pk_info = spki::SubjectPublicKeyInfo::from_der(&data)
+        .map_err(|e| data_error(e.to_string()))?;
+
+      // 4.
+      let alg = pk_info.algorithm.oid;
+      // id-ecPublicKey
+      if alg != elliptic_curve::ALGORITHM_OID {
+        return Err(data_error("unsupported algorithm"));
+      }
+
+      // 5-7.
+      let params = ECParametersSpki::try_from(
+        pk_info
+          .algorithm
+          .parameters
+          .ok_or_else(|| data_error("malformed parameters"))?,
+      )
+      .map_err(|_| data_error("malformed parameters"))?;
+
+      // 8-9.
+      let named_curve_alg = params.named_curve_alg;
+      let pk_named_curve = match named_curve_alg {
+        // id-secp256r1
+        ID_SECP256R1_OID => Some(EcNamedCurve::P256),
+        // id-secp384r1
+        ID_SECP384R1_OID => Some(EcNamedCurve::P384),
+        // id-secp521r1
+        ID_SECP521R1_OID => Some(EcNamedCurve::P521),
+        _ => None,
+      };
+
+      // 10.
+      let encoded_key;
+
+      if let Some(pk_named_curve) = pk_named_curve {
+        let pk = pk_info.subject_public_key;
+
+        encoded_key = pk.to_vec();
+
+        let bytes_consumed = match named_curve {
+          EcNamedCurve::P256 => {
+            let point =
+              p256::EncodedPoint::from_bytes(&*encoded_key).map_err(|_| {
+                data_error("invalid P-256 eliptic curve SPKI data")
+              })?;
+
+            if point.is_identity() {
+              return Err(data_error("invalid P-256 eliptic curve point"));
+            }
+
+            point.as_bytes().len()
+          }
+          EcNamedCurve::P384 => {
+            let point =
+              p384::EncodedPoint::from_bytes(&*encoded_key).map_err(|_| {
+                data_error("invalid P-384 eliptic curve SPKI data")
+              })?;
+
+            if point.is_identity() {
+              return Err(data_error("invalid P-384 eliptic curve point"));
+            }
+
+            point.as_bytes().len()
+          }
+          _ => return Err(not_supported_error("Unsupported named curve")),
+        };
+
+        if bytes_consumed != pk_info.subject_public_key.len() {
+          return Err(data_error("public key is invalid (too long)"));
+        }
+
+        // 11.
+        if named_curve != pk_named_curve {
+          return Err(data_error("curve mismatch"));
+        }
+      } else {
+        return Err(data_error("Unsupported named curve"));
+      }
+
+      Ok(ImportKeyResult::Ec {
+        raw_data: RawKeyData::Public(encoded_key.to_vec().into()),
+      })
+    }
+    KeyData::JwkPublicEc { .. } | KeyData::JwkPrivateEc { .. } => {
+      import_key_ec_jwk(key_data, named_curve)
+    }
+    _ => Err(unsupported_format()),
+  }
 }
 
 fn import_key_aes(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {

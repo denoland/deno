@@ -130,6 +130,18 @@
   webidl.converters.EcKeyGenParams = webidl
     .createDictionaryConverter("EcKeyGenParams", dictEcKeyGenParams);
 
+  const dictEcImportParams = [
+    ...dictAlgorithm,
+    {
+      key: "namedCurve",
+      converter: webidl.converters.NamedCurve,
+      required: true,
+    },
+  ];
+
+  webidl.converters.EcImportParams = webidl
+    .createDictionaryConverter("EcImportParams", dictEcImportParams);
+
   const dictAesKeyGenParams = [
     ...dictAlgorithm,
     {

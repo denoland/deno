@@ -125,10 +125,7 @@
 
       if (options.signal?.aborted) {
         core.close(cancelRid);
-        const err = new DOMException(
-          "This operation was aborted",
-          "AbortError",
-        );
+        const err = options.signal.reason;
         this[_connection].reject(err);
         this[_closed].reject(err);
       } else {
@@ -313,7 +310,12 @@
             }
           },
           (err) => {
-            core.tryClose(cancelRid);
+            if (err instanceof core.Interrupted) {
+              // The signal was aborted.
+              err = options.signal.reason;
+            } else {
+              core.tryClose(cancelRid);
+            }
             this[_connection].reject(err);
             this[_closed].reject(err);
           },
