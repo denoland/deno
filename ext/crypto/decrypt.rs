@@ -31,7 +31,7 @@ pub enum DecryptAlgorithm {
   RsaOaep {
     hash: ShaHash,
     #[serde(with = "serde_bytes")]
-    label: Option<Vec<u8>>,
+    label: Vec<u8>,
   },
   #[serde(rename = "AES-CBC", rename_all = "camelCase")]
   AesCbc {
@@ -62,12 +62,14 @@ pub async fn op_crypto_decrypt(
 fn decrypt_rsa_oaep(
   key: RawKeyData,
   hash: ShaHash,
-  label: Option<Vec<u8>>,
+  label: Vec<u8>,
   data: &[u8],
 ) -> Result<Vec<u8>, deno_core::anyhow::Error> {
   let key = key.as_rsa_private_key()?;
+
   let private_key = rsa::RsaPrivateKey::from_pkcs1_der(key)?;
-  let label = label.map(|label| String::from_utf8_lossy(&label).to_string());
+  let label = Some(String::from_utf8_lossy(&label).to_string());
+
   let padding = match hash {
     ShaHash::Sha1 => PaddingScheme::OAEP {
       digest: Box::new(Sha1::new()),
@@ -94,8 +96,7 @@ fn decrypt_rsa_oaep(
   Ok(
     private_key
       .decrypt(padding, data)
-      .map_err(|e| custom_error("DOMExceptionOperationError", e.to_string()))?
-      .into(),
+      .map_err(|e| custom_error("DOMExceptionOperationError", e.to_string()))?,
   )
 }
 
@@ -152,5 +153,5 @@ fn decrypt_aes_cbc(
   };
 
   // 6.
-  Ok(plaintext.into())
+  Ok(plaintext)
 }
