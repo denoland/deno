@@ -67,7 +67,7 @@
 
     spawn(options = {}) {
       if (this.#rid === null) {
-        throw new TypeError("Child has already been used up.");
+        throw new TypeError("Child process has already terminated.");
       }
       const child = core.opSync("op_command_spawn", this.#rid, options);
       this.#rid = null;
@@ -76,7 +76,7 @@
 
     async status(options = {}) {
       if (this.#rid === null) {
-        throw new TypeError("Child has already been used up.");
+        throw new TypeError("Child process has already terminated.");
       }
       const status = await core.opAsync(
         "op_command_status",
@@ -91,7 +91,7 @@
 
     async output() {
       if (this.#rid === null) {
-        throw new TypeError("Child has already been used up.");
+        throw new TypeError("Child process has already terminated.");
       }
       const res = await core.opAsync("op_command_output", this.#rid);
       this.#rid = null;
@@ -159,7 +159,7 @@
 
     get status() {
       if (this.#rid === null) {
-        throw new TypeError("Child has already been used up.");
+        throw new TypeError("Child process has already terminated.");
       }
       const status = core.opSync("op_command_child_status", this.#rid);
       // TODO(@crowlKats): 2.0 change typings to return null instead of undefined for status.signal
@@ -169,7 +169,7 @@
 
     async wait() {
       if (this.#rid === null) {
-        throw new TypeError("Child has already been used up.");
+        throw new TypeError("Child process has already terminated.");
       }
       const status = await core.opAsync(
         "op_command_child_wait",
@@ -185,7 +185,7 @@
 
     async output() {
       if (this.#rid === null) {
-        throw new TypeError("Child has already been used up.");
+        throw new TypeError("Child process has already terminated.");
       }
       const res = await core.opAsync("op_command_child_output", {
         rid: this.#rid,
@@ -201,7 +201,7 @@
 
     kill(signo) {
       if (this.#rid === null) {
-        throw new TypeError("Child has already been used up.");
+        throw new TypeError("Child process has already terminated.");
       }
       core.opSync("op_kill", this.#pid, signo);
     }
