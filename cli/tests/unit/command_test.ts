@@ -447,8 +447,9 @@ Deno.test(
     const output = await cmd.output();
     const obj = JSON.parse(new TextDecoder().decode(output.stdout));
 
-    // can't check for object equality because the OS may set additional env vars for processes
-    // so we check if PATH isn't present as that is a common env var across OS's and isn't set for processes.
+    // can't check for object equality because the OS may set additional env
+    // vars for processes, so we check if PATH isn't present as that is a common
+    // env var across OS's and isn't set for processes.
     assertEquals(obj.FOO, "23147");
     assert(!("PATH" in obj));
   },
