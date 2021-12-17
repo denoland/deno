@@ -401,8 +401,8 @@ mod test {
   #[test]
   fn test_strip_exports_assertions() {
     test_transform(
-      DownlevelImportsFolder,
-      r#"export data from "./mod.json" assert { type: "json" };"#,
+      StripExportsFolder,
+      r#"export { default as data } from "./mod.json" assert { type: "json" };"#,
       "await import(\"./mod.json\", {\n    assert: {\n        type: \"json\"\n    }\n});",
     );
   }
@@ -411,7 +411,7 @@ mod test {
   fn test_strip_exports_export_all_assertions() {
     // even though this doesn't really make sense for someone to do
     test_transform(
-      DownlevelImportsFolder,
+      StripExportsFolder,
       r#"export * from "./mod.json" assert { type: "json" };"#,
       "await import(\"./mod.json\", {\n    assert: {\n        type: \"json\"\n    }\n});",
     );
