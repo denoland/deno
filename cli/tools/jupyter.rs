@@ -1,11 +1,14 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+// TODO(bartlomieju): remove me
+#![allow(unused)]
+
 use crate::flags::Flags;
 use crate::flags::JupyterFlags;
 use data_encoding::HEXLOWER;
 use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
 use deno_core::error::generic_error;
+use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -448,7 +451,7 @@ fn parse_zmq_packet(data: &ZmqMessage) -> Result<(), AnyError> {
 
   println!("header:");
   dbg!(header);
-  let header_str = std::str::from_utf8(&header).unwrap();
+  let header_str = std::str::from_utf8(header).unwrap();
   let header_value: MessageHeader = serde_json::from_str(header_str).unwrap();
   println!("header_value");
   dbg!(&header_value);
@@ -468,7 +471,7 @@ fn hmac_sign(zmq: &ZmqMessage, key: hmac::Key) -> String {
   dbg!(tag);
   let sig = HEXLOWER.encode(tag.as_ref());
 
-  return sig;
+  sig
 }
 
 #[allow(dead_code)]
@@ -484,7 +487,7 @@ fn hmac_verify(
   msg.extend(zmq.get(4).unwrap()); // metadata
   msg.extend(zmq.get(5).unwrap()); // content
   let sig = HEXLOWER.decode(sig_str.as_bytes()).unwrap();
-  hmac::verify(&key, &msg.as_ref(), &sig.as_ref())?;
+  hmac::verify(&key, msg.as_ref(), sig.as_ref())?;
 
   Ok(())
 }
@@ -511,16 +514,15 @@ fn hmac_verify_test() {
   test_msg.push_back(content.into());
 
   dbg!(test_msg.clone());
-  match hmac_verify(
+  let result = hmac_verify(
     &test_msg,
     key,
     String::from(
       "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a",
     ),
-  ) {
-    Ok(_) => assert!(true),
-    Err(_) => assert!(false, "signature validation failed"),
-  }
+  );
+
+  assert!(result.is_ok(), "signature validation failed");
 }
 
 #[test]
