@@ -58,34 +58,6 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  async function runInvalidStdio() {
-    const cmd = new Deno.Command(Deno.execPath(), {
-      args: ["eval", "console.log('hello world')"],
-    });
-    assertThrows(() => {
-      cmd.spawn({
-        // @ts-expect-error because should throw on invalid stdin.
-        stdin: "a",
-      });
-    });
-    assertThrows(() =>
-      cmd.spawn({
-        // @ts-expect-error because should throw on invalid stdout.
-        stdout: "b",
-      })
-    );
-    assertThrows(() =>
-      cmd.spawn({
-        // @ts-expect-error because should throw on invalid stderr.
-        stderr: "c",
-      })
-    );
-    await cmd.output();
-  },
-);
-
-Deno.test(
-  { permissions: { run: true, read: true } },
   async function runCommandFailedWithCode() {
     const cmd = new Deno.Command(Deno.execPath(), {
       args: ["eval", "Deno.exit(41 + 1)"],
