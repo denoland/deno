@@ -58,7 +58,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  function runInvalidStdio() {
+  async function runInvalidStdio() {
     const cmd = new Deno.Command(Deno.execPath(), {
       args: ["eval", "console.log('hello world')"],
     });
@@ -80,6 +80,7 @@ Deno.test(
         stderr: "c",
       })
     );
+    await cmd.output();
   },
 );
 
