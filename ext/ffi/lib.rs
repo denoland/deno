@@ -23,6 +23,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ffi::CStr;
+use std::os::raw::c_char;
 use std::path::Path;
 use std::path::PathBuf;
 use std::ptr;
@@ -608,7 +609,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = u64::from(ptr) as *const i8;
+  let ptr = u64::from(ptr) as *const c_char;
   Ok(unsafe { CStr::from_ptr(ptr) }.to_str()?.to_string())
 }
 
