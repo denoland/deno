@@ -97,7 +97,7 @@
     }
 
     setNoDelay(nodelay = true) {
-      return core.opSync("op_set_nodelay", rid, nodelay);
+      return core.opSync("op_set_nodelay", this.rid, nodelay);
     }
   }
 
