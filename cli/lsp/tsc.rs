@@ -42,6 +42,7 @@ use log::warn;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
 use lspower::lsp;
+use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
 use std::borrow::Cow;
@@ -56,16 +57,23 @@ use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-lazy_static::lazy_static! {
-  static ref BRACKET_ACCESSOR_RE: Regex = Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap();
-  static ref CAPTION_RE: Regex = Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
-  static ref CODEBLOCK_RE: Regex = Regex::new(r"^\s*[~`]{3}").unwrap();
-  static ref EMAIL_MATCH_RE: Regex = Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
-  static ref JSDOC_LINKS_RE: Regex = Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap();
-  static ref PART_KIND_MODIFIER_RE: Regex = Regex::new(r",|\s+").unwrap();
-  static ref PART_RE: Regex = Regex::new(r"^(\S+)\s*-?\s*").unwrap();
-  static ref SCOPE_RE: Regex = Regex::new(r"scope_(\d)").unwrap();
-}
+static BRACKET_ACCESSOR_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap());
+static CAPTION_RE: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap()
+});
+static CODEBLOCK_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"^\s*[~`]{3}").unwrap());
+static EMAIL_MATCH_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap());
+static JSDOC_LINKS_RE: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap()
+});
+static PART_KIND_MODIFIER_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r",|\s+").unwrap());
+static PART_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"^(\S+)\s*-?\s*").unwrap());
+static SCOPE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"scope_(\d)").unwrap());
 
 const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
   &[".d.ts", ".ts", ".tsx", ".js", ".jsx", ".json"];

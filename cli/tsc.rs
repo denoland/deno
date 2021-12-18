@@ -25,6 +25,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -63,29 +64,39 @@ macro_rules! inc {
   };
 }
 
-lazy_static::lazy_static! {
-  /// Contains static assets that are not preloaded in the compiler snapshot.
-  pub(crate) static ref STATIC_ASSETS: HashMap<&'static str, &'static str> = (&[
-    ("lib.dom.asynciterable.d.ts", inc!("lib.dom.asynciterable.d.ts")),
-    ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
-    ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
-    ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
-    ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
-    ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
-    ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
-    ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
-    ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
-    ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
-    ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
-    ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
-    ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
-    ("lib.webworker.importscripts.d.ts", inc!("lib.webworker.importscripts.d.ts")),
-    ("lib.webworker.iterable.d.ts", inc!("lib.webworker.iterable.d.ts")),
-  ])
-  .iter()
-  .cloned()
-  .collect();
-}
+/// Contains static assets that are not preloaded in the compiler snapshot.
+pub(crate) static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
+  Lazy::new(|| {
+    (&[
+      (
+        "lib.dom.asynciterable.d.ts",
+        inc!("lib.dom.asynciterable.d.ts"),
+      ),
+      ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
+      ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
+      ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
+      ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
+      ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
+      ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
+      ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
+      ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
+      ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
+      ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
+      ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
+      ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
+      (
+        "lib.webworker.importscripts.d.ts",
+        inc!("lib.webworker.importscripts.d.ts"),
+      ),
+      (
+        "lib.webworker.iterable.d.ts",
+        inc!("lib.webworker.iterable.d.ts"),
+      ),
+    ])
+      .iter()
+      .cloned()
+      .collect()
+  });
 
 /// Retrieve a static asset that are included in the binary.
 pub fn get_asset(asset: &str) -> Option<&'static str> {

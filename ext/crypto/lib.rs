@@ -17,8 +17,6 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 
 use block_modes::BlockMode;
-use lazy_static::lazy_static;
-use num_traits::cast::FromPrimitive;
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::FromPrivateKey;
 use rand::rngs::OsRng;
@@ -42,7 +40,6 @@ use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::FromRsaPublicKey;
 use rsa::pkcs8::der::asn1;
-use rsa::BigUint;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
@@ -73,12 +70,7 @@ use crate::key::HkdfOutput;
 use crate::shared::ID_MFG1;
 use crate::shared::ID_P_SPECIFIED;
 use crate::shared::ID_SHA1_OID;
-
-// Allowlist for RSA public exponents.
-lazy_static! {
-  static ref PUB_EXPONENT_1: BigUint = BigUint::from_u64(3).unwrap();
-  static ref PUB_EXPONENT_2: BigUint = BigUint::from_u64(65537).unwrap();
-}
+use once_cell::sync::Lazy;
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
@@ -642,53 +634,64 @@ const SALT_LENGTH_TAG: rsa::pkcs8::der::TagNumber =
 const P_SOURCE_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
   rsa::pkcs8::der::TagNumber::new(2);
 
-lazy_static! {
-  // Default HashAlgorithm for RSASSA-PSS-params (sha1)
-  //
-  // sha1 HashAlgorithm ::= {
-  //   algorithm   id-sha1,
-  //   parameters  SHA1Parameters : NULL
-  // }
-  //
-  // SHA1Parameters ::= NULL
-  static ref SHA1_HASH_ALGORITHM: rsa::pkcs8::AlgorithmIdentifier<'static> = rsa::pkcs8::AlgorithmIdentifier {
-    // id-sha1
-    oid: ID_SHA1_OID,
-    // NULL
-    parameters: Some(asn1::Any::from(asn1::Null)),
-  };
+// Default HashAlgorithm for RSASSA-PSS-params (sha1)
+//
+// sha1 HashAlgorithm ::= {
+//   algorithm   id-sha1,
+//   parameters  SHA1Parameters : NULL
+// }
+//
+// SHA1Parameters ::= NULL
+static SHA1_HASH_ALGORITHM: Lazy<rsa::pkcs8::AlgorithmIdentifier<'static>> =
+  Lazy::new(|| {
+    rsa::pkcs8::AlgorithmIdentifier {
+      // id-sha1
+      oid: ID_SHA1_OID,
+      // NULL
+      parameters: Some(asn1::Any::from(asn1::Null)),
+    }
+  });
 
-  // TODO(@littledivy): `pkcs8` should provide AlgorithmIdentifier to Any conversion.
-  static ref ENCODED_SHA1_HASH_ALGORITHM: Vec<u8> = SHA1_HASH_ALGORITHM.to_vec().unwrap();
-  // Default MaskGenAlgrithm for RSASSA-PSS-params (mgf1SHA1)
-  //
-  // mgf1SHA1 MaskGenAlgorithm ::= {
-  //   algorithm   id-mgf1,
-  //   parameters  HashAlgorithm : sha1
-  // }
-  static ref MGF1_SHA1_MASK_ALGORITHM: rsa::pkcs8::AlgorithmIdentifier<'static> = rsa::pkcs8::AlgorithmIdentifier {
+// TODO(@littledivy): `pkcs8` should provide AlgorithmIdentifier to Any conversion.
+static ENCODED_SHA1_HASH_ALGORITHM: Lazy<Vec<u8>> =
+  Lazy::new(|| SHA1_HASH_ALGORITHM.to_vec().unwrap());
+// Default MaskGenAlgrithm for RSASSA-PSS-params (mgf1SHA1)
+//
+// mgf1SHA1 MaskGenAlgorithm ::= {
+//   algorithm   id-mgf1,
+//   parameters  HashAlgorithm : sha1
+// }
+static MGF1_SHA1_MASK_ALGORITHM: Lazy<
+  rsa::pkcs8::AlgorithmIdentifier<'static>,
+> = Lazy::new(|| {
+  rsa::pkcs8::AlgorithmIdentifier {
     // id-mgf1
     oid: ID_MFG1,
     // sha1
-    parameters: Some(asn1::Any::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap()),
-  };
+    parameters: Some(
+      asn1::Any::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap(),
+    ),
+  }
+});
 
-  // Default PSourceAlgorithm for RSAES-OAEP-params
-  // The default label is an empty string.
-  //
-  // pSpecifiedEmpty    PSourceAlgorithm ::= {
-  //   algorithm   id-pSpecified,
-  //   parameters  EncodingParameters : emptyString
-  // }
-  //
-  // emptyString    EncodingParameters ::= ''H
-  static ref P_SPECIFIED_EMPTY: rsa::pkcs8::AlgorithmIdentifier<'static> = rsa::pkcs8::AlgorithmIdentifier {
-    // id-pSpecified
-    oid: ID_P_SPECIFIED,
-    // EncodingParameters
-    parameters: Some(asn1::Any::from(asn1::OctetString::new(b"").unwrap())),
-  };
-}
+// Default PSourceAlgorithm for RSAES-OAEP-params
+// The default label is an empty string.
+//
+// pSpecifiedEmpty    PSourceAlgorithm ::= {
+//   algorithm   id-pSpecified,
+//   parameters  EncodingParameters : emptyString
+// }
+//
+// emptyString    EncodingParameters ::= ''H
+static P_SPECIFIED_EMPTY: Lazy<rsa::pkcs8::AlgorithmIdentifier<'static>> =
+  Lazy::new(|| {
+    rsa::pkcs8::AlgorithmIdentifier {
+      // id-pSpecified
+      oid: ID_P_SPECIFIED,
+      // EncodingParameters
+      parameters: Some(asn1::Any::from(asn1::OctetString::new(b"").unwrap())),
+    }
+  });
 
 impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
   for PssPrivateKeyParameters<'a>

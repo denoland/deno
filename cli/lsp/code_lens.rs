@@ -20,16 +20,18 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use lspower::lsp;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-lazy_static::lazy_static! {
-  static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
-  static ref EXPORT_MODIFIER: Regex = Regex::new(r"\bexport\b").unwrap();
-}
+static ABSTRACT_MODIFIER: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"\babstract\b").unwrap());
+
+static EXPORT_MODIFIER: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"\bexport\b").unwrap());
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum CodeLensSource {
