@@ -9,10 +9,12 @@ use crate::emit;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
+use crate::flags::CheckFlag;
 use crate::flags::Flags;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
+use crate::graph_util::graph_valid;
 use crate::located_script_name;
 use crate::lockfile;
 use crate::ops;
@@ -1080,6 +1082,7 @@ pub async fn run_tests_with_watch(
 
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
+  let no_check = ps.flags.check == CheckFlag::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let mut cache = cache::FetchCacher::new(
@@ -1149,7 +1152,7 @@ pub async fn run_tests_with_watch(
         None,
       )
       .await;
-      graph.valid()?;
+      graph_valid(&graph, !no_check)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
@@ -1159,21 +1162,32 @@ pub async fn run_tests_with_watch(
           // This needs to be accessible to skip getting dependencies if they're already there,
           // otherwise this will cause a stack overflow with circular dependencies
           output: &mut HashSet<&'a ModuleSpecifier>,
+          no_check: bool,
         ) {
           if let Some(Module::Es(module)) = maybe_module {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {
                   output.insert(specifier);
-
-                  get_dependencies(graph, graph.get(specifier), output);
+                  get_dependencies(
+                    graph,
+                    graph.get(specifier),
+                    output,
+                    no_check,
+                  );
                 }
               }
-              if let Some(specifier) = &dep.get_type() {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-
-                  get_dependencies(graph, graph.get(specifier), output);
+              if !no_check {
+                if let Some(specifier) = &dep.get_type() {
+                  if !output.contains(specifier) {
+                    output.insert(specifier);
+                    get_dependencies(
+                      graph,
+                      graph.get(specifier),
+                      output,
+                      no_check,
+                    );
+                  }
                 }
               }
             }
@@ -1183,7 +1197,7 @@ pub async fn run_tests_with_watch(
         // This test module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
-        get_dependencies(&graph, graph.get(&specifier), &mut modules);
+        get_dependencies(&graph, graph.get(&specifier), &mut modules, no_check);
 
         paths_to_watch.extend(
           modules

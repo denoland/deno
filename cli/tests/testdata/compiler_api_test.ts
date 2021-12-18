@@ -307,7 +307,7 @@ Deno.test({
     );
     assertEquals(diagnostics.length, 0);
     assert(!ignoredOptions);
-    assertEquals(stats.length, 12);
+    assertEquals(stats.length, 0);
     assertEquals(
       Object.keys(files).sort(),
       ["deno:///bundle.js.map", "deno:///bundle.js"].sort(),

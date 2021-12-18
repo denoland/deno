@@ -27,7 +27,6 @@
     abortedNetworkError,
   } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
-  const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayPrototypePush,
     ArrayPrototypeSplice,
@@ -88,10 +87,7 @@
   function createResponseBodyStream(responseBodyRid, terminator) {
     function onAbort() {
       if (readable) {
-        errorReadableStream(
-          readable,
-          new DOMException("Ongoing fetch was aborted.", "AbortError"),
-        );
+        errorReadableStream(readable, terminator.reason);
       }
       core.tryClose(responseBodyRid);
     }
@@ -121,9 +117,7 @@
         } catch (err) {
           RESOURCE_REGISTRY.unregister(readable);
           if (terminator.aborted) {
-            controller.error(
-              new DOMException("Ongoing fetch was aborted.", "AbortError"),
-            );
+            controller.error(terminator.reason);
           } else {
             // There was an error while reading a chunk of the body, so we
             // error.
@@ -155,9 +149,7 @@
       }
 
       const body = new InnerBody(req.blobUrlEntry.stream());
-      terminator[abortSignal.add](() =>
-        body.error(new DOMException("Ongoing fetch was aborted.", "AbortError"))
-      );
+      terminator[abortSignal.add](() => body.error(terminator.reason));
 
       return {
         headerList: [
@@ -328,6 +320,7 @@
   /**
    * @param {InnerRequest} request
    * @param {InnerResponse} response
+   * @param {AbortSignal} terminator
    * @returns {Promise<InnerResponse>}
    */
   function httpRedirectFetch(request, response, terminator) {
@@ -405,7 +398,7 @@
       const request = toInnerRequest(requestObject);
       // 4.
       if (requestObject.signal.aborted) {
-        reject(abortFetch(request, null));
+        reject(abortFetch(request, null, requestObject.signal.reason));
         return;
       }
 
@@ -416,7 +409,9 @@
       // 10.
       function onabort() {
         locallyAborted = true;
-        reject(abortFetch(request, responseObject));
+        reject(
+          abortFetch(request, responseObject, requestObject.signal.reason),
+        );
       }
       requestObject.signal[abortSignal.add](onabort);
 
@@ -433,7 +428,13 @@
             if (locallyAborted) return;
             // 12.2.
             if (response.aborted) {
-              reject(request, responseObject);
+              reject(
+                abortFetch(
+                  request,
+                  responseObject,
+                  requestObject.signal.reason,
+                ),
+              );
               requestObject.signal[abortSignal.remove](onabort);
               return;
             }
@@ -459,8 +460,7 @@
     });
   }
 
-  function abortFetch(request, responseObject) {
-    const error = new DOMException("Ongoing fetch was aborted.", "AbortError");
+  function abortFetch(request, responseObject, error) {
     if (request.body !== null) {
       if (WeakMapPrototypeHas(requestBodyReaders, request)) {
         WeakMapPrototypeGet(requestBodyReaders, request).cancel(error);

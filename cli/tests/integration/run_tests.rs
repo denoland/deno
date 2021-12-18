@@ -1583,6 +1583,23 @@ itest!(worker_close_in_wasm_reactions {
   output: "worker_close_in_wasm_reactions.js.out",
 });
 
+itest!(reference_types_error {
+  args: "run reference_types_error.js",
+  output: "reference_types_error.js.out",
+  exit_code: 1,
+});
+
+itest!(reference_types_error_no_check {
+  args: "run --no-check reference_types_error.js",
+  output_str: Some(""),
+});
+
+itest!(jsx_import_source_error {
+  args: "run --config jsx/deno-jsx-error.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_error.out",
+  exit_code: 1,
+});
+
 #[test]
 fn no_validate_asm() {
   let output = util::deno_cmd()
