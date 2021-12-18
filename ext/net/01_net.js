@@ -58,10 +58,6 @@
     return core.opAsync("op_dns_resolve", { query, recordType, options });
   }
 
-  function opSetNoDelay(rid, noDelay) {
-    return core.opAsync("op_set_nodelay", { rid, noDelay });
-  }
-
   class Conn {
     #rid = 0;
     #remoteAddr = null;
@@ -100,8 +96,8 @@
       return shutdown(this.rid);
     }
 
-    async setNoDelay(noDelay) {
-      return await opSetNoDelay(this.rid, noDelay);
+    setNoDelay(nodelay) {
+      return core.opSync("op_set_nodelay", rid, nodelay);
     }
   }
 

@@ -51,7 +51,7 @@ declare namespace Deno {
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
     /** Enable/disable the use of Nagle's algorithm. */
-    setNoDelay(nodelay: boolean): Promise<void>;
+    setNoDelay(nodelay: boolean): void;
   }
 
   // deno-lint-ignore no-empty-interface
