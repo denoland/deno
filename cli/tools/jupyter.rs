@@ -21,7 +21,7 @@ use tokio::join;
 use zeromq::prelude::*;
 use zeromq::ZmqMessage;
 
-const DELIMETER: &str = "<IDS|MSG>";
+const DELIMITER: &str = "<IDS|MSG>";
 
 pub fn install() -> Result<(), AnyError> {
   let temp_dir = TempDir::new().unwrap();
@@ -352,7 +352,7 @@ impl Message {
     let hmac =
       hmac_sign(hmac_key, &header, &parent_header, &metadata, &content);
 
-    let mut zmq_msg = ZmqMessage::from(DELIMETER);
+    let mut zmq_msg = ZmqMessage::from(DELIMITER);
     zmq_msg.push_back(hmac.into());
     zmq_msg.push_back(header.into());
     zmq_msg.push_back(parent_header.into());
@@ -500,25 +500,6 @@ fn create_conn_str(transport: &str, ip: &str, port: u32) -> String {
   format!("{}://{}:{}", transport, ip, port)
 }
 
-fn parse_zmq_packet(data: &ZmqMessage) -> Result<(), AnyError> {
-  let _delim = data.get(0);
-  let _hmac = data.get(1);
-  let header = data.get(2).unwrap();
-  let _parent_header = data.get(3);
-  let _metadata = data.get(4);
-  let _content = data.get(5);
-
-  println!("header:");
-  dbg!(header);
-  let header_str = std::str::from_utf8(header).unwrap();
-  let header_value: MessageHeader = serde_json::from_str(header_str).unwrap();
-  println!("header_value");
-  dbg!(&header_value);
-  // validate_header(&header_value)?;
-
-  Ok(())
-}
-
 fn hmac_sign(
   key: &hmac::Key,
   header: &str,
@@ -543,15 +524,14 @@ fn hmac_verify(
   parent_header: &[u8],
   metadata: &[u8],
   content: &[u8],
-) -> Result<(), ring::error::Unspecified> {
+) -> Result<(), AnyError> {
   let mut msg = Vec::<u8>::new();
   msg.extend(header);
   msg.extend(parent_header);
   msg.extend(metadata);
   msg.extend(content);
-  let sig = HEXLOWER.decode(expected_signature).unwrap();
+  let sig = HEXLOWER.decode(expected_signature)?;
   hmac::verify(key, msg.as_ref(), sig.as_ref())?;
-
   Ok(())
 }
 
