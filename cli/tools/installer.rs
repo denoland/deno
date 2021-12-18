@@ -378,7 +378,7 @@ mod tests {
   use tempfile::TempDir;
   use test_util::testdata_path;
 
-  pub static ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(Mutex::new(()));
+  pub static ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
   #[test]
   fn install_infer_name_from_url() {
