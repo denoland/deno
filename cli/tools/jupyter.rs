@@ -10,6 +10,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -19,6 +20,8 @@ use tempfile::TempDir;
 use tokio::join;
 use zeromq::prelude::*;
 use zeromq::ZmqMessage;
+
+const DELIMETER: &str = "<IDS|MSG>";
 
 pub fn install() -> Result<(), AnyError> {
   let temp_dir = TempDir::new().unwrap();
@@ -83,17 +86,18 @@ pub async fn kernel(
     .context("Failed to parse connection file")?;
   eprintln!("[DENO] parsed conn file: {:#?}", conn_spec);
 
+  let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, conn_spec.key.as_ref());
   let metadata = KernelMetadata::default();
   let iopub_comm = PubComm::new(
     create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.iopub_port),
     metadata.session_id.clone(),
-    conn_spec.key.clone(),
+    hmac_key.clone(),
   );
   let shell_comm = DealerComm::new(
     "shell",
     create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.shell_port),
     metadata.session_id.clone(),
-    conn_spec.key.clone(),
+    hmac_key.clone(),
   );
   let control_comm = DealerComm::new(
     "control",
@@ -103,13 +107,13 @@ pub async fn kernel(
       conn_spec.control_port,
     ),
     metadata.session_id.clone(),
-    conn_spec.key.clone(),
+    hmac_key.clone(),
   );
   let stdin_comm = DealerComm::new(
     "stdin",
     create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.stdin_port),
     metadata.session_id.clone(),
-    conn_spec.key.clone(),
+    hmac_key.clone(),
   );
 
   let hb_conn_str =
@@ -214,6 +218,7 @@ impl Kernel {
       },
       parent_header: Some(ctx.message.header),
       session_id: ctx.session_id,
+      metadata: json!({}),
       content: json!({
         "execution_state": state.to_string(),
       }),
@@ -308,7 +313,7 @@ struct CommContext {
   session_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct MessageHeader {
   msg_id: String,
   session: String,
@@ -323,6 +328,7 @@ struct Message {
   r#type: String,
   header: MessageHeader,
   parent_header: Option<MessageHeader>,
+  metadata: Value,
   content: Value,
   session_id: String,
 }
@@ -332,19 +338,33 @@ impl Message {
     todo!()
   }
 
-  fn calc_hmac(&self, hmac: String) -> String {
-    todo!()
-  }
+  fn serialize(&self, hmac_key: &hmac::Key) -> ZmqMessage {
+    let header = serde_json::to_string(&self.header).unwrap();
+    let parent_header = if let Some(p_header) = self.parent_header.as_ref() {
+      serde_json::to_string(p_header).unwrap()
+    } else {
+      serde_json::to_string(&json!({})).unwrap()
+    };
+    let metadata = serde_json::to_string(&self.metadata).unwrap();
+    let content = serde_json::to_string(&self.content).unwrap();
 
-  fn serialize(&self, hmac: String) -> Vec<u8> {
-    todo!()
+    let hmac =
+      hmac_sign(hmac_key, &header, &parent_header, &metadata, &content);
+
+    let mut zmq_msg = ZmqMessage::from(DELIMETER);
+    zmq_msg.push_back(hmac.into());
+    zmq_msg.push_back(header.into());
+    zmq_msg.push_back(parent_header.into());
+    zmq_msg.push_back(metadata.into());
+    zmq_msg.push_back(content.into());
+    zmq_msg
   }
 
   fn hmac_verify(&self, expected_signature: Vec<u8>, hmac: String) {
     todo!()
   }
 
-  fn from_data(data: Vec<u8>, hmac: String) -> Result<Self, AnyError> {
+  fn from_zmq_message(msg: ZmqMessage, hmac_key: &hmac::Key) -> Result<Self, AnyError> {
     todo!()
   }
 }
@@ -352,12 +372,16 @@ impl Message {
 struct PubComm {
   conn_str: String,
   session_id: String,
-  hmac_key: String,
+  hmac_key: hmac::Key,
   socket: zeromq::PubSocket,
 }
 
 impl PubComm {
-  pub fn new(conn_str: String, session_id: String, hmac_key: String) -> Self {
+  pub fn new(
+    conn_str: String,
+    session_id: String,
+    hmac_key: hmac::Key,
+  ) -> Self {
     println!("iopub connection: {}", conn_str);
     Self {
       conn_str,
@@ -374,8 +398,8 @@ impl PubComm {
   }
 
   pub async fn send(&mut self, msg: Message) -> Result<(), AnyError> {
-    let msg_str = msg.serialize(self.hmac_key.clone());
-    self.socket.send(msg_str.into()).await?;
+    let zmq_msg = msg.serialize(&self.hmac_key);
+    self.socket.send(zmq_msg).await?;
     Ok(())
   }
 }
@@ -384,7 +408,7 @@ struct DealerComm {
   name: String,
   conn_str: String,
   session_id: String,
-  hmac_key: String,
+  hmac_key: hmac::Key,
   socket: zeromq::DealerSocket,
 }
 
@@ -393,7 +417,7 @@ impl DealerComm {
     name: &str,
     conn_str: String,
     session_id: String,
-    hmac_key: String,
+    hmac_key: hmac::Key,
   ) -> Self {
     println!("dealer '{}' connection: {}", name, conn_str);
     Self {
@@ -417,8 +441,8 @@ impl DealerComm {
   }
 
   pub async fn send(&mut self, msg: Message) -> Result<(), AnyError> {
-    let msg_str = msg.serialize(self.hmac_key.clone());
-    self.socket.send(msg_str.into()).await?;
+    let zmq_msg = msg.serialize(&self.hmac_key);
+    self.socket.send(zmq_msg).await?;
     Ok(())
   }
 }
@@ -460,21 +484,23 @@ fn parse_zmq_packet(data: &ZmqMessage) -> Result<(), AnyError> {
   Ok(())
 }
 
-#[allow(dead_code)]
-fn hmac_sign(zmq: &ZmqMessage, key: hmac::Key) -> String {
-  let mut hmac_ctx = hmac::Context::with_key(&key);
-  hmac_ctx.update(zmq.get(2).unwrap()); // header
-  hmac_ctx.update(zmq.get(3).unwrap()); // parent header
-  hmac_ctx.update(zmq.get(4).unwrap()); // metadata
-  hmac_ctx.update(zmq.get(5).unwrap()); // content
+fn hmac_sign(
+  key: &hmac::Key,
+  header: &str,
+  parent_header: &str,
+  metadata: &str,
+  content: &str,
+) -> String {
+  let mut hmac_ctx = hmac::Context::with_key(key);
+  hmac_ctx.update(header.as_bytes());
+  hmac_ctx.update(parent_header.as_bytes());
+  hmac_ctx.update(metadata.as_bytes());
+  hmac_ctx.update(content.as_bytes());
   let tag = hmac_ctx.sign();
-  dbg!(tag);
   let sig = HEXLOWER.encode(tag.as_ref());
-
   sig
 }
 
-#[allow(dead_code)]
 fn hmac_verify(
   zmq: &ZmqMessage,
   key: hmac::Key,
@@ -529,26 +555,11 @@ fn hmac_verify_test() {
 fn hmac_sign_test() {
   let key_value = "1f5cec86-8eaa942eef7f5a35b51ddcf5";
   let key = hmac::Key::new(hmac::HMAC_SHA256, key_value.as_ref());
-
-  let delim = "<IDS|MSG>";
-  let hash = "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"
-    .as_bytes()
-    .to_vec();
-  let header = "{\"msg_id\":\"c0fd20872c1b4d1c87e7fc814b75c93e_0\",\"msg_type\":\"kernel_info_request\",\"username\":\"ampower\",\"session\":\"c0fd20872c1b4d1c87e7fc814b75c93e\",\"date\":\"2021-12-10T06:20:40.259695Z\",\"version\":\"5.3\"}".as_bytes().to_vec();
-  let parent_header = "{}".as_bytes().to_vec();
-  let metadata = "{}".as_bytes().to_vec();
-  let content = "{}".as_bytes().to_vec();
-
-  let mut test_msg = ZmqMessage::from(delim);
-  test_msg.push_back(hash.into());
-  test_msg.push_back(header.into());
-  test_msg.push_back(parent_header.into());
-  test_msg.push_back(metadata.into());
-  test_msg.push_back(content.into());
-
-  dbg!(test_msg.clone());
-  let sig = hmac_sign(&test_msg, key);
-  println!("Signature: {}", sig);
+  let header = "{\"msg_id\":\"c0fd20872c1b4d1c87e7fc814b75c93e_0\",\"msg_type\":\"kernel_info_request\",\"username\":\"ampower\",\"session\":\"c0fd20872c1b4d1c87e7fc814b75c93e\",\"date\":\"2021-12-10T06:20:40.259695Z\",\"version\":\"5.3\"}";
+  let parent_header = "{}";
+  let metadata = "{}";
+  let content = "{}";
+  let sig = hmac_sign(&key, header, parent_header, metadata, content);
   assert_eq!(
     sig,
     "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"
