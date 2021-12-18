@@ -78,14 +78,32 @@ impl DenoTestCollector {
     }
   }
 
-  fn add_code_lens<N: AsRef<str>>(&mut self, name: N, span: &Span) {
+  fn add_code_lenses<N: AsRef<str>>(&mut self, name: N, span: &Span) {
     let range = span_to_range(span, &self.parsed_source);
+    self.add_code_lens(&name, range, "▶\u{fe0e} Run Test", false);
+    self.add_code_lens(&name, range, "Debug", true);
+  }
+
+  fn add_code_lens<N: AsRef<str>>(
+    &mut self,
+    name: &N,
+    range: lsp::Range,
+    title: &str,
+    inspect: bool,
+  ) {
+    let options = json!({
+      "inspect": inspect,
+    });
     self.code_lenses.push(lsp::CodeLens {
       range,
       command: Some(lsp::Command {
-        title: "▶\u{fe0e} Run Test".to_string(),
+        title: title.to_string(),
         command: "deno.test".to_string(),
-        arguments: Some(vec![json!(self.specifier), json!(name.as_ref())]),
+        arguments: Some(vec![
+          json!(self.specifier),
+          json!(name.as_ref()),
+          options,
+        ]),
       }),
       data: None,
     });
@@ -104,7 +122,7 @@ impl DenoTestCollector {
                       key_value_prop.value.as_ref()
                     {
                       let name = lit_str.value.to_string();
-                      self.add_code_lens(name, span);
+                      self.add_code_lenses(name, span);
                     }
                   }
                 }
@@ -114,7 +132,7 @@ impl DenoTestCollector {
         }
         ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
           let name = lit_str.value.to_string();
-          self.add_code_lens(name, span);
+          self.add_code_lenses(name, span);
         }
         _ => (),
       }
