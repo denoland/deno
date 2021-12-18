@@ -180,13 +180,13 @@ impl Kernel {
     loop {
       tokio::select! {
         shell_msg = self.shell_comm.recv() => {
-          eprintln!("shell got packet: {:#?}", shell_msg);
+          eprintln!("shell got packet: {:#?}", Message::from_zmq_message(shell_msg?, &self.shell_comm.hmac_key)?);
         },
         control_msg = self.control_comm.recv() => {
-          eprintln!("control got packet: {:#?}", control_msg);
+          eprintln!("control got packet: {:#?}", Message::from_zmq_message(control_msg?, &self.control_comm.hmac_key)?);
         },
         stdin_msg = self.stdin_comm.recv() => {
-          eprintln!("stdin got packet: {:#?}", stdin_msg);
+          eprintln!("stdin got packet: {:#?}", Message::from_zmq_message(stdin_msg?, &self.stdin_comm.hmac_key)?);
         },
       }
     }
@@ -313,7 +313,7 @@ struct CommContext {
   session_id: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 struct MessageHeader {
   msg_id: String,
   session: String,
@@ -323,6 +323,7 @@ struct MessageHeader {
   version: String,
 }
 
+#[derive(Debug)]
 struct Message {
   is_reply: bool,
   r#type: String,
@@ -365,11 +366,11 @@ impl Message {
     hmac_key: &hmac::Key,
   ) -> Result<Self, AnyError> {
     // TODO(bartomieju): can these unwraps be better handled?
-    let expected_signature_bytes = zmq_msg.get(0).unwrap();
-    let header_bytes = zmq_msg.get(1).unwrap();
-    let parent_header_bytes = zmq_msg.get(2).unwrap();
-    let metadata_bytes = zmq_msg.get(3).unwrap();
-    let content_bytes = zmq_msg.get(4).unwrap();
+    let expected_signature_bytes = zmq_msg.get(1).unwrap();
+    let header_bytes = zmq_msg.get(2).unwrap();
+    let parent_header_bytes = zmq_msg.get(3).unwrap();
+    let metadata_bytes = zmq_msg.get(4).unwrap();
+    let content_bytes = zmq_msg.get(5).unwrap();
 
     hmac_verify(
       hmac_key,
@@ -380,10 +381,11 @@ impl Message {
       content_bytes,
     )?;
 
+    // eprintln!("parent_Header {:?}", String::from_utf8(parent_header_bytes.to_vec()).unwrap());
     // TODO(bartomieju): can these unwraps be better handled?
     let header: MessageHeader = serde_json::from_slice(header_bytes).unwrap();
-    let parent_header: MessageHeader =
-      serde_json::from_slice(parent_header_bytes).unwrap();
+    // let parent_header: MessageHeader =
+    //   serde_json::from_slice(parent_header_bytes).unwrap();
     let metadata: Value = serde_json::from_slice(metadata_bytes).unwrap();
     let content: Value = serde_json::from_slice(content_bytes).unwrap();
 
@@ -391,7 +393,7 @@ impl Message {
       is_reply: false,
       r#type: header.msg_type.clone(),
       header,
-      parent_header: Some(parent_header),
+      parent_header: None,
       metadata,
       content,
       // FIXME:
