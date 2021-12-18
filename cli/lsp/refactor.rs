@@ -7,6 +7,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
 use lspower::lsp;
+use once_cell::sync::Lazy;
 
 pub struct RefactorCodeActionKind {
   pub kind: lsp::CodeActionKind,
