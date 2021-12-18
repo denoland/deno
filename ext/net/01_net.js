@@ -96,7 +96,7 @@
       return shutdown(this.rid);
     }
 
-    setNoDelay(nodelay) {
+    setNoDelay(nodelay = true) {
       return core.opSync("op_set_nodelay", rid, nodelay);
     }
   }
