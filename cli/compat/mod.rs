@@ -7,6 +7,7 @@ use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
+use once_cell::sync::Lazy;
 
 pub use esm_resolver::check_if_should_use_esm_loader;
 pub(crate) use esm_resolver::NodeEsmResolver;
@@ -62,15 +63,27 @@ static SUPPORTED_MODULES: &[&str] = &[
   "zlib",
 ];
 
-lazy_static::lazy_static! {
-  static ref NODE_COMPAT_URL: String = std::env::var("DENO_NODE_COMPAT_URL").map(String::into).ok()
-    .unwrap_or_else(|| STD_URL_STR.to_string());
-  static ref GLOBAL_URL_STR: String = format!("{}node/global.ts", NODE_COMPAT_URL.as_str());
-  pub(crate) static ref GLOBAL_URL: Url = Url::parse(&GLOBAL_URL_STR).unwrap();
-  static ref MODULE_URL_STR: String = format!("{}node/module.ts", NODE_COMPAT_URL.as_str());
-  pub(crate) static ref MODULE_URL: Url = Url::parse(&MODULE_URL_STR).unwrap();
-  static ref COMPAT_IMPORT_URL: Url = Url::parse("flags:compat").unwrap();
-}
+static NODE_COMPAT_URL: Lazy<String> = Lazy::new(|| {
+  std::env::var("DENO_NODE_COMPAT_URL")
+    .map(String::into)
+    .ok()
+    .unwrap_or_else(|| STD_URL_STR.to_string())
+});
+
+static GLOBAL_URL_STR: Lazy<String> =
+  Lazy::new(|| format!("{}node/global.ts", NODE_COMPAT_URL.as_str()));
+
+pub(crate) static GLOBAL_URL: Lazy<Url> =
+  Lazy::new(|| Url::parse(&GLOBAL_URL_STR).unwrap());
+
+static MODULE_URL_STR: Lazy<String> =
+  Lazy::new(|| format!("{}node/module.ts", NODE_COMPAT_URL.as_str()));
+
+pub(crate) static MODULE_URL: Lazy<Url> =
+  Lazy::new(|| Url::parse(&MODULE_URL_STR).unwrap());
+
+static COMPAT_IMPORT_URL: Lazy<Url> =
+  Lazy::new(|| Url::parse("flags:compat").unwrap());
 
 /// Provide imports into a module graph when the compat flag is true.
 pub(crate) fn get_node_imports() -> Vec<(Url, Vec<String>)> {

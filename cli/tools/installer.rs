@@ -8,6 +8,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use log::Level;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use regex::RegexBuilder;
 use std::env;
@@ -21,15 +22,12 @@ use std::path::PathBuf;
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
 
-lazy_static::lazy_static! {
-    static ref EXEC_NAME_RE: Regex = RegexBuilder::new(
-        r"^[a-z][\w-]*$"
-    ).case_insensitive(true).build().unwrap();
-    // Regular expression to test disk driver letter. eg "C:\\User\username\path\to"
-    static ref DRIVE_LETTER_REG: Regex = RegexBuilder::new(
-        r"^[c-z]:"
-    ).case_insensitive(true).build().unwrap();
-}
+static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
+  RegexBuilder::new(r"^[a-z][\w-]*$")
+    .case_insensitive(true)
+    .build()
+    .unwrap()
+});
 
 fn validate_name(exec_name: &str) -> Result<(), AnyError> {
   if EXEC_NAME_RE.is_match(exec_name) {
@@ -375,13 +373,12 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
   use deno_core::parking_lot::Mutex;
+  use once_cell::sync::Lazy;
   use std::process::Command;
   use tempfile::TempDir;
   use test_util::testdata_path;
 
-  lazy_static::lazy_static! {
-    pub static ref ENV_LOCK: Mutex<()> = Mutex::new(());
-  }
+  pub static ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
   #[test]
   fn install_infer_name_from_url() {

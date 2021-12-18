@@ -29,15 +29,14 @@
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use fancy_regex::Regex as FancyRegex;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
 use std::iter::Peekable;
 
-lazy_static::lazy_static! {
-  static ref ESCAPE_STRING_RE: Regex =
-    Regex::new(r"([.+*?=^!:${}()\[\]|/\\])").unwrap();
-}
+static ESCAPE_STRING_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"([.+*?=^!:${}()\[\]|/\\])").unwrap());
 
 #[derive(Debug, PartialEq, Eq)]
 enum TokenType {

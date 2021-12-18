@@ -12,6 +12,7 @@ use deno_core::url::Url;
 use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
+use once_cell::sync::Lazy;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
@@ -19,8 +20,8 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-lazy_static::lazy_static! {
-  static ref LONG_VERSION: String = format!(
+static LONG_VERSION: Lazy<String> = Lazy::new(|| {
+  format!(
     "{} ({}, {})\nv8 {}\ntypescript {}",
     crate::version::deno(),
     if crate::version::is_canary() {
@@ -31,8 +32,8 @@ lazy_static::lazy_static! {
     env!("TARGET"),
     deno_core::v8_version(),
     crate::version::TYPESCRIPT
-  );
-}
+  )
+});
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct BundleFlags {

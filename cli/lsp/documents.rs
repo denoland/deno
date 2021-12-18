@@ -24,6 +24,7 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Module;
 use lspower::lsp;
+use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -35,20 +36,39 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-lazy_static::lazy_static! {
-  static ref JS_HEADERS: HashMap<String, String> = ([
-    ("content-type".to_string(), "application/javascript".to_string())
-  ]).iter().cloned().collect();
-  static ref JSX_HEADERS: HashMap<String, String> = ([
-    ("content-type".to_string(), "text/jsx".to_string())
-  ]).iter().cloned().collect();
-  static ref TS_HEADERS: HashMap<String, String> = ([
-    ("content-type".to_string(), "application/typescript".to_string())
-  ]).iter().cloned().collect();
-  static ref TSX_HEADERS: HashMap<String, String> = ([
-    ("content-type".to_string(), "text/tsx".to_string())
-  ]).iter().cloned().collect();
-}
+static JS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
+  ([(
+    "content-type".to_string(),
+    "application/javascript".to_string(),
+  )])
+  .iter()
+  .cloned()
+  .collect()
+});
+
+static JSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
+  ([("content-type".to_string(), "text/jsx".to_string())])
+    .iter()
+    .cloned()
+    .collect()
+});
+
+static TS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
+  ([(
+    "content-type".to_string(),
+    "application/typescript".to_string(),
+  )])
+  .iter()
+  .cloned()
+  .collect()
+});
+
+static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
+  ([("content-type".to_string(), "text/tsx".to_string())])
+    .iter()
+    .cloned()
+    .collect()
+});
 
 /// The default parser from `deno_graph` does not include the configuration
 /// options we require here, and so implementing an empty struct that provides
