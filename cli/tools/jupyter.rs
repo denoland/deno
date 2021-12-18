@@ -360,12 +360,45 @@ impl Message {
     zmq_msg
   }
 
-  fn hmac_verify(&self, expected_signature: Vec<u8>, hmac: String) {
-    todo!()
-  }
+  fn from_zmq_message(
+    zmq_msg: ZmqMessage,
+    hmac_key: &hmac::Key,
+  ) -> Result<Self, AnyError> {
+    // TODO(bartomieju): can these unwraps be better handled?
+    let expected_signature_bytes = zmq_msg.get(0).unwrap();
+    let header_bytes = zmq_msg.get(1).unwrap();
+    let parent_header_bytes = zmq_msg.get(2).unwrap();
+    let metadata_bytes = zmq_msg.get(3).unwrap();
+    let content_bytes = zmq_msg.get(4).unwrap();
 
-  fn from_zmq_message(msg: ZmqMessage, hmac_key: &hmac::Key) -> Result<Self, AnyError> {
-    todo!()
+    hmac_verify(
+      hmac_key,
+      expected_signature_bytes,
+      header_bytes,
+      parent_header_bytes,
+      metadata_bytes,
+      content_bytes,
+    )?;
+
+    // TODO(bartomieju): can these unwraps be better handled?
+    let header: MessageHeader = serde_json::from_slice(header_bytes).unwrap();
+    let parent_header: MessageHeader =
+      serde_json::from_slice(parent_header_bytes).unwrap();
+    let metadata: Value = serde_json::from_slice(metadata_bytes).unwrap();
+    let content: Value = serde_json::from_slice(content_bytes).unwrap();
+
+    let msg = Message {
+      is_reply: false,
+      r#type: header.msg_type.clone(),
+      header,
+      parent_header: Some(parent_header),
+      metadata,
+      content,
+      // FIXME:
+      session_id: "".to_string(),
+    };
+
+    Ok(msg)
   }
 }
 
@@ -502,18 +535,20 @@ fn hmac_sign(
 }
 
 fn hmac_verify(
-  zmq: &ZmqMessage,
-  key: hmac::Key,
-  sig_str: String,
+  key: &hmac::Key,
+  expected_signature: &[u8],
+  header: &[u8],
+  parent_header: &[u8],
+  metadata: &[u8],
+  content: &[u8],
 ) -> Result<(), ring::error::Unspecified> {
-  dbg!(&zmq);
   let mut msg = Vec::<u8>::new();
-  msg.extend(zmq.get(2).unwrap()); // header
-  msg.extend(zmq.get(3).unwrap()); // parent header
-  msg.extend(zmq.get(4).unwrap()); // metadata
-  msg.extend(zmq.get(5).unwrap()); // content
-  let sig = HEXLOWER.decode(sig_str.as_bytes()).unwrap();
-  hmac::verify(&key, msg.as_ref(), sig.as_ref())?;
+  msg.extend(header);
+  msg.extend(parent_header);
+  msg.extend(metadata);
+  msg.extend(content);
+  let sig = HEXLOWER.decode(expected_signature).unwrap();
+  hmac::verify(key, msg.as_ref(), sig.as_ref())?;
 
   Ok(())
 }
@@ -523,29 +558,22 @@ fn hmac_verify_test() {
   let key_value = "1f5cec86-8eaa942eef7f5a35b51ddcf5";
   let key = hmac::Key::new(hmac::HMAC_SHA256, key_value.as_ref());
 
-  let delim = "<IDS|MSG>".as_bytes().to_vec();
-  let hash = "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"
-    .as_bytes()
-    .to_vec();
+  let expected_signature =
+    "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"
+      .as_bytes()
+      .to_vec();
   let header = "{\"msg_id\":\"c0fd20872c1b4d1c87e7fc814b75c93e_0\",\"msg_type\":\"kernel_info_request\",\"username\":\"ampower\",\"session\":\"c0fd20872c1b4d1c87e7fc814b75c93e\",\"date\":\"2021-12-10T06:20:40.259695Z\",\"version\":\"5.3\"}".as_bytes().to_vec();
   let parent_header = "{}".as_bytes().to_vec();
   let metadata = "{}".as_bytes().to_vec();
   let content = "{}".as_bytes().to_vec();
 
-  let mut test_msg = ZmqMessage::from(delim);
-  test_msg.push_back(hash.into());
-  test_msg.push_back(header.into());
-  test_msg.push_back(parent_header.into());
-  test_msg.push_back(metadata.into());
-  test_msg.push_back(content.into());
-
-  dbg!(test_msg.clone());
   let result = hmac_verify(
-    &test_msg,
-    key,
-    String::from(
-      "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a",
-    ),
+    &key,
+    &expected_signature,
+    &header,
+    &parent_header,
+    &metadata,
+    &content,
   );
 
   assert!(result.is_ok(), "signature validation failed");
