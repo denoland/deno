@@ -29,14 +29,6 @@ static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-// Regular expression to test disk driver letter. eg "C:\\User\username\path\to"
-static DRIVE_LETTER_REG: Lazy<Regex> = Lazy::new(|| {
-  RegexBuilder::new(r"^[c-z]:")
-    .case_insensitive(true)
-    .build()
-    .unwrap()
-});
-
 fn validate_name(exec_name: &str) -> Result<(), AnyError> {
   if EXEC_NAME_RE.is_match(exec_name) {
     Ok(())
