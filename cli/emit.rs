@@ -7,11 +7,11 @@
 use crate::ast;
 use crate::cache::CacheType;
 use crate::cache::Cacher;
-use crate::colors;
 use crate::config_file::ConfigFile;
 use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
+use crate::eye_catchers;
 use crate::flags;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
@@ -368,7 +368,7 @@ pub(crate) fn check_and_maybe_emit(
       let root_str = root.to_string();
       // `$deno` specifiers are internal, don't print them.
       if !root_str.contains("$deno") {
-        log::info!("{} {}", colors::green("Check"), root);
+        eye_catchers::check(&format!("{}", root));
       }
     }
   }

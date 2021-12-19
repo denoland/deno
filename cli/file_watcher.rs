@@ -1,11 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::eye_catchers;
 use crate::fs_util::canonicalize_path;
 
 use deno_core::error::AnyError;
 use deno_core::futures::Future;
-use log::info;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
 use notify::Config;
@@ -93,10 +93,7 @@ where
       } => {
         // Clear screen first
         eprint!("{}", CLEAR_SCREEN);
-        info!(
-          "{} File change detected! Restarting!",
-          colors::intense_blue("Watcher"),
-        );
+        eye_catchers::watcher("File change detected! Restarting!");
         return (paths_to_watch, result);
       }
     }
@@ -141,10 +138,7 @@ where
       // but instead does nothing until you make a change.
       //
       // In that case, this is probably the correct output.
-      info!(
-        "{} Waiting for file changes...",
-        colors::intense_blue("Watcher"),
-      );
+      eye_catchers::watcher("Waiting for file changes...");
 
       let (paths, result) = next_restart(&mut resolver, &mut receiver).await;
       paths_to_watch = paths;
@@ -161,7 +155,7 @@ where
 
   // Clear screen first
   eprint!("{}", CLEAR_SCREEN);
-  info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
+  eye_catchers::watcher(&format!("{} started.", job_name));
 
   loop {
     let watcher = new_watcher(&paths_to_watch, sender.clone())?;
@@ -180,19 +174,17 @@ where
           _ = fut => {},
         };
 
-        info!(
-          "{} {} finished. Restarting on file change...",
-          colors::intense_blue("Watcher"),
+        eye_catchers::watcher(&format!(
+          "{} finished. Restarting on file change...",
           job_name,
-        );
+        ));
       }
       Err(error) => {
         eprintln!("{}: {}", colors::red_bold("error"), error);
-        info!(
-          "{} {} failed. Restarting on file change...",
-          colors::intense_blue("Watcher"),
+        eye_catchers::watcher(&format!(
+          "{} failed. Restarting on file change...",
           job_name,
-        );
+        ));
       }
     }
 

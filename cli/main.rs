@@ -12,6 +12,7 @@ mod diff;
 mod disk_cache;
 mod emit;
 mod errors;
+mod eye_catchers;
 mod file_fetcher;
 mod file_watcher;
 mod flags;
@@ -461,7 +462,7 @@ async fn compile_command(
     run_flags,
   )?;
 
-  info!("{} {}", colors::green("Emit"), output.display());
+  eye_catchers::emit(&format!("{}", output.display()));
 
   tools::standalone::write_standalone_binary(
     output.clone(),
@@ -760,7 +761,7 @@ fn bundle_module_graph(
   ps: &ProcState,
   flags: &Flags,
 ) -> Result<(String, Option<String>), AnyError> {
-  info!("{} {}", colors::green("Bundle"), graph.roots[0]);
+  eye_catchers::bundle(&format!("{}", graph.roots[0]));
 
   let (ts_config, maybe_ignored_options) = emit::get_ts_config(
     emit::ConfigType::Bundle,
@@ -865,12 +866,11 @@ async fn bundle_command(
         let output_bytes = bundle_emit.as_bytes();
         let output_len = output_bytes.len();
         fs_util::write_file(out_file, output_bytes, 0o644)?;
-        info!(
-          "{} {:?} ({})",
-          colors::green("Emit"),
+        eye_catchers::emit(&format!(
+          "{:?} ({})",
           out_file,
           colors::gray(human_size(output_len as f64))
-        );
+        ));
         if let Some(bundle_map) = maybe_bundle_map {
           let map_bytes = bundle_map.as_bytes();
           let map_len = map_bytes.len();
@@ -881,12 +881,11 @@ async fn bundle_command(
           };
           let map_out_file = out_file.with_extension(ext);
           fs_util::write_file(&map_out_file, map_bytes, 0o644)?;
-          info!(
-            "{} {:?} ({})",
-            colors::green("Emit"),
+          eye_catchers::emit(&format!(
+            "{:?} ({})",
             map_out_file,
             colors::gray(human_size(map_len as f64))
-          );
+          ));
         }
       } else {
         println!("{}", bundle_emit);
