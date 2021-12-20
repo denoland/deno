@@ -672,7 +672,6 @@ dependencies = [
  "http",
  "import_map",
  "jsonc-parser",
- "lazy_static",
  "libc",
  "log",
  "lspower",
@@ -755,9 +754,9 @@ dependencies = [
  "anyhow",
  "futures",
  "indexmap",
- "lazy_static",
  "libc",
  "log",
+ "once_cell",
  "parking_lot",
  "pin-project",
  "serde",
@@ -778,8 +777,8 @@ dependencies = [
  "deno_core",
  "deno_web",
  "elliptic-curve",
- "lazy_static",
  "num-traits",
+ "once_cell",
  "p256",
  "p384",
  "rand 0.8.4",
@@ -934,11 +933,11 @@ dependencies = [
  "fwdansi",
  "http",
  "hyper",
- "lazy_static",
  "libc",
  "log",
  "nix",
  "notify",
+ "once_cell",
  "regex",
  "ring",
  "serde",
@@ -968,7 +967,7 @@ name = "deno_tls"
 version = "0.16.0"
 dependencies = [
  "deno_core",
- "lazy_static",
+ "once_cell",
  "rustls",
  "rustls-native-certs",
  "rustls-pemfile",
@@ -2406,9 +2405,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.8.0"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "692fcb63b64b1758029e0a96ee63e049ce8c5948587f2f7208df04625e5f6b56"
+checksum = "da32515d9f6e6e489d7bc9d84c71b060db7247dc035bbe44eac88cf87486d8d5"
 
 [[package]]
 name = "opaque-debug"

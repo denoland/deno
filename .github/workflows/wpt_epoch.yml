@@ -13,6 +13,7 @@ on:
 jobs:
   wpt:
     name: wpt / ${{ matrix.os }} / ${{ matrix.deno-version }}
+    if: github.repository == 'denoland/deno'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:

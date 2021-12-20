@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use once_cell::sync::Lazy;
 use std::fmt;
 use std::io::Write;
 use termcolor::Color::{Ansi256, Black, Blue, Cyan, Green, Red, White, Yellow};
@@ -8,9 +9,8 @@ use termcolor::{Ansi, ColorSpec, WriteColor};
 #[cfg(windows)]
 use termcolor::{BufferWriter, ColorChoice};
 
-lazy_static::lazy_static! {
-  static ref NO_COLOR: bool = std::env::var_os("NO_COLOR").is_some();
-}
+static NO_COLOR: Lazy<bool> =
+  Lazy::new(|| std::env::var_os("NO_COLOR").is_some());
 
 pub fn use_color() -> bool {
   !(*NO_COLOR)

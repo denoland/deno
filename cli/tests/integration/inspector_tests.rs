@@ -97,6 +97,8 @@ async fn inspector_break_on_first_line() {
 
   use TestStep::*;
   let test_steps = vec![
+    StdErr("Visit chrome://inspect to connect to the debugger."),
+    StdErr("Deno is waiting for debugger to connect."),
     WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
     WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
     WsRecv(
@@ -119,10 +121,10 @@ async fn inspector_break_on_first_line() {
 
   for step in test_steps {
     match step {
+      StdErr(s) => assert_eq!(&stderr_lines.next().unwrap(), s),
       StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
       WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
       WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
-      _ => unreachable!(),
     }
   }
 
@@ -276,6 +278,8 @@ async fn inspector_does_not_hang() {
 
   use TestStep::*;
   let test_steps = vec![
+    StdErr("Visit chrome://inspect to connect to the debugger."),
+    StdErr("Deno is waiting for debugger to connect."),
     WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
     WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
     WsRecv(
@@ -293,6 +297,7 @@ async fn inspector_does_not_hang() {
 
   for step in test_steps {
     match step {
+      StdErr(s) => assert_eq!(&stderr_lines.next().unwrap(), s),
       WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
       WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
       _ => unreachable!(),
@@ -397,6 +402,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
   use TestStep::*;
   let test_steps = vec![
+    StdErr("Visit chrome://inspect to connect to the debugger."),
     WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
     WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
     WsRecv(
@@ -555,6 +561,8 @@ async fn inspector_break_on_first_line_in_test() {
 
   use TestStep::*;
   let test_steps = vec![
+    StdErr("Visit chrome://inspect to connect to the debugger."),
+    StdErr("Deno is waiting for debugger to connect."),
     WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
     WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
     WsRecv(
@@ -583,9 +591,9 @@ async fn inspector_break_on_first_line_in_test() {
         "Doesn't contain {}",
         s
       ),
+      StdErr(s) => assert_eq!(&stderr_lines.next().unwrap(), s),
       WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
       WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
-      _ => unreachable!(),
     }
   }
 
