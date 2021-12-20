@@ -21,6 +21,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Module;
 use lspower::lsp;
@@ -1052,7 +1053,12 @@ impl Documents {
         let specifier = specifier.clone();
         results.push(self.resolve_dependency(&specifier));
       } else {
-        results.push(None);
+        let specifier = referrer.join(&specifier).ok();
+        if let Some(specifier) = specifier {
+          results.push(self.resolve_dependency(&specifier));
+        } else {
+          results.push(None);
+        }
       }
     }
     Some(results)
