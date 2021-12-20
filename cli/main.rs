@@ -564,7 +564,6 @@ async fn lsp_command() -> Result<i32, AnyError> {
   Ok(0)
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn lint_command(
   flags: Flags,
   lint_flags: LintFlags,
@@ -915,14 +914,7 @@ async fn doc_command(
   flags: Flags,
   doc_flags: DocFlags,
 ) -> Result<i32, AnyError> {
-  tools::doc::print_docs(
-    flags,
-    doc_flags.source_file,
-    doc_flags.json,
-    doc_flags.filter,
-    doc_flags.private,
-  )
-  .await?;
+  tools::doc::print_docs(flags, doc_flags).await?;
   Ok(0)
 }
 
@@ -1279,15 +1271,7 @@ async fn coverage_command(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  tools::coverage::cover_files(
-    flags.clone(),
-    coverage_flags.files,
-    coverage_flags.ignore,
-    coverage_flags.include,
-    coverage_flags.exclude,
-    coverage_flags.lcov,
-  )
-  .await?;
+  tools::coverage::cover_files(flags, coverage_flags).await?;
   Ok(0)
 }
 
@@ -1304,35 +1288,10 @@ async fn test_command(
   }
 
   if flags.watch.is_some() {
-    tools::test::run_tests_with_watch(
-      flags,
-      test_flags.include,
-      test_flags.ignore,
-      test_flags.doc,
-      test_flags.no_run,
-      test_flags.fail_fast,
-      test_flags.filter,
-      test_flags.shuffle,
-      test_flags.concurrent_jobs,
-    )
-    .await?;
-
-    return Ok(0);
+    tools::test::run_tests_with_watch(flags, test_flags).await?;
+  } else {
+    tools::test::run_tests(flags, test_flags).await?;
   }
-
-  tools::test::run_tests(
-    flags,
-    test_flags.include,
-    test_flags.ignore,
-    test_flags.doc,
-    test_flags.no_run,
-    test_flags.fail_fast,
-    test_flags.allow_none,
-    test_flags.filter,
-    test_flags.shuffle,
-    test_flags.concurrent_jobs,
-  )
-  .await?;
 
   Ok(0)
 }
@@ -1444,11 +1403,29 @@ fn get_subcommand(
   }
 }
 
-fn setup_exit_process_panic_hook() {
-  // tokio does not exit the process when a task panics, so we
-  // define a custom panic hook to implement this behaviour
+fn setup_panic_hook() {
+  // This function does two things inside of the panic hook:
+  // - Tokio does not exit the process when a task panics, so we define a custom
+  //   panic hook to implement this behaviour.
+  // - We print a message to stderr to indicate that this is a bug in Deno, and
+  //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
+    eprintln!("\n============================================================");
+    eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
+    eprintln!("at https://github.com/denoland/deno/issues/new.");
+    eprintln!("If you can reliably reproduce this panic, include the");
+    eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
+    eprintln!("var set and include the backtrace in your report.");
+    eprintln!();
+    eprintln!(
+      "Platform: {} {}",
+      std::env::consts::OS,
+      std::env::consts::ARCH
+    );
+    eprintln!("Version: {}", version::deno());
+    eprintln!("Args: {:?}", std::env::args().collect::<Vec<_>>());
+    eprintln!();
     orig_hook(panic_info);
     std::process::exit(1);
   }));
@@ -1465,7 +1442,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 }
 
 pub fn main() {
-  setup_exit_process_panic_hook();
+  setup_panic_hook();
 
   unix_util::raise_fd_limit();
   windows_util::ensure_stdio_open();
