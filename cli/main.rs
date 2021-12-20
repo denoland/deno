@@ -1304,35 +1304,10 @@ async fn test_command(
   }
 
   if flags.watch.is_some() {
-    tools::test::run_tests_with_watch(
-      flags,
-      test_flags.include,
-      test_flags.ignore,
-      test_flags.doc,
-      test_flags.no_run,
-      test_flags.fail_fast,
-      test_flags.filter,
-      test_flags.shuffle,
-      test_flags.concurrent_jobs,
-    )
-    .await?;
-
-    return Ok(0);
+    tools::test::run_tests_with_watch(flags, test_flags).await?;
+  } else {
+    tools::test::run_tests(flags, test_flags).await?;
   }
-
-  tools::test::run_tests(
-    flags,
-    test_flags.include,
-    test_flags.ignore,
-    test_flags.doc,
-    test_flags.no_run,
-    test_flags.fail_fast,
-    test_flags.allow_none,
-    test_flags.filter,
-    test_flags.shuffle,
-    test_flags.concurrent_jobs,
-  )
-  .await?;
 
   Ok(0)
 }
