@@ -26,7 +26,7 @@ use std::task::Context;
 use std::task::Poll;
 
 pub type ModuleId = i32;
-pub type ModuleLoadId = i32;
+pub(crate) type ModuleLoadId = i32;
 
 pub const BOM_CHAR: char = '\u{FEFF}';
 
@@ -242,7 +242,6 @@ pub trait ModuleLoader {
   fn prepare_load(
     &self,
     _op_state: Rc<RefCell<OpState>>,
-    _load_id: ModuleLoadId,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
@@ -354,8 +353,6 @@ pub enum LoadState {
 /// This future is used to implement parallel async module loading.
 pub struct RecursiveModuleLoad {
   init: LoadInit,
-  // TODO(bartlomieju): in future this value should
-  // be randomized
   pub id: ModuleLoadId,
   pub root_module_id: Option<ModuleId>,
   pub root_module_type: Option<ModuleType>,
@@ -470,7 +467,6 @@ impl RecursiveModuleLoad {
       .loader
       .prepare_load(
         op_state,
-        self.id,
         &module_specifier,
         maybe_referrer,
         self.is_dynamic_import(),
@@ -1661,7 +1657,6 @@ mod tests {
     fn prepare_load(
       &self,
       _op_state: Rc<RefCell<OpState>>,
-      _load_id: ModuleLoadId,
       _module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<String>,
       _is_dyn_import: bool,
