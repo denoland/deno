@@ -190,7 +190,7 @@ fn export_key_rsa(
   }
 }
 
-fn bytes_to_b64(bytes: Vec<u8>) -> String {
+fn bytes_to_b64(bytes: &[u8]) -> String {
   base64::encode_config(bytes, base64::URL_SAFE_NO_PAD)
 }
 
@@ -213,13 +213,15 @@ fn export_key_ec(
 
           point.as_ref().to_vec()
         }
-        _ => return Err(data_error("Unsupported named curve")),
+        EcNamedCurve::P521 => {
+          return Err(data_error("Unsupported named curve"))
+        }
       };
 
       let alg_id = match named_curve {
         EcNamedCurve::P256 => <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::algorithm_identifier(),
         EcNamedCurve::P384 => <p384::NistP384 as p384::elliptic_curve::AlgorithmParameters>::algorithm_identifier(),
-        _ => return Err(data_error("Unsupported named curve"))
+        EcNamedCurve::P521 => return Err(data_error("Unsupported named curve"))
       };
 
       let alg_id = match algorithm {
@@ -255,8 +257,8 @@ fn export_key_ec(
           coords
         {
           Ok(ExportKeyResult::JwkPublicEc {
-            x: bytes_to_b64(x.to_vec()),
-            y: bytes_to_b64(y.to_vec()),
+            x: bytes_to_b64(x),
+            y: bytes_to_b64(y),
           })
         } else {
           Err(custom_error(
@@ -273,8 +275,8 @@ fn export_key_ec(
           coords
         {
           Ok(ExportKeyResult::JwkPublicEc {
-            x: bytes_to_b64(x.to_vec()),
-            y: bytes_to_b64(y.to_vec()),
+            x: bytes_to_b64(x),
+            y: bytes_to_b64(y),
           })
         } else {
           Err(custom_error(
@@ -283,7 +285,7 @@ fn export_key_ec(
           ))
         }
       }
-      _ => Err(data_error("Unsupported named curve")),
+      EcNamedCurve::P521 => Err(data_error("Unsupported named curve")),
     },
     ExportKeyFormat::JwkPrivate => {
       let private_key = key_data.as_ec_private_key()?;
@@ -316,7 +318,7 @@ fn export_key_ec(
 
           secret_key.to_bytes()
         }*/
-        _ => {
+        EcNamedCurve::P384 | EcNamedCurve::P521 => {
           return Err(not_supported_error("Unsupported namedCurve"));
         }
       };
@@ -329,9 +331,9 @@ fn export_key_ec(
         coords
       {
         Ok(ExportKeyResult::JwkPrivateEc {
-          x: bytes_to_b64(x.to_vec()),
-          y: bytes_to_b64(y.to_vec()),
-          d: bytes_to_b64(d.to_vec()),
+          x: bytes_to_b64(x),
+          y: bytes_to_b64(y),
+          d: bytes_to_b64(&d),
         })
       } else {
         Err(custom_error(

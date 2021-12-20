@@ -3248,7 +3248,6 @@
           format: "pkcs8",
         }, innerKey);
 
-        // 3.
         return data.buffer;
       }
       case "spki": {
@@ -3267,60 +3266,88 @@
           format: "spki",
         }, innerKey);
 
-        // 3.
         return data.buffer;
       }
       case "jwk": {
-        // 1-2.
-        const jwk = {
-          kty: "EC",
-        };
-
-        // 3.
         if (key[_algorithm].name == "ECDSA") {
-          let algNamedCurve;
+          // 1-2.
+          const jwk = {
+            kty: "EC",
+          };
 
-          switch (key[_algorithm].namedCurve) {
-            case "P-256": {
-              algNamedCurve = "ES256";
-              break;
+          // 3.
+          if (key[_algorithm].name == "ECDSA") {
+            let algNamedCurve;
+
+            switch (key[_algorithm].namedCurve) {
+              case "P-256": {
+                algNamedCurve = "ES256";
+                break;
+              }
+              case "P-384": {
+                algNamedCurve = "ES384";
+                break;
+              }
+              case "P-521": {
+                algNamedCurve = "ES512";
+                break;
+              }
+              default:
+                throw new DOMException(
+                  "Curve algorithm not supported",
+                  "DataError",
+                );
             }
-            case "P-384": {
-              algNamedCurve = "ES384";
-              break;
-            }
-            case "P-521": {
-              algNamedCurve = "ES512";
-              break;
-            }
-            default:
-              throw new DOMException(
-                "Curve algorithm not supported",
-                "DataError",
-              );
+
+            jwk.alg = algNamedCurve;
           }
 
-          jwk.alg = algNamedCurve;
+          // 5-6.
+          const data = core.opSync("op_crypto_export_key", {
+            format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
+            algorithm: key[_algorithm].name,
+            namedCurve: key[_algorithm].namedCurve,
+          }, innerKey);
+          ObjectAssign(jwk, data);
+
+          // 7.
+          jwk.key_ops = key.usages;
+
+          // 8.
+          jwk.ext = key[_extractable];
+
+          // 9
+          jwk.crv = key[_algorithm].namedCurve;
+
+          return jwk;
+        } else { // ECDH
+          // 1-2.
+          const jwk = {
+            kty: "EC",
+          };
+
+          // missing step from spec
+          jwk.alg = "ECDH";
+
+          // 3.1
+          jwk.crv = key[_algorithm].namedCurve;
+
+          // 3.2 - 3.4
+          const data = core.opSync("op_crypto_export_key", {
+            format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
+            algorithm: key[_algorithm].name,
+            namedCurve: key[_algorithm].namedCurve,
+          }, innerKey);
+          ObjectAssign(jwk, data);
+
+          // 4.
+          jwk.key_ops = key.usages;
+
+          // 5.
+          jwk.ext = key[_extractable];
+
+          return jwk;
         }
-
-        // 5-6.
-        const data = core.opSync("op_crypto_export_key", {
-          format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
-          algorithm: key[_algorithm].name,
-          namedCurve: key[_algorithm].namedCurve,
-        }, innerKey);
-        ObjectAssign(jwk, data);
-
-        // 7.
-        jwk.key_ops = key.usages;
-
-        // 8.
-        jwk.ext = key[_extractable];
-
-        // 9
-        jwk.crv = key[_algorithm].namedCurve;
-
-        return jwk;
       }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");
