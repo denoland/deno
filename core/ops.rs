@@ -193,7 +193,7 @@ impl DerefMut for OpState {
 
 /// Collection for storing registered ops. The special 'get_op_catalog'
 /// op with OpId `0` is automatically added when the OpTable is created.
-pub struct OpTable(IndexMap<String, Rc<OpFn>>);
+pub struct OpTable(pub IndexMap<String, Rc<OpFn>>);
 
 impl OpTable {
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId

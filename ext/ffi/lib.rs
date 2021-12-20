@@ -6,9 +6,11 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
+use deno_core::op_sync_cb;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::v8;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -87,7 +89,7 @@ impl DynamicLibraryResource {
         .clone()
         .into_iter()
         .map(libffi::middle::Type::from),
-      foreign_fn.result.into(),
+      foreign_fn.result.clone().into(),
     );
 
     self.symbols.insert(
@@ -113,6 +115,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     .ops(vec![
       ("op_ffi_load", op_sync(op_ffi_load::<P>)),
       ("op_ffi_call", op_sync(op_ffi_call)),
+      ("op_ffi_call_cb", op_sync_cb(op_ffi_call_cb)),
       ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
       ("op_ffi_ptr_of", op_sync(op_ffi_ptr_of::<P>)),
       ("op_ffi_buf_copy_into", op_sync(op_ffi_buf_copy_into::<P>)),
@@ -135,7 +138,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     .build()
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum NativeType {
   Void,
@@ -152,6 +155,16 @@ enum NativeType {
   F32,
   F64,
   Pointer,
+  Function {
+    parameters: Vec<NativeType>,
+    result: Box<NativeType>,
+  },
+}
+
+impl From<Box<NativeType>> for libffi::middle::Type {
+  fn from(native_type: Box<NativeType>) -> Self {
+    libffi::middle::Type::from(*native_type)
+  }
 }
 
 impl From<NativeType> for libffi::middle::Type {
@@ -170,7 +183,9 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::ISize => libffi::middle::Type::isize(),
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
-      NativeType::Pointer => libffi::middle::Type::pointer(),
+      NativeType::Pointer | NativeType::Function { .. } => {
+        libffi::middle::Type::pointer()
+      }
     }
   }
 }
@@ -191,6 +206,7 @@ union NativeValue {
   f32_value: f32,
   f64_value: f64,
   pointer: *const u8,
+  function: unsafe extern "C" fn(),
 }
 
 impl NativeValue {
@@ -247,6 +263,7 @@ impl NativeValue {
           }
         }
       }
+      NativeType::Function { .. } => unreachable!(),
     }
   }
 
@@ -270,6 +287,7 @@ impl NativeValue {
       NativeType::F32 => Arg::new(&self.f32_value),
       NativeType::F64 => Arg::new(&self.f64_value),
       NativeType::Pointer => Arg::new(&self.pointer),
+      NativeType::Function { .. } => Arg::new(&self.function),
     }
   }
 }
@@ -443,7 +461,11 @@ struct FfiCallArgs {
   buffers: Vec<Option<ZeroCopyBuf>>,
 }
 
-fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
+fn ffi_call(
+  args: FfiCallArgs,
+  symbol: &Symbol,
+  mut functions: Vec<CallbackInfo>,
+) -> Result<Value, AnyError> {
   let buffers: Vec<Option<&[u8]>> = args
     .buffers
     .iter()
@@ -452,16 +474,41 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
 
   let native_values = symbol
     .parameter_types
-    .iter()
+    .clone()
+    .into_iter()
     .zip(args.parameters.into_iter())
-    .map(|(&native_type, value)| {
-      if let NativeType::Pointer = native_type {
-        if let Some(idx) = value.as_u64() {
-          if let Some(&Some(buf)) = buffers.get(idx as usize) {
-            return NativeValue::buffer(buf.as_ptr());
+    .map(|(native_type, value)| {
+      match native_type {
+        NativeType::Pointer => {
+          if let Some(idx) = value.as_u64() {
+            if let Some(&Some(buf)) = buffers.get(idx as usize) {
+              return NativeValue::buffer(buf.as_ptr());
+            }
           }
         }
-      }
+        NativeType::Function {
+          ref parameters,
+          ref result,
+        } => {
+          let cif = libffi::middle::Cif::new(
+            parameters
+              .clone()
+              .into_iter()
+              .map(libffi::middle::Type::from),
+            (*result).clone().into(),
+          );
+          if let Some(idx) = value.as_u64() {
+            if let Some(info) = functions.get_mut(idx as usize) {
+              let closure =
+                libffi::middle::Closure::new_mut(cif, deno_ffi_callback, info);
+              return NativeValue {
+                function: *closure.code_ptr(),
+              };
+            }
+          }
+        }
+        _ => {}
+      };
 
       NativeValue::new(native_type, value)
     })
@@ -469,9 +516,10 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
 
   let call_args = symbol
     .parameter_types
-    .iter()
+    .clone()
+    .into_iter()
     .zip(native_values.iter())
-    .map(|(&native_type, native_value)| unsafe {
+    .map(|(native_type, native_value)| unsafe {
       native_value.as_arg(native_type)
     })
     .collect::<Vec<_>>();
@@ -521,7 +569,51 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
         symbol.cif.call::<*const u8>(symbol.ptr, &call_args)
       } as u64))
     }
+    NativeType::Function { .. } => {
+      panic!("Function result type is not supported")
+    }
   })
+}
+
+pub struct CallbackInfo<'a, 'b, 'c>(
+  &'a mut v8::HandleScope<'b>,
+  v8::Local<'c, v8::Function>,
+);
+
+unsafe extern "C" fn deno_ffi_callback(
+  _cif: &libffi::low::ffi_cif,
+  result: &mut u64,
+  args: *const *const c_void,
+  info: &mut CallbackInfo,
+) {
+  let args = args as *const &u64;
+  let arg1 = **args.offset(0);
+  let arg2 = **args.offset(1);
+
+  let recv = v8::undefined(&mut info.0);
+  info.1.call(&mut info.0, recv.into(), &[]);
+  *result = 2;
+}
+
+fn op_ffi_call_cb(
+  state: Rc<RefCell<deno_core::OpState>>,
+  args: FfiCallArgs,
+  scope: &mut v8::HandleScope,
+  cb: v8::Local<v8::Function>,
+) -> Result<Value, AnyError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let symbol = resource
+    .symbols
+    .get(&args.symbol)
+    .ok_or_else(bad_resource_id)?;
+
+  let info = vec![CallbackInfo(scope, cb)];
+
+  ffi_call(args, symbol, info)
 }
 
 fn op_ffi_call(
@@ -538,7 +630,7 @@ fn op_ffi_call(
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
 
-  ffi_call(args, symbol)
+  ffi_call(args, symbol, vec![])
 }
 
 /// A non-blocking FFI call.
@@ -557,7 +649,7 @@ async fn op_ffi_call_nonblocking(
     .ok_or_else(bad_resource_id)?
     .clone();
 
-  tokio::task::spawn_blocking(move || ffi_call(args, &symbol))
+  tokio::task::spawn_blocking(move || ffi_call(args, &symbol, vec![]))
     .await
     .unwrap()
 }

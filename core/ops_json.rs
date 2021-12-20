@@ -64,6 +64,28 @@ where
   })
 }
 
+pub fn op_sync_cb<F, A, R>(op_fn: F) -> Box<OpFn>
+where
+  F: Fn(
+      Rc<RefCell<OpState>>,
+      A,
+      &mut v8::HandleScope,
+      v8::Local<v8::Function>,
+    ) -> Result<R, Error>
+    + 'static,
+  A: DeserializeOwned,
+  R: Serialize + 'static,
+{
+  Box::new(move |state, payload| -> Op {
+    let a = serde_v8::from_v8(payload.scope, payload.a);
+    let b = v8::Local::<v8::Function>::try_from(payload.b).unwrap();
+    let result = a
+      .map_err(Error::from)
+      .and_then(|a| op_fn(state.clone(), a, payload.scope, b));
+    Op::Sync(serialize_op_result(result, state))
+  })
+}
+
 /// Creates an op that passes data asynchronously using JSON.
 ///
 /// When this op is dispatched, the runtime doesn't exit while processing it.

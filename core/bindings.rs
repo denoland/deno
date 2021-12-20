@@ -472,7 +472,7 @@ fn opcall_sync<'s>(
   mut rv: v8::ReturnValue,
 ) {
   let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow_mut();
+  let state = state_rc.borrow();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
     .map(|l| l.value() as OpId)
