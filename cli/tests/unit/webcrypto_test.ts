@@ -1295,8 +1295,7 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     assertEquals(expPublicKeyJWK.crv, namedCurve);
 
     for (
-      const hash of [/*"SHA-1", */ "SHA-256", "SHA-384"/*"SHA-512"*/
-      ]
+      const hash of [/*"SHA-1", */ "SHA-256", "SHA-384" /*"SHA-512"*/]
     ) {
       const signatureECDSA = await subtle.sign(
         { name: "ECDSA", hash },
