@@ -1466,7 +1466,7 @@ fn setup_panic_hook() {
     );
     eprintln!("Version: {}", version::deno());
     eprintln!("Args: {:?}", std::env::args().collect::<Vec<_>>());
-    eprintln!("");
+    eprintln!();
     orig_hook(panic_info);
     std::process::exit(1);
   }));
