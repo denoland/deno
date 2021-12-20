@@ -198,7 +198,7 @@ pub struct ModuleSource {
   pub module_url_found: String,
 }
 
-pub type PrepareLoadFuture =
+pub(crate) type PrepareLoadFuture =
   dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, Error>)>;
 pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, Error>>;
 
@@ -343,7 +343,7 @@ enum LoadInit {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum LoadState {
+pub(crate) enum LoadState {
   Init,
   LoadingRoot,
   LoadingImports,
@@ -351,7 +351,7 @@ pub enum LoadState {
 }
 
 /// This future is used to implement parallel async module loading.
-pub struct RecursiveModuleLoad {
+pub(crate) struct RecursiveModuleLoad {
   init: LoadInit,
   pub id: ModuleLoadId,
   pub root_module_id: Option<ModuleId>,
@@ -368,15 +368,15 @@ pub struct RecursiveModuleLoad {
 
 impl RecursiveModuleLoad {
   /// Starts a new parallel load of the given URL of the main module.
-  pub fn main(specifier: &str, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
+  fn main(specifier: &str, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
     Self::new(LoadInit::Main(specifier.to_string()), module_map_rc)
   }
 
-  pub fn side(specifier: &str, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
+  fn side(specifier: &str, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
     Self::new(LoadInit::Side(specifier.to_string()), module_map_rc)
   }
 
-  pub fn dynamic_import(
+  fn dynamic_import(
     specifier: &str,
     referrer: &str,
     module_type: ModuleType,
@@ -390,7 +390,7 @@ impl RecursiveModuleLoad {
     Self::new(init, module_map_rc)
   }
 
-  pub fn is_dynamic_import(&self) -> bool {
+  fn is_dynamic_import(&self) -> bool {
     matches!(self.init, LoadInit::DynamicImport(..))
   }
 
@@ -432,7 +432,7 @@ impl RecursiveModuleLoad {
     load
   }
 
-  pub fn resolve_root(&self) -> Result<ModuleSpecifier, Error> {
+  fn resolve_root(&self) -> Result<ModuleSpecifier, Error> {
     match self.init {
       LoadInit::Main(ref specifier) => {
         self.loader.resolve(specifier, ".", true)
@@ -446,7 +446,7 @@ impl RecursiveModuleLoad {
     }
   }
 
-  pub async fn prepare(&self) -> Result<(), Error> {
+  async fn prepare(&self) -> Result<(), Error> {
     let op_state = self.op_state.clone();
     let (module_specifier, maybe_referrer) = match self.init {
       LoadInit::Main(ref specifier) => {
@@ -474,13 +474,13 @@ impl RecursiveModuleLoad {
       .await
   }
 
-  pub fn is_currently_loading_main_module(&self) -> bool {
+  fn is_currently_loading_main_module(&self) -> bool {
     !self.is_dynamic_import()
       && matches!(self.init, LoadInit::Main(..))
       && self.state == LoadState::LoadingRoot
   }
 
-  pub fn register_and_recurse(
+  pub(crate) fn register_and_recurse(
     &mut self,
     scope: &mut v8::HandleScope,
     module_request: &ModuleRequest,
@@ -677,12 +677,13 @@ impl Stream for RecursiveModuleLoad {
 /// it's `ModuleType::JavaScript`, but if there were import assertions
 /// it might be `ModuleType::Json`.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ModuleRequest {
+pub(crate) struct ModuleRequest {
   pub specifier: ModuleSpecifier,
   pub expected_module_type: ModuleType,
 }
 
-pub struct ModuleInfo {
+pub(crate) struct ModuleInfo {
+  #[allow(unused)]
   pub id: ModuleId,
   // Used in "bindings.rs" for "import.meta.main" property value.
   pub main: bool,
@@ -702,7 +703,7 @@ enum SymbolicModule {
 }
 
 /// A collection of JS modules.
-pub struct ModuleMap {
+pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
@@ -727,7 +728,7 @@ pub struct ModuleMap {
 }
 
 impl ModuleMap {
-  pub fn new(
+  pub(crate) fn new(
     loader: Rc<dyn ModuleLoader>,
     op_state: Rc<RefCell<OpState>>,
   ) -> ModuleMap {
@@ -749,11 +750,7 @@ impl ModuleMap {
 
   /// Get module id, following all aliases in case of module specifier
   /// that had been redirected.
-  pub fn get_id(
-    &self,
-    name: &str,
-    module_type: ModuleType,
-  ) -> Option<ModuleId> {
+  fn get_id(&self, name: &str, module_type: ModuleType) -> Option<ModuleId> {
     let mut mod_name = name;
     loop {
       let symbolic_module =
@@ -893,7 +890,7 @@ impl ModuleMap {
     Ok(id)
   }
 
-  pub(crate) fn create_module_info(
+  fn create_module_info(
     &mut self,
     name: &str,
     module_type: ModuleType,
@@ -922,14 +919,11 @@ impl ModuleMap {
     id
   }
 
-  pub fn get_requested_modules(
-    &self,
-    id: ModuleId,
-  ) -> Option<&Vec<ModuleRequest>> {
+  fn get_requested_modules(&self, id: ModuleId) -> Option<&Vec<ModuleRequest>> {
     self.info.get(&id).map(|i| &i.requests)
   }
 
-  pub fn is_registered(
+  fn is_registered(
     &self,
     specifier: &ModuleSpecifier,
     module_type: ModuleType,
@@ -942,7 +936,7 @@ impl ModuleMap {
     false
   }
 
-  pub fn alias(&mut self, name: &str, module_type: ModuleType, target: &str) {
+  fn alias(&mut self, name: &str, module_type: ModuleType, target: &str) {
     self.by_name.insert(
       (name.to_string(), module_type),
       SymbolicModule::Alias(target.to_string()),
@@ -950,16 +944,19 @@ impl ModuleMap {
   }
 
   #[cfg(test)]
-  pub fn is_alias(&self, name: &str, module_type: ModuleType) -> bool {
+  fn is_alias(&self, name: &str, module_type: ModuleType) -> bool {
     let cond = self.by_name.get(&(name.to_string(), module_type));
     matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 
-  pub fn get_handle(&self, id: ModuleId) -> Option<v8::Global<v8::Module>> {
+  pub(crate) fn get_handle(
+    &self,
+    id: ModuleId,
+  ) -> Option<v8::Global<v8::Module>> {
     self.handles_by_id.get(&id).cloned()
   }
 
-  pub fn get_info(
+  pub(crate) fn get_info(
     &self,
     global: &v8::Global<v8::Module>,
   ) -> Option<&ModuleInfo> {
@@ -970,11 +967,11 @@ impl ModuleMap {
     None
   }
 
-  pub fn get_info_by_id(&self, id: &ModuleId) -> Option<&ModuleInfo> {
+  pub(crate) fn get_info_by_id(&self, id: &ModuleId) -> Option<&ModuleInfo> {
     self.info.get(id)
   }
 
-  pub async fn load_main(
+  pub(crate) async fn load_main(
     module_map_rc: Rc<RefCell<ModuleMap>>,
     specifier: &str,
   ) -> Result<RecursiveModuleLoad, Error> {
@@ -983,7 +980,7 @@ impl ModuleMap {
     Ok(load)
   }
 
-  pub async fn load_side(
+  pub(crate) async fn load_side(
     module_map_rc: Rc<RefCell<ModuleMap>>,
     specifier: &str,
   ) -> Result<RecursiveModuleLoad, Error> {
@@ -993,7 +990,7 @@ impl ModuleMap {
   }
 
   // Initiate loading of a module graph imported using `import()`.
-  pub fn load_dynamic_import(
+  pub(crate) fn load_dynamic_import(
     module_map_rc: Rc<RefCell<ModuleMap>>,
     specifier: &str,
     referrer: &str,
@@ -1034,13 +1031,13 @@ impl ModuleMap {
       .push(fut);
   }
 
-  pub fn has_pending_dynamic_imports(&self) -> bool {
+  pub(crate) fn has_pending_dynamic_imports(&self) -> bool {
     !(self.preparing_dynamic_imports.is_empty()
       && self.pending_dynamic_imports.is_empty())
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
-  pub fn resolve_callback<'s>(
+  pub(crate) fn resolve_callback<'s>(
     &self,
     scope: &mut v8::HandleScope<'s>,
     specifier: &str,
