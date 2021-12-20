@@ -60,7 +60,6 @@
   const _url = Symbol("[[url]]");
   const _connection = Symbol("[[connection]]");
   const _closed = Symbol("[[closed]]");
-  const _closing = Symbol("[[closing]]");
   const _earlyClose = Symbol("[[earlyClose]]");
   class WebSocketStream {
     [_rid];
@@ -125,10 +124,7 @@
 
       if (options.signal?.aborted) {
         core.close(cancelRid);
-        const err = new DOMException(
-          "This operation was aborted",
-          "AbortError",
-        );
+        const err = options.signal.reason;
         this[_connection].reject(err);
         this[_closed].reject(err);
       } else {
@@ -263,26 +259,8 @@
                     }
                     case "closed":
                     case "close": {
-                      if (this[_closing]) {
-                        this[_closed].resolve(value);
-                        core.tryClose(this[_rid]);
-                      } else {
-                        PromisePrototypeThen(
-                          core.opAsync("op_ws_close", {
-                            rid: this[_rid],
-                            ...value,
-                          }),
-                          () => {
-                            this[_closed].resolve(value);
-                            core.tryClose(this[_rid]);
-                          },
-                          (err) => {
-                            this[_closed].reject(err);
-                            controller.error(err);
-                            core.tryClose(this[_rid]);
-                          },
-                        );
-                      }
+                      this[_closed].resolve(value);
+                      core.tryClose(this[_rid]);
                       break;
                     }
                     case "error": {
@@ -313,7 +291,12 @@
             }
           },
           (err) => {
-            core.tryClose(cancelRid);
+            if (err instanceof core.Interrupted) {
+              // The signal was aborted.
+              err = options.signal.reason;
+            } else {
+              core.tryClose(cancelRid);
+            }
             this[_connection].reject(err);
             this[_closed].reject(err);
           },
@@ -328,7 +311,6 @@
     }
 
     [_earlyClose] = false;
-    [_closing] = false;
     [_closed] = new Deferred();
     get closed() {
       webidl.assertBranded(this, WebSocketStream);
@@ -371,7 +353,6 @@
       if (this[_connection].state === "pending") {
         this[_earlyClose] = true;
       } else if (this[_closed].state === "pending") {
-        this[_closing] = true;
         PromisePrototypeCatch(
           core.opAsync("op_ws_close", {
             rid: this[_rid],

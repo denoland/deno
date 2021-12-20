@@ -4,6 +4,7 @@ import {
   assertEquals,
   assertRejects,
   assertThrows,
+  unreachable,
 } from "./test_util.ts";
 
 Deno.test(
@@ -250,9 +251,49 @@ Deno.test(
     queueMicrotask(() => ac.abort());
     try {
       await Deno.writeFile(filename, data, { signal: ac.signal });
+      unreachable();
     } catch (e) {
       assert(e instanceof Error);
       assertEquals(e.name, "AbortError");
+    }
+    const stat = Deno.statSync(filename);
+    assertEquals(stat.size, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileAbortSignalReason(): Promise<void> {
+    const ac = new AbortController();
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    const abortReason = new Error();
+    queueMicrotask(() => ac.abort(abortReason));
+    try {
+      await Deno.writeFile(filename, data, { signal: ac.signal });
+      unreachable();
+    } catch (e) {
+      assertEquals(e, abortReason);
+    }
+    const stat = Deno.statSync(filename);
+    assertEquals(stat.size, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileAbortSignalPrimitiveReason(): Promise<void> {
+    const ac = new AbortController();
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    queueMicrotask(() => ac.abort("Some string"));
+    try {
+      await Deno.writeFile(filename, data, { signal: ac.signal });
+      unreachable();
+    } catch (e) {
+      assertEquals(e, "Some string");
     }
     const stat = Deno.statSync(filename);
     assertEquals(stat.size, 0);
@@ -269,9 +310,51 @@ Deno.test(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     try {
       await Deno.writeFile(filename, data, { signal: ac.signal });
+      unreachable();
     } catch (e) {
       assert(e instanceof Error);
       assertEquals(e.name, "AbortError");
+    }
+    const stat = Deno.statSync(filename);
+    assertEquals(stat.size, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileAbortSignalReasonPreAborted(): Promise<void> {
+    const ac = new AbortController();
+    const abortReason = new Error();
+    ac.abort(abortReason);
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    try {
+      await Deno.writeFile(filename, data, { signal: ac.signal });
+      unreachable();
+    } catch (e) {
+      assertEquals(e, abortReason);
+    }
+    const stat = Deno.statSync(filename);
+    assertEquals(stat.size, 0);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileAbortSignalPrimitiveReasonPreAborted(): Promise<
+    void
+  > {
+    const ac = new AbortController();
+    ac.abort("Some string");
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    try {
+      await Deno.writeFile(filename, data, { signal: ac.signal });
+      unreachable();
+    } catch (e) {
+      assertEquals(e, "Some string");
     }
     const stat = Deno.statSync(filename);
     assertEquals(stat.size, 0);

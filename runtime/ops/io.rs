@@ -15,6 +15,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::fs::File as StdFile;
 use std::io::Read;
@@ -36,32 +37,35 @@ use {
 };
 
 #[cfg(unix)]
-lazy_static::lazy_static! {
-  static ref STDIN_HANDLE: StdFile = unsafe { StdFile::from_raw_fd(0) };
-  static ref STDOUT_HANDLE: StdFile = unsafe { StdFile::from_raw_fd(1) };
-  static ref STDERR_HANDLE: StdFile = unsafe { StdFile::from_raw_fd(2) };
-}
+static STDIN_HANDLE: Lazy<StdFile> =
+  Lazy::new(|| unsafe { StdFile::from_raw_fd(0) });
+#[cfg(unix)]
+static STDOUT_HANDLE: Lazy<StdFile> =
+  Lazy::new(|| unsafe { StdFile::from_raw_fd(1) });
+#[cfg(unix)]
+static STDERR_HANDLE: Lazy<StdFile> =
+  Lazy::new(|| unsafe { StdFile::from_raw_fd(2) });
 
+/// Due to portability issues on Windows handle to stdout is created from raw
+/// file descriptor.  The caveat of that approach is fact that when this
+/// handle is dropped underlying file descriptor is closed - that is highly
+/// not desirable in case of stdout.  That's why we store this global handle
+/// that is then cloned when obtaining stdio for process. In turn when
+/// resource table is dropped storing reference to that handle, the handle
+/// itself won't be closed (so Deno.core.print) will still work.
+// TODO(ry) It should be possible to close stdout.
 #[cfg(windows)]
-lazy_static::lazy_static! {
-  /// Due to portability issues on Windows handle to stdout is created from raw
-  /// file descriptor.  The caveat of that approach is fact that when this
-  /// handle is dropped underlying file descriptor is closed - that is highly
-  /// not desirable in case of stdout.  That's why we store this global handle
-  /// that is then cloned when obtaining stdio for process. In turn when
-  /// resource table is dropped storing reference to that handle, the handle
-  /// itself won't be closed (so Deno.core.print) will still work.
-  // TODO(ry) It should be possible to close stdout.
-  static ref STDIN_HANDLE: StdFile = unsafe {
-    StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE))
-  };
-  static ref STDOUT_HANDLE: StdFile = unsafe {
-    StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE))
-  };
-  static ref STDERR_HANDLE: StdFile = unsafe {
-    StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE))
-  };
-}
+static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| unsafe {
+  StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE))
+});
+#[cfg(windows)]
+static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| unsafe {
+  StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE))
+});
+#[cfg(windows)]
+static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| unsafe {
+  StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE))
+});
 
 pub fn init() -> Extension {
   Extension::builder()

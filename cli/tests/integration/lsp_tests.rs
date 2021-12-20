@@ -345,6 +345,72 @@ fn lsp_import_map_data_url() {
 }
 
 #[test]
+fn lsp_import_assertions() {
+  let mut client = init("initialize_params_import_map.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/test.json",
+          "languageId": "json",
+          "version": 1,
+          "text": "{\"a\":1}"
+        }
+      }),
+    )
+    .unwrap();
+
+  let mut diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/a.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import a from \"./test.json\";\n\nconsole.log(a);\n"
+      }
+    }),
+  );
+
+  let last = diagnostics.pop().unwrap();
+  assert_eq!(
+    json!(last.diagnostics),
+    json!([
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 14
+          },
+          "end": {
+            "line": 0,
+            "character": 27
+          }
+        },
+        "severity": 1,
+        "code": "no-assert-type",
+        "source": "deno",
+        "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+      }
+    ])
+  );
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      load_fixture("code_action_params_import_assertion.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_response_import_assertion.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_hover() {
   let mut client = init("initialize_params.json");
   did_open(

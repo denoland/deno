@@ -26,7 +26,6 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use log::debug;
-use log::info;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::env;
@@ -254,6 +253,7 @@ pub struct FileFetcher {
   pub(crate) http_cache: HttpCache,
   http_client: reqwest::Client,
   blob_store: BlobStore,
+  download_log_level: log::Level,
 }
 
 impl FileFetcher {
@@ -280,7 +280,13 @@ impl FileFetcher {
         None,
       )?,
       blob_store,
+      download_log_level: log::Level::Info,
     })
+  }
+
+  /// Sets the log level to use when outputting the download message.
+  pub fn set_download_log_level(&mut self, level: log::Level) {
+    self.download_log_level = level;
   }
 
   /// Creates a `File` structure for a remote file.
@@ -512,7 +518,12 @@ impl FileFetcher {
       .boxed();
     }
 
-    info!("{} {}", colors::green("Download"), specifier);
+    log::log!(
+      self.download_log_level,
+      "{} {}",
+      colors::green("Download"),
+      specifier
+    );
 
     let maybe_etag = match self.http_cache.get(specifier) {
       Ok((_, headers, _)) => headers.get("etag").cloned(),

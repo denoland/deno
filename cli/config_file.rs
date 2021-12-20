@@ -104,6 +104,7 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "paths",
   "preserveConstEnums",
   "reactNamespace",
+  "resolveJsonModule",
   "rootDir",
   "rootDirs",
   "skipLibCheck",

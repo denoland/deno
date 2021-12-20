@@ -16,6 +16,7 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use log;
+use once_cell::sync::Lazy;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
@@ -29,9 +30,8 @@ use std::sync::atomic::Ordering;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
-lazy_static::lazy_static! {
-  static ref DEBUG_LOG_ENABLED: bool = log::log_enabled!(log::Level::Debug);
-}
+static DEBUG_LOG_ENABLED: Lazy<bool> =
+  Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
 /// Tri-state value for storing permission state
 #[derive(PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
@@ -1044,22 +1044,39 @@ impl UnaryPermission<FfiDescriptor> {
     self.query(path)
   }
 
-  pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
-    let (resolved_path, display_path) = resolved_and_display_path(path);
-    let (result, prompted) = self.query(Some(&resolved_path)).check(
-      self.name,
-      Some(&format!("\"{}\"", display_path.display())),
-      self.prompt,
-    );
-    if prompted {
-      if result.is_ok() {
-        self.granted_list.insert(FfiDescriptor(resolved_path));
-      } else {
-        self.denied_list.insert(FfiDescriptor(resolved_path));
-        self.global_state = PermissionState::Denied;
+  pub fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    if let Some(path) = path {
+      let (resolved_path, display_path) = resolved_and_display_path(path);
+      let (result, prompted) = self.query(Some(&resolved_path)).check(
+        self.name,
+        Some(&format!("\"{}\"", display_path.display())),
+        self.prompt,
+      );
+
+      if prompted {
+        if result.is_ok() {
+          self.granted_list.insert(FfiDescriptor(resolved_path));
+        } else {
+          self.denied_list.insert(FfiDescriptor(resolved_path));
+          self.global_state = PermissionState::Denied;
+        }
       }
+
+      result
+    } else {
+      let (result, prompted) =
+        self.query(None).check(self.name, None, self.prompt);
+
+      if prompted {
+        if result.is_ok() {
+          self.global_state = PermissionState::Granted;
+        } else {
+          self.global_state = PermissionState::Denied;
+        }
+      }
+
+      result
     }
-    result
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
@@ -1314,7 +1331,7 @@ impl deno_websocket::WebSocketPermissions for Permissions {
 }
 
 impl deno_ffi::FfiPermissions for Permissions {
-  fn check(&mut self, path: &Path) -> Result<(), AnyError> {
+  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
     self.ffi.check(path)
   }
 }
@@ -1740,7 +1757,7 @@ pub fn create_child_permissions(
         .ffi
         .granted_list
         .iter()
-        .all(|desc| main_perms.ffi.check(&desc.0).is_ok())
+        .all(|desc| main_perms.ffi.check(Some(&desc.0)).is_ok())
       {
         return Err(escalation_error());
       }
@@ -2000,9 +2017,9 @@ fn permission_prompt(_message: &str) -> bool {
 static STUB_PROMPT_VALUE: AtomicBool = AtomicBool::new(true);
 
 #[cfg(test)]
-lazy_static::lazy_static! {
-  static ref PERMISSION_PROMPT_STUB_VALUE_SETTER: Mutex<PermissionPromptStubValueSetter> = Mutex::new(PermissionPromptStubValueSetter);
-}
+static PERMISSION_PROMPT_STUB_VALUE_SETTER: Lazy<
+  Mutex<PermissionPromptStubValueSetter>,
+> = Lazy::new(|| Mutex::new(PermissionPromptStubValueSetter));
 
 #[cfg(test)]
 struct PermissionPromptStubValueSetter;

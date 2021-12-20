@@ -7,6 +7,7 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_graph::ModuleGraphError;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
 use std::fmt;
@@ -65,13 +66,13 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "utimeSync",
 ];
 
-lazy_static::lazy_static! {
-  static ref MSG_MISSING_PROPERTY_DENO: Regex =
-    Regex::new(r#"Property '([^']+)' does not exist on type 'typeof Deno'"#)
-      .unwrap();
-  static ref MSG_SUGGESTION: Regex =
-    Regex::new(r#" Did you mean '([^']+)'\?"#).unwrap();
-}
+static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r#"Property '([^']+)' does not exist on type 'typeof Deno'"#)
+    .unwrap()
+});
+
+static MSG_SUGGESTION: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#" Did you mean '([^']+)'\?"#).unwrap());
 
 /// Potentially convert a "raw" diagnostic message from TSC to something that
 /// provides a more sensible error message given a Deno runtime context.

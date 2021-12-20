@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use super::client::Client;
 use super::language_server;
 use super::lsp_custom;
 use super::tsc;
@@ -7,6 +8,9 @@ use super::tsc;
 use crate::fs_util::is_supported_ext;
 use crate::fs_util::specifier_to_file_path;
 
+use deno_ast::swc::common::BytePos;
+use deno_ast::LineAndColumnIndex;
+use deno_ast::SourceTextInfo;
 use deno_core::normalize_path;
 use deno_core::resolve_path;
 use deno_core::resolve_url;
@@ -24,6 +28,8 @@ const LOCAL_PATHS: &[&str] = &[CURRENT_PATH, PARENT_PATH];
 #[serde(rename_all = "camelCase")]
 pub struct CompletionItemData {
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub documentation: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub tsc: Option<tsc::CompletionItemData>,
 }
 
@@ -32,7 +38,7 @@ pub struct CompletionItemData {
 async fn check_auto_config_registry(
   url_str: &str,
   snapshot: &language_server::StateSnapshot,
-  client: lspower::Client,
+  client: Client,
 ) {
   // check to see if auto discovery is enabled
   if snapshot
@@ -77,7 +83,7 @@ async fn check_auto_config_registry(
           // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
           if suggestions {
             client
-              .send_custom_notification::<lsp_custom::RegistryStateNotification>(
+              .send_registry_state_notification(
                 lsp_custom::RegistryStateNotificationParams {
                   origin,
                   suggestions,
@@ -91,17 +97,32 @@ async fn check_auto_config_registry(
   }
 }
 
-/// Ranges from the graph for specifiers include the leading and trailing quote,
+/// Ranges from the graph for specifiers include the leading and maybe trailing quote,
 /// which we want to ignore when replacing text.
-fn to_narrow_lsp_range(range: &deno_graph::Range) -> lsp::Range {
+fn to_narrow_lsp_range(
+  text_info: &SourceTextInfo,
+  range: &deno_graph::Range,
+) -> lsp::Range {
+  let end_byte_index = text_info.byte_index(LineAndColumnIndex {
+    line_index: range.end.line,
+    column_index: range.end.character,
+  });
+  let text_bytes = text_info.text_str().as_bytes();
+  let has_trailing_quote =
+    matches!(text_bytes[end_byte_index.0 as usize - 1], (b'"' | b'\''));
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
+      // skip the leading quote
       character: (range.start.character + 1) as u32,
     },
     end: lsp::Position {
       line: range.end.line as u32,
-      character: (range.end.character - 1) as u32,
+      character: if has_trailing_quote {
+        range.end.character - 1 // do not include it
+      } else {
+        range.end.character
+      } as u32,
     },
   }
 }
@@ -113,11 +134,11 @@ pub(crate) async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   state_snapshot: &language_server::StateSnapshot,
-  client: lspower::Client,
+  client: Client,
 ) -> Option<lsp::CompletionResponse> {
   let document = state_snapshot.documents.get(specifier)?;
   let (text, _, range) = document.get_maybe_dependency(position)?;
-  let range = to_narrow_lsp_range(&range);
+  let range = to_narrow_lsp_range(&document.text_info(), &range);
   // completions for local relative modules
   if text.starts_with("./") || text.starts_with("../") {
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
@@ -132,19 +153,22 @@ pub(crate) async fn get_import_completions(
     } else {
       0
     };
-    let maybe_items = state_snapshot
+    let maybe_list = state_snapshot
       .module_registries
       .get_completions(&text, offset, &range, |specifier| {
         state_snapshot.documents.contains_specifier(specifier)
       })
       .await;
-    let items = maybe_items.unwrap_or_else(|| {
-      get_workspace_completions(specifier, &text, &range, state_snapshot)
-    });
-    Some(lsp::CompletionResponse::List(lsp::CompletionList {
+    let list = maybe_list.unwrap_or_else(|| lsp::CompletionList {
+      items: get_workspace_completions(
+        specifier,
+        &text,
+        &range,
+        state_snapshot,
+      ),
       is_incomplete: false,
-      items,
-    }))
+    });
+    Some(lsp::CompletionResponse::List(list))
   } else {
     let mut items: Vec<lsp::CompletionItem> = LOCAL_PATHS
       .iter()
@@ -157,14 +181,16 @@ pub(crate) async fn get_import_completions(
         ..Default::default()
       })
       .collect();
+    let mut is_incomplete = false;
     if let Some(origin_items) = state_snapshot
       .module_registries
       .get_origin_completions(&text, &range)
     {
-      items.extend(origin_items);
+      is_incomplete = origin_items.is_incomplete;
+      items.extend(origin_items.items);
     }
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
-      is_incomplete: false,
+      is_incomplete,
       items,
     }))
     // TODO(@kitsonk) add bare specifiers from import map
@@ -430,6 +456,7 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use deno_core::resolve_url;
+  use deno_graph::Range;
   use std::collections::HashMap;
   use std::path::Path;
   use std::sync::Arc;
@@ -670,6 +697,54 @@ mod tests {
         })),
         ..Default::default()
       }]
+    );
+  }
+
+  #[test]
+  fn test_to_narrow_lsp_range() {
+    let text_info = SourceTextInfo::from_string(r#""te""#.to_string());
+    let range = to_narrow_lsp_range(
+      &text_info,
+      &Range {
+        specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
+        start: deno_graph::Position {
+          line: 0,
+          character: 0,
+        },
+        end: deno_graph::Position {
+          line: 0,
+          character: text_info.text_str().chars().count(),
+        },
+      },
+    );
+    assert_eq!(range.start.character, 1);
+    assert_eq!(
+      range.end.character,
+      (text_info.text_str().chars().count() - 1) as u32
+    );
+  }
+
+  #[test]
+  fn test_to_narrow_lsp_range_no_trailing_quote() {
+    let text_info = SourceTextInfo::from_string(r#""te"#.to_string());
+    let range = to_narrow_lsp_range(
+      &text_info,
+      &Range {
+        specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
+        start: deno_graph::Position {
+          line: 0,
+          character: 0,
+        },
+        end: deno_graph::Position {
+          line: 0,
+          character: text_info.text_str().chars().count(),
+        },
+      },
+    );
+    assert_eq!(range.start.character, 1);
+    assert_eq!(
+      range.end.character,
+      text_info.text_str().chars().count() as u32
     );
   }
 }

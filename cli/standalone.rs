@@ -164,6 +164,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
       Ok(deno_core::ModuleSource {
         code,
+        module_type: deno_core::ModuleType::JavaScript,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
       })

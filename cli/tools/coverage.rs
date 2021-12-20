@@ -231,9 +231,12 @@ impl CoverageReporter for LcovCoverageReporter {
         continue;
       }
 
-      let source_line = script_source[0..function.ranges[0].start_offset]
-        .split('\n')
-        .count();
+      let source_line = script_source
+        .chars()
+        .take(function.ranges[0].start_offset)
+        .filter(|c| *c == '\n')
+        .count()
+        + 1;
 
       let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
         source_map
@@ -277,8 +280,12 @@ impl CoverageReporter for LcovCoverageReporter {
     {
       let block_hits = function.ranges[0].count;
       for (branch_number, range) in function.ranges[1..].iter().enumerate() {
-        let source_line =
-          script_source[0..range.start_offset].split('\n').count();
+        let source_line = script_source
+          .chars()
+          .take(range.start_offset)
+          .filter(|c| *c == '\n')
+          .count()
+          + 1;
 
         let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
           source_map

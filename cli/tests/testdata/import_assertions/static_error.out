@@ -1,0 +1,5 @@
+[WILDCARD]
+error: An unsupported media type was attempted to be imported as a module.
+  Specifier: [WILDCARD]data.json
+  MediaType: Json
+    at [WILDCARD]static_error.ts:1:18

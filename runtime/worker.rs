@@ -161,7 +161,11 @@ impl MainWorker {
     });
 
     if let Some(server) = options.maybe_inspector_server.clone() {
-      server.register_inspector(main_module.to_string(), &mut js_runtime);
+      server.register_inspector(
+        main_module.to_string(),
+        &mut js_runtime,
+        options.should_break_on_first_statement,
+      );
     }
 
     Self {
@@ -229,6 +233,7 @@ impl MainWorker {
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier, false).await?;
+    self.wait_for_inspector_session();
     self.evaluate_module(id).await
   }
 
