@@ -1248,10 +1248,7 @@ Deno.test(async function testImportEcSpkiPkcs8() {
   for (
     const [_key, keyData] of Object.entries(ecTestKeys)
   ) {
-    const { size, namedCurve, spki, pkcs8 } = keyData;
-    if (size != 256) {
-      continue;
-    }
+    const { namedCurve, spki, pkcs8 } = keyData;
 
     const privateKeyECDSA = await subtle.importKey(
       "pkcs8",
@@ -1268,6 +1265,13 @@ Deno.test(async function testImportEcSpkiPkcs8() {
 
     assertEquals(new Uint8Array(expPrivateKeyPKCS8), pkcs8);
 
+    const expPrivateKeyJWK = await subtle.exportKey(
+      "jwk",
+      privateKeyECDSA,
+    );
+
+    assertEquals(expPrivateKeyJWK.crv, namedCurve);
+
     const publicKeyECDSA = await subtle.importKey(
       "spki",
       spki,
@@ -1276,8 +1280,23 @@ Deno.test(async function testImportEcSpkiPkcs8() {
       ["verify"],
     );
 
+    const expPublicKeySPKI = await subtle.exportKey(
+      "spki",
+      publicKeyECDSA,
+    );
+
+    assertEquals(new Uint8Array(expPublicKeySPKI), spki);
+
+    const expPublicKeyJWK = await subtle.exportKey(
+      "jwk",
+      publicKeyECDSA,
+    );
+
+    assertEquals(expPublicKeyJWK.crv, namedCurve);
+
     for (
-      const hash of [/*"SHA-1", */ "SHA-256" /*"SHA-384", "SHA-512"*/]
+      const hash of [/*"SHA-1", */ "SHA-256", "SHA-384"/*"SHA-512"*/
+      ]
     ) {
       const signatureECDSA = await subtle.sign(
         { name: "ECDSA", hash },
@@ -1293,12 +1312,5 @@ Deno.test(async function testImportEcSpkiPkcs8() {
       );
       assert(verifyECDSA);
     }
-
-    const expPublicKeySPKI = await subtle.exportKey(
-      "spki",
-      publicKeyECDSA,
-    );
-
-    assertEquals(new Uint8Array(expPublicKeySPKI), spki);
   }
 });

@@ -2,8 +2,6 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use elliptic_curve::sec1::ToEncodedPoint;
-use p256::pkcs8::FromPrivateKey;
 use rsa::pkcs1::UIntBytes;
 use serde::Deserialize;
 use serde::Serialize;
@@ -13,6 +11,7 @@ use spki::der::Encodable;
 use spki::AlgorithmIdentifier;
 use spki::ObjectIdentifier;
 
+use crate::ec_key::ECPrivateKey;
 use crate::shared::*;
 
 #[derive(Deserialize)]
@@ -290,11 +289,9 @@ fn export_key_ec(
     ExportKeyFormat::JwkPrivate => {
       let private_key = key_data.as_ec_private_key()?;
 
-      let public_key;
-
-      let d = match named_curve {
+      match named_curve {
         EcNamedCurve::P256 => {
-          let secret_key = p256::SecretKey::from_pkcs8_der(private_key)
+          let ec_key = ECPrivateKey::<p256::NistP256>::try_from(private_key)
             .map_err(|_| {
               custom_error(
                 "DOMExceptionOperationError",
@@ -302,44 +299,47 @@ fn export_key_ec(
               )
             })?;
 
-          public_key = secret_key.public_key();
+          let point = p256::EncodedPoint::from_bytes(&ec_key.encoded_point)
+            .map_err(|_| data_error("expected valid public EC key"))?;
 
-          secret_key.to_bytes()
+          if let elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
+            point.coordinates()
+          {
+            Ok(ExportKeyResult::JwkPrivateEc {
+              x: bytes_to_b64(x),
+              y: bytes_to_b64(y),
+              d: bytes_to_b64(&ec_key.private_d),
+            })
+          } else {
+            Err(data_error("expected valid public EC key"))
+          }
         }
-        /*CryptoNamedCurve::P384 => {
-          let secret_key = p384::SecretKey::from_pkcs8_der(&private_key).map_err(|_| {
-            custom_error(
-              "DOMExceptionOperationError",
-              "failed to decode private key",
-            )
-          })?;
 
-          public_key = secret_key.public_key();
+        EcNamedCurve::P384 => {
+          let ec_key = ECPrivateKey::<p384::NistP384>::try_from(private_key)
+            .map_err(|_| {
+              custom_error(
+                "DOMExceptionOperationError",
+                "failed to decode private key",
+              )
+            })?;
 
-          secret_key.to_bytes()
-        }*/
-        EcNamedCurve::P384 | EcNamedCurve::P521 => {
-          return Err(not_supported_error("Unsupported namedCurve"));
+          let point = p384::EncodedPoint::from_bytes(&ec_key.encoded_point)
+            .map_err(|_| data_error("expected valid public EC key"))?;
+
+          if let elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
+            point.coordinates()
+          {
+            Ok(ExportKeyResult::JwkPrivateEc {
+              x: bytes_to_b64(x),
+              y: bytes_to_b64(y),
+              d: bytes_to_b64(&ec_key.private_d),
+            })
+          } else {
+            Err(data_error("expected valid public EC key"))
+          }
         }
-      };
-
-      // Code only for p256 .. clean up after P384 implemented above ...
-      let pk = public_key.as_affine().to_encoded_point(false);
-      let coords = pk.coordinates();
-
-      if let p256::elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
-        coords
-      {
-        Ok(ExportKeyResult::JwkPrivateEc {
-          x: bytes_to_b64(x),
-          y: bytes_to_b64(y),
-          d: bytes_to_b64(&d),
-        })
-      } else {
-        Err(custom_error(
-          "DOMExceptionOperationError",
-          "failed to decode private key",
-        ))
+        _ => Err(not_supported_error("Unsupported namedCurve")),
       }
     }
   }
