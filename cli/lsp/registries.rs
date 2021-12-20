@@ -31,6 +31,7 @@ use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use log::error;
 use lspower::lsp;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
@@ -61,10 +62,8 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
   .add(b'+')
   .add(b',');
 
-lazy_static::lazy_static! {
-  static ref REPLACEMENT_VARIABLE_RE: Regex =
-    Regex::new(r"\$\{\{?(\w+)\}?\}").unwrap();
-}
+static REPLACEMENT_VARIABLE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"\$\{\{?(\w+)\}?\}").unwrap());
 
 fn base_url(url: &Url) -> String {
   url.origin().ascii_serialization()

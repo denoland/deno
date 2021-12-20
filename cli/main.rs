@@ -1462,11 +1462,29 @@ fn get_subcommand(
   }
 }
 
-fn setup_exit_process_panic_hook() {
-  // tokio does not exit the process when a task panics, so we
-  // define a custom panic hook to implement this behaviour
+fn setup_panic_hook() {
+  // This function does two things inside of the panic hook:
+  // - Tokio does not exit the process when a task panics, so we define a custom
+  //   panic hook to implement this behaviour.
+  // - We print a message to stderr to indicate that this is a bug in Deno, and
+  //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
+    eprintln!("\n============================================================");
+    eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
+    eprintln!("at https://github.com/denoland/deno/issues/new.");
+    eprintln!("If you can reliably reproduce this panic, include the");
+    eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
+    eprintln!("var set and include the backtrace in your report.");
+    eprintln!();
+    eprintln!(
+      "Platform: {} {}",
+      std::env::consts::OS,
+      std::env::consts::ARCH
+    );
+    eprintln!("Version: {}", version::deno());
+    eprintln!("Args: {:?}", std::env::args().collect::<Vec<_>>());
+    eprintln!();
     orig_hook(panic_info);
     std::process::exit(1);
   }));
@@ -1483,7 +1501,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 }
 
 pub fn main() {
-  setup_exit_process_panic_hook();
+  setup_panic_hook();
 
   unix_util::raise_fd_limit();
   windows_util::ensure_stdio_open();
