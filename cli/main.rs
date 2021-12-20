@@ -1458,7 +1458,7 @@ fn setup_panic_hook() {
     eprintln!("If you can reliably reproduce this panic, include the");
     eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
     eprintln!("var set and include the backtrace in your report.");
-    eprintln!("");
+    eprintln!();
     eprintln!(
       "Platform: {} {}",
       std::env::consts::OS,
