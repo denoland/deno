@@ -147,6 +147,7 @@ type RequestCache =
   | "only-if-cached"
   | "reload";
 type RequestCredentials = "include" | "omit" | "same-origin";
+type RequestMethod = "GET" | "HEAD" | "POST" | "PUT" | "DELETE" | "CONNECT" | "OPTIONS" | "TRACE" | "PATCH";
 type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
 type RequestRedirect = "error" | "follow" | "manual";
 type ReferrerPolicy =
@@ -219,7 +220,7 @@ interface RequestInit {
   /**
    * A string to set request's method.
    */
-  method?: string;
+  method?: RequestMethod | string;
   /**
    * A string to indicate whether the request will use CORS, or will be
    * restricted to same-origin URLs. Sets request's mode.
