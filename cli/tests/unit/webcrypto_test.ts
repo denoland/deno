@@ -1092,7 +1092,7 @@ Deno.test(async function testImportExportEcDsaJwk() {
     const [_key, keyData] of Object.entries(jwtECKeys)
   ) {
     const { publicJWK, privateJWK, algo } = keyData;
-    
+
     // 1. Test import EcDsa
     const privateKeyECDSA = await subtle.importKey(
       "jwk",
@@ -1272,7 +1272,8 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     );
 
     for (
-      const hash of [/*"SHA-1", */ "SHA-256", "SHA-384", /*"SHA-512"*/]
+      const hash of [/*"SHA-1", */ "SHA-256", "SHA-384"/*"SHA-512"*/
+      ]
     ) {
       console.log(hash);
 
