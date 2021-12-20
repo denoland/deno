@@ -9,13 +9,13 @@ use deno_core::error::AnyError;
 use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
-lazy_static::lazy_static! {
-  /// Used in situations where a default URL needs to be used where otherwise a
-  /// panic is undesired.
-  pub(crate) static ref INVALID_SPECIFIER: ModuleSpecifier = ModuleSpecifier::parse("deno://invalid").unwrap();
-}
+/// Used in situations where a default URL needs to be used where otherwise a
+/// panic is undesired.
+pub(crate) static INVALID_SPECIFIER: Lazy<ModuleSpecifier> =
+  Lazy::new(|| ModuleSpecifier::parse("deno://invalid").unwrap());
 
 /// Matches the `encodeURIComponent()` encoding from JavaScript, which matches
 /// the component percent encoding set.
