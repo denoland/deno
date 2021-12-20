@@ -89,11 +89,6 @@ pub struct BasicAuth {
   pub password: String,
 }
 
-lazy_static::lazy_static! {
-  static ref CLIENT_SESSION_MEMORY_CACHE: Arc<ClientSessionMemoryCache> =
-    Arc::new(ClientSessionMemoryCache::default());
-}
-
 #[derive(Default)]
 struct ClientSessionMemoryCache(Mutex<HashMap<Vec<u8>, Vec<u8>>>);
 

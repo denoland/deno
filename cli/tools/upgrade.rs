@@ -7,6 +7,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
+use once_cell::sync::Lazy;
 use semver_parser::version::parse as semver_parse;
 use std::fs;
 use std::io::Write;
@@ -15,9 +16,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 
-lazy_static::lazy_static! {
-  static ref ARCHIVE_NAME: String = format!("deno-{}.zip", env!("TARGET"));
-}
+static ARCHIVE_NAME: Lazy<String> =
+  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 
