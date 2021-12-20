@@ -801,24 +801,8 @@ impl ModuleMap {
     let value_handle = v8::Global::<v8::Value>::new(tc_scope, parsed_json);
     self.json_value_store.insert(handle.clone(), value_handle);
 
-    let id = self.next_module_id;
-    self.next_module_id += 1;
-    self.by_name.insert(
-      (name.to_string(), ModuleType::Json),
-      SymbolicModule::Mod(id),
-    );
-    self.handles_by_id.insert(id, handle.clone());
-    self.ids_by_handle.insert(handle, id);
-    self.info.insert(
-      id,
-      ModuleInfo {
-        id,
-        main: false,
-        name: name.to_string(),
-        requests: vec![],
-        module_type: ModuleType::Json,
-      },
-    );
+    let id =
+      self.create_module_info(name, ModuleType::Json, handle, false, vec![]);
 
     Ok(id)
   }
@@ -898,12 +882,30 @@ impl ModuleMap {
     }
 
     let handle = v8::Global::<v8::Module>::new(tc_scope, module);
+    let id = self.create_module_info(
+      name,
+      ModuleType::JavaScript,
+      handle,
+      main,
+      requests,
+    );
+
+    Ok(id)
+  }
+
+  pub(crate) fn create_module_info(
+    &mut self,
+    name: &str,
+    module_type: ModuleType,
+    handle: v8::Global<v8::Module>,
+    main: bool,
+    requests: Vec<ModuleRequest>,
+  ) -> ModuleId {
     let id = self.next_module_id;
     self.next_module_id += 1;
-    self.by_name.insert(
-      (name.to_string(), ModuleType::JavaScript),
-      SymbolicModule::Mod(id),
-    );
+    self
+      .by_name
+      .insert((name.to_string(), module_type), SymbolicModule::Mod(id));
     self.handles_by_id.insert(id, handle.clone());
     self.ids_by_handle.insert(handle, id);
     self.info.insert(
@@ -913,11 +915,11 @@ impl ModuleMap {
         main,
         name: name.to_string(),
         requests,
-        module_type: ModuleType::JavaScript,
+        module_type,
       },
     );
 
-    Ok(id)
+    id
   }
 
   pub fn get_requested_modules(
