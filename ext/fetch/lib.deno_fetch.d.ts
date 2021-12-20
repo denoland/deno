@@ -147,7 +147,7 @@ type RequestCache =
   | "only-if-cached"
   | "reload";
 type RequestCredentials = "include" | "omit" | "same-origin";
-type RequestMethod = "GET" | "HEAD" | "POST" | "PUT" | "DELETE" | "CONNECT" | "OPTIONS" | "TRACE" | "PATCH";
+type RequestMethod = "GET" | "HEAD" | "POST" | "PUT" | "DELETE" | "OPTIONS" | "TRACE" | "PATCH";
 type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
 type RequestRedirect = "error" | "follow" | "manual";
 type ReferrerPolicy =
