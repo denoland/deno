@@ -3275,34 +3275,35 @@
             kty: "EC",
           };
 
-          // 3.
-          if (key[_algorithm].name == "ECDSA") {
-            let algNamedCurve;
+          // 3.1
+          jwk.crv = key[_algorithm].namedCurve;
 
-            switch (key[_algorithm].namedCurve) {
-              case "P-256": {
-                algNamedCurve = "ES256";
-                break;
-              }
-              case "P-384": {
-                algNamedCurve = "ES384";
-                break;
-              }
-              case "P-521": {
-                algNamedCurve = "ES512";
-                break;
-              }
-              default:
-                throw new DOMException(
-                  "Curve algorithm not supported",
-                  "DataError",
-                );
+          // Missing from spec
+          let algNamedCurve;
+
+          switch (key[_algorithm].namedCurve) {
+            case "P-256": {
+              algNamedCurve = "ES256";
+              break;
             }
-
-            jwk.alg = algNamedCurve;
+            case "P-384": {
+              algNamedCurve = "ES384";
+              break;
+            }
+            case "P-521": {
+              algNamedCurve = "ES512";
+              break;
+            }
+            default:
+              throw new DOMException(
+                "Curve algorithm not supported",
+                "DataError",
+              );
           }
 
-          // 5-6.
+          jwk.alg = algNamedCurve;
+
+          // 3.2 - 3.4.
           const data = core.opSync("op_crypto_export_key", {
             format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
             algorithm: key[_algorithm].name,
@@ -3310,14 +3311,11 @@
           }, innerKey);
           ObjectAssign(jwk, data);
 
-          // 7.
+          // 4.
           jwk.key_ops = key.usages;
 
-          // 8.
+          // 5.
           jwk.ext = key[_extractable];
-
-          // 9
-          jwk.crv = key[_algorithm].namedCurve;
 
           return jwk;
         } else { // ECDH
