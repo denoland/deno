@@ -1193,6 +1193,7 @@ Deno.test(async function testImportEcDhJwk() {
     );
     assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));*/
 
+    // P384 deriveBits still implemented for P384
     if (size != 256) {
       continue;
     }
@@ -1272,10 +1273,14 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     );
 
     for (
-      const hash of [/*"SHA-1", */ "SHA-256", "SHA-384"/*"SHA-512"*/
-      ]
+      const hash of [/*"SHA-1", */ "SHA-256", "SHA-384" /*"SHA-512"*/]
     ) {
-      console.log(hash);
+      if (
+        (hash == "SHA-256" && namedCurve != "P-256") ||
+        (hash == "SHA-384" && namedCurve != "P-384")
+      ) {
+        continue;
+      }
 
       const signatureECDSA = await subtle.sign(
         { name: "ECDSA", hash },
