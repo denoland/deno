@@ -718,19 +718,13 @@ fn import_key_ec_jwk(
       let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
 
       Ok(ImportKeyResult::Ec {
-        raw_data: RawKeyData::Public(point_bytes.to_vec().into()),
+        raw_data: RawKeyData::Public(point_bytes.into()),
       })
     }
     KeyData::JwkPrivateEc { d, x, y } => {
       let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
 
-      jwt_b64_int_or_err!(private_d, &d, "invalid private key");
-
-      let key_alg = match named_curve {
-        EcNamedCurve::P256 => CryptoNamedCurve::P256.try_into()?,
-        EcNamedCurve::P384 => CryptoNamedCurve::P256.try_into()?,
-        _ => return Err(data_error("Unsupported named curve")),
-      };
+      jwt_b64_int_or_err!(private_d, &d, "invalid JWK private key");
 
       let pkcs8_der = match named_curve {
         EcNamedCurve::P256 => {
@@ -739,7 +733,7 @@ fn import_key_ec_jwk(
           let pk =
             ECPrivateKey::<p256::NistP256>::from_private_and_public_bytes(
               d,
-              point_bytes.to_vec(),
+              &point_bytes,
             );
 
           pk.to_pkcs8_der()?
@@ -750,15 +744,25 @@ fn import_key_ec_jwk(
           let pk =
             ECPrivateKey::<p384::NistP384>::from_private_and_public_bytes(
               d,
-              point_bytes.to_vec(),
+              &point_bytes,
             );
 
           pk.to_pkcs8_der()?
         }
-        _ => return Err(data_error("Unsupported named curve")),
+        EcNamedCurve::P521 => {
+          return Err(data_error("Unsupported named curve"))
+        }
       };
 
       // Import using ring, to validate key
+      let key_alg = match named_curve {
+        EcNamedCurve::P256 => CryptoNamedCurve::P256.try_into()?,
+        EcNamedCurve::P384 => CryptoNamedCurve::P256.try_into()?,
+        EcNamedCurve::P521 => {
+          return Err(data_error("Unsupported named curve"))
+        }
+      };
+
       let _key_pair = EcdsaKeyPair::from_private_key_and_public_key(
         key_alg,
         private_d.as_bytes(),
@@ -824,7 +828,7 @@ fn import_key_ec(
     }
     KeyData::Pkcs8(data) => {
       // 2-7
-      // Deserialize PKCS8 - validated structure and extracts named_curve
+      // Deserialize PKCS8 - validate structure, extracts named_curve
       let named_curve_alg = match named_curve {
         EcNamedCurve::P256 => {
           let pk = ECPrivateKey::<p256::NistP256>::try_from(data.as_ref())?;
@@ -836,7 +840,9 @@ fn import_key_ec(
 
           pk.named_curve_oid().unwrap()
         }
-        _ => return Err(data_error("Unsupported named curve")),
+        EcNamedCurve::P521 => {
+          return Err(data_error("Unsupported named curve"))
+        }
       };
 
       // 8-9.
@@ -845,7 +851,7 @@ fn import_key_ec(
         ID_SECP256R1_OID => Some(EcNamedCurve::P256),
         // id-secp384r1
         ID_SECP384R1_OID => Some(EcNamedCurve::P384),
-        // id-secp384r1
+        // id-secp521r1
         ID_SECP521R1_OID => Some(EcNamedCurve::P521),
         _ => None,
       };
@@ -855,7 +861,9 @@ fn import_key_ec(
         let signing_alg = match pk_named_curve {
           EcNamedCurve::P256 => CryptoNamedCurve::P256.try_into()?,
           EcNamedCurve::P384 => CryptoNamedCurve::P384.try_into()?,
-          _ => return Err(data_error("Unsupported named curve")),
+          EcNamedCurve::P521 => {
+            return Err(data_error("Unsupported named curve"))
+          }
         };
 
         // deserialize pkcs8 using ring crate, to VALIDATE public key
