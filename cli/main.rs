@@ -1271,6 +1271,9 @@ async fn coverage_command(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
+  let mut flags = flags.clone();
+  flags.check = CheckFlag::None;
+
   tools::coverage::cover_files(flags, coverage_flags).await?;
   Ok(0)
 }
