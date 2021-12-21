@@ -11,6 +11,7 @@ use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::CheckFlag;
 use crate::flags::Flags;
+use crate::flags::TestFlags;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -1000,30 +1001,21 @@ async fn fetch_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
   flags: Flags,
-  include: Option<Vec<String>>,
-  ignore: Vec<PathBuf>,
-  doc: bool,
-  no_run: bool,
-  fail_fast: Option<NonZeroUsize>,
-  allow_none: bool,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     ps.clone(),
-    include.unwrap_or_else(|| vec![".".to_string()]),
-    ignore.clone(),
-    doc,
+    test_flags.include.unwrap_or_else(|| vec![".".to_string()]),
+    test_flags.ignore.clone(),
+    test_flags.doc,
   )
   .await?;
 
-  if !allow_none && specifiers_with_mode.is_empty() {
+  if !test_flags.allow_none && specifiers_with_mode.is_empty() {
     return Err(generic_error("No test modules found"));
   }
 
@@ -1041,7 +1033,7 @@ pub async fn run_tests(
   )
   .await?;
 
-  if no_run {
+  if test_flags.no_run {
     return Ok(());
   }
 
@@ -1049,27 +1041,19 @@ pub async fn run_tests(
     ps,
     permissions,
     specifiers_with_mode,
-    fail_fast,
-    filter,
-    shuffle,
-    concurrent_jobs,
+    test_flags.fail_fast,
+    test_flags.filter,
+    test_flags.shuffle,
+    test_flags.concurrent_jobs,
   )
   .await?;
 
   Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_tests_with_watch(
   flags: Flags,
-  include: Option<Vec<String>>,
-  ignore: Vec<PathBuf>,
-  doc: bool,
-  no_run: bool,
-  fail_fast: Option<NonZeroUsize>,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
@@ -1080,7 +1064,8 @@ pub async fn run_tests_with_watch(
     emit::TypeLib::DenoWindow
   };
 
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
+  let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
+  let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
   let no_check = ps.flags.check == CheckFlag::None;
 
@@ -1115,7 +1100,7 @@ pub async fn run_tests_with_watch(
     let ignore = ignore.clone();
 
     async move {
-      let test_modules = if doc {
+      let test_modules = if test_flags.doc {
         collect_specifiers(include.clone(), &ignore, is_supported_test_ext)
       } else {
         collect_specifiers(include.clone(), &ignore, is_supported_test_path)
@@ -1242,7 +1227,7 @@ pub async fn run_tests_with_watch(
   };
 
   let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-    let filter = filter.clone();
+    let filter = test_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
     let lib = lib.clone();
@@ -1254,7 +1239,7 @@ pub async fn run_tests_with_watch(
         ps.clone(),
         include.clone(),
         ignore.clone(),
-        doc,
+        test_flags.doc,
       )
       .await?
       .iter()
@@ -1270,7 +1255,7 @@ pub async fn run_tests_with_watch(
       )
       .await?;
 
-      if no_run {
+      if test_flags.no_run {
         return Ok(());
       }
 
@@ -1278,10 +1263,10 @@ pub async fn run_tests_with_watch(
         ps.clone(),
         permissions.clone(),
         specifiers_with_mode,
-        fail_fast,
+        test_flags.fail_fast,
         filter.clone(),
-        shuffle,
-        concurrent_jobs,
+        test_flags.shuffle,
+        test_flags.concurrent_jobs,
       )
       .await?;
 

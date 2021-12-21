@@ -564,7 +564,6 @@ async fn lsp_command() -> Result<i32, AnyError> {
   Ok(0)
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn lint_command(
   flags: Flags,
   lint_flags: LintFlags,
@@ -915,14 +914,7 @@ async fn doc_command(
   flags: Flags,
   doc_flags: DocFlags,
 ) -> Result<i32, AnyError> {
-  tools::doc::print_docs(
-    flags,
-    doc_flags.source_file,
-    doc_flags.json,
-    doc_flags.filter,
-    doc_flags.private,
-  )
-  .await?;
+  tools::doc::print_docs(flags, doc_flags).await?;
   Ok(0)
 }
 
@@ -1279,15 +1271,7 @@ async fn coverage_command(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  tools::coverage::cover_files(
-    flags.clone(),
-    coverage_flags.files,
-    coverage_flags.ignore,
-    coverage_flags.include,
-    coverage_flags.exclude,
-    coverage_flags.lcov,
-  )
-  .await?;
+  tools::coverage::cover_files(flags, coverage_flags).await?;
   Ok(0)
 }
 
@@ -1304,35 +1288,10 @@ async fn test_command(
   }
 
   if flags.watch.is_some() {
-    tools::test::run_tests_with_watch(
-      flags,
-      test_flags.include,
-      test_flags.ignore,
-      test_flags.doc,
-      test_flags.no_run,
-      test_flags.fail_fast,
-      test_flags.filter,
-      test_flags.shuffle,
-      test_flags.concurrent_jobs,
-    )
-    .await?;
-
-    return Ok(0);
+    tools::test::run_tests_with_watch(flags, test_flags).await?;
+  } else {
+    tools::test::run_tests(flags, test_flags).await?;
   }
-
-  tools::test::run_tests(
-    flags,
-    test_flags.include,
-    test_flags.ignore,
-    test_flags.doc,
-    test_flags.no_run,
-    test_flags.fail_fast,
-    test_flags.allow_none,
-    test_flags.filter,
-    test_flags.shuffle,
-    test_flags.concurrent_jobs,
-  )
-  .await?;
 
   Ok(0)
 }
