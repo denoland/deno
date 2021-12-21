@@ -323,10 +323,8 @@ impl MainWorker {
     &mut self,
     script_name: &str,
   ) -> Result<(), AnyError> {
-    self.execute_script(
-      script_name,
-      "window.dispatchEvent(new Event('unload'))",
-    )
+    self
+      .execute_script(script_name, "window.dispatchEvent(new Event('unload'))")
   }
 }
 
