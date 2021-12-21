@@ -1124,10 +1124,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       if self.pending_unload {
         self
           .worker
-          .execute_script(
-            &located_script_name!(),
-            "window.dispatchEvent(new Event('unload'))",
-          )
+          .dispatch_unload_event(&located_script_name!())
           .unwrap();
       }
     }
