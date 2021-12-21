@@ -10,6 +10,7 @@ use deno_core::op_sync_cb;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -18,6 +19,8 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use dlopen::raw::Library;
 use libffi::middle::Arg;
+use libffi::middle::Cif;
+use libffi::raw::*;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -167,8 +170,8 @@ impl From<Box<NativeType>> for libffi::middle::Type {
   }
 }
 
-impl From<NativeType> for libffi::middle::Type {
-  fn from(native_type: NativeType) -> Self {
+impl From<&NativeType> for libffi::middle::Type {
+  fn from(native_type: &NativeType) -> Self {
     match native_type {
       NativeType::Void => libffi::middle::Type::void(),
       NativeType::U8 => libffi::middle::Type::u8(),
@@ -187,6 +190,12 @@ impl From<NativeType> for libffi::middle::Type {
         libffi::middle::Type::pointer()
       }
     }
+  }
+}
+
+impl From<NativeType> for libffi::middle::Type {
+  fn from(native_type: NativeType) -> Self {
+    Self::from(&native_type)
   }
 }
 
@@ -210,7 +219,7 @@ union NativeValue {
 }
 
 impl NativeValue {
-  fn new(native_type: NativeType, value: Value) -> Self {
+  fn new(native_type: &NativeType, value: Value) -> Self {
     match native_type {
       NativeType::Void => Self { void_value: () },
       NativeType::U8 => Self {
@@ -464,7 +473,7 @@ struct FfiCallArgs {
 fn ffi_call(
   args: FfiCallArgs,
   symbol: &Symbol,
-  mut functions: Vec<CallbackInfo>,
+  functions: Option<(&mut v8::HandleScope, v8::Local<v8::Function>)>,
 ) -> Result<Value, AnyError> {
   let buffers: Vec<Option<&[u8]>> = args
     .buffers
@@ -472,7 +481,9 @@ fn ffi_call(
     .map(|buffer| buffer.as_ref().map(|buffer| &buffer[..]))
     .collect();
 
-  let native_values = symbol
+  let mut fn_position: Option<usize> = None;
+
+  let call_args = symbol
     .parameter_types
     .clone()
     .into_iter()
@@ -482,49 +493,71 @@ fn ffi_call(
         NativeType::Pointer => {
           if let Some(idx) = value.as_u64() {
             if let Some(&Some(buf)) = buffers.get(idx as usize) {
-              return NativeValue::buffer(buf.as_ptr());
+              let native_value = NativeValue::buffer(buf.as_ptr());
+              return unsafe { native_value.as_arg(native_type) };
             }
           }
         }
-        NativeType::Function {
-          ref parameters,
-          ref result,
-        } => {
-          let cif = libffi::middle::Cif::new(
-            parameters
-              .clone()
-              .into_iter()
-              .map(libffi::middle::Type::from),
-            (*result).clone().into(),
-          );
+        NativeType::Function { .. } => {
           if let Some(idx) = value.as_u64() {
-            if let Some(info) = functions.get_mut(idx as usize) {
-              let closure =
-                libffi::middle::Closure::new_mut(cif, deno_ffi_callback, info);
-              return NativeValue {
-                function: *closure.code_ptr(),
-              };
-            }
+            // Placeholder to reserve spot for the function `Arg`.
+            let ptr = Arg::new(&());
+            fn_position = Some(idx as usize);
+            return ptr;
           }
         }
         _ => {}
       };
 
-      NativeValue::new(native_type, value)
+      let native_value = NativeValue::new(&native_type, value);
+      unsafe { native_value.as_arg(native_type) }
     })
     .collect::<Vec<_>>();
 
-  let call_args = symbol
-    .parameter_types
-    .clone()
-    .into_iter()
-    .zip(native_values.iter())
-    .map(|(native_type, native_value)| unsafe {
-      native_value.as_arg(native_type)
-    })
-    .collect::<Vec<_>>();
+  if let Some(pos) = fn_position {
+    return Ok(call_symbol_cb(symbol, call_args, pos, functions.unwrap()));
+  }
 
-  Ok(match symbol.result_type {
+  Ok(call_symbol(symbol, call_args))
+}
+
+fn call_symbol_cb(
+  symbol: &Symbol,
+  mut call_args: Vec<Arg>,
+  position: usize,
+  func: (&mut v8::HandleScope, v8::Local<v8::Function>),
+) -> Value {
+  let (scope, cb) = func;
+  let signature = symbol.parameter_types.get(position).unwrap();
+
+  let mut info = match signature {
+    NativeType::Function {
+      ref parameters,
+      ref result,
+    } => CallbackInfo {
+      scope,
+      cb,
+      parameters: parameters.clone(),
+      result: *result.clone(),
+    },
+    _ => unreachable!(),
+  };
+
+  let cif = Cif::new(
+    info
+      .parameters
+      .iter()
+      .map(|p| libffi::middle::Type::from(p)),
+    libffi::middle::Type::from(&info.result),
+  );
+  let closure =
+    libffi::middle::Closure::new_mut(cif, deno_ffi_callback, &mut info);
+  call_args[position] = Arg::new(closure.code_ptr());
+  call_symbol(symbol, call_args)
+}
+
+fn call_symbol(symbol: &Symbol, call_args: Vec<Arg>) -> Value {
+  match symbol.result_type {
     NativeType::Void => {
       json!(unsafe { symbol.cif.call::<()>(symbol.ptr, &call_args) })
     }
@@ -572,27 +605,128 @@ fn ffi_call(
     NativeType::Function { .. } => {
       panic!("Function result type is not supported")
     }
-  })
+  }
 }
 
-pub struct CallbackInfo<'a, 'b, 'c>(
-  &'a mut v8::HandleScope<'b>,
-  v8::Local<'c, v8::Function>,
-);
+pub struct CallbackInfo<'a, 'b, 'c> {
+  scope: &'a mut v8::HandleScope<'b>,
+  cb: v8::Local<'c, v8::Function>,
+  parameters: Vec<NativeType>,
+  result: NativeType,
+}
 
 unsafe extern "C" fn deno_ffi_callback(
-  _cif: &libffi::low::ffi_cif,
-  result: &mut u64,
+  cif: &libffi::low::ffi_cif,
+  result: &mut u8,
   args: *const *const c_void,
   info: &mut CallbackInfo,
 ) {
-  let args = args as *const &u64;
-  let arg1 = **args.offset(0);
-  let arg2 = **args.offset(1);
+  let result = result as *mut u8 as *mut c_void;
+  let repr = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
+  let vals = std::slice::from_raw_parts(args, cif.nargs as usize);
 
-  let recv = v8::undefined(&mut info.0);
-  info.1.call(&mut info.0, recv.into(), &[]);
-  *result = 2;
+  let params: Vec<v8::Local<v8::Value>> = repr
+    .into_iter()
+    .zip(vals)
+    .map(|(&repr, &val)| {
+      let value = match (*repr).type_ as _ {
+        FFI_TYPE_INT => serde_v8::to_v8(&mut info.scope, *(val as *const i32)),
+        FFI_TYPE_FLOAT => {
+          serde_v8::to_v8(&mut info.scope, *(val as *const f32))
+        }
+        FFI_TYPE_DOUBLE => {
+          serde_v8::to_v8(&mut info.scope, *(val as *const f64))
+        }
+        FFI_TYPE_POINTER | FFI_TYPE_STRUCT => serde_v8::to_v8(
+          &mut info.scope,
+          U32x2::from(*(val as *const u8) as u64),
+        ),
+        FFI_TYPE_SINT8 => serde_v8::to_v8(&mut info.scope, *(val as *const i8)),
+        FFI_TYPE_UINT8 => serde_v8::to_v8(&mut info.scope, *(val as *const u8)),
+        FFI_TYPE_SINT16 => {
+          serde_v8::to_v8(&mut info.scope, *(val as *const i16))
+        }
+        FFI_TYPE_UINT16 => {
+          serde_v8::to_v8(&mut info.scope, *(val as *const u16))
+        }
+        FFI_TYPE_SINT32 => {
+          serde_v8::to_v8(&mut info.scope, *(val as *const i32))
+        }
+        FFI_TYPE_UINT32 => {
+          serde_v8::to_v8(&mut info.scope, *(val as *const u32))
+        }
+        FFI_TYPE_SINT64 => {
+          serde_v8::to_v8(&mut info.scope, *(val as *const i64))
+        }
+        FFI_TYPE_UINT64 => {
+          serde_v8::to_v8(&mut info.scope, *(val as *const u64))
+        }
+        FFI_TYPE_VOID => serde_v8::to_v8(&mut info.scope, ()),
+        _ => {
+          panic!("Unsupported parameter type")
+        }
+      };
+      value.expect("Unable to serialize callback parameter.")
+    })
+    .collect();
+
+  let recv = v8::undefined(&mut info.scope);
+  let value = match info.cb.call(&mut info.scope, recv.into(), &params) {
+    Some(value) => value,
+    None => return,
+  };
+
+  match (*cif.rtype).type_ as _ {
+    FFI_TYPE_INT | FFI_TYPE_SINT32 => {
+      *(result as *mut i32) = serde_v8::from_v8(&mut info.scope, value)
+        .expect("Unable to deserialize result parameter.");
+    }
+    FFI_TYPE_FLOAT => {
+      *(result as *mut f32) = serde_v8::from_v8(&mut info.scope, value)
+        .expect("Unable to deserialize result parameter.");
+    }
+    FFI_TYPE_DOUBLE => {
+      *(result as *mut f64) = serde_v8::from_v8(&mut info.scope, value)
+        .expect("Unable to deserialize result parameter.");
+    }
+    FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
+      let u32x2: U32x2 = serde_v8::from_v8(&mut info.scope, value)
+        .expect("Unable to deserialize result parameter.");
+      *(result as *mut u64) = u64::from(u32x2);
+    }
+    FFI_TYPE_SINT8 => {
+      *(result as *mut i8) = serde_v8::from_v8(&mut info.scope, value)
+        .expect("Unable to deserialize result parameter.");
+    }
+    FFI_TYPE_UINT8 => {
+      *(result as *mut u8) = serde_v8::from_v8(&mut info.scope, value)
+        .expect("Unable to deserialize result parameter.");
+    }
+    FFI_TYPE_SINT16 => {
+      *(result as *mut i16) = serde_v8::from_v8(&mut info.scope, value)
+        .expect("Unable to deserialize result parameter.");
+    }
+    FFI_TYPE_UINT16 => {
+      *(result as *mut u16) = serde_v8::from_v8(&mut info.scope, value)
+        .expect("Unable to deserialize result parameter.");
+    }
+    FFI_TYPE_UINT32 => {
+      *(result as *mut u32) = serde_v8::from_v8(&mut info.scope, value)
+        .expect("Unable to deserialize result parameter.");
+    }
+    FFI_TYPE_SINT64 => {
+      *(result as *mut i64) = serde_v8::from_v8(&mut info.scope, value)
+        .expect("Unable to deserialize result parameter.");
+    }
+    FFI_TYPE_UINT64 => {
+      *(result as *mut u64) = serde_v8::from_v8(&mut info.scope, value)
+        .expect("Unable to deserialize result parameter.");
+    }
+    FFI_TYPE_VOID => {}
+    _ => {
+      panic!("Unsupported callback return type")
+    }
+  }
 }
 
 fn op_ffi_call_cb(
@@ -611,9 +745,7 @@ fn op_ffi_call_cb(
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
 
-  let info = vec![CallbackInfo(scope, cb)];
-
-  ffi_call(args, symbol, info)
+  ffi_call(args, symbol, Some((scope, cb)))
 }
 
 fn op_ffi_call(
@@ -630,7 +762,7 @@ fn op_ffi_call(
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
 
-  ffi_call(args, symbol, vec![])
+  ffi_call(args, symbol, None)
 }
 
 /// A non-blocking FFI call.
@@ -649,7 +781,7 @@ async fn op_ffi_call_nonblocking(
     .ok_or_else(bad_resource_id)?
     .clone();
 
-  tokio::task::spawn_blocking(move || ffi_call(args, &symbol, vec![]))
+  tokio::task::spawn_blocking(move || ffi_call(args, &symbol, None))
     .await
     .unwrap()
 }
