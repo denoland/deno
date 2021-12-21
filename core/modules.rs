@@ -26,12 +26,12 @@ use std::task::Context;
 use std::task::Poll;
 
 pub type ModuleId = i32;
-pub type ModuleLoadId = i32;
+pub(crate) type ModuleLoadId = i32;
 
 pub const BOM_CHAR: char = '\u{FEFF}';
 
 /// Strips the byte order mark from the provided text if it exists.
-pub fn strip_bom(text: &str) -> &str {
+fn strip_bom(text: &str) -> &str {
   if text.starts_with(BOM_CHAR) {
     &text[BOM_CHAR.len_utf8()..]
   } else {
@@ -198,7 +198,7 @@ pub struct ModuleSource {
   pub module_url_found: String,
 }
 
-pub type PrepareLoadFuture =
+pub(crate) type PrepareLoadFuture =
   dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, Error>)>;
 pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, Error>>;
 
@@ -242,7 +242,6 @@ pub trait ModuleLoader {
   fn prepare_load(
     &self,
     _op_state: Rc<RefCell<OpState>>,
-    _load_id: ModuleLoadId,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
@@ -352,49 +351,51 @@ pub enum LoadState {
 }
 
 /// This future is used to implement parallel async module loading.
-pub struct RecursiveModuleLoad {
-  init: LoadInit,
-  // TODO(bartlomieju): in future this value should
-  // be randomized
+pub(crate) struct RecursiveModuleLoad {
   pub id: ModuleLoadId,
   pub root_module_id: Option<ModuleId>,
-  pub root_module_type: Option<ModuleType>,
-  pub state: LoadState,
-  pub module_map_rc: Rc<RefCell<ModuleMap>>,
+  init: LoadInit,
+  root_module_type: Option<ModuleType>,
+  state: LoadState,
+  module_map_rc: Rc<RefCell<ModuleMap>>,
+  pending: FuturesUnordered<Pin<Box<ModuleLoadFuture>>>,
+  visited: HashSet<ModuleRequest>,
   // These two fields are copied from `module_map_rc`, but they are cloned ahead
   // of time to avoid already-borrowed errors.
-  pub op_state: Rc<RefCell<OpState>>,
-  pub loader: Rc<dyn ModuleLoader>,
-  pub pending: FuturesUnordered<Pin<Box<ModuleLoadFuture>>>,
-  pub visited: HashSet<ModuleRequest>,
+  op_state: Rc<RefCell<OpState>>,
+  loader: Rc<dyn ModuleLoader>,
 }
 
 impl RecursiveModuleLoad {
-  /// Starts a new parallel load of the given URL of the main module.
-  pub fn main(specifier: &str, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
+  /// Starts a new asynchronous load of the module graph for given specifier.
+  ///
+  /// The module corresponding for the given `specifier` will be marked as
+  // "the main module" (`import.meta.main` will return `true` for this module).
+  fn main(specifier: &str, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
     Self::new(LoadInit::Main(specifier.to_string()), module_map_rc)
   }
 
-  pub fn side(specifier: &str, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
+  /// Starts a new asynchronous load of the module graph for given specifier.
+  fn side(specifier: &str, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
     Self::new(LoadInit::Side(specifier.to_string()), module_map_rc)
   }
 
-  pub fn dynamic_import(
+  /// Starts a new asynchronous load of the module graph for given specifier
+  /// that was imported using `import()`.
+  fn dynamic_import(
     specifier: &str,
     referrer: &str,
     module_type: ModuleType,
     module_map_rc: Rc<RefCell<ModuleMap>>,
   ) -> Self {
-    let init = LoadInit::DynamicImport(
-      specifier.to_string(),
-      referrer.to_string(),
-      module_type,
-    );
-    Self::new(init, module_map_rc)
-  }
-
-  pub fn is_dynamic_import(&self) -> bool {
-    matches!(self.init, LoadInit::DynamicImport(..))
+    Self::new(
+      LoadInit::DynamicImport(
+        specifier.to_string(),
+        referrer.to_string(),
+        module_type,
+      ),
+      module_map_rc,
+    )
   }
 
   fn new(init: LoadInit, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
@@ -422,6 +423,7 @@ impl RecursiveModuleLoad {
       pending: FuturesUnordered::new(),
       visited: HashSet::new(),
     };
+    // FIXME(bartlomieju): this seems fishy
     // Ignore the error here, let it be hit in `Stream::poll_next()`.
     if let Ok(root_specifier) = load.resolve_root() {
       if let Some(module_id) = module_map_rc
@@ -435,7 +437,7 @@ impl RecursiveModuleLoad {
     load
   }
 
-  pub fn resolve_root(&self) -> Result<ModuleSpecifier, Error> {
+  fn resolve_root(&self) -> Result<ModuleSpecifier, Error> {
     match self.init {
       LoadInit::Main(ref specifier) => {
         self.loader.resolve(specifier, ".", true)
@@ -449,7 +451,7 @@ impl RecursiveModuleLoad {
     }
   }
 
-  pub async fn prepare(&self) -> Result<(), Error> {
+  async fn prepare(&self) -> Result<(), Error> {
     let op_state = self.op_state.clone();
     let (module_specifier, maybe_referrer) = match self.init {
       LoadInit::Main(ref specifier) => {
@@ -470,7 +472,6 @@ impl RecursiveModuleLoad {
       .loader
       .prepare_load(
         op_state,
-        self.id,
         &module_specifier,
         maybe_referrer,
         self.is_dynamic_import(),
@@ -478,13 +479,17 @@ impl RecursiveModuleLoad {
       .await
   }
 
-  pub fn is_currently_loading_main_module(&self) -> bool {
+  fn is_currently_loading_main_module(&self) -> bool {
     !self.is_dynamic_import()
       && matches!(self.init, LoadInit::Main(..))
       && self.state == LoadState::LoadingRoot
   }
 
-  pub fn register_and_recurse(
+  fn is_dynamic_import(&self) -> bool {
+    matches!(self.init, LoadInit::DynamicImport(..))
+  }
+
+  pub(crate) fn register_and_recurse(
     &mut self,
     scope: &mut v8::HandleScope,
     module_request: &ModuleRequest,
@@ -681,12 +686,13 @@ impl Stream for RecursiveModuleLoad {
 /// it's `ModuleType::JavaScript`, but if there were import assertions
 /// it might be `ModuleType::Json`.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ModuleRequest {
+pub(crate) struct ModuleRequest {
   pub specifier: ModuleSpecifier,
   pub expected_module_type: ModuleType,
 }
 
-pub struct ModuleInfo {
+pub(crate) struct ModuleInfo {
+  #[allow(unused)]
   pub id: ModuleId,
   // Used in "bindings.rs" for "import.meta.main" property value.
   pub main: bool,
@@ -706,7 +712,7 @@ enum SymbolicModule {
 }
 
 /// A collection of JS modules.
-pub struct ModuleMap {
+pub(crate) struct ModuleMap {
   // Handling of specifiers and v8 objects
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
@@ -731,7 +737,7 @@ pub struct ModuleMap {
 }
 
 impl ModuleMap {
-  pub fn new(
+  pub(crate) fn new(
     loader: Rc<dyn ModuleLoader>,
     op_state: Rc<RefCell<OpState>>,
   ) -> ModuleMap {
@@ -753,11 +759,7 @@ impl ModuleMap {
 
   /// Get module id, following all aliases in case of module specifier
   /// that had been redirected.
-  pub fn get_id(
-    &self,
-    name: &str,
-    module_type: ModuleType,
-  ) -> Option<ModuleId> {
+  fn get_id(&self, name: &str, module_type: ModuleType) -> Option<ModuleId> {
     let mut mod_name = name;
     loop {
       let symbolic_module =
@@ -805,24 +807,8 @@ impl ModuleMap {
     let value_handle = v8::Global::<v8::Value>::new(tc_scope, parsed_json);
     self.json_value_store.insert(handle.clone(), value_handle);
 
-    let id = self.next_module_id;
-    self.next_module_id += 1;
-    self.by_name.insert(
-      (name.to_string(), ModuleType::Json),
-      SymbolicModule::Mod(id),
-    );
-    self.handles_by_id.insert(id, handle.clone());
-    self.ids_by_handle.insert(handle, id);
-    self.info.insert(
-      id,
-      ModuleInfo {
-        id,
-        main: false,
-        name: name.to_string(),
-        requests: vec![],
-        module_type: ModuleType::Json,
-      },
-    );
+    let id =
+      self.create_module_info(name, ModuleType::Json, handle, false, vec![]);
 
     Ok(id)
   }
@@ -902,12 +888,30 @@ impl ModuleMap {
     }
 
     let handle = v8::Global::<v8::Module>::new(tc_scope, module);
+    let id = self.create_module_info(
+      name,
+      ModuleType::JavaScript,
+      handle,
+      main,
+      requests,
+    );
+
+    Ok(id)
+  }
+
+  fn create_module_info(
+    &mut self,
+    name: &str,
+    module_type: ModuleType,
+    handle: v8::Global<v8::Module>,
+    main: bool,
+    requests: Vec<ModuleRequest>,
+  ) -> ModuleId {
     let id = self.next_module_id;
     self.next_module_id += 1;
-    self.by_name.insert(
-      (name.to_string(), ModuleType::JavaScript),
-      SymbolicModule::Mod(id),
-    );
+    self
+      .by_name
+      .insert((name.to_string(), module_type), SymbolicModule::Mod(id));
     self.handles_by_id.insert(id, handle.clone());
     self.ids_by_handle.insert(handle, id);
     self.info.insert(
@@ -917,21 +921,18 @@ impl ModuleMap {
         main,
         name: name.to_string(),
         requests,
-        module_type: ModuleType::JavaScript,
+        module_type,
       },
     );
 
-    Ok(id)
+    id
   }
 
-  pub fn get_requested_modules(
-    &self,
-    id: ModuleId,
-  ) -> Option<&Vec<ModuleRequest>> {
+  fn get_requested_modules(&self, id: ModuleId) -> Option<&Vec<ModuleRequest>> {
     self.info.get(&id).map(|i| &i.requests)
   }
 
-  pub fn is_registered(
+  fn is_registered(
     &self,
     specifier: &ModuleSpecifier,
     module_type: ModuleType,
@@ -944,7 +945,7 @@ impl ModuleMap {
     false
   }
 
-  pub fn alias(&mut self, name: &str, module_type: ModuleType, target: &str) {
+  fn alias(&mut self, name: &str, module_type: ModuleType, target: &str) {
     self.by_name.insert(
       (name.to_string(), module_type),
       SymbolicModule::Alias(target.to_string()),
@@ -952,16 +953,19 @@ impl ModuleMap {
   }
 
   #[cfg(test)]
-  pub fn is_alias(&self, name: &str, module_type: ModuleType) -> bool {
+  fn is_alias(&self, name: &str, module_type: ModuleType) -> bool {
     let cond = self.by_name.get(&(name.to_string(), module_type));
     matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 
-  pub fn get_handle(&self, id: ModuleId) -> Option<v8::Global<v8::Module>> {
+  pub(crate) fn get_handle(
+    &self,
+    id: ModuleId,
+  ) -> Option<v8::Global<v8::Module>> {
     self.handles_by_id.get(&id).cloned()
   }
 
-  pub fn get_info(
+  pub(crate) fn get_info(
     &self,
     global: &v8::Global<v8::Module>,
   ) -> Option<&ModuleInfo> {
@@ -972,11 +976,11 @@ impl ModuleMap {
     None
   }
 
-  pub fn get_info_by_id(&self, id: &ModuleId) -> Option<&ModuleInfo> {
+  pub(crate) fn get_info_by_id(&self, id: &ModuleId) -> Option<&ModuleInfo> {
     self.info.get(id)
   }
 
-  pub async fn load_main(
+  pub(crate) async fn load_main(
     module_map_rc: Rc<RefCell<ModuleMap>>,
     specifier: &str,
   ) -> Result<RecursiveModuleLoad, Error> {
@@ -985,7 +989,7 @@ impl ModuleMap {
     Ok(load)
   }
 
-  pub async fn load_side(
+  pub(crate) async fn load_side(
     module_map_rc: Rc<RefCell<ModuleMap>>,
     specifier: &str,
   ) -> Result<RecursiveModuleLoad, Error> {
@@ -995,7 +999,7 @@ impl ModuleMap {
   }
 
   // Initiate loading of a module graph imported using `import()`.
-  pub fn load_dynamic_import(
+  pub(crate) fn load_dynamic_import(
     module_map_rc: Rc<RefCell<ModuleMap>>,
     specifier: &str,
     referrer: &str,
@@ -1036,13 +1040,13 @@ impl ModuleMap {
       .push(fut);
   }
 
-  pub fn has_pending_dynamic_imports(&self) -> bool {
+  pub(crate) fn has_pending_dynamic_imports(&self) -> bool {
     !(self.preparing_dynamic_imports.is_empty()
       && self.pending_dynamic_imports.is_empty())
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
-  pub fn resolve_callback<'s>(
+  pub(crate) fn resolve_callback<'s>(
     &self,
     scope: &mut v8::HandleScope<'s>,
     specifier: &str,
@@ -1102,6 +1106,81 @@ mod tests {
   }
 
   fn mock_source_code(url: &str) -> Option<(&'static str, &'static str)> {
+    const A_SRC: &str = r#"
+import { b } from "/b.js";
+import { c } from "/c.js";
+if (b() != 'b') throw Error();
+if (c() != 'c') throw Error();
+if (!import.meta.main) throw Error();
+if (import.meta.url != 'file:///a.js') throw Error();
+"#;
+
+    const B_SRC: &str = r#"
+import { c } from "/c.js";
+if (c() != 'c') throw Error();
+export function b() { return 'b'; }
+if (import.meta.main) throw Error();
+if (import.meta.url != 'file:///b.js') throw Error();
+"#;
+
+    const C_SRC: &str = r#"
+import { d } from "/d.js";
+export function c() { return 'c'; }
+if (d() != 'd') throw Error();
+if (import.meta.main) throw Error();
+if (import.meta.url != 'file:///c.js') throw Error();
+"#;
+
+    const D_SRC: &str = r#"
+export function d() { return 'd'; }
+if (import.meta.main) throw Error();
+if (import.meta.url != 'file:///d.js') throw Error();
+"#;
+
+    const CIRCULAR1_SRC: &str = r#"
+import "/circular2.js";
+Deno.core.print("circular1");
+"#;
+
+    const CIRCULAR2_SRC: &str = r#"
+import "/circular3.js";
+Deno.core.print("circular2");
+"#;
+
+    const CIRCULAR3_SRC: &str = r#"
+import "/circular1.js";
+import "/circular2.js";
+Deno.core.print("circular3");
+"#;
+
+    const REDIRECT1_SRC: &str = r#"
+import "./redirect2.js";
+Deno.core.print("redirect1");
+"#;
+
+    const REDIRECT2_SRC: &str = r#"
+import "./redirect3.js";
+Deno.core.print("redirect2");
+"#;
+
+    const REDIRECT3_SRC: &str = r#"Deno.core.print("redirect3");"#;
+
+    const MAIN_SRC: &str = r#"
+// never_ready.js never loads.
+import "/never_ready.js";
+// slow.js resolves after one tick.
+import "/slow.js";
+"#;
+
+    const SLOW_SRC: &str = r#"
+// Circular import of never_ready.js
+// Does this trigger two ModuleLoader calls? It shouldn't.
+import "/never_ready.js";
+import "/a.js";
+"#;
+
+    const BAD_IMPORT_SRC: &str = r#"import "foo";"#;
+
     // (code, real_module_name)
     let spec: Vec<&str> = url.split("file://").collect();
     match spec[1] {
@@ -1191,8 +1270,6 @@ mod tests {
         referrer
       };
 
-      eprintln!(">> RESOLVING, S: {}, R: {}", specifier, referrer);
-
       let output_specifier = match resolve_import(specifier, referrer) {
         Ok(specifier) => specifier,
         Err(..) => return Err(MockError::ResolveErr.into()),
@@ -1218,37 +1295,6 @@ mod tests {
     }
   }
 
-  const A_SRC: &str = r#"
-    import { b } from "/b.js";
-    import { c } from "/c.js";
-    if (b() != 'b') throw Error();
-    if (c() != 'c') throw Error();
-    if (!import.meta.main) throw Error();
-    if (import.meta.url != 'file:///a.js') throw Error();
-  "#;
-
-  const B_SRC: &str = r#"
-    import { c } from "/c.js";
-    if (c() != 'c') throw Error();
-    export function b() { return 'b'; }
-    if (import.meta.main) throw Error();
-    if (import.meta.url != 'file:///b.js') throw Error();
-  "#;
-
-  const C_SRC: &str = r#"
-    import { d } from "/d.js";
-    export function c() { return 'c'; }
-    if (d() != 'd') throw Error();
-    if (import.meta.main) throw Error();
-    if (import.meta.url != 'file:///c.js') throw Error();
-  "#;
-
-  const D_SRC: &str = r#"
-    export function d() { return 'd'; }
-    if (import.meta.main) throw Error();
-    if (import.meta.url != 'file:///d.js') throw Error();
-  "#;
-
   #[test]
   fn test_recursive_load() {
     let loader = MockLoader::new();
@@ -1259,7 +1305,7 @@ mod tests {
     });
     let spec = resolve_url("file:///a.js").unwrap();
     let a_id_fut = runtime.load_main_module(&spec, None);
-    let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
+    let a_id = futures::executor::block_on(a_id_fut).unwrap();
 
     let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
@@ -1319,22 +1365,6 @@ mod tests {
     );
     assert_eq!(modules.get_requested_modules(d_id), Some(&vec![]));
   }
-
-  const CIRCULAR1_SRC: &str = r#"
-    import "/circular2.js";
-    Deno.core.print("circular1");
-  "#;
-
-  const CIRCULAR2_SRC: &str = r#"
-    import "/circular3.js";
-    Deno.core.print("circular2");
-  "#;
-
-  const CIRCULAR3_SRC: &str = r#"
-    import "/circular1.js";
-    import "/circular2.js";
-    Deno.core.print("circular3");
-  "#;
 
   #[test]
   fn test_mods() {
@@ -1661,7 +1691,6 @@ mod tests {
     fn prepare_load(
       &self,
       _op_state: Rc<RefCell<OpState>>,
-      _load_id: ModuleLoadId,
       _module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<String>,
       _is_dyn_import: bool,
@@ -1779,7 +1808,7 @@ mod tests {
       fn load(
         &self,
         specifier: &ModuleSpecifier,
-        maybe_referrer: Option<ModuleSpecifier>,
+        _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         self.load_count.fetch_add(1, Ordering::Relaxed);
@@ -1788,7 +1817,6 @@ mod tests {
           .unwrap()
           .to_string_lossy()
           .to_string();
-        eprintln!("{} from {:?}", filename.as_str(), maybe_referrer);
         let code = match filename.as_str() {
           "a.js" => "import './b.js';",
           "b.js" => "import './c.js';\nimport './a.js';",
@@ -1807,8 +1835,6 @@ mod tests {
     }
 
     let loader = Rc::new(DynImportCircularLoader::default());
-    let resolve_count = loader.resolve_count.clone();
-    let load_count = loader.load_count.clone();
     let mut runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader),
       ..Default::default()
@@ -1822,10 +1848,7 @@ mod tests {
       .unwrap();
 
     let result = futures::executor::block_on(runtime.run_event_loop(false));
-    eprintln!("result {:?}", result);
     assert!(result.is_ok());
-    eprintln!("{}", resolve_count.load(Ordering::Relaxed));
-    eprintln!("{}", load_count.load(Ordering::Relaxed));
   }
 
   #[test]
@@ -1907,20 +1930,6 @@ mod tests {
     futures::executor::block_on(fut);
   }
 
-  const REDIRECT1_SRC: &str = r#"
-    import "./redirect2.js";
-    Deno.core.print("redirect1");
-  "#;
-
-  const REDIRECT2_SRC: &str = r#"
-    import "./redirect3.js";
-    Deno.core.print("redirect2");
-  "#;
-
-  const REDIRECT3_SRC: &str = r#"
-    Deno.core.print("redirect3");
-  "#;
-
   #[test]
   fn test_redirect_load() {
     let loader = MockLoader::new();
@@ -1934,7 +1943,6 @@ mod tests {
       async move {
         let spec = resolve_url("file:///redirect1.js").unwrap();
         let result = runtime.load_main_module(&spec, None).await;
-        println!(">> result {:?}", result);
         assert!(result.is_ok());
         let redirect1_id = result.unwrap();
         let _ = runtime.mod_evaluate(redirect1_id);
@@ -1990,22 +1998,6 @@ mod tests {
     futures::executor::block_on(fut);
   }
 
-  // main.js
-  const MAIN_SRC: &str = r#"
-    // never_ready.js never loads.
-    import "/never_ready.js";
-    // slow.js resolves after one tick.
-    import "/slow.js";
-  "#;
-
-  // slow.js
-  const SLOW_SRC: &str = r#"
-    // Circular import of never_ready.js
-    // Does this trigger two ModuleLoader calls? It shouldn't.
-    import "/never_ready.js";
-    import "/a.js";
-  "#;
-
   #[test]
   fn slow_never_ready_modules() {
     run_in_task(|cx| {
@@ -2051,11 +2043,6 @@ mod tests {
     })
   }
 
-  // bad_import.js
-  const BAD_IMPORT_SRC: &str = r#"
-    import "foo";
-  "#;
-
   #[test]
   fn loader_disappears_after_error() {
     run_in_task(|cx| {
@@ -2078,17 +2065,17 @@ mod tests {
     })
   }
 
-  const MAIN_WITH_CODE_SRC: &str = r#"
-    import { b } from "/b.js";
-    import { c } from "/c.js";
-    if (b() != 'b') throw Error();
-    if (c() != 'c') throw Error();
-    if (!import.meta.main) throw Error();
-    if (import.meta.url != 'file:///main_with_code.js') throw Error();
-  "#;
-
   #[test]
   fn recursive_load_main_with_code() {
+    const MAIN_WITH_CODE_SRC: &str = r#"
+import { b } from "/b.js";
+import { c } from "/c.js";
+if (b() != 'b') throw Error();
+if (c() != 'c') throw Error();
+if (!import.meta.main) throw Error();
+if (import.meta.url != 'file:///main_with_code.js') throw Error();
+"#;
+
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2102,8 +2089,7 @@ mod tests {
     let main_id_fut = runtime
       .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
       .boxed_local();
-    let main_id =
-      futures::executor::block_on(main_id_fut).expect("Failed to load");
+    let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
     let _ = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
@@ -2213,8 +2199,7 @@ mod tests {
     let main_id_fut = runtime
       .load_main_module(&main_specifier, None)
       .boxed_local();
-    let main_id =
-      futures::executor::block_on(main_id_fut).expect("Failed to load");
+    let main_id = futures::executor::block_on(main_id_fut).unwrap();
 
     let _ = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
@@ -2223,15 +2208,13 @@ mod tests {
     let side_id_fut = runtime
       .load_main_module(&side_specifier, None)
       .boxed_local();
-    futures::executor::block_on(side_id_fut)
-      .expect_err("Should have failed to load second main module");
+    futures::executor::block_on(side_id_fut).unwrap_err();
 
     // And now try to load it as a side module
     let side_id_fut = runtime
       .load_side_module(&side_specifier, None)
       .boxed_local();
-    let side_id =
-      futures::executor::block_on(side_id_fut).expect("Failed to load");
+    let side_id = futures::executor::block_on(side_id_fut).unwrap();
 
     let _ = runtime.mod_evaluate(side_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
