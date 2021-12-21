@@ -2,6 +2,7 @@
 
 use crate::flags::CheckFlag;
 use crate::flags::Flags;
+use crate::flags::InstallFlags;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -192,13 +193,9 @@ pub fn uninstall(name: String, root: Option<PathBuf>) -> Result<(), AnyError> {
 
 pub fn install(
   flags: Flags,
-  module_url: &str,
-  args: Vec<String>,
-  name: Option<String>,
-  root: Option<PathBuf>,
-  force: bool,
+  install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
-  let root = if let Some(root) = root {
+  let root = if let Some(root) = install_flags.root {
     canonicalize_path(&root)?
   } else {
     get_installer_root()?
@@ -215,9 +212,11 @@ pub fn install(
   };
 
   // Check if module_url is remote
-  let module_url = resolve_url_or_path(module_url)?;
+  let module_url = resolve_url_or_path(&install_flags.module_url)?;
 
-  let name = name.or_else(|| infer_name_from_url(&module_url));
+  let name = install_flags
+    .name
+    .or_else(|| infer_name_from_url(&module_url));
 
   let name = match name {
     Some(name) => name,
@@ -233,7 +232,7 @@ pub fn install(
     file_path = file_path.with_extension("cmd");
   }
 
-  if file_path.exists() && !force {
+  if file_path.exists() && !install_flags.force {
     return Err(generic_error(
       "Existing installation found. Aborting (Use -f to overwrite).",
     ));
@@ -331,7 +330,7 @@ pub fn install(
   }
 
   executable_args.push(module_url.to_string());
-  executable_args.extend_from_slice(&args);
+  executable_args.extend_from_slice(&install_flags.args);
 
   generate_executable_file(file_path.to_owned(), executable_args)?;
   for (path, contents) in extra_files {
@@ -471,11 +470,13 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/echo_server.ts",
-      vec![],
-      Some("echo_test".to_string()),
-      None,
-      false,
+      InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: None,
+        force: false,
+      },
     )
     .expect("Install failed");
 
@@ -519,11 +520,13 @@ mod tests {
         unstable: true,
         ..Flags::default()
       },
-      "http://localhost:4545/echo_server.ts",
-      vec![],
-      Some("echo_test".to_string()),
-      Some(temp_dir.path().to_path_buf()),
-      false,
+      InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: false,
+      },
     )
     .expect("Install failed");
 
@@ -554,11 +557,13 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/echo_server.ts",
-      vec![],
-      None,
-      Some(temp_dir.path().to_path_buf()),
-      false,
+      InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: None,
+        root: Some(temp_dir.path().to_path_buf()),
+        force: false,
+      },
     )
     .expect("Install failed");
 
@@ -586,11 +591,13 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/subdir/main.ts",
-      vec![],
-      None,
-      Some(temp_dir.path().to_path_buf()),
-      false,
+      InstallFlags {
+        module_url: "http://localhost:4545/subdir/main.ts".to_string(),
+        args: vec![],
+        name: None,
+        root: Some(temp_dir.path().to_path_buf()),
+        force: false,
+      },
     )
     .expect("Install failed");
 
@@ -618,11 +625,13 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/echo_server.ts",
-      vec![],
-      Some("echo_test".to_string()),
-      Some(temp_dir.path().to_path_buf()),
-      false,
+      InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: false,
+      },
     )
     .expect("Install failed");
 
@@ -653,11 +662,13 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/echo_server.ts",
-      vec![],
-      Some("echo_test".to_string()),
-      None,
-      false,
+      InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: None,
+        force: false,
+      },
     )
     .expect("Install failed");
 
@@ -694,11 +705,13 @@ mod tests {
         log_level: Some(Level::Error),
         ..Flags::default()
       },
-      "http://localhost:4545/echo_server.ts",
-      vec!["--foobar".to_string()],
-      Some("echo_test".to_string()),
-      Some(temp_dir.path().to_path_buf()),
-      false,
+      InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec!["--foobar".to_string()],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: false,
+      },
     )
     .expect("Install failed");
 
@@ -727,11 +740,13 @@ mod tests {
 
     install(
       Flags::default(),
-      &local_module_str,
-      vec![],
-      Some("echo_test".to_string()),
-      Some(temp_dir.path().to_path_buf()),
-      false,
+      InstallFlags {
+        module_url: local_module_str.to_string(),
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: false,
+      },
     )
     .expect("Install failed");
 
@@ -753,11 +768,13 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/echo_server.ts",
-      vec![],
-      Some("echo_test".to_string()),
-      Some(temp_dir.path().to_path_buf()),
-      false,
+      InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: false,
+      },
     )
     .expect("Install failed");
 
@@ -770,11 +787,13 @@ mod tests {
     // No force. Install failed.
     let no_force_result = install(
       Flags::default(),
-      "http://localhost:4545/cat.ts", // using a different URL
-      vec![],
-      Some("echo_test".to_string()),
-      Some(temp_dir.path().to_path_buf()),
-      false,
+      InstallFlags {
+        module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: false,
+      },
     );
     assert!(no_force_result.is_err());
     assert!(no_force_result
@@ -788,11 +807,13 @@ mod tests {
     // Force. Install success.
     let force_result = install(
       Flags::default(),
-      "http://localhost:4545/cat.ts", // using a different URL
-      vec![],
-      Some("echo_test".to_string()),
-      Some(temp_dir.path().to_path_buf()),
-      true,
+      InstallFlags {
+        module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: true,
+      },
     );
     assert!(force_result.is_ok());
     // Assert modified
@@ -815,11 +836,13 @@ mod tests {
         config_path: Some(config_file_path.to_string_lossy().to_string()),
         ..Flags::default()
       },
-      "http://localhost:4545/cat.ts",
-      vec![],
-      Some("echo_test".to_string()),
-      Some(temp_dir.path().to_path_buf()),
-      true,
+      InstallFlags {
+        module_url: "http://localhost:4545/cat.ts".to_string(),
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: true,
+      },
     );
     eprintln!("result {:?}", result);
     assert!(result.is_ok());
@@ -842,11 +865,13 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/echo_server.ts",
-      vec!["\"".to_string()],
-      Some("echo_test".to_string()),
-      Some(temp_dir.path().to_path_buf()),
-      false,
+      InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec!["\"".to_string()],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: false,
+      },
     )
     .expect("Install failed");
 
@@ -883,11 +908,13 @@ mod tests {
 
     install(
       Flags::default(),
-      &local_module_str,
-      vec![],
-      Some("echo_test".to_string()),
-      Some(temp_dir.path().to_path_buf()),
-      false,
+      InstallFlags {
+        module_url: local_module_str.to_string(),
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: false,
+      },
     )
     .expect("Install failed");
 
@@ -917,11 +944,13 @@ mod tests {
         import_map_path: Some(import_map_path.to_string_lossy().to_string()),
         ..Flags::default()
       },
-      "http://localhost:4545/cat.ts",
-      vec![],
-      Some("echo_test".to_string()),
-      Some(temp_dir.path().to_path_buf()),
-      true,
+      InstallFlags {
+        module_url: "http://localhost:4545/cat.ts".to_string(),
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: true,
+      },
     );
     assert!(result.is_ok());
 
@@ -958,11 +987,13 @@ mod tests {
 
     let result = install(
       Flags::default(),
-      &file_module_string,
-      vec![],
-      Some("echo_test".to_string()),
-      Some(temp_dir.path().to_path_buf()),
-      true,
+      InstallFlags {
+        module_url: file_module_string.to_string(),
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: true,
+      },
     );
     assert!(result.is_ok());
 

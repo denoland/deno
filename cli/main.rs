@@ -541,14 +541,7 @@ async fn install_command(
     create_main_worker(&ps, main_module.clone(), permissions, None);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module, true).await?;
-  tools::installer::install(
-    flags,
-    &install_flags.module_url,
-    install_flags.args,
-    install_flags.name,
-    install_flags.root,
-    install_flags.force,
-  )?;
+  tools::installer::install(flags, install_flags)?;
   Ok(0)
 }
 
