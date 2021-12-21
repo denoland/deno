@@ -761,7 +761,7 @@ fn bundle_module_graph(
   ps: &ProcState,
   flags: &Flags,
 ) -> Result<(String, Option<String>), AnyError> {
-  eye_catchers::bundle(&format!("{}", graph.roots[0]));
+  eye_catchers::bundle(graph.roots[0].as_str());
 
   let (ts_config, maybe_ignored_options) = emit::get_ts_config(
     emit::ConfigType::Bundle,

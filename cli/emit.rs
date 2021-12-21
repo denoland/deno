@@ -368,7 +368,7 @@ pub(crate) fn check_and_maybe_emit(
       let root_str = root.to_string();
       // `$deno` specifiers are internal, don't print them.
       if !root_str.contains("$deno") {
-        eye_catchers::check(&format!("{}", root));
+        eye_catchers::check(root.as_str());
       }
     }
   }
