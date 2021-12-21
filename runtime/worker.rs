@@ -325,7 +325,7 @@ impl MainWorker {
   ) -> Result<(), AnyError> {
     self.execute_script(
       script_name,
-      "window.dispatchEvent(new Event('ununload'))",
+      "window.dispatchEvent(new Event('unload'))",
     )
   }
 }
