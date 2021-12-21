@@ -41,6 +41,13 @@ pub extern "C" fn is_null_ptr(ptr: *const u8) -> u8 {
 }
 
 #[no_mangle]
+pub extern "C" fn add_callback(cb: extern "C" fn(i32, i32) -> i32) {
+  println!("[rust] Calling cb");
+  //let result = cb(46, 23);
+ // println!("[rust] cb returned {}", result);
+}
+
+#[no_mangle]
 pub extern "C" fn add_u32(a: u32, b: u32) -> u32 {
   a + b
 }

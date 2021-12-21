@@ -58,6 +58,9 @@ fn basic() {
     579\n\
     579.9119873046875\n\
     579.912\n\
+    [rust] Calling cb\n\
+    [js] callback called\n\
+    [rust] cb returned 69\n\
     Before\n\
     true\n\
     After\n\

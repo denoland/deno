@@ -42,6 +42,15 @@ const dylib = Deno.dlopen(libPath, {
     result: "void",
     nonblocking: true,
   },
+  "add_callback": {
+    parameters: [ {
+      function: {
+        parameters: ["i32", "i32"],
+        result: "i32",
+      },
+    } ],
+    result: "void",
+  }
 });
 
 dylib.symbols.print_something();
@@ -82,6 +91,12 @@ console.log(dylib.symbols.add_usize(123, 456));
 console.log(dylib.symbols.add_isize(123, 456));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
+
+// test callbacks
+dylib.symbols.add_callback((a, b) => {
+  console.log("[js] callback called");
+  return a + b;
+});
 
 // test mutating sync calls
 
