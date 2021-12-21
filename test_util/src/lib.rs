@@ -912,6 +912,13 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/echo_accept") => {
+      let accept = req.headers().get("accept").map(|v| v.to_str().unwrap());
+      let res = Response::new(Body::from(
+        serde_json::json!({ "accept": accept }).to_string(),
+      ));
+      Ok(res)
+    }
     _ => {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);

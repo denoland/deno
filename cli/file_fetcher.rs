@@ -474,6 +474,7 @@ impl FileFetcher {
       maybe_headers: Some(headers),
     })
   }
+
   /// Asynchronously fetch remote source file specified by the URL following
   /// redirects.
   ///
@@ -484,6 +485,7 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
     permissions: &mut Permissions,
     redirect_limit: i64,
+    maybe_accept: Option<String>,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
     if redirect_limit < 0 {
@@ -539,6 +541,7 @@ impl FileFetcher {
       match fetch_once(FetchOnceArgs {
         client,
         url: specifier.clone(),
+        maybe_accept: maybe_accept.clone(),
         maybe_etag,
         maybe_auth_token,
       })
@@ -551,7 +554,12 @@ impl FileFetcher {
         FetchOnceResult::Redirect(redirect_url, headers) => {
           file_fetcher.http_cache.set(&specifier, headers, &[])?;
           file_fetcher
-            .fetch_remote(&redirect_url, &mut permissions, redirect_limit - 1)
+            .fetch_remote(
+              &redirect_url,
+              &mut permissions,
+              redirect_limit - 1,
+              maybe_accept,
+            )
             .await
         }
         FetchOnceResult::Code(bytes, headers) => {
@@ -574,6 +582,15 @@ impl FileFetcher {
     permissions: &mut Permissions,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
+    self.fetch_with_accept(specifier, permissions, None).await
+  }
+
+  pub async fn fetch_with_accept(
+    &self,
+    specifier: &ModuleSpecifier,
+    permissions: &mut Permissions,
+    maybe_accept: Option<&str>,
+  ) -> Result<File, AnyError> {
     let scheme = get_validated_scheme(specifier)?;
     permissions.check_specifier(specifier)?;
     if let Some(file) = self.cache.get(specifier) {
@@ -600,7 +617,14 @@ impl FileFetcher {
         format!("A remote specifier was requested: \"{}\", but --no-remote is specified.", specifier),
       ))
     } else {
-      let result = self.fetch_remote(specifier, permissions, 10).await;
+      let result = self
+        .fetch_remote(
+          specifier,
+          permissions,
+          10,
+          maybe_accept.map(String::from),
+        )
+        .await;
       if let Ok(file) = &result {
         self.cache.insert(specifier.clone(), file.clone());
       }
@@ -710,7 +734,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
-      .fetch_remote(specifier, &mut Permissions::allow_all(), 1)
+      .fetch_remote(specifier, &mut Permissions::allow_all(), 1, None)
       .await;
     assert!(result.is_ok());
     let (_, headers, _) = file_fetcher.http_cache.get(specifier).unwrap();
@@ -1375,12 +1399,12 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &mut Permissions::allow_all(), 2)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 2, None)
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &mut Permissions::allow_all(), 1)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 1, None)
       .await;
     assert!(result.is_err());
 
