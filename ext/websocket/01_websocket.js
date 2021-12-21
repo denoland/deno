@@ -392,7 +392,7 @@
 
         switch (kind) {
           case "string": {
-            this.#serverHandleIdleTimeout();
+            this[_serverHandleIdleTimeout]();
             const event = new MessageEvent("message", {
               data: value,
               origin: this[_url],
@@ -401,7 +401,7 @@
             break;
           }
           case "binary": {
-            this.#serverHandleIdleTimeout();
+            this[_serverHandleIdleTimeout]();
             let data;
 
             if (this.binaryType === "blob") {
@@ -424,12 +424,13 @@
             break;
           }
           case "pong": {
-            this.#serverHandleIdleTimeout();
+            this[_serverHandleIdleTimeout]();
             break;
           }
           case "closed":
           case "close": {
             this[_readyState] = CLOSED;
+            clearTimeout(this[_idleTimeoutTimeout]);
 
             const event = new CloseEvent("close", {
               wasClean: true,
