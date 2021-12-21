@@ -4,6 +4,7 @@ use crate::cache::CacherLoader;
 use crate::cache::FetchCacher;
 use crate::config_file::ConfigFile;
 use crate::flags::Flags;
+use crate::graph_util::graph_valid;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -82,7 +83,7 @@ impl CacheServer {
           )
           .await;
 
-          if tx.send(graph.valid().map_err(|err| err.into())).is_err() {
+          if tx.send(graph_valid(&graph, true)).is_err() {
             log::warn!("cannot send to client");
           }
         }

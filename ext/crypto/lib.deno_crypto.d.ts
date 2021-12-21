@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-var
+
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
@@ -69,6 +71,10 @@ interface EcKeyGenParams extends Algorithm {
   namedCurve: NamedCurve;
 }
 
+interface EcImportParams extends Algorithm {
+  namedCurve: NamedCurve;
+}
+
 interface EcdsaParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
 }
@@ -97,6 +103,10 @@ interface RsaOaepParams extends Algorithm {
 interface HmacImportParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
+}
+
+interface RsaHashedImportParams extends Algorithm {
+  hash: HashAlgorithmIdentifier;
 }
 
 interface EcKeyAlgorithm extends KeyAlgorithm {
@@ -189,14 +199,22 @@ interface SubtleCrypto {
   importKey(
     format: "jwk",
     keyData: JsonWebKey,
-    algorithm: AlgorithmIdentifier | HmacImportParams,
+    algorithm:
+      | AlgorithmIdentifier
+      | HmacImportParams
+      | RsaHashedImportParams
+      | EcImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
   importKey(
     format: Exclude<KeyFormat, "jwk">,
     keyData: BufferSource,
-    algorithm: AlgorithmIdentifier | HmacImportParams | RsaHashedImportParams,
+    algorithm:
+      | AlgorithmIdentifier
+      | HmacImportParams
+      | RsaHashedImportParams
+      | EcImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
@@ -257,6 +275,22 @@ interface SubtleCrypto {
     wrappingKey: CryptoKey,
     wrapAlgorithm: AlgorithmIdentifier | RsaOaepParams,
   ): Promise<ArrayBuffer>;
+  unwrapKey(
+    format: KeyFormat,
+    wrappedKey: BufferSource,
+    unwrappingKey: CryptoKey,
+    unwrapAlgorithm:
+      | AlgorithmIdentifier
+      | RsaOaepParams
+      | AesCbcParams,
+    unwrappedKeyAlgorithm:
+      | AlgorithmIdentifier
+      | RsaHashedImportParams
+      | HmacImportParams
+      | AesKeyAlgorithm,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
 }
 
 declare interface Crypto {

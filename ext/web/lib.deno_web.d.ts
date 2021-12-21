@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-explicit-any
+// deno-lint-ignore-file no-explicit-any no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -293,6 +293,10 @@ interface AbortSignal extends EventTarget {
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions,
   ): void;
+
+  /** Throws this AbortSignal's abort reason, if its AbortController has
+   * signaled to abort; otherwise, does nothing. */
+  throwIfAborted(): void;
 }
 
 declare var AbortSignal: {

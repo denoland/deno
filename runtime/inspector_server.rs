@@ -67,13 +67,18 @@ impl InspectorServer {
     &self,
     module_url: String,
     js_runtime: &mut JsRuntime,
+    should_break_on_first_statement: bool,
   ) {
     let inspector = js_runtime.inspector();
     let session_sender = inspector.get_session_sender();
     let deregister_rx = inspector.add_deregister_handler();
-    // TODO(bartlomieju): simplify
-    let info =
-      InspectorInfo::new(self.host, session_sender, deregister_rx, module_url);
+    let info = InspectorInfo::new(
+      self.host,
+      session_sender,
+      deregister_rx,
+      module_url,
+      should_break_on_first_statement,
+    );
     self.register_inspector_tx.unbounded_send(info).unwrap();
   }
 }
@@ -230,6 +235,10 @@ async fn server(
         "Debugger listening on {}",
         info.get_websocket_debugger_url()
       );
+      eprintln!("Visit chrome://inspect to connect to the debugger.");
+      if info.should_break_on_first_statement {
+        eprintln!("Deno is waiting for debugger to connect.");
+      }
       if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
         panic!("Inspector UUID already in map");
       }
@@ -335,7 +344,7 @@ async fn pump_websocket_messages(
     .map_err(|_| ());
 
   let inbound_pump = async move {
-    let result = websocket_rx
+    let _result = websocket_rx
       .map_err(AnyError::from)
       .map_ok(|msg| {
         // Messages that cannot be converted to strings are ignored.
@@ -346,10 +355,9 @@ async fn pump_websocket_messages(
       .try_collect::<()>()
       .await;
 
-    match result {
-      Ok(_) => eprintln!("Debugger session ended"),
-      Err(err) => eprintln!("Debugger session ended: {}.", err),
-    };
+    // Users don't care if there was an error coming from debugger,
+    // just about the fact that debugger did disconnect.
+    eprintln!("Debugger session ended");
 
     Ok(())
   };
@@ -365,6 +373,7 @@ pub struct InspectorInfo {
   pub new_session_tx: UnboundedSender<InspectorSessionProxy>,
   pub deregister_rx: oneshot::Receiver<()>,
   pub url: String,
+  pub should_break_on_first_statement: bool,
 }
 
 impl InspectorInfo {
@@ -373,6 +382,7 @@ impl InspectorInfo {
     new_session_tx: mpsc::UnboundedSender<InspectorSessionProxy>,
     deregister_rx: oneshot::Receiver<()>,
     url: String,
+    should_break_on_first_statement: bool,
   ) -> Self {
     Self {
       host,
@@ -381,6 +391,7 @@ impl InspectorInfo {
       new_session_tx,
       deregister_rx,
       url,
+      should_break_on_first_statement,
     }
   }
 

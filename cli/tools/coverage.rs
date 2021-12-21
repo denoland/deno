@@ -2,10 +2,12 @@
 
 use crate::colors;
 use crate::emit;
+use crate::flags::CoverageFlags;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
 use crate::source_maps::SourceMapGetter;
+use crate::tools::fmt::format_json;
 
 use deno_ast::swc::common::Span;
 use deno_ast::MediaType;
@@ -30,47 +32,47 @@ use uuid::Uuid;
 // inspector::protocol.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct CoverageRange {
-  pub start_offset: usize,
-  pub end_offset: usize,
-  pub count: usize,
+struct CoverageRange {
+  start_offset: usize,
+  end_offset: usize,
+  count: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct FunctionCoverage {
-  pub function_name: String,
-  pub ranges: Vec<CoverageRange>,
-  pub is_block_coverage: bool,
+struct FunctionCoverage {
+  function_name: String,
+  ranges: Vec<CoverageRange>,
+  is_block_coverage: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ScriptCoverage {
-  pub script_id: String,
-  pub url: String,
-  pub functions: Vec<FunctionCoverage>,
+struct ScriptCoverage {
+  script_id: String,
+  url: String,
+  functions: Vec<FunctionCoverage>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StartPreciseCoverageParameters {
-  pub call_count: bool,
-  pub detailed: bool,
-  pub allow_triggered_updates: bool,
+struct StartPreciseCoverageParameters {
+  call_count: bool,
+  detailed: bool,
+  allow_triggered_updates: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StartPreciseCoverageReturnObject {
-  pub timestamp: f64,
+struct StartPreciseCoverageReturnObject {
+  timestamp: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TakePreciseCoverageReturnObject {
-  pub result: Vec<ScriptCoverage>,
-  pub timestamp: f64,
+struct TakePreciseCoverageReturnObject {
+  result: Vec<ScriptCoverage>,
+  timestamp: f64,
 }
 
 pub struct CoverageCollector {
@@ -85,25 +87,21 @@ impl CoverageCollector {
 
   async fn enable_debugger(&mut self) -> Result<(), AnyError> {
     self.session.post_message("Debugger.enable", None).await?;
-
     Ok(())
   }
 
   async fn enable_profiler(&mut self) -> Result<(), AnyError> {
     self.session.post_message("Profiler.enable", None).await?;
-
     Ok(())
   }
 
   async fn disable_debugger(&mut self) -> Result<(), AnyError> {
     self.session.post_message("Debugger.disable", None).await?;
-
     Ok(())
   }
 
   async fn disable_profiler(&mut self) -> Result<(), AnyError> {
     self.session.post_message("Profiler.disable", None).await?;
-
     Ok(())
   }
 
@@ -158,8 +156,11 @@ impl CoverageCollector {
       let filepath = self.dir.join(filename);
 
       let mut out = BufWriter::new(File::create(filepath)?);
-      serde_json::to_writer_pretty(&mut out, &script_coverage)?;
-      out.write_all(b"\n")?;
+      let coverage = serde_json::to_string(&script_coverage)?;
+      let formated_coverage =
+        format_json(&coverage, &Default::default()).unwrap_or(coverage);
+
+      out.write_all(formated_coverage.as_bytes())?;
       out.flush()?;
     }
 
@@ -170,7 +171,7 @@ impl CoverageCollector {
   }
 }
 
-pub enum CoverageReporterKind {
+enum CoverageReporterKind {
   Pretty,
   Lcov,
 }
@@ -184,7 +185,7 @@ fn create_reporter(
   }
 }
 
-pub trait CoverageReporter {
+trait CoverageReporter {
   fn visit_coverage(
     &mut self,
     script_coverage: &ScriptCoverage,
@@ -196,7 +197,7 @@ pub trait CoverageReporter {
   fn done(&mut self);
 }
 
-pub struct LcovCoverageReporter {}
+struct LcovCoverageReporter {}
 
 impl LcovCoverageReporter {
   pub fn new() -> LcovCoverageReporter {
@@ -227,9 +228,12 @@ impl CoverageReporter for LcovCoverageReporter {
         continue;
       }
 
-      let source_line = script_source[0..function.ranges[0].start_offset]
-        .split('\n')
-        .count();
+      let source_line = script_source
+        .chars()
+        .take(function.ranges[0].start_offset)
+        .filter(|c| *c == '\n')
+        .count()
+        + 1;
 
       let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
         source_map
@@ -273,8 +277,12 @@ impl CoverageReporter for LcovCoverageReporter {
     {
       let block_hits = function.ranges[0].count;
       for (branch_number, range) in function.ranges[1..].iter().enumerate() {
-        let source_line =
-          script_source[0..range.start_offset].split('\n').count();
+        let source_line = script_source
+          .chars()
+          .take(range.start_offset)
+          .filter(|c| *c == '\n')
+          .count()
+          + 1;
 
         let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
           source_map
@@ -412,7 +420,7 @@ impl CoverageReporter for LcovCoverageReporter {
   fn done(&mut self) {}
 }
 
-pub struct PrettyCoverageReporter {}
+struct PrettyCoverageReporter {}
 
 impl PrettyCoverageReporter {
   pub fn new() -> PrettyCoverageReporter {
@@ -665,18 +673,19 @@ fn filter_coverages(
 
 pub async fn cover_files(
   flags: Flags,
-  files: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
-  include: Vec<String>,
-  exclude: Vec<String>,
-  lcov: bool,
+  coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
 
-  let script_coverages = collect_coverages(files, ignore)?;
-  let script_coverages = filter_coverages(script_coverages, include, exclude);
+  let script_coverages =
+    collect_coverages(coverage_flags.files, coverage_flags.ignore)?;
+  let script_coverages = filter_coverages(
+    script_coverages,
+    coverage_flags.include,
+    coverage_flags.exclude,
+  );
 
-  let reporter_kind = if lcov {
+  let reporter_kind = if coverage_flags.lcov {
     CoverageReporterKind::Lcov
   } else {
     CoverageReporterKind::Pretty

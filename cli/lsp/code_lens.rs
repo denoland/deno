@@ -9,7 +9,6 @@ use super::tsc::NavigationTree;
 
 use deno_ast::swc::ast;
 use deno_ast::swc::common::Span;
-use deno_ast::swc::visit::Node;
 use deno_ast::swc::visit::Visit;
 use deno_ast::swc::visit::VisitWith;
 use deno_ast::ParsedSource;
@@ -21,16 +20,18 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use lspower::lsp;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-lazy_static::lazy_static! {
-  static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
-  static ref EXPORT_MODIFIER: Regex = Regex::new(r"\bexport\b").unwrap();
-}
+static ABSTRACT_MODIFIER: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"\babstract\b").unwrap());
+
+static EXPORT_MODIFIER: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"\bexport\b").unwrap());
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum CodeLensSource {
@@ -79,14 +80,32 @@ impl DenoTestCollector {
     }
   }
 
-  fn add_code_lens<N: AsRef<str>>(&mut self, name: N, span: &Span) {
+  fn add_code_lenses<N: AsRef<str>>(&mut self, name: N, span: &Span) {
     let range = span_to_range(span, &self.parsed_source);
+    self.add_code_lens(&name, range, "▶\u{fe0e} Run Test", false);
+    self.add_code_lens(&name, range, "Debug", true);
+  }
+
+  fn add_code_lens<N: AsRef<str>>(
+    &mut self,
+    name: &N,
+    range: lsp::Range,
+    title: &str,
+    inspect: bool,
+  ) {
+    let options = json!({
+      "inspect": inspect,
+    });
     self.code_lenses.push(lsp::CodeLens {
       range,
       command: Some(lsp::Command {
-        title: "▶\u{fe0e} Run Test".to_string(),
+        title: title.to_string(),
         command: "deno.test".to_string(),
-        arguments: Some(vec![json!(self.specifier), json!(name.as_ref())]),
+        arguments: Some(vec![
+          json!(self.specifier),
+          json!(name.as_ref()),
+          options,
+        ]),
       }),
       data: None,
     });
@@ -105,7 +124,7 @@ impl DenoTestCollector {
                       key_value_prop.value.as_ref()
                     {
                       let name = lit_str.value.to_string();
-                      self.add_code_lens(name, span);
+                      self.add_code_lenses(name, span);
                     }
                   }
                 }
@@ -115,7 +134,7 @@ impl DenoTestCollector {
         }
         ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
           let name = lit_str.value.to_string();
-          self.add_code_lens(name, span);
+          self.add_code_lenses(name, span);
         }
         _ => (),
       }
@@ -129,7 +148,7 @@ impl DenoTestCollector {
 }
 
 impl Visit for DenoTestCollector {
-  fn visit_call_expr(&mut self, node: &ast::CallExpr, _parent: &dyn Node) {
+  fn visit_call_expr(&mut self, node: &ast::CallExpr) {
     if let ast::ExprOrSuper::Expr(callee_expr) = &node.callee {
       match callee_expr.as_ref() {
         ast::Expr::Ident(ident) => {
@@ -155,7 +174,7 @@ impl Visit for DenoTestCollector {
     }
   }
 
-  fn visit_var_decl(&mut self, node: &ast::VarDecl, _parent: &dyn Node) {
+  fn visit_var_decl(&mut self, node: &ast::VarDecl) {
     for decl in &node.decls {
       if let Some(init) = &decl.init {
         match init.as_ref() {
@@ -401,12 +420,7 @@ fn collect_test(
     if let Some(parsed_source) = parsed_source {
       let mut collector =
         DenoTestCollector::new(specifier.clone(), parsed_source.clone());
-      parsed_source.module().visit_with(
-        &ast::Invalid {
-          span: deno_ast::swc::common::DUMMY_SP,
-        },
-        &mut collector,
-      );
+      parsed_source.module().visit_with(&mut collector);
       return Ok(collector.take());
     }
   }
@@ -564,12 +578,7 @@ mod tests {
     .unwrap();
     let mut collector =
       DenoTestCollector::new(specifier, parsed_module.clone());
-    parsed_module.module().visit_with(
-      &ast::Invalid {
-        span: deno_ast::swc::common::DUMMY_SP,
-      },
-      &mut collector,
-    );
+    parsed_module.module().visit_with(&mut collector);
     assert_eq!(
       collector.take(),
       vec![
@@ -590,6 +599,33 @@ mod tests {
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
               json!("test a"),
+              json!({
+                "inspect": false,
+              }),
+            ])
+          }),
+          data: None,
+        },
+        lsp::CodeLens {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 1,
+              character: 11
+            },
+            end: lsp::Position {
+              line: 1,
+              character: 15
+            }
+          },
+          command: Some(lsp::Command {
+            title: "Debug".to_string(),
+            command: "deno.test".to_string(),
+            arguments: Some(vec![
+              json!("https://deno.land/x/mod.ts"),
+              json!("test a"),
+              json!({
+                "inspect": true,
+              }),
             ])
           }),
           data: None,
@@ -611,6 +647,33 @@ mod tests {
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
               json!("test b"),
+              json!({
+                "inspect": false,
+              }),
+            ])
+          }),
+          data: None,
+        },
+        lsp::CodeLens {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 6,
+              character: 11
+            },
+            end: lsp::Position {
+              line: 6,
+              character: 15
+            }
+          },
+          command: Some(lsp::Command {
+            title: "Debug".to_string(),
+            command: "deno.test".to_string(),
+            arguments: Some(vec![
+              json!("https://deno.land/x/mod.ts"),
+              json!("test b"),
+              json!({
+                "inspect": true,
+              }),
             ])
           }),
           data: None,

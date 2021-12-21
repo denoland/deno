@@ -4,10 +4,12 @@ use crate::auth_tokens::AuthTokens;
 use crate::colors;
 use crate::http_cache::HttpCache;
 use crate::http_util::fetch_once;
+use crate::http_util::CacheSemantics;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
 use crate::text_encoding;
 use crate::version::get_user_agent;
+
 use data_url::DataUrl;
 use deno_ast::MediaType;
 use deno_core::error::custom_error;
@@ -24,7 +26,6 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use log::debug;
-use log::info;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::env;
@@ -34,6 +35,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 pub const SUPPORTED_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
@@ -89,6 +91,10 @@ pub enum CacheSetting {
   /// `--reload=https://deno.land/std` or
   /// `--reload=https://deno.land/std,https://deno.land/x/example`.
   ReloadSome(Vec<String>),
+  /// The usability of a cached value is determined by analyzing the cached
+  /// headers and other metadata associated with a cached response, reloading
+  /// any cached "non-fresh" cached responses.
+  RespectHeaders,
   /// The cached source files should be used for local modules.  This is the
   /// default behavior of the CLI.
   Use,
@@ -96,10 +102,23 @@ pub enum CacheSetting {
 
 impl CacheSetting {
   /// Returns if the cache should be used for a given specifier.
-  pub fn should_use(&self, specifier: &ModuleSpecifier) -> bool {
+  pub fn should_use(
+    &self,
+    specifier: &ModuleSpecifier,
+    http_cache: &HttpCache,
+  ) -> bool {
     match self {
       CacheSetting::ReloadAll => false,
       CacheSetting::Use | CacheSetting::Only => true,
+      CacheSetting::RespectHeaders => {
+        if let Ok((_, headers, cache_time)) = http_cache.get(specifier) {
+          let cache_semantics =
+            CacheSemantics::new(headers, cache_time, SystemTime::now());
+          cache_semantics.should_use()
+        } else {
+          false
+        }
+      }
       CacheSetting::ReloadSome(list) => {
         let mut url = specifier.clone();
         url.set_fragment(None);
@@ -234,6 +253,7 @@ pub struct FileFetcher {
   pub(crate) http_cache: HttpCache,
   http_client: reqwest::Client,
   blob_store: BlobStore,
+  download_log_level: log::Level,
 }
 
 impl FileFetcher {
@@ -260,7 +280,13 @@ impl FileFetcher {
         None,
       )?,
       blob_store,
+      download_log_level: log::Level::Info,
     })
+  }
+
+  /// Sets the log level to use when outputting the download message.
+  pub fn set_download_log_level(&mut self, level: log::Level) {
+    self.download_log_level = level;
   }
 
   /// Creates a `File` structure for a remote file.
@@ -312,7 +338,7 @@ impl FileFetcher {
       return Err(custom_error("Http", "Too many redirects."));
     }
 
-    let (mut source_file, headers) = match self.http_cache.get(specifier) {
+    let (mut source_file, headers, _) = match self.http_cache.get(specifier) {
       Err(err) => {
         if let Some(err) = err.downcast_ref::<std::io::Error>() {
           if err.kind() == std::io::ErrorKind::NotFound {
@@ -448,6 +474,7 @@ impl FileFetcher {
       maybe_headers: Some(headers),
     })
   }
+
   /// Asynchronously fetch remote source file specified by the URL following
   /// redirects.
   ///
@@ -458,6 +485,7 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
     permissions: &mut Permissions,
     redirect_limit: i64,
+    maybe_accept: Option<String>,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
     if redirect_limit < 0 {
@@ -469,7 +497,7 @@ impl FileFetcher {
       return futures::future::err(err).boxed();
     }
 
-    if self.cache_setting.should_use(specifier) {
+    if self.cache_setting.should_use(specifier, &self.http_cache) {
       match self.fetch_cached(specifier, redirect_limit) {
         Ok(Some(file)) => {
           return futures::future::ok(file).boxed();
@@ -492,10 +520,15 @@ impl FileFetcher {
       .boxed();
     }
 
-    info!("{} {}", colors::green("Download"), specifier);
+    log::log!(
+      self.download_log_level,
+      "{} {}",
+      colors::green("Download"),
+      specifier
+    );
 
     let maybe_etag = match self.http_cache.get(specifier) {
-      Ok((_, headers)) => headers.get("etag").cloned(),
+      Ok((_, headers, _)) => headers.get("etag").cloned(),
       _ => None,
     };
     let maybe_auth_token = self.auth_tokens.get(specifier);
@@ -508,6 +541,7 @@ impl FileFetcher {
       match fetch_once(FetchOnceArgs {
         client,
         url: specifier.clone(),
+        maybe_accept: maybe_accept.clone(),
         maybe_etag,
         maybe_auth_token,
       })
@@ -520,7 +554,12 @@ impl FileFetcher {
         FetchOnceResult::Redirect(redirect_url, headers) => {
           file_fetcher.http_cache.set(&specifier, headers, &[])?;
           file_fetcher
-            .fetch_remote(&redirect_url, &mut permissions, redirect_limit - 1)
+            .fetch_remote(
+              &redirect_url,
+              &mut permissions,
+              redirect_limit - 1,
+              maybe_accept,
+            )
             .await
         }
         FetchOnceResult::Code(bytes, headers) => {
@@ -543,6 +582,15 @@ impl FileFetcher {
     permissions: &mut Permissions,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
+    self.fetch_with_accept(specifier, permissions, None).await
+  }
+
+  pub async fn fetch_with_accept(
+    &self,
+    specifier: &ModuleSpecifier,
+    permissions: &mut Permissions,
+    maybe_accept: Option<&str>,
+  ) -> Result<File, AnyError> {
     let scheme = get_validated_scheme(specifier)?;
     permissions.check_specifier(specifier)?;
     if let Some(file) = self.cache.get(specifier) {
@@ -569,7 +617,14 @@ impl FileFetcher {
         format!("A remote specifier was requested: \"{}\", but --no-remote is specified.", specifier),
       ))
     } else {
-      let result = self.fetch_remote(specifier, permissions, 10).await;
+      let result = self
+        .fetch_remote(
+          specifier,
+          permissions,
+          10,
+          maybe_accept.map(String::from),
+        )
+        .await;
       if let Ok(file) = &result {
         self.cache.insert(specifier.clone(), file.clone());
       }
@@ -679,10 +734,10 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
-      .fetch_remote(specifier, &mut Permissions::allow_all(), 1)
+      .fetch_remote(specifier, &mut Permissions::allow_all(), 1, None)
       .await;
     assert!(result.is_ok());
-    let (_, headers) = file_fetcher.http_cache.get(specifier).unwrap();
+    let (_, headers, _) = file_fetcher.http_cache.get(specifier).unwrap();
     (result.unwrap(), headers)
   }
 
@@ -1065,7 +1120,7 @@ mod tests {
     // the value above.
     assert_eq!(file.media_type, MediaType::JavaScript);
 
-    let (_, headers) = file_fetcher_02.http_cache.get(&specifier).unwrap();
+    let (_, headers, _) = file_fetcher_02.http_cache.get(&specifier).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
     metadata.headers = HashMap::new();
     metadata
@@ -1194,7 +1249,7 @@ mod tests {
       "",
       "redirected files should have empty cached contents"
     );
-    let (_, headers) = file_fetcher.http_cache.get(&specifier).unwrap();
+    let (_, headers, _) = file_fetcher.http_cache.get(&specifier).unwrap();
     assert_eq!(
       headers.get("location").unwrap(),
       "http://localhost:4545/subdir/redirects/redirect1.js"
@@ -1204,7 +1259,7 @@ mod tests {
       fs::read_to_string(redirected_cached_filename).unwrap(),
       "export const redirect = 1;\n"
     );
-    let (_, headers) =
+    let (_, headers, _) =
       file_fetcher.http_cache.get(&redirected_specifier).unwrap();
     assert!(headers.get("location").is_none());
   }
@@ -1247,7 +1302,7 @@ mod tests {
       "",
       "redirected files should have empty cached contents"
     );
-    let (_, headers) = file_fetcher.http_cache.get(&specifier).unwrap();
+    let (_, headers, _) = file_fetcher.http_cache.get(&specifier).unwrap();
     assert_eq!(
       headers.get("location").unwrap(),
       "http://localhost:4546/subdir/redirects/redirect1.js"
@@ -1258,7 +1313,7 @@ mod tests {
       "",
       "redirected files should have empty cached contents"
     );
-    let (_, headers) = file_fetcher
+    let (_, headers, _) = file_fetcher
       .http_cache
       .get(&redirected_01_specifier)
       .unwrap();
@@ -1271,7 +1326,7 @@ mod tests {
       fs::read_to_string(redirected_02_cached_filename).unwrap(),
       "export const redirect = 1;\n"
     );
-    let (_, headers) = file_fetcher
+    let (_, headers, _) = file_fetcher
       .http_cache
       .get(&redirected_02_specifier)
       .unwrap();
@@ -1344,12 +1399,12 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &mut Permissions::allow_all(), 2)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 2, None)
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &mut Permissions::allow_all(), 1)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 1, None)
       .await;
     assert!(result.is_err());
 
@@ -1392,7 +1447,7 @@ mod tests {
       "",
       "redirected files should have empty cached contents"
     );
-    let (_, headers) = file_fetcher.http_cache.get(&specifier).unwrap();
+    let (_, headers, _) = file_fetcher.http_cache.get(&specifier).unwrap();
     assert_eq!(
       headers.get("location").unwrap(),
       "/subdir/redirects/redirect1.js"
@@ -1402,7 +1457,7 @@ mod tests {
       fs::read_to_string(redirected_cached_filename).unwrap(),
       "export const redirect = 1;\n"
     );
-    let (_, headers) =
+    let (_, headers, _) =
       file_fetcher.http_cache.get(&redirected_specifier).unwrap();
     assert!(headers.get("location").is_none());
   }
@@ -1497,6 +1552,60 @@ mod tests {
     assert!(result.is_ok());
     let file = result.unwrap();
     assert_eq!(file.source.as_str(), r#"console.log("goodbye deno");"#);
+  }
+
+  #[tokio::test]
+  async fn test_respect_cache_revalidates() {
+    let _g = test_util::http_server();
+    let temp_dir = Rc::new(TempDir::new().unwrap());
+    let (file_fetcher, _) =
+      setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
+    let specifier =
+      ModuleSpecifier::parse("http://localhost:4545/dynamic").unwrap();
+    let result = file_fetcher
+      .fetch(&specifier, &mut Permissions::allow_all())
+      .await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    let first = file.source.as_str();
+
+    let (file_fetcher, _) =
+      setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
+    let result = file_fetcher
+      .fetch(&specifier, &mut Permissions::allow_all())
+      .await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    let second = file.source.as_str();
+
+    assert_ne!(first, second);
+  }
+
+  #[tokio::test]
+  async fn test_respect_cache_still_fresh() {
+    let _g = test_util::http_server();
+    let temp_dir = Rc::new(TempDir::new().unwrap());
+    let (file_fetcher, _) =
+      setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
+    let specifier =
+      ModuleSpecifier::parse("http://localhost:4545/dynamic_cache").unwrap();
+    let result = file_fetcher
+      .fetch(&specifier, &mut Permissions::allow_all())
+      .await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    let first = file.source.as_str();
+
+    let (file_fetcher, _) =
+      setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
+    let result = file_fetcher
+      .fetch(&specifier, &mut Permissions::allow_all())
+      .await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    let second = file.source.as_str();
+
+    assert_eq!(first, second);
   }
 
   #[tokio::test]
