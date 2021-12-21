@@ -541,14 +541,7 @@ async fn install_command(
     create_main_worker(&ps, main_module.clone(), permissions, None);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module, true).await?;
-  tools::installer::install(
-    flags,
-    &install_flags.module_url,
-    install_flags.args,
-    install_flags.name,
-    install_flags.root,
-    install_flags.force,
-  )?;
+  tools::installer::install(flags, install_flags)?;
   Ok(0)
 }
 
@@ -649,15 +642,9 @@ async fn eval_command(
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
   }
   worker.execute_main_module(&main_module).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
   worker.run_event_loop(false).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
   Ok(0)
 }
 
@@ -987,15 +974,9 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
   }
   worker.execute_main_module(&main_module).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
   worker.run_event_loop(false).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
   Ok(worker.get_exit_code())
 }
 
@@ -1115,10 +1096,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
       }
       self.worker.execute_main_module(main_module).await?;
-      self.worker.execute_script(
-        &located_script_name!(),
-        "window.dispatchEvent(new Event('load'))",
-      )?;
+      self.worker.dispatch_load_event(&located_script_name!())?;
       self.pending_unload = true;
 
       let result = self.worker.run_event_loop(false).await;
@@ -1128,10 +1106,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         return Err(err);
       }
 
-      self.worker.execute_script(
-        &located_script_name!(),
-        "window.dispatchEvent(new Event('unload'))",
-      )?;
+      self.worker.dispatch_unload_event(&located_script_name!())?;
 
       Ok(())
     }
@@ -1142,10 +1117,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       if self.pending_unload {
         self
           .worker
-          .execute_script(
-            &located_script_name!(),
-            "window.dispatchEvent(new Event('unload'))",
-          )
+          .dispatch_unload_event(&located_script_name!())
           .unwrap();
       }
     }
@@ -1243,17 +1215,11 @@ async fn run_command(
     worker.execute_main_module(&main_module).await?;
   }
 
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
   worker
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
@@ -1293,6 +1259,28 @@ async fn test_command(
     tools::test::run_tests(flags, test_flags).await?;
   }
 
+  Ok(0)
+}
+
+async fn completions_command(
+  _flags: Flags,
+  completions_flags: CompletionsFlags,
+) -> Result<i32, AnyError> {
+  write_to_stdout_ignore_sigpipe(&completions_flags.buf)?;
+  Ok(0)
+}
+
+async fn types_command(flags: Flags) -> Result<i32, AnyError> {
+  let types = get_types(flags.unstable);
+  write_to_stdout_ignore_sigpipe(types.as_bytes())?;
+  Ok(0)
+}
+
+async fn upgrade_command(
+  _flags: Flags,
+  upgrade_flags: UpgradeFlags,
+) -> Result<i32, AnyError> {
+  tools::upgrade::upgrade(upgrade_flags).await?;
   Ok(0)
 }
 
@@ -1367,38 +1355,12 @@ fn get_subcommand(
     DenoSubcommand::Test(test_flags) => {
       test_command(flags, test_flags).boxed_local()
     }
-    DenoSubcommand::Completions(CompletionsFlags { buf }) => {
-      if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
-        eprintln!("{}", e);
-        std::process::exit(1);
-      }
-      std::process::exit(0);
+    DenoSubcommand::Completions(completions_flags) => {
+      completions_command(flags, completions_flags).boxed_local()
     }
-    DenoSubcommand::Types => {
-      let types = get_types(flags.unstable);
-      if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
-        eprintln!("{}", e);
-        std::process::exit(1);
-      }
-      std::process::exit(0);
-    }
+    DenoSubcommand::Types => types_command(flags).boxed_local(),
     DenoSubcommand::Upgrade(upgrade_flags) => {
-      let UpgradeFlags {
-        force,
-        dry_run,
-        canary,
-        version,
-        output,
-        ca_file,
-      } = upgrade_flags;
-      async move {
-        tools::upgrade::upgrade_command(
-          dry_run, force, canary, version, output, ca_file,
-        )
-        .await?;
-        Ok(0)
-      }
-      .boxed_local()
+      upgrade_command(flags, upgrade_flags).boxed_local()
     }
   }
 }
@@ -1457,10 +1419,8 @@ pub fn main() {
     Ok(None) => Ok(()),
     Err(err) => Err(err),
   };
-  if let Err(err) = standalone_res {
-    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
-    std::process::exit(1);
-  }
+  // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
+  unwrap_or_exit(standalone_res);
 
   let flags = match flags::flags_from_vec(args) {
     Ok(flags) => flags,

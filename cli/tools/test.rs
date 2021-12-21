@@ -487,10 +487,7 @@ async fn test_specifier(
     worker.execute_side_module(&specifier).await?;
   }
 
-  worker.js_runtime.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'));",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
 
   let test_result = worker.js_runtime.execute_script(
     &located_script_name!(),
@@ -505,10 +502,7 @@ async fn test_specifier(
 
   worker.js_runtime.resolve_value(test_result).await?;
 
-  worker.js_runtime.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'));",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker

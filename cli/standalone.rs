@@ -284,15 +284,9 @@ pub async fn run(
     js_runtime.sync_ops_cache();
   }
   worker.execute_main_module(&main_module).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
   worker.run_event_loop(true).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
   std::process::exit(0);
 }
 
