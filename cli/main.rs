@@ -1296,6 +1296,28 @@ async fn test_command(
   Ok(0)
 }
 
+async fn completions_command(
+  _flags: Flags,
+  completions_flags: CompletionsFlags,
+) -> Result<i32, AnyError> {
+  write_to_stdout_ignore_sigpipe(&completions_flags.buf)?;
+  Ok(0)
+}
+
+async fn types_command(flags: Flags) -> Result<i32, AnyError> {
+  let types = get_types(flags.unstable);
+  write_to_stdout_ignore_sigpipe(types.as_bytes())?;
+  Ok(0)
+}
+
+async fn upgrade_command(
+  _flags: Flags,
+  upgrade_flags: UpgradeFlags,
+) -> Result<i32, AnyError> {
+  tools::upgrade::upgrade(upgrade_flags).await?;
+  Ok(0)
+}
+
 fn init_v8_flags(v8_flags: &[String]) {
   let v8_flags_includes_help = v8_flags
     .iter()
@@ -1367,38 +1389,12 @@ fn get_subcommand(
     DenoSubcommand::Test(test_flags) => {
       test_command(flags, test_flags).boxed_local()
     }
-    DenoSubcommand::Completions(CompletionsFlags { buf }) => {
-      if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
-        eprintln!("{}", e);
-        std::process::exit(1);
-      }
-      std::process::exit(0);
+    DenoSubcommand::Completions(completions_flags) => {
+      completions_command(flags, completions_flags).boxed_local()
     }
-    DenoSubcommand::Types => {
-      let types = get_types(flags.unstable);
-      if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
-        eprintln!("{}", e);
-        std::process::exit(1);
-      }
-      std::process::exit(0);
-    }
+    DenoSubcommand::Types => types_command(flags).boxed_local(),
     DenoSubcommand::Upgrade(upgrade_flags) => {
-      let UpgradeFlags {
-        force,
-        dry_run,
-        canary,
-        version,
-        output,
-        ca_file,
-      } = upgrade_flags;
-      async move {
-        tools::upgrade::upgrade_command(
-          dry_run, force, canary, version, output, ca_file,
-        )
-        .await?;
-        Ok(0)
-      }
-      .boxed_local()
+      upgrade_command(flags, upgrade_flags).boxed_local()
     }
   }
 }
@@ -1457,10 +1453,8 @@ pub fn main() {
     Ok(None) => Ok(()),
     Err(err) => Err(err),
   };
-  if let Err(err) = standalone_res {
-    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
-    std::process::exit(1);
-  }
+  // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
+  unwrap_or_exit(standalone_res);
 
   let flags = match flags::flags_from_vec(args) {
     Ok(flags) => flags,
