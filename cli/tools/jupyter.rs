@@ -15,6 +15,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use ring::hmac;
+use std::collections::HashMap;
 use std::env::current_exe;
 use tempfile::TempDir;
 use tokio::join;
@@ -22,6 +23,12 @@ use zeromq::prelude::*;
 use zeromq::ZmqMessage;
 
 const DELIMETER: &str = "<IDS|MSG>";
+
+macro_rules! handle {
+  ($kernel:ident, $method:ident) => {
+    Box::new(|x| $kernel.$method(x))
+  };
+}
 
 pub fn install() -> Result<(), AnyError> {
   let temp_dir = TempDir::new().unwrap();
@@ -80,59 +87,12 @@ pub async fn kernel(
 
   let conn_file_path = jupyter_flags.conn_file.unwrap();
 
-  let conn_file = std::fs::read_to_string(conn_file_path)
-    .context("Failed to read connection file")?;
-  let conn_spec: ConnectionSpec = serde_json::from_str(&conn_file)
-    .context("Failed to parse connection file")?;
-  eprintln!("[DENO] parsed conn file: {:#?}", conn_spec);
-
-  let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, conn_spec.key.as_ref());
-  let metadata = KernelMetadata::default();
-  let iopub_comm = PubComm::new(
-    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.iopub_port),
-    metadata.session_id.clone(),
-    hmac_key.clone(),
-  );
-  let shell_comm = DealerComm::new(
-    "shell",
-    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.shell_port),
-    metadata.session_id.clone(),
-    hmac_key.clone(),
-  );
-  let control_comm = DealerComm::new(
-    "control",
-    create_conn_str(
-      &conn_spec.transport,
-      &conn_spec.ip,
-      conn_spec.control_port,
-    ),
-    metadata.session_id.clone(),
-    hmac_key.clone(),
-  );
-  let stdin_comm = DealerComm::new(
-    "stdin",
-    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.stdin_port),
-    metadata.session_id.clone(),
-    hmac_key.clone(),
-  );
-
-  let hb_conn_str =
-    create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.hb_port);
-
-  let mut kernel = Kernel {
-    metadata,
-    conn_spec,
-    state: KernelState::Idle,
-    iopub_comm,
-    shell_comm,
-    control_comm,
-    stdin_comm,
-  };
-
+  let mut kernel = Kernel::new(conn_file_path.to_str().unwrap());
   eprintln!("[DENO] kernel created: {:#?}", kernel.metadata.session_id);
 
-  let (_first, _second) =
-    join!(kernel.run(), create_zmq_reply("hb", &hb_conn_str),);
+  println!("running kernel...");
+  kernel.run().await;
+  println!("done running kernel.");
 
   Ok(())
 }
@@ -153,18 +113,108 @@ impl std::fmt::Display for KernelState {
     }
   }
 }
-
-struct Kernel {
+struct Kernel<'env> {
   metadata: KernelMetadata,
   conn_spec: ConnectionSpec,
   state: KernelState,
   iopub_comm: PubComm,
   shell_comm: DealerComm,
+  shell_handlers: CommHandler<'env>,
   control_comm: DealerComm,
   stdin_comm: DealerComm,
 }
 
-impl Kernel {
+impl Kernel<'_> {
+  fn new(conn_file_path: &str) -> Self {
+    let conn_file = match std::fs::read_to_string(conn_file_path)
+      .context("Failed to read connection file")
+    {
+      Ok(cf) => cf,
+      Err(_) => {
+        println!("Couldn't read connection file: {}", conn_file_path);
+        std::process::exit(1);
+      }
+    };
+    let conn_spec: ConnectionSpec = match serde_json::from_str(&conn_file)
+      .context("Failed to parse connection file")
+    {
+      Ok(cs) => cs,
+      Err(_) => {
+        println!("Connection file isn't proper JSON: {}", conn_file_path);
+        std::process::exit(1);
+      }
+    };
+    eprintln!("[DENO] parsed conn file: {:#?}", conn_spec);
+
+    let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, conn_spec.key.as_ref());
+    let metadata = KernelMetadata::default();
+    let iopub_comm = PubComm::new(
+      create_conn_str(
+        &conn_spec.transport,
+        &conn_spec.ip,
+        conn_spec.iopub_port,
+      ),
+      metadata.session_id.clone(),
+      hmac_key.clone(),
+    );
+    let shell_comm = DealerComm::new(
+      "shell",
+      create_conn_str(
+        &conn_spec.transport,
+        &conn_spec.ip,
+        conn_spec.shell_port,
+      ),
+      metadata.session_id.clone(),
+      hmac_key.clone(),
+    );
+    let control_comm = DealerComm::new(
+      "control",
+      create_conn_str(
+        &conn_spec.transport,
+        &conn_spec.ip,
+        conn_spec.control_port,
+      ),
+      metadata.session_id.clone(),
+      hmac_key.clone(),
+    );
+    let stdin_comm = DealerComm::new(
+      "stdin",
+      create_conn_str(
+        &conn_spec.transport,
+        &conn_spec.ip,
+        conn_spec.stdin_port,
+      ),
+      metadata.session_id.clone(),
+      hmac_key.clone(),
+    );
+
+    // let shell_handlers = CommHandler::new(&[
+    //   ("kernel_info_request".to_owned(), Kernel::kernel_info_reply)
+    // ]);
+    let shell_handlers = CommHandler::new(&[]);
+
+    let hb_conn_str =
+      create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.hb_port);
+
+    let s: Kernel = Self {
+      metadata,
+      conn_spec,
+      state: KernelState::Idle,
+      iopub_comm,
+      shell_comm,
+      shell_handlers,
+      control_comm,
+      stdin_comm,
+    };
+
+    shell_handlers.add_handler(
+      &"kernel_info_request".to_owned(),
+      handle!(s, kernel_info_reply),
+    );
+
+    s
+  }
+
   async fn run(&mut self) -> Result<(), AnyError> {
     let (iopub_res, shell_res, control_res, stdin_res) = join!(
       self.iopub_comm.connect(),
@@ -177,10 +227,14 @@ impl Kernel {
     control_res?;
     stdin_res?;
 
+    // TODO(apowers313): run heartbeat
+    // create_zmq_reply("hb", &hb_conn_str)
+
     loop {
       tokio::select! {
         shell_msg = self.shell_comm.recv() => {
           eprintln!("shell got packet: {:#?}", shell_msg);
+          self.shell_handlers.call(shell_msg);
         },
         control_msg = self.control_comm.recv() => {
           eprintln!("control got packet: {:#?}", control_msg);
@@ -225,6 +279,15 @@ impl Kernel {
     };
     // ignore any error when announcing changes
     let _ = self.iopub_comm.send(msg).await;
+  }
+
+  pub fn kernel_info_reply(
+    &self,
+    req_msg: RequestMessage,
+  ) -> Result<(), AnyError> {
+    dbg!(req_msg);
+
+    Ok(())
   }
 
   // TODO(bartlomieju): feels like this info should be a separate struct
@@ -321,6 +384,92 @@ struct MessageHeader {
   date: String,
   msg_type: String,
   version: String,
+}
+
+type CommHandlerFn<'env> =
+  Box<dyn 'env + Fn(RequestMessage) -> Result<(), AnyError>>;
+
+struct CommHandler<'env> {
+  collection: HashMap<String, CommHandlerFn<'env>>,
+}
+
+impl CommHandler<'_> {
+  fn new(handlers: &[(String, CommHandlerFn)]) -> Self {
+    let mut s = Self {
+      collection: HashMap::new(),
+    };
+
+    for handler in handlers.iter() {
+      s.add_handler(&handler.0, handler.1);
+    }
+
+    s
+  }
+
+  fn add_handler(&mut self, name: &String, handler: CommHandlerFn) {
+    self.collection.insert(name.to_owned(), handler);
+  }
+
+  fn call(&self, msg_res: Result<RequestMessage, AnyError>) {
+    let msg = match msg_res {
+      Ok(m) => m,
+      Err(e) => {
+        eprintln!("error while receiving message: {}", e);
+        return;
+      }
+    };
+    let msg_type = msg.header.msg_id;
+    let handler = match self.collection.get(&msg_type) {
+      Some(x) => x,
+      None => {
+        println!("no message handler found for message type: '{}'", msg_type);
+        return;
+      }
+    };
+
+    match handler(msg) {
+      Ok(()) => return,
+      Err(e) => println!("error while handling {}: {}", msg_type, e),
+    };
+  }
+}
+
+#[derive(Debug)]
+struct RequestMessage {
+  header: MessageHeader,
+  parent_header: Option<()>,
+  metadata: String,
+  content: String,
+}
+
+impl RequestMessage {
+  fn new(header: MessageHeader, metadata: String, content: String) -> Self {
+    Self {
+      header,
+      parent_header: None,
+      metadata,
+      content,
+    }
+  }
+}
+
+impl TryFrom<ZmqMessage> for RequestMessage {
+  type Error = AnyError;
+
+  fn try_from(zmq_msg: ZmqMessage) -> Result<Self, AnyError> {
+    let header_bytes = zmq_msg.get(2).unwrap();
+    let _metadata_bytes = zmq_msg.get(4).unwrap();
+    let _content_bytes = zmq_msg.get(5).unwrap();
+    dbg!(&header_bytes);
+
+    let header: MessageHeader = serde_json::from_slice(header_bytes).unwrap();
+
+    Ok(RequestMessage::new(
+      header,
+      "TODO".to_owned(),
+      "TODO".to_owned(),
+    ))
+  }
 }
 
 struct Message {
@@ -468,9 +617,22 @@ impl DealerComm {
     Ok(())
   }
 
-  pub async fn recv(&mut self) -> Result<ZmqMessage, AnyError> {
-    let msg = self.socket.recv().await?;
-    Ok(msg)
+  pub async fn recv(&mut self) -> Result<RequestMessage, AnyError> {
+    let zmq_msg = self.socket.recv().await?;
+    dbg!(&zmq_msg);
+
+    hmac_verify(
+      &self.hmac_key,
+      zmq_msg.get(1).unwrap(),
+      zmq_msg.get(2).unwrap(),
+      zmq_msg.get(3).unwrap(),
+      zmq_msg.get(4).unwrap(),
+      zmq_msg.get(5).unwrap(),
+    )?;
+
+    let jup_msg = RequestMessage::try_from(zmq_msg)?;
+
+    Ok(jup_msg)
   }
 
   pub async fn send(&mut self, msg: Message) -> Result<(), AnyError> {
@@ -480,6 +642,7 @@ impl DealerComm {
   }
 }
 
+// TODO(apowers313) this is the heartbeat loop now
 async fn create_zmq_reply(name: &str, conn_str: &str) -> Result<(), AnyError> {
   println!("reply '{}' connection string: {}", name, conn_str);
 
@@ -541,7 +704,7 @@ fn hmac_verify(
   parent_header: &[u8],
   metadata: &[u8],
   content: &[u8],
-) -> Result<(), ring::error::Unspecified> {
+) -> Result<(), AnyError> {
   let mut msg = Vec::<u8>::new();
   msg.extend(header);
   msg.extend(parent_header);
