@@ -482,7 +482,11 @@ impl ModuleRegistry {
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
     let fetch_result = self
       .file_fetcher
-      .fetch(specifier, &mut Permissions::allow_all())
+      .fetch_with_accept(
+        specifier,
+        &mut Permissions::allow_all(),
+        Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
+      )
       .await;
     // if there is an error fetching, we will cache an empty file, so that
     // subsequent requests they are just an empty doc which will error without
