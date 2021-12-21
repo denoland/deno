@@ -465,29 +465,28 @@
           await core.opAsync("op_ws_send", this[_rid], {
             kind: "ping",
           });
-          this[_idleTimeoutTimeout] = setTimeout(() => {
+          this[_idleTimeoutTimeout] = setTimeout(async () => {
             this[_readyState] = CLOSING;
-            PromisePrototypeThen(
-              core.opAsync("op_ws_close", {
-                rid: this[_rid],
-                code,
-                reason,
-              }),
-              () => {
-                this[_readyState] = CLOSED;
+            const reason = "No response from ping frame.";
+            await core.opAsync("op_ws_close", {
+              rid: this[_rid],
+              code: 1001,
+              reason,
+            });
+            this[_readyState] = CLOSED;
 
-                const errEvent = new ErrorEvent("error");
-                this.dispatchEvent(errEvent);
+            const errEvent = new ErrorEvent("error", {
+              message: reason,
+            });
+            this.dispatchEvent(errEvent);
 
-                const event = new CloseEvent("close", {
-                  wasClean: false,
-                  code: 1001,
-                  reason: "",
-                });
-                this.dispatchEvent(event);
-                core.tryClose(this[_rid]);
-              },
-            );
+            const event = new CloseEvent("close", {
+              wasClean: false,
+              code: 1001,
+              reason,
+            });
+            this.dispatchEvent(event);
+            core.tryClose(this[_rid]);
           }, this[_idleTimeoutDuration] / 2);
         }, this[_idleTimeoutDuration] / 2);
       }
