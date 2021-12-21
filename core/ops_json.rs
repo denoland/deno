@@ -64,6 +64,31 @@ where
   })
 }
 
+/// Creates an op that accepts passes data synchronously using JSON.
+///
+/// The provided function `op_fn` has the following parameters:
+/// * `Rc<RefCell<OpState>>`: the op state, can be used to read/write resources in the runtime from an op.
+/// * `A`: the deserializable value that is passed to the Rust function.
+/// * `&mut v8::HandleScope`: V8 handle scope, to allocate new handles.
+/// * `v8::Local<v8::Function>`: the JavaScript function. This is the second argument.
+///
+/// `op_fn` returns a serializable value, which is directly returned to JavaScript.
+///
+/// When registering an op like this...
+/// ```ignore
+/// let mut runtime = JsRuntime::new(...);
+/// runtime.register_op("hello_cb", deno_core::op_sync_cb(Self::hello_op_with_cb));
+/// runtime.sync_ops_cache();
+/// ```
+///
+/// ...it can be invoked from JS using the provided name, for example:
+/// ```js
+/// let result = Deno.core.opSync("hello_cb", arg1, function() {
+///   // Callback function...
+/// });
+/// ```
+/// `runtime.sync_ops_cache()` must be called after registering new ops
+/// Check out `ext/deno_ffi` for a more complete example.
 pub fn op_sync_cb<F, A, R>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(

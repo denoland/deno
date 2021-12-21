@@ -530,29 +530,24 @@ fn call_symbol_cb(
   let (scope, cb) = func;
   let signature = symbol.parameter_types.get(position).unwrap();
 
-  let mut info = match signature {
+  let (mut info, cif) = match signature {
     NativeType::Function {
       ref parameters,
       ref result,
-    } => CallbackInfo {
-      scope,
-      cb,
-      parameters: parameters.clone(),
-      result: *result.clone(),
-    },
+    } => (
+      CallbackInfo { scope, cb },
+      Cif::new(
+        parameters.iter().map(|p| libffi::middle::Type::from(p)),
+        libffi::middle::Type::from(*result.clone()),
+      ),
+    ),
     _ => unreachable!(),
   };
 
-  let cif = Cif::new(
-    info
-      .parameters
-      .iter()
-      .map(|p| libffi::middle::Type::from(p)),
-    libffi::middle::Type::from(&info.result),
-  );
   let closure =
     libffi::middle::Closure::new_mut(cif, deno_ffi_callback, &mut info);
   call_args[position] = Arg::new(closure.code_ptr());
+
   call_symbol(symbol, call_args)
 }
 
@@ -611,8 +606,6 @@ fn call_symbol(symbol: &Symbol, call_args: Vec<Arg>) -> Value {
 pub struct CallbackInfo<'a, 'b, 'c> {
   scope: &'a mut v8::HandleScope<'b>,
   cb: v8::Local<'c, v8::Function>,
-  parameters: Vec<NativeType>,
-  result: NativeType,
 }
 
 unsafe extern "C" fn deno_ffi_callback(
@@ -729,6 +722,8 @@ unsafe extern "C" fn deno_ffi_callback(
   }
 }
 
+/// A variant of `op_ffi_call` that has the ability to
+/// pass the given callback to the symbol.
 fn op_ffi_call_cb(
   state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallArgs,

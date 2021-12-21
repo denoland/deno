@@ -122,7 +122,8 @@ declare namespace Deno {
 
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction {
-    parameters: NativeType[];
+    parameters:
+      (NativeType | { function: Omit<ForeignFunction, "nonblocking"> })[];
     result: NativeType;
     /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
     nonblocking?: boolean;
