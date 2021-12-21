@@ -2745,6 +2745,14 @@ declare namespace Deno {
 
   export interface UpgradeWebSocketOptions {
     protocol?: string;
+    /**
+     * If the client does not respond to this frame with a
+     * `pong` within the timeout specified, the connection is deemed
+     * unhealthy and is closed. The `close` and `error` event will be emitted.
+     *
+     * The default is 120 seconds. Set to 0 to disable timeouts.
+     */
+    idleTimeout?: number;
   }
 
   /**

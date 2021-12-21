@@ -69,7 +69,11 @@
   const _binaryType = Symbol("[[binaryType]]");
   const _bufferedAmount = Symbol("[[bufferedAmount]]");
   const _eventLoop = Symbol("[[eventLoop]]");
+
   const _server = Symbol("[[server]]");
+  const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
+  const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
+  const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
   class WebSocket extends EventTarget {
     [_rid];
 
@@ -388,6 +392,7 @@
 
         switch (kind) {
           case "string": {
+            this.#serverHandleIdleTimeout();
             const event = new MessageEvent("message", {
               data: value,
               origin: this[_url],
@@ -396,6 +401,7 @@
             break;
           }
           case "binary": {
+            this.#serverHandleIdleTimeout();
             let data;
 
             if (this.binaryType === "blob") {
@@ -415,6 +421,10 @@
             core.opAsync("op_ws_send", this[_rid], {
               kind: "pong",
             });
+            break;
+          }
+          case "pong": {
+            this.#serverHandleIdleTimeout();
             break;
           }
           case "closed":
@@ -444,6 +454,41 @@
             break;
           }
         }
+      }
+    }
+
+    [_serverHandleIdleTimeout]() {
+      if (this[_idleTimeoutDuration]) {
+        clearTimeout(this[_idleTimeoutTimeout]);
+        this[_idleTimeoutTimeout] = setTimeout(async () => {
+          await core.opAsync("op_ws_send", this[_rid], {
+            kind: "ping",
+          });
+          this[_idleTimeoutTimeout] = setTimeout(() => {
+            this[_readyState] = CLOSING;
+            PromisePrototypeThen(
+              core.opAsync("op_ws_close", {
+                rid: this[_rid],
+                code,
+                reason,
+              }),
+              () => {
+                this[_readyState] = CLOSED;
+
+                const errEvent = new ErrorEvent("error");
+                this.dispatchEvent(errEvent);
+
+                const event = new CloseEvent("close", {
+                  wasClean: false,
+                  code: 1001,
+                  reason: "",
+                });
+                this.dispatchEvent(event);
+                core.tryClose(this[_rid]);
+              },
+            );
+          }, this[_idleTimeoutDuration] / 2);
+        }, this[_idleTimeoutDuration] / 2);
       }
     }
   }
@@ -477,5 +522,7 @@
     _eventLoop,
     _protocol,
     _server,
+    _idleTimeoutDuration,
+    _serverHandleIdleTimeout,
   };
 })(this);
