@@ -88,7 +88,7 @@ fn encrypt_rsa_oaep(
   hash: ShaHash,
   label: Vec<u8>,
   data: &[u8],
-) -> Result<Vec<u8>, deno_core::anyhow::Error> {
+) -> Result<Vec<u8>, AnyError> {
   let label = String::from_utf8_lossy(&label).to_string();
 
   let public_key = key.as_rsa_public_key()?;
@@ -128,7 +128,7 @@ fn encrypt_aes_cbc(
   length: usize,
   iv: Vec<u8>,
   data: &[u8],
-) -> Result<Vec<u8>, deno_core::anyhow::Error> {
+) -> Result<Vec<u8>, AnyError> {
   let key = key.as_secret_key()?;
   let ciphertext = match length {
     128 => {
@@ -167,7 +167,7 @@ fn encrypt_aes_gcm(
   iv: Vec<u8>,
   additional_data: Option<Vec<u8>>,
   data: &[u8],
-) -> Result<Vec<u8>, deno_core::anyhow::Error> {
+) -> Result<Vec<u8>, AnyError> {
   let key = key.as_secret_key()?;
   let additional_data = additional_data.unwrap_or_default();
 
