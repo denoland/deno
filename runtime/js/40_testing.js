@@ -31,10 +31,6 @@
   } = window.__bootstrap.primordials;
   let testStepsEnabled = false;
 
-  function exitHandler(exitCode) {
-    throw new Error(`Test file attempted to exit with exit code: ${exitCode}`);
-  }
-
   const opSanitizerDelayResolveQueue = [];
 
   // Even if every resource is closed by the end of a test, there can be a delay
@@ -175,7 +171,7 @@ finishing test case.`;
       } catch (err) {
         throw err;
       } finally {
-        setExitHandler(exitHandler);
+        setExitHandler(null);
       }
     };
   }
@@ -501,10 +497,6 @@ finishing test case.`;
     const originalConsole = globalThis.console;
 
     globalThis.console = new Console(reportTestConsoleOutput);
-    // Test files mustn't use `Deno.exit()` as it might result in false positive
-    // test results, so to prevent that we add an exit handler that will always
-    // raise an error.
-    setExitHandler(exitHandler);
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
     const filtered = ArrayPrototypeFilter(

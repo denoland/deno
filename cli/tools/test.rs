@@ -32,6 +32,7 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
+use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_graph::Module;
@@ -459,6 +460,12 @@ async fn test_specifier(
       .op_state()
       .borrow_mut()
       .put::<Sender<TestEvent>>(channel.clone());
+
+    let thread_safe_handle = js_runtime.v8_isolate().thread_safe_handle();
+    js_runtime
+      .op_state()
+      .borrow_mut()
+      .put::<v8::IsolateHandle>(thread_safe_handle);
   };
 
   let mut worker =

@@ -1,6 +1,8 @@
 use crate::tools::test::TestEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::op_sync;
+use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -19,6 +21,8 @@ pub fn init(rt: &mut JsRuntime) {
   );
   super::reg_sync(rt, "op_get_test_origin", op_get_test_origin);
   super::reg_sync(rt, "op_dispatch_test_event", op_dispatch_test_event);
+  // We're overriding regular "op_exit" here
+  rt.overwrite_op("op_exit", op_sync(op_exit));
 }
 
 #[derive(Clone)]
@@ -76,5 +80,11 @@ fn op_dispatch_test_event(
   let sender = state.borrow::<Sender<TestEvent>>().clone();
   sender.send(event).ok();
 
+  Ok(())
+}
+
+fn op_exit(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
+  let handle = state.borrow::<v8::IsolateHandle>();
+  handle.terminate_execution();
   Ok(())
 }
