@@ -89,11 +89,11 @@ cut.**
 18. Upload Apple M1 build (`deno-aarch64-apple-darwin.zip`) to the release draft
     and to https://console.cloud.google.com/storage/browser/dl.deno.land
 
-```
-cargo build --release
-cd target/release
-zip -r deno-aarch64-apple-darwin.zip deno
-```
+    ```
+    cargo build --release
+    cd target/release
+    zip -r deno-aarch64-apple-darwin.zip deno
+    ```
 
 19. Publish the release on Github
 
