@@ -159,8 +159,9 @@
         }
 
         parameters.push(i);
+        const fnTypes = type.function.parameters;
         fn = (...args) => {
-          const ptrIndices = types.map((ty, i) => ty == "pointer" ? i : -1)
+          const ptrIndices = fnTypes.map((ty, i) => ty == "pointer" ? i : -1)
             .filter((i) => i !== -1);
           for (const ptrIndex of ptrIndices) {
             args[ptrIndex] = new UnsafePointer(unpackU64(args[ptrIndex]));
@@ -168,7 +169,9 @@
 
           return arg(...args);
         };
-      } else if (type === "pointer") {
+      }
+
+      if (type === "pointer") {
         if (
           arg?.buffer instanceof ArrayBuffer &&
           arg.byteLength !== undefined

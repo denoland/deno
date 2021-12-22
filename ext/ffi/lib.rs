@@ -483,7 +483,7 @@ fn ffi_call(
 
   let mut fn_position: Option<usize> = None;
 
-  let call_args = symbol
+  let native_values = symbol
     .parameter_types
     .clone()
     .into_iter()
@@ -494,23 +494,32 @@ fn ffi_call(
           if let Some(idx) = value.as_u64() {
             if let Some(&Some(buf)) = buffers.get(idx as usize) {
               let native_value = NativeValue::buffer(buf.as_ptr());
-              return unsafe { native_value.as_arg(native_type) };
+              return native_value;
             }
           }
         }
         NativeType::Function { .. } => {
           if let Some(idx) = value.as_u64() {
             // Placeholder to reserve spot for the function `Arg`.
-            let ptr = Arg::new(&());
+            let native_value = NativeValue { void_value: () };
             fn_position = Some(idx as usize);
-            return ptr;
+            return native_value;
           }
         }
         _ => {}
       };
 
-      let native_value = NativeValue::new(&native_type, value);
-      unsafe { native_value.as_arg(native_type) }
+      NativeValue::new(&native_type, value)
+    })
+    .collect::<Vec<_>>();
+
+  let call_args = symbol
+    .parameter_types
+    .clone()
+    .into_iter()
+    .zip(native_values.iter())
+    .map(|(native_type, native_value)| unsafe {
+      native_value.as_arg(native_type)
     })
     .collect::<Vec<_>>();
 
@@ -630,10 +639,9 @@ unsafe extern "C" fn deno_ffi_callback(
         FFI_TYPE_DOUBLE => {
           serde_v8::to_v8(&mut info.scope, *(val as *const f64))
         }
-        FFI_TYPE_POINTER | FFI_TYPE_STRUCT => serde_v8::to_v8(
-          &mut info.scope,
-          U32x2::from(*(val as *const u8) as u64),
-        ),
+        FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
+          serde_v8::to_v8(&mut info.scope, U32x2::from(*(val as *const u64)))
+        }
         FFI_TYPE_SINT8 => serde_v8::to_v8(&mut info.scope, *(val as *const i8)),
         FFI_TYPE_UINT8 => serde_v8::to_v8(&mut info.scope, *(val as *const u8)),
         FFI_TYPE_SINT16 => {

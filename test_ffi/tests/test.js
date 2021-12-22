@@ -45,7 +45,7 @@ const dylib = Deno.dlopen(libPath, {
   "add_callback": {
     parameters: [ {
       function: {
-        parameters: ["i32", "i32"],
+        parameters: ["i32", "i32", "pointer"],
         result: "i32",
       },
     } ],
@@ -93,7 +93,10 @@ console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
 
 // test callbacks
-dylib.symbols.add_callback((a, b) => {
+dylib.symbols.add_callback((a, b, ptr) => {
+  const view = new Deno.UnsafePointerView(ptr);
+  const str = view.getCString();
+  console.log(str);
   console.log("[js] callback called");
   return a + b;
 });
