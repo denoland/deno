@@ -123,7 +123,6 @@ enum HandlerType {
   Shell,
   Control,
   Stdin,
-  IOPub,
 }
 
 impl Kernel {
@@ -255,7 +254,6 @@ impl Kernel {
       HandlerType::Shell => self.shell_handler(&req_msg).await,
       HandlerType::Control => self.control_handler(&req_msg),
       HandlerType::Stdin => self.stdin_handler(&req_msg),
-      HandlerType::IOPub => self.iopub_handler(&req_msg),
     };
 
     match res {
@@ -286,12 +284,6 @@ impl Kernel {
   }
 
   fn stdin_handler(&self, req_msg: &RequestMessage) -> Result<(), AnyError> {
-    todo!()
-  }
-
-  fn iopub_handler(&self, req_msg: &RequestMessage) -> Result<(), AnyError> {
-    // TODO(apowers313) I *think* this is used for custom messages...
-    // https://jupyter-client.readthedocs.io/en/latest/messaging.html#custom-messages
     todo!()
   }
 
