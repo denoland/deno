@@ -935,6 +935,7 @@ dependencies = [
  "hyper",
  "libc",
  "log",
+ "netif",
  "nix",
  "notify",
  "once_cell",
@@ -2256,6 +2257,16 @@ dependencies = [
  "serde",
  "spirv",
  "thiserror",
+]
+
+[[package]]
+name = "netif"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c9e642845c332c335e3125759b10145a972c1f413cb48cd6d7b96e81821f281"
+dependencies = [
+ "libc",
+ "winapi 0.3.9",
 ]
 
 [[package]]
