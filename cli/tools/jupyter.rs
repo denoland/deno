@@ -6,6 +6,7 @@
 use crate::flags::Flags;
 use crate::flags::JupyterFlags;
 use data_encoding::HEXLOWER;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -23,12 +24,6 @@ use zeromq::prelude::*;
 use zeromq::ZmqMessage;
 
 const DELIMETER: &str = "<IDS|MSG>";
-
-macro_rules! handle {
-  ($kernel:ident, $method:ident) => {
-    Box::new(|x| $kernel.$method(x))
-  };
-}
 
 pub fn install() -> Result<(), AnyError> {
   let temp_dir = TempDir::new().unwrap();
@@ -88,7 +83,7 @@ pub async fn kernel(
   let conn_file_path = jupyter_flags.conn_file.unwrap();
 
   let mut kernel = Kernel::new(conn_file_path.to_str().unwrap());
-  eprintln!("[DENO] kernel created: {:#?}", kernel.metadata.session_id);
+  println!("[DENO] kernel created: {:#?}", kernel.metadata.session_id);
 
   println!("running kernel...");
   kernel.run().await;
@@ -113,18 +108,25 @@ impl std::fmt::Display for KernelState {
     }
   }
 }
-struct Kernel<'env> {
+
+struct Kernel {
   metadata: KernelMetadata,
   conn_spec: ConnectionSpec,
   state: KernelState,
   iopub_comm: PubComm,
   shell_comm: DealerComm,
-  shell_handlers: CommHandler<'env>,
   control_comm: DealerComm,
   stdin_comm: DealerComm,
 }
 
-impl Kernel<'_> {
+enum HandlerType {
+  Shell,
+  Control,
+  Stdin,
+  IOPub,
+}
+
+impl Kernel {
   fn new(conn_file_path: &str) -> Self {
     let conn_file = match std::fs::read_to_string(conn_file_path)
       .context("Failed to read connection file")
@@ -144,7 +146,7 @@ impl Kernel<'_> {
         std::process::exit(1);
       }
     };
-    eprintln!("[DENO] parsed conn file: {:#?}", conn_spec);
+    println!("[DENO] parsed conn file: {:#?}", conn_spec);
 
     let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, conn_spec.key.as_ref());
     let metadata = KernelMetadata::default();
@@ -188,11 +190,6 @@ impl Kernel<'_> {
       hmac_key.clone(),
     );
 
-    // let shell_handlers = CommHandler::new(&[
-    //   ("kernel_info_request".to_owned(), Kernel::kernel_info_reply)
-    // ]);
-    let shell_handlers = CommHandler::new(&[]);
-
     let hb_conn_str =
       create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.hb_port);
 
@@ -202,15 +199,9 @@ impl Kernel<'_> {
       state: KernelState::Idle,
       iopub_comm,
       shell_comm,
-      shell_handlers,
       control_comm,
       stdin_comm,
     };
-
-    shell_handlers.add_handler(
-      &"kernel_info_request".to_owned(),
-      handle!(s, kernel_info_reply),
-    );
 
     s
   }
@@ -233,17 +224,75 @@ impl Kernel<'_> {
     loop {
       tokio::select! {
         shell_msg = self.shell_comm.recv() => {
-          eprintln!("shell got packet: {:#?}", shell_msg);
-          self.shell_handlers.call(shell_msg);
+          println!("shell got packet: {:#?}", shell_msg);
+          self.handler(HandlerType::Shell, shell_msg).await;
         },
         control_msg = self.control_comm.recv() => {
-          eprintln!("control got packet: {:#?}", control_msg);
+          println!("control got packet: {:#?}", control_msg);
+          self.handler(HandlerType::Control, control_msg);
         },
         stdin_msg = self.stdin_comm.recv() => {
-          eprintln!("stdin got packet: {:#?}", stdin_msg);
+          println!("stdin got packet: {:#?}", stdin_msg);
+          self.handler(HandlerType::Stdin, stdin_msg);
         },
       }
     }
+  }
+
+  async fn handler(
+    &mut self,
+    handler_type: HandlerType,
+    recv_result: Result<RequestMessage, AnyError>,
+  ) {
+    let req_msg = match recv_result {
+      Ok(m) => m,
+      Err(e) => {
+        println!("error receiving msg: {}", e);
+        return;
+      }
+    };
+    let res = match handler_type {
+      HandlerType::Shell => self.shell_handler(&req_msg).await,
+      HandlerType::Control => self.control_handler(&req_msg),
+      HandlerType::Stdin => self.stdin_handler(&req_msg),
+      HandlerType::IOPub => self.iopub_handler(&req_msg),
+    };
+
+    match res {
+      Ok(_) => return,
+      Err(e) => {
+        println!("error handling packet '{}': {}", req_msg.header.msg_type, e);
+        dbg!(req_msg);
+      }
+    };
+  }
+
+  async fn shell_handler(
+    &mut self,
+    req_msg: &RequestMessage,
+  ) -> Result<(), AnyError> {
+    match req_msg.header.msg_type.as_ref() {
+      "kernel_info_request" => self.kernel_info_reply(req_msg).await?,
+      _ => {
+        return Err(anyhow!("no handler for msg_id: {}", req_msg.header.msg_id))
+      }
+    };
+
+    Ok(())
+  }
+
+  fn control_handler(&self, req_msg: &RequestMessage) -> Result<(), AnyError> {
+    todo!()
+  }
+
+  fn stdin_handler(&self, req_msg: &RequestMessage) -> Result<(), AnyError> {
+    todo!()
+  }
+
+  fn iopub_handler(&self, req_msg: &RequestMessage) -> Result<(), AnyError> {
+    // TODO(apowers313) I *think* this is used for custom messages...
+    // https://jupyter-client.readthedocs.io/en/latest/messaging.html#custom-messages
+    todo!()
   }
 
   async fn set_state(&mut self, state: KernelState, ctx: CommContext) {
@@ -281,11 +330,35 @@ impl Kernel<'_> {
     let _ = self.iopub_comm.send(msg).await;
   }
 
-  pub fn kernel_info_reply(
-    &self,
-    req_msg: RequestMessage,
+  async fn kernel_info_reply(
+    &mut self,
+    req_msg: &RequestMessage,
   ) -> Result<(), AnyError> {
     dbg!(req_msg);
+
+    let content = KernelInfoReplyContent {
+      status: String::from("ok"),
+      protocol_version: self.metadata.protocol_version.clone(),
+      implementation_version: self.metadata.kernel_version.clone(),
+      implementation: self.metadata.implementation_name.clone(),
+      language_info: KernelLanguageInfo {
+        name: self.metadata.language.clone(),
+        version: self.metadata.language_version.clone(),
+        mimetype: self.metadata.mime.clone(),
+        file_extension: self.metadata.file_ext.clone(),
+        codemirror_mode: None,
+        nbconvert_exporter: None,
+        pygments_lexer: None,
+      },
+      help_links: vec![], // TODO(apowers313) dig up help links
+      banner: self.metadata.banner.clone(),
+      debugger: false,
+    };
+
+    let reply =
+      ReplyMessage::try_from((&req_msg.header, "TODO".to_string(), content))?;
+
+    self.shell_comm.send(reply).await?;
 
     Ok(())
   }
@@ -295,6 +368,7 @@ impl Kernel<'_> {
   fn get_kernel_info(&self) -> Value {
     json!({
       "status": "ok",
+      // TODO: all of these should be taken from globals,
       "protocol_version": self.metadata.protocol_version,
       "implementation_version": self.metadata.kernel_version,
       "implementation": self.metadata.implementation_name,
@@ -376,7 +450,7 @@ struct CommContext {
   session_id: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct MessageHeader {
   msg_id: String,
   session: String,
@@ -386,51 +460,22 @@ struct MessageHeader {
   version: String,
 }
 
-type CommHandlerFn<'env> =
-  Box<dyn 'env + Fn(RequestMessage) -> Result<(), AnyError>>;
+impl MessageHeader {
+  fn new(session_id: String) -> Self {
+    let now = std::time::SystemTime::now();
+    let now: chrono::DateTime<chrono::Utc> = now.into();
+    let now = now.to_rfc3339();
 
-struct CommHandler<'env> {
-  collection: HashMap<String, CommHandlerFn<'env>>,
-}
-
-impl CommHandler<'_> {
-  fn new(handlers: &[(String, CommHandlerFn)]) -> Self {
-    let mut s = Self {
-      collection: HashMap::new(),
-    };
-
-    for handler in handlers.iter() {
-      s.add_handler(&handler.0, handler.1);
+    Self {
+      msg_id: uuid::Uuid::new_v4().to_string(),
+      session: session_id.clone(),
+      // FIXME:
+      username: "<TODO>".to_string(),
+      date: now.to_string(),
+      msg_type: "status".to_string(),
+      // TODO: this should be taken from a global,
+      version: "5.3".to_string(),
     }
-
-    s
-  }
-
-  fn add_handler(&mut self, name: &String, handler: CommHandlerFn) {
-    self.collection.insert(name.to_owned(), handler);
-  }
-
-  fn call(&self, msg_res: Result<RequestMessage, AnyError>) {
-    let msg = match msg_res {
-      Ok(m) => m,
-      Err(e) => {
-        eprintln!("error while receiving message: {}", e);
-        return;
-      }
-    };
-    let msg_type = msg.header.msg_id;
-    let handler = match self.collection.get(&msg_type) {
-      Some(x) => x,
-      None => {
-        println!("no message handler found for message type: '{}'", msg_type);
-        return;
-      }
-    };
-
-    match handler(msg) {
-      Ok(()) => return,
-      Err(e) => println!("error while handling {}: {}", msg_type, e),
-    };
   }
 }
 
@@ -469,6 +514,67 @@ impl TryFrom<ZmqMessage> for RequestMessage {
       "TODO".to_owned(),
       "TODO".to_owned(),
     ))
+  }
+}
+
+struct ReplyMessage {
+  header: MessageHeader,
+  parent_header: MessageHeader,
+  metadata: Option<String>,
+  content: Option<String>,
+}
+
+impl ReplyMessage {
+  fn new(parent_header: &MessageHeader, session_id: String) -> Self {
+    Self {
+      header: MessageHeader::new(session_id),
+      parent_header: parent_header.clone(),
+      metadata: Some("{}".to_string()),
+      content: Some("{}".to_string()),
+    }
+  }
+
+  fn serialize(&self, hmac_key: &hmac::Key) -> ZmqMessage {
+    let header = serde_json::to_string(&self.header).unwrap();
+    // let parent_header = if let Some(p_header) = self.parent_header.as_ref() {
+    //   serde_json::to_string(p_header).unwrap()
+    // } else {
+    //   serde_json::to_string(&json!({})).unwrap()
+    // };
+    let parent_header = serde_json::to_string(&self.parent_header).unwrap();
+    let metadata = serde_json::to_string(&self.metadata).unwrap();
+    let content = serde_json::to_string(&self.content).unwrap();
+
+    let hmac =
+      hmac_sign(hmac_key, &header, &parent_header, &metadata, &content);
+
+    let mut zmq_msg = ZmqMessage::from(DELIMETER);
+    zmq_msg.push_back(hmac.into());
+    zmq_msg.push_back(header.into());
+    zmq_msg.push_back(parent_header.into());
+    zmq_msg.push_back(metadata.into());
+    zmq_msg.push_back(content.into());
+    println!("+++ SENDING ZMQ MSG: {:#?}", zmq_msg);
+    zmq_msg
+  }
+}
+
+impl TryFrom<(&MessageHeader, String, KernelInfoReplyContent)>
+  for ReplyMessage
+{
+  type Error = AnyError;
+
+  fn try_from(
+    args: (&MessageHeader, String, KernelInfoReplyContent),
+  ) -> Result<Self, AnyError> {
+    let hdr = args.0;
+    let session_id = args.1;
+    let content = args.2;
+    let mut m = ReplyMessage::new(hdr, session_id);
+    m.header.msg_type = String::from("kernel_info_reply");
+    // m.content = content;
+
+    Ok(m)
   }
 }
 
@@ -581,6 +687,7 @@ impl PubComm {
 
   pub async fn send(&mut self, msg: Message) -> Result<(), AnyError> {
     let zmq_msg = msg.serialize(&self.hmac_key);
+    println!("==> SENDING: {:#?}", zmq_msg);
     self.socket.send(zmq_msg).await?;
     Ok(())
   }
@@ -635,7 +742,7 @@ impl DealerComm {
     Ok(jup_msg)
   }
 
-  pub async fn send(&mut self, msg: Message) -> Result<(), AnyError> {
+  pub async fn send(&mut self, msg: ReplyMessage) -> Result<(), AnyError> {
     let zmq_msg = msg.serialize(&self.hmac_key);
     self.socket.send(zmq_msg).await?;
     Ok(())
@@ -869,7 +976,8 @@ struct CommInfoReplyContent {
 // struct KernelInfoRequest {} // empty
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
-struct KernelInfoReply {
+#[derive(Debug, Serialize, Deserialize)]
+struct KernelInfoReplyContent {
   status: String,
   protocol_version: String,
   implementation: String,
@@ -886,9 +994,9 @@ struct KernelLanguageInfo {
   version: String,
   mimetype: String,
   file_extension: String,
-  pygments_lexer: String,
+  pygments_lexer: Option<String>,
   codemirror_mode: Option<Value>,
-  nbconvert_exporter: String,
+  nbconvert_exporter: Option<String>,
 }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
