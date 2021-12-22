@@ -1100,9 +1100,8 @@ fn basic_auth_tokens() {
   let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
   eprintln!("{}", stderr_str);
 
-  assert!(stderr_str.contains(
-    "Import 'http://127.0.0.1:4554/001_hello.js' failed, not found."
-  ));
+  assert!(stderr_str
+    .contains("Module not found \"http://127.0.0.1:4554/001_hello.js\"."));
 
   let output = util::deno_cmd()
     .current_dir(util::root_path())

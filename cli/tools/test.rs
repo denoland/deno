@@ -1092,6 +1092,11 @@ pub async fn run_tests_with_watch(
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
+    let check_js = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| cf.get_check_js())
+      .unwrap_or(false);
 
     async move {
       let test_modules = if test_flags.doc {
@@ -1131,7 +1136,7 @@ pub async fn run_tests_with_watch(
         None,
       )
       .await;
-      graph_valid(&graph, !no_check)?;
+      graph_valid(&graph, !no_check, check_js)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {

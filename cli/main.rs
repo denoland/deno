@@ -695,7 +695,12 @@ async fn create_graph_and_maybe_check(
     .await,
   );
 
-  graph_valid(&graph, ps.flags.check != CheckFlag::None)?;
+  let check_js = ps
+    .maybe_config_file
+    .as_ref()
+    .map(|cf| cf.get_check_js())
+    .unwrap_or(false);
+  graph_valid(&graph, ps.flags.check != CheckFlag::None, check_js)?;
   graph_lock_or_exit(&graph);
 
   if ps.flags.check != CheckFlag::None {
@@ -1030,7 +1035,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         None,
       )
       .await;
-      graph_valid(&graph, ps.flags.check != flags::CheckFlag::None)?;
+      let check_js = ps
+        .maybe_config_file
+        .as_ref()
+        .map(|cf| cf.get_check_js())
+        .unwrap_or(false);
+      graph_valid(&graph, ps.flags.check != flags::CheckFlag::None, check_js)?;
 
       // Find all local files in graph
       let mut paths_to_watch: Vec<PathBuf> = graph

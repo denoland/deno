@@ -34,12 +34,14 @@ pub(crate) fn get_module_graph_error_class(
 ) -> &'static str {
   match err {
     ModuleGraphError::LoadingErr(_, err) => get_error_class_name(err.as_ref()),
-    ModuleGraphError::InvalidSource(_, _) => "SyntaxError",
+    ModuleGraphError::InvalidSource(_, _)
+    | ModuleGraphError::InvalidTypeAssertion { .. } => "SyntaxError",
     ModuleGraphError::ParseErr(_, diagnostic) => {
       get_diagnostic_class(diagnostic)
     }
     ModuleGraphError::ResolutionError(err) => get_resolution_error_class(err),
-    ModuleGraphError::UnsupportedMediaType(_, _) => "TypeError",
+    ModuleGraphError::UnsupportedMediaType(_, _)
+    | ModuleGraphError::UnsupportedImportAssertionType(_, _) => "TypeError",
     ModuleGraphError::Missing(_) => "NotFound",
   }
 }
