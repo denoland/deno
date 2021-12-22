@@ -83,7 +83,7 @@ impl CacheServer {
           )
           .await;
 
-          if tx.send(graph_valid(&graph, true)).is_err() {
+          if tx.send(graph_valid(&graph, true, false)).is_err() {
             log::warn!("cannot send to client");
           }
         }
