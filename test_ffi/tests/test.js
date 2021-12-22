@@ -43,14 +43,14 @@ const dylib = Deno.dlopen(libPath, {
     nonblocking: true,
   },
   "add_callback": {
-    parameters: [ {
+    parameters: [{
       function: {
         parameters: ["i32", "i32", "pointer"],
         result: "i32",
       },
-    } ],
+    }],
     result: "void",
-  }
+  },
 });
 
 dylib.symbols.print_something();
