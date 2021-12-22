@@ -70,7 +70,6 @@ const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WS_CLOSE_PORT: u16 = 4244;
-const TCP_PORT: u16 = 4245;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -297,18 +296,6 @@ async fn run_ws_close_server(addr: &SocketAddr) {
         ws_stream.close(None).await.unwrap();
       }
     });
-  }
-}
-
-async fn run_tcp_nodelay_server(addr: &SocketAddr) {
-  let listener = TcpListener::bind(addr).await.unwrap();
-  while let Ok((mut socket, _addr)) = listener.accept().await {
-    let nodelay = socket.nodelay().unwrap();
-    let result = if nodelay { "enabled" } else { "disabled" };
-    println!("{}", result);
-
-    socket.write(result.as_bytes()).await.unwrap();
-    socket.flush().await.unwrap();
   }
 }
 
@@ -1281,9 +1268,6 @@ pub async fn run_all_servers() {
   let h1_only_server_fut = wrap_https_h1_only_server();
   let h2_only_server_fut = wrap_https_h2_only_server();
 
-  let tcp_addr = SocketAddr::from(([127, 0, 0, 1], TCP_PORT));
-  let tcp_no_delay_server_fut = run_tcp_nodelay_server(&tcp_addr);
-
   let mut server_fut = async {
     futures::join!(
       redirect_server_fut,
@@ -1302,8 +1286,7 @@ pub async fn run_all_servers() {
       main_server_https_fut,
       client_auth_server_https_fut,
       h1_only_server_fut,
-      h2_only_server_fut,
-      tcp_no_delay_server_fut
+      h2_only_server_fut
     )
   }
   .boxed();

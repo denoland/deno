@@ -2279,11 +2279,6 @@ itest!(byte_order_mark {
   output: "byte_order_mark.out",
 });
 
-itest!(tcp_set_nodelay {
-  args: "run --allow-net tcp_set_nodelay.ts",
-  output: "tcp_set_nodelay.out",
-});
-
 #[test]
 fn issue9750() {
   use util::PtyData::*;
