@@ -546,7 +546,7 @@ fn call_symbol_cb(
     } => (
       CallbackInfo { scope, cb },
       Cif::new(
-        parameters.iter().map(|p| libffi::middle::Type::from(p)),
+        parameters.iter().map(libffi::middle::Type::from),
         libffi::middle::Type::from(*result.clone()),
       ),
     ),
@@ -628,41 +628,25 @@ unsafe extern "C" fn deno_ffi_callback(
   let vals = std::slice::from_raw_parts(args, cif.nargs as usize);
 
   let params: Vec<v8::Local<v8::Value>> = repr
-    .into_iter()
+    .iter()
     .zip(vals)
     .map(|(&repr, &val)| {
       let value = match (*repr).type_ as _ {
-        FFI_TYPE_INT => serde_v8::to_v8(&mut info.scope, *(val as *const i32)),
-        FFI_TYPE_FLOAT => {
-          serde_v8::to_v8(&mut info.scope, *(val as *const f32))
-        }
-        FFI_TYPE_DOUBLE => {
-          serde_v8::to_v8(&mut info.scope, *(val as *const f64))
-        }
+        FFI_TYPE_INT => serde_v8::to_v8(info.scope, *(val as *const i32)),
+        FFI_TYPE_FLOAT => serde_v8::to_v8(info.scope, *(val as *const f32)),
+        FFI_TYPE_DOUBLE => serde_v8::to_v8(info.scope, *(val as *const f64)),
         FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-          serde_v8::to_v8(&mut info.scope, U32x2::from(*(val as *const u64)))
+          serde_v8::to_v8(info.scope, U32x2::from(*(val as *const u64)))
         }
-        FFI_TYPE_SINT8 => serde_v8::to_v8(&mut info.scope, *(val as *const i8)),
-        FFI_TYPE_UINT8 => serde_v8::to_v8(&mut info.scope, *(val as *const u8)),
-        FFI_TYPE_SINT16 => {
-          serde_v8::to_v8(&mut info.scope, *(val as *const i16))
-        }
-        FFI_TYPE_UINT16 => {
-          serde_v8::to_v8(&mut info.scope, *(val as *const u16))
-        }
-        FFI_TYPE_SINT32 => {
-          serde_v8::to_v8(&mut info.scope, *(val as *const i32))
-        }
-        FFI_TYPE_UINT32 => {
-          serde_v8::to_v8(&mut info.scope, *(val as *const u32))
-        }
-        FFI_TYPE_SINT64 => {
-          serde_v8::to_v8(&mut info.scope, *(val as *const i64))
-        }
-        FFI_TYPE_UINT64 => {
-          serde_v8::to_v8(&mut info.scope, *(val as *const u64))
-        }
-        FFI_TYPE_VOID => serde_v8::to_v8(&mut info.scope, ()),
+        FFI_TYPE_SINT8 => serde_v8::to_v8(info.scope, *(val as *const i8)),
+        FFI_TYPE_UINT8 => serde_v8::to_v8(info.scope, *(val as *const u8)),
+        FFI_TYPE_SINT16 => serde_v8::to_v8(info.scope, *(val as *const i16)),
+        FFI_TYPE_UINT16 => serde_v8::to_v8(info.scope, *(val as *const u16)),
+        FFI_TYPE_SINT32 => serde_v8::to_v8(info.scope, *(val as *const i32)),
+        FFI_TYPE_UINT32 => serde_v8::to_v8(info.scope, *(val as *const u32)),
+        FFI_TYPE_SINT64 => serde_v8::to_v8(info.scope, *(val as *const i64)),
+        FFI_TYPE_UINT64 => serde_v8::to_v8(info.scope, *(val as *const u64)),
+        FFI_TYPE_VOID => serde_v8::to_v8(info.scope, ()),
         _ => {
           panic!("Unsupported parameter type")
         }
@@ -671,56 +655,56 @@ unsafe extern "C" fn deno_ffi_callback(
     })
     .collect();
 
-  let recv = v8::undefined(&mut info.scope);
-  let value = match info.cb.call(&mut info.scope, recv.into(), &params) {
+  let recv = v8::undefined(info.scope);
+  let value = match info.cb.call(info.scope, recv.into(), &params) {
     Some(value) => value,
     None => return,
   };
 
   match (*cif.rtype).type_ as _ {
     FFI_TYPE_INT | FFI_TYPE_SINT32 => {
-      *(result as *mut i32) = serde_v8::from_v8(&mut info.scope, value)
+      *(result as *mut i32) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_FLOAT => {
-      *(result as *mut f32) = serde_v8::from_v8(&mut info.scope, value)
+      *(result as *mut f32) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_DOUBLE => {
-      *(result as *mut f64) = serde_v8::from_v8(&mut info.scope, value)
+      *(result as *mut f64) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-      let u32x2: U32x2 = serde_v8::from_v8(&mut info.scope, value)
+      let u32x2: U32x2 = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
       *(result as *mut u64) = u64::from(u32x2);
     }
     FFI_TYPE_SINT8 => {
-      *(result as *mut i8) = serde_v8::from_v8(&mut info.scope, value)
+      *(result as *mut i8) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_UINT8 => {
-      *(result as *mut u8) = serde_v8::from_v8(&mut info.scope, value)
+      *(result as *mut u8) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_SINT16 => {
-      *(result as *mut i16) = serde_v8::from_v8(&mut info.scope, value)
+      *(result as *mut i16) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_UINT16 => {
-      *(result as *mut u16) = serde_v8::from_v8(&mut info.scope, value)
+      *(result as *mut u16) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_UINT32 => {
-      *(result as *mut u32) = serde_v8::from_v8(&mut info.scope, value)
+      *(result as *mut u32) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_SINT64 => {
-      *(result as *mut i64) = serde_v8::from_v8(&mut info.scope, value)
+      *(result as *mut i64) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_UINT64 => {
-      *(result as *mut u64) = serde_v8::from_v8(&mut info.scope, value)
+      *(result as *mut u64) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_VOID => {}
