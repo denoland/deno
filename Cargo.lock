@@ -558,6 +558,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctr"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a232f92a03f37dd7d7dd2adc67166c77e9cd88de5b019b9a9eecfaeaf7bfd481"
+dependencies = [
+ "cipher",
+]
+
+[[package]]
 name = "cty"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -774,6 +783,7 @@ dependencies = [
  "aes",
  "base64 0.13.0",
  "block-modes",
+ "ctr",
  "deno_core",
  "deno_web",
  "elliptic-curve",

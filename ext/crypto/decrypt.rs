@@ -3,7 +3,11 @@ use std::rc::Rc;
 
 use crate::shared::*;
 use block_modes::BlockMode;
+use ctr::cipher::NewCipher;
+use ctr::cipher::StreamCipher;
+use ctr::Ctr128BE;
 use deno_core::error::custom_error;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -39,6 +43,13 @@ pub enum DecryptAlgorithm {
     iv: Vec<u8>,
     length: usize,
   },
+  #[serde(rename = "AES-CTR", rename_all = "camelCase")]
+  AesCtr {
+    #[serde(with = "serde_bytes")]
+    counter: Vec<u8>,
+    ctr_length: usize,
+    key_length: usize,
+  },
 }
 
 pub async fn op_crypto_decrypt(
@@ -54,6 +65,11 @@ pub async fn op_crypto_decrypt(
     DecryptAlgorithm::AesCbc { iv, length } => {
       decrypt_aes_cbc(key, length, iv, &data)
     }
+    DecryptAlgorithm::AesCtr {
+      counter,
+      ctr_length,
+      key_length,
+    } => decrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
   };
   let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
@@ -152,4 +168,42 @@ fn decrypt_aes_cbc(
 
   // 6.
   Ok(plaintext)
+}
+
+fn decrypt_aes_ctr(
+  key: RawKeyData,
+  key_length: usize,
+  counter: &[u8],
+  ctr_length: usize,
+  data: &[u8],
+) -> Result<Vec<u8>, deno_core::anyhow::Error> {
+  let key = key.as_secret_key()?;
+
+  let mut ciphertext = data.to_vec();
+
+  match key_length {
+    128 => {
+      type Aes128Ctr = Ctr128BE<aes::Aes128>;
+
+      let mut cipher = Aes128Ctr::new(key.into(), counter.into());
+
+      cipher.apply_keystream(&mut ciphertext);
+    }
+    192 => {
+      type Aes192Ctr = Ctr128BE<aes::Aes192>;
+
+      let mut cipher = Aes192Ctr::new(key.into(), counter.into());
+
+      cipher.apply_keystream(&mut ciphertext);
+    }
+    256 => {
+      type Aes256Ctr = Ctr128BE<aes::Aes256>;
+
+      let mut cipher = Aes256Ctr::new(key.into(), counter.into());
+
+      cipher.apply_keystream(&mut ciphertext);
+    }
+    _ => return Err(type_error("invalid length")),
+  };
+  Ok(ciphertext)
 }
