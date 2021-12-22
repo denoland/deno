@@ -1547,7 +1547,25 @@
     if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
       if (css.backgroundColor != null) {
         const [r, g, b] = css.backgroundColor;
-        ansi += `\x1b[48;2;${r};${g};${b}m`;
+        if (colorEquals(css.backgroundColor, [0, 0, 0])) {
+          ansi += `\x1b[40m`;
+        } else if (colorEquals(css.backgroundColor, [255, 0, 0])) {
+          ansi += `\x1b[41m`;
+        } else if (colorEquals(css.backgroundColor, [0, 128, 0])) {
+          ansi += `\x1b[42m`;
+        } else if (colorEquals(css.backgroundColor, [255, 255, 0])) {
+          ansi += `\x1b[43m`;
+        } else if (colorEquals(css.backgroundColor, [0, 0, 255])) {
+          ansi += `\x1b[44m`;
+        } else if (colorEquals(css.backgroundColor, [255, 0, 255])) {
+          ansi += `\x1b[45m`;
+        } else if (colorEquals(css.backgroundColor, [0, 255, 255])) {
+          ansi += `\x1b[46m`;
+        } else if (colorEquals(css.backgroundColor, [255, 255, 255])) {
+          ansi += `\x1b[47m`;
+        } else {
+          ansi += `\x1b[48;2;${r};${g};${b}m`;
+        }
       } else {
         ansi += "\x1b[49m";
       }
@@ -1555,7 +1573,25 @@
     if (!colorEquals(css.color, prevCss.color)) {
       if (css.color != null) {
         const [r, g, b] = css.color;
-        ansi += `\x1b[38;2;${r};${g};${b}m`;
+        if (colorEquals(css.color, [0, 0, 0])) {
+          ansi += `\x1b[30m`;
+        } else if (colorEquals(css.color, [255, 0, 0])) {
+          ansi += `\x1b[31m`;
+        } else if (colorEquals(css.color, [0, 128, 0])) {
+          ansi += `\x1b[32m`;
+        } else if (colorEquals(css.color, [255, 255, 0])) {
+          ansi += `\x1b[33m`;
+        } else if (colorEquals(css.color, [0, 0, 255])) {
+          ansi += `\x1b[34m`;
+        } else if (colorEquals(css.color, [255, 0, 255])) {
+          ansi += `\x1b[35m`;
+        } else if (colorEquals(css.color, [0, 255, 255])) {
+          ansi += `\x1b[36m`;
+        } else if (colorEquals(css.color, [255, 255, 255])) {
+          ansi += `\x1b[37m`;
+        } else {
+          ansi += `\x1b[38;2;${r};${g};${b}m`;
+        }
       } else {
         ansi += "\x1b[39m";
       }
