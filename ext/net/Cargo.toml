@@ -21,3 +21,4 @@ serde = { version = "1.0.129", features = ["derive"] }
 tokio = { version = "1.10.1", features = ["full"] }
 trust-dns-proto = "0.20.3"
 trust-dns-resolver = { version = "0.20.3", features = ["tokio-runtime", "serde-config"] }
+socket2 = "0.4.2"

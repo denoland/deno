@@ -123,10 +123,23 @@ impl TcpStreamResource {
   pub fn set_nodelay(self: Rc<Self>, nodelay: bool) -> Result<(), AnyError> {
     if let Some(wr) = RcRef::map(self, |r| &r.wr).try_borrow() {
       let stream = wr.as_ref().as_ref();
-      return Ok(stream.set_nodelay(nodelay)?);
+      let socket = socket2::SockRef::from(stream);
+
+      return Ok(socket.set_nodelay(nodelay)?);
     }
 
     Err(generic_error("Unable to set no delay"))
+  }
+
+  pub fn set_keepalive(self: Rc<Self>, keepalive: bool) -> Result<(), AnyError> {
+    if let Some(wr) = RcRef::map(self, |r| &r.wr).try_borrow() {
+      let stream = wr.as_ref().as_ref();
+      let socket = socket2::SockRef::from(stream);
+      
+      return Ok(socket.set_keepalive(keepalive)?);
+    }
+
+    Err(generic_error("Unable to set keep alive"))
   }
 }
 

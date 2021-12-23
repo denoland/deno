@@ -56,6 +56,7 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
     ("op_dgram_send", op_async(op_dgram_send::<P>)),
     ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
     ("op_set_nodelay", op_sync(op_set_nodelay::<P>)),
+    ("op_set_keepalive", op_sync(op_set_keepalive::<P>)),
   ]
 }
 
@@ -674,6 +675,16 @@ pub fn op_set_nodelay<NP>(
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_nodelay(nodelay)
+}
+
+pub fn op_set_keepalive<NP>(
+  state: &mut OpState,
+  rid: ResourceId,
+  keepalive: bool,
+) -> Result<(), AnyError> {
+  let resource: Rc<TcpStreamResource> =
+    state.resource_table.get::<TcpStreamResource>(rid)?;
+  resource.set_keepalive(keepalive)
 }
 
 fn rdata_to_return_record(

@@ -895,6 +895,7 @@ dependencies = [
  "deno_tls",
  "log",
  "serde",
+ "socket2 0.4.2",
  "tokio",
  "trust-dns-proto",
  "trust-dns-resolver",
