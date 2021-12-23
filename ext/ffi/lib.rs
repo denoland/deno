@@ -636,7 +636,7 @@ unsafe extern "C" fn deno_ffi_callback(
         FFI_TYPE_FLOAT => serde_v8::to_v8(info.scope, *(val as *const f32)),
         FFI_TYPE_DOUBLE => serde_v8::to_v8(info.scope, *(val as *const f64)),
         FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-          serde_v8::to_v8(info.scope, U32x2::from(*(val as *const u64)))
+          serde_v8::to_v8(info.scope, U32x2::from((val as *const u8) as u64))
         }
         FFI_TYPE_SINT8 => serde_v8::to_v8(info.scope, *(val as *const i8)),
         FFI_TYPE_UINT8 => serde_v8::to_v8(info.scope, *(val as *const u8)),

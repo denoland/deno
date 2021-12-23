@@ -169,9 +169,7 @@
 
           return arg(...args);
         };
-      }
-
-      if (type === "pointer") {
+      } else if (type === "pointer") {
         if (
           arg?.buffer instanceof ArrayBuffer &&
           arg.byteLength !== undefined
