@@ -606,7 +606,15 @@ async fn inspector_break_on_first_line_in_test() {
         s
       ),
       StdErr(s) => assert_eq!(&stderr_lines.next().unwrap(), s),
-      WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
+      WsRecv(s) => {
+        let next_line = socket_rx.next().await.unwrap();
+        assert!(
+          next_line.starts_with(s),
+          "Doesn't start with {}, instead received {}",
+          s,
+          next_line
+        );
+      }
       WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
     }
   }
