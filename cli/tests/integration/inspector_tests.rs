@@ -410,22 +410,20 @@ async fn inspector_runtime_evaluate_does_not_crash() {
     ),
     WsRecv(r#"{"id":1,"result":{}}"#),
     WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
-    WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
-    WsRecv(r#"{"id":3,"result":{}}"#),
     StdOut("exit using ctrl+d or close()"),
     WsSend(
-      r#"{"id":4,"method":"Runtime.compileScript","params":{"expression":"Deno.cwd()","sourceURL":"","persistScript":false,"executionContextId":1}}"#,
+      r#"{"id":3,"method":"Runtime.compileScript","params":{"expression":"Deno.cwd()","sourceURL":"","persistScript":false,"executionContextId":1}}"#,
     ),
-    WsRecv(r#"{"id":4,"result":{}}"#),
+    WsRecv(r#"{"id":3,"result":{}}"#),
     WsSend(
-      r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"Deno.cwd()","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
+      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.cwd()","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
     ),
-    WsRecv(r#"{"id":5,"result":{"result":{"type":"string","value":""#),
+    WsRecv(r#"{"id":4,"result":{"result":{"type":"string","value":""#),
     WsSend(
-      r#"{"id":6,"method":"Runtime.evaluate","params":{"expression":"console.error('done');","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
+      r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"console.error('done');","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
     ),
     WsRecv(r#"{"method":"Runtime.consoleAPICalled"#),
-    WsRecv(r#"{"id":6,"result":{"result":{"type":"undefined"}}}"#),
+    WsRecv(r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#),
     StdErr("done"),
   ];
 
