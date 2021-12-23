@@ -28,7 +28,6 @@ use std::path::PathBuf;
 use text_lines::TextLines;
 use uuid::Uuid;
 
-// TODO(caspervonb) all of these structs should possibly moved to inspector::protocol.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct CoverageRange {
@@ -188,7 +187,6 @@ struct FunctionCoverageItem {
 
 struct CoverageReport {
   url: ModuleSpecifier,
-  file_path: String,
   named_functions: Vec<FunctionCoverageItem>,
   branches: Vec<BranchCoverageItem>,
   found_lines: Vec<(usize, usize)>,
@@ -213,10 +211,8 @@ fn generate_coverage_report(
     .collect::<Vec<_>>();
 
   let url = Url::parse(&script_coverage.url).unwrap();
-  let file_path = url.to_file_path().unwrap();
   let mut coverage_report = CoverageReport {
     url,
-    file_path: file_path.to_str().unwrap().to_string(),
     named_functions: Vec::with_capacity(
       script_coverage
         .functions
@@ -327,11 +323,8 @@ fn generate_coverage_report(
             continue;
           }
 
-          let overlaps = std::cmp::max(line_end_offset, range.end_offset)
-            - std::cmp::min(line_start_offset, range.start_offset)
-            < (line_end_offset - line_start_offset)
-              + (range.end_offset - range.start_offset);
-
+          let overlaps = range.start_offset < line_end_offset
+            && range.end_offset > line_start_offset;
           if overlaps {
             count = 0;
           }
@@ -412,7 +405,14 @@ impl LcovCoverageReporter {
 
 impl CoverageReporter for LcovCoverageReporter {
   fn report(&mut self, coverage_report: &CoverageReport, _file_text: &str) {
-    println!("SF:{}", coverage_report.file_path);
+    let file_path = coverage_report
+      .url
+      .to_file_path()
+      .ok()
+      .map(|p| p.to_str().map(|p| p.to_string()))
+      .flatten()
+      .unwrap_or_else(|| coverage_report.url.to_string());
+    println!("SF:{}", file_path);
 
     for function in &coverage_report.named_functions {
       println!("FN:{},{}", function.line_index + 1, function.name);
