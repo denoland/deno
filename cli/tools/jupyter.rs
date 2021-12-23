@@ -250,10 +250,18 @@ impl Kernel {
         return;
       }
     };
-    let res = match handler_type {
-      HandlerType::Shell => self.shell_handler(&req_msg).await,
-      HandlerType::Control => self.control_handler(&req_msg),
-      HandlerType::Stdin => self.stdin_handler(&req_msg),
+    let major_version = &req_msg.header.version.to_string()[0..1];
+    let res = match (handler_type, major_version) {
+      (HandlerType::Shell, "5") => self.shell_handler(&req_msg).await,
+      (HandlerType::Control, "5") => self.control_handler(&req_msg),
+      (HandlerType::Stdin, "5") => self.stdin_handler(&req_msg),
+      _ => {
+        println!(
+          "No handler for message: '{}' v{}",
+          req_msg.header.msg_type, major_version
+        );
+        return;
+      }
     };
 
     match res {
@@ -475,12 +483,16 @@ impl MessageHeader {
 struct RequestMessage {
   header: MessageHeader,
   parent_header: Option<()>,
-  metadata: String,
-  content: String,
+  metadata: RequestMetadata,
+  content: RequestContent,
 }
 
 impl RequestMessage {
-  fn new(header: MessageHeader, metadata: String, content: String) -> Self {
+  fn new(
+    header: MessageHeader,
+    metadata: RequestMetadata,
+    content: RequestContent,
+  ) -> Self {
     Self {
       header,
       parent_header: None,
@@ -495,25 +507,26 @@ impl TryFrom<ZmqMessage> for RequestMessage {
 
   fn try_from(zmq_msg: ZmqMessage) -> Result<Self, AnyError> {
     let header_bytes = zmq_msg.get(2).unwrap();
-    let _metadata_bytes = zmq_msg.get(4).unwrap();
-    let _content_bytes = zmq_msg.get(5).unwrap();
+    let metadata_bytes = zmq_msg.get(4).unwrap();
+    let content_bytes = zmq_msg.get(5).unwrap();
     dbg!(&header_bytes);
 
     let header: MessageHeader = serde_json::from_slice(header_bytes).unwrap();
 
-    Ok(RequestMessage::new(
-      header,
-      "TODO".to_owned(),
-      "TODO".to_owned(),
-    ))
+    let mc = match header.msg_type.as_ref() {
+      "kernel_info_request" => (RequestMetadata::Empty, RequestContent::Empty),
+      _ => (RequestMetadata::Empty, RequestContent::Empty),
+    };
+
+    Ok(RequestMessage::new(header, mc.0, mc.1))
   }
 }
 
 struct ReplyMessage {
   header: MessageHeader,
   parent_header: MessageHeader,
-  metadata: Option<String>,
-  content: Option<String>,
+  metadata: ReplyMetadata,
+  content: ReplyContent,
 }
 
 impl ReplyMessage {
@@ -521,21 +534,23 @@ impl ReplyMessage {
     Self {
       header: MessageHeader::new(session_id),
       parent_header: parent_header.clone(),
-      metadata: Some("{}".to_string()),
-      content: Some("{}".to_string()),
+      metadata: ReplyMetadata::Empty,
+      content: ReplyContent::Empty,
     }
   }
 
   fn serialize(&self, hmac_key: &hmac::Key) -> ZmqMessage {
+    // TODO(apowers313) convert unwrap() to recoverable error
     let header = serde_json::to_string(&self.header).unwrap();
-    // let parent_header = if let Some(p_header) = self.parent_header.as_ref() {
-    //   serde_json::to_string(p_header).unwrap()
-    // } else {
-    //   serde_json::to_string(&json!({})).unwrap()
-    // };
     let parent_header = serde_json::to_string(&self.parent_header).unwrap();
     let metadata = serde_json::to_string(&self.metadata).unwrap();
-    let content = serde_json::to_string(&self.content).unwrap();
+    let metadata = match &self.metadata {
+      ReplyMetadata::Empty => serde_json::to_string(&json!({})).unwrap(),
+    };
+    let content = match &self.content {
+      ReplyContent::Empty => serde_json::to_string(&json!({})).unwrap(),
+      ReplyContent::KernelInfo(c) => serde_json::to_string(&c).unwrap(),
+    };
 
     let hmac =
       hmac_sign(hmac_key, &header, &parent_header, &metadata, &content);
@@ -551,6 +566,7 @@ impl ReplyMessage {
   }
 }
 
+// TODO(apowers313) replace TryFrom with ReplyMessage::new
 impl TryFrom<(&MessageHeader, String, KernelInfoReplyContent)>
   for ReplyMessage
 {
@@ -564,7 +580,7 @@ impl TryFrom<(&MessageHeader, String, KernelInfoReplyContent)>
     let content = args.2;
     let mut m = ReplyMessage::new(hdr, session_id);
     m.header.msg_type = String::from("kernel_info_reply");
-    // m.content = content;
+    m.content = ReplyContent::KernelInfo(content);
 
     Ok(m)
   }
@@ -877,6 +893,28 @@ fn hmac_sign_test() {
 // "comm_info_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#comm-info
 // "kernel_info_reply" // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
 
+#[derive(Debug, Serialize, Deserialize)]
+enum RequestContent {
+  Empty,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum ReplyContent {
+  Empty,
+  KernelInfo(KernelInfoReplyContent),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum RequestMetadata {
+  Empty,
+  Unknown(Value),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum ReplyMetadata {
+  Empty,
+}
+
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#execute
 struct ExecuteRequestContent {
   code: String,
@@ -981,6 +1019,7 @@ struct KernelInfoReplyContent {
 }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
+#[derive(Debug, Serialize, Deserialize)]
 struct KernelLanguageInfo {
   name: String,
   version: String,
@@ -992,6 +1031,7 @@ struct KernelLanguageInfo {
 }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
+#[derive(Debug, Serialize, Deserialize)]
 struct KernelHelpLink {
   text: String,
   url: String,
