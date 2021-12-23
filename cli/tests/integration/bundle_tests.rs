@@ -346,6 +346,70 @@ fn bundle_import_map_no_check() {
   assert_eq!(output.stderr, b"");
 }
 
+#[test]
+fn bundle_json_module() {
+  // First we have to generate a bundle of some module that has exports.
+  let mod7 = util::testdata_path().join("subdir/mod7.js");
+  assert!(mod7.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod7.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("bundle")
+    .arg(mod7)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check that nothing went to stderr
+  assert_eq!(output.stderr, b"");
+  // ensure the output looks right
+  assert!(String::from_utf8(output.stdout)
+    .unwrap()
+    .contains("with space"));
+}
+
+#[test]
+fn bundle_json_module_escape_sub() {
+  // First we have to generate a bundle of some module that has exports.
+  let mod8 = util::testdata_path().join("subdir/mod8.js");
+  assert!(mod8.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let bundle = t.path().join("mod8.bundle.js");
+  let mut deno = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("bundle")
+    .arg(mod8)
+    .arg(&bundle)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+  assert!(bundle.is_file());
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(&bundle)
+    .output()
+    .expect("failed to spawn script");
+  // check that nothing went to stderr
+  assert_eq!(output.stderr, b"");
+  // make sure the output looks right and the escapes were effective
+  assert!(String::from_utf8(output.stdout)
+    .unwrap()
+    .contains("${globalThis}`and string literal`"));
+}
+
 itest!(lock_check_err_with_bundle {
   args: "bundle --lock=lock_check_err_with_bundle.json http://127.0.0.1:4545/subdir/mod1.ts",
   output: "lock_check_err_with_bundle.out",
