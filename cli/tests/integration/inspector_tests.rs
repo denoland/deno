@@ -123,7 +123,11 @@ async fn inspector_break_on_first_line() {
     match step {
       StdErr(s) => assert_eq!(&stderr_lines.next().unwrap(), s),
       StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
-      WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
+      WsRecv(s) => assert!(
+        socket_rx.next().await.unwrap().starts_with(s),
+        "Doesn't start with {}",
+        s
+      ),
       WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
     }
   }
@@ -298,7 +302,11 @@ async fn inspector_does_not_hang() {
   for step in test_steps {
     match step {
       StdErr(s) => assert_eq!(&stderr_lines.next().unwrap(), s),
-      WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
+      WsRecv(s) => assert!(
+        socket_rx.next().await.unwrap().starts_with(s),
+        "Doesn't start with {}",
+        s
+      ),
       WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
       _ => unreachable!(),
     }
