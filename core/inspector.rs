@@ -27,7 +27,6 @@ use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::mem::replace;
 use std::mem::take;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
@@ -121,7 +120,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
-    self.flags.borrow_mut().session_handshake_done = true;
+    self.flags.borrow_mut().waiting_for_session = false;
   }
 }
 
@@ -222,16 +221,12 @@ impl JsRuntimeInspector {
         // Do one "handshake" with a newly connected session at a time.
         if let Some(session) = &mut sessions.handshake {
           let poll_result = session.poll_unpin(cx);
-          let handshake_done =
-            replace(&mut self.flags.borrow_mut().session_handshake_done, false);
           match poll_result {
-            Poll::Pending if handshake_done => {
+            Poll::Pending => {
               let session = sessions.handshake.take().unwrap();
               sessions.established.push(session);
-              take(&mut self.flags.borrow_mut().waiting_for_session);
             }
             Poll::Ready(_) => sessions.handshake = None,
-            Poll::Pending => break,
           };
         }
 
@@ -370,7 +365,6 @@ impl JsRuntimeInspector {
 #[derive(Default)]
 struct InspectorFlags {
   waiting_for_session: bool,
-  session_handshake_done: bool,
   on_pause: bool,
 }
 
