@@ -6,20 +6,20 @@ use test_util as util;
 
 #[test]
 fn branch() {
-  run_coverage_text("branch");
+  run_coverage_text("branch", "ts");
 }
 
 #[test]
 fn complex() {
-  run_coverage_text("complex");
+  run_coverage_text("complex", "ts");
 }
 
 #[test]
 fn final_blankline() {
-  run_coverage_text("final_blankline");
+  run_coverage_text("final_blankline", "js");
 }
 
-fn run_coverage_text(test_name: &str) {
+fn run_coverage_text(test_name: &str, extension: &str) {
   let tempdir = TempDir::new().expect("tempdir fail");
   let tempdir = tempdir.path().join("cov");
   let status = util::deno_cmd()
@@ -28,7 +28,7 @@ fn run_coverage_text(test_name: &str) {
     .arg("--quiet")
     .arg("--unstable")
     .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
-    .arg(format!("coverage/{}_test.ts", test_name))
+    .arg(format!("coverage/{}_test.{}", test_name, extension))
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::inherit())
     .status()
