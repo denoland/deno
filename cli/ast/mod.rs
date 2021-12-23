@@ -351,11 +351,23 @@ pub fn transpile_module(
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<deno_ast::swc::common::SourceFile>, Module), AnyError> {
   let source = strip_bom(source);
+  let source = if media_type == MediaType::Json {
+    format!(
+      "export default JSON.parse(`{}`);",
+      source.replace("${", "\\${").replace('`', "\\`")
+    )
+  } else {
+    source.to_string()
+  };
   let source_file =
-    cm.new_source_file(FileName::Url(specifier.clone()), source.to_string());
+    cm.new_source_file(FileName::Url(specifier.clone()), source);
   let input = StringInput::from(&*source_file);
   let comments = SingleThreadedComments::default();
-  let syntax = get_syntax(media_type);
+  let syntax = if media_type == MediaType::Json {
+    get_syntax(MediaType::JavaScript)
+  } else {
+    get_syntax(media_type)
+  };
   let lexer = Lexer::new(syntax, deno_ast::ES_VERSION, input, Some(&comments));
   let mut parser = deno_ast::swc::parser::Parser::new_from(lexer);
   let module = parser
