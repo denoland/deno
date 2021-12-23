@@ -350,13 +350,14 @@ pub fn transpile_module(
   options: &EmitOptions,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<deno_ast::swc::common::SourceFile>, Module), AnyError> {
+  let source = strip_bom(source);
   let source = if media_type == MediaType::Json {
     format!(
       "export default JSON.parse(`{}`);",
-      source.replace("${", "\\${")
+      source.replace("${", "\\${").replace('`', "\\`")
     )
   } else {
-    strip_bom(source).to_string()
+    source.to_string()
   };
   let source_file =
     cm.new_source_file(FileName::Url(specifier.clone()), source);

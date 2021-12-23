@@ -404,11 +404,10 @@ fn bundle_json_module_escape_sub() {
     .expect("failed to spawn script");
   // check that nothing went to stderr
   assert_eq!(output.stderr, b"");
-  // make sure the output looks right, without escaping, this will look like
-  // `[window Window]`
+  // make sure the output looks right and the escapes were effective
   assert!(String::from_utf8(output.stdout)
     .unwrap()
-    .contains("${globalThis}"));
+    .contains("${globalThis}`and string literal`"));
 }
 
 itest!(lock_check_err_with_bundle {
