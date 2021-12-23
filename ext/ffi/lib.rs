@@ -539,18 +539,12 @@ fn call_symbol_cb(
   let (scope, cb) = func;
   let signature = symbol.parameter_types.get(position).unwrap();
 
-  let cb = v8::Global::new(scope, cb);
-  let ctx = v8::Context::new(scope);
-  let ctx = v8::Global::new(scope, ctx);
-  let isolate: &mut v8::Isolate = scope.as_mut();
-  let isolate = isolate.thread_safe_handle();
-
   let (mut info, cif) = match signature {
     NativeType::Function {
       ref parameters,
       ref result,
     } => (
-      CallbackInfo { isolate, ctx, cb },
+      CallbackInfo { scope, cb },
       Cif::new(
         parameters.iter().map(libffi::middle::Type::from),
         libffi::middle::Type::from(*result.clone()),
@@ -560,10 +554,9 @@ fn call_symbol_cb(
   };
 
   let closure =
-    libffi::middle::Closure::new(cif, deno_ffi_callback, &info);
+    libffi::middle::Closure::new_mut(cif, deno_ffi_callback, &mut info);
   call_args[position] = Arg::new(closure.code_ptr());
-  std::mem::forget(closure);
-  std::mem::forget(info);
+
   call_symbol(symbol, call_args)
 }
 
@@ -619,67 +612,41 @@ fn call_symbol(symbol: &Symbol, call_args: Vec<Arg>) -> Value {
   }
 }
 
-pub struct CallbackInfo {
-// pub struct CallbackInfo<'a, 'b, 'c> {
-  isolate: v8::IsolateHandle,
-  ctx: v8::Global<v8::Context>,
-  // scope: &'a mut v8::HandleScope<'b>,
-  // cb: v8::Local<'c, v8::Function>,
-  cb: v8::Global<v8::Function>,
+pub struct CallbackInfo<'a, 'b, 'c> {
+  scope: &'a mut v8::HandleScope<'b>,
+  cb: v8::Local<'c, v8::Function>,
 }
 
 unsafe extern "C" fn deno_ffi_callback(
   cif: &libffi::low::ffi_cif,
   result: &mut u8,
   args: *const *const c_void,
-  info: &CallbackInfo,
+  info: &mut CallbackInfo,
 ) {
   let result = result as *mut u8 as *mut c_void;
-
-  #[repr(C)]
-  struct InterruptData<'a> {
-    result: *mut c_void,
-    cif: &'a libffi::low::ffi_cif,
-    args: *const *const c_void,  
-    info: &'a CallbackInfo,
-  }
-
-  extern "C" fn callback(
-    isolate: &mut v8::Isolate,
-    data: *mut std::ffi::c_void,
-  ) {
-    unsafe {
-    let info = unsafe { &mut *(data as *mut InterruptData) };
-    let mut result = info.result;
-    let cif = info.cif;
-    let args = info.args;
-    let repr = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
-    let vals = std::slice::from_raw_parts(args, cif.nargs as usize);
-    let info = info.info;
-  let scope = &mut v8::HandleScope::with_context(isolate, &info.ctx);
-
-  let cb = info.cb.get(scope);
+  let repr = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
+  let vals = std::slice::from_raw_parts(args, cif.nargs as usize);
 
   let params: Vec<v8::Local<v8::Value>> = repr
     .iter()
     .zip(vals)
     .map(|(&repr, &val)| {
       let value = match (*repr).type_ as _ {
-        FFI_TYPE_INT => serde_v8::to_v8(scope, *(val as *const i32)),
-        FFI_TYPE_FLOAT => serde_v8::to_v8(scope, *(val as *const f32)),
-        FFI_TYPE_DOUBLE => serde_v8::to_v8(scope, *(val as *const f64)),
+        FFI_TYPE_INT => serde_v8::to_v8(info.scope, *(val as *const i32)),
+        FFI_TYPE_FLOAT => serde_v8::to_v8(info.scope, *(val as *const f32)),
+        FFI_TYPE_DOUBLE => serde_v8::to_v8(info.scope, *(val as *const f64)),
         FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-          serde_v8::to_v8(scope, U32x2::from((val as *const u8) as u64))
+          serde_v8::to_v8(info.scope, U32x2::from((val as *const u8) as u64))
         }
-        FFI_TYPE_SINT8 => serde_v8::to_v8(scope, *(val as *const i8)),
-        FFI_TYPE_UINT8 => serde_v8::to_v8(scope, *(val as *const u8)),
-        FFI_TYPE_SINT16 => serde_v8::to_v8(scope, *(val as *const i16)),
-        FFI_TYPE_UINT16 => serde_v8::to_v8(scope, *(val as *const u16)),
-        FFI_TYPE_SINT32 => serde_v8::to_v8(scope, *(val as *const i32)),
-        FFI_TYPE_UINT32 => serde_v8::to_v8(scope, *(val as *const u32)),
-        FFI_TYPE_SINT64 => serde_v8::to_v8(scope, *(val as *const i64)),
-        FFI_TYPE_UINT64 => serde_v8::to_v8(scope, *(val as *const u64)),
-        FFI_TYPE_VOID => serde_v8::to_v8(scope, ()),
+        FFI_TYPE_SINT8 => serde_v8::to_v8(info.scope, *(val as *const i8)),
+        FFI_TYPE_UINT8 => serde_v8::to_v8(info.scope, *(val as *const u8)),
+        FFI_TYPE_SINT16 => serde_v8::to_v8(info.scope, *(val as *const i16)),
+        FFI_TYPE_UINT16 => serde_v8::to_v8(info.scope, *(val as *const u16)),
+        FFI_TYPE_SINT32 => serde_v8::to_v8(info.scope, *(val as *const i32)),
+        FFI_TYPE_UINT32 => serde_v8::to_v8(info.scope, *(val as *const u32)),
+        FFI_TYPE_SINT64 => serde_v8::to_v8(info.scope, *(val as *const i64)),
+        FFI_TYPE_UINT64 => serde_v8::to_v8(info.scope, *(val as *const u64)),
+        FFI_TYPE_VOID => serde_v8::to_v8(info.scope, ()),
         _ => {
           panic!("Unsupported parameter type")
         }
@@ -688,56 +655,56 @@ unsafe extern "C" fn deno_ffi_callback(
     })
     .collect();
 
-  let recv = v8::undefined(scope);
-  let value = match cb.call(scope, recv.into(), &params) {
+  let recv = v8::undefined(info.scope);
+  let value = match info.cb.call(info.scope, recv.into(), &params) {
     Some(value) => value,
     None => return,
   };
 
   match (*cif.rtype).type_ as _ {
     FFI_TYPE_INT | FFI_TYPE_SINT32 => {
-      *(result as *mut i32) = serde_v8::from_v8(scope, value)
+      *(result as *mut i32) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_FLOAT => {
-      *(result as *mut f32) = serde_v8::from_v8(scope, value)
+      *(result as *mut f32) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_DOUBLE => {
-      *(result as *mut f64) = serde_v8::from_v8(scope, value)
+      *(result as *mut f64) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-      let u32x2: U32x2 = serde_v8::from_v8(scope, value)
+      let u32x2: U32x2 = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
       *(result as *mut u64) = u64::from(u32x2);
     }
     FFI_TYPE_SINT8 => {
-      *(result as *mut i8) = serde_v8::from_v8(scope, value)
+      *(result as *mut i8) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_UINT8 => {
-      *(result as *mut u8) = serde_v8::from_v8(scope, value)
+      *(result as *mut u8) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_SINT16 => {
-      *(result as *mut i16) = serde_v8::from_v8(scope, value)
+      *(result as *mut i16) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_UINT16 => {
-      *(result as *mut u16) = serde_v8::from_v8(scope, value)
+      *(result as *mut u16) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_UINT32 => {
-      *(result as *mut u32) = serde_v8::from_v8(scope, value)
+      *(result as *mut u32) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_SINT64 => {
-      *(result as *mut i64) = serde_v8::from_v8(scope, value)
+      *(result as *mut i64) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_UINT64 => {
-      *(result as *mut u64) = serde_v8::from_v8(scope, value)
+      *(result as *mut u64) = serde_v8::from_v8(info.scope, value)
         .expect("Unable to deserialize result parameter.");
     }
     FFI_TYPE_VOID => {}
@@ -745,19 +712,6 @@ unsafe extern "C" fn deno_ffi_callback(
       panic!("Unsupported callback return type")
     }
   }
-}
-  }
-  
-  let handle = &info.isolate;
-  let data = InterruptData {
-    result,
-    cif,
-    args,
-    info
-  };
-
-  handle.request_interrupt(callback, &data as *const _ as *mut std::ffi::c_void);
-  
 }
 
 /// A variant of `op_ffi_call` that has the ability to
