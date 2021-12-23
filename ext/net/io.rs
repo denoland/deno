@@ -10,6 +10,7 @@ use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
+use socket2::SockRef;
 use std::borrow::Cow;
 use std::rc::Rc;
 use tokio::io::AsyncRead;
@@ -121,25 +122,29 @@ impl Resource for TcpStreamResource {
 
 impl TcpStreamResource {
   pub fn set_nodelay(self: Rc<Self>, nodelay: bool) -> Result<(), AnyError> {
-    if let Some(wr) = RcRef::map(self, |r| &r.wr).try_borrow() {
-      let stream = wr.as_ref().as_ref();
-      let socket = socket2::SockRef::from(stream);
-
-      return Ok(socket.set_nodelay(nodelay)?);
-    }
-
-    Err(generic_error("Unable to set no delay"))
+    self.map_socket(Box::new(move |socket| Ok(socket.set_nodelay(nodelay)?)))
   }
 
-  pub fn set_keepalive(self: Rc<Self>, keepalive: bool) -> Result<(), AnyError> {
+  pub fn set_keepalive(
+    self: Rc<Self>,
+    keepalive: bool,
+  ) -> Result<(), AnyError> {
+    self
+      .map_socket(Box::new(move |socket| Ok(socket.set_keepalive(keepalive)?)))
+  }
+
+  fn map_socket(
+    self: Rc<Self>,
+    map: Box<dyn FnOnce(SockRef) -> Result<(), AnyError>>,
+  ) -> Result<(), AnyError> {
     if let Some(wr) = RcRef::map(self, |r| &r.wr).try_borrow() {
       let stream = wr.as_ref().as_ref();
       let socket = socket2::SockRef::from(stream);
-      
-      return Ok(socket.set_keepalive(keepalive)?);
+
+      return map(socket);
     }
 
-    Err(generic_error("Unable to set keep alive"))
+    Err(generic_error("Unable to set get resources"))
   }
 }
 
