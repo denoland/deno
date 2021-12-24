@@ -144,7 +144,7 @@ impl TcpStreamResource {
       return map(socket);
     }
 
-    Err(generic_error("Unable to set get resources"))
+    Err(generic_error("Unable to get resources"))
   }
 }
 
