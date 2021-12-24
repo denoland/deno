@@ -745,6 +745,7 @@ mod tests {
   use socket2::SockRef;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
+  use std::path::Path;
   use trust_dns_proto::rr::rdata::mx::MX;
   use trust_dns_proto::rr::rdata::srv::SRV;
   use trust_dns_proto::rr::rdata::txt::TXT;
