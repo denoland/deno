@@ -857,7 +857,7 @@ mod tests {
     }
   }
 
-  #[tokio::test]
+  #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_no_delay() {
     let set_nodelay = Box::new(|state: &mut OpState, rid| {
       op_set_nodelay::<TestPermission>(state, rid, true).unwrap();
@@ -866,10 +866,10 @@ mod tests {
       assert!(socket.nodelay().unwrap());
       assert!(!socket.keepalive().unwrap());
     });
-    check_sockopt(set_nodelay, test_fn).await;
+    check_sockopt(String::from("127.0.0.1:4245"), set_nodelay, test_fn).await;
   }
 
-  #[tokio::test]
+  #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_keepalive() {
     let set_keepalive = Box::new(|state: &mut OpState, rid| {
       op_set_keepalive::<TestPermission>(state, rid, true).unwrap();
@@ -878,13 +878,18 @@ mod tests {
       assert!(!socket.nodelay().unwrap());
       assert!(socket.keepalive().unwrap());
     });
-    check_sockopt(set_keepalive, test_fn).await;
+    check_sockopt(String::from("127.0.0.1:4246"), set_keepalive, test_fn).await;
   }
 
   async fn check_sockopt(
+    addr: String,
     set_sockopt_fn: Box<dyn Fn(&mut OpState, u32)>,
     test_fn: Box<dyn FnOnce(SockRef)>,
   ) {
+    tokio::spawn(async move {
+      let listener = TcpListener::bind(addr).await.unwrap();
+      let _ = listener.accept().await;
+    });
     let my_ext = Extension::builder()
       .state(move |state| {
         state.put(TestPermission {});
@@ -901,7 +906,7 @@ mod tests {
 
     let ip_args = IpListenArgs {
       hostname: String::from("127.0.0.1"),
-      port: 4545,
+      port: 4245,
     };
     let connect_args = ConnectArgs {
       transport: String::from("tcp"),
