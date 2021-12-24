@@ -695,6 +695,7 @@ dependencies = [
  "tempfile",
  "test_util",
  "text-size",
+ "text_lines",
  "tokio",
  "trust-dns-client",
  "trust-dns-server",
