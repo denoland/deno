@@ -250,92 +250,100 @@ impl Kernel {
         return;
       }
     };
-    let major_version = &req_msg.header.version.to_string()[0..1];
-    let res = match (handler_type, major_version) {
-      (HandlerType::Shell, "5") => self.shell_handler(&req_msg).await,
-      (HandlerType::Control, "5") => self.control_handler(&req_msg),
-      (HandlerType::Stdin, "5") => self.stdin_handler(&req_msg),
-      _ => {
-        println!(
-          "No handler for message: '{}' v{}",
-          req_msg.header.msg_type, major_version
-        );
-        return;
-      }
+
+    let comm_ctx = CommContext {
+      session_id: self.metadata.session_id.clone(),
+      message: req_msg,
     };
+
+    println!("XXX handler calling set_state: busy");
+    self.set_state(&comm_ctx, KernelState::Busy).await;
+
+    let major_version = &comm_ctx.message.header.version.to_string()[0..1];
+    let res = match (handler_type, major_version) {
+      // TODO(apowers313) implement new and old Jupyter protocols here
+      (HandlerType::Shell, "5") => self.shell_handler(&comm_ctx).await,
+      (HandlerType::Control, "5") => self.control_handler(&comm_ctx),
+      (HandlerType::Stdin, "5") => self.stdin_handler(&comm_ctx),
+      _ => Err(anyhow!(
+        "No handler for message: '{}' v{}",
+        comm_ctx.message.header.msg_type,
+        major_version
+      )),
+    };
+
+    println!("XXX handler calling set_state: idle");
+    self.set_state(&comm_ctx, KernelState::Idle).await;
 
     match res {
       Ok(_) => return,
       Err(e) => {
-        println!("error handling packet '{}': {}", req_msg.header.msg_type, e);
-        dbg!(req_msg);
+        println!(
+          "Error handling packet '{}': {}",
+          comm_ctx.message.header.msg_type, e
+        );
       }
     };
   }
 
   async fn shell_handler(
     &mut self,
-    req_msg: &RequestMessage,
+    comm_ctx: &CommContext,
   ) -> Result<(), AnyError> {
-    match req_msg.header.msg_type.as_ref() {
-      "kernel_info_request" => self.kernel_info_reply(req_msg).await?,
+    match comm_ctx.message.header.msg_type.as_ref() {
+      "kernel_info_request" => self.kernel_info_reply(comm_ctx).await?,
       _ => {
-        return Err(anyhow!("no handler for msg_id: {}", req_msg.header.msg_id))
+        return Err(anyhow!(
+          "no handler for msg_id: '{}'",
+          comm_ctx.message.header.msg_id
+        ))
       }
     };
 
     Ok(())
   }
 
-  fn control_handler(&self, req_msg: &RequestMessage) -> Result<(), AnyError> {
+  fn control_handler(&self, comm_ctx: &CommContext) -> Result<(), AnyError> {
     todo!()
   }
 
-  fn stdin_handler(&self, req_msg: &RequestMessage) -> Result<(), AnyError> {
+  fn stdin_handler(&self, comm_ctx: &CommContext) -> Result<(), AnyError> {
     todo!()
   }
 
-  async fn set_state(&mut self, state: KernelState, ctx: CommContext) {
+  async fn set_state(&mut self, comm_ctx: &CommContext, state: KernelState) {
+    println!("XXX CALLING SET_STATE");
     if self.state == state {
       return;
     }
 
+    println!("setting state to: {}", state);
     self.state = state;
 
     let now = std::time::SystemTime::now();
     let now: chrono::DateTime<chrono::Utc> = now.into();
     let now = now.to_rfc3339();
 
-    let msg = Message {
-      is_reply: true,
-      r#type: "status".to_string(),
-      header: MessageHeader {
-        msg_id: uuid::Uuid::new_v4().to_string(),
-        session: ctx.session_id.clone(),
-        // FIXME:
-        username: "<TODO>".to_string(),
-        date: now.to_string(),
-        msg_type: "status".to_string(),
-        // TODO: this should be taken from a global,
-        version: "5.3".to_string(),
-      },
-      parent_header: Some(ctx.message.header),
-      session_id: ctx.session_id,
-      metadata: json!({}),
-      content: json!({
-        "execution_state": state.to_string(),
-      }),
+    let s = match state {
+      KernelState::Busy => "busy".to_string(),
+      KernelState::Idle => "idle".to_string(),
+      KernelState::Starting => "starting".to_string(),
     };
-    // ignore any error when announcing changes
-    let _ = self.iopub_comm.send(msg).await;
+
+    let msg = SideEffectMessage::new(
+      &comm_ctx,
+      "status".to_string(),
+      ReplyMetadata::Empty,
+      ReplyContent::Status(KernelStatusContent { execution_state: s }),
+    );
+
+    self.iopub_comm.send(msg).await;
   }
 
   async fn kernel_info_reply(
     &mut self,
-    req_msg: &RequestMessage,
+    comm_ctx: &CommContext,
   ) -> Result<(), AnyError> {
-    dbg!(req_msg);
-
     let content = KernelInfoReplyContent {
       status: String::from("ok"),
       protocol_version: self.metadata.protocol_version.clone(),
@@ -355,8 +363,12 @@ impl Kernel {
       debugger: false,
     };
 
-    let reply =
-      ReplyMessage::try_from((&req_msg.header, "TODO".to_string(), content))?;
+    let reply = ReplyMessage::new(
+      comm_ctx,
+      "kernel_info_reply".to_string(),
+      ReplyMetadata::Empty,
+      ReplyContent::KernelInfo(content),
+    );
 
     self.shell_comm.send(reply).await?;
 
@@ -444,9 +456,9 @@ struct ConnectionSpec {
   key: String,
 }
 
+#[derive(Debug)]
 struct CommContext {
-  message: Message,
-  hmac: String,
+  message: RequestMessage,
   session_id: String,
 }
 
@@ -461,7 +473,7 @@ struct MessageHeader {
 }
 
 impl MessageHeader {
-  fn new(session_id: String) -> Self {
+  fn new(msg_type: String, session_id: String) -> Self {
     let now = std::time::SystemTime::now();
     let now: chrono::DateTime<chrono::Utc> = now.into();
     let now = now.to_rfc3339();
@@ -472,7 +484,7 @@ impl MessageHeader {
       // FIXME:
       username: "<TODO>".to_string(),
       date: now.to_string(),
-      msg_type: "status".to_string(),
+      msg_type,
       // TODO: this should be taken from a global,
       version: "5.3".to_string(),
     }
@@ -509,7 +521,6 @@ impl TryFrom<ZmqMessage> for RequestMessage {
     let header_bytes = zmq_msg.get(2).unwrap();
     let metadata_bytes = zmq_msg.get(4).unwrap();
     let content_bytes = zmq_msg.get(5).unwrap();
-    dbg!(&header_bytes);
 
     let header: MessageHeader = serde_json::from_slice(header_bytes).unwrap();
 
@@ -518,7 +529,10 @@ impl TryFrom<ZmqMessage> for RequestMessage {
       _ => (RequestMetadata::Empty, RequestContent::Empty),
     };
 
-    Ok(RequestMessage::new(header, mc.0, mc.1))
+    let rm = RequestMessage::new(header, mc.0, mc.1);
+    println!("<== RECEIVING: {:#?}", rm);
+
+    Ok(rm)
   }
 }
 
@@ -530,12 +544,17 @@ struct ReplyMessage {
 }
 
 impl ReplyMessage {
-  fn new(parent_header: &MessageHeader, session_id: String) -> Self {
+  fn new(
+    comm_ctx: &CommContext,
+    msg_type: String,
+    metadata: ReplyMetadata,
+    content: ReplyContent,
+  ) -> Self {
     Self {
-      header: MessageHeader::new(session_id),
-      parent_header: parent_header.clone(),
-      metadata: ReplyMetadata::Empty,
-      content: ReplyContent::Empty,
+      header: MessageHeader::new(msg_type, comm_ctx.session_id.clone()),
+      parent_header: comm_ctx.message.header.clone(),
+      metadata,
+      content,
     }
   }
 
@@ -550,6 +569,7 @@ impl ReplyMessage {
     let content = match &self.content {
       ReplyContent::Empty => serde_json::to_string(&json!({})).unwrap(),
       ReplyContent::KernelInfo(c) => serde_json::to_string(&c).unwrap(),
+      ReplyContent::Status(c) => serde_json::to_string(&c).unwrap(),
     };
 
     let hmac =
@@ -561,109 +581,13 @@ impl ReplyMessage {
     zmq_msg.push_back(parent_header.into());
     zmq_msg.push_back(metadata.into());
     zmq_msg.push_back(content.into());
-    println!("+++ SENDING ZMQ MSG: {:#?}", zmq_msg);
+    println!("==> SENDING ZMQ MSG: {:#?}", zmq_msg);
     zmq_msg
   }
 }
 
-// TODO(apowers313) replace TryFrom with ReplyMessage::new
-impl TryFrom<(&MessageHeader, String, KernelInfoReplyContent)>
-  for ReplyMessage
-{
-  type Error = AnyError;
-
-  fn try_from(
-    args: (&MessageHeader, String, KernelInfoReplyContent),
-  ) -> Result<Self, AnyError> {
-    let hdr = args.0;
-    let session_id = args.1;
-    let content = args.2;
-    let mut m = ReplyMessage::new(hdr, session_id);
-    m.header.msg_type = String::from("kernel_info_reply");
-    m.content = ReplyContent::KernelInfo(content);
-
-    Ok(m)
-  }
-}
-
-struct Message {
-  is_reply: bool,
-  r#type: String,
-  header: MessageHeader,
-  parent_header: Option<MessageHeader>,
-  metadata: Value,
-  content: Value,
-  session_id: String,
-}
-
-impl Message {
-  fn new() -> Self {
-    todo!()
-  }
-
-  fn serialize(&self, hmac_key: &hmac::Key) -> ZmqMessage {
-    let header = serde_json::to_string(&self.header).unwrap();
-    let parent_header = if let Some(p_header) = self.parent_header.as_ref() {
-      serde_json::to_string(p_header).unwrap()
-    } else {
-      serde_json::to_string(&json!({})).unwrap()
-    };
-    let metadata = serde_json::to_string(&self.metadata).unwrap();
-    let content = serde_json::to_string(&self.content).unwrap();
-
-    let hmac =
-      hmac_sign(hmac_key, &header, &parent_header, &metadata, &content);
-
-    let mut zmq_msg = ZmqMessage::from(DELIMETER);
-    zmq_msg.push_back(hmac.into());
-    zmq_msg.push_back(header.into());
-    zmq_msg.push_back(parent_header.into());
-    zmq_msg.push_back(metadata.into());
-    zmq_msg.push_back(content.into());
-    zmq_msg
-  }
-
-  fn from_zmq_message(
-    zmq_msg: ZmqMessage,
-    hmac_key: &hmac::Key,
-  ) -> Result<Self, AnyError> {
-    // TODO(bartomieju): can these unwraps be better handled?
-    let expected_signature_bytes = zmq_msg.get(0).unwrap();
-    let header_bytes = zmq_msg.get(1).unwrap();
-    let parent_header_bytes = zmq_msg.get(2).unwrap();
-    let metadata_bytes = zmq_msg.get(3).unwrap();
-    let content_bytes = zmq_msg.get(4).unwrap();
-
-    hmac_verify(
-      hmac_key,
-      expected_signature_bytes,
-      header_bytes,
-      parent_header_bytes,
-      metadata_bytes,
-      content_bytes,
-    )?;
-
-    // TODO(bartomieju): can these unwraps be better handled?
-    let header: MessageHeader = serde_json::from_slice(header_bytes).unwrap();
-    let parent_header: MessageHeader =
-      serde_json::from_slice(parent_header_bytes).unwrap();
-    let metadata: Value = serde_json::from_slice(metadata_bytes).unwrap();
-    let content: Value = serde_json::from_slice(content_bytes).unwrap();
-
-    let msg = Message {
-      is_reply: false,
-      r#type: header.msg_type.clone(),
-      header,
-      parent_header: Some(parent_header),
-      metadata,
-      content,
-      // FIXME:
-      session_id: "".to_string(),
-    };
-
-    Ok(msg)
-  }
-}
+// side effects messages sent on IOPub look lik ReplyMessages (for now?)
+type SideEffectMessage = ReplyMessage;
 
 struct PubComm {
   conn_str: String,
@@ -672,6 +596,7 @@ struct PubComm {
   socket: zeromq::PubSocket,
 }
 
+// TODO(apowers313) connect and send look like traits shared with DealerComm
 impl PubComm {
   pub fn new(
     conn_str: String,
@@ -693,9 +618,9 @@ impl PubComm {
     Ok(())
   }
 
-  pub async fn send(&mut self, msg: Message) -> Result<(), AnyError> {
+  pub async fn send(&mut self, msg: SideEffectMessage) -> Result<(), AnyError> {
     let zmq_msg = msg.serialize(&self.hmac_key);
-    println!("==> SENDING: {:#?}", zmq_msg);
+    println!(">>> ZMQ SENDING: {:#?}", zmq_msg);
     self.socket.send(zmq_msg).await?;
     Ok(())
   }
@@ -734,7 +659,7 @@ impl DealerComm {
 
   pub async fn recv(&mut self) -> Result<RequestMessage, AnyError> {
     let zmq_msg = self.socket.recv().await?;
-    dbg!(&zmq_msg);
+    println!("<<< ZMQ RECEIVING: {:#?}", zmq_msg);
 
     hmac_verify(
       &self.hmac_key,
@@ -752,6 +677,7 @@ impl DealerComm {
 
   pub async fn send(&mut self, msg: ReplyMessage) -> Result<(), AnyError> {
     let zmq_msg = msg.serialize(&self.hmac_key);
+    println!(">>> ZMQ SENDING: {:#?}", zmq_msg);
     self.socket.send(zmq_msg).await?;
     Ok(())
   }
@@ -767,8 +693,7 @@ async fn create_zmq_reply(name: &str, conn_str: &str) -> Result<(), AnyError> {
 
   loop {
     let msg = sock.recv().await?;
-    dbg!(&msg);
-    println!("{} got packet!", name);
+    println!("*** '{}' got packet!", name);
   }
 }
 
@@ -784,13 +709,8 @@ fn parse_zmq_packet(data: &ZmqMessage) -> Result<(), AnyError> {
   let _metadata = data.get(4);
   let _content = data.get(5);
 
-  println!("header:");
-  dbg!(header);
   let header_str = std::str::from_utf8(header).unwrap();
   let header_value: MessageHeader = serde_json::from_str(header_str).unwrap();
-  println!("header_value");
-  dbg!(&header_value);
-  // validate_header(&header_value)?;
 
   Ok(())
 }
@@ -901,7 +821,10 @@ enum RequestContent {
 #[derive(Debug, Serialize, Deserialize)]
 enum ReplyContent {
   Empty,
+  // Reply Messages
   KernelInfo(KernelInfoReplyContent),
+  // Side Effects
+  Status(KernelStatusContent),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1104,9 +1027,10 @@ struct ErrorStatusContent {
 }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#request-reply
-struct StatusContent {
-  status: String, // "ok" | "abort"
-}
+// #[derive(Debug, Serialize, Deserialize)]
+// struct StatusContent {
+//   status: String, // "ok" | "abort"
+// }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#streams-stdout-stderr-etc
 struct StreamContent {
@@ -1144,6 +1068,7 @@ struct ErrorContent {
 }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-status
+#[derive(Debug, Serialize, Deserialize)]
 struct KernelStatusContent {
   execution_state: String, // "busy" | "idle" | "starting"
 }
