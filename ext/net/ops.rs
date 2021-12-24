@@ -886,6 +886,7 @@ mod tests {
     set_sockopt_fn: Box<dyn Fn(&mut OpState, u32)>,
     test_fn: Box<dyn FnOnce(SockRef)>,
   ) {
+    let clone_addr = addr.clone();
     tokio::spawn(async move {
       let listener = TcpListener::bind(addr).await.unwrap();
       let _ = listener.accept().await;
@@ -904,9 +905,10 @@ mod tests {
 
     let conn_state = runtime.op_state();
 
+    let server_addr: Vec<&str> = clone_addr.split(':').collect();
     let ip_args = IpListenArgs {
-      hostname: String::from("127.0.0.1"),
-      port: 4245,
+      hostname: String::from(server_addr[0]),
+      port: server_addr[1].parse().unwrap(),
     };
     let connect_args = ConnectArgs {
       transport: String::from("tcp"),
