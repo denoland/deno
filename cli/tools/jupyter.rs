@@ -18,8 +18,10 @@ use deno_core::serde_json::Value;
 use ring::hmac;
 use std::collections::HashMap;
 use std::env::current_exe;
+use std::time::Duration;
 use tempfile::TempDir;
 use tokio::join;
+use tokio::time::sleep;
 use zeromq::prelude::*;
 use zeromq::ZmqMessage;
 
@@ -83,7 +85,7 @@ pub async fn kernel(
   let conn_file_path = jupyter_flags.conn_file.unwrap();
 
   let mut kernel = Kernel::new(conn_file_path.to_str().unwrap());
-  println!("[DENO] kernel created: {:#?}", kernel.metadata.session_id);
+  println!("[DENO] kernel created: {:#?}", kernel.session_id);
 
   println!("running kernel...");
   kernel.run().await;
@@ -117,6 +119,8 @@ struct Kernel {
   shell_comm: DealerComm,
   control_comm: DealerComm,
   stdin_comm: DealerComm,
+  session_id: String,
+  execution_count: u32,
 }
 
 enum HandlerType {
@@ -147,6 +151,8 @@ impl Kernel {
     };
     println!("[DENO] parsed conn file: {:#?}", conn_spec);
 
+    let execution_count = 0;
+    let session_id = uuid::Uuid::new_v4().to_string();
     let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, conn_spec.key.as_ref());
     let metadata = KernelMetadata::default();
     let iopub_comm = PubComm::new(
@@ -155,7 +161,7 @@ impl Kernel {
         &conn_spec.ip,
         conn_spec.iopub_port,
       ),
-      metadata.session_id.clone(),
+      session_id.clone(),
       hmac_key.clone(),
     );
     let shell_comm = DealerComm::new(
@@ -165,7 +171,7 @@ impl Kernel {
         &conn_spec.ip,
         conn_spec.shell_port,
       ),
-      metadata.session_id.clone(),
+      session_id.clone(),
       hmac_key.clone(),
     );
     let control_comm = DealerComm::new(
@@ -175,7 +181,7 @@ impl Kernel {
         &conn_spec.ip,
         conn_spec.control_port,
       ),
-      metadata.session_id.clone(),
+      session_id.clone(),
       hmac_key.clone(),
     );
     let stdin_comm = DealerComm::new(
@@ -185,7 +191,7 @@ impl Kernel {
         &conn_spec.ip,
         conn_spec.stdin_port,
       ),
-      metadata.session_id.clone(),
+      session_id.clone(),
       hmac_key.clone(),
     );
 
@@ -200,6 +206,8 @@ impl Kernel {
       shell_comm,
       control_comm,
       stdin_comm,
+      session_id,
+      execution_count,
     };
 
     s
@@ -223,15 +231,15 @@ impl Kernel {
     loop {
       tokio::select! {
         shell_msg = self.shell_comm.recv() => {
-          println!("shell got packet: {:#?}", shell_msg);
+          // println!("shell got packet: {:#?}", shell_msg);
           self.handler(HandlerType::Shell, shell_msg).await;
         },
         control_msg = self.control_comm.recv() => {
-          println!("control got packet: {:#?}", control_msg);
+          // println!("control got packet: {:#?}", control_msg);
           self.handler(HandlerType::Control, control_msg);
         },
         stdin_msg = self.stdin_comm.recv() => {
-          println!("stdin got packet: {:#?}", stdin_msg);
+          // println!("stdin got packet: {:#?}", stdin_msg);
           self.handler(HandlerType::Stdin, stdin_msg);
         },
       }
@@ -252,12 +260,17 @@ impl Kernel {
     };
 
     let comm_ctx = CommContext {
-      session_id: self.metadata.session_id.clone(),
+      session_id: self.session_id.clone(),
       message: req_msg,
     };
 
-    println!("XXX handler calling set_state: busy");
-    self.set_state(&comm_ctx, KernelState::Busy).await;
+    match self.set_state(&comm_ctx, KernelState::Busy).await {
+      Ok(_) => {}
+      Err(e) => {
+        println!("error setting busy state: {}", e);
+        return;
+      }
+    };
 
     let major_version = &comm_ctx.message.header.version.to_string()[0..1];
     let res = match (handler_type, major_version) {
@@ -272,16 +285,21 @@ impl Kernel {
       )),
     };
 
-    println!("XXX handler calling set_state: idle");
-    self.set_state(&comm_ctx, KernelState::Idle).await;
-
     match res {
-      Ok(_) => return,
+      Ok(_) => {}
       Err(e) => {
         println!(
           "Error handling packet '{}': {}",
           comm_ctx.message.header.msg_type, e
         );
+      }
+    };
+
+    match self.set_state(&comm_ctx, KernelState::Idle).await {
+      Ok(_) => {}
+      Err(e) => {
+        println!("error setting idle state: {}", e);
+        return;
       }
     };
   }
@@ -292,6 +310,7 @@ impl Kernel {
   ) -> Result<(), AnyError> {
     match comm_ctx.message.header.msg_type.as_ref() {
       "kernel_info_request" => self.kernel_info_reply(comm_ctx).await?,
+      "execute_request" => self.execute_request(comm_ctx).await?,
       _ => {
         return Err(anyhow!(
           "no handler for msg_id: '{}'",
@@ -311,13 +330,15 @@ impl Kernel {
     todo!()
   }
 
-  async fn set_state(&mut self, comm_ctx: &CommContext, state: KernelState) {
-    println!("XXX CALLING SET_STATE");
+  async fn set_state(
+    &mut self,
+    comm_ctx: &CommContext,
+    state: KernelState,
+  ) -> Result<(), AnyError> {
     if self.state == state {
-      return;
+      return Ok(());
     }
 
-    println!("setting state to: {}", state);
     self.state = state;
 
     let now = std::time::SystemTime::now();
@@ -337,7 +358,7 @@ impl Kernel {
       ReplyContent::Status(KernelStatusContent { execution_state: s }),
     );
 
-    self.iopub_comm.send(msg).await;
+    self.iopub_comm.send(msg).await
   }
 
   async fn kernel_info_reply(
@@ -354,9 +375,10 @@ impl Kernel {
         version: self.metadata.language_version.clone(),
         mimetype: self.metadata.mime.clone(),
         file_extension: self.metadata.file_ext.clone(),
-        codemirror_mode: None,
-        nbconvert_exporter: None,
-        pygments_lexer: None,
+        // TODO: "None" gets translated to "null"
+        // codemirror_mode: None,
+        // nbconvert_exporter: None,
+        // pygments_lexer: None,
       },
       help_links: vec![], // TODO(apowers313) dig up help links
       banner: self.metadata.banner.clone(),
@@ -375,36 +397,125 @@ impl Kernel {
     Ok(())
   }
 
-  // TODO(bartlomieju): feels like this info should be a separate struct
-  // instead of KernelMetadata
-  fn get_kernel_info(&self) -> Value {
-    json!({
-      "status": "ok",
-      // TODO: all of these should be taken from globals,
-      "protocol_version": self.metadata.protocol_version,
-      "implementation_version": self.metadata.kernel_version,
-      "implementation": self.metadata.implementation_name,
-      "language_info": {
-        "name": self.metadata.language,
-        "version": self.metadata.language_version,
-        "mime": self.metadata.mime,
-        "file_extension": self.metadata.file_ext,
-      },
-      "help_links": [{
-        "text": self.metadata.help_text,
-        "url": self.metadata.help_url
-      }],
-      "banner": self.metadata.banner,
-      "debugger": false
-    })
+  async fn execute_request(
+    &mut self,
+    comm_ctx: &CommContext,
+  ) -> Result<(), AnyError> {
+    self.execution_count = self.execution_count + 1;
+
+    let exec_request_content = match &comm_ctx.message.content {
+      RequestContent::Execute(c) => c,
+      _ => return Err(anyhow!("malformed execution content")),
+    };
+
+    let input_msg = SideEffectMessage::new(
+      comm_ctx,
+      "execute_input".to_string(),
+      ReplyMetadata::Empty,
+      ReplyContent::ExecuteInput(ExecuteInputContent {
+        code: exec_request_content.code.clone(),
+        execution_count: self.execution_count,
+      }),
+    );
+    self.iopub_comm.send(input_msg).await?;
+
+    // TODO(apowers313) it executes code... just not the code you requested :)
+    // hook in the real REPL request to execute code here
+    let result = self.fake_task(&comm_ctx, "foo".to_string()).await?;
+
+    self.exec_done(&comm_ctx, result).await?;
+
+    Ok(())
   }
 
-  fn get_comm_info() -> Value {
-    json!({
-      "status": "ok",
-      "comms": {}
-    })
+  async fn exec_done(
+    &mut self,
+    comm_ctx: &CommContext,
+    result: ExecResult,
+  ) -> Result<(), AnyError> {
+    match result {
+      ExecResult::OkString(v) => {
+        println!("sending exec result");
+        let msg = ReplyMessage::new(
+          comm_ctx,
+          "execute_reply".to_string(),
+          ReplyMetadata::Empty,
+          ReplyContent::ExecuteReply(ExecuteReplyContent {
+            status: "ok".to_string(),
+            execution_count: self.execution_count,
+            // TODO: "None" gets translated to "null" by serde_json
+            // payload: None,
+            // user_expressions: None,
+          }),
+        );
+        self.shell_comm.send(msg).await?;
+      }
+      ExecResult::Error(e) => {
+        println!("Not implemented: sending exec ERROR");
+      }
+    };
+
+    // TODO(apowers313) send(ExecuteResult)
+
+    Ok(())
   }
+
+  async fn send_stdio(
+    &mut self,
+    comm_ctx: &CommContext,
+    t: StdioType,
+    text: &String,
+  ) -> Result<(), AnyError> {
+    let content = StreamContent {
+      name: match t {
+        StdioType::Stdout => "stdout".to_string(),
+        StdioType::Stderr => "stderr".to_string(),
+      },
+      text: text.clone(),
+    };
+
+    let msg = SideEffectMessage::new(
+      &comm_ctx,
+      "stream".to_string(),
+      ReplyMetadata::Empty,
+      ReplyContent::Stream(content),
+    );
+
+    self.iopub_comm.send(msg).await?;
+
+    Ok(())
+  }
+
+  async fn fake_task(
+    &mut self,
+    comm_ctx: &CommContext,
+    arg: String,
+  ) -> Result<ExecResult, AnyError> {
+    for i in 0..6 {
+      sleep(Duration::from_millis(500)).await;
+      println!("ping! {}", &arg);
+      self
+        .send_stdio(comm_ctx, StdioType::Stdout, &format!("ping! {}\n", i))
+        .await?;
+    }
+
+    // TODO(apowers313) result should be any valid JavaScript value
+    Ok(ExecResult::OkString("fake result".to_string()))
+  }
+}
+
+enum ExecResult {
+  OkString(String),
+  // TODO(apowers313)
+  // OkValue(Value),
+  // OkDisplayData(DisplayDataContent),
+  Error(ExecError),
+}
+
+struct ExecError {
+  err_name: String,
+  err_value: String,
+  stack_trace: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -419,7 +530,6 @@ struct KernelMetadata {
   language: String,
   mime: String,
   protocol_version: String,
-  session_id: String,
 }
 
 impl Default for KernelMetadata {
@@ -438,7 +548,6 @@ impl Default for KernelMetadata {
       // FIXME:
       mime: "text/x.typescript".to_string(),
       protocol_version: "5.3".to_string(),
-      session_id: uuid::Uuid::new_v4().to_string(),
     }
   }
 }
@@ -467,7 +576,9 @@ struct MessageHeader {
   msg_id: String,
   session: String,
   username: String,
-  date: String,
+  // TODO(apowers313) -- date as an Option is to address a Jupyter bug
+  // see also: https://github.com/jupyter/notebook/issues/6257
+  date: Option<String>,
   msg_type: String,
   version: String,
 }
@@ -483,7 +594,7 @@ impl MessageHeader {
       session: session_id.clone(),
       // FIXME:
       username: "<TODO>".to_string(),
-      date: now.to_string(),
+      date: Some(now.to_string()),
       msg_type,
       // TODO: this should be taken from a global,
       version: "5.3".to_string(),
@@ -518,14 +629,20 @@ impl TryFrom<ZmqMessage> for RequestMessage {
   type Error = AnyError;
 
   fn try_from(zmq_msg: ZmqMessage) -> Result<Self, AnyError> {
+    // TODO(apowers313) make all unwraps recoverable errors
     let header_bytes = zmq_msg.get(2).unwrap();
     let metadata_bytes = zmq_msg.get(4).unwrap();
     let content_bytes = zmq_msg.get(5).unwrap();
 
     let header: MessageHeader = serde_json::from_slice(header_bytes).unwrap();
 
+    // TODO(apowers313) refactor to an unwrap function to handles unwrapping based on different protocol versions
     let mc = match header.msg_type.as_ref() {
       "kernel_info_request" => (RequestMetadata::Empty, RequestContent::Empty),
+      "execute_request" => (
+        RequestMetadata::Empty,
+        RequestContent::Execute(serde_json::from_slice(content_bytes).unwrap()),
+      ),
       _ => (RequestMetadata::Empty, RequestContent::Empty),
     };
 
@@ -568,8 +685,14 @@ impl ReplyMessage {
     };
     let content = match &self.content {
       ReplyContent::Empty => serde_json::to_string(&json!({})).unwrap(),
+      // reply messages
       ReplyContent::KernelInfo(c) => serde_json::to_string(&c).unwrap(),
+      ReplyContent::ExecuteReply(c) => serde_json::to_string(&c).unwrap(),
+      // side effects
       ReplyContent::Status(c) => serde_json::to_string(&c).unwrap(),
+      ReplyContent::Stream(c) => serde_json::to_string(&c).unwrap(),
+      ReplyContent::ExecuteInput(c) => serde_json::to_string(&c).unwrap(),
+      ReplyContent::ExecuteResult(c) => serde_json::to_string(&c).unwrap(),
     };
 
     let hmac =
@@ -816,6 +939,7 @@ fn hmac_sign_test() {
 #[derive(Debug, Serialize, Deserialize)]
 enum RequestContent {
   Empty,
+  Execute(ExecuteRequestContent),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -823,8 +947,12 @@ enum ReplyContent {
   Empty,
   // Reply Messages
   KernelInfo(KernelInfoReplyContent),
+  ExecuteReply(ExecuteReplyContent),
   // Side Effects
   Status(KernelStatusContent),
+  Stream(StreamContent),
+  ExecuteInput(ExecuteInputContent),
+  ExecuteResult(ExecuteResultContent),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -839,6 +967,7 @@ enum ReplyMetadata {
 }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#execute
+#[derive(Debug, Serialize, Deserialize)]
 struct ExecuteRequestContent {
   code: String,
   silent: bool,
@@ -849,11 +978,13 @@ struct ExecuteRequestContent {
 }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#execution-results
+#[derive(Debug, Serialize, Deserialize)]
 struct ExecuteReplyContent {
   status: String,
   execution_count: u32,
-  payload: Option<Vec<String>>,
-  user_expressions: Option<Value>,
+  // TODO: "None" gets translated to "null"
+  // payload: Option<Vec<String>>,
+  // user_expressions: Option<Value>,
 }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#introspection
@@ -948,9 +1079,10 @@ struct KernelLanguageInfo {
   version: String,
   mimetype: String,
   file_extension: String,
-  pygments_lexer: Option<String>,
-  codemirror_mode: Option<Value>,
-  nbconvert_exporter: Option<String>,
+  // TODO: "None" gets translated to "null"
+  // pygments_lexer: Option<String>,
+  // codemirror_mode: Option<Value>,
+  // nbconvert_exporter: Option<String>,
 }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
@@ -1033,9 +1165,15 @@ struct ErrorStatusContent {
 // }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#streams-stdout-stderr-etc
+#[derive(Debug, Serialize, Deserialize)]
 struct StreamContent {
   name: String, // "stdout" | "stderr"
   text: String,
+}
+
+enum StdioType {
+  Stdout,
+  Stderr,
 }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#display-data
@@ -1049,12 +1187,14 @@ struct DisplayDataContent {
 // struct UpdateDisplayDataContent {} // same as DisplayDataContent
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#code-inputs
+#[derive(Debug, Serialize, Deserialize)]
 struct ExecuteInputContent {
   code: String,
   execution_count: u32,
 }
 
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#id6
+#[derive(Debug, Serialize, Deserialize)]
 struct ExecuteResultContent {
   execution_count: u32,
   data: Option<Value>,
