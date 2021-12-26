@@ -192,7 +192,7 @@ impl Kernel {
         conn_spec.stdin_port,
       ),
       session_id.clone(),
-      hmac_key.clone(),
+      hmac_key,
     );
 
     let hb_conn_str =
@@ -299,7 +299,6 @@ impl Kernel {
       Ok(_) => {}
       Err(e) => {
         println!("error setting idle state: {}", e);
-        return;
       }
     };
   }
@@ -352,7 +351,7 @@ impl Kernel {
     };
 
     let msg = SideEffectMessage::new(
-      &comm_ctx,
+      comm_ctx,
       "status".to_string(),
       ReplyMetadata::Empty,
       ReplyContent::Status(KernelStatusContent { execution_state: s }),
@@ -401,7 +400,7 @@ impl Kernel {
     &mut self,
     comm_ctx: &CommContext,
   ) -> Result<(), AnyError> {
-    self.execution_count = self.execution_count + 1;
+    self.execution_count += 1;
 
     let exec_request_content = match &comm_ctx.message.content {
       RequestContent::Execute(c) => c,
@@ -421,9 +420,9 @@ impl Kernel {
 
     // TODO(apowers313) it executes code... just not the code you requested :)
     // hook in the real REPL request to execute code here
-    let result = self.fake_task(&comm_ctx, "foo".to_string()).await?;
+    let result = self.fake_task(comm_ctx, "foo".to_string()).await?;
 
-    self.exec_done(&comm_ctx, result).await?;
+    self.exec_done(comm_ctx, result).await?;
 
     Ok(())
   }
@@ -464,18 +463,18 @@ impl Kernel {
     &mut self,
     comm_ctx: &CommContext,
     t: StdioType,
-    text: &String,
+    text: &str,
   ) -> Result<(), AnyError> {
     let content = StreamContent {
       name: match t {
         StdioType::Stdout => "stdout".to_string(),
         StdioType::Stderr => "stderr".to_string(),
       },
-      text: text.clone(),
+      text: text.to_string(),
     };
 
     let msg = SideEffectMessage::new(
-      &comm_ctx,
+      comm_ctx,
       "stream".to_string(),
       ReplyMetadata::Empty,
       ReplyContent::Stream(content),
@@ -591,10 +590,10 @@ impl MessageHeader {
 
     Self {
       msg_id: uuid::Uuid::new_v4().to_string(),
-      session: session_id.clone(),
+      session: session_id,
       // FIXME:
       username: "<TODO>".to_string(),
-      date: Some(now.to_string()),
+      date: Some(now),
       msg_type,
       // TODO: this should be taken from a global,
       version: "5.3".to_string(),
@@ -822,20 +821,6 @@ async fn create_zmq_reply(name: &str, conn_str: &str) -> Result<(), AnyError> {
 
 fn create_conn_str(transport: &str, ip: &str, port: u32) -> String {
   format!("{}://{}:{}", transport, ip, port)
-}
-
-fn parse_zmq_packet(data: &ZmqMessage) -> Result<(), AnyError> {
-  let _delim = data.get(0);
-  let _hmac = data.get(1);
-  let header = data.get(2).unwrap();
-  let _parent_header = data.get(3);
-  let _metadata = data.get(4);
-  let _content = data.get(5);
-
-  let header_str = std::str::from_utf8(header).unwrap();
-  let header_value: MessageHeader = serde_json::from_str(header_str).unwrap();
-
-  Ok(())
 }
 
 fn hmac_sign(
