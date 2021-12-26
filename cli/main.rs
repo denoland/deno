@@ -562,11 +562,7 @@ async fn jupyter_command(
     return Ok(0);
   }
 
-  let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
-  let permissions = Permissions::from_options(&flags.clone().into());
-  let ps = ProcState::build(flags.clone()).await?;
-  let worker = create_main_worker(&ps, main_module.clone(), permissions, None);
-  tools::jupyter::kernel(flags, jupyter_flags, worker).await?;
+  tools::jupyter::kernel(flags, jupyter_flags).await?;
 
   Ok(0)
 }

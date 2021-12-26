@@ -3,8 +3,10 @@
 // TODO(bartlomieju): remove me
 #![allow(unused)]
 
+use crate::create_main_worker;
 use crate::flags::Flags;
 use crate::flags::JupyterFlags;
+use crate::proc_state::ProcState;
 use crate::tools::repl::EvaluationOutput;
 use crate::tools::repl::ReplSession;
 use data_encoding::HEXLOWER;
@@ -12,11 +14,13 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use ring::hmac;
 use std::collections::HashMap;
@@ -39,9 +43,8 @@ pub use install::install;
 use message_types::*;
 
 pub async fn kernel(
-  _flags: Flags,
+  flags: Flags,
   jupyter_flags: JupyterFlags,
-  worker: MainWorker,
 ) -> Result<(), AnyError> {
   if jupyter_flags.conn_file.is_none() {
     return Err(generic_error("Missing --conn flag"));
@@ -49,8 +52,7 @@ pub async fn kernel(
 
   let conn_file_path = jupyter_flags.conn_file.unwrap();
 
-  let repl_session = ReplSession::initialize(worker).await?;
-  let mut kernel = Kernel::new(conn_file_path.to_str().unwrap(), repl_session)?;
+  let mut kernel = Kernel::new(flags, conn_file_path.to_str().unwrap()).await?;
   println!("[DENO] kernel created: {:#?}", kernel.session_id);
 
   println!("running kernel...");
@@ -97,10 +99,7 @@ enum HandlerType {
 }
 
 impl Kernel {
-  fn new(
-    conn_file_path: &str,
-    repl_session: ReplSession,
-  ) -> Result<Self, AnyError> {
+  async fn new(flags: Flags, conn_file_path: &str) -> Result<Self, AnyError> {
     let conn_file =
       std::fs::read_to_string(conn_file_path).with_context(|| {
         format!("Couldn't read connection file: {}", conn_file_path)
@@ -141,6 +140,14 @@ impl Kernel {
     );
 
     let hb_conn_str = create_conn_str(&spec.transport, &spec.ip, spec.hb_port);
+
+    let main_module = resolve_url_or_path("./$deno$jupyter.ts").unwrap();
+    // TODO(bartlomieju): should we run with all permissions?
+    let permissions = Permissions::allow_all();
+    let ps = ProcState::build(flags.clone()).await?;
+    let worker =
+      create_main_worker(&ps, main_module.clone(), permissions, None);
+    let repl_session = ReplSession::initialize(worker).await?;
 
     let kernel = Self {
       metadata,
