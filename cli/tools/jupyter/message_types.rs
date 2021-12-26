@@ -13,7 +13,7 @@ use zeromq::ZmqMessage;
 
 const DELIMITER: &str = "<IDS|MSG>";
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RequestMessage {
   pub header: MessageHeader,
   pub parent_header: Option<()>,
@@ -123,7 +123,7 @@ impl ReplyMessage {
 // side effects messages sent on IOPub look lik ReplyMessages (for now?)
 pub type SideEffectMessage = ReplyMessage;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CommContext {
   pub message: RequestMessage,
   pub session_id: String,
@@ -181,7 +181,7 @@ impl MessageHeader {
 // "comm_info_reply" /// https://jupyter-client.readthedocs.io/en/latest/messaging.html#comm-info
 // "kernel_info_reply" /// https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-info
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RequestContent {
   Empty,
   Execute(ExecuteRequestContent),
@@ -200,7 +200,7 @@ pub enum ReplyContent {
   ExecuteResult(ExecuteResultContent),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RequestMetadata {
   Empty,
   Unknown(Value),
@@ -212,7 +212,7 @@ pub enum ReplyMetadata {
 }
 
 //// https://jupyter-client.readthedocs.io/en/latest/messaging.html#execute
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExecuteRequestContent {
   pub code: String,
   pub silent: bool,

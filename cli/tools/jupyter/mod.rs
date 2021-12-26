@@ -14,12 +14,20 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures::channel::mpsc;
+use deno_core::futures::channel::mpsc::UnboundedReceiver;
+use deno_core::futures::channel::mpsc::UnboundedSender;
+use deno_core::futures::SinkExt;
+use deno_core::futures::StreamExt;
+use deno_core::op_sync;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::JsRuntime;
+use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use ring::hmac;
@@ -90,12 +98,38 @@ struct Kernel {
   session_id: String,
   execution_count: u32,
   repl_session: ReplSession,
+  stdio_rx: StdioProxyReceiver,
+  last_comm_ctx: Option<CommContext>,
 }
 
 enum HandlerType {
   Shell,
   Control,
   Stdin,
+}
+
+type StdioProxySender = UnboundedSender<(StdioType, String)>;
+type StdioProxyReceiver = UnboundedReceiver<(StdioType, String)>;
+
+fn init(rt: &mut JsRuntime) {
+  rt.overwrite_op("op_print", op_sync(op_print));
+}
+
+pub fn op_print(
+  state: &mut OpState,
+  msg: String,
+  is_err: bool,
+) -> Result<(), AnyError> {
+  let mut sender = state.borrow_mut::<StdioProxySender>();
+
+  if is_err {
+    let r = sender.unbounded_send((StdioType::Stderr, msg));
+    eprintln!("stdio result {:#?}", r);
+  } else {
+    let r = sender.unbounded_send((StdioType::Stdout, msg));
+    eprintln!("stdio result {:#?}", r);
+  }
+  Ok(())
 }
 
 impl Kernel {
@@ -145,8 +179,14 @@ impl Kernel {
     // TODO(bartlomieju): should we run with all permissions?
     let permissions = Permissions::allow_all();
     let ps = ProcState::build(flags.clone()).await?;
-    let worker =
-      create_main_worker(&ps, main_module.clone(), permissions, None);
+    let mut worker =
+      create_main_worker(&ps, main_module.clone(), permissions, Some(&init));
+    let (stdio_tx, stdio_rx) = mpsc::unbounded();
+    worker
+      .js_runtime
+      .op_state()
+      .borrow_mut()
+      .put::<StdioProxySender>(stdio_tx);
     let repl_session = ReplSession::initialize(worker).await?;
 
     let kernel = Self {
@@ -160,6 +200,8 @@ impl Kernel {
       session_id,
       execution_count,
       repl_session,
+      stdio_rx,
+      last_comm_ctx: None,
     };
 
     Ok(kernel)
@@ -191,6 +233,29 @@ impl Kernel {
         stdin_msg = self.stdin_comm.recv() => {
           self.handler(HandlerType::Stdin, stdin_msg);
         },
+        maybe_stdio_proxy_msg = self.stdio_rx.next() => {
+            println!("Received stdio message {:#?}", maybe_stdio_proxy_msg);
+            if let Some(stdio_proxy_msg) = maybe_stdio_proxy_msg {
+                if let Some(comm_ctx) = self.last_comm_ctx.as_ref() {
+                    let (t, content) = stdio_proxy_msg;
+                    let msg = SideEffectMessage::new(
+                        comm_ctx,
+                        "stream",
+                        ReplyMetadata::Empty,
+                        ReplyContent::Stream(StreamContent {
+                            name: match t {
+                                StdioType::Stdout => "stdout".to_string(),
+                                StdioType::Stderr => "stderr".to_string(),
+                            },
+                            text: content,
+                        }),
+                    );
+                    self.iopub_comm.send(msg).await?;
+                } else {
+                    println!("Received stdio message, but there is no last CommContext: {:#?}", stdio_proxy_msg.1);
+                }
+            }
+        }
       }
     }
   }
@@ -212,6 +277,7 @@ impl Kernel {
       session_id: self.session_id.clone(),
       message: req_msg,
     };
+    self.last_comm_ctx = Some(comm_ctx.clone());
 
     match self.set_state(&comm_ctx, KernelState::Busy).await {
       Ok(_) => {}
@@ -516,6 +582,7 @@ fn create_conn_str(transport: &str, ip: &str, port: u32) -> String {
   format!("{}://{}:{}", transport, ip, port)
 }
 
+#[derive(Debug)]
 enum StdioType {
   Stdout,
   Stderr,
