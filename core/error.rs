@@ -92,6 +92,7 @@ pub fn get_custom_error_class(error: &Error) -> Option<&'static str> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct JsError {
   pub message: String,
+  pub cause: Option<String>,
   pub source_line: Option<String>,
   pub script_resource_name: Option<String>,
   pub line_number: Option<i64>,
@@ -161,6 +162,7 @@ fn get_property<'a>(
 pub(crate) struct NativeJsError {
   pub name: Option<String>,
   pub message: Option<String>,
+  pub cause: Option<String>,
   // Warning! .stack is special so handled by itself
   // stack: Option<String>,
 }
@@ -180,53 +182,62 @@ impl JsError {
 
     let msg = v8::Exception::create_message(scope, exception);
 
-    let (message, frames, stack) = if is_instance_of_error(scope, exception) {
-      // The exception is a JS Error object.
-      let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
+    let (message, frames, stack, cause) =
+      if is_instance_of_error(scope, exception) {
+        // The exception is a JS Error object.
+        let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
 
-      let e: NativeJsError =
-        serde_v8::from_v8(scope, exception.into()).unwrap();
-      // Get the message by formatting error.name and error.message.
-      let name = e.name.unwrap_or_else(|| "Error".to_string());
-      let message_prop = e.message.unwrap_or_else(|| "".to_string());
-      let message = if !name.is_empty() && !message_prop.is_empty() {
-        format!("Uncaught {}: {}", name, message_prop)
-      } else if !name.is_empty() {
-        format!("Uncaught {}", name)
-      } else if !message_prop.is_empty() {
-        format!("Uncaught {}", message_prop)
+        let e: NativeJsError =
+          serde_v8::from_v8(scope, exception.into()).unwrap();
+        // Get the message by formatting error.name and error.message.
+        let name = e.name.unwrap_or_else(|| "Error".to_string());
+        let message_prop = e.message.unwrap_or_else(|| "".to_string());
+        let message = if !name.is_empty() && !message_prop.is_empty() {
+          format!("Uncaught {}: {}", name, message_prop)
+        } else if !name.is_empty() {
+          format!("Uncaught {}", name)
+        } else if !message_prop.is_empty() {
+          format!("Uncaught {}", message_prop)
+        } else {
+          "Uncaught".to_string()
+        };
+
+        // Access error.stack to ensure that prepareStackTrace() has been called.
+        // This should populate error.__callSiteEvals.
+        let stack = get_property(scope, exception, "stack");
+        let stack: Option<v8::Local<v8::String>> =
+          stack.and_then(|s| s.try_into().ok());
+        let stack = stack.map(|s| s.to_rust_string_lossy(scope));
+
+        // Read an array of structured frames from error.__callSiteEvals.
+        let frames_v8 = get_property(scope, exception, "__callSiteEvals");
+        // Ignore non-array values
+        let frames_v8: Option<v8::Local<v8::Array>> =
+          frames_v8.and_then(|a| a.try_into().ok());
+
+        // Convert them into Vec<JsStackFrame>
+        let frames: Vec<JsStackFrame> = match frames_v8 {
+          Some(frames_v8) => {
+            serde_v8::from_v8(scope, frames_v8.into()).unwrap()
+          }
+          None => vec![],
+        };
+        (message, frames, stack, e.cause)
       } else {
-        "Uncaught".to_string()
+        // The exception is not a JS Error object.
+        // Get the message given by V8::Exception::create_message(), and provide
+        // empty frames.
+        (
+          msg.get(scope).to_rust_string_lossy(scope),
+          vec![],
+          None,
+          None,
+        )
       };
-
-      // Access error.stack to ensure that prepareStackTrace() has been called.
-      // This should populate error.__callSiteEvals.
-      let stack = get_property(scope, exception, "stack");
-      let stack: Option<v8::Local<v8::String>> =
-        stack.and_then(|s| s.try_into().ok());
-      let stack = stack.map(|s| s.to_rust_string_lossy(scope));
-
-      // Read an array of structured frames from error.__callSiteEvals.
-      let frames_v8 = get_property(scope, exception, "__callSiteEvals");
-      // Ignore non-array values
-      let frames_v8: Option<v8::Local<v8::Array>> =
-        frames_v8.and_then(|a| a.try_into().ok());
-
-      // Convert them into Vec<JsStackFrame>
-      let frames: Vec<JsStackFrame> = match frames_v8 {
-        Some(frames_v8) => serde_v8::from_v8(scope, frames_v8.into()).unwrap(),
-        None => vec![],
-      };
-      (message, frames, stack)
-    } else {
-      // The exception is not a JS Error object.
-      // Get the message given by V8::Exception::create_message(), and provide
-      // empty frames.
-      (msg.get(scope).to_rust_string_lossy(scope), vec![], None)
-    };
 
     Self {
       message,
+      cause,
       script_resource_name: msg
         .get_script_resource_name(scope)
         .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())

@@ -131,6 +131,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
 fn format_stack(
   is_error: bool,
   message_line: &str,
+  cause: Option<&str>,
   source_line: Option<&str>,
   start_column: Option<i64>,
   end_column: Option<i64>,
@@ -139,6 +140,14 @@ fn format_stack(
 ) -> String {
   let mut s = String::new();
   s.push_str(&format!("{:indent$}{}", "", message_line, indent = level));
+  if let Some(cause) = cause {
+    s.push_str(&format!(
+      "\n{:indent$}Caused by: {}",
+      "",
+      cause,
+      indent = level
+    ));
+  }
   s.push_str(&format_maybe_source_line(
     source_line,
     start_column,
@@ -268,6 +277,7 @@ impl fmt::Display for PrettyJsError {
       &format_stack(
         true,
         &self.0.message,
+        self.0.cause.as_deref(),
         self.0.source_line.as_deref(),
         self.0.start_column,
         self.0.end_column,

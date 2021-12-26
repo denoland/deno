@@ -81,6 +81,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
 
   JsError {
     message: js_error.message.clone(),
+    cause: js_error.cause.clone(),
     source_line,
     script_resource_name,
     line_number,
