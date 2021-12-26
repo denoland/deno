@@ -637,6 +637,18 @@ impl JsRuntime {
       .register_op(name, op_fn)
   }
 
+  pub fn overwrite_op<F>(&mut self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static,
+  {
+    Self::state(self.v8_isolate())
+      .borrow_mut()
+      .op_state
+      .borrow_mut()
+      .op_table
+      .overwrite_op(name, op_fn)
+  }
+
   /// Registers a callback on the isolate when the memory limits are approached.
   /// Use this to prevent V8 from crashing the process when reaching the limit.
   ///
@@ -1904,8 +1916,6 @@ pub mod tests {
   #[test]
   fn terminate_execution() {
     let (mut isolate, _dispatch_count) = setup(Mode::Async);
-    // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
-    // should not require a mutable reference to `struct rusty_v8::Isolate`.
     let v8_isolate_handle = isolate.v8_isolate().thread_safe_handle();
 
     let terminator_thread = std::thread::spawn(move || {
@@ -1943,8 +1953,6 @@ pub mod tests {
     let v8_isolate_handle = {
       // isolate is dropped at the end of this block
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
-      // should not require a mutable reference to `struct rusty_v8::Isolate`.
       runtime.v8_isolate().thread_safe_handle()
     };
 
