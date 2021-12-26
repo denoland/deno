@@ -198,20 +198,22 @@ impl Kernel {
   }
 
   async fn run(&mut self) -> Result<(), AnyError> {
-    let (iopub_res, shell_res, control_res, stdin_res, hb_res) = join!(
-      self.iopub_comm.connect(),
-      self.shell_comm.connect(),
-      self.control_comm.connect(),
-      self.stdin_comm.connect(),
-      self.hb_comm.connect(),
-    );
-    iopub_res?;
-    shell_res?;
-    control_res?;
-    stdin_res?;
-    hb_res?;
+    println!("Connecting to iopub");
+    self.iopub_comm.connect().await?;
+    println!("Connected to iopub");
+    println!("Connecting to shell");
+    self.shell_comm.connect().await?;
+    println!("Connected to shell");
+    println!("Connecting to control");
+    self.control_comm.connect().await?;
+    println!("Connected to control");
+    println!("Connecting to stdin");
+    self.stdin_comm.connect().await?;
+    println!("Connecting to iopub");
+    println!("Connected to heartbeat");
+    self.hb_comm.connect().await?;
+    println!("Connected to heartbeat");
 
-    // TODO(bartlomieju): errors are not handled here
     loop {
       tokio::select! {
         shell_msg_result = self.shell_comm.recv() => {
@@ -329,6 +331,8 @@ impl Kernel {
 
     if let Err(e) = result {
       println!("[shell] error handling {}: {}", msg_type, e);
+    } else {
+      println!("[shell] ok {}", msg_type);
     }
 
     Ok(())
