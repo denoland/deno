@@ -50,7 +50,7 @@ pub async fn kernel(
   let conn_file_path = jupyter_flags.conn_file.unwrap();
 
   let repl_session = ReplSession::initialize(worker).await?;
-  let mut kernel = Kernel::new(conn_file_path.to_str().unwrap(), repl_session);
+  let mut kernel = Kernel::new(conn_file_path.to_str().unwrap(), repl_session)?;
   println!("[DENO] kernel created: {:#?}", kernel.session_id);
 
   println!("running kernel...");
@@ -97,77 +97,54 @@ enum HandlerType {
 }
 
 impl Kernel {
-  fn new(conn_file_path: &str, repl_session: ReplSession) -> Self {
-    let conn_file = match std::fs::read_to_string(conn_file_path)
-      .context("Failed to read connection file")
-    {
-      Ok(cf) => cf,
-      Err(_) => {
-        println!("Couldn't read connection file: {}", conn_file_path);
-        std::process::exit(1);
-      }
-    };
-    let conn_spec: ConnectionSpec = match serde_json::from_str(&conn_file)
-      .context("Failed to parse connection file")
-    {
-      Ok(cs) => cs,
-      Err(_) => {
-        println!("Connection file isn't proper JSON: {}", conn_file_path);
-        std::process::exit(1);
-      }
-    };
-    println!("[DENO] parsed conn file: {:#?}", conn_spec);
+  fn new(
+    conn_file_path: &str,
+    repl_session: ReplSession,
+  ) -> Result<Self, AnyError> {
+    let conn_file =
+      std::fs::read_to_string(conn_file_path).with_context(|| {
+        format!("Couldn't read connection file: {}", conn_file_path)
+      })?;
+    let spec: ConnectionSpec =
+      serde_json::from_str(&conn_file).with_context(|| {
+        format!("Connection file isn't proper JSON: {}", conn_file_path)
+      })?;
+
+    println!("[DENO] parsed conn file: {:#?}", spec);
 
     let execution_count = 0;
     let session_id = uuid::Uuid::new_v4().to_string();
-    let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, conn_spec.key.as_ref());
+    let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, spec.key.as_ref());
     let metadata = KernelMetadata::default();
     let iopub_comm = PubComm::new(
-      create_conn_str(
-        &conn_spec.transport,
-        &conn_spec.ip,
-        conn_spec.iopub_port,
-      ),
+      create_conn_str(&spec.transport, &spec.ip, spec.iopub_port),
       session_id.clone(),
       hmac_key.clone(),
     );
     let shell_comm = DealerComm::new(
       "shell",
-      create_conn_str(
-        &conn_spec.transport,
-        &conn_spec.ip,
-        conn_spec.shell_port,
-      ),
+      create_conn_str(&spec.transport, &spec.ip, spec.shell_port),
       session_id.clone(),
       hmac_key.clone(),
     );
     let control_comm = DealerComm::new(
       "control",
-      create_conn_str(
-        &conn_spec.transport,
-        &conn_spec.ip,
-        conn_spec.control_port,
-      ),
+      create_conn_str(&spec.transport, &spec.ip, spec.control_port),
       session_id.clone(),
       hmac_key.clone(),
     );
     let stdin_comm = DealerComm::new(
       "stdin",
-      create_conn_str(
-        &conn_spec.transport,
-        &conn_spec.ip,
-        conn_spec.stdin_port,
-      ),
+      create_conn_str(&spec.transport, &spec.ip, spec.stdin_port),
       session_id.clone(),
       hmac_key,
     );
 
-    let hb_conn_str =
-      create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.hb_port);
+    let hb_conn_str = create_conn_str(&spec.transport, &spec.ip, spec.hb_port);
 
-    let kernel: Kernel = Self {
+    let kernel = Self {
       metadata,
-      conn_spec,
+      conn_spec: spec,
       state: KernelState::Idle,
       iopub_comm,
       shell_comm,
@@ -178,7 +155,7 @@ impl Kernel {
       repl_session,
     };
 
-    kernel
+    Ok(kernel)
   }
 
   async fn run(&mut self) -> Result<(), AnyError> {
@@ -199,15 +176,12 @@ impl Kernel {
     loop {
       tokio::select! {
         shell_msg = self.shell_comm.recv() => {
-          // println!("shell got packet: {:#?}", shell_msg);
           self.handler(HandlerType::Shell, shell_msg).await;
         },
         control_msg = self.control_comm.recv() => {
-          // println!("control got packet: {:#?}", control_msg);
           self.handler(HandlerType::Control, control_msg);
         },
         stdin_msg = self.stdin_comm.recv() => {
-          // println!("stdin got packet: {:#?}", stdin_msg);
           self.handler(HandlerType::Stdin, stdin_msg);
         },
       }
