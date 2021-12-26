@@ -209,8 +209,8 @@ impl Kernel {
     println!("Connected to control");
     println!("Connecting to stdin");
     self.stdin_comm.connect().await?;
-    println!("Connecting to iopub");
-    println!("Connected to heartbeat");
+    println!("Connected to stdin");
+    println!("Connecting to heartbeat");
     self.hb_comm.connect().await?;
     println!("Connected to heartbeat");
 
