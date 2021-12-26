@@ -212,6 +212,7 @@ impl Kernel {
     // TODO(apowers313): run heartbeat
     // create_zmq_reply("hb", &hb_conn_str)
 
+    // TODO(bartlomieju): errors are not handled here
     loop {
       tokio::select! {
         shell_msg = self.shell_comm.recv() => {
@@ -224,27 +225,9 @@ impl Kernel {
           self.handler(HandlerType::Stdin, stdin_msg).await;
         },
         maybe_stdio_proxy_msg = self.stdio_rx.next() => {
-            println!("Received stdio message {:#?}", maybe_stdio_proxy_msg);
-            if let Some(stdio_proxy_msg) = maybe_stdio_proxy_msg {
-                if let Some(comm_ctx) = self.last_comm_ctx.as_ref() {
-                    let (t, content) = stdio_proxy_msg;
-                    let msg = SideEffectMessage::new(
-                        comm_ctx,
-                        "stream",
-                        ReplyMetadata::Empty,
-                        ReplyContent::Stream(StreamContent {
-                            name: match t {
-                                StdioType::Stdout => "stdout".to_string(),
-                                StdioType::Stderr => "stderr".to_string(),
-                            },
-                            text: content,
-                        }),
-                    );
-                    self.iopub_comm.send(msg).await?;
-                } else {
-                    println!("Received stdio message, but there is no last CommContext: {:#?}", stdio_proxy_msg.1);
-                }
-            }
+          if let Some(stdio_proxy_msg) = maybe_stdio_proxy_msg {
+            self.stdio_handler(stdio_proxy_msg).await;
+          }
         }
       }
     }
@@ -295,6 +278,35 @@ impl Kernel {
     };
 
     self.set_state(&comm_ctx, KernelState::Idle).await;
+  }
+
+  async fn stdio_handler(
+    &mut self,
+    stdio_proxy_msg: (StdioType, String),
+  ) -> Result<(), AnyError> {
+    if let Some(comm_ctx) = self.last_comm_ctx.as_ref() {
+      let (t, content) = stdio_proxy_msg;
+      let msg = SideEffectMessage::new(
+        comm_ctx,
+        "stream",
+        ReplyMetadata::Empty,
+        ReplyContent::Stream(StreamContent {
+          name: match t {
+            StdioType::Stdout => "stdout".to_string(),
+            StdioType::Stderr => "stderr".to_string(),
+          },
+          text: content,
+        }),
+      );
+      self.iopub_comm.send(msg).await?;
+    } else {
+      println!(
+        "Received stdio message, but there is no last CommContext: {:#?}",
+        stdio_proxy_msg.1
+      );
+    }
+
+    Ok(())
   }
 
   async fn shell_handler(
@@ -470,32 +482,6 @@ impl Kernel {
         metadata: json!({}),
       }),
     );
-    self.iopub_comm.send(msg).await?;
-
-    Ok(())
-  }
-
-  async fn send_stdio(
-    &mut self,
-    comm_ctx: &CommContext,
-    t: StdioType,
-    text: &str,
-  ) -> Result<(), AnyError> {
-    let content = StreamContent {
-      name: match t {
-        StdioType::Stdout => "stdout".to_string(),
-        StdioType::Stderr => "stderr".to_string(),
-      },
-      text: text.to_string(),
-    };
-
-    let msg = SideEffectMessage::new(
-      comm_ctx,
-      "stream",
-      ReplyMetadata::Empty,
-      ReplyContent::Stream(content),
-    );
-
     self.iopub_comm.send(msg).await?;
 
     Ok(())
