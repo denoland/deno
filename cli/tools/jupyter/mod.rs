@@ -77,16 +77,6 @@ enum KernelState {
   Starting,
 }
 
-impl std::fmt::Display for KernelState {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::Busy => write!(f, "busy"),
-      Self::Idle => write!(f, "idle"),
-      Self::Starting => write!(f, "starting"),
-    }
-  }
-}
-
 struct Kernel {
   metadata: KernelMetadata,
   conn_spec: ConnectionSpec,
@@ -279,13 +269,7 @@ impl Kernel {
     };
     self.last_comm_ctx = Some(comm_ctx.clone());
 
-    match self.set_state(&comm_ctx, KernelState::Busy).await {
-      Ok(_) => {}
-      Err(e) => {
-        println!("error setting busy state: {}", e);
-        return;
-      }
-    };
+    self.set_state(&comm_ctx, KernelState::Busy).await;
 
     let major_version = &comm_ctx.message.header.version.to_string()[0..1];
     let res = match (handler_type, major_version) {
@@ -310,28 +294,26 @@ impl Kernel {
       }
     };
 
-    match self.set_state(&comm_ctx, KernelState::Idle).await {
-      Ok(_) => {}
-      Err(e) => {
-        println!("error setting idle state: {}", e);
-      }
-    };
+    self.set_state(&comm_ctx, KernelState::Idle).await;
   }
 
   async fn shell_handler(
     &mut self,
     comm_ctx: &CommContext,
   ) -> Result<(), AnyError> {
-    match comm_ctx.message.header.msg_type.as_ref() {
-      "kernel_info_request" => self.kernel_info_reply(comm_ctx).await?,
-      "execute_request" => self.execute_request(comm_ctx).await?,
+    let msg_type = comm_ctx.message.header.msg_type.as_ref();
+    let result = match msg_type {
+      "kernel_info_request" => self.kernel_info_reply(comm_ctx).await,
+      "execute_request" => self.execute_request(comm_ctx).await,
       _ => {
-        return Err(anyhow!(
-          "no handler for msg_id: '{}'",
-          comm_ctx.message.header.msg_id
-        ))
+        println!("[shell] no handler for {}", msg_type);
+        Ok(())
       }
     };
+
+    if let Err(e) = result {
+      println!("[shell] error handling {}: {}", msg_type, e);
+    }
 
     Ok(())
   }
@@ -344,13 +326,9 @@ impl Kernel {
     todo!()
   }
 
-  async fn set_state(
-    &mut self,
-    comm_ctx: &CommContext,
-    state: KernelState,
-  ) -> Result<(), AnyError> {
+  async fn set_state(&mut self, comm_ctx: &CommContext, state: KernelState) {
     if self.state == state {
-      return Ok(());
+      return;
     }
 
     self.state = state;
@@ -360,19 +338,23 @@ impl Kernel {
     let now = now.to_rfc3339();
 
     let s = match state {
-      KernelState::Busy => "busy".to_string(),
-      KernelState::Idle => "idle".to_string(),
-      KernelState::Starting => "starting".to_string(),
+      KernelState::Busy => "busy",
+      KernelState::Idle => "idle",
+      KernelState::Starting => "starting",
     };
 
     let msg = SideEffectMessage::new(
       comm_ctx,
       "status",
       ReplyMetadata::Empty,
-      ReplyContent::Status(KernelStatusContent { execution_state: s }),
+      ReplyContent::Status(KernelStatusContent {
+        execution_state: s.to_string(),
+      }),
     );
 
-    self.iopub_comm.send(msg).await
+    if let Err(e) = self.iopub_comm.send(msg).await {
+      println!("[IoPub] Error setting state: {}", s);
+    }
   }
 
   async fn kernel_info_reply(
