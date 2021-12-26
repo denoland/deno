@@ -513,12 +513,9 @@ impl Default for KernelMetadata {
       help_text: "<TODO>".to_string(),
       help_url: "https://github.com/denoland/deno".to_string(),
       implementation_name: "Deno kernel".to_string(),
-      // FIXME:
-      kernel_version: "0.0.1".to_string(),
-      // FIXME:
-      language_version: "1.16.4".to_string(),
+      kernel_version: crate::version::deno(),
+      language_version: crate::version::TYPESCRIPT.to_string(),
       language: "typescript".to_string(),
-      // FIXME:
       mime: "text/x.typescript".to_string(),
       protocol_version: "5.3".to_string(),
     }
