@@ -163,7 +163,7 @@ impl Kernel {
     let hb_conn_str =
       create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.hb_port);
 
-    let kernel = Self {
+    let kernel: Kernel = Self {
       metadata,
       conn_spec,
       state: KernelState::Idle,
