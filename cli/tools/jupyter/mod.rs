@@ -214,16 +214,20 @@ impl Kernel {
     self.hb_comm.connect().await?;
     println!("Connected to heartbeat");
 
+    let mut poll_worker = true;
     loop {
       tokio::select! {
         shell_msg_result = self.shell_comm.recv() => {
           self.handler(HandlerType::Shell, shell_msg_result).await;
+          poll_worker = true;
         },
         control_msg_result = self.control_comm.recv() => {
           self.handler(HandlerType::Control, control_msg_result).await;
+          poll_worker = true;
         },
         stdin_msg_result = self.stdin_comm.recv() => {
           self.handler(HandlerType::Stdin, stdin_msg_result).await;
+          poll_worker = true;
         },
         maybe_stdio_proxy_msg = self.stdio_rx.next() => {
           if let Some(stdio_proxy_msg) = maybe_stdio_proxy_msg {
@@ -235,6 +239,9 @@ impl Kernel {
             println!("[heartbeat] error: {}", e);
           }
         },
+        _ = self.repl_session.run_event_loop(), if poll_worker => {
+          poll_worker = false;
+        }
       }
     }
   }
