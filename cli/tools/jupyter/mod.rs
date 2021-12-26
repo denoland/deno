@@ -44,8 +44,8 @@ mod comm;
 mod install;
 mod message_types;
 
-use comm::create_zmq_reply;
 use comm::DealerComm;
+use comm::HbComm;
 use comm::PubComm;
 pub use install::install;
 use message_types::*;
@@ -85,6 +85,7 @@ struct Kernel {
   shell_comm: DealerComm,
   control_comm: DealerComm,
   stdin_comm: DealerComm,
+  hb_comm: HbComm,
   session_id: String,
   execution_count: u32,
   repl_session: ReplSession,
@@ -114,10 +115,8 @@ pub fn op_print(
 
   if is_err {
     let r = sender.unbounded_send((StdioType::Stderr, msg));
-    eprintln!("stdio result {:#?}", r);
   } else {
     let r = sender.unbounded_send((StdioType::Stdout, msg));
-    eprintln!("stdio result {:#?}", r);
   }
   Ok(())
 }
@@ -162,8 +161,8 @@ impl Kernel {
       session_id.clone(),
       hmac_key,
     );
-
-    let hb_conn_str = create_conn_str(&spec.transport, &spec.ip, spec.hb_port);
+    let hb_comm =
+      HbComm::new(create_conn_str(&spec.transport, &spec.ip, spec.hb_port));
 
     let main_module = resolve_url_or_path("./$deno$jupyter.ts").unwrap();
     // TODO(bartlomieju): should we run with all permissions?
@@ -187,6 +186,7 @@ impl Kernel {
       shell_comm,
       control_comm,
       stdin_comm,
+      hb_comm,
       session_id,
       execution_count,
       repl_session,
@@ -198,37 +198,41 @@ impl Kernel {
   }
 
   async fn run(&mut self) -> Result<(), AnyError> {
-    let (iopub_res, shell_res, control_res, stdin_res) = join!(
+    let (iopub_res, shell_res, control_res, stdin_res, hb_res) = join!(
       self.iopub_comm.connect(),
       self.shell_comm.connect(),
       self.control_comm.connect(),
       self.stdin_comm.connect(),
+      self.hb_comm.connect(),
     );
     iopub_res?;
     shell_res?;
     control_res?;
     stdin_res?;
-
-    // TODO(apowers313): run heartbeat
-    // create_zmq_reply("hb", &hb_conn_str)
+    hb_res?;
 
     // TODO(bartlomieju): errors are not handled here
     loop {
       tokio::select! {
-        shell_msg = self.shell_comm.recv() => {
-          self.handler(HandlerType::Shell, shell_msg).await;
+        shell_msg_result = self.shell_comm.recv() => {
+          self.handler(HandlerType::Shell, shell_msg_result).await;
         },
-        control_msg = self.control_comm.recv() => {
-          self.handler(HandlerType::Control, control_msg).await;
+        control_msg_result = self.control_comm.recv() => {
+          self.handler(HandlerType::Control, control_msg_result).await;
         },
-        stdin_msg = self.stdin_comm.recv() => {
-          self.handler(HandlerType::Stdin, stdin_msg).await;
+        stdin_msg_result = self.stdin_comm.recv() => {
+          self.handler(HandlerType::Stdin, stdin_msg_result).await;
         },
         maybe_stdio_proxy_msg = self.stdio_rx.next() => {
           if let Some(stdio_proxy_msg) = maybe_stdio_proxy_msg {
             self.stdio_handler(stdio_proxy_msg).await;
           }
-        }
+        },
+        heartbeat_result = self.hb_comm.heartbeat() => {
+          if let Err(e) = heartbeat_result {
+            println!("[heartbeat] error: {}", e);
+          }
+        },
       }
     }
   }

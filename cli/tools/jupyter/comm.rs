@@ -102,19 +102,31 @@ impl DealerComm {
   }
 }
 
-// TODO(apowers313) this is the heartbeat loop now
-pub async fn create_zmq_reply(
-  name: &str,
-  conn_str: &str,
-) -> Result<(), AnyError> {
-  println!("reply '{}' connection string: {}", name, conn_str);
+pub struct HbComm {
+  conn_str: String,
+  socket: zeromq::RepSocket,
+}
 
-  let mut sock = zeromq::RepSocket::new(); // TODO(apowers313) exact same as dealer, refactor
-  sock.monitor();
-  sock.bind(conn_str).await?;
+impl HbComm {
+  pub fn new(conn_str: String) -> Self {
+    println!("hb connection: {}", conn_str);
+    Self {
+      conn_str,
+      socket: zeromq::RepSocket::new(),
+    }
+  }
 
-  loop {
-    let msg = sock.recv().await?;
-    println!("*** '{}' got packet!", name);
+  pub async fn connect(&mut self) -> Result<(), AnyError> {
+    self.socket.bind(&self.conn_str).await?;
+
+    Ok(())
+  }
+
+  pub async fn heartbeat(&mut self) -> Result<(), AnyError> {
+    let msg = self.socket.recv().await?;
+    println!("<== heartbeat received");
+    self.socket.send(msg).await?;
+    println!("==> heartbeat sent");
+    Ok(())
   }
 }
