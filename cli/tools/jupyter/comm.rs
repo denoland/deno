@@ -98,6 +98,7 @@ impl DealerComm {
     println!("==> {} SENDING: {:#?}", self.name, msg);
     let zmq_msg = msg.serialize(&self.hmac_key);
     self.socket.send(zmq_msg).await?;
+    println!("==> {} SENT", self.name);
     Ok(())
   }
 }

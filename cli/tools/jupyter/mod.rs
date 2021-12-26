@@ -93,6 +93,7 @@ struct Kernel {
   last_comm_ctx: Option<CommContext>,
 }
 
+#[derive(Copy, Clone, Debug)]
 enum HandlerType {
   Shell,
   Control,
@@ -265,6 +266,7 @@ impl Kernel {
     };
     self.last_comm_ctx = Some(comm_ctx.clone());
 
+    println!("[DENO] set_state busy {:#?}", handler_type);
     self.set_state(&comm_ctx, KernelState::Busy).await;
 
     let major_version = &comm_ctx.message.header.version.to_string()[0..1];
@@ -290,6 +292,7 @@ impl Kernel {
       }
     };
 
+    println!("[DENO] set_state idle {:#?}", handler_type);
     self.set_state(&comm_ctx, KernelState::Idle).await;
   }
 
@@ -355,6 +358,7 @@ impl Kernel {
 
   async fn set_state(&mut self, comm_ctx: &CommContext, state: KernelState) {
     if self.state == state {
+      println!("[DENO] set_state sets the same state: {:#?}", state);
       return;
     }
 
