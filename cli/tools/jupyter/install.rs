@@ -1,26 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::flags::Flags;
-use crate::flags::JupyterFlags;
-use data_encoding::HEXLOWER;
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use ring::hmac;
-use std::collections::HashMap;
 use std::env::current_exe;
-use std::time::Duration;
 use tempfile::TempDir;
-use tokio::join;
-use tokio::time::sleep;
-use zeromq::prelude::*;
-use zeromq::ZmqMessage;
 
 pub fn install() -> Result<(), AnyError> {
   let temp_dir = TempDir::new().unwrap();
