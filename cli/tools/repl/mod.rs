@@ -15,8 +15,8 @@ use channel::RustylineSyncMessageHandler;
 use channel::RustylineSyncResponse;
 use editor::EditorHelper;
 use editor::ReplEditor;
-use session::EvaluationOutput;
-use session::ReplSession;
+pub use session::EvaluationOutput;
+pub use session::ReplSession;
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,

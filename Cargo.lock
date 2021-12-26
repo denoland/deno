@@ -5149,8 +5149,7 @@ dependencies = [
 [[package]]
 name = "zeromq"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c376a1982922614fda01ef046cc076503681d8f9b1b3135e85b367e5d8719246"
+source = "git+https://github.com/bartlomieju/zmq.rs?branch=master#d92c2b5ce2b3d787abcbc56d6ae94e1a9a04e216"
 dependencies = [
  "async-trait",
  "asynchronous-codec",

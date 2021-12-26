@@ -5,6 +5,8 @@
 
 use crate::flags::Flags;
 use crate::flags::JupyterFlags;
+use crate::tools::repl::EvaluationOutput;
+use crate::tools::repl::ReplSession;
 use data_encoding::HEXLOWER;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
@@ -15,6 +17,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_runtime::worker::MainWorker;
 use ring::hmac;
 use std::collections::HashMap;
 use std::env::current_exe;
@@ -36,6 +39,7 @@ use message_types::*;
 pub async fn kernel(
   _flags: Flags,
   jupyter_flags: JupyterFlags,
+  worker: MainWorker,
 ) -> Result<(), AnyError> {
   if jupyter_flags.conn_file.is_none() {
     return Err(generic_error("Missing --conn flag"));
@@ -43,7 +47,8 @@ pub async fn kernel(
 
   let conn_file_path = jupyter_flags.conn_file.unwrap();
 
-  let mut kernel = Kernel::new(conn_file_path.to_str().unwrap());
+  let repl_session = ReplSession::initialize(worker).await?;
+  let mut kernel = Kernel::new(conn_file_path.to_str().unwrap(), repl_session);
   println!("[DENO] kernel created: {:#?}", kernel.session_id);
 
   println!("running kernel...");
@@ -80,6 +85,7 @@ struct Kernel {
   stdin_comm: DealerComm,
   session_id: String,
   execution_count: u32,
+  repl_session: ReplSession,
 }
 
 enum HandlerType {
@@ -89,7 +95,7 @@ enum HandlerType {
 }
 
 impl Kernel {
-  fn new(conn_file_path: &str) -> Self {
+  fn new(conn_file_path: &str, repl_session: ReplSession) -> Self {
     let conn_file = match std::fs::read_to_string(conn_file_path)
       .context("Failed to read connection file")
     {
@@ -157,7 +163,7 @@ impl Kernel {
     let hb_conn_str =
       create_conn_str(&conn_spec.transport, &conn_spec.ip, conn_spec.hb_port);
 
-    let s: Kernel = Self {
+    let kernel = Self {
       metadata,
       conn_spec,
       state: KernelState::Idle,
@@ -167,9 +173,10 @@ impl Kernel {
       stdin_comm,
       session_id,
       execution_count,
+      repl_session,
     };
 
-    s
+    kernel
   }
 
   async fn run(&mut self) -> Result<(), AnyError> {
@@ -377,10 +384,18 @@ impl Kernel {
     );
     self.iopub_comm.send(input_msg).await?;
 
-    // TODO(apowers313) it executes code... just not the code you requested :)
-    // hook in the real REPL request to execute code here
-    let result = self.fake_task(comm_ctx, "foo".to_string()).await?;
-
+    let output = self
+      .repl_session
+      .evaluate_line_and_get_output(&exec_request_content.code)
+      .await?;
+    let result = match output {
+      EvaluationOutput::Value(value_str) => ExecResult::OkString(value_str),
+      EvaluationOutput::Error(value_str) => ExecResult::Error(ExecError {
+        err_name: "<TODO>".to_string(),
+        err_value: value_str,
+        stack_trace: vec![],
+      }),
+    };
     self.exec_done(comm_ctx, result).await?;
 
     Ok(())
@@ -391,7 +406,7 @@ impl Kernel {
     comm_ctx: &CommContext,
     result: ExecResult,
   ) -> Result<(), AnyError> {
-    match result {
+    match &result {
       ExecResult::OkString(v) => {
         println!("sending exec result");
         let msg = ReplyMessage::new(
@@ -414,6 +429,22 @@ impl Kernel {
     };
 
     // TODO(apowers313) send(ExecuteResult)
+    let msg = SideEffectMessage::new(
+      comm_ctx,
+      "execute_result".to_string(),
+      ReplyMetadata::Empty,
+      ReplyContent::ExecuteResult(ExecuteResultContent {
+        execution_count: self.execution_count,
+        data: Some(json!({
+            "text/plain": match result {
+                ExecResult::OkString(v) => v,
+                ExecResult::Error(v) => v.err_value,
+            }
+        })),
+        metadata: None,
+      }),
+    );
+    self.iopub_comm.send(msg).await?;
 
     Ok(())
   }
