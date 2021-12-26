@@ -630,7 +630,7 @@ fn completions_subcommand<'a>() -> App<'a> {
     .setting(AppSettings::DisableHelpSubcommand)
     .arg(
       Arg::new("shell")
-        .possible_values(&["bash", "fish", "powershell", "zsh"])
+        .possible_values(&["bash", "fish", "powershell", "zsh", "fig"])
         .required(true),
     )
     .override_help("Generate shell completions")
@@ -1802,6 +1802,7 @@ fn completions_parse(
 ) {
   use clap_generate::generate;
   use clap_generate::generators::{Bash, Fish, PowerShell, Zsh};
+  use clap_generate_fig::Fig;
 
   let mut buf: Vec<u8> = vec![];
   let name = "deno";
@@ -1811,6 +1812,7 @@ fn completions_parse(
     "fish" => generate(Fish, &mut app, name, &mut buf),
     "powershell" => generate(PowerShell, &mut app, name, &mut buf),
     "zsh" => generate(Zsh, &mut app, name, &mut buf),
+    "fig" => generate(Fig, &mut app, name, &mut buf),
     _ => unreachable!(),
   }
 
