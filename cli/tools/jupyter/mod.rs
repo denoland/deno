@@ -320,7 +320,7 @@ impl Kernel {
 
     let msg = SideEffectMessage::new(
       comm_ctx,
-      "status".to_string(),
+      "status",
       ReplyMetadata::Empty,
       ReplyContent::Status(KernelStatusContent { execution_state: s }),
     );
@@ -354,7 +354,7 @@ impl Kernel {
 
     let reply = ReplyMessage::new(
       comm_ctx,
-      "kernel_info_reply".to_string(),
+      "kernel_info_reply",
       ReplyMetadata::Empty,
       ReplyContent::KernelInfo(content),
     );
@@ -377,7 +377,7 @@ impl Kernel {
 
     let input_msg = SideEffectMessage::new(
       comm_ctx,
-      "execute_input".to_string(),
+      "execute_input",
       ReplyMetadata::Empty,
       ReplyContent::ExecuteInput(ExecuteInputContent {
         code: exec_request_content.code.clone(),
@@ -413,7 +413,7 @@ impl Kernel {
         println!("sending exec result");
         let msg = ReplyMessage::new(
           comm_ctx,
-          "execute_reply".to_string(),
+          "execute_reply",
           ReplyMetadata::Empty,
           ReplyContent::ExecuteReply(ExecuteReplyContent {
             status: "ok".to_string(),
@@ -430,10 +430,9 @@ impl Kernel {
       }
     };
 
-    // TODO(apowers313) send(ExecuteResult)
     let msg = SideEffectMessage::new(
       comm_ctx,
-      "execute_result".to_string(),
+      "execute_result",
       ReplyMetadata::Empty,
       ReplyContent::ExecuteResult(ExecuteResultContent {
         execution_count: self.execution_count,
@@ -467,7 +466,7 @@ impl Kernel {
 
     let msg = SideEffectMessage::new(
       comm_ctx,
-      "stream".to_string(),
+      "stream",
       ReplyMetadata::Empty,
       ReplyContent::Stream(content),
     );
@@ -475,23 +474,6 @@ impl Kernel {
     self.iopub_comm.send(msg).await?;
 
     Ok(())
-  }
-
-  async fn fake_task(
-    &mut self,
-    comm_ctx: &CommContext,
-    arg: String,
-  ) -> Result<ExecResult, AnyError> {
-    for i in 0..6 {
-      sleep(Duration::from_millis(500)).await;
-      println!("ping! {}", &arg);
-      self
-        .send_stdio(comm_ctx, StdioType::Stdout, &format!("ping! {}\n", i))
-        .await?;
-    }
-
-    // TODO(apowers313) result should be any valid JavaScript value
-    Ok(ExecResult::OkString("fake result".to_string()))
   }
 }
 

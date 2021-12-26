@@ -88,7 +88,7 @@ pub struct ReplyMessage {
 impl ReplyMessage {
   pub fn new(
     comm_ctx: &CommContext,
-    msg_type: String,
+    msg_type: &str,
     metadata: ReplyMetadata,
     content: ReplyContent,
   ) -> Self {
@@ -156,7 +156,7 @@ pub struct MessageHeader {
 }
 
 impl MessageHeader {
-  pub fn new(msg_type: String, session_id: String) -> Self {
+  pub fn new(msg_type: &str, session_id: String) -> Self {
     let now = std::time::SystemTime::now();
     let now: chrono::DateTime<chrono::Utc> = now.into();
     let now = now.to_rfc3339();
@@ -167,7 +167,7 @@ impl MessageHeader {
       // FIXME:
       username: "<TODO>".to_string(),
       date: Some(now),
-      msg_type,
+      msg_type: msg_type.to_string(),
       // TODO: this should be taken from a global,
       version: "5.3".to_string(),
     }
