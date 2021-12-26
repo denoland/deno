@@ -1,8 +1,178 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::flags::Flags;
+use crate::flags::JupyterFlags;
+use crate::tools::repl::EvaluationOutput;
+use crate::tools::repl::ReplSession;
+use data_encoding::HEXLOWER;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_runtime::worker::MainWorker;
+use ring::hmac;
+use std::collections::HashMap;
+use std::env::current_exe;
+use std::time::Duration;
+use tempfile::TempDir;
+use tokio::join;
+use tokio::time::sleep;
+use zeromq::prelude::*;
+use zeromq::ZmqMessage;
+
+const DELIMITER: &str = "<IDS|MSG>";
+
+#[derive(Debug)]
+pub struct RequestMessage {
+  pub header: MessageHeader,
+  pub parent_header: Option<()>,
+  pub metadata: RequestMetadata,
+  pub content: RequestContent,
+}
+
+impl RequestMessage {
+  pub fn new(
+    header: MessageHeader,
+    metadata: RequestMetadata,
+    content: RequestContent,
+  ) -> Self {
+    Self {
+      header,
+      parent_header: None,
+      metadata,
+      content,
+    }
+  }
+}
+
+impl TryFrom<ZmqMessage> for RequestMessage {
+  type Error = AnyError;
+
+  fn try_from(zmq_msg: ZmqMessage) -> Result<Self, AnyError> {
+    // TODO(apowers313) make all unwraps recoverable errors
+    let header_bytes = zmq_msg.get(2).unwrap();
+    let metadata_bytes = zmq_msg.get(4).unwrap();
+    let content_bytes = zmq_msg.get(5).unwrap();
+
+    let header: MessageHeader = serde_json::from_slice(header_bytes).unwrap();
+
+    // TODO(apowers313) refactor to an unwrap function to handles unwrapping based on different protocol versions
+    let mc = match header.msg_type.as_ref() {
+      "kernel_info_request" => (RequestMetadata::Empty, RequestContent::Empty),
+      "execute_request" => (
+        RequestMetadata::Empty,
+        RequestContent::Execute(serde_json::from_slice(content_bytes).unwrap()),
+      ),
+      _ => (RequestMetadata::Empty, RequestContent::Empty),
+    };
+
+    let rm = RequestMessage::new(header, mc.0, mc.1);
+    println!("<== RECEIVING: {:#?}", rm);
+
+    Ok(rm)
+  }
+}
+
+pub struct ReplyMessage {
+  pub header: MessageHeader,
+  pub parent_header: MessageHeader,
+  pub metadata: ReplyMetadata,
+  pub content: ReplyContent,
+}
+
+impl ReplyMessage {
+  pub fn new(
+    comm_ctx: &CommContext,
+    msg_type: String,
+    metadata: ReplyMetadata,
+    content: ReplyContent,
+  ) -> Self {
+    Self {
+      header: MessageHeader::new(msg_type, comm_ctx.session_id.clone()),
+      parent_header: comm_ctx.message.header.clone(),
+      metadata,
+      content,
+    }
+  }
+
+  pub fn serialize(&self, hmac_key: &hmac::Key) -> ZmqMessage {
+    // TODO(apowers313) convert unwrap() to recoverable error
+    let header = serde_json::to_string(&self.header).unwrap();
+    let parent_header = serde_json::to_string(&self.parent_header).unwrap();
+    let metadata = serde_json::to_string(&self.metadata).unwrap();
+    let metadata = match &self.metadata {
+      ReplyMetadata::Empty => serde_json::to_string(&json!({})).unwrap(),
+    };
+    let content = match &self.content {
+      ReplyContent::Empty => serde_json::to_string(&json!({})).unwrap(),
+      // reply messages
+      ReplyContent::KernelInfo(c) => serde_json::to_string(&c).unwrap(),
+      ReplyContent::ExecuteReply(c) => serde_json::to_string(&c).unwrap(),
+      // side effects
+      ReplyContent::Status(c) => serde_json::to_string(&c).unwrap(),
+      ReplyContent::Stream(c) => serde_json::to_string(&c).unwrap(),
+      ReplyContent::ExecuteInput(c) => serde_json::to_string(&c).unwrap(),
+      ReplyContent::ExecuteResult(c) => serde_json::to_string(&c).unwrap(),
+    };
+
+    let hmac =
+      hmac_sign(hmac_key, &header, &parent_header, &metadata, &content);
+
+    let mut zmq_msg = ZmqMessage::from(DELIMITER);
+    zmq_msg.push_back(hmac.into());
+    zmq_msg.push_back(header.into());
+    zmq_msg.push_back(parent_header.into());
+    zmq_msg.push_back(metadata.into());
+    zmq_msg.push_back(content.into());
+    println!("==> SENDING ZMQ MSG: {:#?}", zmq_msg);
+    zmq_msg
+  }
+}
+
+// side effects messages sent on IOPub look lik ReplyMessages (for now?)
+pub type SideEffectMessage = ReplyMessage;
+
+#[derive(Debug)]
+pub struct CommContext {
+  pub message: RequestMessage,
+  pub session_id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MessageHeader {
+  pub msg_id: String,
+  pub session: String,
+  pub username: String,
+  // TODO(apowers313) -- date as an Option is to address a Jupyter bug
+  // see also: https://github.com/jupyter/notebook/issues/6257
+  pub date: Option<String>,
+  pub msg_type: String,
+  pub version: String,
+}
+
+impl MessageHeader {
+  pub fn new(msg_type: String, session_id: String) -> Self {
+    let now = std::time::SystemTime::now();
+    let now: chrono::DateTime<chrono::Utc> = now.into();
+    let now = now.to_rfc3339();
+
+    Self {
+      msg_id: uuid::Uuid::new_v4().to_string(),
+      session: session_id,
+      // FIXME:
+      username: "<TODO>".to_string(),
+      date: Some(now),
+      msg_type,
+      // TODO: this should be taken from a global,
+      version: "5.3".to_string(),
+    }
+  }
+}
 
 // /* *****************
 //  * SHELL MESSAGES
@@ -342,4 +512,80 @@ pub struct InputRequestContent {
 // https://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-stdin-router-dealer-channel
 pub struct InputReplyContent {
   pub value: String,
+}
+
+fn hmac_sign(
+  key: &hmac::Key,
+  header: &str,
+  parent_header: &str,
+  metadata: &str,
+  content: &str,
+) -> String {
+  let mut hmac_ctx = hmac::Context::with_key(key);
+  hmac_ctx.update(header.as_bytes());
+  hmac_ctx.update(parent_header.as_bytes());
+  hmac_ctx.update(metadata.as_bytes());
+  hmac_ctx.update(content.as_bytes());
+  let tag = hmac_ctx.sign();
+  let sig = HEXLOWER.encode(tag.as_ref());
+  sig
+}
+
+pub fn hmac_verify(
+  key: &hmac::Key,
+  expected_signature: &[u8],
+  header: &[u8],
+  parent_header: &[u8],
+  metadata: &[u8],
+  content: &[u8],
+) -> Result<(), AnyError> {
+  let mut msg = Vec::<u8>::new();
+  msg.extend(header);
+  msg.extend(parent_header);
+  msg.extend(metadata);
+  msg.extend(content);
+  let sig = HEXLOWER.decode(expected_signature)?;
+  hmac::verify(key, msg.as_ref(), sig.as_ref())?;
+  Ok(())
+}
+
+#[test]
+fn hmac_verify_test() {
+  let key_value = "1f5cec86-8eaa942eef7f5a35b51ddcf5";
+  let key = hmac::Key::new(hmac::HMAC_SHA256, key_value.as_ref());
+
+  let expected_signature =
+    "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"
+      .as_bytes()
+      .to_vec();
+  let header = "{\"msg_id\":\"c0fd20872c1b4d1c87e7fc814b75c93e_0\",\"msg_type\":\"kernel_info_request\",\"username\":\"ampower\",\"session\":\"c0fd20872c1b4d1c87e7fc814b75c93e\",\"date\":\"2021-12-10T06:20:40.259695Z\",\"version\":\"5.3\"}".as_bytes().to_vec();
+  let parent_header = "{}".as_bytes().to_vec();
+  let metadata = "{}".as_bytes().to_vec();
+  let content = "{}".as_bytes().to_vec();
+
+  let result = hmac_verify(
+    &key,
+    &expected_signature,
+    &header,
+    &parent_header,
+    &metadata,
+    &content,
+  );
+
+  assert!(result.is_ok(), "signature validation failed");
+}
+
+#[test]
+fn hmac_sign_test() {
+  let key_value = "1f5cec86-8eaa942eef7f5a35b51ddcf5";
+  let key = hmac::Key::new(hmac::HMAC_SHA256, key_value.as_ref());
+  let header = "{\"msg_id\":\"c0fd20872c1b4d1c87e7fc814b75c93e_0\",\"msg_type\":\"kernel_info_request\",\"username\":\"ampower\",\"session\":\"c0fd20872c1b4d1c87e7fc814b75c93e\",\"date\":\"2021-12-10T06:20:40.259695Z\",\"version\":\"5.3\"}";
+  let parent_header = "{}";
+  let metadata = "{}";
+  let content = "{}";
+  let sig = hmac_sign(&key, header, parent_header, metadata, content);
+  assert_eq!(
+    sig,
+    "43a5c45062e0b6bcc59c727f90165ad1d2eb02e1c5317aa25c2c2049d96d3b6a"
+  );
 }
