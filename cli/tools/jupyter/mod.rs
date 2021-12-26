@@ -316,10 +316,6 @@ impl Kernel {
         version: self.metadata.language_version.clone(),
         mimetype: self.metadata.mime.clone(),
         file_extension: self.metadata.file_ext.clone(),
-        // TODO: "None" gets translated to "null"
-        // codemirror_mode: None,
-        // nbconvert_exporter: None,
-        // pygments_lexer: None,
       },
       help_links: vec![], // TODO(apowers313) dig up help links
       banner: self.metadata.banner.clone(),
@@ -392,9 +388,9 @@ impl Kernel {
           ReplyContent::ExecuteReply(ExecuteReplyContent {
             status: "ok".to_string(),
             execution_count: self.execution_count,
-            // TODO: "None" gets translated to "null" by serde_json
-            // payload: None,
-            // user_expressions: None,
+            // NOTE(bartlomieju): these two fields are always empty
+            payload: vec![],
+            user_expressions: json!({}),
           }),
         );
         self.shell_comm.send(msg).await?;
