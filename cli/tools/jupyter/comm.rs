@@ -39,8 +39,8 @@ impl PubComm {
   }
 
   pub async fn send(&mut self, msg: SideEffectMessage) -> Result<(), AnyError> {
+    println!("==> IoPub SENDING: {:#?}", msg);
     let zmq_msg = msg.serialize(&self.hmac_key);
-    println!(">>> ZMQ SENDING: {:#?}", zmq_msg);
     self.socket.send(zmq_msg).await?;
     Ok(())
   }
@@ -79,7 +79,6 @@ impl DealerComm {
 
   pub async fn recv(&mut self) -> Result<RequestMessage, AnyError> {
     let zmq_msg = self.socket.recv().await?;
-    println!("<<< ZMQ RECEIVING: {:#?}", zmq_msg);
 
     hmac_verify(
       &self.hmac_key,
@@ -91,13 +90,13 @@ impl DealerComm {
     )?;
 
     let jup_msg = RequestMessage::try_from(zmq_msg)?;
-
+    println!("<== {} RECEIVING: {:#?}", self.name, jup_msg);
     Ok(jup_msg)
   }
 
   pub async fn send(&mut self, msg: ReplyMessage) -> Result<(), AnyError> {
+    println!("==> {} SENDING: {:#?}", self.name, msg);
     let zmq_msg = msg.serialize(&self.hmac_key);
-    println!(">>> ZMQ SENDING: {:#?}", zmq_msg);
     self.socket.send(zmq_msg).await?;
     Ok(())
   }

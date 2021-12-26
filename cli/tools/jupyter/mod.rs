@@ -228,10 +228,10 @@ impl Kernel {
           self.handler(HandlerType::Shell, shell_msg).await;
         },
         control_msg = self.control_comm.recv() => {
-          self.handler(HandlerType::Control, control_msg);
+          self.handler(HandlerType::Control, control_msg).await;
         },
         stdin_msg = self.stdin_comm.recv() => {
-          self.handler(HandlerType::Stdin, stdin_msg);
+          self.handler(HandlerType::Stdin, stdin_msg).await;
         },
         maybe_stdio_proxy_msg = self.stdio_rx.next() => {
             println!("Received stdio message {:#?}", maybe_stdio_proxy_msg);
@@ -479,13 +479,13 @@ impl Kernel {
       ReplyMetadata::Empty,
       ReplyContent::ExecuteResult(ExecuteResultContent {
         execution_count: self.execution_count,
-        data: Some(json!({
+        data: json!({
             "text/plain": match result {
                 ExecResult::OkString(v) => v,
                 ExecResult::Error(v) => v.err_value,
             }
-        })),
-        metadata: None,
+        }),
+        metadata: json!({}),
       }),
     );
     self.iopub_comm.send(msg).await?;

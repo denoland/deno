@@ -58,12 +58,12 @@ impl TryFrom<ZmqMessage> for RequestMessage {
     };
 
     let rm = RequestMessage::new(header, mc.0, mc.1);
-    println!("<== RECEIVING: {:#?}", rm);
 
     Ok(rm)
   }
 }
 
+#[derive(Debug)]
 pub struct ReplyMessage {
   pub header: MessageHeader,
   pub parent_header: MessageHeader,
@@ -115,7 +115,6 @@ impl ReplyMessage {
     zmq_msg.push_back(parent_header.into());
     zmq_msg.push_back(metadata.into());
     zmq_msg.push_back(content.into());
-    println!("==> SENDING ZMQ MSG: {:#?}", zmq_msg);
     zmq_msg
   }
 }
@@ -434,8 +433,8 @@ pub struct ExecuteInputContent {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExecuteResultContent {
   pub execution_count: u32,
-  pub data: Option<Value>,
-  pub metadata: Option<Value>,
+  pub data: Value,
+  pub metadata: Value,
 }
 
 /// https://jupyter-client.readthedocs.io/en/latest/messaging.html#execution-errors
