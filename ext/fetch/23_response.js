@@ -12,6 +12,7 @@
 "use strict";
 
 ((window) => {
+  const { isProxy } = Deno.core;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
   const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
@@ -37,7 +38,6 @@
     RegExpPrototypeTest,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -102,37 +102,33 @@
       type: response.type,
       body,
       headerList,
-      url() {
-        if (this.urlList.length == 0) return null;
-        return this.urlList[this.urlList.length - 1];
-      },
       urlList,
       status: response.status,
       statusMessage: response.statusMessage,
       aborted: response.aborted,
+      url() {
+        if (this.urlList.length == 0) return null;
+        return this.urlList[this.urlList.length - 1];
+      },
     };
   }
-
-  const defaultInnerResponse = {
-    type: "default",
-    body: null,
-    aborted: false,
-    url() {
-      if (this.urlList.length == 0) return null;
-      return this.urlList[this.urlList.length - 1];
-    },
-  };
 
   /**
    * @returns {InnerResponse}
    */
   function newInnerResponse(status = 200, statusMessage = "") {
     return {
+      type: "default",
+      body: null,
       headerList: [],
       urlList: [],
       status,
       statusMessage,
-      ...defaultInnerResponse,
+      aborted: false,
+      url() {
+        if (this.urlList.length == 0) return null;
+        return this.urlList[this.urlList.length - 1];
+      },
     };
   }
 
@@ -157,16 +153,14 @@
   }
 
   class Response {
-    /** @type {InnerResponse} */
-    [_response];
-    /** @type {Headers} */
-    [_headers];
     get [_mimeType]() {
       let charset = null;
       let essence = null;
       let mimeType = null;
-      const headerList = headerListFromHeaders(this[_headers]);
-      const values = getDecodeSplitHeader(headerList, "content-type");
+      const values = getDecodeSplitHeader(
+        headerListFromHeaders(this[_headers]),
+        "Content-Type",
+      );
       if (values === null) return null;
       for (const value of values) {
         const temporaryMimeType = mimesniff.parseMimeType(value);
@@ -238,7 +232,7 @@
       }
       const inner = newInnerResponse(status);
       inner.type = "default";
-      ArrayPrototypePush(inner.headerList, ["location", parsedURL.href]);
+      ArrayPrototypePush(inner.headerList, ["Location", parsedURL.href]);
       const response = webidl.createBranded(Response);
       response[_response] = inner;
       response[_headers] = headersFromHeaderList(
@@ -254,11 +248,11 @@
      */
     constructor(body = null, init = {}) {
       const prefix = "Failed to construct 'Response'";
-      body = webidl.converters["BodyInit?"](body, {
+      body = webidl.converters["BodyInit_DOMString?"](body, {
         prefix,
         context: "Argument 1",
       });
-      init = webidl.converters["ResponseInit"](init, {
+      init = webidl.converters["ResponseInit_fast"](init, {
         prefix,
         context: "Argument 2",
       });
@@ -269,15 +263,20 @@
         );
       }
 
-      if (!RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)) {
+      if (
+        init.statusText &&
+        !RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)
+      ) {
         throw new TypeError("Status text is not valid.");
       }
 
       this[webidl.brand] = webidl.brand;
       const response = newInnerResponse(init.status, init.statusText);
+      /** @type {InnerResponse} */
       this[_response] = response;
+      /** @type {Headers} */
       this[_headers] = headersFromHeaderList(response.headerList, "response");
-      if (init.headers !== undefined) {
+      if (init.headers) {
         fillHeaders(this[_headers], init.headers);
       }
       if (body !== null) {
@@ -373,10 +372,6 @@
       return second;
     }
 
-    get [SymbolToStringTag]() {
-      return "Response";
-    }
-
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
@@ -418,6 +413,27 @@
       converter: webidl.converters["HeadersInit"],
     }],
   );
+  webidl.converters["ResponseInit_fast"] = function (init, opts) {
+    if (init === undefined || init === null) {
+      return { status: 200, statusText: "", headers: undefined };
+    }
+    // Fast path, if not a proxy
+    if (typeof init === "object" && !isProxy(init)) {
+      // Not a proxy fast path
+      const status = init.status !== undefined
+        ? webidl.converters["unsigned short"](init.status)
+        : 200;
+      const statusText = init.statusText !== undefined
+        ? webidl.converters["ByteString"](init.statusText)
+        : "";
+      const headers = init.headers !== undefined
+        ? webidl.converters["HeadersInit"](init.headers)
+        : undefined;
+      return { status, statusText, headers };
+    }
+    // Slow default path
+    return webidl.converters["ResponseInit"](init, opts);
+  };
 
   /**
    * @param {Response} response

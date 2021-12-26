@@ -1,14 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   pathToAbsoluteFileUrl,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   async function futimeSyncSuccess() {
     const testDir = await Deno.makeTempDir();
     const filename = testDir + "/file.txt";
@@ -29,8 +28,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   function futimeSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
@@ -51,8 +50,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   function utimeSyncFileSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
@@ -70,8 +69,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   function utimeSyncUrlSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
@@ -89,8 +88,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   function utimeSyncDirectorySuccess() {
     const testDir = Deno.makeTempDirSync();
 
@@ -104,8 +103,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   function utimeSyncDateSuccess() {
     const testDir = Deno.makeTempDirSync();
 
@@ -119,8 +118,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   function utimeSyncFileDateSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
@@ -137,8 +136,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   function utimeSyncLargeNumberSuccess() {
     const testDir = Deno.makeTempDirSync();
 
@@ -154,20 +153,24 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   function utimeSyncNotFound() {
     const atime = 1000;
     const mtime = 50000;
 
-    assertThrows(() => {
-      Deno.utimeSync("/baddir", atime, mtime);
-    }, Deno.errors.NotFound);
+    assertThrows(
+      () => {
+        Deno.utimeSync("/baddir", atime, mtime);
+      },
+      Deno.errors.NotFound,
+      "utime '/baddir'",
+    );
   },
 );
 
-unitTest(
-  { perms: { read: true, write: false } },
+Deno.test(
+  { permissions: { read: true, write: false } },
   function utimeSyncPerm() {
     const atime = 1000;
     const mtime = 50000;
@@ -178,8 +181,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   async function utimeFileSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
@@ -197,8 +200,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   async function utimeUrlSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
@@ -216,8 +219,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   async function utimeDirectorySuccess() {
     const testDir = Deno.makeTempDirSync();
 
@@ -231,8 +234,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   async function utimeDateSuccess() {
     const testDir = Deno.makeTempDirSync();
 
@@ -246,8 +249,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   async function utimeFileDateSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
@@ -265,25 +268,29 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { read: true, write: true } },
+Deno.test(
+  { permissions: { read: true, write: true } },
   async function utimeNotFound() {
     const atime = 1000;
     const mtime = 50000;
 
-    await assertThrowsAsync(async () => {
-      await Deno.utime("/baddir", atime, mtime);
-    }, Deno.errors.NotFound);
+    await assertRejects(
+      async () => {
+        await Deno.utime("/baddir", atime, mtime);
+      },
+      Deno.errors.NotFound,
+      "utime '/baddir'",
+    );
   },
 );
 
-unitTest(
-  { perms: { read: true, write: false } },
+Deno.test(
+  { permissions: { read: true, write: false } },
   async function utimeSyncPerm() {
     const atime = 1000;
     const mtime = 50000;
 
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await Deno.utime("/some_dir", atime, mtime);
     }, Deno.errors.PermissionDenied);
   },

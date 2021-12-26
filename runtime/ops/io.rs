@@ -1,13 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::not_supported;
-use deno_core::error::null_opbuf;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
-use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Extension;
@@ -16,11 +15,9 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_net::io::TcpStreamResource;
-use deno_net::io::TlsStreamResource;
-use deno_net::io::UnixStreamResource;
+use once_cell::sync::Lazy;
 use std::borrow::Cow;
-use std::cell::RefCell;
+use std::fs::File as StdFile;
 use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
@@ -34,72 +31,47 @@ use tokio::process;
 use std::os::unix::io::FromRawFd;
 
 #[cfg(windows)]
-use std::os::windows::io::FromRawHandle;
+use {
+  std::os::windows::io::FromRawHandle,
+  winapi::um::{processenv::GetStdHandle, winbase},
+};
 
-lazy_static::lazy_static! {
-  /// Due to portability issues on Windows handle to stdout is created from raw
-  /// file descriptor.  The caveat of that approach is fact that when this
-  /// handle is dropped underlying file descriptor is closed - that is highly
-  /// not desirable in case of stdout.  That's why we store this global handle
-  /// that is then cloned when obtaining stdio for process. In turn when
-  /// resource table is dropped storing reference to that handle, the handle
-  /// itself won't be closed (so Deno.core.print) will still work.
-  // TODO(ry) It should be possible to close stdout.
-  static ref STDIN_HANDLE: Option<std::fs::File> = {
-    #[cfg(not(windows))]
-    let stdin = unsafe { Some(std::fs::File::from_raw_fd(0)) };
-    #[cfg(windows)]
-    let stdin = unsafe {
-      let handle = winapi::um::processenv::GetStdHandle(
-        winapi::um::winbase::STD_INPUT_HANDLE,
-      );
-      if handle.is_null() {
-        return None;
-      }
-      Some(std::fs::File::from_raw_handle(handle))
-    };
-    stdin
-  };
-  static ref STDOUT_HANDLE: Option<std::fs::File> = {
-    #[cfg(not(windows))]
-    let stdout = unsafe { Some(std::fs::File::from_raw_fd(1)) };
-    #[cfg(windows)]
-    let stdout = unsafe {
-      let handle = winapi::um::processenv::GetStdHandle(
-        winapi::um::winbase::STD_OUTPUT_HANDLE,
-      );
-      if handle.is_null() {
-        return None;
-      }
-      Some(std::fs::File::from_raw_handle(handle))
-    };
-    stdout
-  };
-  static ref STDERR_HANDLE: Option<std::fs::File> = {
-    #[cfg(not(windows))]
-    let stderr = unsafe { Some(std::fs::File::from_raw_fd(2)) };
-    #[cfg(windows)]
-    let stderr = unsafe {
-      let handle = winapi::um::processenv::GetStdHandle(
-        winapi::um::winbase::STD_ERROR_HANDLE,
-      );
-      if handle.is_null() {
-        return None;
-      }
-      Some(std::fs::File::from_raw_handle(handle))
-    };
-    stderr
-  };
-}
+#[cfg(unix)]
+static STDIN_HANDLE: Lazy<StdFile> =
+  Lazy::new(|| unsafe { StdFile::from_raw_fd(0) });
+#[cfg(unix)]
+static STDOUT_HANDLE: Lazy<StdFile> =
+  Lazy::new(|| unsafe { StdFile::from_raw_fd(1) });
+#[cfg(unix)]
+static STDERR_HANDLE: Lazy<StdFile> =
+  Lazy::new(|| unsafe { StdFile::from_raw_fd(2) });
+
+/// Due to portability issues on Windows handle to stdout is created from raw
+/// file descriptor.  The caveat of that approach is fact that when this
+/// handle is dropped underlying file descriptor is closed - that is highly
+/// not desirable in case of stdout.  That's why we store this global handle
+/// that is then cloned when obtaining stdio for process. In turn when
+/// resource table is dropped storing reference to that handle, the handle
+/// itself won't be closed (so Deno.core.print) will still work.
+// TODO(ry) It should be possible to close stdout.
+#[cfg(windows)]
+static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| unsafe {
+  StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE))
+});
+#[cfg(windows)]
+static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| unsafe {
+  StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE))
+});
+#[cfg(windows)]
+static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| unsafe {
+  StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE))
+});
 
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      ("op_read_async", op_async(op_read_async)),
-      ("op_write_async", op_async(op_write_async)),
       ("op_read_sync", op_sync(op_read_sync)),
       ("op_write_sync", op_sync(op_write_sync)),
-      ("op_shutdown", op_async(op_shutdown)),
     ])
     .build()
 }
@@ -108,47 +80,12 @@ pub fn init_stdio() -> Extension {
   Extension::builder()
     .state(|state| {
       let t = &mut state.resource_table;
-      let (stdin, stdout, stderr) = get_stdio();
-      if let Some(stream) = stdin {
-        t.add(stream);
-      }
-      if let Some(stream) = stdout {
-        t.add(stream);
-      }
-      if let Some(stream) = stderr {
-        t.add(stream);
-      }
+      t.add(StdFileResource::stdio(&STDIN_HANDLE, "stdin"));
+      t.add(StdFileResource::stdio(&STDOUT_HANDLE, "stdout"));
+      t.add(StdFileResource::stdio(&STDERR_HANDLE, "stderr"));
       Ok(())
     })
     .build()
-}
-
-pub fn get_stdio() -> (
-  Option<StdFileResource>,
-  Option<StdFileResource>,
-  Option<StdFileResource>,
-) {
-  let stdin = get_stdio_stream(&STDIN_HANDLE, "stdin");
-  let stdout = get_stdio_stream(&STDOUT_HANDLE, "stdout");
-  let stderr = get_stdio_stream(&STDERR_HANDLE, "stderr");
-
-  (stdin, stdout, stderr)
-}
-
-fn get_stdio_stream(
-  handle: &Option<std::fs::File>,
-  name: &str,
-) -> Option<StdFileResource> {
-  match handle {
-    None => None,
-    Some(file_handle) => match file_handle.try_clone() {
-      Ok(clone) => {
-        let tokio_file = tokio::fs::File::from_std(clone);
-        Some(StdFileResource::stdio(tokio_file, name))
-      }
-      Err(_e) => None,
-    },
-  }
 }
 
 #[cfg(unix)]
@@ -186,13 +123,13 @@ where
     RcRef::map(self, |r| &r.stream).borrow_mut()
   }
 
-  async fn write(self: &Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
     let mut stream = self.borrow_mut().await;
-    let nwritten = stream.write(buf).await?;
+    let nwritten = stream.write(&buf).await?;
     Ok(nwritten)
   }
 
-  async fn shutdown(self: &Rc<Self>) -> Result<(), AnyError> {
+  async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
     let mut stream = self.borrow_mut().await;
     stream.shutdown().await?;
     Ok(())
@@ -230,9 +167,15 @@ where
     self.cancel_handle.cancel()
   }
 
-  async fn read(self: &Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+  async fn read(
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
     let mut rd = self.borrow_mut().await;
-    let nread = rd.read(buf).try_or_cancel(self.cancel_handle()).await?;
+    let nread = rd
+      .read(&mut buf)
+      .try_or_cancel(self.cancel_handle())
+      .await?;
     Ok(nread)
   }
 }
@@ -243,6 +186,14 @@ impl Resource for ChildStdinResource {
   fn name(&self) -> Cow<str> {
     "childStdin".into()
   }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.write(buf))
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(self.shutdown())
+  }
 }
 
 pub type ChildStdoutResource = ReadOnlyResource<process::ChildStdout>;
@@ -250,6 +201,10 @@ pub type ChildStdoutResource = ReadOnlyResource<process::ChildStdout>;
 impl Resource for ChildStdoutResource {
   fn name(&self) -> Cow<str> {
     "childStdout".into()
+  }
+
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
   }
 
   fn close(self: Rc<Self>) {
@@ -262,6 +217,10 @@ pub type ChildStderrResource = ReadOnlyResource<process::ChildStderr>;
 impl Resource for ChildStderrResource {
   fn name(&self) -> Cow<str> {
     "childStderr".into()
+  }
+
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
   }
 
   fn close(self: Rc<Self>) {
@@ -278,10 +237,10 @@ pub struct StdFileResource {
 }
 
 impl StdFileResource {
-  pub fn stdio(fs_file: tokio::fs::File, name: &str) -> Self {
+  pub fn stdio(std_file: &StdFile, name: &str) -> Self {
     Self {
       fs_file: Some(AsyncRefCell::new((
-        Some(fs_file),
+        std_file.try_clone().map(tokio::fs::File::from_std).ok(),
         Some(FileMetadata::default()),
       ))),
       name: name.to_string(),
@@ -300,24 +259,27 @@ impl StdFileResource {
     }
   }
 
-  async fn read(self: &Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+  async fn read(
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
     if self.fs_file.is_some() {
-      let mut fs_file = RcRef::map(&*self, |r| r.fs_file.as_ref().unwrap())
+      let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
-      let nwritten = fs_file.0.as_mut().unwrap().read(buf).await?;
+      let nwritten = fs_file.0.as_mut().unwrap().read(&mut buf).await?;
       Ok(nwritten)
     } else {
       Err(resource_unavailable())
     }
   }
 
-  async fn write(self: &Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
     if self.fs_file.is_some() {
-      let mut fs_file = RcRef::map(&*self, |r| r.fs_file.as_ref().unwrap())
+      let mut fs_file = RcRef::map(&self, |r| r.fs_file.as_ref().unwrap())
         .borrow_mut()
         .await;
-      let nwritten = fs_file.0.as_mut().unwrap().write(buf).await?;
+      let nwritten = fs_file.0.as_mut().unwrap().write(&buf).await?;
       fs_file.0.as_mut().unwrap().flush().await?;
       Ok(nwritten)
     } else {
@@ -378,6 +340,14 @@ impl Resource for StdFileResource {
     self.name.as_str().into()
   }
 
+  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.read(buf))
+  }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(self.write(buf))
+  }
+
   fn close(self: Rc<Self>) {
     // TODO: do not cancel file I/O when file is writable.
     self.cancel.cancel()
@@ -387,9 +357,8 @@ impl Resource for StdFileResource {
 fn op_read_sync(
   state: &mut OpState,
   rid: ResourceId,
-  buf: Option<ZeroCopyBuf>,
+  mut buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
-  let mut buf = buf.ok_or_else(null_opbuf)?;
   StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file
       .read(&mut buf)
@@ -399,37 +368,11 @@ fn op_read_sync(
   })
 }
 
-async fn op_read_async(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  buf: Option<ZeroCopyBuf>,
-) -> Result<u32, AnyError> {
-  let buf = &mut buf.ok_or_else(null_opbuf)?;
-  let resource = state.borrow().resource_table.get_any(rid)?;
-  let nread = if let Some(s) = resource.downcast_rc::<ChildStdoutResource>() {
-    s.read(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<ChildStderrResource>() {
-    s.read(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.read(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.read(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.read(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<StdFileResource>() {
-    s.read(buf).await?
-  } else {
-    return Err(not_supported());
-  };
-  Ok(nread as u32)
-}
-
 fn op_write_sync(
   state: &mut OpState,
   rid: ResourceId,
-  buf: Option<ZeroCopyBuf>,
+  buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
-  let buf = buf.ok_or_else(null_opbuf)?;
   StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => std_file
       .write(&buf)
@@ -437,47 +380,4 @@ fn op_write_sync(
       .map_err(AnyError::from),
     Err(_) => Err(not_supported()),
   })
-}
-
-async fn op_write_async(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  buf: Option<ZeroCopyBuf>,
-) -> Result<u32, AnyError> {
-  let buf = &buf.ok_or_else(null_opbuf)?;
-  let resource = state.borrow().resource_table.get_any(rid)?;
-  let nwritten = if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
-    s.write(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.write(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.write(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.write(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<StdFileResource>() {
-    s.write(buf).await?
-  } else {
-    return Err(not_supported());
-  };
-  Ok(nwritten as u32)
-}
-
-async fn op_shutdown(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  _: (),
-) -> Result<(), AnyError> {
-  let resource = state.borrow().resource_table.get_any(rid)?;
-  if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
-    s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
-    s.shutdown().await?;
-  } else {
-    return Err(not_supported());
-  }
-  Ok(())
 }

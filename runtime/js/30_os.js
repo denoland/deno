@@ -31,7 +31,14 @@
     exitHandler = fn;
   }
 
-  function exit(code = 0) {
+  function exit(code) {
+    // Set exit code first so unload event listeners can override it.
+    if (typeof code === "number") {
+      core.opSync("op_set_exit_code", code);
+    } else {
+      code = 0;
+    }
+
     // Dispatches `unload` only when it's not dispatched yet.
     if (!window[SymbolFor("isUnloadDispatched")]) {
       // Invokes the `unload` hooks before exiting
@@ -44,12 +51,12 @@
       return;
     }
 
-    core.opSync("op_exit", code);
+    core.opSync("op_exit");
     throw new Error("Code not reachable");
   }
 
   function setEnv(key, value) {
-    core.opSync("op_set_env", { key, value });
+    core.opSync("op_set_env", key, value);
   }
 
   function getEnv(key) {

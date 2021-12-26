@@ -8,52 +8,62 @@
   const webidl = window.__bootstrap.webidl;
   const { setIsTrusted, defineEventHandler } = window.__bootstrap.event;
   const {
-    Boolean,
     Set,
     SetPrototypeAdd,
-    SetPrototypeClear,
     SetPrototypeDelete,
     Symbol,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
-  const add = Symbol("add");
-  const signalAbort = Symbol("signalAbort");
-  const remove = Symbol("remove");
+  const add = Symbol("[[add]]");
+  const signalAbort = Symbol("[[signalAbort]]");
+  const remove = Symbol("[[remove]]");
+  const abortReason = Symbol("[[abortReason]]");
+  const abortAlgos = Symbol("[[abortAlgos]]");
+  const signal = Symbol("[[signal]]");
 
   const illegalConstructorKey = Symbol("illegalConstructorKey");
 
   class AbortSignal extends EventTarget {
-    #aborted = false;
-    #abortAlgorithms = new Set();
-
-    static abort() {
+    static abort(reason = undefined) {
+      if (reason !== undefined) {
+        reason = webidl.converters.any(reason);
+      }
       const signal = new AbortSignal(illegalConstructorKey);
-      signal[signalAbort]();
+      signal[signalAbort](reason);
       return signal;
     }
 
     [add](algorithm) {
-      SetPrototypeAdd(this.#abortAlgorithms, algorithm);
-    }
-
-    [signalAbort]() {
-      if (this.#aborted) {
+      if (this.aborted) {
         return;
       }
-      this.#aborted = true;
-      for (const algorithm of this.#abortAlgorithms) {
-        algorithm();
+      if (this[abortAlgos] === null) {
+        this[abortAlgos] = new Set();
       }
-      SetPrototypeClear(this.#abortAlgorithms);
+      SetPrototypeAdd(this[abortAlgos], algorithm);
+    }
+
+    [signalAbort](
+      reason = new DOMException("The signal has been aborted", "AbortError"),
+    ) {
+      if (this.aborted) {
+        return;
+      }
+      this[abortReason] = reason;
+      if (this[abortAlgos] !== null) {
+        for (const algorithm of this[abortAlgos]) {
+          algorithm();
+        }
+        this[abortAlgos] = null;
+      }
       const event = new Event("abort");
       setIsTrusted(event, true);
       this.dispatchEvent(event);
     }
 
     [remove](algorithm) {
-      SetPrototypeDelete(this.#abortAlgorithms, algorithm);
+      this[abortAlgos] && SetPrototypeDelete(this[abortAlgos], algorithm);
     }
 
     constructor(key = null) {
@@ -61,15 +71,26 @@
         throw new TypeError("Illegal constructor.");
       }
       super();
+      this[abortReason] = undefined;
+      this[abortAlgos] = null;
       this[webidl.brand] = webidl.brand;
     }
 
     get aborted() {
-      return Boolean(this.#aborted);
+      webidl.assertBranded(this, AbortSignal);
+      return this[abortReason] !== undefined;
     }
 
-    get [SymbolToStringTag]() {
-      return "AbortSignal";
+    get reason() {
+      webidl.assertBranded(this, AbortSignal);
+      return this[abortReason];
+    }
+
+    throwIfAborted() {
+      webidl.assertBranded(this, AbortSignal);
+      if (this[abortReason] !== undefined) {
+        throw this[abortReason];
+      }
     }
   }
   defineEventHandler(AbortSignal.prototype, "abort");
@@ -77,18 +98,20 @@
   webidl.configurePrototype(AbortSignal);
 
   class AbortController {
-    #signal = new AbortSignal(illegalConstructorKey);
+    [signal] = new AbortSignal(illegalConstructorKey);
+
+    constructor() {
+      this[webidl.brand] = webidl.brand;
+    }
 
     get signal() {
-      return this.#signal;
+      webidl.assertBranded(this, AbortController);
+      return this[signal];
     }
 
-    abort() {
-      this.#signal[signalAbort]();
-    }
-
-    get [SymbolToStringTag]() {
-      return "AbortController";
+    abort(reason) {
+      webidl.assertBranded(this, AbortController);
+      this[signal][signalAbort](reason);
     }
   }
 
@@ -104,10 +127,15 @@
   }
 
   function follow(followingSignal, parentSignal) {
+    if (followingSignal.aborted) {
+      return;
+    }
     if (parentSignal.aborted) {
-      followingSignal[signalAbort]();
+      followingSignal[signalAbort](parentSignal.reason);
     } else {
-      parentSignal[add](() => followingSignal[signalAbort]());
+      parentSignal[add](() =>
+        followingSignal[signalAbort](parentSignal.reason)
+      );
     }
   }
 

@@ -19,7 +19,8 @@
    * @returns {HttpClient}
    */
   function createHttpClient(options) {
-    return new HttpClient(core.opSync("op_create_http_client", options));
+    options.caCerts ??= [];
+    return new HttpClient(core.opSync("op_fetch_custom_client", options));
   }
 
   class HttpClient {

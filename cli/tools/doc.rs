@@ -2,9 +2,10 @@
 
 use crate::colors;
 use crate::file_fetcher::File;
+use crate::flags::DocFlags;
 use crate::flags::Flags;
 use crate::get_types;
-use crate::program_state::ProgramState;
+use crate::proc_state::ProcState;
 use crate::write_json_to_stdout;
 use crate::write_to_stdout_ignore_sigpipe;
 use deno_ast::MediaType;
@@ -38,7 +39,7 @@ impl Loader for StubDocLoader {
 
 #[derive(Debug)]
 struct DocResolver {
-  import_map: Option<ImportMap>,
+  import_map: Option<Arc<ImportMap>>,
 }
 
 impl Resolver for DocResolver {
@@ -61,7 +62,7 @@ impl Resolver for DocResolver {
 }
 
 struct DocLoader {
-  program_state: Arc<ProgramState>,
+  ps: ProcState,
 }
 
 impl Loader for DocLoader {
@@ -71,9 +72,9 @@ impl Loader for DocLoader {
     _is_dynamic: bool,
   ) -> LoadFuture {
     let specifier = specifier.clone();
-    let program_state = self.program_state.clone();
+    let ps = self.ps.clone();
     async move {
-      let result = program_state
+      let result = ps
         .file_fetcher
         .fetch(&specifier, &mut Permissions::allow_all())
         .await
@@ -92,13 +93,12 @@ impl Loader for DocLoader {
 
 pub async fn print_docs(
   flags: Flags,
-  source_file: Option<String>,
-  json: bool,
-  maybe_filter: Option<String>,
-  private: bool,
+  doc_flags: DocFlags,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags.clone()).await?;
-  let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
+  let ps = ProcState::build(flags.clone()).await?;
+  let source_file = doc_flags
+    .source_file
+    .unwrap_or_else(|| "--builtin".to_string());
   let source_parser = deno_graph::DefaultSourceParser::new();
 
   let parse_result = if source_file == "--builtin" {
@@ -106,14 +106,17 @@ pub async fn print_docs(
     let source_file_specifier =
       ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
     let graph = create_graph(
-      source_file_specifier.clone(),
+      vec![source_file_specifier.clone()],
+      false,
+      None,
       &mut loader,
       None,
       None,
       None,
     )
     .await;
-    let doc_parser = doc::DocParser::new(graph, private, &source_parser);
+    let doc_parser =
+      doc::DocParser::new(graph, doc_flags.private, &source_parser);
     doc_parser.parse_source(
       &source_file_specifier,
       MediaType::Dts,
@@ -135,23 +138,24 @@ pub async fn print_docs(
     };
 
     // Save our fake file into file fetcher cache.
-    program_state.file_fetcher.insert_cached(root);
+    ps.file_fetcher.insert_cached(root);
 
-    let mut loader = DocLoader {
-      program_state: program_state.clone(),
-    };
+    let mut loader = DocLoader { ps: ps.clone() };
     let resolver = DocResolver {
-      import_map: program_state.maybe_import_map.clone(),
+      import_map: ps.maybe_import_map.clone(),
     };
     let graph = create_graph(
-      root_specifier.clone(),
+      vec![root_specifier.clone()],
+      false,
+      None,
       &mut loader,
       Some(&resolver),
       None,
       None,
     )
     .await;
-    let doc_parser = doc::DocParser::new(graph, private, &source_parser);
+    let doc_parser =
+      doc::DocParser::new(graph, doc_flags.private, &source_parser);
     doc_parser.parse_with_reexports(&root_specifier)
   };
 
@@ -163,11 +167,11 @@ pub async fn print_docs(
     }
   };
 
-  if json {
+  if doc_flags.json {
     write_json_to_stdout(&doc_nodes)
   } else {
     doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
-    let details = if let Some(filter) = maybe_filter {
+    let details = if let Some(filter) = doc_flags.filter {
       let nodes =
         doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
       if nodes.is_empty() {
@@ -176,12 +180,16 @@ pub async fn print_docs(
       }
       format!(
         "{}",
-        doc::DocPrinter::new(&nodes, colors::use_color(), private)
+        doc::DocPrinter::new(&nodes, colors::use_color(), doc_flags.private)
       )
     } else {
       format!(
         "{}",
-        doc::DocPrinter::new(&doc_nodes, colors::use_color(), private)
+        doc::DocPrinter::new(
+          &doc_nodes,
+          colors::use_color(),
+          doc_flags.private
+        )
       )
     };
 

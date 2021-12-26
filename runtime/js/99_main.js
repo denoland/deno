@@ -59,7 +59,7 @@ delete Object.prototype.__proto__;
   const errors = window.__bootstrap.errors.errors;
   const webidl = window.__bootstrap.webidl;
   const domException = window.__bootstrap.domException;
-  const { defineEventHandler } = window.__bootstrap.webUtil;
+  const { defineEventHandler } = window.__bootstrap.event;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
 
@@ -157,10 +157,7 @@ delete Object.prototype.__proto__;
 
         globalDispatchEvent(errorEvent);
         if (!errorEvent.defaultPrevented) {
-          core.opSync(
-            "op_worker_unhandled_error",
-            e.message,
-          );
+          throw e;
         }
       }
     }
@@ -216,19 +213,18 @@ delete Object.prototype.__proto__;
       runtimeOptions.v8Version,
       runtimeOptions.tsVersion,
     );
+    if (runtimeOptions.unstableFlag) {
+      internals.enableTestSteps();
+    }
     build.setBuildInfo(runtimeOptions.target);
     util.setLogDebug(runtimeOptions.debugFlag, source);
-    // TODO(bartlomieju): a very crude way to disable
-    // source mapping of errors. This condition is true
-    // only for compiled standalone binaries.
-    let prepareStackTrace;
-    if (runtimeOptions.applySourceMaps) {
-      prepareStackTrace = core.createPrepareStackTrace(
-        errorStack.opApplySourceMap,
-      );
-    } else {
-      prepareStackTrace = core.createPrepareStackTrace();
-    }
+    const prepareStackTrace = core.createPrepareStackTrace(
+      // TODO(bartlomieju): a very crude way to disable
+      // source mapping of errors. This condition is true
+      // only for compiled standalone binaries.
+      runtimeOptions.applySourceMaps ? errorStack.opApplySourceMap : undefined,
+      errorStack.opFormatFileName,
+    );
     // deno-lint-ignore prefer-primordials
     Error.prepareStackTrace = prepareStackTrace;
   }
@@ -355,7 +351,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, Navigator);
+        webidl.assertBranded(this, WorkerNavigator);
         return numCpus;
       },
     },
@@ -399,6 +395,7 @@ delete Object.prototype.__proto__;
     TextEncoderStream: util.nonEnumerable(encoding.TextEncoderStream),
     TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
+    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
     MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
@@ -413,6 +410,12 @@ delete Object.prototype.__proto__;
     ),
     ReadableByteStreamController: util.nonEnumerable(
       streams.ReadableByteStreamController,
+    ),
+    ReadableStreamBYOBReader: util.nonEnumerable(
+      streams.ReadableStreamBYOBReader,
+    ),
+    ReadableStreamBYOBRequest: util.nonEnumerable(
+      streams.ReadableStreamBYOBRequest,
     ),
     ReadableStreamDefaultController: util.nonEnumerable(
       streams.ReadableStreamDefaultController,
@@ -439,7 +442,6 @@ delete Object.prototype.__proto__;
 
   const unstableWindowOrWorkerGlobalScope = {
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
-    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
     WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
 
     GPU: util.nonEnumerable(webgpu.GPU),
@@ -479,17 +481,13 @@ delete Object.prototype.__proto__;
     location: location.locationDescriptor,
     Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),
-    self: util.readOnly(globalThis),
+    self: util.writable(globalThis),
     Navigator: util.nonEnumerable(Navigator),
     navigator: {
       configurable: true,
       enumerable: true,
       get: () => navigator,
     },
-    // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
-    // it seems those two properties should be available to workers as well
-    onload: util.writable(null),
-    onunload: util.writable(null),
     close: util.writable(windowClose),
     closed: util.getterOnly(() => windowIsClosing),
     alert: util.writable(prompt.alert),
@@ -521,8 +519,6 @@ delete Object.prototype.__proto__;
       get: () => workerNavigator,
     },
     self: util.readOnly(globalThis),
-    onmessage: util.writable(null),
-    onerror: util.writable(null),
     // TODO(bartlomieju): should be readonly?
     close: util.nonEnumerable(workerClose),
     postMessage: util.writable(postMessage),
@@ -555,8 +551,8 @@ delete Object.prototype.__proto__;
 
     eventTarget.setEventTargetData(globalThis);
 
-    defineEventHandler(window, "load", null);
-    defineEventHandler(window, "unload", null);
+    defineEventHandler(window, "load");
+    defineEventHandler(window, "unload");
 
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");
     // Stores the flag for checking whether unload is dispatched or not.
@@ -638,7 +634,7 @@ delete Object.prototype.__proto__;
       ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
     }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
-    ObjectDefineProperties(globalThis, { name: util.readOnly(name) });
+    ObjectDefineProperties(globalThis, { name: util.writable(name) });
     if (runtimeOptions.enableTestingFeaturesFlag) {
       ObjectDefineProperty(
         globalThis,
@@ -653,8 +649,8 @@ delete Object.prototype.__proto__;
 
     eventTarget.setEventTargetData(globalThis);
 
-    defineEventHandler(self, "message", null);
-    defineEventHandler(self, "error", null, true);
+    defineEventHandler(self, "message");
+    defineEventHandler(self, "error", undefined, true);
 
     runtimeStart(
       runtimeOptions,

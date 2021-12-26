@@ -1,6 +1,6 @@
-import { assertEquals, assertStringIncludes, unitTest } from "./test_util.ts";
+import { assertEquals, assertStringIncludes } from "./test_util.ts";
 
-unitTest(function customInspectFunction() {
+Deno.test(function customInspectFunction() {
   const blob = new DOMException("test");
   assertEquals(
     Deno.inspect(blob),

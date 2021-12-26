@@ -9,7 +9,7 @@ jsWorker.onerror = (_e) => {
 };
 
 jsWorker.onmessage = (e) => {
-  postMessage({ type: "msg", text: e });
+  postMessage({ type: "msg", text: e.data });
   close();
 };
 

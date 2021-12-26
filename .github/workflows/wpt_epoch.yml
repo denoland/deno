@@ -13,6 +13,7 @@ on:
 jobs:
   wpt:
     name: wpt / ${{ matrix.os }} / ${{ matrix.deno-version }}
+    if: github.repository == 'denoland/deno'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -34,7 +35,7 @@ jobs:
           deno-version: ${{ matrix.deno-version }}
 
       - name: Install Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v2
         with:
           python-version: "3.8"
           architecture: x64

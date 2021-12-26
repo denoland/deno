@@ -12,6 +12,9 @@ use lspower::lsp::SemanticTokens;
 use lspower::lsp::SemanticTokensLegend;
 use std::ops::{Index, IndexMut};
 
+pub(crate) const MODIFIER_MASK: u32 = 255;
+pub(crate) const TYPE_OFFSET: u32 = 8;
+
 enum TokenType {
   Class = 0,
   Enum = 1,
@@ -78,22 +81,17 @@ pub fn get_legend() -> SemanticTokensLegend {
   token_types[TokenType::Method] = "method".into();
 
   let mut token_modifiers = vec![SemanticTokenModifier::from(""); 6];
-  token_modifiers[TokenModifier::Declaration] = "declaration".into();
-  token_modifiers[TokenModifier::Static] = "static".into();
   token_modifiers[TokenModifier::Async] = "async".into();
+  token_modifiers[TokenModifier::Declaration] = "declaration".into();
   token_modifiers[TokenModifier::Readonly] = "readonly".into();
-  token_modifiers[TokenModifier::DefaultLibrary] = "defaultLibrary".into();
+  token_modifiers[TokenModifier::Static] = "static".into();
   token_modifiers[TokenModifier::Local] = "local".into();
+  token_modifiers[TokenModifier::DefaultLibrary] = "defaultLibrary".into();
 
   SemanticTokensLegend {
     token_types,
     token_modifiers,
   }
-}
-
-pub enum TsTokenEncodingConsts {
-  TypeOffset = 8,
-  ModifierMask = 255,
 }
 
 pub struct SemanticTokensBuilder {

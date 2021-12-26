@@ -6,9 +6,9 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
-use deno_core::ModuleSpecifier;
+use deno_graph::ModuleGraphError;
+use once_cell::sync::Lazy;
 use regex::Regex;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
@@ -30,7 +30,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "Metrics",
   "OpMetrics",
   "RecordType",
-  "ResolveDnsOptions",
   "SRVRecord",
   "SetRawOptions",
   "SignalStream",
@@ -38,6 +37,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "SystemMemoryInfo",
   "UnixConnectOptions",
   "UnixListenOptions",
+  "addSignalListener",
   "applySourceMap",
   "connect",
   "consoleSize",
@@ -54,12 +54,10 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "dlopen",
   "osRelease",
   "ppid",
-  "resolveDns",
+  "removeSignalListener",
   "setRaw",
   "shutdown",
   "Signal",
-  "signal",
-  "signals",
   "sleepSync",
   "startTls",
   "systemMemoryInfo",
@@ -68,13 +66,13 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "utimeSync",
 ];
 
-lazy_static::lazy_static! {
-  static ref MSG_MISSING_PROPERTY_DENO: Regex =
-    Regex::new(r#"Property '([^']+)' does not exist on type 'typeof Deno'"#)
-      .unwrap();
-  static ref MSG_SUGGESTION: Regex =
-    Regex::new(r#" Did you mean '([^']+)'\?"#).unwrap();
-}
+static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r#"Property '([^']+)' does not exist on type 'typeof Deno'"#)
+    .unwrap()
+});
+
+static MSG_SUGGESTION: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#" Did you mean '([^']+)'\?"#).unwrap());
 
 /// Potentially convert a "raw" diagnostic message from TSC to something that
 /// provides a more sensible error message given a Deno runtime context.
@@ -355,22 +353,29 @@ impl Diagnostics {
     Diagnostics(diagnostics)
   }
 
-  pub fn extend_graph_errors(
-    &mut self,
-    errors: HashMap<ModuleSpecifier, String>,
-  ) {
-    self.0.extend(errors.into_iter().map(|(s, e)| Diagnostic {
+  pub fn extend_graph_errors(&mut self, errors: Vec<ModuleGraphError>) {
+    self.0.extend(errors.into_iter().map(|err| Diagnostic {
       category: DiagnosticCategory::Error,
       code: 900001,
       start: None,
       end: None,
-      message_text: Some(e),
+      message_text: Some(err.to_string()),
       message_chain: None,
       source: None,
       source_line: None,
-      file_name: Some(s.to_string()),
+      file_name: Some(err.specifier().to_string()),
       related_information: None,
     }));
+  }
+
+  /// Return a set of diagnostics where only the values where the predicate
+  /// returns `true` are included.
+  pub fn filter<P>(&self, predicate: P) -> Self
+  where
+    P: FnMut(&Diagnostic) -> bool,
+  {
+    let diagnostics = self.0.clone().into_iter().filter(predicate).collect();
+    Self(diagnostics)
   }
 
   pub fn is_empty(&self) -> bool {

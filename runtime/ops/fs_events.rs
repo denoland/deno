@@ -65,8 +65,9 @@ impl Resource for FsEventsResource {
 /// the complexity.
 #[derive(Serialize, Debug)]
 struct FsEvent {
-  kind: String,
+  kind: &'static str,
   paths: Vec<PathBuf>,
+  flag: Option<&'static str>,
 }
 
 impl From<NotifyEvent> for FsEvent {
@@ -77,12 +78,15 @@ impl From<NotifyEvent> for FsEvent {
       EventKind::Create(_) => "create",
       EventKind::Modify(_) => "modify",
       EventKind::Remove(_) => "remove",
-      EventKind::Other => todo!(), // What's this for? Leaving it out for now.
-    }
-    .to_string();
+      EventKind::Other => "other",
+    };
+    let flag = e.flag().map(|f| match f {
+      notify::event::Flag::Rescan => "rescan",
+    });
     FsEvent {
       kind,
       paths: e.paths,
+      flag,
     }
   }
 }

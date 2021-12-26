@@ -53,9 +53,9 @@ pub fn parse(paths: Vec<String>) -> clap::Result<Vec<String>> {
         out.push(format!("{}:{}", host, port.0));
       }
     } else {
-      return Err(clap::Error::with_description(
-        format!("Bad host:port pair: {}", host_and_port),
+      return Err(clap::Error::raw(
         clap::ErrorKind::InvalidValue,
+        format!("Bad host:port pair: {}", host_and_port),
       ));
     }
   }

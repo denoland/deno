@@ -1,0 +1,53 @@
+[WILDCARD]
+running 3 tests from [WILDCARD]/failing_steps.ts
+test nested failure ...
+  test step 1 ...
+    test inner 1 ... FAILED ([WILDCARD])
+      Error: Failed.
+          at [WILDCARD]/failing_steps.ts:[WILDCARD]
+          [WILDCARD]
+    test inner 2 ... ok ([WILDCARD])
+  FAILED ([WILDCARD])
+FAILED ([WILDCARD])
+test multiple test step failures ...
+  test step 1 ... FAILED ([WILDCARD])
+    Error: Fail.
+        [WILDCARD]
+  test step 2 ... FAILED ([WILDCARD])
+    Error: Fail.
+        at [WILDCARD]/failing_steps.ts:[WILDCARD]
+        [WILDCARD]
+FAILED ([WILDCARD])
+test failing step in failing test ...
+  test step 1 ... FAILED ([WILDCARD])
+    Error: Fail.
+        at [WILDCARD]/failing_steps.ts:[WILDCARD]
+        at [WILDCARD]
+FAILED ([WILDCARD])
+
+failures:
+
+nested failure
+Error: 1 test step failed.
+    at runTest (deno:runtime/js/40_testing.js:[WILDCARD])
+    at async Object.runTests (deno:runtime/js/40_testing.js:[WILDCARD])
+
+multiple test step failures
+Error: 2 test steps failed.
+    at runTest (deno:runtime/js/40_testing.js:[WILDCARD])
+    at async Object.runTests (deno:runtime/js/40_testing.js:[WILDCARD])
+
+failing step in failing test
+Error: Fail test.
+    at [WILDCARD]/failing_steps.ts:[WILDCARD]
+    at [WILDCARD]
+
+failures:
+
+	nested failure
+	multiple test step failures
+	failing step in failing test
+
+test result: FAILED. 0 passed (1 step); 3 failed (5 steps); 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Test failed
