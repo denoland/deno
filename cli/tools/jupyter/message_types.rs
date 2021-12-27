@@ -65,6 +65,7 @@ impl TryFrom<ZmqMessage> for RequestMessage {
   }
 }
 
+#[derive(Debug)]
 pub struct ReplyMessage {
   pub header: MessageHeader,
   pub parent_header: MessageHeader,
@@ -123,6 +124,7 @@ impl ReplyMessage {
       "==> SENDING MSG [{}]: {:#?}",
       &self.header.msg_type, zmq_msg
     );
+
     zmq_msg
   }
 }

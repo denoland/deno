@@ -44,8 +44,8 @@ mod comm;
 mod install;
 mod message_types;
 
-use comm::create_zmq_reply;
 use comm::DealerComm;
+use comm::HbComm;
 use comm::PubComm;
 pub use install::install;
 use message_types::*;
@@ -77,16 +77,6 @@ enum KernelState {
   Starting,
 }
 
-impl std::fmt::Display for KernelState {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::Busy => write!(f, "busy"),
-      Self::Idle => write!(f, "idle"),
-      Self::Starting => write!(f, "starting"),
-    }
-  }
-}
-
 struct Kernel {
   metadata: KernelMetadata,
   conn_spec: ConnectionSpec,
@@ -95,6 +85,7 @@ struct Kernel {
   shell_comm: DealerComm,
   control_comm: DealerComm,
   stdin_comm: DealerComm,
+  hb_comm: HbComm,
   session_id: String,
   execution_count: u32,
   repl_session: ReplSession,
@@ -102,6 +93,7 @@ struct Kernel {
   last_comm_ctx: Option<CommContext>,
 }
 
+#[derive(Copy, Clone, Debug)]
 enum HandlerType {
   Shell,
   Control,
@@ -124,10 +116,8 @@ pub fn op_print(
 
   if is_err {
     let r = sender.unbounded_send((StdioType::Stderr, msg));
-    eprintln!("stdio result {:#?}", r);
   } else {
     let r = sender.unbounded_send((StdioType::Stdout, msg));
-    eprintln!("stdio result {:#?}", r);
   }
   Ok(())
 }
@@ -172,8 +162,8 @@ impl Kernel {
       session_id.clone(),
       hmac_key,
     );
-
-    let hb_conn_str = create_conn_str(&spec.transport, &spec.ip, spec.hb_port);
+    let hb_comm =
+      HbComm::new(create_conn_str(&spec.transport, &spec.ip, spec.hb_port));
 
     let main_module = resolve_url_or_path("./$deno$jupyter.ts").unwrap();
     // TODO(bartlomieju): should we run with all permissions?
@@ -197,6 +187,7 @@ impl Kernel {
       shell_comm,
       control_comm,
       stdin_comm,
+      hb_comm,
       session_id,
       execution_count,
       repl_session,
@@ -208,53 +199,49 @@ impl Kernel {
   }
 
   async fn run(&mut self) -> Result<(), AnyError> {
-    let (iopub_res, shell_res, control_res, stdin_res) = join!(
-      self.iopub_comm.connect(),
-      self.shell_comm.connect(),
-      self.control_comm.connect(),
-      self.stdin_comm.connect(),
-    );
-    iopub_res?;
-    shell_res?;
-    control_res?;
-    stdin_res?;
+    println!("Connecting to iopub");
+    self.iopub_comm.connect().await?;
+    println!("Connected to iopub");
+    println!("Connecting to shell");
+    self.shell_comm.connect().await?;
+    println!("Connected to shell");
+    println!("Connecting to control");
+    self.control_comm.connect().await?;
+    println!("Connected to control");
+    println!("Connecting to stdin");
+    self.stdin_comm.connect().await?;
+    println!("Connected to stdin");
+    println!("Connecting to heartbeat");
+    self.hb_comm.connect().await?;
+    println!("Connected to heartbeat");
 
-    // TODO(apowers313): run heartbeat
-    // create_zmq_reply("hb", &hb_conn_str)
-
+    let mut poll_worker = true;
     loop {
       tokio::select! {
-        shell_msg = self.shell_comm.recv() => {
-          self.handler(HandlerType::Shell, shell_msg).await;
+        shell_msg_result = self.shell_comm.recv() => {
+          self.handler(HandlerType::Shell, shell_msg_result).await;
+          poll_worker = true;
         },
-        control_msg = self.control_comm.recv() => {
-          self.handler(HandlerType::Control, control_msg);
+        control_msg_result = self.control_comm.recv() => {
+          self.handler(HandlerType::Control, control_msg_result).await;
+          poll_worker = true;
         },
-        stdin_msg = self.stdin_comm.recv() => {
-          self.handler(HandlerType::Stdin, stdin_msg);
+        stdin_msg_result = self.stdin_comm.recv() => {
+          self.handler(HandlerType::Stdin, stdin_msg_result).await;
+          poll_worker = true;
         },
         maybe_stdio_proxy_msg = self.stdio_rx.next() => {
-            println!("Received stdio message {:#?}", maybe_stdio_proxy_msg);
-            if let Some(stdio_proxy_msg) = maybe_stdio_proxy_msg {
-                if let Some(comm_ctx) = self.last_comm_ctx.as_ref() {
-                    let (t, content) = stdio_proxy_msg;
-                    let msg = SideEffectMessage::new(
-                        comm_ctx,
-                        "stream",
-                        ReplyMetadata::Empty,
-                        ReplyContent::Stream(StreamContent {
-                            name: match t {
-                                StdioType::Stdout => "stdout".to_string(),
-                                StdioType::Stderr => "stderr".to_string(),
-                            },
-                            text: content,
-                        }),
-                    );
-                    self.iopub_comm.send(msg).await?;
-                } else {
-                    println!("Received stdio message, but there is no last CommContext: {:#?}", stdio_proxy_msg.1);
-                }
-            }
+          if let Some(stdio_proxy_msg) = maybe_stdio_proxy_msg {
+            self.stdio_handler(stdio_proxy_msg).await;
+          }
+        },
+        heartbeat_result = self.hb_comm.heartbeat() => {
+          if let Err(e) = heartbeat_result {
+            println!("[heartbeat] error: {}", e);
+          }
+        },
+        _ = self.repl_session.run_event_loop(), if poll_worker => {
+          poll_worker = false;
         }
       }
     }
@@ -279,13 +266,8 @@ impl Kernel {
     };
     self.last_comm_ctx = Some(comm_ctx.clone());
 
-    match self.set_state(&comm_ctx, KernelState::Busy).await {
-      Ok(_) => {}
-      Err(e) => {
-        println!("error setting busy state: {}", e);
-        return;
-      }
-    };
+    println!("[DENO] set_state busy {:#?}", handler_type);
+    self.set_state(&comm_ctx, KernelState::Busy).await;
 
     let major_version = &comm_ctx.message.header.version.to_string()[0..1];
     let res = match (handler_type, major_version) {
@@ -310,28 +292,58 @@ impl Kernel {
       }
     };
 
-    match self.set_state(&comm_ctx, KernelState::Idle).await {
-      Ok(_) => {}
-      Err(e) => {
-        println!("error setting idle state: {}", e);
-      }
-    };
+    println!("[DENO] set_state idle {:#?}", handler_type);
+    self.set_state(&comm_ctx, KernelState::Idle).await;
+  }
+
+  async fn stdio_handler(
+    &mut self,
+    stdio_proxy_msg: (StdioType, String),
+  ) -> Result<(), AnyError> {
+    if let Some(comm_ctx) = self.last_comm_ctx.as_ref() {
+      let (t, content) = stdio_proxy_msg;
+      let msg = SideEffectMessage::new(
+        comm_ctx,
+        "stream",
+        ReplyMetadata::Empty,
+        ReplyContent::Stream(StreamContent {
+          name: match t {
+            StdioType::Stdout => "stdout".to_string(),
+            StdioType::Stderr => "stderr".to_string(),
+          },
+          text: content,
+        }),
+      );
+      self.iopub_comm.send(msg).await?;
+    } else {
+      println!(
+        "Received stdio message, but there is no last CommContext: {:#?}",
+        stdio_proxy_msg.1
+      );
+    }
+
+    Ok(())
   }
 
   async fn shell_handler(
     &mut self,
     comm_ctx: &CommContext,
   ) -> Result<(), AnyError> {
-    match comm_ctx.message.header.msg_type.as_ref() {
-      "kernel_info_request" => self.kernel_info_reply(comm_ctx).await?,
-      "execute_request" => self.execute_request(comm_ctx).await?,
+    let msg_type = comm_ctx.message.header.msg_type.as_ref();
+    let result = match msg_type {
+      "kernel_info_request" => self.kernel_info_reply(comm_ctx).await,
+      "execute_request" => self.execute_request(comm_ctx).await,
       _ => {
-        return Err(anyhow!(
-          "no handler for msg_id: '{}'",
-          comm_ctx.message.header.msg_id
-        ))
+        println!("[shell] no handler for {}", msg_type);
+        Ok(())
       }
     };
+
+    if let Err(e) = result {
+      println!("[shell] error handling {}: {}", msg_type, e);
+    } else {
+      println!("[shell] ok {}", msg_type);
+    }
 
     Ok(())
   }
@@ -344,13 +356,10 @@ impl Kernel {
     todo!()
   }
 
-  async fn set_state(
-    &mut self,
-    comm_ctx: &CommContext,
-    state: KernelState,
-  ) -> Result<(), AnyError> {
+  async fn set_state(&mut self, comm_ctx: &CommContext, state: KernelState) {
     if self.state == state {
-      return Ok(());
+      println!("[DENO] set_state sets the same state: {:#?}", state);
+      return;
     }
 
     self.state = state;
@@ -360,19 +369,23 @@ impl Kernel {
     let now = now.to_rfc3339();
 
     let s = match state {
-      KernelState::Busy => "busy".to_string(),
-      KernelState::Idle => "idle".to_string(),
-      KernelState::Starting => "starting".to_string(),
+      KernelState::Busy => "busy",
+      KernelState::Idle => "idle",
+      KernelState::Starting => "starting",
     };
 
     let msg = SideEffectMessage::new(
       comm_ctx,
       "status",
       ReplyMetadata::Empty,
-      ReplyContent::Status(KernelStatusContent { execution_state: s }),
+      ReplyContent::Status(KernelStatusContent {
+        execution_state: s.to_string(),
+      }),
     );
 
-    self.iopub_comm.send(msg).await
+    if let Err(e) = self.iopub_comm.send(msg).await {
+      println!("[IoPub] Error setting state: {}", s);
+    }
   }
 
   async fn kernel_info_reply(

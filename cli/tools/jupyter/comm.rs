@@ -39,8 +39,8 @@ impl PubComm {
   }
 
   pub async fn send(&mut self, msg: SideEffectMessage) -> Result<(), AnyError> {
+    println!("==> IoPub SENDING: {:#?}", msg);
     let zmq_msg = msg.serialize(&self.hmac_key);
-    println!(">>> ZMQ SENDING: {:#?}", zmq_msg);
     self.socket.send(zmq_msg).await?;
     Ok(())
   }
@@ -79,7 +79,6 @@ impl DealerComm {
 
   pub async fn recv(&mut self) -> Result<RequestMessage, AnyError> {
     let zmq_msg = self.socket.recv().await?;
-    println!("<<< ZMQ RECEIVING: {:#?}", zmq_msg);
 
     hmac_verify(
       &self.hmac_key,
@@ -91,31 +90,44 @@ impl DealerComm {
     )?;
 
     let jup_msg = RequestMessage::try_from(zmq_msg)?;
-
+    println!("<== {} RECEIVING: {:#?}", self.name, jup_msg);
     Ok(jup_msg)
   }
 
   pub async fn send(&mut self, msg: ReplyMessage) -> Result<(), AnyError> {
+    println!("==> {} SENDING: {:#?}", self.name, msg);
     let zmq_msg = msg.serialize(&self.hmac_key);
-    println!(">>> ZMQ SENDING: {:#?}", zmq_msg);
     self.socket.send(zmq_msg).await?;
+    println!("==> {} SENT", self.name);
     Ok(())
   }
 }
 
-// TODO(apowers313) this is the heartbeat loop now
-pub async fn create_zmq_reply(
-  name: &str,
-  conn_str: &str,
-) -> Result<(), AnyError> {
-  println!("reply '{}' connection string: {}", name, conn_str);
+pub struct HbComm {
+  conn_str: String,
+  socket: zeromq::RepSocket,
+}
 
-  let mut sock = zeromq::RepSocket::new(); // TODO(apowers313) exact same as dealer, refactor
-  sock.monitor();
-  sock.bind(conn_str).await?;
+impl HbComm {
+  pub fn new(conn_str: String) -> Self {
+    println!("hb connection: {}", conn_str);
+    Self {
+      conn_str,
+      socket: zeromq::RepSocket::new(),
+    }
+  }
 
-  loop {
-    let msg = sock.recv().await?;
-    println!("*** '{}' got packet!", name);
+  pub async fn connect(&mut self) -> Result<(), AnyError> {
+    self.socket.bind(&self.conn_str).await?;
+
+    Ok(())
+  }
+
+  pub async fn heartbeat(&mut self) -> Result<(), AnyError> {
+    let msg = self.socket.recv().await?;
+    println!("<== heartbeat received");
+    self.socket.send(msg).await?;
+    println!("==> heartbeat sent");
+    Ok(())
   }
 }
