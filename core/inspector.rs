@@ -191,7 +191,7 @@ impl JsRuntimeInspector {
 
   pub fn has_active_sessions(&self) -> bool {
     let sessions = self.sessions.borrow();
-    !sessions.established.is_empty() || sessions.handshake.is_some()
+    !sessions.established.is_empty()
   }
 
   fn poll_sessions(
@@ -218,27 +218,11 @@ impl JsRuntimeInspector {
 
     loop {
       loop {
-        // Do one "handshake" with a newly connected session at a time.
-        if let Some(session) = &mut sessions.handshake {
-          let poll_result = session.poll_unpin(cx);
-          match poll_result {
-            Poll::Pending => {
-              let session = sessions.handshake.take().unwrap();
-              sessions.established.push(session);
-            }
-            Poll::Ready(_) => sessions.handshake = None,
-          };
-        }
-
         // Accept new connections.
-        match sessions.new_incoming.poll_next_unpin(cx) {
-          Poll::Ready(Some(session)) => {
-            let prev = sessions.handshake.replace(session);
-            assert!(prev.is_none());
-            continue;
-          }
-          Poll::Ready(None) => {}
-          Poll::Pending => {}
+        let poll_result = sessions.new_incoming.poll_next_unpin(cx);
+        if let Poll::Ready(Some(session)) = poll_result {
+          sessions.established.push(session);
+          continue;
         }
 
         // Poll established sessions.
@@ -249,9 +233,8 @@ impl JsRuntimeInspector {
         };
       }
 
-      let should_block = sessions.handshake.is_some()
-        || self.flags.borrow().on_pause
-        || self.flags.borrow().waiting_for_session;
+      let should_block =
+        self.flags.borrow().on_pause || self.flags.borrow().waiting_for_session;
 
       let new_state = self.waker.update(|w| {
         match w.poll_state {
@@ -296,8 +279,11 @@ impl JsRuntimeInspector {
   }
 
   /// This function blocks the thread until at least one inspector client has
-  /// established a websocket connection and successfully completed the
-  /// handshake. After that, it instructs V8 to pause at the next statement.
+  /// established a websocket connection.
+  ///
+  /// After that, it instructs V8 to pause at the next statement.
+  /// Frontend must send "Runtime.runIfWaitingForDebugger" message to resume
+  /// execution.
   pub fn wait_for_session_and_break_on_next_statement(&mut self) {
     loop {
       match self.sessions.get_mut().established.iter_mut().next() {
@@ -311,10 +297,6 @@ impl JsRuntimeInspector {
   }
 
   /// Obtain a sender for proxy channels.
-  ///
-  /// After a proxy is sent inspector will wait for a "handshake".
-  /// Frontend must send "Runtime.runIfWaitingForDebugger" message to
-  /// complete the handshake.
   pub fn get_session_sender(&self) -> UnboundedSender<InspectorSessionProxy> {
     self.new_session_tx.clone()
   }
@@ -347,8 +329,7 @@ impl JsRuntimeInspector {
     };
 
     // InspectorSessions for a local session is added directly to the "established"
-    // sessions, so it doesn't need to go through the session sender and handshake
-    // phase.
+    // sessions, so it doesn't need to go through the session sender.
     let inspector_session =
       InspectorSession::new(self.v8_inspector.clone(), proxy);
     self
@@ -379,7 +360,6 @@ impl InspectorFlags {
 /// parts of their lifecycle.
 struct SessionContainer {
   new_incoming: Pin<Box<dyn Stream<Item = Box<InspectorSession>> + 'static>>,
-  handshake: Option<Box<InspectorSession>>,
   established: FuturesUnordered<Box<InspectorSession>>,
 }
 
@@ -405,7 +385,6 @@ impl Default for SessionContainer {
   fn default() -> Self {
     Self {
       new_incoming: stream::empty().boxed_local(),
-      handshake: None,
       established: FuturesUnordered::new(),
     }
   }
