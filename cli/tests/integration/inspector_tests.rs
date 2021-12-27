@@ -61,10 +61,10 @@ async fn send_inspector_messages(
     >,
     tungstenite::Message,
   >,
-  messages: Vec<&'static str>,
+  messages: &[&'static str],
 ) {
   for msg in messages {
-    socket.send(msg.into()).await.unwrap();
+    socket.send(msg.to_string().into()).await.unwrap();
   }
 }
 
@@ -126,13 +126,6 @@ async fn inspector_connect() {
   child.wait().unwrap();
 }
 
-#[derive(Debug)]
-enum TestStep {
-  StdOut(&'static str),
-  WsRecv(&'static str),
-  WsSend(&'static str),
-}
-
 #[tokio::test]
 async fn inspector_break_on_first_line() {
   let script = util::testdata_path().join("inspector2.js");
@@ -156,11 +149,13 @@ async fn inspector_break_on_first_line() {
   assert_eq!(response.status(), 101); // Switching protocols.
 
   let (mut socket_tx, socket_rx) = socket.split();
-  let mut socket_rx =
-    socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
+  let mut socket_rx = socket_rx
+    .map(|msg| msg.unwrap().to_string())
+    .filter(|msg| {
       let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
       futures::future::ready(pass)
-    });
+    })
+    .boxed_local();
 
   let stdout = child.stdout.as_mut().unwrap();
   let mut stdout_lines =
@@ -168,43 +163,57 @@ async fn inspector_break_on_first_line() {
 
   assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-  use TestStep::*;
-  let test_steps = vec![
-    WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
-    WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
-    WsRecv(
+  send_inspector_messages(
+    &mut socket_tx,
+    &[
+      r#"{"id":1,"method":"Runtime.enable"}"#,
+      r#"{"id":2,"method":"Debugger.enable"}"#,
+    ],
+  )
+  .await;
+  assert_inspector_messages(
+    &mut socket_rx,
+    &[
+      r#"{"id":1,"result":{}}"#,
+      r#"{"id":2,"result":{"debuggerId":"#,
+    ],
+    &[
       r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ),
-    WsRecv(r#"{"id":1,"result":{}}"#),
-    WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
-    WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
-    WsRecv(r#"{"id":3,"result":{}}"#),
-    WsRecv(r#"{"method":"Debugger.paused","#),
-    WsSend(
+    ],
+  ).await;
+  send_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
+  )
+  .await;
+  assert_inspector_messages(
+    &mut socket_rx,
+    &[r#"{"id":3,"result":{}}"#],
+    &[r#"{"method":"Debugger.paused","#],
+  )
+  .await;
+  send_inspector_messages(
+    &mut socket_tx,
+    &[
       r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
-    ),
-    WsRecv(r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#),
-    StdOut("hello from the inspector"),
-    WsSend(r#"{"id":5,"method":"Debugger.resume"}"#),
-    WsRecv(r#"{"id":5,"result":{}}"#),
-    StdOut("hello from the script"),
-  ];
-
-  for step in test_steps {
-    match step {
-      StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
-      WsRecv(s) => {
-        let next_line = socket_rx.next().await.unwrap();
-        assert!(
-          next_line.starts_with(s),
-          "Doesn't start with {}, instead received {}",
-          s,
-          next_line
-        );
-      }
-      WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
-    }
-  }
+    ],
+  )
+  .await;
+  assert_inspector_messages(
+    &mut socket_rx,
+    &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
+    &[],
+  )
+  .await;
+  assert_eq!(&stdout_lines.next().unwrap(), "hello from the inspector");
+  send_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":5,"method":"Debugger.resume"}"#],
+  )
+  .await;
+  assert_inspector_messages(&mut socket_rx, &[r#"{"id":5,"result":{}}"#], &[])
+    .await;
+  assert_eq!(&stdout_lines.next().unwrap(), "hello from the script");
 
   child.kill().unwrap();
   child.wait().unwrap();
@@ -344,11 +353,13 @@ async fn inspector_does_not_hang() {
   assert_eq!(response.status(), 101); // Switching protocols.
 
   let (mut socket_tx, socket_rx) = socket.split();
-  let mut socket_rx =
-    socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
+  let mut socket_rx = socket_rx
+    .map(|msg| msg.unwrap().to_string())
+    .filter(|msg| {
       let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
       futures::future::ready(pass)
-    });
+    })
+    .boxed_local();
 
   let stdout = child.stdout.as_mut().unwrap();
   let mut stdout_lines =
@@ -356,38 +367,49 @@ async fn inspector_does_not_hang() {
 
   assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-  use TestStep::*;
-  let test_steps = vec![
-    WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
-    WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
-    WsRecv(
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ),
-    WsRecv(r#"{"id":1,"result":{}}"#),
-    WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
-    WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
-    WsRecv(r#"{"id":3,"result":{}}"#),
-    WsRecv(r#"{"method":"Debugger.paused","#),
-    WsSend(r#"{"id":4,"method":"Debugger.resume"}"#),
-    WsRecv(r#"{"id":4,"result":{}}"#),
-    WsRecv(r#"{"method":"Debugger.resumed","params":{}}"#),
-  ];
+  send_inspector_messages(
+    &mut socket_tx,
+    &[
+      r#"{"id":1,"method":"Runtime.enable"}"#,
+      r#"{"id":2,"method":"Debugger.enable"}"#,
+    ],
+  )
+  .await;
+  assert_inspector_messages(
+    &mut socket_rx,
+    &[
+      r#"{"id":1,"result":{}}"#,
+      r#"{"id":2,"result":{"debuggerId":"#
+    ],
+    &[
+      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#
+    ],
+  )
+  .await;
 
-  for step in test_steps {
-    match step {
-      WsRecv(s) => {
-        let next_line = socket_rx.next().await.unwrap();
-        assert!(
-          next_line.starts_with(s),
-          "Doesn't start with {}, instead received {}",
-          s,
-          next_line
-        );
-      }
-      WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
-      _ => unreachable!(),
-    }
-  }
+  send_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
+  )
+  .await;
+  assert_inspector_messages(
+    &mut socket_rx,
+    &[r#"{"id":3,"result":{}}"#],
+    &[r#"{"method":"Debugger.paused","#],
+  )
+  .await;
+
+  send_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":4,"method":"Debugger.resume"}"#],
+  )
+  .await;
+  assert_inspector_messages(
+    &mut socket_rx,
+    &[r#"{"id":4,"result":{}}"#],
+    &[r#"{"method":"Debugger.resumed","params":{}}"#],
+  )
+  .await;
 
   for i in 0..128u32 {
     let request_id = i + 10;
@@ -491,7 +513,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
   send_inspector_messages(
     &mut socket_tx,
-    vec![
+    &[
       r#"{"id":1,"method":"Runtime.enable"}"#,
       r#"{"id":2,"method":"Debugger.enable"}"#,
     ],
@@ -515,7 +537,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
   send_inspector_messages(
     &mut socket_tx,
-    vec![
+    &[
       r#"{"id":3,"method":"Runtime.compileScript","params":{"expression":"Deno.cwd()","sourceURL":"","persistScript":false,"executionContextId":1}}"#,
     ]
   ).await;
@@ -524,7 +546,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
   send_inspector_messages(
     &mut socket_tx,
-    vec![
+    &[
       r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.cwd()","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
     ]
   ).await;
@@ -537,7 +559,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
   send_inspector_messages(
     &mut socket_tx,
-    vec![
+    &[
       r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"console.error('done');","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
     ]
   ).await;
@@ -661,11 +683,13 @@ async fn inspector_break_on_first_line_in_test() {
   assert_eq!(response.status(), 101); // Switching protocols.
 
   let (mut socket_tx, socket_rx) = socket.split();
-  let mut socket_rx =
-    socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
+  let mut socket_rx = socket_rx
+    .map(|msg| msg.unwrap().to_string())
+    .filter(|msg| {
       let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
       futures::future::ready(pass)
-    });
+    })
+    .boxed_local();
 
   let stdout = child.stdout.as_mut().unwrap();
   let mut stdout_lines =
@@ -673,48 +697,69 @@ async fn inspector_break_on_first_line_in_test() {
 
   assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-  use TestStep::*;
-  let test_steps = vec![
-    WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
-    WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
-    WsRecv(
+  send_inspector_messages(
+    &mut socket_tx,
+    &[
+      r#"{"id":1,"method":"Runtime.enable"}"#,
+      r#"{"id":2,"method":"Debugger.enable"}"#,
+    ],
+  )
+  .await;
+  assert_inspector_messages(
+    &mut socket_rx,
+    &[
+      r#"{"id":1,"result":{}}"#,
+      r#"{"id":2,"result":{"debuggerId":"#,
+    ],
+    &[
       r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ),
-    WsRecv(r#"{"id":1,"result":{}}"#),
-    WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
-    WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
-    WsRecv(r#"{"id":3,"result":{}}"#),
-    WsRecv(r#"{"method":"Debugger.paused","#),
-    WsSend(
-      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
-    ),
-    WsRecv(r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#),
-    StdOut("hello from the inspector"),
-    WsSend(r#"{"id":5,"method":"Debugger.resume"}"#),
-    WsRecv(r#"{"id":5,"result":{}}"#),
-    StdOut("running 1 test from"),
-    StdOut("test has finished running"),
-  ];
+    ],
+  ).await;
 
-  for step in test_steps {
-    match step {
-      StdOut(s) => assert!(
-        &stdout_lines.next().unwrap().contains(s),
-        "Doesn't contain {}",
-        s
-      ),
-      WsRecv(s) => {
-        let next_line = socket_rx.next().await.unwrap();
-        assert!(
-          next_line.starts_with(s),
-          "Doesn't start with {}, instead received {}",
-          s,
-          next_line
-        );
-      }
-      WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
-    }
-  }
+  send_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
+  )
+  .await;
+  assert_inspector_messages(
+    &mut socket_rx,
+    &[r#"{"id":3,"result":{}}"#],
+    &[r#"{"method":"Debugger.paused","#],
+  )
+  .await;
+
+  send_inspector_messages(
+    &mut socket_tx,
+    &[
+      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
+    ],
+  )
+  .await;
+  assert_inspector_messages(
+    &mut socket_rx,
+    &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
+    &[],
+  )
+  .await;
+
+  assert_eq!(&stdout_lines.next().unwrap(), "hello from the inspector");
+
+  send_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":5,"method":"Debugger.resume"}"#],
+  )
+  .await;
+  assert_inspector_messages(&mut socket_rx, &[r#"{"id":5,"result":{}}"#], &[])
+    .await;
+
+  assert!(&stdout_lines
+    .next()
+    .unwrap()
+    .starts_with("running 1 test from"));
+  assert!(&stdout_lines
+    .next()
+    .unwrap()
+    .contains("test has finished running"));
 
   child.kill().unwrap();
   child.wait().unwrap();
