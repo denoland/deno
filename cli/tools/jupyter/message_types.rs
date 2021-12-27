@@ -46,9 +46,10 @@ impl TryFrom<ZmqMessage> for RequestMessage {
     let content_bytes = zmq_msg.get(5).unwrap();
 
     let header: MessageHeader = serde_json::from_slice(header_bytes).unwrap();
+    let msg_type = header.msg_type.clone();
 
     // TODO(apowers313) refactor to an unwrap function to handles unwrapping based on different protocol versions
-    let mc = match header.msg_type.as_ref() {
+    let mc = match msg_type.as_ref() {
       "kernel_info_request" => (RequestMetadata::Empty, RequestContent::Empty),
       "execute_request" => (
         RequestMetadata::Empty,
@@ -58,7 +59,7 @@ impl TryFrom<ZmqMessage> for RequestMessage {
     };
 
     let rm = RequestMessage::new(header, mc.0, mc.1);
-    println!("<== RECEIVING: {:#?}", rm);
+    println!("<== RECEIVING MSG [{}]: {:#?}", msg_type, rm);
 
     Ok(rm)
   }
@@ -99,11 +100,14 @@ impl ReplyMessage {
       // reply messages
       ReplyContent::KernelInfo(c) => serde_json::to_string(&c).unwrap(),
       ReplyContent::ExecuteReply(c) => serde_json::to_string(&c).unwrap(),
+      ReplyContent::ExecuteError(c) => serde_json::to_string(&c).unwrap(),
       // side effects
       ReplyContent::Status(c) => serde_json::to_string(&c).unwrap(),
       ReplyContent::Stream(c) => serde_json::to_string(&c).unwrap(),
       ReplyContent::ExecuteInput(c) => serde_json::to_string(&c).unwrap(),
       ReplyContent::ExecuteResult(c) => serde_json::to_string(&c).unwrap(),
+      ReplyContent::Error(c) => serde_json::to_string(&c).unwrap(),
+      ReplyContent::DisplayData(c) => serde_json::to_string(&c).unwrap(),
     };
 
     let hmac =
@@ -115,7 +119,10 @@ impl ReplyMessage {
     zmq_msg.push_back(parent_header.into());
     zmq_msg.push_back(metadata.into());
     zmq_msg.push_back(content.into());
-    println!("==> SENDING ZMQ MSG: {:#?}", zmq_msg);
+    println!(
+      "==> SENDING MSG [{}]: {:#?}",
+      &self.header.msg_type, zmq_msg
+    );
     zmq_msg
   }
 }
@@ -193,11 +200,14 @@ pub enum ReplyContent {
   // Reply Messages
   KernelInfo(KernelInfoReplyContent),
   ExecuteReply(ExecuteReplyContent),
+  ExecuteError(ExecuteErrorContent),
   // Side Effects
   Status(KernelStatusContent),
   Stream(StreamContent),
   ExecuteInput(ExecuteInputContent),
   ExecuteResult(ExecuteResultContent),
+  Error(ErrorContent),
+  DisplayData(DisplayDataContent),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -229,6 +239,7 @@ pub struct ExecuteReplyContent {
   pub execution_count: u32,
   // These two fields are unused
   pub payload: Vec<String>,
+  // #[serde(skip_serializing_if = "Option::is_none")]
   pub user_expressions: Value,
 }
 
@@ -392,12 +403,11 @@ pub struct InterruptReplyContent {
 // "comm_close" /// https://jupyter-client.readthedocs.io/en/latest/messaging.html#tearing-down-comms
 
 /// https://jupyter-client.readthedocs.io/en/latest/messaging.html#request-reply
-pub struct ErrorStatusContent {
-  pub status: String, // "error"
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ErrorContent {
   pub ename: String,
   pub evalue: String,
   pub traceback: Vec<String>,
-  pub execution_count: Option<u32>,
 }
 
 /// https://jupyter-client.readthedocs.io/en/latest/messaging.html#request-reply
@@ -414,10 +424,11 @@ pub struct StreamContent {
 }
 
 /// https://jupyter-client.readthedocs.io/en/latest/messaging.html#display-data
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DisplayDataContent {
   pub data: Value,
-  pub metadata: Option<Value>,
-  pub transient: Option<Value>,
+  pub metadata: Value,
+  pub transient: Value,
 }
 
 /// https://jupyter-client.readthedocs.io/en/latest/messaging.html#update-display-data
@@ -434,14 +445,21 @@ pub struct ExecuteInputContent {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExecuteResultContent {
   pub execution_count: u32,
-  pub data: Option<Value>,
-  pub metadata: Option<Value>,
+  pub data: Value,
+  pub metadata: Value,
 }
 
 /// https://jupyter-client.readthedocs.io/en/latest/messaging.html#execution-errors
-pub struct ErrorContent {
-  pub payload: Option<Vec<String>>,
-  pub user_expressions: Option<Value>,
+/// https://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-shell-router-dealer-channel
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExecuteErrorContent {
+  pub status: String,
+  pub payload: Vec<String>,
+  pub user_expressions: Value,
+  // XXX: the spec says one thing and the ipykernal does another... the following three fields are included by the ipykernel
+  pub ename: String,
+  pub evalue: String,
+  pub traceback: Vec<String>,
 }
 
 /// https://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-status
