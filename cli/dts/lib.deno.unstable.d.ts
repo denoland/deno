@@ -172,10 +172,9 @@ declare namespace Deno {
   /** Infers a foreign function */
   type StaticForeignFunction<
     T extends ForeignFunction<readonly NativeType[], NativeType, boolean>,
-  > = T["nonblocking"] extends true
-    ? (
-      ...args: [...StaticForeignFunctionParameters<T["parameters"]>]
-    ) => Promise<StaticForeignFunctionResult<T["result"]>>
+  > = T["nonblocking"] extends true ? (
+    ...args: [...StaticForeignFunctionParameters<T["parameters"]>]
+  ) => Promise<StaticForeignFunctionResult<T["result"]>>
     : (
       ...args: [...StaticForeignFunctionParameters<T["parameters"]>]
     ) => StaticForeignFunctionResult<T["result"]>;
@@ -259,10 +258,11 @@ declare namespace Deno {
   }
 
   /** A dynamic library resource */
-  export type DynamicLibrary<S extends ForeignFunctionInterface> = {
+  export interface DynamicLibrary<S extends ForeignFunctionInterface> {
+    /** All of the registered symbols along with functions for calling them */
     symbols: StaticForeignFunctionInterface<S>;
     close(): void;
-  };
+  }
 
   /** **UNSTABLE**: Unsafe and new API, beware!
    *
