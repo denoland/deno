@@ -54,31 +54,28 @@ fn assert_stderr_for_inspect_brk(
   );
 }
 
-async fn send_inspector_messages(
-  socket: &mut SplitSink<
+async fn assert_inspector_messages(
+  socket_tx: &mut SplitSink<
     tokio_tungstenite::WebSocketStream<
       tokio_tungstenite::MaybeTlsStream<TcpStream>,
     >,
     tungstenite::Message,
   >,
-  messages: &[&'static str],
+  messages: &[&str],
+  socket_rx: &mut Pin<Box<dyn Stream<Item = String>>>,
+  responses: &[&str],
+  notifications: &[&str],
 ) {
   for msg in messages {
-    socket.send(msg.to_string().into()).await.unwrap();
+    socket_tx.send(msg.to_string().into()).await.unwrap();
   }
-}
 
-async fn assert_inspector_messages(
-  socket: &mut Pin<Box<dyn Stream<Item = String>>>,
-  responses: &[&'static str],
-  notifications: &[&'static str],
-) {
   let expected_messages = responses.len() + notifications.len();
   let mut responses_idx = 0;
   let mut notifications_idx = 0;
 
   for _ in 0..expected_messages {
-    let msg = socket.next().await.unwrap();
+    let msg = socket_rx.next().await.unwrap();
 
     if msg.starts_with(r#"{"id":"#) {
       assert!(
@@ -163,15 +160,12 @@ async fn inspector_break_on_first_line() {
 
   assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-  send_inspector_messages(
+  assert_inspector_messages(
     &mut socket_tx,
     &[
       r#"{"id":1,"method":"Runtime.enable"}"#,
       r#"{"id":2,"method":"Debugger.enable"}"#,
     ],
-  )
-  .await;
-  assert_inspector_messages(
     &mut socket_rx,
     &[
       r#"{"id":1,"result":{}}"#,
@@ -180,39 +174,40 @@ async fn inspector_break_on_first_line() {
     &[
       r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
     ],
-  ).await;
-  send_inspector_messages(
-    &mut socket_tx,
-    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
   )
   .await;
+
   assert_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
     &mut socket_rx,
     &[r#"{"id":3,"result":{}}"#],
     &[r#"{"method":"Debugger.paused","#],
   )
   .await;
-  send_inspector_messages(
+
+  assert_inspector_messages(
     &mut socket_tx,
     &[
       r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
     ],
-  )
-  .await;
-  assert_inspector_messages(
     &mut socket_rx,
     &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
     &[],
   )
   .await;
+
   assert_eq!(&stdout_lines.next().unwrap(), "hello from the inspector");
-  send_inspector_messages(
+
+  assert_inspector_messages(
     &mut socket_tx,
     &[r#"{"id":5,"method":"Debugger.resume"}"#],
+    &mut socket_rx,
+    &[r#"{"id":5,"result":{}}"#],
+    &[],
   )
   .await;
-  assert_inspector_messages(&mut socket_rx, &[r#"{"id":5,"result":{}}"#], &[])
-    .await;
+
   assert_eq!(&stdout_lines.next().unwrap(), "hello from the script");
 
   child.kill().unwrap();
@@ -367,15 +362,12 @@ async fn inspector_does_not_hang() {
 
   assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-  send_inspector_messages(
+  assert_inspector_messages(
     &mut socket_tx,
     &[
       r#"{"id":1,"method":"Runtime.enable"}"#,
       r#"{"id":2,"method":"Debugger.enable"}"#,
     ],
-  )
-  .await;
-  assert_inspector_messages(
     &mut socket_rx,
     &[
       r#"{"id":1,"result":{}}"#,
@@ -387,24 +379,18 @@ async fn inspector_does_not_hang() {
   )
   .await;
 
-  send_inspector_messages(
+  assert_inspector_messages(
     &mut socket_tx,
     &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
-  )
-  .await;
-  assert_inspector_messages(
     &mut socket_rx,
     &[r#"{"id":3,"result":{}}"#],
     &[r#"{"method":"Debugger.paused","#],
   )
   .await;
 
-  send_inspector_messages(
+  assert_inspector_messages(
     &mut socket_tx,
     &[r#"{"id":4,"method":"Debugger.resume"}"#],
-  )
-  .await;
-  assert_inspector_messages(
     &mut socket_rx,
     &[r#"{"id":4,"result":{}}"#],
     &[r#"{"method":"Debugger.resumed","params":{}}"#],
@@ -416,20 +402,30 @@ async fn inspector_does_not_hang() {
     // Expect the number {i} on stdout.
     let s = i.to_string();
     assert_eq!(stdout_lines.next().unwrap(), s);
-    // Expect console.log
-    let s = r#"{"method":"Runtime.consoleAPICalled","#;
-    assert!(socket_rx.next().await.unwrap().starts_with(s));
-    // Expect hitting the `debugger` statement.
-    let s = r#"{"method":"Debugger.paused","#;
-    assert!(socket_rx.next().await.unwrap().starts_with(s));
-    // Send the 'Debugger.resume' request.
-    let s = format!(r#"{{"id":{},"method":"Debugger.resume"}}"#, request_id);
-    socket_tx.send(s.into()).await.unwrap();
-    // Expect confirmation of the 'Debugger.resume' request.
-    let s = format!(r#"{{"id":{},"result":{{}}}}"#, request_id);
-    assert_eq!(socket_rx.next().await.unwrap(), s);
-    let s = r#"{"method":"Debugger.resumed","params":{}}"#;
-    assert_eq!(socket_rx.next().await.unwrap(), s);
+
+    assert_inspector_messages(
+      &mut socket_tx,
+      &[],
+      &mut socket_rx,
+      &[],
+      &[
+        r#"{"method":"Runtime.consoleAPICalled","#,
+        r#"{"method":"Debugger.paused","#,
+      ],
+    )
+    .await;
+
+    assert_inspector_messages(
+      &mut socket_tx,
+      &[&format!(
+        r#"{{"id":{},"method":"Debugger.resume"}}"#,
+        request_id
+      )],
+      &mut socket_rx,
+      &[&format!(r#"{{"id":{},"result":{{}}}}"#, request_id)],
+      &[r#"{"method":"Debugger.resumed","params":{}}"#],
+    )
+    .await;
   }
 
   // Check that we can gracefully close the websocket connection.
@@ -511,15 +507,12 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
   assert_stderr_for_inspect(&mut stderr_lines);
 
-  send_inspector_messages(
+  assert_inspector_messages(
     &mut socket_tx,
     &[
       r#"{"id":1,"method":"Runtime.enable"}"#,
       r#"{"id":2,"method":"Debugger.enable"}"#,
     ],
-  )
-  .await;
-  assert_inspector_messages(
     &mut socket_rx,
     &[
       r#"{"id":1,"result":{}}"#,
@@ -528,47 +521,42 @@ async fn inspector_runtime_evaluate_does_not_crash() {
     &[
       r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
     ],
-  ).await;
+  )
+  .await;
 
   assert_eq!(
     &stdout_lines.next().unwrap(),
     "exit using ctrl+d or close()"
   );
 
-  send_inspector_messages(
+  assert_inspector_messages(
     &mut socket_tx,
     &[
       r#"{"id":3,"method":"Runtime.compileScript","params":{"expression":"Deno.cwd()","sourceURL":"","persistScript":false,"executionContextId":1}}"#,
-    ]
+    ],
+    &mut socket_rx,
+    &[r#"{"id":3,"result":{}}"#], &[]
   ).await;
-  assert_inspector_messages(&mut socket_rx, &[r#"{"id":3,"result":{}}"#], &[])
-    .await;
 
-  send_inspector_messages(
+  assert_inspector_messages(
     &mut socket_tx,
     &[
       r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.cwd()","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
-    ]
-  ).await;
-  assert_inspector_messages(
+    ],
     &mut socket_rx,
     &[r#"{"id":4,"result":{"result":{"type":"string","value":""#],
     &[],
-  )
-  .await;
+  ).await;
 
-  send_inspector_messages(
+  assert_inspector_messages(
     &mut socket_tx,
     &[
       r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"console.error('done');","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
-    ]
-  ).await;
-  assert_inspector_messages(
+    ],
     &mut socket_rx,
     &[r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#],
     &[r#"{"method":"Runtime.consoleAPICalled"#],
-  )
-  .await;
+  ).await;
 
   assert_eq!(&stderr_lines.next().unwrap(), "done");
 
@@ -697,15 +685,12 @@ async fn inspector_break_on_first_line_in_test() {
 
   assert_stderr_for_inspect_brk(&mut stderr_lines);
 
-  send_inspector_messages(
+  assert_inspector_messages(
     &mut socket_tx,
     &[
       r#"{"id":1,"method":"Runtime.enable"}"#,
       r#"{"id":2,"method":"Debugger.enable"}"#,
     ],
-  )
-  .await;
-  assert_inspector_messages(
     &mut socket_rx,
     &[
       r#"{"id":1,"result":{}}"#,
@@ -714,28 +699,23 @@ async fn inspector_break_on_first_line_in_test() {
     &[
       r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
     ],
-  ).await;
-
-  send_inspector_messages(
-    &mut socket_tx,
-    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
   )
   .await;
+
   assert_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
     &mut socket_rx,
     &[r#"{"id":3,"result":{}}"#],
     &[r#"{"method":"Debugger.paused","#],
   )
   .await;
 
-  send_inspector_messages(
+  assert_inspector_messages(
     &mut socket_tx,
     &[
       r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
     ],
-  )
-  .await;
-  assert_inspector_messages(
     &mut socket_rx,
     &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
     &[],
@@ -744,13 +724,14 @@ async fn inspector_break_on_first_line_in_test() {
 
   assert_eq!(&stdout_lines.next().unwrap(), "hello from the inspector");
 
-  send_inspector_messages(
+  assert_inspector_messages(
     &mut socket_tx,
     &[r#"{"id":5,"method":"Debugger.resume"}"#],
+    &mut socket_rx,
+    &[r#"{"id":5,"result":{}}"#],
+    &[],
   )
   .await;
-  assert_inspector_messages(&mut socket_rx, &[r#"{"id":5,"result":{}}"#], &[])
-    .await;
 
   assert!(&stdout_lines
     .next()
