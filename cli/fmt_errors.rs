@@ -128,6 +128,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
   result
 }
 
+#[allow(clippy::too_many_arguments)]
 fn format_stack(
   is_error: bool,
   message_line: &str,
@@ -271,7 +272,11 @@ impl fmt::Display for PrettyJsError {
       )];
     }
 
-    let cause = self.0.cause.clone().map(|cause| format!("{}", PrettyJsError(cause)));
+    let cause = self
+      .0
+      .cause
+      .clone()
+      .map(|cause| format!("{}", PrettyJsError(cause)));
 
     write!(
       f,
