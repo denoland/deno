@@ -218,11 +218,23 @@ impl JsRuntimeInspector {
 
     loop {
       loop {
+        // Do one "handshake" with a newly connected session at a time.
+        if let Some(mut session) = sessions.handshake.take() {
+          let poll_result = session.poll_unpin(cx);
+          match poll_result {
+            Poll::Pending => {
+              sessions.established.push(session);
+              continue;
+            }
+            Poll::Ready(_) => {}
+          };
+        }
+
         // Accept new connections.
         let poll_result = sessions.new_incoming.poll_next_unpin(cx);
         if let Poll::Ready(Some(session)) = poll_result {
-          sessions.established.push(session);
-          continue;
+          let prev = sessions.handshake.replace(session);
+          assert!(prev.is_none());
         }
 
         // Poll established sessions.
@@ -360,6 +372,7 @@ impl InspectorFlags {
 /// parts of their lifecycle.
 struct SessionContainer {
   new_incoming: Pin<Box<dyn Stream<Item = Box<InspectorSession>> + 'static>>,
+  handshake: Option<Box<InspectorSession>>,
   established: FuturesUnordered<Box<InspectorSession>>,
 }
 
@@ -385,6 +398,7 @@ impl Default for SessionContainer {
   fn default() -> Self {
     Self {
       new_incoming: stream::empty().boxed_local(),
+      handshake: None,
       established: FuturesUnordered::new(),
     }
   }
