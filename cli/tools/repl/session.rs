@@ -57,9 +57,9 @@ impl std::fmt::Display for EvaluationOutput {
   }
 }
 
-struct TsEvaluateResponse {
-  ts_code: String,
-  value: Value,
+pub struct TsEvaluateResponse {
+  pub ts_code: String,
+  pub value: Value,
 }
 
 pub struct ReplSession {
@@ -200,7 +200,7 @@ impl ReplSession {
     }
   }
 
-  async fn evaluate_line_with_object_wrapping(
+  pub async fn evaluate_line_with_object_wrapping(
     &mut self,
     line: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {

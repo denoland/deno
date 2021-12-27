@@ -32,6 +32,7 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use ring::hmac;
 use std::collections::HashMap;
+use std::convert::From;
 use std::env::current_exe;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -442,58 +443,66 @@ impl Kernel {
     );
     self.iopub_comm.send(input_msg).await?;
 
-    let output = self
-      .repl_session
-      .evaluate_line_and_get_output(&exec_request_content.code)
-      .await?;
-
-    let test_svg = r###"<?xml version="1.0" encoding="iso-8859-1"?>
-<svg version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
-	 viewBox="0 0 299.429 299.429" style="enable-background:new 0 0 299.429 299.429;" xml:space="preserve">
-<g>
-	<path style="fill:#010002;" d="M245.185,44.209H54.245L0,116.533l149.715,138.688l149.715-138.682L245.185,44.209z
-		 M206.746,121.778l-57.007,112.1l-56.53-112.1H206.746z M98.483,109.844l51.232-51.232l51.232,51.232H98.483z M164.119,56.142
-		h69.323L213.876,105.9L164.119,56.142z M86.311,105.142l-16.331-49h65.331L86.311,105.142z M79.849,121.778l49.632,98.429
-		L23.223,121.778H79.849z M220.136,121.778h56.071l-106.013,98.203L220.136,121.778z M225.148,109.844l18.694-47.538l35.652,47.538
-		H225.148z M58.266,58.738l17.035,51.112H19.929L58.266,58.738z"/>
-</g>
-</svg>
-"###.to_string();
-    let mut dd = DisplayData::new();
-    dd.add("image/svg+xml", test_svg);
-    let dd_msg = SideEffectMessage::new(
-      comm_ctx,
-      "display_data",
-      ReplyMetadata::Empty,
-      ReplyContent::DisplayData(DisplayDataContent {
-        data: dd.to_value()?,
-        metadata: json!({}),
-        transient: json!({}),
-      }),
-    );
-    self.iopub_comm.send(dd_msg).await?;
-
     // let output = self
     //   .repl_session
-    //   .evaluate_line_with_object_wrapping(&exec_request_content.code)
+    //   .evaluate_line_and_get_output(&exec_request_content.code)
     //   .await?;
-    // let dd = create_display_data(output.result);
-    // dbg!(dd);
-    let result = match output {
-      EvaluationOutput::Value(value_str) => ExecResult::OkString(value_str),
-      EvaluationOutput::Error(value_str) => ExecResult::Error(ExecError {
-        err_name: "<TODO>".to_string(),
-        err_value: value_str,
+
+    //     let test_svg = r###"<?xml version="1.0" encoding="iso-8859-1"?>
+    // <svg version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+    // 	 viewBox="0 0 299.429 299.429" style="enable-background:new 0 0 299.429 299.429;" xml:space="preserve">
+    // <g>
+    // 	<path style="fill:#010002;" d="M245.185,44.209H54.245L0,116.533l149.715,138.688l149.715-138.682L245.185,44.209z
+    // 		 M206.746,121.778l-57.007,112.1l-56.53-112.1H206.746z M98.483,109.844l51.232-51.232l51.232,51.232H98.483z M164.119,56.142
+    // 		h69.323L213.876,105.9L164.119,56.142z M86.311,105.142l-16.331-49h65.331L86.311,105.142z M79.849,121.778l49.632,98.429
+    // 		L23.223,121.778H79.849z M220.136,121.778h56.071l-106.013,98.203L220.136,121.778z M225.148,109.844l18.694-47.538l35.652,47.538
+    // 		H225.148z M58.266,58.738l17.035,51.112H19.929L58.266,58.738z"/>
+    // </g>
+    // </svg>
+    // "###.to_string();
+    //     let mut dd = DisplayData::new();
+    //     dd.add("image/svg+xml", test_svg);
+    //     let dd_msg = SideEffectMessage::new(
+    //       comm_ctx,
+    //       "display_data",
+    //       ReplyMetadata::Empty,
+    //       ReplyContent::DisplayData(DisplayDataContent {
+    //         data: dd.to_value()?,
+    //         metadata: json!({}),
+    //         transient: json!({}),
+    //       }),
+    //     );
+    //     self.iopub_comm.send(dd_msg).await?;
+
+    println!("---- executing code...");
+    let output = self
+      .repl_session
+      .evaluate_line_with_object_wrapping(&exec_request_content.code)
+      .await?;
+    println!("---- done executing code.");
+
+    let result = if output.value["exceptionDetails"].is_object() {
+      ExecResult::Error(ExecError {
+        // TODO(apowers313) this could probably use smarter unwrapping -- for example, someone may throw non-object
+        err_name: output.value["exceptionDetails"]["exception"]["className"]
+          .to_string(),
+        err_value: output.value["exceptionDetails"]["exception"]["description"]
+          .to_string(),
+        // output.value["exceptionDetails"]["stackTrace"]["callFrames"]
         stack_trace: vec![],
-      }),
+      })
+    } else {
+      ExecResult::Ok(output.value["result"].clone())
     };
 
-    match &result {
-      ExecResult::OkString(v) => {
+    match result {
+      ExecResult::Ok(_) => {
+        println!("XXX result ok");
         self.send_execute_reply_ok(comm_ctx).await?;
         self.send_execute_result(comm_ctx, &result).await?;
       }
-      ExecResult::Error(e) => {
+      ExecResult::Error(_) => {
+        println!("XXX result error");
         self.send_execute_reply_error(comm_ctx, &result).await?;
         self.send_error(comm_ctx, &result).await?;
       }
@@ -519,6 +528,7 @@ impl Kernel {
         user_expressions: json!({}),
       }),
     );
+    println!("+++ Sending execute reply ok");
     self.shell_comm.send(msg).await?;
 
     Ok(())
@@ -531,7 +541,7 @@ impl Kernel {
   ) -> Result<(), AnyError> {
     let e = match result {
       ExecResult::Error(e) => e,
-      _ => return Err(anyhow!("unreachable")),
+      _ => return Err(anyhow!("send_execute_reply_error: unreachable")),
     };
     let msg = ReplyMessage::new(
       comm_ctx,
@@ -547,6 +557,7 @@ impl Kernel {
         traceback: e.stack_trace.clone(),
       }),
     );
+    println!("+++ Sending execute reply error");
     self.shell_comm.send(msg).await?;
 
     Ok(())
@@ -559,7 +570,7 @@ impl Kernel {
   ) -> Result<(), AnyError> {
     let e = match result {
       ExecResult::Error(e) => e,
-      _ => return Err(anyhow!("unreachable")),
+      _ => return Err(anyhow!("send_error: unreachable")),
     };
     let msg = SideEffectMessage::new(
       comm_ctx,
@@ -571,6 +582,7 @@ impl Kernel {
         traceback: e.stack_trace.clone(),
       }),
     );
+    println!("+++ Sending IOPub error");
     self.iopub_comm.send(msg);
 
     Ok(())
@@ -581,23 +593,27 @@ impl Kernel {
     comm_ctx: &CommContext,
     result: &ExecResult,
   ) -> Result<(), AnyError> {
-    let text_result = match result {
-      ExecResult::OkString(v) => v,
-      _ => return Err(anyhow!("unreachable")),
+    let v = match result {
+      ExecResult::Ok(v) => v,
+      _ => return Err(anyhow!("send_execute_result: unreachable")),
     };
-    let mut dd = DisplayData::new();
-    dd.add("text/plain", text_result.to_string());
-    let data = dd.to_value()?;
+    let mut display_data = DisplayData::from(v.clone());
+    if display_data.is_empty() {
+      return Ok(());
+    }
+
     let msg = SideEffectMessage::new(
       comm_ctx,
       "execute_result",
       ReplyMetadata::Empty,
       ReplyContent::ExecuteResult(ExecuteResultContent {
         execution_count: self.execution_count,
-        data,
+        data: display_data.to_object(),
+        // data: json!("<not implemented>"),
         metadata: json!({}),
       }),
     );
+    println!("+++ Sending execute result");
     self.iopub_comm.send(msg).await?;
 
     Ok(())
@@ -634,7 +650,7 @@ impl Kernel {
     comm_ctx: &CommContext,
     display_data: DisplayData,
   ) -> Result<(), AnyError> {
-    let data = display_data.to_value()?;
+    let data = display_data.to_object();
 
     let msg = SideEffectMessage::new(
       comm_ctx,
@@ -653,7 +669,7 @@ impl Kernel {
 }
 
 struct DisplayData {
-  data_list: Vec<(String, String)>,
+  data_list: Vec<(String, Value)>,
 }
 
 impl DisplayData {
@@ -661,21 +677,100 @@ impl DisplayData {
     Self { data_list: vec![] }
   }
 
-  fn add(&mut self, mime_type: &str, data: String) {
+  fn add(&mut self, mime_type: &str, data: Value) {
     self.data_list.push((mime_type.to_string(), data));
   }
 
-  fn to_value(&self) -> Result<Value, AnyError> {
-    if self.data_list.len() < 1 {
-      return Err(anyhow!("expected at least one data type"));
+  fn is_empty(&self) -> bool {
+    if self.data_list.len() == 0 {
+      return true;
     }
 
+    return false;
+  }
+
+  fn to_object(&self) -> Value {
     let mut data = json!({});
     for d in self.data_list.iter() {
       data[&d.0] = json!(&d.1);
     }
 
-    Ok(data)
+    data
+  }
+}
+
+impl From<Value> for DisplayData {
+  fn from(data: Value) -> Self {
+    dbg!(&data);
+    let mut d = &data;
+    let mut ret = DisplayData::new();
+    // if we passed in a result, unwrap it
+    d = if d["result"].is_object() {
+      &d["result"]
+    } else {
+      d
+    };
+
+    if !d["type"].is_string() {
+      // not an execution result
+      return ret;
+    }
+
+    let t = match &d["type"] {
+      serde_json::Value::String(x) => x.to_string(),
+      _ => return ret,
+    };
+
+    match t.as_ref() {
+      // TODO(apowers313) inspect object / call toPng, toHtml, toSvg, toText, toMime
+      "object" => {
+        // TODO: this description isn't very useful
+        ret.add("text/plain", d["description"].clone());
+        ret.add("application/json", d["description"].clone());
+      }
+      "string" => {
+        ret.add("text/plain", d["value"].clone());
+        ret.add("application/json", d["value"].clone());
+      }
+      "null" => {
+        ret.add(
+          "text/plain",
+          serde_json::Value::String(d["value"].to_string()),
+        );
+        ret.add("application/json", d["value"].clone());
+      }
+      "bigint" => {
+        // TODO: hmmm... is this really what we want?
+        ret.add("text/plain", d["unserializableValue"].clone());
+        ret.add("application/json", d["unserializableValue"].clone());
+      }
+      "symbol" => {
+        ret.add("text/plain", d["description"].clone());
+        ret.add("application/json", d["description"].clone());
+      }
+      "boolean" => {
+        ret.add(
+          "text/plain",
+          serde_json::Value::String(d["value"].to_string()),
+        );
+        ret.add("application/json", d["value"].clone());
+      }
+      "number" => {
+        ret.add(
+          "text/plain",
+          serde_json::Value::String(d["value"].to_string()),
+        );
+        ret.add("application/json", d["value"].clone());
+      }
+      // TODO(apowers313) currently ignoring "undefined" return value, I think most kernels make this a configuration option
+      "undefined" => return ret,
+      _ => {
+        println!("unknown type in DisplayData::from: {}", t);
+        return ret;
+      }
+    };
+
+    ret
   }
 }
 
@@ -692,10 +787,7 @@ impl DisplayData {
 struct ErrorValue {}
 
 enum ExecResult {
-  OkString(String),
-  // TODO(apowers313)
-  // OkValue(Value),
-  // OkDisplayData(DisplayDataContent),
+  Ok(Value),
   Error(ExecError),
 }
 
