@@ -1,8 +1,8 @@
 SF:[WILDCARD]complex.ts
-FN:22,dependency
-FN:37,complex
-FN:51,unused
-FN:65,ƒ
+FN:17,dependency
+FN:32,complex
+FN:46,unused
+FN:64,ƒ
 FNDA:1,dependency
 FNDA:1,complex
 FNDA:0,unused
@@ -20,7 +20,7 @@ DA:23,2
 DA:24,2
 DA:25,2
 DA:26,2
-DA:27,1
+DA:27,2
 DA:32,1
 DA:33,1
 DA:34,1
@@ -30,7 +30,7 @@ DA:38,2
 DA:39,2
 DA:40,2
 DA:41,2
-DA:42,1
+DA:42,2
 DA:46,0
 DA:47,0
 DA:48,0

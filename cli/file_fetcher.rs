@@ -376,7 +376,7 @@ impl FileFetcher {
 
     if self.cache_setting == CacheSetting::Only {
       return Err(custom_error(
-        "NotFound",
+        "NotCached",
         format!(
           "Specifier not found in cache: \"{}\", --cached-only is specified.",
           specifier
@@ -425,7 +425,7 @@ impl FileFetcher {
 
     if self.cache_setting == CacheSetting::Only {
       return Err(custom_error(
-        "NotFound",
+        "NotCached",
         format!(
           "Specifier not found in cache: \"{}\", --cached-only is specified.",
           specifier
@@ -511,7 +511,7 @@ impl FileFetcher {
 
     if self.cache_setting == CacheSetting::Only {
       return futures::future::err(custom_error(
-        "NotFound",
+        "NotCached",
         format!(
           "Specifier not found in cache: \"{}\", --cached-only is specified.",
           specifier
@@ -1517,7 +1517,7 @@ mod tests {
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert_eq!(get_custom_error_class(&err), Some("NotFound"));
+    assert_eq!(get_custom_error_class(&err), Some("NotCached"));
     assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/002_hello.ts\", --cached-only is specified.");
 
     let result = file_fetcher_02

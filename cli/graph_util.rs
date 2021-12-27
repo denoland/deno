@@ -145,6 +145,7 @@ impl GraphData {
     roots: &[ModuleSpecifier],
     follow_dynamic: bool,
     follow_type_only: bool,
+    check_js: bool,
   ) -> Option<HashMap<&'a ModuleSpecifier, &'a ModuleEntry>> {
     let mut result = HashMap::<&'a ModuleSpecifier, &'a ModuleEntry>::new();
     let mut seen = HashSet::<&ModuleSpecifier>::new();
@@ -167,9 +168,19 @@ impl GraphData {
         ModuleEntry::Module {
           dependencies,
           maybe_types,
+          media_type,
           ..
         } => {
-          if follow_type_only {
+          let check_types = (check_js
+            || !matches!(
+              media_type,
+              MediaType::JavaScript
+                | MediaType::Mjs
+                | MediaType::Cjs
+                | MediaType::Jsx
+            ))
+            && follow_type_only;
+          if check_types {
             if let Some(Ok((types, _))) = maybe_types {
               if !seen.contains(types) {
                 seen.insert(types);
@@ -180,7 +191,7 @@ impl GraphData {
           for (_, dep) in dependencies.iter().rev() {
             if !dep.is_dynamic || follow_dynamic {
               let mut resolutions = vec![&dep.maybe_code];
-              if follow_type_only {
+              if check_types {
                 resolutions.push(&dep.maybe_type);
               }
               #[allow(clippy::manual_flatten)]
@@ -223,7 +234,7 @@ impl GraphData {
   ) -> Option<Self> {
     let mut modules = HashMap::new();
     let mut referrer_map = HashMap::new();
-    let entries = match self.walk(roots, true, true) {
+    let entries = match self.walk(roots, true, true, true) {
       Some(entries) => entries,
       None => return None,
     };
@@ -248,8 +259,9 @@ impl GraphData {
     &self,
     roots: &[ModuleSpecifier],
     follow_type_only: bool,
+    check_js: bool,
   ) -> Option<Result<(), AnyError>> {
-    let entries = match self.walk(roots, false, follow_type_only) {
+    let entries = match self.walk(roots, false, follow_type_only, check_js) {
       Some(entries) => entries,
       None => return None,
     };
@@ -258,9 +270,19 @@ impl GraphData {
         ModuleEntry::Module {
           dependencies,
           maybe_types,
+          media_type,
           ..
         } => {
-          if follow_type_only {
+          let check_types = (check_js
+            || !matches!(
+              media_type,
+              MediaType::JavaScript
+                | MediaType::Mjs
+                | MediaType::Cjs
+                | MediaType::Jsx
+            ))
+            && follow_type_only;
+          if check_types {
             if let Some(Err(error)) = maybe_types {
               let range = error.range();
               if !range.specifier.as_str().contains("$deno") {
@@ -275,7 +297,7 @@ impl GraphData {
           for (_, dep) in dependencies.iter() {
             if !dep.is_dynamic {
               let mut resolutions = vec![&dep.maybe_code];
-              if follow_type_only {
+              if check_types {
                 resolutions.push(&dep.maybe_type);
               }
               #[allow(clippy::manual_flatten)]
@@ -335,10 +357,11 @@ impl GraphData {
     roots: &[ModuleSpecifier],
     lib: &TypeLib,
   ) {
-    let specifiers: Vec<ModuleSpecifier> = match self.walk(roots, true, true) {
-      Some(entries) => entries.into_keys().cloned().collect(),
-      None => unreachable!("contains module not in graph data"),
-    };
+    let specifiers: Vec<ModuleSpecifier> =
+      match self.walk(roots, true, true, true) {
+        Some(entries) => entries.into_keys().cloned().collect(),
+        None => unreachable!("contains module not in graph data"),
+      };
     for specifier in specifiers {
       if let ModuleEntry::Module { checked_libs, .. } =
         self.modules.get_mut(&specifier).unwrap()
@@ -397,9 +420,10 @@ impl From<&ModuleGraph> for GraphData {
 pub(crate) fn graph_valid(
   graph: &ModuleGraph,
   follow_type_only: bool,
+  check_js: bool,
 ) -> Result<(), AnyError> {
   GraphData::from(graph)
-    .check(&graph.roots, follow_type_only)
+    .check(&graph.roots, follow_type_only, check_js)
     .unwrap()
 }
 

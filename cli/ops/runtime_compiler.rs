@@ -221,7 +221,7 @@ async fn op_emit(
   // There are certain graph errors that we want to return as an error of an op,
   // versus something that gets returned as a diagnostic of the op, this is
   // handled here.
-  if let Err(err) = graph_valid(&graph, check) {
+  if let Err(err) = graph_valid(&graph, check, true) {
     if get_error_class_name(&err) == "PermissionDenied" {
       return Err(err);
     }
