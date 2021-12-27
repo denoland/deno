@@ -92,7 +92,7 @@ pub fn get_custom_error_class(error: &Error) -> Option<&'static str> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct JsError {
   pub message: String,
-  pub cause: Option<String>,
+  pub cause: Box<Option<JsError>>,
   pub source_line: Option<String>,
   pub script_resource_name: Option<String>,
   pub line_number: Option<i64>,
@@ -162,7 +162,6 @@ fn get_property<'a>(
 pub(crate) struct NativeJsError {
   pub name: Option<String>,
   pub message: Option<String>,
-  pub cause: Option<String>,
   // Warning! .stack is special so handled by itself
   // stack: Option<String>,
 }
@@ -186,7 +185,10 @@ impl JsError {
       if is_instance_of_error(scope, exception) {
         // The exception is a JS Error object.
         let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
-
+        let cause_key = v8::String::new(scope, "cause").unwrap();
+        let cause = exception.get(scope, cause_key.into());
+        let undefined = v8::undefined(scope);
+        exception.set(scope, cause_key.into(), undefined.into());
         let e: NativeJsError =
           serde_v8::from_v8(scope, exception.into()).unwrap();
         // Get the message by formatting error.name and error.message.
@@ -201,6 +203,13 @@ impl JsError {
         } else {
           "Uncaught".to_string()
         };
+        let cause = Box::new(cause.and_then(|cause| {
+          if cause.is_undefined() {
+            None
+          } else {
+            Some(JsError::from_v8_exception(scope, cause))
+          }
+        }));
 
         // Access error.stack to ensure that prepareStackTrace() has been called.
         // This should populate error.__callSiteEvals.
@@ -222,7 +231,7 @@ impl JsError {
           }
           None => vec![],
         };
-        (message, frames, stack, e.cause)
+        (message, frames, stack, cause)
       } else {
         // The exception is not a JS Error object.
         // Get the message given by V8::Exception::create_message(), and provide
@@ -231,7 +240,7 @@ impl JsError {
           msg.get(scope).to_rust_string_lossy(scope),
           vec![],
           None,
-          None,
+          Box::new(None),
         )
       };
 
