@@ -145,7 +145,8 @@ pub struct MessageHeader {
   pub username: String,
   // TODO(apowers313) -- date as an Option is to address a Jupyter bug
   // see also: https://github.com/jupyter/notebook/issues/6257
-  pub date: Option<String>,
+  #[serde(default = "missing_date")]
+  pub date: String,
   pub msg_type: String,
   pub version: String,
 }
@@ -161,12 +162,16 @@ impl MessageHeader {
       session: session_id,
       // FIXME:
       username: "<TODO>".to_string(),
-      date: Some(now),
+      date: now,
       msg_type: msg_type.to_string(),
       // TODO: this should be taken from a global,
       version: "5.3".to_string(),
     }
   }
+}
+
+fn missing_date() -> String {
+  "1970-01-01T00:00:00+00:00".to_string()
 }
 
 // /* *****************
