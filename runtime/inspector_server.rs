@@ -349,6 +349,7 @@ async fn pump_websocket_messages(
       .map_ok(|msg| msg.into_data())
       .map_err(AnyError::from)
       .map_ok(|msg| {
+        eprintln!("message from WS {}", String::from_utf8(msg.clone()).unwrap());
         let _ = inbound_tx.unbounded_send(msg);
       })
       .try_collect::<()>()
