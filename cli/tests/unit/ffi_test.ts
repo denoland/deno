@@ -22,32 +22,225 @@ Deno.test({ permissions: { ffi: true } }, function dlopenInvalidArguments() {
     // @ts-expect-error: require 2 arguments
     Deno.dlopen(filename);
   }, TypeError);
+
+  // ---------------------------------
+  // Infer: Parameter Types
+  // ---------------------------------
   assertThrows(() => {
-    const remote = Deno.dlopen(filename, {
-      method: { parameters: [
-        "usize", "isize", 
-        "u8", "u16", "u32", "u64", 
-        "i8", "i16", "i32", "i64", 
-        "void", "pointer"
-      ], result: "void" }
-    } as const);
-    remote.symbols.method(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, void 0, new Uint8Array(1));
-    remote.symbols.method(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, void 0, {} as Deno.UnsafePointer);
-    // @ts-expect-error: invalid arguments
-    remote.symbols.method("0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0");
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["usize", "usize"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(0);
+    remote.symbols.method(0, 0);
   }, TypeError);
   assertThrows(() => {
-    const remote = Deno.dlopen(filename, {
-      method: { parameters: [], result: "f32" }
-    } as const);
-    // @ts-expect-error Return type number | f32 is not assignable to type string
-    const _: string = remote.symbols.method();
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["void"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(void 0);
   }, TypeError);
   assertThrows(() => {
-    const remote = Deno.dlopen(filename, {
-      method: { parameters: [], result: "f32", nonblocking: true }
-    } as const);
-    // @ts-expect-error Return type Promise<number> | f32 is not assignable to type string
-    remote.symbols.method().then((_: string) => {});
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["usize"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(0);
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["isize"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(0);
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["u8"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(0);
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["u16"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(0);
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["u32"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(0);
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["u64"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(0);
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["i8"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(0);
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["i16"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(0);
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["i32"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(0);
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["i64"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(0);
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["f32"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(0);
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["f64"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(0);
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: ["pointer"], result: "void" },
+      } as const,
+    );
+    // @ts-expect-error: Invalid argument
+    remote.symbols.method(null);
+    remote.symbols.method(new Uint16Array(1));
+    remote.symbols.method({} as Deno.UnsafePointer);
+  }, TypeError);
+  // ---------------------------------
+  // Infer: Return Type
+  // ---------------------------------
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: [], result: "usize" },
+      } as const,
+    );
+    const result = remote.symbols.method();
+    // @ts-expect-error: Invalid argument
+    const _0: string = result;
+    const _1: number = result;
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: [], result: "usize", nonblocking: true },
+      } as const,
+    );
+    const result = remote.symbols.method();
+    // @ts-expect-error: Invalid argument
+    result.then((_0: string) => {});
+    result.then((_1: number) => {});
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: [], result: "pointer" },
+      } as const,
+    );
+    const result = remote.symbols.method();
+    // @ts-expect-error: Invalid argument
+    const _0: Deno.TypedArray = result;
+    const _1: Deno.UnsafePointer = result;
+  }, TypeError);
+  assertThrows(() => {
+    const remote = Deno.dlopen(
+      filename,
+      {
+        method: { parameters: [], result: "pointer", nonblocking: true },
+      } as const,
+    );
+    const result = remote.symbols.method();
+    // @ts-expect-error: Invalid argument
+    result.then((_0: Deno.TypedArray) => {});
+    result.then((_1: Deno.UnsafePointer) => {});
   }, TypeError);
 });
