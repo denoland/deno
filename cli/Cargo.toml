@@ -85,7 +85,7 @@ text-size = "=1.1.0"
 tokio = { version = "=1.14", features = ["full"] }
 uuid = { version = "=0.8.2", features = ["v4", "serde"] }
 walkdir = "=2.3.2"
-zeromq = { version = "0.3.2", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
+zeromq = { version = "0.3.3", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 
 [target.'cfg(windows)'.dependencies]
 fwdansi = "=1.1.0"
