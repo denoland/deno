@@ -474,12 +474,10 @@ impl Kernel {
     //     );
     //     self.iopub_comm.send(dd_msg).await?;
 
-    println!("---- executing code...");
     let output = self
       .repl_session
       .evaluate_line_with_object_wrapping(&exec_request_content.code)
       .await?;
-    println!("---- done executing code.");
 
     let result = if output.value["exceptionDetails"].is_object() {
       ExecResult::Error(ExecError {
@@ -497,12 +495,10 @@ impl Kernel {
 
     match result {
       ExecResult::Ok(_) => {
-        println!("XXX result ok");
         self.send_execute_reply_ok(comm_ctx).await?;
         self.send_execute_result(comm_ctx, &result).await?;
       }
       ExecResult::Error(_) => {
-        println!("XXX result error");
         self.send_execute_reply_error(comm_ctx, &result).await?;
         self.send_error(comm_ctx, &result).await?;
       }
@@ -650,6 +646,9 @@ impl Kernel {
     comm_ctx: &CommContext,
     display_data: DisplayData,
   ) -> Result<(), AnyError> {
+    if (display_data.is_empty()) {
+      return Err(anyhow!("send_display_data called with empty DisplayData"));
+    }
     let data = display_data.to_object();
 
     let msg = SideEffectMessage::new(
@@ -716,10 +715,17 @@ impl From<Value> for DisplayData {
       return ret;
     }
 
-    let t = match &d["type"] {
-      serde_json::Value::String(x) => x.to_string(),
+    let mut t = match &d["type"] {
+      Value::String(x) => x.to_string(),
       _ => return ret,
     };
+
+    if t == "object".to_string()
+      && d["subtype"] == Value::String("null".to_string())
+    {
+      // JavaScript null, the gift that keeps on giving
+      t = "null".to_string();
+    }
 
     match t.as_ref() {
       // TODO(apowers313) inspect object / call toPng, toHtml, toSvg, toText, toMime
@@ -733,11 +739,9 @@ impl From<Value> for DisplayData {
         ret.add("application/json", d["value"].clone());
       }
       "null" => {
-        ret.add(
-          "text/plain",
-          serde_json::Value::String(d["value"].to_string()),
-        );
-        ret.add("application/json", d["value"].clone());
+        println!("XXX NEW NULL");
+        ret.add("text/plain", Value::String("null".to_string()));
+        ret.add("application/json", Value::Null);
       }
       "bigint" => {
         // TODO: hmmm... is this really what we want?
@@ -749,17 +753,11 @@ impl From<Value> for DisplayData {
         ret.add("application/json", d["description"].clone());
       }
       "boolean" => {
-        ret.add(
-          "text/plain",
-          serde_json::Value::String(d["value"].to_string()),
-        );
+        ret.add("text/plain", Value::String(d["value"].to_string()));
         ret.add("application/json", d["value"].clone());
       }
       "number" => {
-        ret.add(
-          "text/plain",
-          serde_json::Value::String(d["value"].to_string()),
-        );
+        ret.add("text/plain", Value::String(d["value"].to_string()));
         ret.add("application/json", d["value"].clone());
       }
       // TODO(apowers313) currently ignoring "undefined" return value, I think most kernels make this a configuration option
