@@ -572,16 +572,6 @@ impl InspectorSession {
       .as_mut()
       .schedule_pause_on_next_statement(reason, detail);
   }
-
-  // async fn pump_messages(&mut self) {
-  //   let v8_session_rc = self.v8_session.clone();
-  //   while let Some(msg) = self.proxy.rx.next().await {
-  //     let msg = v8::inspector::StringView::from(msg.as_bytes().as_slice());
-  //     let mut v8_session = v8_session_rc.borrow_mut();
-  //     let v8_session_ptr = v8_session.as_mut();
-  //     v8_session_ptr.dispatch_protocol_message(msg);
-  //   }
-  // }
 }
 
 impl v8::inspector::ChannelImpl for InspectorSession {
