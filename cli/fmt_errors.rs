@@ -275,8 +275,8 @@ impl fmt::Display for PrettyJsError {
     let cause = self
       .0
       .cause
-      .clone()
-      .map(|cause| format!("{}", PrettyJsError(cause)));
+      .as_ref()
+      .map(|cause| format!("{}", PrettyJsError(*cause.clone())));
 
     write!(
       f,

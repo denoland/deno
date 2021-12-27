@@ -239,7 +239,7 @@ mod tests {
   fn apply_source_map_line() {
     let e = JsError {
       message: "TypeError: baz".to_string(),
-      cause: Box::new(None),
+      cause: None,
       source_line: Some("foo".to_string()),
       script_resource_name: Some("foo_bar.ts".to_string()),
       line_number: Some(4),
