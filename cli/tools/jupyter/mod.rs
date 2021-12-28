@@ -32,7 +32,6 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use ring::hmac;
 use std::collections::HashMap;
-use std::convert::From;
 use std::env::current_exe;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -439,11 +438,6 @@ impl Kernel {
     );
     self.iopub_comm.send(input_msg).await?;
 
-    // let output = self
-    //   .repl_session
-    //   .evaluate_line_and_get_output(&exec_request_content.code)
-    //   .await?;
-
     //     let test_svg = r###"<?xml version="1.0" encoding="iso-8859-1"?>
     // <svg version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
     // 	 viewBox="0 0 299.429 299.429" style="enable-background:new 0 0 299.429 299.429;" xml:space="preserve">
@@ -483,8 +477,6 @@ impl Kernel {
         .split("\n")
         .map(|s| s.to_string())
         .collect();
-      dbg!(&stack_trace);
-      println!("err_value: {}", stack_trace.first().unwrap().to_string());
       ExecResult::Error(ExecError {
         // TODO(apowers313) this could probably use smarter unwrapping -- for example, someone may throw non-object
         err_name: output.value["exceptionDetails"]["exception"]["className"]
@@ -594,7 +586,8 @@ impl Kernel {
       ExecResult::Ok(v) => v,
       _ => return Err(anyhow!("send_execute_result: unreachable")),
     };
-    let mut display_data = DisplayData::from(v.clone());
+    let mut display_data =
+      self.display_data_from_result_value(v.clone()).await?;
     if display_data.is_empty() {
       return Ok(());
     }
@@ -665,6 +658,124 @@ impl Kernel {
 
     Ok(())
   }
+
+  async fn display_data_from_result_value(
+    &mut self,
+    data: Value,
+  ) -> Result<DisplayData, AnyError> {
+    let mut d = &data;
+    let mut ret = DisplayData::new();
+    // if we passed in a result, unwrap it
+    d = if d["result"].is_object() {
+      &d["result"]
+    } else {
+      d
+    };
+
+    if !d["type"].is_string() {
+      // not an execution result
+      return Ok(ret);
+    }
+
+    let mut t = match &d["type"] {
+      Value::String(x) => x.to_string(),
+      _ => return Ok(ret),
+    };
+
+    if t == "object".to_string()
+      && d["subtype"] == Value::String("null".to_string())
+    {
+      // JavaScript null, the gift that keeps on giving
+      t = "null".to_string();
+    }
+
+    match t.as_ref() {
+      // TODO(apowers313) inspect object / call toPng, toHtml, toSvg, toText, toMime
+      "object" => {
+        // TODO: this description isn't very useful
+        let v = self.decode_object(&data, true).await?;
+        ret.add("text/plain", v.clone());
+        ret.add("application/json", v.clone());
+      }
+      "string" => {
+        ret.add("text/plain", d["value"].clone());
+        ret.add("application/json", d["value"].clone());
+      }
+      "null" => {
+        ret.add("text/plain", Value::String("null".to_string()));
+        ret.add("application/json", Value::Null);
+      }
+      "bigint" => {
+        ret.add("text/plain", d["unserializableValue"].clone());
+        ret.add("application/json", d["unserializableValue"].clone());
+      }
+      "symbol" => {
+        ret.add("text/plain", d["description"].clone());
+        ret.add("application/json", d["description"].clone());
+      }
+      "boolean" => {
+        ret.add("text/plain", Value::String(d["value"].to_string()));
+        ret.add("application/json", d["value"].clone());
+      }
+      "number" => {
+        ret.add("text/plain", Value::String(d["value"].to_string()));
+        ret.add("application/json", d["value"].clone());
+      }
+      // TODO(apowers313) currently ignoring "undefined" return value, I think most kernels make this a configuration option
+      "undefined" => return Ok(ret),
+      _ => {
+        println!("unknown type in display_data_from_result_value: {}", t);
+        return Ok(ret);
+      }
+    };
+
+    Ok(ret)
+  }
+
+  async fn decode_object(
+    &mut self,
+    obj: &Value,
+    color: bool,
+  ) -> Result<Value, AnyError> {
+    // let v = self.repl_session.get_eval_value(&obj).await?;
+    // TODO(apowers313) copy and paste from `get_eval_value`, consider refactoring API
+    let fn_decl = match color {
+      true => {
+        r#"function (object) {
+          try {
+            return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
+          } catch (err) {
+            return Deno[Deno.internal].inspectArgs(["%o", err]);
+          }
+        }"#
+      }
+      false => {
+        r#"function (object) {
+          try {
+            return Deno[Deno.internal].inspectArgs(["%o", object], { colors: Deno.noColor });
+          } catch (err) {
+            return Deno[Deno.internal].inspectArgs(["%o", err]);
+          }
+        }"#
+      }
+    };
+
+    let v = self
+      .repl_session
+      .post_message_with_event_loop(
+        "Runtime.callFunctionOn",
+        Some(json!({
+          "executionContextId": self.repl_session.context_id,
+          "functionDeclaration": fn_decl,
+          "arguments": [
+            obj,
+          ],
+        })),
+      )
+      .await?;
+
+    Ok(v["result"]["value"].clone())
+  }
 }
 
 struct DisplayData {
@@ -697,90 +808,6 @@ impl DisplayData {
     data
   }
 }
-
-impl From<Value> for DisplayData {
-  fn from(data: Value) -> Self {
-    dbg!(&data);
-    let mut d = &data;
-    let mut ret = DisplayData::new();
-    // if we passed in a result, unwrap it
-    d = if d["result"].is_object() {
-      &d["result"]
-    } else {
-      d
-    };
-
-    if !d["type"].is_string() {
-      // not an execution result
-      return ret;
-    }
-
-    let mut t = match &d["type"] {
-      Value::String(x) => x.to_string(),
-      _ => return ret,
-    };
-
-    if t == "object".to_string()
-      && d["subtype"] == Value::String("null".to_string())
-    {
-      // JavaScript null, the gift that keeps on giving
-      t = "null".to_string();
-    }
-
-    match t.as_ref() {
-      // TODO(apowers313) inspect object / call toPng, toHtml, toSvg, toText, toMime
-      "object" => {
-        // TODO: this description isn't very useful
-        ret.add("text/plain", d["description"].clone());
-        ret.add("application/json", d["description"].clone());
-      }
-      "string" => {
-        ret.add("text/plain", d["value"].clone());
-        ret.add("application/json", d["value"].clone());
-      }
-      "null" => {
-        ret.add("text/plain", Value::String("null".to_string()));
-        ret.add("application/json", Value::Null);
-      }
-      "bigint" => {
-        // TODO: hmmm... is this really what we want?
-        ret.add("text/plain", d["unserializableValue"].clone());
-        ret.add("application/json", d["unserializableValue"].clone());
-      }
-      "symbol" => {
-        ret.add("text/plain", d["description"].clone());
-        ret.add("application/json", d["description"].clone());
-      }
-      "boolean" => {
-        ret.add("text/plain", Value::String(d["value"].to_string()));
-        ret.add("application/json", d["value"].clone());
-      }
-      "number" => {
-        ret.add("text/plain", Value::String(d["value"].to_string()));
-        ret.add("application/json", d["value"].clone());
-      }
-      // TODO(apowers313) currently ignoring "undefined" return value, I think most kernels make this a configuration option
-      "undefined" => return ret,
-      _ => {
-        println!("unknown type in DisplayData::from: {}", t);
-        return ret;
-      }
-    };
-
-    ret
-  }
-}
-
-// fn value_to_error(v: Value) -> Option(ErrorValue) {
-//   if !v["exceptionDetails"].is_object() {
-//     None
-//   } else {
-//     ErrorValue {
-//       // v["exceptionDetails"]
-//     }
-//   }
-// }
-
 struct ErrorValue {}
 
 enum ExecResult {
