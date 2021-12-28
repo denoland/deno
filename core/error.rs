@@ -2,6 +2,7 @@
 
 use anyhow::Error;
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -175,6 +176,14 @@ impl JsError {
     scope: &mut v8::HandleScope,
     exception: v8::Local<v8::Value>,
   ) -> Self {
+    Self::inner_from_v8_exception(scope, exception, Default::default())
+  }
+
+  fn inner_from_v8_exception<'a>(
+    scope: &'a mut v8::HandleScope,
+    exception: v8::Local<'a, v8::Value>,
+    mut seen: HashSet<v8::Local<'a, v8::Value>>,
+  ) -> Self {
     // Create a new HandleScope because we're creating a lot of new local
     // handles below.
     let scope = &mut v8::HandleScope::new(scope);
@@ -201,10 +210,13 @@ impl JsError {
           "Uncaught".to_string()
         };
         let cause = cause.and_then(|cause| {
-          if cause.is_undefined() {
+          if cause.is_undefined() || seen.contains(&cause) {
             None
           } else {
-            Some(Box::new(JsError::from_v8_exception(scope, cause)))
+            seen.insert(cause);
+            Some(Box::new(JsError::inner_from_v8_exception(
+              scope, cause, seen,
+            )))
           }
         });
 

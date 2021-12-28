@@ -10,8 +10,4 @@ function c() {
   b();
 }
 
-function d() {
-  c();
-}
-
 c();

@@ -470,6 +470,12 @@ itest!(error_cause {
   exit_code: 1,
 });
 
+itest!(error_cause_recursive {
+  args: "run error_cause_recursive.ts",
+  output: "error_cause_recursive.ts.out",
+  exit_code: 1,
+});
+
 itest_flaky!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
   output: "cafile_url_imports.ts.out",
