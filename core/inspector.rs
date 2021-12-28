@@ -110,12 +110,15 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   }
 
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
+    eprintln!("run message loop on pause");
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().on_pause = true;
-    let _ = self.poll_sessions(None);
+    let r = self.poll_sessions(None);
+    eprintln!("finished run message loop on pause {:#?}", r);
   }
 
   fn quit_message_loop_on_pause(&mut self) {
+    eprintln!("quit message loop on pause");
     self.flags.borrow_mut().on_pause = false;
   }
 
@@ -133,6 +136,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
 impl Future for JsRuntimeInspector {
   type Output = ();
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
+    eprintln!("poll inspector from the runtime");
     self.poll_sessions(Some(cx)).unwrap()
   }
 }
@@ -185,6 +189,7 @@ impl JsRuntimeInspector {
 
     // Poll the session handler so we will get notified whenever there is
     // new_incoming debugger activity.
+    eprintln!("poll sessions on creation");
     let _ = self_.poll_sessions(None).unwrap();
 
     self_
@@ -284,6 +289,7 @@ impl JsRuntimeInspector {
             // events to process, so this thread will be parked. Therefore,
             // store the current thread handle in the waker so it knows
             // which thread to unpark when new events arrive.
+            eprintln!("parking thread");
             w.poll_state = PollState::Parked;
             w.parked_thread.replace(thread::current());
           }
@@ -292,7 +298,10 @@ impl JsRuntimeInspector {
         w.poll_state
       });
       match new_state {
-        PollState::Idle => break Ok(Poll::Pending), // Yield to task.
+        PollState::Idle => {
+          eprintln!("entered idle state, breaking outer loop");
+          break Ok(Poll::Pending)
+        }, // Yield to task.
         PollState::Polling => {} // Poll the session handler again.
         PollState::Parked => thread::park(), // Park the thread.
         _ => unreachable!(),
@@ -309,6 +318,7 @@ impl JsRuntimeInspector {
         Some(session) => break session.break_on_next_statement(),
         None => {
           self.flags.get_mut().waiting_for_session = true;
+          eprintln!("poll sessions waiting for session");
           let _ = self.poll_sessions(None).unwrap();
         }
       };
@@ -455,6 +465,7 @@ impl task::ArcWake for InspectorWaker {
     arc_self.update(|w| {
       match w.poll_state {
         PollState::Idle => {
+          eprintln!("PollState::Idle");
           // Wake the task, if any, that has polled the Inspector future last.
           if let Some(waker) = w.task_waker.take() {
             waker.wake()
@@ -473,11 +484,14 @@ impl task::ArcWake for InspectorWaker {
             arg: *mut c_void,
           ) {
             let inspector = unsafe { &*(arg as *mut JsRuntimeInspector) };
-            let _ = inspector.poll_sessions(None);
+            eprintln!("poll sessions from handle_interrupt");
+            let r = inspector.poll_sessions(None);
+            eprintln!("finished poll sessions from handle_interrupt {:#?}", r);
           }
         }
         PollState::Parked => {
           // Unpark the isolate thread.
+          eprintln!("PollState::Parked");
           let parked_thread = w.parked_thread.take().unwrap();
           assert_ne!(parked_thread.id(), thread::current().id());
           parked_thread.unpark();
