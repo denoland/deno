@@ -365,10 +365,6 @@ impl Kernel {
 
     self.state = state;
 
-    let now = std::time::SystemTime::now();
-    let now: chrono::DateTime<chrono::Utc> = now.into();
-    let now = now.to_rfc3339();
-
     let s = match state {
       KernelState::Busy => "busy",
       KernelState::Idle => "idle",
@@ -480,14 +476,22 @@ impl Kernel {
       .await?;
 
     let result = if output.value["exceptionDetails"].is_object() {
+      let stack_trace: Vec<String> = output.value["exceptionDetails"]
+        ["exception"]["description"]
+        .as_str()
+        .unwrap()
+        .split("\n")
+        .map(|s| s.to_string())
+        .collect();
+      dbg!(&stack_trace);
+      println!("err_value: {}", stack_trace.first().unwrap().to_string());
       ExecResult::Error(ExecError {
         // TODO(apowers313) this could probably use smarter unwrapping -- for example, someone may throw non-object
         err_name: output.value["exceptionDetails"]["exception"]["className"]
           .to_string(),
-        err_value: output.value["exceptionDetails"]["exception"]["description"]
-          .to_string(),
+        err_value: stack_trace.first().unwrap().to_string(),
         // output.value["exceptionDetails"]["stackTrace"]["callFrames"]
-        stack_trace: vec![],
+        stack_trace,
       })
     } else {
       ExecResult::Ok(output.value["result"].clone())
@@ -524,7 +528,6 @@ impl Kernel {
         user_expressions: json!({}),
       }),
     );
-    println!("+++ Sending execute reply ok");
     self.shell_comm.send(msg).await?;
 
     Ok(())
@@ -553,7 +556,6 @@ impl Kernel {
         traceback: e.stack_trace.clone(),
       }),
     );
-    println!("+++ Sending execute reply error");
     self.shell_comm.send(msg).await?;
 
     Ok(())
@@ -578,8 +580,7 @@ impl Kernel {
         traceback: e.stack_trace.clone(),
       }),
     );
-    println!("+++ Sending IOPub error");
-    self.iopub_comm.send(msg);
+    self.iopub_comm.send(msg).await?;
 
     Ok(())
   }
@@ -609,7 +610,6 @@ impl Kernel {
         metadata: json!({}),
       }),
     );
-    println!("+++ Sending execute result");
     self.iopub_comm.send(msg).await?;
 
     Ok(())
@@ -739,7 +739,6 @@ impl From<Value> for DisplayData {
         ret.add("application/json", d["value"].clone());
       }
       "null" => {
-        println!("XXX NEW NULL");
         ret.add("text/plain", Value::String("null".to_string()));
         ret.add("application/json", Value::Null);
       }
