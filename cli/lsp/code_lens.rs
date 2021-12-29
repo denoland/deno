@@ -121,7 +121,7 @@ impl DenoTestCollector {
                 if let ast::PropName::Ident(ast::Ident { sym, .. }) =
                   &key_value_prop.key
                 {
-                  if sym.to_string() == "name" {
+                  if sym == "name" {
                     if let ast::Expr::Lit(ast::Lit::Str(lit_str)) =
                       key_value_prop.value.as_ref()
                     {
