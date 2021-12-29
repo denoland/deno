@@ -148,7 +148,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   })?;
   let bytes = fs::read(local.clone())?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
-  let source = strip_shebang(get_source_from_bytes(bytes, Some(charset))?);
+  let source = get_source_from_bytes(bytes, Some(charset))?;
   let media_type = MediaType::from(specifier);
 
   Ok(File {
@@ -173,10 +173,7 @@ pub fn get_source_from_data_url(
   let (bytes, _) = data_url
     .decode_to_vec()
     .map_err(|e| uri_error(format!("{:?}", e)))?;
-  Ok((
-    strip_shebang(get_source_from_bytes(bytes, charset)?),
-    format!("{}", mime),
-  ))
+  Ok((get_source_from_bytes(bytes, charset)?, format!("{}", mime)))
 }
 
 /// Given a vector of bytes and optionally a charset, decode the bytes to a
@@ -228,19 +225,6 @@ pub fn map_content_type(
   } else {
     (MediaType::from(specifier), None)
   }
-}
-
-/// Remove shebangs from the start of source code strings
-fn strip_shebang(mut value: String) -> String {
-  if value.starts_with("#!") {
-    if let Some(mid) = value.find('\n') {
-      let (_, rest) = value.split_at(mid);
-      value = rest.to_string()
-    } else {
-      value.clear()
-    }
-  }
-  value
 }
 
 /// A structure for resolving, fetching and caching source files.
@@ -306,7 +290,7 @@ impl FileFetcher {
     let maybe_content_type = headers.get("content-type").cloned();
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
-    let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
+    let source = get_source_from_bytes(bytes, maybe_charset)?;
     let maybe_types = match media_type {
       MediaType::JavaScript
       | MediaType::Cjs
@@ -450,7 +434,7 @@ impl FileFetcher {
 
     let (media_type, maybe_charset) =
       map_content_type(specifier, Some(content_type.clone()));
-    let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
+    let source = get_source_from_bytes(bytes, maybe_charset)?;
 
     let local =
       self
@@ -784,13 +768,6 @@ mod tests {
         assert_eq!(actual.unwrap(), expected);
       }
     }
-  }
-
-  #[test]
-  fn test_strip_shebang() {
-    let value =
-      "#!/usr/bin/env deno\n\nconsole.log(\"hello deno!\");\n".to_string();
-    assert_eq!(strip_shebang(value), "\n\nconsole.log(\"hello deno!\");\n");
   }
 
   #[test]
