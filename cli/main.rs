@@ -78,7 +78,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
-use deno_core::JsRuntime;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
@@ -117,6 +117,8 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
     );
     let create_web_worker_cb = create_web_worker_callback(ps.clone());
 
+    let extensions = ops::cli_exts(ps.clone(), args.use_deno_namespace);
+
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
         args: ps.flags.argv.clone(),
@@ -133,7 +135,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.flags.unstable,
       },
-      extensions: vec![],
+      extensions,
       unsafely_ignore_certificate_errors: ps
         .flags
         .unsafely_ignore_certificate_errors
@@ -154,39 +156,14 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
       maybe_exit_code: args.maybe_exit_code,
     };
-    let bootstrap_options = options.bootstrap.clone();
 
-    // TODO(@AaronO): switch to bootstrap_from_options() once ops below are an extension
-    // since it uses sync_ops_cache() which currently depends on the Deno namespace
-    // which can be nuked when bootstrapping workers (use_deno_namespace: false)
-    let (mut worker, external_handle) = WebWorker::from_options(
+    WebWorker::bootstrap_from_options(
       args.name,
       args.permissions,
       args.main_module,
       args.worker_id,
       options,
-    );
-
-    // TODO(@AaronO): move to a JsRuntime Extension passed into options
-    // This block registers additional ops and state that
-    // are only available in the CLI
-    {
-      let js_runtime = &mut worker.js_runtime;
-      js_runtime
-        .op_state()
-        .borrow_mut()
-        .put::<ProcState>(ps.clone());
-      // Applies source maps - works in conjuction with `js_error_create_fn`
-      // above
-      ops::errors::init(js_runtime);
-      if args.use_deno_namespace {
-        ops::runtime_compiler::init(js_runtime);
-      }
-      js_runtime.sync_ops_cache();
-    }
-    worker.bootstrap(&bootstrap_options);
-
-    (worker, external_handle)
+    )
   })
 }
 
@@ -194,7 +171,7 @@ pub fn create_main_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
   permissions: Permissions,
-  maybe_op_init: Option<&dyn Fn(&mut JsRuntime)>,
+  mut custom_extensions: Vec<Extension>,
 ) -> MainWorker {
   let module_loader = CliModuleLoader::new(ps.clone());
 
@@ -237,6 +214,9 @@ pub fn create_main_worker(
       .join(checksum::gen(&[key.as_bytes()]))
   });
 
+  let mut extensions = ops::cli_exts(ps.clone(), true);
+  extensions.append(&mut custom_extensions);
+
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
       apply_source_maps: true,
@@ -250,7 +230,7 @@ pub fn create_main_worker(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: ps.flags.unstable,
     },
-    extensions: vec![],
+    extensions,
     unsafely_ignore_certificate_errors: ps
       .flags
       .unsafely_ignore_certificate_errors
@@ -271,31 +251,7 @@ pub fn create_main_worker(
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
   };
 
-  let mut worker =
-    MainWorker::bootstrap_from_options(main_module, permissions, options);
-
-  // TODO(@AaronO): move to a JsRuntime Extension passed into options
-  // This block registers additional ops and state that
-  // are only available in the CLI
-  {
-    let js_runtime = &mut worker.js_runtime;
-    js_runtime
-      .op_state()
-      .borrow_mut()
-      .put::<ProcState>(ps.clone());
-    // Applies source maps - works in conjuction with `js_error_create_fn`
-    // above
-    ops::errors::init(js_runtime);
-    ops::runtime_compiler::init(js_runtime);
-
-    if let Some(op_init) = maybe_op_init {
-      op_init(js_runtime);
-    }
-
-    js_runtime.sync_ops_cache();
-  }
-
-  worker
+  MainWorker::bootstrap_from_options(main_module, permissions, options)
 }
 
 pub fn write_to_stdout_ignore_sigpipe(
@@ -538,7 +494,7 @@ async fn install_command(
   let ps = ProcState::build(preload_flags).await?;
   let main_module = resolve_url_or_path(&install_flags.module_url)?;
   let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, None);
+    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module, true).await?;
   tools::installer::install(flags, install_flags)?;
@@ -616,7 +572,7 @@ async fn eval_command(
   let permissions = Permissions::from_options(&flags.clone().into());
   let ps = ProcState::build(flags.clone()).await?;
   let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, None);
+    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
   // Create a dummy source file.
   let source_code = if eval_flags.print {
     format!("console.log({})", eval_flags.code)
@@ -942,7 +898,7 @@ async fn repl_command(
   let permissions = Permissions::from_options(&flags.clone().into());
   let ps = ProcState::build(flags.clone()).await?;
   let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, None);
+    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
   if flags.compat {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
     compat::add_global_require(&mut worker.js_runtime, main_module.as_str())?;
@@ -957,7 +913,7 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let permissions = Permissions::from_options(&flags.clone().into());
   let main_module = resolve_url_or_path("./$deno$stdin.ts").unwrap();
   let mut worker =
-    create_main_worker(&ps.clone(), main_module.clone(), permissions, None);
+    create_main_worker(&ps.clone(), main_module.clone(), permissions, vec![]);
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -1140,7 +1096,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
       let mut executor = FileWatcherModuleExecutor::new(
-        create_main_worker(&ps, main_module.clone(), permissions, None),
+        create_main_worker(&ps, main_module.clone(), permissions, vec![]),
         flags.compat,
       );
 
@@ -1176,7 +1132,7 @@ async fn run_command(
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, None);
+    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = ps.coverage_dir {

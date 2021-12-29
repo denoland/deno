@@ -33,7 +33,6 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
-use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_graph::Module;
 use deno_runtime::permissions::Permissions;
@@ -453,17 +452,12 @@ async fn test_specifier(
   shuffle: Option<u64>,
   channel: Sender<TestEvent>,
 ) -> Result<(), AnyError> {
-  let init_ops = |js_runtime: &mut JsRuntime| {
-    ops::testing::init(js_runtime);
-
-    js_runtime
-      .op_state()
-      .borrow_mut()
-      .put::<Sender<TestEvent>>(channel.clone());
-  };
-
-  let mut worker =
-    create_main_worker(&ps, specifier.clone(), permissions, Some(&init_ops));
+  let mut worker = create_main_worker(
+    &ps,
+    specifier.clone(),
+    permissions,
+    vec![ops::testing::init(channel.clone())],
+  );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     ps.coverage_dir
