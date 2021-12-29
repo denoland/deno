@@ -26,6 +26,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
@@ -103,8 +104,17 @@ enum HandlerType {
 type StdioProxySender = UnboundedSender<(StdioType, String)>;
 type StdioProxyReceiver = UnboundedReceiver<(StdioType, String)>;
 
-fn init(rt: &mut JsRuntime) {
-  rt.overwrite_op("op_print", op_sync(op_print));
+fn print_extension(sender: StdioProxySender) -> Extension {
+  Extension::builder()
+    .middleware(|name, opfn| match name {
+      "op_print" => op_sync(op_print),
+      _ => opfn,
+    })
+    .state(move |state| {
+      state.put(sender.clone());
+      Ok(())
+    })
+    .build()
 }
 
 pub fn op_print(
@@ -165,18 +175,17 @@ impl Kernel {
     let hb_comm =
       HbComm::new(create_conn_str(&spec.transport, &spec.ip, spec.hb_port));
 
+    let (stdio_tx, stdio_rx) = mpsc::unbounded();
     let main_module = resolve_url_or_path("./$deno$jupyter.ts").unwrap();
     // TODO(bartlomieju): should we run with all permissions?
     let permissions = Permissions::allow_all();
     let ps = ProcState::build(flags.clone()).await?;
-    let mut worker =
-      create_main_worker(&ps, main_module.clone(), permissions, Some(&init));
-    let (stdio_tx, stdio_rx) = mpsc::unbounded();
-    worker
-      .js_runtime
-      .op_state()
-      .borrow_mut()
-      .put::<StdioProxySender>(stdio_tx);
+    let mut worker = create_main_worker(
+      &ps,
+      main_module.clone(),
+      permissions,
+      vec![print_extension(stdio_tx)],
+    );
     let repl_session = ReplSession::initialize(worker).await?;
 
     let kernel = Self {
