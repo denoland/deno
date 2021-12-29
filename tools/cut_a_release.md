@@ -86,7 +86,14 @@ cut.**
     The CI pipeline will create a release draft on GitHub
     (https://github.com/denoland/deno/releases).
 
-18. Upload Apple M1 build to the release draft & to dl.deno.land.
+18. Upload Apple M1 build (`deno-aarch64-apple-darwin.zip`) to the release draft
+    and to https://console.cloud.google.com/storage/browser/dl.deno.land
+
+    ```
+    cargo build --release
+    cd target/release
+    zip -r deno-aarch64-apple-darwin.zip deno
+    ```
 
 19. Publish the release on Github
 

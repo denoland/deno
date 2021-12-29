@@ -135,6 +135,7 @@
     },
     "get key length": {
       "AES-CBC": "AesDerivedKeyParams",
+      "AES-CTR": "AesDerivedKeyParams",
       "AES-GCM": "AesDerivedKeyParams",
       "AES-KW": "AesDerivedKeyParams",
       "HMAC": "HmacImportParams",
@@ -365,6 +366,7 @@
   function getKeyLength(algorithm) {
     switch (algorithm.name) {
       case "AES-CBC":
+      case "AES-CTR":
       case "AES-GCM":
       case "AES-KW": {
         // 1.

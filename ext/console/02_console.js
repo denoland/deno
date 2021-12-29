@@ -1478,14 +1478,12 @@
 
     for (const [key, value] of rawEntries) {
       if (key == "background-color") {
-        const color = parseCssColor(value);
-        if (color != null) {
-          css.backgroundColor = color;
+        if (value != null) {
+          css.backgroundColor = value;
         }
       } else if (key == "color") {
-        const color = parseCssColor(value);
-        if (color != null) {
-          css.color = color;
+        if (value != null) {
+          css.color = value;
         }
       } else if (key == "font-weight") {
         if (value == "bold") {
@@ -1545,19 +1543,55 @@
     prevCss = prevCss ?? getDefaultCss();
     let ansi = "";
     if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
-      if (css.backgroundColor != null) {
-        const [r, g, b] = css.backgroundColor;
-        ansi += `\x1b[48;2;${r};${g};${b}m`;
-      } else {
+      if (css.backgroundColor == null) {
         ansi += "\x1b[49m";
+      } else if (css.backgroundColor == "black") {
+        ansi += `\x1b[40m`;
+      } else if (css.backgroundColor == "red") {
+        ansi += `\x1b[41m`;
+      } else if (css.backgroundColor == "green") {
+        ansi += `\x1b[42m`;
+      } else if (css.backgroundColor == "yellow") {
+        ansi += `\x1b[43m`;
+      } else if (css.backgroundColor == "blue") {
+        ansi += `\x1b[44m`;
+      } else if (css.backgroundColor == "magenta") {
+        ansi += `\x1b[45m`;
+      } else if (css.backgroundColor == "cyan") {
+        ansi += `\x1b[46m`;
+      } else if (css.backgroundColor == "white") {
+        ansi += `\x1b[47m`;
+      } else {
+        const [r, g, b] = ArrayIsArray(css.backgroundColor)
+          ? css.backgroundColor
+          : parseCssColor(css.backgroundColor);
+        ansi += `\x1b[48;2;${r};${g};${b}m`;
       }
     }
     if (!colorEquals(css.color, prevCss.color)) {
-      if (css.color != null) {
-        const [r, g, b] = css.color;
-        ansi += `\x1b[38;2;${r};${g};${b}m`;
-      } else {
+      if (css.color == null) {
         ansi += "\x1b[39m";
+      } else if (css.color == "black") {
+        ansi += `\x1b[30m`;
+      } else if (css.color == "red") {
+        ansi += `\x1b[31m`;
+      } else if (css.color == "green") {
+        ansi += `\x1b[32m`;
+      } else if (css.color == "yellow") {
+        ansi += `\x1b[33m`;
+      } else if (css.color == "blue") {
+        ansi += `\x1b[34m`;
+      } else if (css.color == "magenta") {
+        ansi += `\x1b[35m`;
+      } else if (css.color == "cyan") {
+        ansi += `\x1b[36m`;
+      } else if (css.color == "white") {
+        ansi += `\x1b[37m`;
+      } else {
+        const [r, g, b] = ArrayIsArray(css.color)
+          ? css.color
+          : parseCssColor(css.color);
+        ansi += `\x1b[38;2;${r};${g};${b}m`;
       }
     }
     if (css.fontWeight != prevCss.fontWeight) {

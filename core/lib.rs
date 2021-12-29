@@ -45,6 +45,8 @@ pub use crate::async_cell::AsyncRefFuture;
 pub use crate::async_cell::RcLike;
 pub use crate::async_cell::RcRef;
 pub use crate::flags::v8_set_flags;
+pub use crate::inspector::InspectorMsg;
+pub use crate::inspector::InspectorMsgKind;
 pub use crate::inspector::InspectorSessionProxy;
 pub use crate::inspector::JsRuntimeInspector;
 pub use crate::inspector::LocalInspectorSession;
