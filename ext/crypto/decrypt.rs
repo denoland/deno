@@ -176,7 +176,11 @@ fn decrypt_aes_cbc(
   Ok(plaintext)
 }
 
-fn decrypt_aes_ctr_gen<B, F>(key: &[u8], counter: &[u8], data: &[u8]) -> Vec<u8>
+fn decrypt_aes_ctr_gen<B, F>(
+  key: &[u8],
+  counter: &[u8],
+  data: &[u8],
+) -> Result<Vec<u8>, AnyError>
 where
   B: BlockEncrypt + NewBlockCipher,
   F: CtrFlavor<B::BlockSize>,
@@ -184,9 +188,11 @@ where
   let mut cipher = Ctr::<B, F>::new(key.into(), counter.into());
 
   let mut plaintext = data.to_vec();
-  cipher.apply_keystream(&mut plaintext);
+  cipher
+    .try_apply_keystream(&mut plaintext)
+    .map_err(|_| operation_error("tried to decrypt too much data"))?;
 
-  plaintext
+  Ok(plaintext)
 }
 
 fn decrypt_aes_ctr(
@@ -198,31 +204,27 @@ fn decrypt_aes_ctr(
 ) -> Result<Vec<u8>, deno_core::anyhow::Error> {
   let key = key.as_secret_key()?;
 
-  let plaintext = match ctr_length {
+  match ctr_length {
     32 => match key_length {
       128 => decrypt_aes_ctr_gen::<aes::Aes128, Ctr32BE>(key, counter, data),
       192 => decrypt_aes_ctr_gen::<aes::Aes192, Ctr32BE>(key, counter, data),
       256 => decrypt_aes_ctr_gen::<aes::Aes256, Ctr32BE>(key, counter, data),
-      _ => return Err(type_error("invalid length")),
+      _ => Err(type_error("invalid length")),
     },
     64 => match key_length {
       128 => decrypt_aes_ctr_gen::<aes::Aes128, Ctr64BE>(key, counter, data),
       192 => decrypt_aes_ctr_gen::<aes::Aes192, Ctr64BE>(key, counter, data),
       256 => decrypt_aes_ctr_gen::<aes::Aes256, Ctr64BE>(key, counter, data),
-      _ => return Err(type_error("invalid length")),
+      _ => Err(type_error("invalid length")),
     },
     128 => match key_length {
       128 => decrypt_aes_ctr_gen::<aes::Aes128, Ctr128BE>(key, counter, data),
       192 => decrypt_aes_ctr_gen::<aes::Aes192, Ctr128BE>(key, counter, data),
       256 => decrypt_aes_ctr_gen::<aes::Aes256, Ctr128BE>(key, counter, data),
-      _ => return Err(type_error("invalid length")),
+      _ => Err(type_error("invalid length")),
     },
-    _ => {
-      return Err(type_error(
-        "invalid counter length. Currently supported 32/64/128 bits",
-      ))
-    }
-  };
-
-  Ok(plaintext)
+    _ => Err(type_error(
+      "invalid counter length. Currently supported 32/64/128 bits",
+    )),
+  }
 }

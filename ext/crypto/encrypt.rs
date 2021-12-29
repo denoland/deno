@@ -6,7 +6,6 @@ use crate::shared::*;
 use aes::cipher::NewCipher;
 use aes::BlockEncrypt;
 use aes::NewBlockCipher;
-//use aes::cipher::NewCipher;
 use ctr::Ctr;
 
 use block_modes::BlockMode;
@@ -162,7 +161,11 @@ fn encrypt_aes_cbc(
   Ok(ciphertext)
 }
 
-fn encrypt_aes_ctr_gen<B, F>(key: &[u8], counter: &[u8], data: &[u8]) -> Vec<u8>
+fn encrypt_aes_ctr_gen<B, F>(
+  key: &[u8],
+  counter: &[u8],
+  data: &[u8],
+) -> Result<Vec<u8>, AnyError>
 where
   B: BlockEncrypt + NewBlockCipher,
   F: CtrFlavor<B::BlockSize>,
@@ -170,9 +173,11 @@ where
   let mut cipher = Ctr::<B, F>::new(key.into(), counter.into());
 
   let mut ciphertext = data.to_vec();
-  cipher.apply_keystream(&mut ciphertext);
+  cipher
+    .try_apply_keystream(&mut ciphertext)
+    .map_err(|_| operation_error("tried to encrypt too much data"))?;
 
-  ciphertext
+  Ok(ciphertext)
 }
 
 fn encrypt_aes_ctr(
@@ -181,34 +186,30 @@ fn encrypt_aes_ctr(
   counter: &[u8],
   ctr_length: usize,
   data: &[u8],
-) -> Result<Vec<u8>, deno_core::anyhow::Error> {
+) -> Result<Vec<u8>, AnyError> {
   let key = key.as_secret_key()?;
 
-  let ciphertext = match ctr_length {
+  match ctr_length {
     32 => match key_length {
       128 => encrypt_aes_ctr_gen::<aes::Aes128, Ctr32BE>(key, counter, data),
       192 => encrypt_aes_ctr_gen::<aes::Aes192, Ctr32BE>(key, counter, data),
       256 => encrypt_aes_ctr_gen::<aes::Aes256, Ctr32BE>(key, counter, data),
-      _ => return Err(type_error("invalid length")),
+      _ => Err(type_error("invalid length")),
     },
     64 => match key_length {
       128 => encrypt_aes_ctr_gen::<aes::Aes128, Ctr64BE>(key, counter, data),
       192 => encrypt_aes_ctr_gen::<aes::Aes192, Ctr64BE>(key, counter, data),
       256 => encrypt_aes_ctr_gen::<aes::Aes256, Ctr64BE>(key, counter, data),
-      _ => return Err(type_error("invalid length")),
+      _ => Err(type_error("invalid length")),
     },
     128 => match key_length {
       128 => encrypt_aes_ctr_gen::<aes::Aes128, Ctr128BE>(key, counter, data),
       192 => encrypt_aes_ctr_gen::<aes::Aes192, Ctr128BE>(key, counter, data),
       256 => encrypt_aes_ctr_gen::<aes::Aes256, Ctr128BE>(key, counter, data),
-      _ => return Err(type_error("invalid length")),
+      _ => Err(type_error("invalid length")),
     },
-    _ => {
-      return Err(type_error(
-        "invalid counter length. Currently supported 32/64/128 bits",
-      ))
-    }
-  };
-
-  Ok(ciphertext)
+    _ => Err(type_error(
+      "invalid counter length. Currently supported 32/64/128 bits",
+    )),
+  }
 }
