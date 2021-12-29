@@ -23,7 +23,6 @@ use deno_core::serde_json::Value;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_graph;
 use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
 use serde::Deserialize;
