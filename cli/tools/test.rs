@@ -4,6 +4,7 @@ use crate::ast::Location;
 use crate::cache;
 use crate::cache::CacherLoader;
 use crate::colors;
+use crate::compat;
 use crate::create_main_worker;
 use crate::emit;
 use crate::file_fetcher::File;
@@ -477,8 +478,17 @@ async fn test_specifier(
   // We only execute the specifier as a module if it is tagged with TestMode::Module or
   // TestMode::Both.
   if mode != TestMode::Documentation {
-    // We execute the module module as a side module so that import.meta.main is not set.
-    worker.execute_side_module(&specifier).await?;
+    worker.execute_side_module(&compat::GLOBAL_URL).await?;
+    worker.execute_side_module(&compat::MODULE_URL).await?;
+
+    let use_esm_loader = compat::check_if_should_use_esm_loader(&specifier)?;
+
+    if use_esm_loader {
+      // We execute the module module as a side module so that import.meta.main is not set.
+      worker.execute_side_module(&specifier).await?;
+    } else {
+      panic!("Road to doom");
+    }
   }
 
   worker.dispatch_load_event(&located_script_name!())?;

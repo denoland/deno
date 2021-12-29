@@ -52,6 +52,18 @@ itest!(import_esm_from_cjs {
   output_str: Some("function\n"),
 });
 
+itest!(top_level_assertion_esm {
+  args: "test --compat --unstable -A --quiet compat/test_runner/top_level_assertion_esm.mjs",
+	exit_code: 0,
+  output: "compat/test_runner/top_level_assertion_esm.out",
+});
+
+itest!(top_level_fail_esm {
+  args: "test --compat --unstable -A --quiet compat/test_runner/top_level_fail_esm.mjs",
+	exit_code: 1,
+  output: "compat/test_runner/top_level_fail_esm.out",
+});
+
 #[test]
 fn globals_in_repl() {
   let (out, _err) = util::run_and_collect_output_with_args(
