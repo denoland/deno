@@ -118,11 +118,17 @@ impl From<tokio::net::TcpStream> for TcpStream {
 }
 
 fn create_js_runtime() -> JsRuntime {
-  let mut runtime = JsRuntime::new(Default::default());
-  runtime.register_op("listen", deno_core::op_sync(op_listen));
-  runtime.register_op("accept", deno_core::op_async(op_accept));
-  runtime.sync_ops_cache();
-  runtime
+  let ext = deno_core::Extension::builder()
+    .ops(vec![
+      ("listen", deno_core::op_sync(op_listen)),
+      ("accept", deno_core::op_async(op_accept)),
+    ])
+    .build();
+
+  JsRuntime::new(deno_core::RuntimeOptions {
+    extensions: vec![ext],
+    ..Default::default()
+  })
 }
 
 fn op_listen(state: &mut OpState, _: (), _: ()) -> Result<ResourceId, Error> {
