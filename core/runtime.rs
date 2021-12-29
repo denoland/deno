@@ -2784,30 +2784,36 @@ assertEquals(1, notify_return_value);
   #[test]
   fn test_replace_op() {
     fn op_test(_: &mut OpState, _: (), _: ()) -> Result<(), Error> {
-      Err(custom_error("DOMExceptionOperationError", "abc"))
+      Err(custom_error("Error", "boom!"))
     }
 
     fn op_test1(_: &mut OpState, _: (), _: ()) -> Result<i32, Error> {
       Ok(1)
     }
 
-    run_in_task(|cx| {
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        get_error_class_fn: Some(&get_error_class_name),
-        ..Default::default()
-      });
-      runtime.register_op("op_test", op_sync(op_test));
-      runtime.replace_op("op_test", op_sync(op_test1));
-      runtime.sync_ops_cache();
-      runtime
-        .execute_script(
-          "op_test.js",
-          """,
-        )
-        .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
-        unreachable!();
-      }
-    });
+    let mut runtime = JsRuntime::new(Default::default());
+    runtime.register_op("op_test", op_sync(op_test));
+    runtime.replace_op("op_test", op_sync(op_test1));
+    runtime.sync_ops_cache();
+    runtime
+      .execute_script(
+        "op_test.js",
+        r#"const t = Deno.core.opSync("op_test");
+          if (t !== 1) {
+            throw Error("Value mismatch");
+          }"#,
+      )
+      .unwrap();
+  }
+
+  #[test]
+  #[should_panic]
+  fn test_replace_nonexistent_op() {
+    fn op_test1(_: &mut OpState, _: (), _: ()) -> Result<i32, Error> {
+      Ok(1)
+    }
+
+    let mut runtime = JsRuntime::new(Default::default());
+    runtime.replace_op("op_test", op_sync(op_test1));
   }
 }
