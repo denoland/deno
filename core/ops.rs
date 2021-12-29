@@ -201,7 +201,16 @@ impl OpTable {
     F: Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static,
   {
     let (op_id, prev) = self.0.insert_full(name.to_owned(), Rc::new(op_fn));
-    assert!(prev.is_none());
+    assert!(prev.is_none(), "Op '{}' was already registered", name);
+    op_id
+  }
+
+  pub fn replace_op<F>(&mut self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static,
+  {
+    let (op_id, prev) = self.0.insert_full(name.to_owned(), Rc::new(op_fn));
+    assert!(prev.is_some(), "Op '{}' wasn't already registered", name);
     op_id
   }
 

@@ -637,6 +637,24 @@ impl JsRuntime {
       .register_op(name, op_fn)
   }
 
+  /// Replaces an already existing op.
+  ///
+  /// In most situations this method is not required. However, in some
+  /// cases one might want to overwrite alreadt registered op to perform
+  /// different action; eg. for "op_exit" instead of exiting the process,
+  /// one might want to throw an error if that op is called during testing.
+  pub fn replace_op<F>(&mut self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static,
+  {
+    Self::state(self.v8_isolate())
+      .borrow_mut()
+      .op_state
+      .borrow_mut()
+      .op_table
+      .replace_op(name, op_fn)
+  }
+
   /// Registers a callback on the isolate when the memory limits are approached.
   /// Use this to prevent V8 from crashing the process when reaching the limit.
   ///
@@ -1904,8 +1922,6 @@ pub mod tests {
   #[test]
   fn terminate_execution() {
     let (mut isolate, _dispatch_count) = setup(Mode::Async);
-    // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
-    // should not require a mutable reference to `struct rusty_v8::Isolate`.
     let v8_isolate_handle = isolate.v8_isolate().thread_safe_handle();
 
     let terminator_thread = std::thread::spawn(move || {
@@ -1943,8 +1959,6 @@ pub mod tests {
     let v8_isolate_handle = {
       // isolate is dropped at the end of this block
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
-      // should not require a mutable reference to `struct rusty_v8::Isolate`.
       runtime.v8_isolate().thread_safe_handle()
     };
 
@@ -2765,5 +2779,35 @@ assertEquals(1, notify_return_value);
 
     assert_eq!(2, promise_reject.load(Ordering::Relaxed));
     assert_eq!(2, uncaught_exception.load(Ordering::Relaxed));
+  }
+
+  #[test]
+  fn test_replace_op() {
+    fn op_test(_: &mut OpState, _: (), _: ()) -> Result<(), Error> {
+      Err(custom_error("DOMExceptionOperationError", "abc"))
+    }
+
+    fn op_test1(_: &mut OpState, _: (), _: ()) -> Result<i32, Error> {
+      Ok(1)
+    }
+
+    run_in_task(|cx| {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        get_error_class_fn: Some(&get_error_class_name),
+        ..Default::default()
+      });
+      runtime.register_op("op_test", op_sync(op_test));
+      runtime.replace_op("op_test", op_sync(op_test1));
+      runtime.sync_ops_cache();
+      runtime
+        .execute_script(
+          "op_test.js",
+          """,
+        )
+        .unwrap();
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(cx, false) {
+        unreachable!();
+      }
+    });
   }
 }
