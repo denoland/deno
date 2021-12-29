@@ -210,7 +210,7 @@ impl OpTable {
     F: Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static,
   {
     let (op_id, prev) = self.0.insert_full(name.to_owned(), Rc::new(op_fn));
-    assert!(prev.is_some(), "Op '{}' wasn't already registered", name);
+    assert!(prev.is_some(), "Op '{}' was not yet registered", name);
     op_id
   }
 

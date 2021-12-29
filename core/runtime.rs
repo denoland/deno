@@ -640,7 +640,7 @@ impl JsRuntime {
   /// Replaces an already existing op.
   ///
   /// In most situations this method is not required. However, in some
-  /// cases one might want to overwrite alreadt registered op to perform
+  /// cases one might want to overwrite already registered op to perform
   /// different action; eg. for "op_exit" instead of exiting the process,
   /// one might want to throw an error if that op is called during testing.
   pub fn replace_op<F>(&mut self, name: &str, op_fn: F) -> OpId
