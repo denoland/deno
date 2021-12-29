@@ -121,12 +121,68 @@ declare namespace Deno {
     | "pointer";
 
   /** A foreign function as defined by its parameter and result types */
-  export interface ForeignFunction {
-    parameters: NativeType[];
-    result: NativeType;
+  export interface ForeignFunction<
+    Parameters extends readonly NativeType[],
+    Result extends NativeType,
+    NonBlocking extends boolean,
+  > {
+    parameters: Parameters;
+    result: Result;
     /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
-    nonblocking?: boolean;
+    nonblocking?: NonBlocking;
   }
+
+  /** A foreign function interface descriptor */
+  export interface ForeignFunctionInterface {
+    [name: string]: ForeignFunction<readonly NativeType[], NativeType, boolean>;
+  }
+
+  /** Infers the associative TypeScript type for the given NativeType */
+  type StaticNativeType<T extends NativeType> = T extends "void" ? void
+    : T extends "u8" ? number
+    : T extends "i8" ? number
+    : T extends "u16" ? number
+    : T extends "i16" ? number
+    : T extends "u32" ? number
+    : T extends "i32" ? number
+    : T extends "u64" ? number
+    : T extends "i64" ? number
+    : T extends "usize" ? number
+    : T extends "isize" ? number
+    : T extends "f32" ? number
+    : T extends "f64" ? number
+    : T extends "pointer" ? Deno.UnsafePointer
+    : never;
+
+  /** Infers a foreign function parameter list. */
+  type StaticForeignFunctionParameters<T extends readonly NativeType[]> = [
+    ...{
+      [K in keyof T]: T[K] extends NativeType
+        ? StaticNativeType<T[K]> extends infer R ? // Pointer arguments can be passed either as UnsafePointer or TypedArray
+        R extends Deno.UnsafePointer ? Deno.TypedArray | R
+        : R
+        : unknown
+        : unknown;
+    },
+  ];
+
+  /** Infers a foreign function return type */
+  type StaticForeignFunctionResult<T extends NativeType> = StaticNativeType<T>;
+
+  /** Infers a foreign function */
+  type StaticForeignFunction<
+    T extends ForeignFunction<readonly NativeType[], NativeType, boolean>,
+  > = T["nonblocking"] extends true ? (
+    ...args: [...StaticForeignFunctionParameters<T["parameters"]>]
+  ) => Promise<StaticForeignFunctionResult<T["result"]>>
+    : (
+      ...args: [...StaticForeignFunctionParameters<T["parameters"]>]
+    ) => StaticForeignFunctionResult<T["result"]>;
+
+  /** Infers a foreign function interface */
+  type StaticForeignFunctionInterface<T extends ForeignFunctionInterface> = {
+    [K in keyof T]: StaticForeignFunction<T[K]>;
+  };
 
   type TypedArray =
     | Int8Array
@@ -202,10 +258,9 @@ declare namespace Deno {
   }
 
   /** A dynamic library resource */
-  export interface DynamicLibrary<S extends Record<string, ForeignFunction>> {
+  export interface DynamicLibrary<S extends ForeignFunctionInterface> {
     /** All of the registered symbols along with functions for calling them */
-    symbols: { [K in keyof S]: (...args: unknown[]) => unknown };
-
+    symbols: StaticForeignFunctionInterface<S>;
     close(): void;
   }
 
@@ -213,7 +268,7 @@ declare namespace Deno {
    *
    * Opens a dynamic library and registers symbols
    */
-  export function dlopen<S extends Record<string, ForeignFunction>>(
+  export function dlopen<S extends ForeignFunctionInterface>(
     filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
