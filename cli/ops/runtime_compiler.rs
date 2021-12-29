@@ -15,10 +15,12 @@ use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::op_async;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_graph;
@@ -32,8 +34,10 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_async(rt, "op_emit", op_emit);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![("op_emit", op_async(op_emit))])
+    .build()
 }
 
 #[derive(Debug, Deserialize)]
