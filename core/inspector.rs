@@ -137,7 +137,9 @@ impl Future for JsRuntimeInspector {
   type Output = ();
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
     eprintln!("poll inspector from the runtime");
-    self.poll_sessions(Some(cx)).unwrap()
+    let r = self.poll_sessions(Some(cx)).unwrap();
+    eprintln!("finished polling inspector from the runtime {:#?}", r);
+    r
   }
 }
 
@@ -191,7 +193,7 @@ impl JsRuntimeInspector {
     // new_incoming debugger activity.
     eprintln!("poll sessions on creation");
     let _ = self_.poll_sessions(None).unwrap();
-
+    eprintln!("finished polling sessions on creation");
     self_
   }
 
@@ -320,6 +322,7 @@ impl JsRuntimeInspector {
           self.flags.get_mut().waiting_for_session = true;
           eprintln!("poll sessions waiting for session");
           let _ = self.poll_sessions(None).unwrap();
+          eprintln!("finished polling sessions waiting for session");
         }
       };
     }
