@@ -11,6 +11,7 @@ use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::CheckFlag;
 use crate::flags::Flags;
+use crate::flags::TestFlags;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -32,7 +33,6 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
-use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_graph::Module;
 use deno_runtime::permissions::Permissions;
@@ -452,17 +452,12 @@ async fn test_specifier(
   shuffle: Option<u64>,
   channel: Sender<TestEvent>,
 ) -> Result<(), AnyError> {
-  let init_ops = |js_runtime: &mut JsRuntime| {
-    ops::testing::init(js_runtime);
-
-    js_runtime
-      .op_state()
-      .borrow_mut()
-      .put::<Sender<TestEvent>>(channel.clone());
-  };
-
-  let mut worker =
-    create_main_worker(&ps, specifier.clone(), permissions, Some(&init_ops));
+  let mut worker = create_main_worker(
+    &ps,
+    specifier.clone(),
+    permissions,
+    vec![ops::testing::init(channel.clone())],
+  );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     ps.coverage_dir
@@ -486,10 +481,7 @@ async fn test_specifier(
     worker.execute_side_module(&specifier).await?;
   }
 
-  worker.js_runtime.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'));",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
 
   let test_result = worker.js_runtime.execute_script(
     &located_script_name!(),
@@ -504,10 +496,7 @@ async fn test_specifier(
 
   worker.js_runtime.resolve_value(test_result).await?;
 
-  worker.js_runtime.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'));",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
@@ -1000,30 +989,21 @@ async fn fetch_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
   flags: Flags,
-  include: Option<Vec<String>>,
-  ignore: Vec<PathBuf>,
-  doc: bool,
-  no_run: bool,
-  fail_fast: Option<NonZeroUsize>,
-  allow_none: bool,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     ps.clone(),
-    include.unwrap_or_else(|| vec![".".to_string()]),
-    ignore.clone(),
-    doc,
+    test_flags.include.unwrap_or_else(|| vec![".".to_string()]),
+    test_flags.ignore.clone(),
+    test_flags.doc,
   )
   .await?;
 
-  if !allow_none && specifiers_with_mode.is_empty() {
+  if !test_flags.allow_none && specifiers_with_mode.is_empty() {
     return Err(generic_error("No test modules found"));
   }
 
@@ -1041,7 +1021,7 @@ pub async fn run_tests(
   )
   .await?;
 
-  if no_run {
+  if test_flags.no_run {
     return Ok(());
   }
 
@@ -1049,27 +1029,19 @@ pub async fn run_tests(
     ps,
     permissions,
     specifiers_with_mode,
-    fail_fast,
-    filter,
-    shuffle,
-    concurrent_jobs,
+    test_flags.fail_fast,
+    test_flags.filter,
+    test_flags.shuffle,
+    test_flags.concurrent_jobs,
   )
   .await?;
 
   Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_tests_with_watch(
   flags: Flags,
-  include: Option<Vec<String>>,
-  ignore: Vec<PathBuf>,
-  doc: bool,
-  no_run: bool,
-  fail_fast: Option<NonZeroUsize>,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
@@ -1080,7 +1052,8 @@ pub async fn run_tests_with_watch(
     emit::TypeLib::DenoWindow
   };
 
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
+  let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
+  let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
   let no_check = ps.flags.check == CheckFlag::None;
 
@@ -1113,9 +1086,14 @@ pub async fn run_tests_with_watch(
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
+    let check_js = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| cf.get_check_js())
+      .unwrap_or(false);
 
     async move {
-      let test_modules = if doc {
+      let test_modules = if test_flags.doc {
         collect_specifiers(include.clone(), &ignore, is_supported_test_ext)
       } else {
         collect_specifiers(include.clone(), &ignore, is_supported_test_path)
@@ -1152,7 +1130,7 @@ pub async fn run_tests_with_watch(
         None,
       )
       .await;
-      graph_valid(&graph, !no_check)?;
+      graph_valid(&graph, !no_check, check_js)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
@@ -1242,7 +1220,7 @@ pub async fn run_tests_with_watch(
   };
 
   let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-    let filter = filter.clone();
+    let filter = test_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
     let lib = lib.clone();
@@ -1254,7 +1232,7 @@ pub async fn run_tests_with_watch(
         ps.clone(),
         include.clone(),
         ignore.clone(),
-        doc,
+        test_flags.doc,
       )
       .await?
       .iter()
@@ -1270,7 +1248,7 @@ pub async fn run_tests_with_watch(
       )
       .await?;
 
-      if no_run {
+      if test_flags.no_run {
         return Ok(());
       }
 
@@ -1278,10 +1256,10 @@ pub async fn run_tests_with_watch(
         ps.clone(),
         permissions.clone(),
         specifiers_with_mode,
-        fail_fast,
+        test_flags.fail_fast,
         filter.clone(),
-        shuffle,
-        concurrent_jobs,
+        test_flags.shuffle,
+        test_flags.concurrent_jobs,
       )
       .await?;
 

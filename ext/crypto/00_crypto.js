@@ -133,6 +133,7 @@
     },
     "get key length": {
       "AES-CBC": "AesDerivedKeyParams",
+      "AES-CTR": "AesDerivedKeyParams",
       "AES-GCM": "AesDerivedKeyParams",
       "AES-KW": "AesDerivedKeyParams",
       "HMAC": "HmacImportParams",
@@ -363,6 +364,7 @@
   function getKeyLength(algorithm) {
     switch (algorithm.name) {
       case "AES-CBC":
+      case "AES-CTR":
       case "AES-GCM":
       case "AES-KW": {
         // 1.
@@ -572,7 +574,7 @@
 
           // 3-5.
           const hashAlgorithm = key[_algorithm].hash.name;
-          const plainText = await core.opAsync("op_crypto_decrypt_key", {
+          const plainText = await core.opAsync("op_crypto_decrypt", {
             key: keyData,
             algorithm: "RSA-OAEP",
             hash: hashAlgorithm,
@@ -593,7 +595,7 @@
             );
           }
 
-          const plainText = await core.opAsync("op_crypto_decrypt_key", {
+          const plainText = await core.opAsync("op_crypto_decrypt", {
             key: keyData,
             algorithm: "AES-CBC",
             iv: normalizedAlgorithm.iv,

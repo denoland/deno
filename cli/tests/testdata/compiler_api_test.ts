@@ -514,7 +514,7 @@ Deno.test({
         code: 900001,
         start: null,
         end: null,
-        messageText: 'Cannot load module "file:///b.ts".',
+        messageText: 'Module not found "file:///b.ts".',
         messageChain: null,
         source: null,
         sourceLine: null,
@@ -524,7 +524,7 @@ Deno.test({
     ]);
     assert(
       Deno.formatDiagnostics(diagnostics).includes(
-        'Cannot load module "file:///b.ts".',
+        'Module not found "file:///b.ts".',
       ),
     );
   },

@@ -14,40 +14,9 @@ mod utils;
 pub mod web_worker;
 pub mod worker_host;
 
-use deno_core::error::AnyError;
-use deno_core::op_async;
-use deno_core::op_sync;
-use deno_core::serde::de::DeserializeOwned;
-use deno_core::serde::Serialize;
-use deno_core::JsRuntime;
 use deno_core::OpState;
 use std::cell::RefCell;
-use std::future::Future;
 use std::rc::Rc;
-
-pub fn reg_async<F, A, B, R, RV>(
-  rt: &mut JsRuntime,
-  name: &'static str,
-  op_fn: F,
-) where
-  F: Fn(Rc<RefCell<OpState>>, A, B) -> R + 'static,
-  A: DeserializeOwned,
-  B: DeserializeOwned,
-  R: Future<Output = Result<RV, AnyError>> + 'static,
-  RV: Serialize + 'static,
-{
-  rt.register_op(name, op_async(op_fn));
-}
-
-pub fn reg_sync<F, A, B, R>(rt: &mut JsRuntime, name: &'static str, op_fn: F)
-where
-  F: Fn(&mut OpState, A, B) -> Result<R, AnyError> + 'static,
-  A: DeserializeOwned,
-  B: DeserializeOwned,
-  R: Serialize + 'static,
-{
-  rt.register_op(name, op_sync(op_fn));
-}
 
 /// `UnstableChecker` is a struct so it can be placed inside `GothamState`;
 /// using type alias for a bool could work, but there's a high chance
