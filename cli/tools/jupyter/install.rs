@@ -15,7 +15,7 @@ pub fn install() -> Result<(), AnyError> {
   // FIXME(bartlomieju): replace `current_exe`
   let json_data = json!({
       "argv": [current_exe().unwrap().to_string_lossy(), "jupyter", "--conn", "{connection_file}"],
-      "display_name": "Deno (Rust)",
+      "display_name": "Deno",
       "language": "typescript",
   });
 
@@ -27,7 +27,7 @@ pub fn install() -> Result<(), AnyError> {
       "kernelspec",
       "install",
       "--name",
-      "rusty_deno",
+      "deno",
       &temp_dir.path().to_string_lossy(),
     ])
     .spawn();
