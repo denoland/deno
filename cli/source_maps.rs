@@ -79,9 +79,14 @@ pub fn apply_source_map<G: SourceMapGetter>(
     }
   }
 
+  let cause = js_error
+    .cause
+    .clone()
+    .map(|cause| Box::new(apply_source_map(&*cause, getter)));
+
   JsError {
     message: js_error.message.clone(),
-    cause: js_error.cause.clone(),
+    cause,
     source_line,
     script_resource_name,
     line_number,
