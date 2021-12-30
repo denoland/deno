@@ -33,6 +33,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
+use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
@@ -91,7 +92,7 @@ impl TsServer {
   pub fn new() -> Self {
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = load().expect("could not load tsc");
+      let mut ts_runtime = js_runtime();
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -2259,7 +2260,7 @@ fn normalize_specifier<S: AsRef<str>>(
 }
 
 // buffer-less json_sync ops
-fn op<F, V, R>(op_fn: F) -> Box<OpFn>
+fn op_lsp<F, V, R>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(&mut State, V) -> Result<R, AnyError> + 'static,
   V: de::DeserializeOwned,
@@ -2536,31 +2537,33 @@ fn op_script_version(
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
-fn load() -> Result<JsRuntime, AnyError> {
-  let mut runtime = JsRuntime::new(RuntimeOptions {
+fn js_runtime() -> JsRuntime {
+  JsRuntime::new(RuntimeOptions {
+    extensions: vec![init_extension()],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
-  });
+  })
+}
 
-  {
-    let op_state = runtime.op_state();
-    let mut op_state = op_state.borrow_mut();
-    op_state.put(State::new(Arc::new(StateSnapshot::default())));
-  }
-
-  runtime.register_op("op_dispose", op(op_dispose));
-  runtime.register_op("op_exists", op(op_exists));
-  runtime.register_op("op_get_change_range", op(op_get_change_range));
-  runtime.register_op("op_get_length", op(op_get_length));
-  runtime.register_op("op_get_text", op(op_get_text));
-  runtime.register_op("op_load", op(op_load));
-  runtime.register_op("op_resolve", op(op_resolve));
-  runtime.register_op("op_respond", op(op_respond));
-  runtime.register_op("op_script_names", op(op_script_names));
-  runtime.register_op("op_script_version", op(op_script_version));
-  runtime.sync_ops_cache();
-
-  Ok(runtime)
+fn init_extension() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_dispose", op_lsp(op_dispose)),
+      ("op_exists", op_lsp(op_exists)),
+      ("op_get_change_range", op_lsp(op_get_change_range)),
+      ("op_get_length", op_lsp(op_get_length)),
+      ("op_get_text", op_lsp(op_get_text)),
+      ("op_load", op_lsp(op_load)),
+      ("op_resolve", op_lsp(op_resolve)),
+      ("op_respond", op_lsp(op_respond)),
+      ("op_script_names", op_lsp(op_script_names)),
+      ("op_script_version", op_lsp(op_script_version)),
+    ])
+    .state(|state| {
+      state.put(State::new(Arc::new(StateSnapshot::default())));
+      Ok(())
+    })
+    .build()
 }
 
 /// Instruct a language server runtime to start the language server and provide
@@ -3087,7 +3090,7 @@ mod tests {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
-    let mut runtime = load().expect("could not start server");
+    let mut runtime = js_runtime();
     start(&mut runtime, debug, &state_snapshot)
       .expect("could not start server");
     let ts_config = TsConfig::new(config);
