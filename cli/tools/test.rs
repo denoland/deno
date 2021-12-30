@@ -485,7 +485,6 @@ async fn test_specifier(
 
   // We only execute the specifier as a module if it is tagged with TestMode::Module or
   // TestMode::Both.
-  let mut await_cjs_modules = false;
   if mode != TestMode::Documentation {
     if options.compat_mode {
       worker.execute_side_module(&compat::GLOBAL_URL).await?;
@@ -496,12 +495,12 @@ async fn test_specifier(
       if use_esm_loader {
         worker.execute_side_module(&specifier).await?;
       } else {
-        await_cjs_modules = true;
         compat::load_cjs_module(
           &mut worker.js_runtime,
           &specifier.to_file_path().unwrap().display().to_string(),
           false,
         )?;
+        worker.run_event_loop(false).await?;
       }
     } else {
       // We execute the module module as a side module so that import.meta.main is not set.
@@ -510,9 +509,6 @@ async fn test_specifier(
   }
 
   worker.dispatch_load_event(&located_script_name!())?;
-  if await_cjs_modules {
-    worker.run_event_loop(false).await?;
-  }
 
   let test_result = worker.js_runtime.execute_script(
     &located_script_name!(),
