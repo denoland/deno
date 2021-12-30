@@ -126,7 +126,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
     let r = self.poll_sessions(None);
     eprintln!("finished run message loop on pause {:#?}", r);
     assert!(
-      !self.flags.borrow().on_pause, 
+      !self.flags.borrow().on_pause,
       "V8InspectorClientImpl::run_message_loop_on_pause returned before quit_message_loop_on_pause was called"
     );
   }
@@ -320,8 +320,8 @@ impl JsRuntimeInspector {
       match new_state {
         PollState::Idle => {
           eprintln!("entered idle state, breaking outer loop");
-          break Ok(Poll::Pending)
-        }, // Yield to task.
+          break Ok(Poll::Pending);
+        } // Yield to task.
         PollState::Polling => {} // Poll the session handler again.
         PollState::Parked => thread::park(), // Park the thread.
         _ => unreachable!(),
