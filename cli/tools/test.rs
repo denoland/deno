@@ -487,7 +487,10 @@ async fn test_specifier(
       // We execute the module module as a side module so that import.meta.main is not set.
       worker.execute_side_module(&specifier).await?;
     } else {
-      panic!("Road to doom");
+      compat::load_cjs_side_module(
+        &mut worker.js_runtime,
+        &specifier.to_file_path().unwrap().display().to_string(),
+      )?;
     }
   }
 
