@@ -143,5 +143,6 @@
     funlockSync: __bootstrap.fs.funlockSync,
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
+    jupyter: __bootstrap.jupyter,
   };
 })(this);

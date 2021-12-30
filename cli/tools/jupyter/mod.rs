@@ -28,6 +28,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::OpState;
+use deno_core::ZeroCopyBuf;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use ring::hmac;
@@ -89,7 +90,7 @@ struct Kernel {
   session_id: String,
   execution_count: u32,
   repl_session: ReplSession,
-  stdio_rx: StdioProxyReceiver,
+  stdio_rx: WorkerCommReceiver,
   last_comm_ctx: Option<CommContext>,
 }
 
@@ -100,11 +101,45 @@ enum HandlerType {
   Stdin,
 }
 
-type StdioProxySender = UnboundedSender<(StdioType, String)>;
-type StdioProxyReceiver = UnboundedReceiver<(StdioType, String)>;
+type WorkerCommSender = UnboundedSender<WorkerCommMsg>;
+type WorkerCommReceiver = UnboundedReceiver<WorkerCommMsg>;
+
+enum WorkerCommMsg {
+  Stderr(String),
+  Stdout(String),
+  Display(String, ZeroCopyBuf),
+}
 
 fn init(rt: &mut JsRuntime) {
   rt.overwrite_op("op_print", op_sync(op_print));
+  rt.register_op("op_jupyter_display", op_sync(op_jupyter_display));
+  rt.sync_ops_cache();
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct DisplayArgs {
+  mime_type: String,
+  data: String,
+}
+
+pub fn op_jupyter_display(
+  state: &mut OpState,
+  mime_type: String,
+  data: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
+  println!("&&& op_jupyter_display");
+  println!("mime_type: {}", mime_type);
+  let d = match data {
+    Some(x) => x,
+    None => return Err(anyhow!("op_jupyter_display missing 'data' argument")),
+  };
+  println!("buflen: {}", d.len());
+
+  let mut sender = state.borrow_mut::<WorkerCommSender>();
+  sender.unbounded_send(WorkerCommMsg::Display(mime_type, d));
+
+  Ok(())
 }
 
 pub fn op_print(
@@ -112,12 +147,12 @@ pub fn op_print(
   msg: String,
   is_err: bool,
 ) -> Result<(), AnyError> {
-  let mut sender = state.borrow_mut::<StdioProxySender>();
+  let mut sender = state.borrow_mut::<WorkerCommSender>();
 
   if is_err {
-    let r = sender.unbounded_send((StdioType::Stderr, msg));
+    let r = sender.unbounded_send(WorkerCommMsg::Stderr(msg));
   } else {
-    let r = sender.unbounded_send((StdioType::Stdout, msg));
+    let r = sender.unbounded_send(WorkerCommMsg::Stdout(msg));
   }
   Ok(())
 }
@@ -176,7 +211,7 @@ impl Kernel {
       .js_runtime
       .op_state()
       .borrow_mut()
-      .put::<StdioProxySender>(stdio_tx);
+      .put::<WorkerCommSender>(stdio_tx);
     let repl_session = ReplSession::initialize(worker).await?;
 
     let kernel = Self {
@@ -232,7 +267,7 @@ impl Kernel {
         },
         maybe_stdio_proxy_msg = self.stdio_rx.next() => {
           if let Some(stdio_proxy_msg) = maybe_stdio_proxy_msg {
-            self.stdio_handler(stdio_proxy_msg).await;
+            self.worker_comm_handler(stdio_proxy_msg).await;
           }
         },
         heartbeat_result = self.hb_comm.heartbeat() => {
@@ -296,31 +331,38 @@ impl Kernel {
     self.set_state(&comm_ctx, KernelState::Idle).await;
   }
 
-  async fn stdio_handler(
+  async fn worker_comm_handler(
     &mut self,
-    stdio_proxy_msg: (StdioType, String),
+    worker_msg: WorkerCommMsg,
   ) -> Result<(), AnyError> {
-    if let Some(comm_ctx) = self.last_comm_ctx.as_ref() {
-      let (t, content) = stdio_proxy_msg;
-      let msg = SideEffectMessage::new(
-        comm_ctx,
-        "stream",
-        ReplyMetadata::Empty,
-        ReplyContent::Stream(StreamContent {
-          name: match t {
-            StdioType::Stdout => "stdout".to_string(),
-            StdioType::Stderr => "stderr".to_string(),
-          },
-          text: content,
-        }),
-      );
-      self.iopub_comm.send(msg).await?;
-    } else {
-      println!(
-        "Received stdio message, but there is no last CommContext: {:#?}",
-        stdio_proxy_msg.1
-      );
-    }
+    println!("&&& worker_comm_handler");
+    let comm_ctx = match self.last_comm_ctx.clone() {
+      Some(cc) => cc,
+      None => {
+        return Err(anyhow!(
+          "Received stdio message, but there is no last CommContext"
+        ));
+      }
+    };
+
+    match worker_msg {
+      WorkerCommMsg::Stdout(s) => {
+        self
+          .send_stdio(&comm_ctx, StdioType::Stdout, s.as_ref())
+          .await?;
+      }
+      WorkerCommMsg::Stderr(s) => {
+        self
+          .send_stdio(&comm_ctx, StdioType::Stderr, s.as_ref())
+          .await?;
+      }
+      WorkerCommMsg::Display(mime, buf) => {
+        println!("&&& WorkerCommMsg::Display");
+        let mut dd = DisplayData::new();
+        dd.add(mime.as_ref(), json!(buf));
+        self.send_display_data(&comm_ctx, dd).await?;
+      }
+    };
 
     Ok(())
   }
@@ -639,6 +681,7 @@ impl Kernel {
     comm_ctx: &CommContext,
     display_data: DisplayData,
   ) -> Result<(), AnyError> {
+    println!("&&& send_display_data");
     if (display_data.is_empty()) {
       return Err(anyhow!("send_display_data called with empty DisplayData"));
     }
@@ -654,7 +697,8 @@ impl Kernel {
         transient: json!({}),
       }),
     );
-    self.iopub_comm.send(msg);
+    dbg!(&msg);
+    self.iopub_comm.send(msg).await?;
 
     Ok(())
   }
@@ -693,9 +737,10 @@ impl Kernel {
       // TODO(apowers313) inspect object / call toPng, toHtml, toSvg, toText, toMime
       "object" => {
         // TODO: this description isn't very useful
-        let v = self.decode_object(&data, true).await?;
-        ret.add("text/plain", v.clone());
-        ret.add("application/json", v.clone());
+        let type_list = self.decode_object(data, true).await?;
+        for t in type_list.iter() {
+          ret.add(t.0, t.1.clone());
+        }
       }
       "string" => {
         ret.add("text/plain", d["value"].clone());
@@ -734,12 +779,12 @@ impl Kernel {
 
   async fn decode_object(
     &mut self,
-    obj: &Value,
+    obj: Value,
     color: bool,
-  ) -> Result<Value, AnyError> {
+  ) -> Result<Vec<(&str, Value)>, AnyError> {
     // let v = self.repl_session.get_eval_value(&obj).await?;
     // TODO(apowers313) copy and paste from `get_eval_value`, consider refactoring API
-    let fn_decl = match color {
+    let obj_inspect_fn = match color {
       true => {
         r#"function (object) {
           try {
@@ -760,21 +805,39 @@ impl Kernel {
       }
     };
 
+    let v = self.repl_exec(obj_inspect_fn, Some(json!([obj]))).await?;
+
+    match v["result"]["value"]["description"].to_string().as_ref() {
+      "Symbol(Symbol.toPng)" => println!("found Symbol(Symbol.toPng)"),
+      "Symbol(Symbol.toSvg)" => println!("found Symbol(Symbol.toSvg)"),
+      "Symbol(Symbol.toHtml)" => println!("found Symbol(Symbol.toHtml)"),
+      "Symbol(Symbol.toJson)" => println!("found Symbol(Symbol.toJson)"),
+      "Symbol(Symbol.toJpg)" => println!("found Symbol(Symbol.toJpg)"),
+      "Symbol(Symbol.toMime)" => println!("found Symbol(Symbol.toMime)"),
+      _ => return Ok(vec![("text/plain", v["result"]["value"].clone())]),
+    };
+
+    Ok(vec![])
+  }
+
+  async fn repl_exec(
+    &mut self,
+    code: &str,
+    args: Option<Value>,
+  ) -> Result<Value, AnyError> {
     let v = self
       .repl_session
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(json!({
           "executionContextId": self.repl_session.context_id,
-          "functionDeclaration": fn_decl,
-          "arguments": [
-            obj,
-          ],
+          "functionDeclaration": code,
+          "arguments": args,
         })),
       )
       .await?;
 
-    Ok(v["result"]["value"].clone())
+    Ok(v)
   }
 }
 
