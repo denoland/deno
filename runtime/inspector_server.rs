@@ -349,6 +349,7 @@ async fn pump_websocket_messages(
       .map_ok(|msg| {
         // Messages that cannot be converted to strings are ignored.
         if let Ok(msg_text) = msg.into_text() {
+          eprintln!("message from WS {}", msg_text);
           let _ = inbound_tx.unbounded_send(msg_text);
         }
       })

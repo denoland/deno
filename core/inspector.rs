@@ -309,7 +309,7 @@ impl JsRuntimeInspector {
             // events to process, so this thread will be parked. Therefore,
             // store the current thread handle in the waker so it knows
             // which thread to unpark when new events arrive.
-            eprintln!("parking thread");
+            eprintln!("parking thread {:#?}", thread::current().id());
             w.poll_state = PollState::Parked;
             w.parked_thread.replace(thread::current());
           }
@@ -520,8 +520,8 @@ impl task::ArcWake for InspectorWaker {
         }
         PollState::Parked => {
           // Unpark the isolate thread.
-          eprintln!("PollState::Parked");
           let parked_thread = w.parked_thread.take().unwrap();
+          eprintln!("PollState::Parked {:#?} {:#?}", parked_thread.id(), thread::current().id());
           assert_ne!(parked_thread.id(), thread::current().id());
           parked_thread.unpark();
         }
