@@ -6,18 +6,24 @@ use crate::proc_state::ProcState;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use deno_core::error::AnyError;
+use deno_core::op_sync;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::Extension;
 use deno_core::OpState;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_apply_source_map", op_apply_source_map);
-  super::reg_sync(rt, "op_format_diagnostic", op_format_diagnostic);
-  super::reg_sync(rt, "op_format_file_name", op_format_file_name);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_apply_source_map", op_sync(op_apply_source_map)),
+      ("op_format_diagnostic", op_sync(op_format_diagnostic)),
+      ("op_format_file_name", op_sync(op_format_file_name)),
+    ])
+    .build()
 }
 
 #[derive(Deserialize)]

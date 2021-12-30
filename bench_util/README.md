@@ -9,19 +9,28 @@ use deno_bench_util::bench_js_sync};
 
 use deno_core::op_sync;
 use deno_core::serialize_op_result;
+use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpState;
 
-fn setup(runtime: &mut JsRuntime) {
-  runtime.register_op("nop", |state, _| {
-    Op::Sync(serialize_op_result(Ok(9), state))
-  });
-  runtime.sync_ops_cache();
+fn setup() -> Vec<Extension> {
+  let custom_ext = Extension::builder()
+    .ops(vec![
+      ("op_nop", |state, _| {
+        Op::Sync(serialize_op_result(Ok(9), state))
+      }),
+    ])
+    .build();
+  
+  vec![
+    // deno_{ext}::init(...),
+    custom_ext,
+  ]
 }
 
 fn bench_op_nop(b: &mut Bencher) {
-  bench_js_sync(b, r#"Deno.core.opSync("nop", null, null, null);"#, setup);
+  bench_js_sync(b, r#"Deno.core.opSync("op_nop", null, null);"#, setup);
 }
 
 benchmark_group!(benches, bench_op_nop);
