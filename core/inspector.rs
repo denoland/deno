@@ -27,7 +27,6 @@ use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::mem::replace;
 use std::mem::take;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
@@ -127,7 +126,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
-    self.flags.borrow_mut().session_handshake_done = true;
+    self.flags.borrow_mut().waiting_for_session = false;
   }
 }
 
@@ -226,34 +225,20 @@ impl JsRuntimeInspector {
     loop {
       loop {
         // Do one "handshake" with a newly connected session at a time.
-        if let Some(session) = &mut sessions.handshake {
-          let poll_result = session.poll_unpin(cx);
-          let handshake_done =
-            replace(&mut self.flags.borrow_mut().session_handshake_done, false);
-          match poll_result {
-            Poll::Pending if handshake_done => {
-              let session = sessions.handshake.take().unwrap();
-              sessions.established.push(session);
-              take(&mut self.flags.borrow_mut().waiting_for_session);
-            }
-            Poll::Ready(_) => sessions.handshake = None,
-            Poll::Pending => break,
-          };
+        if let Some(mut session) = sessions.handshake.take() {
+          if session.poll_unpin(cx).is_pending() {
+            sessions.established.push(session);
+            continue;
+          }
         }
 
         // Accept new connections.
-        match sessions.session_rx.poll_next_unpin(cx) {
-          Poll::Ready(Some(session_proxy)) => {
-            let session = InspectorSession::new(
-              sessions.v8_inspector.clone(),
-              session_proxy,
-            );
-            let prev = sessions.handshake.replace(session);
-            assert!(prev.is_none());
-            continue;
-          }
-          Poll::Ready(None) => {}
-          Poll::Pending => {}
+        let poll_result = sessions.session_rx.poll_next_unpin(cx);
+        if let Poll::Ready(Some(session_proxy)) = poll_result {
+          let session =
+            InspectorSession::new(sessions.v8_inspector.clone(), session_proxy);
+          let prev = sessions.handshake.replace(session);
+          assert!(prev.is_none());
         }
 
         // Poll established sessions.
@@ -264,9 +249,8 @@ impl JsRuntimeInspector {
         };
       }
 
-      let should_block = sessions.handshake.is_some()
-        || self.flags.borrow().on_pause
-        || self.flags.borrow().waiting_for_session;
+      let should_block =
+        self.flags.borrow().on_pause || self.flags.borrow().waiting_for_session;
 
       let new_state = self.waker.update(|w| {
         match w.poll_state {
@@ -311,8 +295,11 @@ impl JsRuntimeInspector {
   }
 
   /// This function blocks the thread until at least one inspector client has
-  /// established a websocket connection and successfully completed the
-  /// handshake. After that, it instructs V8 to pause at the next statement.
+  /// established a websocket connection.
+  ///
+  /// After that, it instructs V8 to pause at the next statement.
+  /// Frontend must send "Runtime.runIfWaitingForDebugger" message to resume
+  /// execution.
   pub fn wait_for_session_and_break_on_next_statement(&mut self) {
     loop {
       match self.sessions.get_mut().established.iter_mut().next() {
@@ -326,10 +313,6 @@ impl JsRuntimeInspector {
   }
 
   /// Obtain a sender for proxy channels.
-  ///
-  /// After a proxy is sent inspector will wait for a "handshake".
-  /// Frontend must send "Runtime.runIfWaitingForDebugger" message to
-  /// complete the handshake.
   pub fn get_session_sender(&self) -> UnboundedSender<InspectorSessionProxy> {
     self.new_session_tx.clone()
   }
@@ -362,8 +345,7 @@ impl JsRuntimeInspector {
     };
 
     // InspectorSessions for a local session is added directly to the "established"
-    // sessions, so it doesn't need to go through the session sender and handshake
-    // phase.
+    // sessions, so it doesn't need to go through the session sender.
     let inspector_session =
       InspectorSession::new(self.v8_inspector.clone(), proxy);
     self
@@ -380,7 +362,6 @@ impl JsRuntimeInspector {
 #[derive(Default)]
 struct InspectorFlags {
   waiting_for_session: bool,
-  session_handshake_done: bool,
   on_pause: bool,
 }
 
