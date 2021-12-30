@@ -29,6 +29,7 @@ use deno_core::serde_json::Value;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::OpState;
+use deno_core::ZeroCopyBuf;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use ring::hmac;
@@ -90,7 +91,7 @@ struct Kernel {
   session_id: String,
   execution_count: u32,
   repl_session: ReplSession,
-  stdio_rx: StdioProxyReceiver,
+  stdio_rx: WorkerCommReceiver,
   last_comm_ctx: Option<CommContext>,
 }
 
@@ -101,11 +102,18 @@ enum HandlerType {
   Stdin,
 }
 
-type StdioProxySender = UnboundedSender<(StdioType, String)>;
-type StdioProxyReceiver = UnboundedReceiver<(StdioType, String)>;
+type WorkerCommSender = UnboundedSender<WorkerCommMsg>;
+type WorkerCommReceiver = UnboundedReceiver<WorkerCommMsg>;
 
-fn print_extension(sender: StdioProxySender) -> Extension {
+enum WorkerCommMsg {
+  Stderr(String),
+  Stdout(String),
+  Display(String, ZeroCopyBuf),
+}
+
+fn jupyter_extension(sender: WorkerCommSender) -> Extension {
   Extension::builder()
+    .ops(vec![("op_jupyter_display", op_sync(op_jupyter_display))])
     .middleware(|name, opfn| match name {
       "op_print" => op_sync(op_print),
       _ => opfn,
@@ -117,17 +125,43 @@ fn print_extension(sender: StdioProxySender) -> Extension {
     .build()
 }
 
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct DisplayArgs {
+  mime_type: String,
+  data: String,
+}
+
+pub fn op_jupyter_display(
+  state: &mut OpState,
+  mime_type: String,
+  data: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
+  println!("&&& op_jupyter_display");
+  println!("mime_type: {}", mime_type);
+  let d = match data {
+    Some(x) => x,
+    None => return Err(anyhow!("op_jupyter_display missing 'data' argument")),
+  };
+  println!("buflen: {}", d.len());
+
+  let mut sender = state.borrow_mut::<WorkerCommSender>();
+  sender.unbounded_send(WorkerCommMsg::Display(mime_type, d));
+
+  Ok(())
+}
+
 pub fn op_print(
   state: &mut OpState,
   msg: String,
   is_err: bool,
 ) -> Result<(), AnyError> {
-  let mut sender = state.borrow_mut::<StdioProxySender>();
+  let mut sender = state.borrow_mut::<WorkerCommSender>();
 
   if is_err {
-    let r = sender.unbounded_send((StdioType::Stderr, msg));
+    let r = sender.unbounded_send(WorkerCommMsg::Stderr(msg));
   } else {
-    let r = sender.unbounded_send((StdioType::Stdout, msg));
+    let r = sender.unbounded_send(WorkerCommMsg::Stdout(msg));
   }
   Ok(())
 }
@@ -184,8 +218,9 @@ impl Kernel {
       &ps,
       main_module.clone(),
       permissions,
-      vec![print_extension(stdio_tx)],
+      vec![jupyter_extension(stdio_tx)],
     );
+
     let repl_session = ReplSession::initialize(worker).await?;
 
     let kernel = Self {
@@ -241,7 +276,7 @@ impl Kernel {
         },
         maybe_stdio_proxy_msg = self.stdio_rx.next() => {
           if let Some(stdio_proxy_msg) = maybe_stdio_proxy_msg {
-            self.stdio_handler(stdio_proxy_msg).await;
+            self.worker_comm_handler(stdio_proxy_msg).await;
           }
         },
         heartbeat_result = self.hb_comm.heartbeat() => {
@@ -305,31 +340,38 @@ impl Kernel {
     self.set_state(&comm_ctx, KernelState::Idle).await;
   }
 
-  async fn stdio_handler(
+  async fn worker_comm_handler(
     &mut self,
-    stdio_proxy_msg: (StdioType, String),
+    worker_msg: WorkerCommMsg,
   ) -> Result<(), AnyError> {
-    if let Some(comm_ctx) = self.last_comm_ctx.as_ref() {
-      let (t, content) = stdio_proxy_msg;
-      let msg = SideEffectMessage::new(
-        comm_ctx,
-        "stream",
-        ReplyMetadata::Empty,
-        ReplyContent::Stream(StreamContent {
-          name: match t {
-            StdioType::Stdout => "stdout".to_string(),
-            StdioType::Stderr => "stderr".to_string(),
-          },
-          text: content,
-        }),
-      );
-      self.iopub_comm.send(msg).await?;
-    } else {
-      println!(
-        "Received stdio message, but there is no last CommContext: {:#?}",
-        stdio_proxy_msg.1
-      );
-    }
+    println!("&&& worker_comm_handler");
+    let comm_ctx = match self.last_comm_ctx.clone() {
+      Some(cc) => cc,
+      None => {
+        return Err(anyhow!(
+          "Received stdio message, but there is no last CommContext"
+        ));
+      }
+    };
+
+    match worker_msg {
+      WorkerCommMsg::Stdout(s) => {
+        self
+          .send_stdio(&comm_ctx, StdioType::Stdout, s.as_ref())
+          .await?;
+      }
+      WorkerCommMsg::Stderr(s) => {
+        self
+          .send_stdio(&comm_ctx, StdioType::Stderr, s.as_ref())
+          .await?;
+      }
+      WorkerCommMsg::Display(mime, buf) => {
+        println!("&&& WorkerCommMsg::Display");
+        let mut dd = DisplayData::new();
+        dd.add(mime.as_ref(), json!(buf));
+        self.send_display_data(&comm_ctx, dd).await?;
+      }
+    };
 
     Ok(())
   }
@@ -372,10 +414,6 @@ impl Kernel {
     }
 
     self.state = state;
-
-    let now = std::time::SystemTime::now();
-    let now: chrono::DateTime<chrono::Utc> = now.into();
-    let now = now.to_rfc3339();
 
     let s = match state {
       KernelState::Busy => "busy",
@@ -451,49 +489,159 @@ impl Kernel {
     );
     self.iopub_comm.send(input_msg).await?;
 
+    //     let test_svg = r###"<?xml version="1.0" encoding="iso-8859-1"?>
+    // <svg version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+    // 	 viewBox="0 0 299.429 299.429" style="enable-background:new 0 0 299.429 299.429;" xml:space="preserve">
+    // <g>
+    // 	<path style="fill:#010002;" d="M245.185,44.209H54.245L0,116.533l149.715,138.688l149.715-138.682L245.185,44.209z
+    // 		 M206.746,121.778l-57.007,112.1l-56.53-112.1H206.746z M98.483,109.844l51.232-51.232l51.232,51.232H98.483z M164.119,56.142
+    // 		h69.323L213.876,105.9L164.119,56.142z M86.311,105.142l-16.331-49h65.331L86.311,105.142z M79.849,121.778l49.632,98.429
+    // 		L23.223,121.778H79.849z M220.136,121.778h56.071l-106.013,98.203L220.136,121.778z M225.148,109.844l18.694-47.538l35.652,47.538
+    // 		H225.148z M58.266,58.738l17.035,51.112H19.929L58.266,58.738z"/>
+    // </g>
+    // </svg>
+    // "###.to_string();
+    //     let mut dd = DisplayData::new();
+    //     dd.add("image/svg+xml", test_svg);
+    //     let dd_msg = SideEffectMessage::new(
+    //       comm_ctx,
+    //       "display_data",
+    //       ReplyMetadata::Empty,
+    //       ReplyContent::DisplayData(DisplayDataContent {
+    //         data: dd.to_value()?,
+    //         metadata: json!({}),
+    //         transient: json!({}),
+    //       }),
+    //     );
+    //     self.iopub_comm.send(dd_msg).await?;
+
     let output = self
       .repl_session
-      .evaluate_line_and_get_output(&exec_request_content.code)
+      .evaluate_line_with_object_wrapping(&exec_request_content.code)
       .await?;
-    let result = match output {
-      EvaluationOutput::Value(value_str) => ExecResult::OkString(value_str),
-      EvaluationOutput::Error(value_str) => ExecResult::Error(ExecError {
-        err_name: "<TODO>".to_string(),
-        err_value: value_str,
-        stack_trace: vec![],
-      }),
+
+    let result = if output.value["exceptionDetails"].is_object() {
+      let stack_trace: Vec<String> = output.value["exceptionDetails"]
+        ["exception"]["description"]
+        .as_str()
+        .unwrap()
+        .split("\n")
+        .map(|s| s.to_string())
+        .collect();
+      ExecResult::Error(ExecError {
+        // TODO(apowers313) this could probably use smarter unwrapping -- for example, someone may throw non-object
+        err_name: output.value["exceptionDetails"]["exception"]["className"]
+          .to_string(),
+        err_value: stack_trace.first().unwrap().to_string(),
+        // output.value["exceptionDetails"]["stackTrace"]["callFrames"]
+        stack_trace,
+      })
+    } else {
+      ExecResult::Ok(output.value["result"].clone())
     };
-    self.exec_done(comm_ctx, result).await?;
+
+    match result {
+      ExecResult::Ok(_) => {
+        self.send_execute_reply_ok(comm_ctx).await?;
+        self.send_execute_result(comm_ctx, &result).await?;
+      }
+      ExecResult::Error(_) => {
+        self.send_execute_reply_error(comm_ctx, &result).await?;
+        self.send_error(comm_ctx, &result).await?;
+      }
+    };
 
     Ok(())
   }
 
-  async fn exec_done(
+  async fn send_execute_reply_ok(
     &mut self,
     comm_ctx: &CommContext,
-    result: ExecResult,
   ) -> Result<(), AnyError> {
-    match &result {
-      ExecResult::OkString(v) => {
-        println!("sending exec result");
-        let msg = ReplyMessage::new(
-          comm_ctx,
-          "execute_reply",
-          ReplyMetadata::Empty,
-          ReplyContent::ExecuteReply(ExecuteReplyContent {
-            status: "ok".to_string(),
-            execution_count: self.execution_count,
-            // NOTE(bartlomieju): these two fields are always empty
-            payload: vec![],
-            user_expressions: json!({}),
-          }),
-        );
-        self.shell_comm.send(msg).await?;
-      }
-      ExecResult::Error(e) => {
-        println!("Not implemented: sending exec ERROR");
-      }
+    println!("sending exec result");
+    let msg = ReplyMessage::new(
+      comm_ctx,
+      "execute_reply",
+      ReplyMetadata::Empty,
+      ReplyContent::ExecuteReply(ExecuteReplyContent {
+        status: "ok".to_string(),
+        execution_count: self.execution_count,
+        // NOTE(bartlomieju): these two fields are always empty
+        payload: vec![],
+        user_expressions: json!({}),
+      }),
+    );
+    self.shell_comm.send(msg).await?;
+
+    Ok(())
+  }
+
+  async fn send_execute_reply_error(
+    &mut self,
+    comm_ctx: &CommContext,
+    result: &ExecResult,
+  ) -> Result<(), AnyError> {
+    let e = match result {
+      ExecResult::Error(e) => e,
+      _ => return Err(anyhow!("send_execute_reply_error: unreachable")),
     };
+    let msg = ReplyMessage::new(
+      comm_ctx,
+      "execute_reply",
+      ReplyMetadata::Empty,
+      ReplyContent::ExecuteError(ExecuteErrorContent {
+        status: "error".to_string(),
+        payload: vec![],
+        user_expressions: json!({}),
+        // TODO(apowers313) implement error messages
+        ename: e.err_name.clone(),
+        evalue: e.err_value.clone(),
+        traceback: e.stack_trace.clone(),
+      }),
+    );
+    self.shell_comm.send(msg).await?;
+
+    Ok(())
+  }
+
+  async fn send_error(
+    &mut self,
+    comm_ctx: &CommContext,
+    result: &ExecResult,
+  ) -> Result<(), AnyError> {
+    let e = match result {
+      ExecResult::Error(e) => e,
+      _ => return Err(anyhow!("send_error: unreachable")),
+    };
+    let msg = SideEffectMessage::new(
+      comm_ctx,
+      "error",
+      ReplyMetadata::Empty,
+      ReplyContent::Error(ErrorContent {
+        ename: e.err_name.clone(),
+        evalue: e.err_value.clone(),
+        traceback: e.stack_trace.clone(),
+      }),
+    );
+    self.iopub_comm.send(msg).await?;
+
+    Ok(())
+  }
+
+  async fn send_execute_result(
+    &mut self,
+    comm_ctx: &CommContext,
+    result: &ExecResult,
+  ) -> Result<(), AnyError> {
+    let v = match result {
+      ExecResult::Ok(v) => v,
+      _ => return Err(anyhow!("send_execute_result: unreachable")),
+    };
+    let mut display_data =
+      self.display_data_from_result_value(v.clone()).await?;
+    if display_data.is_empty() {
+      return Ok(());
+    }
 
     let msg = SideEffectMessage::new(
       comm_ctx,
@@ -501,12 +649,8 @@ impl Kernel {
       ReplyMetadata::Empty,
       ReplyContent::ExecuteResult(ExecuteResultContent {
         execution_count: self.execution_count,
-        data: json!({
-            "text/plain": match result {
-                ExecResult::OkString(v) => v,
-                ExecResult::Error(v) => v.err_value,
-            }
-        }),
+        data: display_data.to_object(),
+        // data: json!("<not implemented>"),
         metadata: json!({}),
       }),
     );
@@ -514,13 +658,232 @@ impl Kernel {
 
     Ok(())
   }
+
+  async fn send_stdio(
+    &mut self,
+    comm_ctx: &CommContext,
+    t: StdioType,
+    text: &str,
+  ) -> Result<(), AnyError> {
+    let content = StreamContent {
+      name: match t {
+        StdioType::Stdout => "stdout".to_string(),
+        StdioType::Stderr => "stderr".to_string(),
+      },
+      text: text.to_string(),
+    };
+
+    let msg = SideEffectMessage::new(
+      comm_ctx,
+      "stream",
+      ReplyMetadata::Empty,
+      ReplyContent::Stream(content),
+    );
+
+    self.iopub_comm.send(msg).await?;
+
+    Ok(())
+  }
+
+  async fn send_display_data(
+    &mut self,
+    comm_ctx: &CommContext,
+    display_data: DisplayData,
+  ) -> Result<(), AnyError> {
+    println!("&&& send_display_data");
+    if (display_data.is_empty()) {
+      return Err(anyhow!("send_display_data called with empty DisplayData"));
+    }
+    let data = display_data.to_object();
+
+    let msg = SideEffectMessage::new(
+      comm_ctx,
+      "display_data",
+      ReplyMetadata::Empty,
+      ReplyContent::DisplayData(DisplayDataContent {
+        data,
+        metadata: json!({}),
+        transient: json!({}),
+      }),
+    );
+    dbg!(&msg);
+    self.iopub_comm.send(msg).await?;
+
+    Ok(())
+  }
+
+  async fn display_data_from_result_value(
+    &mut self,
+    data: Value,
+  ) -> Result<DisplayData, AnyError> {
+    let mut d = &data;
+    let mut ret = DisplayData::new();
+    // if we passed in a result, unwrap it
+    d = if d["result"].is_object() {
+      &d["result"]
+    } else {
+      d
+    };
+
+    if !d["type"].is_string() {
+      // not an execution result
+      return Ok(ret);
+    }
+
+    let mut t = match &d["type"] {
+      Value::String(x) => x.to_string(),
+      _ => return Ok(ret),
+    };
+
+    if t == "object".to_string()
+      && d["subtype"] == Value::String("null".to_string())
+    {
+      // JavaScript null, the gift that keeps on giving
+      t = "null".to_string();
+    }
+
+    match t.as_ref() {
+      // TODO(apowers313) inspect object / call toPng, toHtml, toSvg, toText, toMime
+      "object" => {
+        // TODO: this description isn't very useful
+        let type_list = self.decode_object(data, true).await?;
+        for t in type_list.iter() {
+          ret.add(t.0, t.1.clone());
+        }
+      }
+      "string" => {
+        ret.add("text/plain", d["value"].clone());
+        ret.add("application/json", d["value"].clone());
+      }
+      "null" => {
+        ret.add("text/plain", Value::String("null".to_string()));
+        ret.add("application/json", Value::Null);
+      }
+      "bigint" => {
+        ret.add("text/plain", d["unserializableValue"].clone());
+        ret.add("application/json", d["unserializableValue"].clone());
+      }
+      "symbol" => {
+        ret.add("text/plain", d["description"].clone());
+        ret.add("application/json", d["description"].clone());
+      }
+      "boolean" => {
+        ret.add("text/plain", Value::String(d["value"].to_string()));
+        ret.add("application/json", d["value"].clone());
+      }
+      "number" => {
+        ret.add("text/plain", Value::String(d["value"].to_string()));
+        ret.add("application/json", d["value"].clone());
+      }
+      // TODO(apowers313) currently ignoring "undefined" return value, I think most kernels make this a configuration option
+      "undefined" => return Ok(ret),
+      _ => {
+        println!("unknown type in display_data_from_result_value: {}", t);
+        return Ok(ret);
+      }
+    };
+
+    Ok(ret)
+  }
+
+  async fn decode_object(
+    &mut self,
+    obj: Value,
+    color: bool,
+  ) -> Result<Vec<(&str, Value)>, AnyError> {
+    // let v = self.repl_session.get_eval_value(&obj).await?;
+    // TODO(apowers313) copy and paste from `get_eval_value`, consider refactoring API
+    let obj_inspect_fn = match color {
+      true => {
+        r#"function (object) {
+          try {
+            return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
+          } catch (err) {
+            return Deno[Deno.internal].inspectArgs(["%o", err]);
+          }
+        }"#
+      }
+      false => {
+        r#"function (object) {
+          try {
+            return Deno[Deno.internal].inspectArgs(["%o", object], { colors: Deno.noColor });
+          } catch (err) {
+            return Deno[Deno.internal].inspectArgs(["%o", err]);
+          }
+        }"#
+      }
+    };
+
+    let v = self.repl_exec(obj_inspect_fn, Some(json!([obj]))).await?;
+
+    match v["result"]["value"]["description"].to_string().as_ref() {
+      "Symbol(Symbol.toPng)" => println!("found Symbol(Symbol.toPng)"),
+      "Symbol(Symbol.toSvg)" => println!("found Symbol(Symbol.toSvg)"),
+      "Symbol(Symbol.toHtml)" => println!("found Symbol(Symbol.toHtml)"),
+      "Symbol(Symbol.toJson)" => println!("found Symbol(Symbol.toJson)"),
+      "Symbol(Symbol.toJpg)" => println!("found Symbol(Symbol.toJpg)"),
+      "Symbol(Symbol.toMime)" => println!("found Symbol(Symbol.toMime)"),
+      _ => return Ok(vec![("text/plain", v["result"]["value"].clone())]),
+    };
+
+    Ok(vec![])
+  }
+
+  async fn repl_exec(
+    &mut self,
+    code: &str,
+    args: Option<Value>,
+  ) -> Result<Value, AnyError> {
+    let v = self
+      .repl_session
+      .post_message_with_event_loop(
+        "Runtime.callFunctionOn",
+        Some(json!({
+          "executionContextId": self.repl_session.context_id,
+          "functionDeclaration": code,
+          "arguments": args,
+        })),
+      )
+      .await?;
+
+    Ok(v)
+  }
 }
 
+struct DisplayData {
+  data_list: Vec<(String, Value)>,
+}
+
+impl DisplayData {
+  fn new() -> DisplayData {
+    Self { data_list: vec![] }
+  }
+
+  fn add(&mut self, mime_type: &str, data: Value) {
+    self.data_list.push((mime_type.to_string(), data));
+  }
+
+  fn is_empty(&self) -> bool {
+    if self.data_list.len() == 0 {
+      return true;
+    }
+
+    return false;
+  }
+
+  fn to_object(&self) -> Value {
+    let mut data = json!({});
+    for d in self.data_list.iter() {
+      data[&d.0] = json!(&d.1);
+    }
+
+    data
+  }
+}
+struct ErrorValue {}
+
 enum ExecResult {
-  OkString(String),
-  // TODO(apowers313)
-  // OkValue(Value),
-  // OkDisplayData(DisplayDataContent),
+  Ok(Value),
   Error(ExecError),
 }
 
