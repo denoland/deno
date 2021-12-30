@@ -9,6 +9,7 @@ use crate::flags::JupyterFlags;
 use crate::proc_state::ProcState;
 use crate::tools::repl::EvaluationOutput;
 use crate::tools::repl::ReplSession;
+use base64;
 use data_encoding::HEXLOWER;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
@@ -134,7 +135,6 @@ pub fn op_jupyter_display(
     Some(x) => x,
     None => return Err(anyhow!("op_jupyter_display missing 'data' argument")),
   };
-  println!("buflen: {}", d.len());
 
   let mut sender = state.borrow_mut::<WorkerCommSender>();
   sender.unbounded_send(WorkerCommMsg::Display(mime_type, d));
@@ -335,7 +335,6 @@ impl Kernel {
     &mut self,
     worker_msg: WorkerCommMsg,
   ) -> Result<(), AnyError> {
-    println!("&&& worker_comm_handler");
     let comm_ctx = match self.last_comm_ctx.clone() {
       Some(cc) => cc,
       None => {
@@ -357,9 +356,8 @@ impl Kernel {
           .await?;
       }
       WorkerCommMsg::Display(mime, buf) => {
-        println!("&&& WorkerCommMsg::Display");
         let mut dd = DisplayData::new();
-        dd.add(mime.as_ref(), json!(buf));
+        dd.add_buf(mime.as_ref(), buf);
         self.send_display_data(&comm_ctx, dd).await?;
       }
     };
@@ -681,7 +679,6 @@ impl Kernel {
     comm_ctx: &CommContext,
     display_data: DisplayData,
   ) -> Result<(), AnyError> {
-    println!("&&& send_display_data");
     if (display_data.is_empty()) {
       return Err(anyhow!("send_display_data called with empty DisplayData"));
     }
@@ -852,6 +849,11 @@ impl DisplayData {
 
   fn add(&mut self, mime_type: &str, data: Value) {
     self.data_list.push((mime_type.to_string(), data));
+  }
+
+  fn add_buf(&mut self, mime_type: &str, buf: ZeroCopyBuf) {
+    let buf_str = base64::encode(buf);
+    self.add(mime_type, json!(buf_str));
   }
 
   fn is_empty(&self) -> bool {
