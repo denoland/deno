@@ -151,6 +151,15 @@ pub struct TestSummary {
   pub failures: Vec<(TestDescription, String)>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct TestSpecifierOptions {
+  compat_mode: bool,
+  concurrent_jobs: NonZeroUsize,
+  fail_fast: Option<NonZeroUsize>,
+  filter: Option<String>,
+  shuffle: Option<u64>,
+}
+
 impl TestSummary {
   fn new() -> TestSummary {
     TestSummary {
@@ -449,10 +458,8 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  filter: Option<String>,
-  shuffle: Option<u64>,
   channel: Sender<TestEvent>,
-  compat_mode: bool,
+  options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let mut worker = create_main_worker(
     &ps,
@@ -480,7 +487,7 @@ async fn test_specifier(
   // TestMode::Both.
   let mut await_cjs_modules = false;
   if mode != TestMode::Documentation {
-    if compat_mode {
+    if options.compat_mode {
       worker.execute_side_module(&compat::GLOBAL_URL).await?;
       worker.execute_side_module(&compat::MODULE_URL).await?;
 
@@ -512,8 +519,8 @@ async fn test_specifier(
     &format!(
       r#"Deno[Deno.internal].runTests({})"#,
       json!({
-        "filter": filter,
-        "shuffle": shuffle,
+        "filter": options.filter,
+        "shuffle": options.shuffle,
       }),
     ),
   )?;
@@ -782,14 +789,10 @@ async fn test_specifiers(
   ps: ProcState,
   permissions: Permissions,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
-  fail_fast: Option<NonZeroUsize>,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
-  compat_mode: bool,
+  options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let log_level = ps.flags.log_level;
-  let specifiers_with_mode = if let Some(seed) = shuffle {
+  let specifiers_with_mode = if let Some(seed) = options.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers_with_mode = specifiers_with_mode.clone();
     specifiers_with_mode.sort_by_key(|(specifier, _)| specifier.clone());
@@ -800,6 +803,8 @@ async fn test_specifiers(
   };
 
   let (sender, receiver) = channel::<TestEvent>();
+  let concurrent_jobs = options.concurrent_jobs;
+  let fail_fast = options.fail_fast;
 
   let join_handles =
     specifiers_with_mode.iter().map(move |(specifier, mode)| {
@@ -807,21 +812,13 @@ async fn test_specifiers(
       let permissions = permissions.clone();
       let specifier = specifier.clone();
       let mode = mode.clone();
-      let filter = filter.clone();
       let sender = sender.clone();
+      let options = options.clone();
 
       tokio::task::spawn_blocking(move || {
         let join_handle = std::thread::spawn(move || {
-          let future = test_specifier(
-            ps,
-            permissions,
-            specifier,
-            mode,
-            filter,
-            shuffle,
-            sender,
-            compat_mode,
-          );
+          let future =
+            test_specifier(ps, permissions, specifier, mode, sender, options);
 
           run_basic(future)
         });
@@ -1055,11 +1052,13 @@ pub async fn run_tests(
     ps,
     permissions,
     specifiers_with_mode,
-    test_flags.fail_fast,
-    test_flags.filter,
-    test_flags.shuffle,
-    test_flags.concurrent_jobs,
-    flags.compat,
+    TestSpecifierOptions {
+      compat_mode: flags.compat,
+      concurrent_jobs: test_flags.concurrent_jobs,
+      fail_fast: test_flags.fail_fast,
+      filter: test_flags.filter,
+      shuffle: test_flags.shuffle,
+    },
   )
   .await?;
 
@@ -1283,11 +1282,13 @@ pub async fn run_tests_with_watch(
         ps.clone(),
         permissions.clone(),
         specifiers_with_mode,
-        test_flags.fail_fast,
-        filter.clone(),
-        test_flags.shuffle,
-        test_flags.concurrent_jobs,
-        flags.compat,
+        TestSpecifierOptions {
+          compat_mode: flags.compat,
+          concurrent_jobs: test_flags.concurrent_jobs,
+          fail_fast: test_flags.fail_fast,
+          filter: filter.clone(),
+          shuffle: test_flags.shuffle,
+        },
       )
       .await?;
 

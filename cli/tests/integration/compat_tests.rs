@@ -52,8 +52,6 @@ itest!(import_esm_from_cjs {
   output_str: Some("function\n"),
 });
 
-// TODO(Soremwar)
-// Enable this test once I've figured why top level throws won't exit the test
 itest!(test_runner_cjs {
   args: "test --compat --unstable -A --quiet compat/test_runner/cjs.js",
   exit_code: 1,
