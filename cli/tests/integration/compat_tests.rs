@@ -52,14 +52,22 @@ itest!(import_esm_from_cjs {
   output_str: Some("function\n"),
 });
 
-// Top level assertion test mostly just make sure that the test runner finishes correctly on compat mode
-// when there is no tests
-itest!(top_level_assertion_esm {
-  args: "test --compat --unstable -A --quiet compat/test_runner/top_level_assertion_esm.mjs",
-	exit_code: 0,
-  output: "compat/test_runner/top_level_assertion_esm.out",
+// TODO(Soremwar)
+// Enable this test once I've figured why top level throws won't exit the test
+// itest!(test_runner_cjs {
+//   args: "test --compat --unstable -A --quiet compat/test_runner/cjs.js",
+//   exit_code: 1,
+//   output: "compat/test_runner/cjs.out",
+// });
+
+itest!(test_runner_esm {
+  args: "test --compat --unstable -A --quiet compat/test_runner/esm.mjs",
+  exit_code: 1,
+  output: "compat/test_runner/esm.out",
 });
 
+// Top level assertion test mostly just make sure that the test runner finishes correctly on compat mode
+// when there is no tests
 // TODO(Soremwar)
 // Enable this test once I've figured why top level throws won't exit the test
 // itest!(top_level_assertion_cjs {
@@ -68,10 +76,10 @@ itest!(top_level_assertion_esm {
 //   output: "compat/test_runner/top_level_assertion_cjs.out",
 // });
 
-itest!(top_level_fail_esm {
-  args: "test --compat --unstable -A --quiet compat/test_runner/top_level_fail_esm.mjs",
-	exit_code: 1,
-  output: "compat/test_runner/top_level_fail_esm.out",
+itest!(top_level_assertion_esm {
+  args: "test --compat --unstable -A --quiet compat/test_runner/top_level_assertion_esm.mjs",
+	exit_code: 0,
+  output: "compat/test_runner/top_level_assertion_esm.out",
 });
 
 // TODO(Soremwar)
@@ -81,6 +89,12 @@ itest!(top_level_fail_esm {
 // 	exit_code: 1,
 //   output: "compat/test_runner/top_level_fail_cjs.out",
 // });
+
+itest!(top_level_fail_esm {
+  args: "test --compat --unstable -A --quiet compat/test_runner/top_level_fail_esm.mjs",
+	exit_code: 1,
+  output: "compat/test_runner/top_level_fail_esm.out",
+});
 
 #[test]
 fn globals_in_repl() {
