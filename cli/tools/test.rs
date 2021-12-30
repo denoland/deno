@@ -4,6 +4,7 @@ use crate::ast::Location;
 use crate::cache;
 use crate::cache::CacherLoader;
 use crate::colors;
+use crate::compat;
 use crate::create_main_worker;
 use crate::emit;
 use crate::file_fetcher::File;
@@ -148,6 +149,15 @@ pub struct TestSummary {
   pub filtered_out: usize,
   pub measured: usize,
   pub failures: Vec<(TestDescription, String)>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TestSpecifierOptions {
+  compat_mode: bool,
+  concurrent_jobs: NonZeroUsize,
+  fail_fast: Option<NonZeroUsize>,
+  filter: Option<String>,
+  shuffle: Option<u64>,
 }
 
 impl TestSummary {
@@ -448,9 +458,8 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  filter: Option<String>,
-  shuffle: Option<u64>,
   channel: Sender<TestEvent>,
+  options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let mut worker = create_main_worker(
     &ps,
@@ -477,8 +486,26 @@ async fn test_specifier(
   // We only execute the specifier as a module if it is tagged with TestMode::Module or
   // TestMode::Both.
   if mode != TestMode::Documentation {
-    // We execute the module module as a side module so that import.meta.main is not set.
-    worker.execute_side_module(&specifier).await?;
+    if options.compat_mode {
+      worker.execute_side_module(&compat::GLOBAL_URL).await?;
+      worker.execute_side_module(&compat::MODULE_URL).await?;
+
+      let use_esm_loader = compat::check_if_should_use_esm_loader(&specifier)?;
+
+      if use_esm_loader {
+        worker.execute_side_module(&specifier).await?;
+      } else {
+        compat::load_cjs_module(
+          &mut worker.js_runtime,
+          &specifier.to_file_path().unwrap().display().to_string(),
+          false,
+        )?;
+        worker.run_event_loop(false).await?;
+      }
+    } else {
+      // We execute the module module as a side module so that import.meta.main is not set.
+      worker.execute_side_module(&specifier).await?;
+    }
   }
 
   worker.dispatch_load_event(&located_script_name!())?;
@@ -488,8 +515,8 @@ async fn test_specifier(
     &format!(
       r#"Deno[Deno.internal].runTests({})"#,
       json!({
-        "filter": filter,
-        "shuffle": shuffle,
+        "filter": options.filter,
+        "shuffle": options.shuffle,
       }),
     ),
   )?;
@@ -758,13 +785,10 @@ async fn test_specifiers(
   ps: ProcState,
   permissions: Permissions,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
-  fail_fast: Option<NonZeroUsize>,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
+  options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let log_level = ps.flags.log_level;
-  let specifiers_with_mode = if let Some(seed) = shuffle {
+  let specifiers_with_mode = if let Some(seed) = options.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers_with_mode = specifiers_with_mode.clone();
     specifiers_with_mode.sort_by_key(|(specifier, _)| specifier.clone());
@@ -775,6 +799,8 @@ async fn test_specifiers(
   };
 
   let (sender, receiver) = channel::<TestEvent>();
+  let concurrent_jobs = options.concurrent_jobs;
+  let fail_fast = options.fail_fast;
 
   let join_handles =
     specifiers_with_mode.iter().map(move |(specifier, mode)| {
@@ -782,20 +808,13 @@ async fn test_specifiers(
       let permissions = permissions.clone();
       let specifier = specifier.clone();
       let mode = mode.clone();
-      let filter = filter.clone();
       let sender = sender.clone();
+      let options = options.clone();
 
       tokio::task::spawn_blocking(move || {
         let join_handle = std::thread::spawn(move || {
-          let future = test_specifier(
-            ps,
-            permissions,
-            specifier,
-            mode,
-            filter,
-            shuffle,
-            sender,
-          );
+          let future =
+            test_specifier(ps, permissions, specifier, mode, sender, options);
 
           run_basic(future)
         });
@@ -1029,10 +1048,13 @@ pub async fn run_tests(
     ps,
     permissions,
     specifiers_with_mode,
-    test_flags.fail_fast,
-    test_flags.filter,
-    test_flags.shuffle,
-    test_flags.concurrent_jobs,
+    TestSpecifierOptions {
+      compat_mode: flags.compat,
+      concurrent_jobs: test_flags.concurrent_jobs,
+      fail_fast: test_flags.fail_fast,
+      filter: test_flags.filter,
+      shuffle: test_flags.shuffle,
+    },
   )
   .await?;
 
@@ -1256,10 +1278,13 @@ pub async fn run_tests_with_watch(
         ps.clone(),
         permissions.clone(),
         specifiers_with_mode,
-        test_flags.fail_fast,
-        filter.clone(),
-        test_flags.shuffle,
-        test_flags.concurrent_jobs,
+        TestSpecifierOptions {
+          compat_mode: flags.compat,
+          concurrent_jobs: test_flags.concurrent_jobs,
+          fail_fast: test_flags.fail_fast,
+          filter: filter.clone(),
+          shuffle: test_flags.shuffle,
+        },
       )
       .await?;
 
