@@ -1911,8 +1911,6 @@ pub mod tests {
   #[test]
   fn terminate_execution() {
     let (mut isolate, _dispatch_count) = setup(Mode::Async);
-    // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
-    // should not require a mutable reference to `struct rusty_v8::Isolate`.
     let v8_isolate_handle = isolate.v8_isolate().thread_safe_handle();
 
     let terminator_thread = std::thread::spawn(move || {
@@ -1950,8 +1948,6 @@ pub mod tests {
     let v8_isolate_handle = {
       // isolate is dropped at the end of this block
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
-      // should not require a mutable reference to `struct rusty_v8::Isolate`.
       runtime.v8_isolate().thread_safe_handle()
     };
 
