@@ -109,12 +109,20 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
     &mut self.v8_inspector_client
   }
 
+  /// This method id called when a breakpoint is triggered, eg. using `debugger` statement. In that case
+  /// inspector sends `Debugger.paused` notification. Nested message loop should be run and process all
+  /// sent protocol commands until `quit_message_loop_on_pause` is called. After that execution will
+  /// return to inspector and then JavaScript execution will resume.
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
     eprintln!("run message loop on pause");
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().on_pause = true;
     let r = self.poll_sessions(None);
     eprintln!("finished run message loop on pause {:#?}", r);
+    assert!(
+      !self.flags.borrow().on_pause, 
+      "V8InspectorClientImpl::run_message_loop_on_pause returned before quit_message_loop_on_pause was called"
+    );
   }
 
   fn quit_message_loop_on_pause(&mut self) {
