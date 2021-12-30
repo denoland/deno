@@ -525,7 +525,7 @@ impl Kernel {
         ["exception"]["description"]
         .as_str()
         .unwrap()
-        .split("\n")
+        .split('\n')
         .map(|s| s.to_string())
         .collect();
       ExecResult::Error(ExecError {
@@ -735,9 +735,7 @@ impl Kernel {
       _ => return Ok(ret),
     };
 
-    if t == "object".to_string()
-      && d["subtype"] == Value::String("null".to_string())
-    {
+    if t == *"object" && d["subtype"] == Value::String("null".to_string()) {
       // JavaScript null, the gift that keeps on giving
       t = "null".to_string();
     }
@@ -864,11 +862,7 @@ impl DisplayData {
   }
 
   fn is_empty(&self) -> bool {
-    if self.data_list.len() == 0 {
-      return true;
-    }
-
-    return false;
+    self.data_list.is_empty()
   }
 
   fn to_object(&self) -> Value {
