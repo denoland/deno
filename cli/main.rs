@@ -1171,9 +1171,10 @@ async fn run_command(
       worker.execute_main_module(&main_module).await?;
     } else {
       // CJS module execution in Node compatiblity mode
-      compat::load_cjs_main_module(
+      compat::load_cjs_module(
         &mut worker.js_runtime,
         &main_module.to_file_path().unwrap().display().to_string(),
+        true,
       )?;
     }
   } else {

@@ -452,6 +452,7 @@ async fn test_specifier(
   filter: Option<String>,
   shuffle: Option<u64>,
   channel: Sender<TestEvent>,
+  compat_mode: bool,
 ) -> Result<(), AnyError> {
   let mut worker = create_main_worker(
     &ps,
@@ -478,19 +479,24 @@ async fn test_specifier(
   // We only execute the specifier as a module if it is tagged with TestMode::Module or
   // TestMode::Both.
   if mode != TestMode::Documentation {
-    worker.execute_side_module(&compat::GLOBAL_URL).await?;
-    worker.execute_side_module(&compat::MODULE_URL).await?;
+    if compat_mode {
+      worker.execute_side_module(&compat::GLOBAL_URL).await?;
+      worker.execute_side_module(&compat::MODULE_URL).await?;
 
-    let use_esm_loader = compat::check_if_should_use_esm_loader(&specifier)?;
+      let use_esm_loader = compat::check_if_should_use_esm_loader(&specifier)?;
 
-    if use_esm_loader {
+      if use_esm_loader {
+        worker.execute_side_module(&specifier).await?;
+      } else {
+        compat::load_cjs_module(
+          &mut worker.js_runtime,
+          &specifier.to_file_path().unwrap().display().to_string(),
+          false,
+        )?;
+      }
+    } else {
       // We execute the module module as a side module so that import.meta.main is not set.
       worker.execute_side_module(&specifier).await?;
-    } else {
-      compat::load_cjs_side_module(
-        &mut worker.js_runtime,
-        &specifier.to_file_path().unwrap().display().to_string(),
-      )?;
     }
   }
 
@@ -775,6 +781,7 @@ async fn test_specifiers(
   filter: Option<String>,
   shuffle: Option<u64>,
   concurrent_jobs: NonZeroUsize,
+  compat_mode: bool,
 ) -> Result<(), AnyError> {
   let log_level = ps.flags.log_level;
   let specifiers_with_mode = if let Some(seed) = shuffle {
@@ -808,6 +815,7 @@ async fn test_specifiers(
             filter,
             shuffle,
             sender,
+            compat_mode,
           );
 
           run_basic(future)
@@ -1046,6 +1054,7 @@ pub async fn run_tests(
     test_flags.filter,
     test_flags.shuffle,
     test_flags.concurrent_jobs,
+    flags.compat,
   )
   .await?;
 
@@ -1273,6 +1282,7 @@ pub async fn run_tests_with_watch(
         filter.clone(),
         test_flags.shuffle,
         test_flags.concurrent_jobs,
+        flags.compat,
       )
       .await?;
 
