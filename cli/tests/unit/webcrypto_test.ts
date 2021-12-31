@@ -1330,6 +1330,7 @@ Deno.test(async function testBase64Forgiving() {
 
   assert(key instanceof CryptoKey);
   assertEquals(key.type, "secret");
+  assertEquals((key.algorithm as HmacKeyAlgorithm).length, 16);
 
   const exportedKey = await crypto.subtle.exportKey("jwk", key);
   assertEquals(exportedKey.k, "xxw");
