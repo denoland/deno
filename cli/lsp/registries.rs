@@ -626,12 +626,17 @@ impl ModuleRegistry {
                           is_incomplete = true;
                         }
                         for (idx, item) in items.into_iter().enumerate() {
-                          let label = if let Some(p) = &prefix {
+                          let mut label = if let Some(p) = &prefix {
                             format!("{}{}", p, item)
                           } else {
                             item.clone()
                           };
-                          let kind = if key.name == last_key_name {
+                          if label.ends_with('/') {
+                            label.pop();
+                          }
+                          let kind = if key.name == last_key_name
+                            && !item.ends_with('/')
+                          {
                             Some(lsp::CompletionItemKind::FILE)
                           } else {
                             Some(lsp::CompletionItemKind::FOLDER)
@@ -641,8 +646,11 @@ impl ModuleRegistry {
                             key.name.clone(),
                             StringOrVec::from_str(&item, &key),
                           );
-                          let path =
+                          let mut path =
                             compiler.to_path(&params).unwrap_or_default();
+                          if path.ends_with('/') {
+                            path.pop();
+                          }
                           let item_specifier = base.join(&path).ok()?;
                           let full_text = item_specifier.as_str();
                           let text_edit = Some(lsp::CompletionTextEdit::Edit(
@@ -652,6 +660,7 @@ impl ModuleRegistry {
                             },
                           ));
                           let command = if key.name == last_key_name
+                            && !item.ends_with('/')
                             && !specifier_exists(&item_specifier)
                           {
                             Some(lsp::Command {
