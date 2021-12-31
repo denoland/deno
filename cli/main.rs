@@ -902,6 +902,8 @@ async fn repl_command(
   if flags.compat {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
     compat::add_global_require(&mut worker.js_runtime, main_module.as_str())?;
+    worker.run_event_loop(false).await?;
+    compat::setup_builtin_modules(&mut worker.js_runtime)?;
   }
   worker.run_event_loop(false).await?;
 
