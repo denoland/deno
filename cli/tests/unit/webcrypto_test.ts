@@ -1320,11 +1320,18 @@ Deno.test(async function testBase64Forgiving() {
     "ext": true
   }`;
 
-  const _key = await crypto.subtle.importKey(
+  const key = await crypto.subtle.importKey(
     "jwk",
     JSON.parse(keyData),
     { name: "HMAC", hash: "SHA-512" },
     true,
     ["sign", "verify"],
   );
+  
+  assertEquals(key instanceof CryptoKey);
+  assertEquals(key.type, "secret");
+  assertEquals(key.algorithm.length, 16);
+  
+  const exportedKey = await crypto.subtle.exportKey("jwk", key);
+  assertEquals(exportedKey.k, "xxw");
 });
