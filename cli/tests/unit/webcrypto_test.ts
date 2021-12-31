@@ -1327,11 +1327,10 @@ Deno.test(async function testBase64Forgiving() {
     true,
     ["sign", "verify"],
   );
-  
-  assertEquals(key instanceof CryptoKey);
+
+  assert(key instanceof CryptoKey);
   assertEquals(key.type, "secret");
-  assertEquals(key.algorithm.length, 16);
-  
+
   const exportedKey = await crypto.subtle.exportKey("jwk", key);
   assertEquals(exportedKey.k, "xxw");
 });
