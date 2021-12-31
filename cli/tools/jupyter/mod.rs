@@ -108,7 +108,7 @@ type WorkerCommReceiver = UnboundedReceiver<WorkerCommMsg>;
 enum WorkerCommMsg {
   Stderr(String),
   Stdout(String),
-  Display(String, ZeroCopyBuf),
+  Display(String, ZeroCopyBuf, Option<String>, Option<String>),
 }
 
 fn init(rt: &mut JsRuntime) {
@@ -119,25 +119,30 @@ fn init(rt: &mut JsRuntime) {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct DisplayArgs {
+pub struct DisplayArgs {
   mime_type: String,
-  data: String,
+  data_format: Option<String>,
+  metadata: Option<String>,
 }
 
 pub fn op_jupyter_display(
   state: &mut OpState,
-  mime_type: String,
+  args: DisplayArgs,
   data: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  println!("&&& op_jupyter_display");
-  println!("mime_type: {}", mime_type);
+  dbg!(&args);
   let d = match data {
     Some(x) => x,
     None => return Err(anyhow!("op_jupyter_display missing 'data' argument")),
   };
 
   let mut sender = state.borrow_mut::<WorkerCommSender>();
-  sender.unbounded_send(WorkerCommMsg::Display(mime_type, d));
+  sender.unbounded_send(WorkerCommMsg::Display(
+    args.mime_type,
+    d,
+    args.data_format,
+    args.metadata,
+  ));
 
   Ok(())
 }
@@ -355,9 +360,9 @@ impl Kernel {
           .send_stdio(&comm_ctx, StdioType::Stderr, s.as_ref())
           .await?;
       }
-      WorkerCommMsg::Display(mime, buf) => {
+      WorkerCommMsg::Display(mime, buf, format, metadata) => {
         let mut dd = DisplayData::new();
-        dd.add_buf(mime.as_ref(), buf);
+        dd.add_buf(mime.as_ref(), buf, format, metadata)?;
         self.send_display_data(&comm_ctx, dd).await?;
       }
     };
@@ -477,32 +482,6 @@ impl Kernel {
       }),
     );
     self.iopub_comm.send(input_msg).await?;
-
-    //     let test_svg = r###"<?xml version="1.0" encoding="iso-8859-1"?>
-    // <svg version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
-    // 	 viewBox="0 0 299.429 299.429" style="enable-background:new 0 0 299.429 299.429;" xml:space="preserve">
-    // <g>
-    // 	<path style="fill:#010002;" d="M245.185,44.209H54.245L0,116.533l149.715,138.688l149.715-138.682L245.185,44.209z
-    // 		 M206.746,121.778l-57.007,112.1l-56.53-112.1H206.746z M98.483,109.844l51.232-51.232l51.232,51.232H98.483z M164.119,56.142
-    // 		h69.323L213.876,105.9L164.119,56.142z M86.311,105.142l-16.331-49h65.331L86.311,105.142z M79.849,121.778l49.632,98.429
-    // 		L23.223,121.778H79.849z M220.136,121.778h56.071l-106.013,98.203L220.136,121.778z M225.148,109.844l18.694-47.538l35.652,47.538
-    // 		H225.148z M58.266,58.738l17.035,51.112H19.929L58.266,58.738z"/>
-    // </g>
-    // </svg>
-    // "###.to_string();
-    //     let mut dd = DisplayData::new();
-    //     dd.add("image/svg+xml", test_svg);
-    //     let dd_msg = SideEffectMessage::new(
-    //       comm_ctx,
-    //       "display_data",
-    //       ReplyMetadata::Empty,
-    //       ReplyContent::DisplayData(DisplayDataContent {
-    //         data: dd.to_value()?,
-    //         metadata: json!({}),
-    //         transient: json!({}),
-    //       }),
-    //     );
-    //     self.iopub_comm.send(dd_msg).await?;
 
     let output = self
       .repl_session
@@ -851,9 +830,26 @@ impl DisplayData {
     self.data_list.push((mime_type.to_string(), data));
   }
 
-  fn add_buf(&mut self, mime_type: &str, buf: ZeroCopyBuf) {
-    let buf_str = base64::encode(buf);
-    self.add(mime_type, json!(buf_str));
+  fn add_buf(
+    &mut self,
+    mime_type: &str,
+    buf: ZeroCopyBuf,
+    format: Option<String>,
+    metadata: Option<String>,
+  ) -> Result<(), AnyError> {
+    let fmt_str = match format {
+      Some(f) => f,
+      None => "default".to_string(),
+    };
+
+    let buf_vec = match fmt_str.as_ref() {
+      "string" => String::from_utf8(buf.to_vec())?,
+      "base64" | "default" => base64::encode(buf),
+      _ => return Err(anyhow!("unknown display mime format: {}", fmt_str)),
+    };
+    self.add(mime_type, json!(buf_vec));
+
+    Ok(())
   }
 
   fn is_empty(&self) -> bool {
