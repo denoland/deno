@@ -24,15 +24,17 @@
   }
 
   function displayPng(buf, opt = {}) {
-    display("image/png", buf, opt);
+    display("image/png", buf, {
+      metadata: {
+        width: opt.width,
+        height: opt.height,
+      }
+    });
   }
 
   async function displayPngFile(path, opt = {}) {
     const buf = await Deno.readFile(path);
-    displayPng(buf, {
-      width: opt.width,
-      height: opt.height,
-    });
+    displayPng(buf, opt);
   }
 
   function displayHtml(str) {

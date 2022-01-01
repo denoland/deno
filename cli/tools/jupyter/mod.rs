@@ -108,7 +108,7 @@ type WorkerCommReceiver = UnboundedReceiver<WorkerCommMsg>;
 enum WorkerCommMsg {
   Stderr(String),
   Stdout(String),
-  Display(String, ZeroCopyBuf, Option<String>, Option<String>),
+  Display(String, ZeroCopyBuf, Option<String>, Option<Value>),
 }
 
 fn init(rt: &mut JsRuntime) {
@@ -122,7 +122,7 @@ fn init(rt: &mut JsRuntime) {
 pub struct DisplayArgs {
   mime_type: String,
   data_format: Option<String>,
-  metadata: Option<String>,
+  metadata: Option<Value>,
 }
 
 pub fn op_jupyter_display(
@@ -361,9 +361,10 @@ impl Kernel {
           .await?;
       }
       WorkerCommMsg::Display(mime, buf, format, metadata) => {
-        let mut dd = DisplayData::new();
-        dd.add_buf(mime.as_ref(), buf, format, metadata)?;
-        self.send_display_data(&comm_ctx, dd).await?;
+        let mut dd = MimeSet::new();
+        dd.add_buf(mime.as_ref(), buf, format)?;
+        let md = self.create_display_metadata(mime, metadata)?;
+        self.send_display_data(&comm_ctx, dd, md).await?;
       }
     };
 
@@ -656,20 +657,20 @@ impl Kernel {
   async fn send_display_data(
     &mut self,
     comm_ctx: &CommContext,
-    display_data: DisplayData,
+    display_data: MimeSet,
+    metadata: MimeSet,
   ) -> Result<(), AnyError> {
     if (display_data.is_empty()) {
-      return Err(anyhow!("send_display_data called with empty DisplayData"));
+      return Err(anyhow!("send_display_data called with empty display data"));
     }
-    let data = display_data.to_object();
 
     let msg = SideEffectMessage::new(
       comm_ctx,
       "display_data",
       ReplyMetadata::Empty,
       ReplyContent::DisplayData(DisplayDataContent {
-        data,
-        metadata: json!({}),
+        data: display_data.to_object(),
+        metadata: metadata.to_object(),
         transient: json!({}),
       }),
     );
@@ -682,9 +683,9 @@ impl Kernel {
   async fn display_data_from_result_value(
     &mut self,
     data: Value,
-  ) -> Result<DisplayData, AnyError> {
+  ) -> Result<MimeSet, AnyError> {
     let mut d = &data;
-    let mut ret = DisplayData::new();
+    let mut ret = MimeSet::new();
     // if we passed in a result, unwrap it
     d = if d["result"].is_object() {
       &d["result"]
@@ -753,6 +754,43 @@ impl Kernel {
     Ok(ret)
   }
 
+  fn create_display_metadata(
+    &self,
+    format: String,
+    metadata: Option<Value>,
+  ) -> Result<MimeSet, AnyError> {
+    let mut ms = MimeSet::new();
+    let format_str = format.as_ref();
+
+    let md = match metadata {
+      Some(m) => m,
+      None => {
+        ms.add(format_str, json!({}));
+        return Ok(ms);
+      }
+    };
+
+    match format_str {
+      "image/png" | "image/bmp" | "image/gif" | "image/jpeg"
+      | "image/svg+xml" => ms.add(
+        format_str,
+        json!({
+          "width": md["width"],
+          "height": md["height"],
+        }),
+      ),
+      "application/json" => ms.add(
+        format_str,
+        json!({
+          "expanded": md["width"],
+        }),
+      ),
+      _ => ms.add(format_str, md),
+    }
+
+    Ok(ms)
+  }
+
   async fn decode_object(
     &mut self,
     obj: Value,
@@ -817,12 +855,12 @@ impl Kernel {
   }
 }
 
-struct DisplayData {
+struct MimeSet {
   data_list: Vec<(String, Value)>,
 }
 
-impl DisplayData {
-  fn new() -> DisplayData {
+impl MimeSet {
+  fn new() -> MimeSet {
     Self { data_list: vec![] }
   }
 
@@ -835,7 +873,6 @@ impl DisplayData {
     mime_type: &str,
     buf: ZeroCopyBuf,
     format: Option<String>,
-    metadata: Option<String>,
   ) -> Result<(), AnyError> {
     let fmt_str = match format {
       Some(f) => f,
