@@ -29,9 +29,26 @@
 
   async function displayPngFile(path, opt = {}) {
     const buf = await Deno.readFile(path);
-    displayPng(buf, opt);
+    displayPng(buf, {
+      width: opt.width,
+      height: opt.height,
+    });
   }
 
+  function displayHtml(str) {
+    display("text/html", new TextEncoder().encode(str), {
+      dataFormat: "string"
+    });
+  }
+
+  async function displayHtmlFile(path) {
+    const buf = await Deno.readFile(path);
+    display("text/html", buf, {
+      dataFormat: "string"
+    });
+  }
+
+  // from: https://jupyterlab.readthedocs.io/en/stable/user/file_formats.html
   // application/json
   // text/markdown
   // image/bmp
@@ -57,6 +74,7 @@
 
     switch (fileType) {
       case "png": return displayPngFile(path, opt);
+      case "html": return displayHtmlFile(path);
       default: throw new TypeError(`unknown file type: ${fileType}`)
     }
   }
@@ -64,6 +82,8 @@
   jupyter.display = display;
   jupyter.displayPng = displayPng;
   jupyter.displayPngFile = displayPngFile;
+  jupyter.displayHtml = displayHtml;
+  jupyter.displayHtmlFile = displayHtmlFile;
   jupyter.displayFile = displayFile;
   window.__bootstrap.jupyter = jupyter;
 })(this);
