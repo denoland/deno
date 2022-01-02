@@ -1310,3 +1310,28 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     assertEquals(new Uint8Array(expPrivateKeySPKI), spki);*/
   }
 });
+
+Deno.test(async function testHMACJwkBase64Url() {
+  const keyData = {
+    kty: "oct",
+    k: "HnZXRyDKn-_G5Fx4JWR1YA",
+    alg: "HS256",
+    "key_ops": ["sign", "verify"],
+    ext: true,
+  };
+
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    keyData,
+    { name: "HMAC", hash: "SHA-256" },
+    true,
+    ["sign", "verify"],
+  );
+
+  assert(key instanceof CryptoKey);
+  assertEquals(key.type, "secret");
+  assertEquals((key.algorithm as HmacKeyAlgorithm).length, 128);
+
+  const exportedKey = await crypto.subtle.exportKey("jwk", key);
+  assertEquals(exportedKey.k, keyData.k);
+});
