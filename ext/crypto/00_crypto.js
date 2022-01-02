@@ -3063,7 +3063,7 @@
           format: "jwksecret",
           algorithm: key[_algorithm].name,
         }, innerKey);
-        ObjectAssign(jwk, data);
+        jwk.k = data.k;
 
         // 4.
         const algorithm = key[_algorithm];
