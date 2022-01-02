@@ -1,35 +1,31 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import {
-  serve,
-  ServerRequest,
-} from "../../../test_util/std/http/server_legacy.ts";
+import { Server } from "../../../test_util/std/http/server.ts";
 import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 
-const addr = Deno.args[1] || "127.0.0.1:4555";
+const addr = Deno.args[1] || "localhost:4555";
 
 async function proxyServer() {
-  const server = serve(addr);
-
+  const [hostname, p] = addr.split(":");
+  const port = parseInt(p ?? 4555);
+  const server = new Server({ hostname, port, handler });
   console.log(`Proxy server listening on http://${addr}/`);
-  for await (const req of server) {
-    proxyRequest(req);
-  }
+  await server.listenAndServe();
 }
 
-async function proxyRequest(req: ServerRequest) {
+async function handler(req: Request): Promise<Response> {
   console.log(`Proxy request to: ${req.url}`);
-  const proxyAuthorization = req.headers.get("proxy-authorization");
+  const headers = new Headers(req.headers);
+  const proxyAuthorization = headers.get("proxy-authorization");
   if (proxyAuthorization) {
     console.log(`proxy-authorization: ${proxyAuthorization}`);
-    req.headers.delete("proxy-authorization");
+    headers.delete("proxy-authorization");
   }
   const resp = await fetch(req.url, {
     method: req.method,
-    headers: req.headers,
+    headers: headers,
   });
-  req.respond({
+  return new Response(new Uint8Array(await resp.arrayBuffer()), {
     status: resp.status,
-    body: new Uint8Array(await resp.arrayBuffer()),
     headers: resp.headers,
   });
 }

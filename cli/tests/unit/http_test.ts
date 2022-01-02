@@ -1,7 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { chunkedBodyReader } from "../../../test_util/std/http/_io.ts";
-import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
-import { Buffer } from "../../../test_util/std/io/buffer.ts";
+import {
+  Buffer,
+  BufReader,
+  BufWriter,
+} from "../../../test_util/std/io/buffer.ts";
 import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 import {
   assert,
@@ -1139,3 +1141,135 @@ Deno.test(
     await promise;
   },
 );
+
+function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
+  // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
+  const tp = new TextProtoReader(r);
+  let finished = false;
+  const chunks: Array<{
+    offset: number;
+    data: Uint8Array;
+  }> = [];
+  async function read(buf: Uint8Array): Promise<number | null> {
+    if (finished) return null;
+    const [chunk] = chunks;
+    if (chunk) {
+      const chunkRemaining = chunk.data.byteLength - chunk.offset;
+      const readLength = Math.min(chunkRemaining, buf.byteLength);
+      for (let i = 0; i < readLength; i++) {
+        buf[i] = chunk.data[chunk.offset + i];
+      }
+      chunk.offset += readLength;
+      if (chunk.offset === chunk.data.byteLength) {
+        chunks.shift();
+        // Consume \r\n;
+        if ((await tp.readLine()) === null) {
+          throw new Deno.errors.UnexpectedEof();
+        }
+      }
+      return readLength;
+    }
+    const line = await tp.readLine();
+    if (line === null) throw new Deno.errors.UnexpectedEof();
+    // TODO(bartlomieju): handle chunk extension
+    const [chunkSizeString] = line.split(";");
+    const chunkSize = parseInt(chunkSizeString, 16);
+    if (Number.isNaN(chunkSize) || chunkSize < 0) {
+      throw new Deno.errors.InvalidData("Invalid chunk size");
+    }
+    if (chunkSize > 0) {
+      if (chunkSize > buf.byteLength) {
+        let eof = await r.readFull(buf);
+        if (eof === null) {
+          throw new Deno.errors.UnexpectedEof();
+        }
+        const restChunk = new Uint8Array(chunkSize - buf.byteLength);
+        eof = await r.readFull(restChunk);
+        if (eof === null) {
+          throw new Deno.errors.UnexpectedEof();
+        } else {
+          chunks.push({
+            offset: 0,
+            data: restChunk,
+          });
+        }
+        return buf.byteLength;
+      } else {
+        const bufToFill = buf.subarray(0, chunkSize);
+        const eof = await r.readFull(bufToFill);
+        if (eof === null) {
+          throw new Deno.errors.UnexpectedEof();
+        }
+        // Consume \r\n
+        if ((await tp.readLine()) === null) {
+          throw new Deno.errors.UnexpectedEof();
+        }
+        return chunkSize;
+      }
+    } else {
+      assert(chunkSize === 0);
+      // Consume \r\n
+      if ((await r.readLine()) === null) {
+        throw new Deno.errors.UnexpectedEof();
+      }
+      await readTrailers(h, r);
+      finished = true;
+      return null;
+    }
+  }
+  return { read };
+}
+
+async function readTrailers(
+  headers: Headers,
+  r: BufReader,
+) {
+  const trailers = parseTrailer(headers.get("trailer"));
+  if (trailers == null) return;
+  const trailerNames = [...trailers.keys()];
+  const tp = new TextProtoReader(r);
+  const result = await tp.readMIMEHeader();
+  if (result == null) {
+    throw new Deno.errors.InvalidData("Missing trailer header.");
+  }
+  const undeclared = [...result.keys()].filter(
+    (k) => !trailerNames.includes(k),
+  );
+  if (undeclared.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Undeclared trailers: ${Deno.inspect(undeclared)}.`,
+    );
+  }
+  for (const [k, v] of result) {
+    headers.append(k, v);
+  }
+  const missingTrailers = trailerNames.filter((k) => !result.has(k));
+  if (missingTrailers.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Missing trailers: ${Deno.inspect(missingTrailers)}.`,
+    );
+  }
+  headers.delete("trailer");
+}
+
+function parseTrailer(field: string | null): Headers | undefined {
+  if (field == null) {
+    return undefined;
+  }
+  const trailerNames = field.split(",").map((v) => v.trim().toLowerCase());
+  if (trailerNames.length === 0) {
+    throw new Deno.errors.InvalidData("Empty trailer header.");
+  }
+  const prohibited = trailerNames.filter((k) => isProhibitedForTrailer(k));
+  if (prohibited.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Prohibited trailer names: ${Deno.inspect(prohibited)}.`,
+    );
+  }
+  return new Headers(trailerNames.map((key) => [key, ""]));
+}
+
+function isProhibitedForTrailer(key: string): boolean {
+  const s = new Set(["transfer-encoding", "content-length", "trailer"]);
+  return s.has(key.toLowerCase());
+}
