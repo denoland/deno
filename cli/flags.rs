@@ -1,10 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use clap::App;
 use clap::AppSettings;
 use clap::Arg;
 use clap::ArgMatches;
 use clap::ArgSettings;
-use clap::{App, ColorChoice};
+use clap::ColorChoice;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Url;
