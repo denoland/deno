@@ -9,6 +9,7 @@ use crate::flags::JupyterFlags;
 use crate::proc_state::ProcState;
 use crate::tools::repl::EvaluationOutput;
 use crate::tools::repl::ReplSession;
+use base64;
 use data_encoding::HEXLOWER;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
@@ -108,7 +109,7 @@ type WorkerCommReceiver = UnboundedReceiver<WorkerCommMsg>;
 enum WorkerCommMsg {
   Stderr(String),
   Stdout(String),
-  Display(String, ZeroCopyBuf),
+  Display(String, ZeroCopyBuf, Option<String>, Option<Value>),
 }
 
 fn jupyter_extension(sender: WorkerCommSender) -> Extension {
@@ -127,26 +128,30 @@ fn jupyter_extension(sender: WorkerCommSender) -> Extension {
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct DisplayArgs {
+pub struct DisplayArgs {
   mime_type: String,
-  data: String,
+  data_format: Option<String>,
+  metadata: Option<Value>,
 }
 
 pub fn op_jupyter_display(
   state: &mut OpState,
-  mime_type: String,
+  args: DisplayArgs,
   data: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  println!("&&& op_jupyter_display");
-  println!("mime_type: {}", mime_type);
+  dbg!(&args);
   let d = match data {
     Some(x) => x,
     None => return Err(anyhow!("op_jupyter_display missing 'data' argument")),
   };
-  println!("buflen: {}", d.len());
 
   let mut sender = state.borrow_mut::<WorkerCommSender>();
-  sender.unbounded_send(WorkerCommMsg::Display(mime_type, d));
+  sender.unbounded_send(WorkerCommMsg::Display(
+    args.mime_type,
+    d,
+    args.data_format,
+    args.metadata,
+  ));
 
   Ok(())
 }
@@ -344,7 +349,6 @@ impl Kernel {
     &mut self,
     worker_msg: WorkerCommMsg,
   ) -> Result<(), AnyError> {
-    println!("&&& worker_comm_handler");
     let comm_ctx = match self.last_comm_ctx.clone() {
       Some(cc) => cc,
       None => {
@@ -365,11 +369,11 @@ impl Kernel {
           .send_stdio(&comm_ctx, StdioType::Stderr, s.as_ref())
           .await?;
       }
-      WorkerCommMsg::Display(mime, buf) => {
-        println!("&&& WorkerCommMsg::Display");
-        let mut dd = DisplayData::new();
-        dd.add(mime.as_ref(), json!(buf));
-        self.send_display_data(&comm_ctx, dd).await?;
+      WorkerCommMsg::Display(mime, buf, format, metadata) => {
+        let mut dd = MimeSet::new();
+        dd.add_buf(mime.as_ref(), buf, format)?;
+        let md = self.create_display_metadata(mime, metadata)?;
+        self.send_display_data(&comm_ctx, dd, md).await?;
       }
     };
 
@@ -488,32 +492,6 @@ impl Kernel {
       }),
     );
     self.iopub_comm.send(input_msg).await?;
-
-    //     let test_svg = r###"<?xml version="1.0" encoding="iso-8859-1"?>
-    // <svg version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
-    // 	 viewBox="0 0 299.429 299.429" style="enable-background:new 0 0 299.429 299.429;" xml:space="preserve">
-    // <g>
-    // 	<path style="fill:#010002;" d="M245.185,44.209H54.245L0,116.533l149.715,138.688l149.715-138.682L245.185,44.209z
-    // 		 M206.746,121.778l-57.007,112.1l-56.53-112.1H206.746z M98.483,109.844l51.232-51.232l51.232,51.232H98.483z M164.119,56.142
-    // 		h69.323L213.876,105.9L164.119,56.142z M86.311,105.142l-16.331-49h65.331L86.311,105.142z M79.849,121.778l49.632,98.429
-    // 		L23.223,121.778H79.849z M220.136,121.778h56.071l-106.013,98.203L220.136,121.778z M225.148,109.844l18.694-47.538l35.652,47.538
-    // 		H225.148z M58.266,58.738l17.035,51.112H19.929L58.266,58.738z"/>
-    // </g>
-    // </svg>
-    // "###.to_string();
-    //     let mut dd = DisplayData::new();
-    //     dd.add("image/svg+xml", test_svg);
-    //     let dd_msg = SideEffectMessage::new(
-    //       comm_ctx,
-    //       "display_data",
-    //       ReplyMetadata::Empty,
-    //       ReplyContent::DisplayData(DisplayDataContent {
-    //         data: dd.to_value()?,
-    //         metadata: json!({}),
-    //         transient: json!({}),
-    //       }),
-    //     );
-    //     self.iopub_comm.send(dd_msg).await?;
 
     let output = self
       .repl_session
@@ -688,21 +666,20 @@ impl Kernel {
   async fn send_display_data(
     &mut self,
     comm_ctx: &CommContext,
-    display_data: DisplayData,
+    display_data: MimeSet,
+    metadata: MimeSet,
   ) -> Result<(), AnyError> {
-    println!("&&& send_display_data");
     if (display_data.is_empty()) {
-      return Err(anyhow!("send_display_data called with empty DisplayData"));
+      return Err(anyhow!("send_display_data called with empty display data"));
     }
-    let data = display_data.to_object();
 
     let msg = SideEffectMessage::new(
       comm_ctx,
       "display_data",
       ReplyMetadata::Empty,
       ReplyContent::DisplayData(DisplayDataContent {
-        data,
-        metadata: json!({}),
+        data: display_data.to_object(),
+        metadata: metadata.to_object(),
         transient: json!({}),
       }),
     );
@@ -715,9 +692,9 @@ impl Kernel {
   async fn display_data_from_result_value(
     &mut self,
     data: Value,
-  ) -> Result<DisplayData, AnyError> {
+  ) -> Result<MimeSet, AnyError> {
     let mut d = &data;
-    let mut ret = DisplayData::new();
+    let mut ret = MimeSet::new();
     // if we passed in a result, unwrap it
     d = if d["result"].is_object() {
       &d["result"]
@@ -784,6 +761,43 @@ impl Kernel {
     Ok(ret)
   }
 
+  fn create_display_metadata(
+    &self,
+    format: String,
+    metadata: Option<Value>,
+  ) -> Result<MimeSet, AnyError> {
+    let mut ms = MimeSet::new();
+    let format_str = format.as_ref();
+
+    let md = match metadata {
+      Some(m) => m,
+      None => {
+        ms.add(format_str, json!({}));
+        return Ok(ms);
+      }
+    };
+
+    match format_str {
+      "image/png" | "image/bmp" | "image/gif" | "image/jpeg"
+      | "image/svg+xml" => ms.add(
+        format_str,
+        json!({
+          "width": md["width"],
+          "height": md["height"],
+        }),
+      ),
+      "application/json" => ms.add(
+        format_str,
+        json!({
+          "expanded": md["width"],
+        }),
+      ),
+      _ => ms.add(format_str, md),
+    }
+
+    Ok(ms)
+  }
+
   async fn decode_object(
     &mut self,
     obj: Value,
@@ -848,17 +862,38 @@ impl Kernel {
   }
 }
 
-struct DisplayData {
+struct MimeSet {
   data_list: Vec<(String, Value)>,
 }
 
-impl DisplayData {
-  fn new() -> DisplayData {
+impl MimeSet {
+  fn new() -> MimeSet {
     Self { data_list: vec![] }
   }
 
   fn add(&mut self, mime_type: &str, data: Value) {
     self.data_list.push((mime_type.to_string(), data));
+  }
+
+  fn add_buf(
+    &mut self,
+    mime_type: &str,
+    buf: ZeroCopyBuf,
+    format: Option<String>,
+  ) -> Result<(), AnyError> {
+    let fmt_str = match format {
+      Some(f) => f,
+      None => "default".to_string(),
+    };
+
+    let buf_vec = match fmt_str.as_ref() {
+      "string" => String::from_utf8(buf.to_vec())?,
+      "base64" | "default" => base64::encode(buf),
+      _ => return Err(anyhow!("unknown display mime format: {}", fmt_str)),
+    };
+    self.add(mime_type, json!(buf_vec));
+
+    Ok(())
   }
 
   fn is_empty(&self) -> bool {
