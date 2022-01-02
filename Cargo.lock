@@ -380,9 +380,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.0.0-rc.8"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "484f17839417b695a6f4a75c20e49820ba0a1d00aa41ebd8ba0e5dfe0fbc3b74"
+checksum = "d17bf219fcd37199b9a29e00ba65dfb8cd5b2688b7297ec14ff829c40ac50ca9"
 dependencies = [
  "atty",
  "bitflags",
@@ -394,22 +394,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "clap_generate"
-version = "3.0.0-rc.8"
+name = "clap_complete"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46edf9e899ef90f3cefafb75dfae4c52746911cb905408bdf147a4bfe6fd72aa"
+checksum = "60d123fbea4c5d9799cffd44051e2125c880efd23b3b7c529baf3ea5508c8736"
 dependencies = [
  "clap",
 ]
 
 [[package]]
-name = "clap_generate_fig"
-version = "3.0.0-rc.8"
+name = "clap_complete_fig"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbb18e26b66468ccfcbd787003403c1307dfe913c08c157c8d0f3b6e270015e2"
+checksum = "a11b194eb73a60fc0c8af9a2164129c86a503a3290d99bea427cac5bf5f5aecd"
 dependencies = [
  "clap",
- "clap_generate",
+ "clap_complete",
 ]
 
 [[package]]
@@ -662,8 +662,8 @@ dependencies = [
  "cache_control",
  "chrono",
  "clap",
- "clap_generate",
- "clap_generate_fig",
+ "clap_complete",
+ "clap_complete_fig",
  "data-url",
  "deno_ast",
  "deno_broadcast_channel",

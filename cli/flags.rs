@@ -1800,9 +1800,9 @@ fn completions_parse(
   matches: &clap::ArgMatches,
   mut app: clap::App,
 ) {
-  use clap_generate::generate;
-  use clap_generate::generators::{Bash, Fish, PowerShell, Zsh};
-  use clap_generate_fig::Fig;
+  use clap_complete::generate;
+  use clap_complete::shells::{Bash, Fish, PowerShell, Zsh};
+  use clap_complete_fig::Fig;
 
   let mut buf: Vec<u8> = vec![];
   let name = "deno";
