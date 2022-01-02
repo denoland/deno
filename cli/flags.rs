@@ -440,44 +440,26 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     flags.log_level = Some(Level::Error);
   }
 
-  if let Some(m) = matches.subcommand_matches("run") {
-    run_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("fmt") {
-    fmt_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("types") {
-    types_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("cache") {
-    cache_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("coverage") {
-    coverage_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("info") {
-    info_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("eval") {
-    eval_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("repl") {
-    repl_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("bundle") {
-    bundle_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("install") {
-    install_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("uninstall") {
-    uninstall_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("completions") {
-    completions_parse(&mut flags, m, app);
-  } else if let Some(m) = matches.subcommand_matches("test") {
-    test_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("upgrade") {
-    upgrade_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("doc") {
-    doc_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("lint") {
-    lint_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("compile") {
-    compile_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("lsp") {
-    lsp_parse(&mut flags, m);
-  } else {
-    repl_parse(&mut flags, &matches);
+  match matches.subcommand() {
+    Some(("run", m)) => run_parse(&mut flags, m),
+    Some(("fmt", m)) => fmt_parse(&mut flags, m),
+    Some(("types", m)) => types_parse(&mut flags, m),
+    Some(("cache", m)) => cache_parse(&mut flags, m),
+    Some(("coverage", m)) => coverage_parse(&mut flags, m),
+    Some(("info", m)) => info_parse(&mut flags, m),
+    Some(("eval", m)) => eval_parse(&mut flags, m),
+    Some(("repl", m)) => repl_parse(&mut flags, m),
+    Some(("bundle", m)) => bundle_parse(&mut flags, m),
+    Some(("install", m)) => install_parse(&mut flags, m),
+    Some(("uninstall", m)) => uninstall_parse(&mut flags, m),
+    Some(("completions", m)) => completions_parse(&mut flags, m, app),
+    Some(("test", m)) => test_parse(&mut flags, m),
+    Some(("upgrade", m)) => upgrade_parse(&mut flags, m),
+    Some(("doc", m)) => doc_parse(&mut flags, m),
+    Some(("lint", m)) => lint_parse(&mut flags, m),
+    Some(("compile", m)) => compile_parse(&mut flags, m),
+    Some(("lsp", m)) => lsp_parse(&mut flags, m),
+    _ => repl_parse(&mut flags, &matches),
   }
 
   Ok(flags)
@@ -489,7 +471,6 @@ fn clap_root(version: &str) -> App {
     .color(ColorChoice::Never)
     // Disable clap's auto-detection of terminal width
     .term_width(0)
-    // Disable each subcommand having its own version.
     .version(version)
     .long_version(LONG_VERSION.as_str())
     .arg(
