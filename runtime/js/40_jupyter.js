@@ -3,6 +3,9 @@
 
 ((window) => {
   const core = window.__bootstrap.core;
+  const {
+    TypeError,
+  } = window.__bootstrap.primordials;
   const jupyter = {};
 
   function display(mimeType, buf, opt = {}) {
@@ -17,7 +20,7 @@
     const args = {
       mimeType,
       dataFormat: opt.dataFormat ?? dataFormat,
-      metadata: opt.metadata
+      metadata: opt.metadata,
     };
 
     core.opSync("op_jupyter_display", args, buf);
@@ -28,7 +31,7 @@
       metadata: {
         width: opt.width,
         height: opt.height,
-      }
+      },
     });
   }
 
@@ -39,14 +42,14 @@
 
   function displayHtml(str) {
     display("text/html", new TextEncoder().encode(str), {
-      dataFormat: "string"
+      dataFormat: "string",
     });
   }
 
   async function displayHtmlFile(path) {
     const buf = await Deno.readFile(path);
     display("text/html", buf, {
-      dataFormat: "string"
+      dataFormat: "string",
     });
   }
 
@@ -75,9 +78,12 @@
     fileType = fileType.toLowerCase();
 
     switch (fileType) {
-      case "png": return displayPngFile(path, opt);
-      case "html": return displayHtmlFile(path);
-      default: throw new TypeError(`unknown file type: ${fileType}`)
+      case "png":
+        return displayPngFile(path, opt);
+      case "html":
+        return displayHtmlFile(path);
+      default:
+        throw new TypeError(`unknown file type: ${fileType}`);
     }
   }
 
