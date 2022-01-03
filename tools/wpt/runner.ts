@@ -92,20 +92,26 @@ export async function runSingleTest(
     const cmd = [
       denoBinary(),
       "run",
-      "-A",
-      "--unstable",
-      "--enable-testing-features-do-not-use",
-      "--location",
-      url.toString(),
-      "--cert",
-      join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`),
     ];
+
+    cmd.push(
+      "-A",
+      "--unstable" 
+    );
 
     if (debug) {
       cmd.push("--inspect-brk");
     }
 
-    cmd.push(tempFile, "[]");
+    cmd.push(
+      "--enable-testing-features-do-not-use",
+      "--location",
+      url.toString(),
+      "--cert",
+      join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`),
+      tempFile, 
+      "[]"
+    );
 
     const proc = Deno.run({
       cmd,
