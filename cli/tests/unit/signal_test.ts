@@ -206,16 +206,35 @@ Deno.test(
 
 Deno.test(
   {
-    ignore: Deno.build.os === "windows",
     permissions: { run: true },
   },
   function signalForbiddenSignalTest() {
+    if (Deno.build.os !== "windows") {
+      assertThrows(
+        () => Deno.addSignalListener("SIGKILL", () => {}),
+        TypeError,
+        "Binding to signal 'SIGKILL' is not allowed",
+      );
+      assertThrows(
+        () => Deno.addSignalListener("SIGSTOP", () => {}),
+        TypeError,
+        "Binding to signal 'SIGSTOP' is not allowed",
+      );
+    }
     assertThrows(
-      () => {
-        Deno.addSignalListener("SIGKILL", () => {});
-      },
+      () => Deno.addSignalListener("SIGILL", () => {}),
       TypeError,
-      "Binding to signal 'SIGKILL' is not allowed",
+      "Binding to signal 'SIGILL' is not allowed",
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGFPE", () => {}),
+      TypeError,
+      "Binding to signal 'SIGFPE' is not allowed",
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGSEGV", () => {}),
+      TypeError,
+      "Binding to signal 'SIGSEGV' is not allowed",
     );
   },
 );
