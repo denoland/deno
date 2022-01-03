@@ -1419,3 +1419,28 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     assertEquals(new Uint8Array(expPrivateKeySPKI), spki);*/
   }
 });
+
+Deno.test(async function testBase64Forgiving() {
+  const keyData = `{
+    "kty": "oct",
+    "k": "xxx",
+    "alg": "HS512",
+    "key_ops": ["sign", "verify"],
+    "ext": true
+  }`;
+
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    JSON.parse(keyData),
+    { name: "HMAC", hash: "SHA-512" },
+    true,
+    ["sign", "verify"],
+  );
+
+  assert(key instanceof CryptoKey);
+  assertEquals(key.type, "secret");
+  assertEquals((key.algorithm as HmacKeyAlgorithm).length, 16);
+
+  const exportedKey = await crypto.subtle.exportKey("jwk", key);
+  assertEquals(exportedKey.k, "xxw");
+});
