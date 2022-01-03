@@ -404,6 +404,24 @@
   webidl.converters.AesCbcParams = webidl
     .createDictionaryConverter("AesCbcParams", dictAesCbcParams);
 
+  const dictAesCtrParams = [
+    ...dictAlgorithm,
+    {
+      key: "counter",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+    {
+      key: "length",
+      converter: (V, opts) =>
+        webidl.converters["unsigned short"](V, { ...opts, enforceRange: true }),
+      required: true,
+    },
+  ];
+
+  webidl.converters.AesCtrParams = webidl
+    .createDictionaryConverter("AesCtrParams", dictAesCtrParams);
+
   webidl.converters.CryptoKey = webidl.createInterfaceConverter(
     "CryptoKey",
     CryptoKey,
