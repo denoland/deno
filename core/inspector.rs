@@ -229,7 +229,7 @@ impl JsRuntimeInspector {
           let poll_result = session.poll_next_unpin(cx);
           match poll_result {
             Poll::Pending => {
-              sessions.established_stream.push(session);
+              sessions.established.push(session);
               continue;
             }
             Poll::Ready(Some(session_stream_item)) => {
@@ -237,7 +237,7 @@ impl JsRuntimeInspector {
               let mut v8_session = v8_session_rc.borrow_mut();
               let v8_session_ptr = v8_session.as_mut();
               InspectorSession::dispatch_message(v8_session_ptr, msg);
-              sessions.established_stream.push(session);
+              sessions.established.push(session);
               continue;
             }
             Poll::Ready(None) => {}
@@ -254,7 +254,7 @@ impl JsRuntimeInspector {
         }
 
         // Poll established sessions.
-        match sessions.established_stream.poll_next_unpin(cx) {
+        match sessions.established.poll_next_unpin(cx) {
           Poll::Ready(Some(session_stream_item)) => {
             let (v8_session_rc, msg) = session_stream_item;
             let mut v8_session = v8_session_rc.borrow_mut();
@@ -320,7 +320,7 @@ impl JsRuntimeInspector {
   /// execution.
   pub fn wait_for_session_and_break_on_next_statement(&mut self) {
     loop {
-      match self.sessions.get_mut().established_stream.iter_mut().next() {
+      match self.sessions.get_mut().established.iter_mut().next() {
         Some(session) => break session.break_on_next_statement(),
         None => {
           self.flags.get_mut().waiting_for_session = true;
@@ -369,7 +369,7 @@ impl JsRuntimeInspector {
     self
       .sessions
       .borrow_mut()
-      .established_stream
+      .established
       .push(inspector_session);
     take(&mut self.flags.borrow_mut().waiting_for_session);
 
@@ -389,7 +389,7 @@ struct SessionContainer {
   v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
   session_rx: UnboundedReceiver<InspectorSessionProxy>,
   handshake: Option<Box<InspectorSession>>,
-  established_stream: SelectAll<Box<InspectorSession>>,
+  established: SelectAll<Box<InspectorSession>>,
 }
 
 impl SessionContainer {
@@ -401,7 +401,7 @@ impl SessionContainer {
       v8_inspector,
       session_rx: new_session_rx,
       handshake: None,
-      established_stream: SelectAll::new(),
+      established: SelectAll::new(),
     }
   }
 
@@ -412,11 +412,11 @@ impl SessionContainer {
   fn drop_sessions(&mut self) {
     self.v8_inspector = Default::default();
     self.handshake.take();
-    self.established_stream.clear();
+    self.established.clear();
   }
 
   fn has_active_sessions(&self) -> bool {
-    !self.established_stream.is_empty() || self.handshake.is_some()
+    !self.established.is_empty() || self.handshake.is_some()
   }
 
   /// A temporary placeholder that should be used before actual
@@ -429,7 +429,7 @@ impl SessionContainer {
       v8_inspector: Default::default(),
       session_rx: rx,
       handshake: None,
-      established_stream: SelectAll::new(),
+      established: SelectAll::new(),
     }
   }
 }
