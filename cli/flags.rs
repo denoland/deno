@@ -416,13 +416,7 @@ To evaluate code in the shell:
 pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   let version = crate::version::deno();
   let app = clap_root(&version);
-  let matches = app.clone().try_get_matches_from(args).map_err(|e| {
-    // TODO
-    clap::Error::raw(
-      e.kind,
-      e.to_string().trim_start_matches("error: ").to_string(),
-    )
-  })?;
+  let matches = app.clone().try_get_matches_from(args)?;
 
   let mut flags = Flags::default();
 
