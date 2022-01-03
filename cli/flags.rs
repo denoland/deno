@@ -1146,7 +1146,7 @@ fn repl_subcommand<'a>() -> App<'a> {
         .takes_value(true)
         .value_name("code"),
     )
-    .arg(unsafely_ignore_ceritifcate_errors_arg())
+    .arg(unsafely_ignore_certificate_errors_arg())
 }
 
 fn run_subcommand<'a>() -> App<'a> {
@@ -1403,7 +1403,7 @@ fn permission_args(app: App) -> App {
         .help("Allow network access")
         .validator(crate::flags_allow_net::validator),
     )
-    .arg(unsafely_ignore_ceritifcate_errors_arg())
+    .arg(unsafely_ignore_certificate_errors_arg())
     .arg(
       Arg::new("allow-env")
         .long("allow-env")
@@ -1707,7 +1707,7 @@ fn no_remote_arg<'a>() -> Arg<'a> {
     .help("Do not resolve remote modules")
 }
 
-fn unsafely_ignore_ceritifcate_errors_arg<'a>() -> Arg<'a> {
+fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
   Arg::new("unsafely-ignore-certificate-errors")
     .long("unsafely-ignore-certificate-errors")
     .min_values(0)
@@ -2032,7 +2032,7 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, false, true, false);
-  unsafely_ignore_ceritifcate_errors_parse(flags, matches);
+  unsafely_ignore_certificate_errors_parse(flags, matches);
   flags.repl = true;
   flags.subcommand = DenoSubcommand::Repl(ReplFlags {
     eval: matches.value_of("eval").map(ToOwned::to_owned),
@@ -2190,7 +2190,7 @@ fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches, include_imp
 }
 
 fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  unsafely_ignore_ceritifcate_errors_parse(flags, matches);
+  unsafely_ignore_certificate_errors_parse(flags, matches);
   if let Some(read_wl) = matches.values_of("allow-read") {
     let read_allowlist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
     flags.allow_read = Some(read_allowlist);
@@ -2250,7 +2250,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.prompt = true;
   }
 }
-fn unsafely_ignore_ceritifcate_errors_parse(
+fn unsafely_ignore_certificate_errors_parse(
   flags: &mut Flags,
   matches: &clap::ArgMatches,
 ) {
