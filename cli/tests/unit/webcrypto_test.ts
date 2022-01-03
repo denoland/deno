@@ -1430,7 +1430,7 @@ async function roundTripSecretJwk(
     exportedJwk: JsonWebKey,
   ) => void,
 ) {
-  console.log("import", jwk)
+  console.log("import", jwk);
   const key = await crypto.subtle.importKey(
     "jwk",
     jwk,
@@ -1497,7 +1497,7 @@ Deno.test(async function testSecretJwkBase64Url() {
     },
     { name: "HMAC", hash: "SHA-384" },
     ["sign", "verify"],
-    (key, orig, exp) => {
+    (key, _orig, exp) => {
       assertEquals((key.algorithm as HmacKeyAlgorithm).length, 104);
 
       assertEquals("a-_AlFa-2-OmEGa_-w", exp.k);
@@ -1520,7 +1520,7 @@ Deno.test(async function testSecretJwkBase64Url() {
     },
   );
 
-  // AES-CBC 128bits of '1' with padding chars 
+  // AES-CBC 128bits of '1' with padding chars
   await roundTripSecretJwk(
     {
       kty: "oct",
@@ -1531,9 +1531,8 @@ Deno.test(async function testSecretJwkBase64Url() {
     },
     { name: "AES-CBC" },
     ["encrypt", "decrypt"],
-    (_key, orig, exp) => {
+    (_key, _orig, exp) => {
       assertEquals(exp.k, "_____________________w");
     },
   );
- 
 });
