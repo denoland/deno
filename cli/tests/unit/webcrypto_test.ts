@@ -1388,8 +1388,6 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     for (
       const hash of [/*"SHA-1", */ "SHA-256" /*"SHA-384", "SHA-512"*/]
     ) {
-      console.log(hash);
-
       const signatureECDSA = await subtle.sign(
         { name: "ECDSA", hash },
         privateKeyECDSA,
@@ -1430,7 +1428,6 @@ async function roundTripSecretJwk(
     exportedJwk: JsonWebKey,
   ) => void,
 ) {
-  console.log("import", jwk);
   const key = await crypto.subtle.importKey(
     "jwk",
     jwk,
