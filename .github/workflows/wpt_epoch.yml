@@ -72,7 +72,7 @@ jobs:
 
       - name: Upload wpt results to wpt.fyi
         env:
-          WPT_FYI_USER: ${{ secrets.WPT_FYI_USER }}
+          WPT_FYI_USER: deno
           WPT_FYI_PW: ${{ secrets.WPT_FYI_PW }}
         run: |
           deno run -A ./tools/upload_wptfyi.js wptreport.json --from-raw-file

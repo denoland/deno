@@ -11,6 +11,7 @@
         },
         {
           "key": "version",
+          "documentation": "/lsp/registries/doc_${module}_${{version}}.json",
           "url": "/lsp/registries/${module}_versions.json"
         },
         {

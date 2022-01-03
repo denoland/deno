@@ -1,4 +1,9 @@
-import { assert, assertEquals, assertRejects } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  assertRejects,
+} from "./test_util.ts";
 
 // https://github.com/denoland/deno/issues/11664
 Deno.test(async function testImportArrayBufferKey() {
@@ -606,6 +611,110 @@ Deno.test(async function testAesCbcEncryptDecrypt() {
   assert(decrypted instanceof ArrayBuffer);
   assertEquals(decrypted.byteLength, 6);
   assertEquals(new Uint8Array(decrypted), new Uint8Array([1, 2, 3, 4, 5, 6]));
+});
+
+Deno.test(async function testAesCtrEncryptDecrypt() {
+  async function aesCtrRoundTrip(
+    key: CryptoKey,
+    counter: Uint8Array,
+    length: number,
+    plainText: Uint8Array,
+  ) {
+    const cipherText = await crypto.subtle.encrypt(
+      {
+        name: "AES-CTR",
+        counter,
+        length,
+      },
+      key,
+      plainText,
+    );
+
+    assert(cipherText instanceof ArrayBuffer);
+    assertEquals(cipherText.byteLength, plainText.byteLength);
+    assertNotEquals(new Uint8Array(cipherText), plainText);
+
+    const decryptedText = await crypto.subtle.decrypt(
+      {
+        name: "AES-CTR",
+        counter,
+        length,
+      },
+      key,
+      cipherText,
+    );
+
+    assert(decryptedText instanceof ArrayBuffer);
+    assertEquals(decryptedText.byteLength, plainText.byteLength);
+    assertEquals(new Uint8Array(decryptedText), plainText);
+  }
+  for (const keySize of [128, 192, 256]) {
+    const key = await crypto.subtle.generateKey(
+      { name: "AES-CTR", length: keySize },
+      true,
+      ["encrypt", "decrypt"],
+    ) as CryptoKey;
+
+    // test normal operation
+    for (const length of [128 /*, 64, 128 */]) {
+      const counter = await crypto.getRandomValues(new Uint8Array(16));
+
+      await aesCtrRoundTrip(
+        key,
+        counter,
+        length,
+        new Uint8Array([1, 2, 3, 4, 5, 6]),
+      );
+    }
+
+    // test counter-wrapping
+    for (const length of [32, 64, 128]) {
+      const plaintext1 = await crypto.getRandomValues(new Uint8Array(32));
+      const counter = new Uint8Array(16);
+
+      // fixed upper part
+      for (let off = 0; off < 16 - (length / 8); ++off) {
+        counter[off] = off;
+      }
+      const ciphertext1 = await crypto.subtle.encrypt(
+        {
+          name: "AES-CTR",
+          counter,
+          length,
+        },
+        key,
+        plaintext1,
+      );
+
+      // Set lower [length] counter bits to all '1's
+      for (let off = 16 - (length / 8); off < 16; ++off) {
+        counter[off] = 0xff;
+      }
+
+      // = [ 1 block of 0x00 + plaintext1 ]
+      const plaintext2 = new Uint8Array(48);
+      plaintext2.set(plaintext1, 16);
+
+      const ciphertext2 = await crypto.subtle.encrypt(
+        {
+          name: "AES-CTR",
+          counter,
+          length,
+        },
+        key,
+        plaintext2,
+      );
+
+      // If counter wrapped, 2nd block of ciphertext2 should be equal to 1st block of ciphertext1
+      // since ciphertext1 used counter = 0x00...00
+      // and ciphertext2 used counter = 0xFF..FF which should wrap to 0x00..00 without affecting
+      // higher bits
+      assertEquals(
+        new Uint8Array(ciphertext1),
+        new Uint8Array(ciphertext2).slice(16),
+      );
+    }
+  }
 });
 
 // TODO(@littledivy): Enable WPT when we have importKey support
@@ -1309,4 +1418,29 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     );
     assertEquals(new Uint8Array(expPrivateKeySPKI), spki);*/
   }
+});
+
+Deno.test(async function testBase64Forgiving() {
+  const keyData = `{
+    "kty": "oct",
+    "k": "xxx",
+    "alg": "HS512",
+    "key_ops": ["sign", "verify"],
+    "ext": true
+  }`;
+
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    JSON.parse(keyData),
+    { name: "HMAC", hash: "SHA-512" },
+    true,
+    ["sign", "verify"],
+  );
+
+  assert(key instanceof CryptoKey);
+  assertEquals(key.type, "secret");
+  assertEquals((key.algorithm as HmacKeyAlgorithm).length, 16);
+
+  const exportedKey = await crypto.subtle.exportKey("jwk", key);
+  assertEquals(exportedKey.k, "xxw");
 });
