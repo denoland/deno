@@ -139,7 +139,6 @@ pub fn op_jupyter_display(
   args: DisplayArgs,
   data: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  dbg!(&args);
   let d = match data {
     Some(x) => x,
     None => return Err(anyhow!("op_jupyter_display missing 'data' argument")),
@@ -533,7 +532,7 @@ impl Kernel {
     &mut self,
     comm_ctx: &CommContext,
   ) -> Result<(), AnyError> {
-    println!("sending exec result");
+    println!("sending exec result {}", self.execution_count);
     let msg = ReplyMessage::new(
       comm_ctx,
       "execute_reply",
@@ -556,6 +555,7 @@ impl Kernel {
     comm_ctx: &CommContext,
     result: &ExecResult,
   ) -> Result<(), AnyError> {
+    println!("sending exec reply error {}", self.execution_count);
     let e = match result {
       ExecResult::Error(e) => e,
       _ => return Err(anyhow!("send_execute_reply_error: unreachable")),
@@ -565,6 +565,7 @@ impl Kernel {
       "execute_reply",
       ReplyMetadata::Empty,
       ReplyContent::ExecuteError(ExecuteErrorContent {
+        execution_count: self.execution_count,
         status: "error".to_string(),
         payload: vec![],
         user_expressions: json!({}),
@@ -680,7 +681,6 @@ impl Kernel {
         transient: json!({}),
       }),
     );
-    dbg!(&msg);
     self.iopub_comm.send(msg).await?;
 
     Ok(())

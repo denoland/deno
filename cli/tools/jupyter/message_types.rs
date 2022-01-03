@@ -59,7 +59,7 @@ impl TryFrom<ZmqMessage> for RequestMessage {
     };
 
     let rm = RequestMessage::new(header, mc.0, mc.1);
-    println!("<== RECEIVING MSG [{}]: {:#?}", msg_type, rm);
+    log::debug!("<== RECEIVING MSG [{}]: {:#?}", msg_type, rm);
 
     Ok(rm)
   }
@@ -123,9 +123,10 @@ impl ReplyMessage {
     zmq_msg.push_back(parent_header.into());
     zmq_msg.push_back(metadata.into());
     zmq_msg.push_back(content.into());
-    println!(
+    log::debug!(
       "==> SENDING MSG [{}]: {:#?}",
-      &self.header.msg_type, zmq_msg
+      &self.header.msg_type,
+      zmq_msg
     );
 
     zmq_msg
@@ -462,6 +463,7 @@ pub struct ExecuteResultContent {
 /// https://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-shell-router-dealer-channel
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExecuteErrorContent {
+  pub execution_count: u32,
   pub status: String,
   pub payload: Vec<String>,
   pub user_expressions: Value,
