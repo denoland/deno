@@ -203,3 +203,19 @@ Deno.test(
     });
   },
 );
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: true },
+  },
+  function signalForbiddenSignalTest() {
+    assertThrows(
+      () => {
+        Deno.addSignalListener("SIGKILL", () => {});
+      },
+      TypeError,
+      "Binding to signal 'SIGKILL' is not allowed",
+    );
+  },
+);
