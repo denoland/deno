@@ -453,7 +453,19 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("lint", m)) => lint_parse(&mut flags, m),
     Some(("compile", m)) => compile_parse(&mut flags, m),
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
-    _ => repl_parse(&mut flags, &matches),
+    _ => {
+      flags.repl = true;
+      flags.subcommand = DenoSubcommand::Repl(ReplFlags {
+        eval: None,
+      });
+      flags.allow_net = Some(vec![]);
+      flags.allow_env = Some(vec![]);
+      flags.allow_run = Some(vec![]);
+      flags.allow_read = Some(vec![]);
+      flags.allow_write = Some(vec![]);
+      flags.allow_ffi = Some(vec![]);
+      flags.allow_hrtime = true;
+    },
   }
 
   Ok(flags)
