@@ -96,7 +96,7 @@ export async function runSingleTest(
 
     cmd.push(
       "-A",
-      "--unstable" 
+      "--unstable",
     );
 
     if (debug) {
@@ -109,8 +109,8 @@ export async function runSingleTest(
       url.toString(),
       "--cert",
       join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`),
-      tempFile, 
-      "[]"
+      tempFile,
+      "[]",
     );
 
     const proc = Deno.run({
