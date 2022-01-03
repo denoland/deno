@@ -76,6 +76,7 @@ export async function runSingleTest(
   url: URL,
   _options: ManifestTestOptions,
   reporter: (result: TestCaseResult) => void,
+  debug = false,
 ): Promise<TestResult> {
   const bundle = await generateBundle(url);
   const tempFile = await Deno.makeTempFile({
@@ -94,6 +95,7 @@ export async function runSingleTest(
         "run",
         "-A",
         "--unstable",
+        (debug) ? "--inspect-brk" : "",
         "--enable-testing-features-do-not-use",
         "--location",
         url.toString(),
