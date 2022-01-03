@@ -524,11 +524,11 @@ impl InspectorSession {
   }
 
   // Dispatch message to V8 session
-  #[allow(unused)]
-  fn dispatch_message(&mut self, msg: Vec<u8>) {
-    let msg = v8::inspector::StringView::from(msg.as_slice());
-    let mut v8_session = self.v8_session.borrow_mut();
-    let v8_session_ptr = v8_session.as_mut();
+  fn dispatch_message(
+    v8_session_ptr: &mut v8::inspector::V8InspectorSession,
+    msg: String,
+  ) {
+    let msg = v8::inspector::StringView::from(msg.as_bytes());
     v8_session_ptr.dispatch_protocol_message(msg);
   }
 
@@ -589,12 +589,34 @@ impl Future for InspectorSession {
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     while let Poll::Ready(maybe_msg) = self.proxy.rx.poll_next_unpin(cx) {
       if let Some(msg) = maybe_msg {
-        let msg = v8::inspector::StringView::from(msg.as_bytes());
         let mut v8_session = self.v8_session.borrow_mut();
         let v8_session_ptr = v8_session.as_mut();
-        v8_session_ptr.dispatch_protocol_message(msg);
+        Self::dispatch_message(v8_session_ptr, msg);
       } else {
         return Poll::Ready(());
+      }
+    }
+
+    Poll::Pending
+  }
+}
+
+impl Stream for InspectorSession {
+  type Item = (
+    Rc<RefCell<v8::UniqueRef<v8::inspector::V8InspectorSession>>>,
+    String,
+  );
+
+  fn poll_next(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> Poll<Option<Self::Item>> {
+    let inner = self.get_mut();
+    if let Poll::Ready(maybe_msg) = inner.proxy.rx.poll_next_unpin(cx) {
+      if let Some(msg) = maybe_msg {
+        return Poll::Ready(Some((inner.v8_session.clone(), msg)));
+      } else {
+        return Poll::Ready(None);
       }
     }
 
