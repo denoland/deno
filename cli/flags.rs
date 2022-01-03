@@ -453,9 +453,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("lint", m)) => lint_parse(&mut flags, m),
     Some(("compile", m)) => compile_parse(&mut flags, m),
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
-    _ => handle_repl_flags(&mut flags, ReplFlags {
-      eval: None,
-    }),
+    _ => handle_repl_flags(&mut flags, ReplFlags { eval: None }),
   }
 
   Ok(flags)
@@ -2047,9 +2045,12 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, false, true);
   unsafely_ignore_certificate_errors_parse(flags, matches);
-  handle_repl_flags(flags, ReplFlags {
-    eval: matches.value_of("eval").map(ToOwned::to_owned),
-  });
+  handle_repl_flags(
+    flags,
+    ReplFlags {
+      eval: matches.value_of("eval").map(ToOwned::to_owned),
+    },
+  );
 }
 
 fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
