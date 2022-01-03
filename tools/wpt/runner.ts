@@ -76,7 +76,7 @@ export async function runSingleTest(
   url: URL,
   _options: ManifestTestOptions,
   reporter: (result: TestCaseResult) => void,
-  debug = false,
+  inspectBrk: boolean,
 ): Promise<TestResult> {
   const bundle = await generateBundle(url);
   const tempFile = await Deno.makeTempFile({
@@ -99,7 +99,7 @@ export async function runSingleTest(
       "--unstable",
     );
 
-    if (debug) {
+    if (inspectBrk) {
       cmd.push("--inspect-brk");
     }
 

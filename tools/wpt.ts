@@ -20,6 +20,7 @@ import {
   getExpectation,
   getExpectFailForCase,
   getManifest,
+  inspectBrk,
   json,
   ManifestFolder,
   ManifestTestOptions,
@@ -48,19 +49,9 @@ switch (command) {
     await run();
     break;
 
-  case "debug":
-    await cargoBuild();
-    await run(true);
-    break;
-
   case "update":
     await cargoBuild();
     await update();
-    break;
-
-  case "update-debug":
-    await cargoBuild();
-    await update(true);
     break;
 
   default:
@@ -72,14 +63,8 @@ switch (command) {
     run
       Run all tests like specified in \`expectation.json\`.
 
-    debug
-      Debug all tests like specified in \`expectation.json\`.
-
     update
       Update the \`expectation.json\` to match the current reality.
-
-    update-debug
-      Update the \`expectation.json\` to match the current reality, with debugger
 
 More details at https://deno.land/manual@main/contributing/web_platform_tests
 
@@ -157,7 +142,7 @@ interface TestToRun {
   expectation: boolean | string[];
 }
 
-async function run(debug = false) {
+async function run() {
   const startTime = new Date().getTime();
   assert(Array.isArray(rest), "filter must be array");
   const expectation = getExpectation();
@@ -177,7 +162,7 @@ async function run(debug = false) {
         test.url,
         test.options,
         createReportTestCase(test.expectation),
-        debug,
+        inspectBrk,
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -315,7 +300,7 @@ function assertAllExpectationsHaveTests(
   }
 }
 
-async function update(debug = false) {
+async function update() {
   assert(Array.isArray(rest), "filter must be array");
   const tests = discoverTestsToRun(rest.length == 0 ? undefined : rest, true);
   console.log(`Going to run ${tests.length} test files.`);
@@ -329,7 +314,7 @@ async function update(debug = false) {
         test.url,
         test.options,
         json ? () => {} : createReportTestCase(test.expectation),
-        debug,
+        inspectBrk,
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
