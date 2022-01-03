@@ -1720,7 +1720,7 @@ fn unsafely_ignore_ceritifcate_errors_arg<'a>() -> Arg<'a> {
 }
 
 fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  compile_args_parse(flags, matches);
+  compile_args_parse(flags, matches, true);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
 
@@ -1740,7 +1740,7 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  compile_args_parse(flags, matches);
+  compile_args_parse(flags, matches, true);
   let files = matches
     .values_of("file")
     .unwrap()
@@ -1750,7 +1750,7 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  runtime_args_parse(flags, matches, true, false);
+  runtime_args_parse(flags, matches, true, false, true);
 
   let mut script: Vec<String> = matches
     .values_of("script_arg")
@@ -1841,7 +1841,7 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  runtime_args_parse(flags, matches, false, true);
+  runtime_args_parse(flags, matches, false, true, true);
   flags.allow_net = Some(vec![]);
   flags.allow_env = Some(vec![]);
   flags.allow_run = Some(vec![]);
@@ -1949,7 +1949,7 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  runtime_args_parse(flags, matches, true, true);
+  runtime_args_parse(flags, matches, true, true, true);
 
   let root = if matches.is_present("root") {
     let install_root = matches.value_of("root").unwrap();
@@ -2031,7 +2031,7 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  runtime_args_parse(flags, matches, false, true);
+  runtime_args_parse(flags, matches, false, true, false);
   unsafely_ignore_ceritifcate_errors_parse(flags, matches);
   flags.repl = true;
   flags.subcommand = DenoSubcommand::Repl(ReplFlags {
@@ -2047,7 +2047,7 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  runtime_args_parse(flags, matches, true, true);
+  runtime_args_parse(flags, matches, true, true, true);
 
   let mut script: Vec<String> = matches
     .values_of("script_arg")
@@ -2066,7 +2066,7 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  runtime_args_parse(flags, matches, true, true);
+  runtime_args_parse(flags, matches, true, true, true);
 
   let ignore = match matches.values_of("ignore") {
     Some(f) => f.map(PathBuf::from).collect(),
@@ -2177,8 +2177,10 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   });
 }
 
-fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  import_map_arg_parse(flags, matches);
+fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches, include_import_map: bool) {
+  if include_import_map {
+    import_map_arg_parse(flags, matches);
+  }
   no_remote_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
   no_check_arg_parse(flags, matches);
@@ -2264,8 +2266,9 @@ fn runtime_args_parse(
   matches: &clap::ArgMatches,
   include_perms: bool,
   include_inspector: bool,
+  include_import_map: bool,
 ) {
-  compile_args_parse(flags, matches);
+  compile_args_parse(flags, matches, include_import_map);
   cached_only_arg_parse(flags, matches);
   if include_perms {
     permission_args_parse(flags, matches);
