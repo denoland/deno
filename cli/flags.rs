@@ -455,9 +455,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
     _ => {
       flags.repl = true;
-      flags.subcommand = DenoSubcommand::Repl(ReplFlags {
-        eval: None,
-      });
+      flags.subcommand = DenoSubcommand::Repl(ReplFlags { eval: None });
       flags.allow_net = Some(vec![]);
       flags.allow_env = Some(vec![]);
       flags.allow_run = Some(vec![]);
@@ -465,7 +463,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
       flags.allow_write = Some(vec![]);
       flags.allow_ffi = Some(vec![]);
       flags.allow_hrtime = true;
-    },
+    }
   }
 
   Ok(flags)
@@ -2289,7 +2287,6 @@ fn runtime_args_parse(
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
   compat_arg_parse(flags, matches);
-  inspect_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
 }
 
