@@ -533,7 +533,7 @@ fn bundle_subcommand<'a>() -> App<'a> {
     .arg(Arg::new("source_file").takes_value(true).required(true))
     .arg(Arg::new("out_file").takes_value(true).required(false))
     .arg(watch_arg(false))
-    .override_help("Bundle module and dependencies into single file")
+    .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
 
@@ -553,7 +553,7 @@ fn cache_subcommand<'a>() -> App<'a> {
         .required(true)
         .min_values(1),
     )
-    .override_help("Cache the dependencies")
+    .about("Cache the dependencies")
     .long_about(
       "Cache and compile remote dependencies recursively.
 
@@ -587,7 +587,7 @@ fn compile_subcommand<'a>() -> App<'a> {
         .takes_value(true)
         .possible_values(&["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin"])
     )
-    .override_help("UNSTABLE: Compile the script into a self contained executable")
+    .about("UNSTABLE: Compile the script into a self contained executable")
     .long_about(
       "UNSTABLE: Compiles the given script into a self contained executable.
 
@@ -621,7 +621,7 @@ fn completions_subcommand<'a>() -> App<'a> {
         .possible_values(&["bash", "fish", "powershell", "zsh", "fig"])
         .required(true),
     )
-    .override_help("Generate shell completions")
+    .about("Generate shell completions")
     .long_about(
       "Output shell completion script to standard output.
 
@@ -632,7 +632,7 @@ fn completions_subcommand<'a>() -> App<'a> {
 
 fn coverage_subcommand<'a>() -> App<'a> {
   App::new("coverage")
-    .override_help("Print coverage reports")
+    .about("Print coverage reports")
     .long_about(
       "Print coverage reports from coverage profiles.
 
@@ -713,7 +713,7 @@ Generate html reports from lcov:
 
 fn doc_subcommand<'a>() -> App<'a> {
   App::new("doc")
-    .override_help("Show documentation for a module")
+    .about("Show documentation for a module")
     .long_about(
       "Show documentation for a module.
 
@@ -769,7 +769,7 @@ Show documentation for runtime built-ins:
 
 fn eval_subcommand<'a>() -> App<'a> {
   runtime_args(App::new("eval"), false, true)
-    .override_help("Eval script")
+    .about("Eval script")
     .long_about(
       "Evaluate JavaScript from the command line.
 
@@ -821,7 +821,7 @@ This command has implicit access to all permissions (--allow-all).",
 
 fn fmt_subcommand<'a>() -> App<'a> {
   App::new("fmt")
-    .override_help("Format source files")
+    .about("Format source files")
     .long_about(
       "Auto-format JavaScript, TypeScript, Markdown, and JSON files.
 
@@ -917,7 +917,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
 
 fn info_subcommand<'a>() -> App<'a> {
   App::new("info")
-    .override_help("Show info about cache or info related to source file")
+    .about("Show info about cache or info related to source file")
     .long_about(
       "Information about a module or the cache directories.
 
@@ -986,7 +986,7 @@ fn install_subcommand<'a>() -> App<'a> {
         .short('f')
         .help("Forcefully overwrite existing installation")
         .takes_value(false))
-    .override_help("Install script as an executable")
+    .about("Install script as an executable")
     .long_about(
       "Installs a script as an executable in the installation root's bin directory.
 
@@ -1031,7 +1031,7 @@ fn uninstall_subcommand<'a>() -> App<'a> {
         .help("Installation root")
         .takes_value(true)
         .multiple_occurrences(false))
-    .override_help("Uninstall a script previously installed with deno install")
+    .about("Uninstall a script previously installed with deno install")
     .long_about(
       "Uninstalls an executable script in the installation root's bin directory.
 
@@ -1049,7 +1049,7 @@ The installation root is determined, in order of precedence:
 
 fn lsp_subcommand<'a>() -> App<'a> {
   App::new("lsp")
-    .override_help("Start the language server")
+    .about("Start the language server")
     .long_about(
       "The 'deno lsp' subcommand provides a way for code editors and IDEs to
 interact with Deno using the Language Server Protocol. Usually humans do not
@@ -1062,7 +1062,7 @@ https://deno.land/manual/getting_started/setup_your_environment#editors-and-ides
 
 fn lint_subcommand<'a>() -> App<'a> {
   App::new("lint")
-    .override_help("Lint source files")
+    .about("Lint source files")
     .long_about(
       "Lint JavaScript/TypeScript source code.
 
@@ -1150,7 +1150,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
 
 fn repl_subcommand<'a>() -> App<'a> {
   runtime_args(App::new("repl"), false, true)
-    .override_help("Read Eval Print Loop")
+    .about("Read Eval Print Loop")
     .arg(
       Arg::new("eval")
         .long("eval")
@@ -1170,7 +1170,7 @@ fn run_subcommand<'a>() -> App<'a> {
     )
     .setting(AppSettings::TrailingVarArg)
     .arg(script_arg().required(true))
-    .override_help("Run a JavaScript or TypeScript program")
+    .about("Run a JavaScript or TypeScript program")
     .long_about(
       "Run a JavaScript or TypeScript program
 
@@ -1298,7 +1298,7 @@ fn test_subcommand<'a>() -> App<'a> {
         .conflicts_with("coverage"),
     )
     .arg(script_arg().last(true))
-    .override_help("Run tests")
+    .about("Run tests")
     .long_about(
       "Run tests using Deno's built-in test runner.
 
@@ -1316,7 +1316,7 @@ Directory arguments are expanded to all contained files matching the glob
 
 fn types_subcommand<'a>() -> App<'a> {
   App::new("types")
-    .override_help("Print runtime TypeScript declarations")
+    .about("Print runtime TypeScript declarations")
     .long_about(
       "Print runtime TypeScript declarations.
 
@@ -1328,7 +1328,7 @@ The declaration file could be saved and used for typing information.",
 
 fn upgrade_subcommand<'a>() -> App<'a> {
   App::new("upgrade")
-    .override_help("Upgrade deno executable to given version")
+    .about("Upgrade deno executable to given version")
     .long_about(
       "Upgrade deno executable to the given version.
 Defaults to latest.
