@@ -6,6 +6,7 @@
 use crate::create_main_worker;
 use crate::flags::Flags;
 use crate::flags::JupyterFlags;
+use crate::logger;
 use crate::proc_state::ProcState;
 use crate::tools::repl::EvaluationOutput;
 use crate::tools::repl::ReplSession;
@@ -59,6 +60,11 @@ pub async fn kernel(
 ) -> Result<(), AnyError> {
   if jupyter_flags.conn_file.is_none() {
     return Err(generic_error("Missing --conn flag"));
+  }
+
+  // This env var might be set by notebook
+  if std::env::var("DEBUG").is_ok() {
+    logger::init(Some(log::Level::Debug));
   }
 
   let conn_file_path = jupyter_flags.conn_file.unwrap();
