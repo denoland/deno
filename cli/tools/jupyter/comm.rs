@@ -3,6 +3,8 @@
 use deno_core::error::AnyError;
 use ring::hmac;
 use zeromq::prelude::*;
+use zeromq::util::PeerIdentity;
+use zeromq::SocketOptions;
 
 use super::hmac_verify;
 use super::ReplyMessage;
@@ -11,24 +13,25 @@ use super::SideEffectMessage;
 
 pub struct PubComm {
   conn_str: String,
-  session_id: String,
+  identity: String,
   hmac_key: hmac::Key,
   socket: zeromq::PubSocket,
 }
 
 // TODO(apowers313) connect and send look like traits shared with DealerComm
 impl PubComm {
-  pub fn new(
-    conn_str: String,
-    session_id: String,
-    hmac_key: hmac::Key,
-  ) -> Self {
+  pub fn new(conn_str: String, identity: String, hmac_key: hmac::Key) -> Self {
     println!("iopub connection: {}", conn_str);
+    let peer_identity =
+      PeerIdentity::try_from(identity.as_bytes().to_vec()).unwrap();
+    let mut options = SocketOptions::default();
+    options.peer_identity(peer_identity);
+
     Self {
       conn_str,
-      session_id,
+      identity,
       hmac_key,
-      socket: zeromq::PubSocket::new(),
+      socket: zeromq::PubSocket::with_options(options),
     }
   }
 
@@ -49,7 +52,7 @@ impl PubComm {
 pub struct DealerComm {
   name: String,
   conn_str: String,
-  session_id: String,
+  identity: String,
   hmac_key: hmac::Key,
   socket: zeromq::DealerSocket,
 }
@@ -58,16 +61,21 @@ impl DealerComm {
   pub fn new(
     name: &str,
     conn_str: String,
-    session_id: String,
+    identity: String,
     hmac_key: hmac::Key,
   ) -> Self {
     println!("dealer '{}' connection: {}", name, conn_str);
+    let peer_identity =
+      PeerIdentity::try_from(identity.as_bytes().to_vec()).unwrap();
+    let mut options = SocketOptions::default();
+    options.peer_identity(peer_identity);
+
     Self {
       name: name.to_string(),
       conn_str,
-      session_id,
+      identity,
       hmac_key,
-      socket: zeromq::DealerSocket::new(),
+      socket: zeromq::DealerSocket::with_options(options),
     }
   }
 

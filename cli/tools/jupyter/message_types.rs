@@ -81,7 +81,10 @@ impl ReplyMessage {
     content: ReplyContent,
   ) -> Self {
     Self {
-      header: MessageHeader::new(msg_type, comm_ctx.session_id.clone()),
+      header: MessageHeader::new(
+        msg_type,
+        comm_ctx.message.header.session.clone(),
+      ),
       parent_header: comm_ctx.message.header.clone(),
       metadata,
       content,
@@ -135,7 +138,6 @@ pub type SideEffectMessage = ReplyMessage;
 #[derive(Clone, Debug)]
 pub struct CommContext {
   pub message: RequestMessage,
-  pub session_id: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -152,14 +154,14 @@ pub struct MessageHeader {
 }
 
 impl MessageHeader {
-  pub fn new(msg_type: &str, session_id: String) -> Self {
+  pub fn new(msg_type: &str, session: String) -> Self {
     let now = std::time::SystemTime::now();
     let now: chrono::DateTime<chrono::Utc> = now.into();
     let now = now.to_rfc3339();
 
     Self {
       msg_id: uuid::Uuid::new_v4().to_string(),
-      session: session_id,
+      session,
       // FIXME:
       username: "<TODO>".to_string(),
       date: now,

@@ -64,7 +64,7 @@ pub async fn kernel(
   let conn_file_path = jupyter_flags.conn_file.unwrap();
 
   let mut kernel = Kernel::new(flags, conn_file_path.to_str().unwrap()).await?;
-  println!("[DENO] kernel created: {:#?}", kernel.session_id);
+  println!("[DENO] kernel created: {:#?}", kernel.identity);
 
   println!("running kernel...");
   kernel.run().await;
@@ -89,7 +89,7 @@ struct Kernel {
   control_comm: DealerComm,
   stdin_comm: DealerComm,
   hb_comm: HbComm,
-  session_id: String,
+  identity: String,
   execution_count: u32,
   repl_session: ReplSession,
   stdio_rx: WorkerCommReceiver,
@@ -185,30 +185,30 @@ impl Kernel {
     println!("[DENO] parsed conn file: {:#?}", spec);
 
     let execution_count = 0;
-    let session_id = uuid::Uuid::new_v4().to_string();
+    let identity = uuid::Uuid::new_v4().to_string();
     let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, spec.key.as_ref());
     let metadata = KernelMetadata::default();
     let iopub_comm = PubComm::new(
       create_conn_str(&spec.transport, &spec.ip, spec.iopub_port),
-      session_id.clone(),
+      identity.clone(),
       hmac_key.clone(),
     );
     let shell_comm = DealerComm::new(
       "shell",
       create_conn_str(&spec.transport, &spec.ip, spec.shell_port),
-      session_id.clone(),
+      identity.clone(),
       hmac_key.clone(),
     );
     let control_comm = DealerComm::new(
       "control",
       create_conn_str(&spec.transport, &spec.ip, spec.control_port),
-      session_id.clone(),
+      identity.clone(),
       hmac_key.clone(),
     );
     let stdin_comm = DealerComm::new(
       "stdin",
       create_conn_str(&spec.transport, &spec.ip, spec.stdin_port),
-      session_id.clone(),
+      identity.clone(),
       hmac_key,
     );
     let hb_comm =
@@ -237,7 +237,7 @@ impl Kernel {
       control_comm,
       stdin_comm,
       hb_comm,
-      session_id,
+      identity,
       execution_count,
       repl_session,
       stdio_rx,
@@ -309,10 +309,7 @@ impl Kernel {
       }
     };
 
-    let comm_ctx = CommContext {
-      session_id: self.session_id.clone(),
-      message: req_msg,
-    };
+    let comm_ctx = CommContext { message: req_msg };
     self.last_comm_ctx = Some(comm_ctx.clone());
 
     println!("[DENO] set_state busy {:#?}", handler_type);
