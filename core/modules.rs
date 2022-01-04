@@ -1075,6 +1075,7 @@ mod tests {
   use super::*;
   use crate::ops::OpCall;
   use crate::serialize_op_result;
+  use crate::Extension;
   use crate::JsRuntime;
   use crate::Op;
   use crate::OpPayload;
@@ -1403,7 +1404,7 @@ import "/a.js";
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let dispatcher = move |state, payload: OpPayload| -> Op {
+    let op_test = move |state, payload: OpPayload| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       let (control, _): (u8, ()) = payload.deserialize().unwrap();
       assert_eq!(control, 42);
@@ -1411,12 +1412,15 @@ import "/a.js";
       Op::Async(OpCall::ready(resp))
     };
 
+    let ext = Extension::builder()
+      .ops(vec![("op_test", Box::new(op_test))])
+      .build();
+
     let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
       module_loader: Some(loader),
       ..Default::default()
     });
-    runtime.register_op("op_test", dispatcher);
-    runtime.sync_ops_cache();
 
     runtime
       .execute_script(
