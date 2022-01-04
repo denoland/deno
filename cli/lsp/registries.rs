@@ -112,7 +112,7 @@ fn get_completor_type(
         if let StringOrNumber::String(name) = &k.name {
           let value = match_result
             .get(name)
-            .map(|s| s.to_string(Some(k)))
+            .map(|s| s.to_string(Some(k), false))
             .unwrap_or_default();
           len += value.chars().count();
           if offset <= len {
@@ -213,11 +213,12 @@ fn get_endpoint_with_match(
         Token::Key(k) if k.name == *key => Some(k),
         _ => None,
       });
-      url = url.replace(&format!("${{{}}}", name), &value.to_string(maybe_key));
+      url = url
+        .replace(&format!("${{{}}}", name), &value.to_string(maybe_key, true));
       url = url.replace(
         &format!("${{{{{}}}}}", name),
         &percent_encoding::percent_encode(
-          value.to_string(maybe_key).as_bytes(),
+          value.to_string(maybe_key, true).as_bytes(),
           COMPONENT,
         )
         .to_string(),
@@ -1212,15 +1213,7 @@ mod tests {
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap().items;
-    assert_eq!(completions.len(), 1);
-    assert_eq!(completions[0].label, "/x");
-    assert_eq!(
-      completions[0].text_edit,
-      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-        range,
-        new_text: "http://localhost:4545/x".to_string()
-      }))
-    );
+    assert_eq!(completions.len(), 3);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1236,15 +1229,7 @@ mod tests {
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap().items;
-    assert_eq!(completions.len(), 1);
-    assert_eq!(completions[0].label, "/x");
-    assert_eq!(
-      completions[0].text_edit,
-      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-        range,
-        new_text: "http://localhost:4545/x".to_string()
-      }))
-    );
+    assert_eq!(completions.len(), 3);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1328,6 +1313,30 @@ mod tests {
         "documentation": format!("http://localhost:4545/lsp/registries/doc_a_{}.json", completions[0].label),
       }))
     );
+
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 49,
+      },
+    };
+    let completions = module_registry
+      .get_completions("http://localhost:4545/x/a@v1.", 29, &range, |_| false)
+      .await;
+    assert!(completions.is_some());
+    let completions = completions.unwrap().items;
+    assert_eq!(completions.len(), 2);
+    assert_eq!(
+      completions[0].data,
+      Some(json!({
+        "documentation": format!("http://localhost:4545/lsp/registries/doc_a_{}.json", completions[0].label),
+      }))
+    );
+
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1338,7 +1347,6 @@ mod tests {
         character: 53,
       },
     };
-
     let completions = module_registry
       .get_completions("http://localhost:4545/x/a@v1.0.0/", 33, &range, |_| {
         false
@@ -1353,6 +1361,53 @@ mod tests {
     assert_eq!(completions[1].detail, Some("(path)".to_string()));
     assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
     assert!(completions[1].command.is_some());
+
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 54,
+      },
+    };
+    let completions = module_registry
+      .get_completions("http://localhost:4545/x/a@v1.0.0/b", 34, &range, |_| {
+        false
+      })
+      .await;
+    assert!(completions.is_some());
+    let completions = completions.unwrap().items;
+    assert_eq!(completions.len(), 1);
+    assert_eq!(completions[0].detail, Some("(path)".to_string()));
+    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
+    assert!(completions[0].command.is_some());
+
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 55,
+      },
+    };
+    let completions = module_registry
+      .get_completions(
+        "http://localhost:4545/x/a@v1.0.0/b/",
+        35,
+        &range,
+        |_| false,
+      )
+      .await;
+    assert!(completions.is_some());
+    let completions = completions.unwrap().items;
+    assert_eq!(completions.len(), 1);
+    assert_eq!(completions[0].detail, Some("(path)".to_string()));
+    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
+    assert!(completions[0].command.is_some());
   }
 
   #[tokio::test]
