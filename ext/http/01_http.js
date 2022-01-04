@@ -387,9 +387,7 @@
     setEventTargetData(socket);
     socket[_server] = true;
     response[_ws] = socket;
-    if (options.idleTimeout !== 0) {
-      socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
-    }
+    socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
 
     return { response, socket };
   }
