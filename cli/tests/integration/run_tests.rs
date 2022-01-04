@@ -1616,12 +1616,11 @@ itest!(shebang_with_json_imports_tsc {
   exit_code: 1,
 });
 
-// TODO(@andreubotella): Enable when https://github.com/denoland/deno/issues/13193 is fixed.
-// itest!(shebang_with_json_imports_swc {
-//   args: "run --quiet --no-check import_assertions/json_with_shebang.ts",
-//   output: "import_assertions/json_with_shebang.ts.out",
-//   exit_code: 1,
-// });
+itest!(shebang_with_json_imports_swc {
+  args: "run --quiet --no-check import_assertions/json_with_shebang.ts",
+  output: "import_assertions/json_with_shebang.ts.out",
+  exit_code: 1,
+});
 
 #[test]
 fn no_validate_asm() {
