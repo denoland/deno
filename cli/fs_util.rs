@@ -130,7 +130,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 /// Checks if the path has extension Deno supports.
 pub fn is_supported_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
-    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts")
+    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts")
   } else {
     false
   }
@@ -148,6 +148,8 @@ pub fn is_supported_ext_fmt(path: &Path) -> bool {
         | "jsx"
         | "mjs"
         | "mts"
+        | "cjs"
+        | "cts"
         | "json"
         | "jsonc"
         | "md"
@@ -432,6 +434,8 @@ mod tests {
     assert!(is_supported_ext(Path::new("foo.JSX")));
     assert!(is_supported_ext(Path::new("foo.mjs")));
     assert!(is_supported_ext(Path::new("foo.mts")));
+    assert!(is_supported_ext(Path::new("foo.cjs")));
+    assert!(is_supported_ext(Path::new("foo.cts")));
     assert!(!is_supported_ext(Path::new("foo.mjsx")));
   }
 
@@ -456,6 +460,8 @@ mod tests {
     assert!(is_supported_ext_fmt(Path::new("foo.JSX")));
     assert!(is_supported_ext_fmt(Path::new("foo.mjs")));
     assert!(is_supported_ext_fmt(Path::new("foo.mts")));
+    assert!(is_supported_ext_fmt(Path::new("foo.cjs")));
+    assert!(is_supported_ext_fmt(Path::new("foo.cts")));
     assert!(!is_supported_ext_fmt(Path::new("foo.mjsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.jsonc")));
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
