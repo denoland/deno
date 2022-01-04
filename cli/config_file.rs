@@ -156,6 +156,19 @@ pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "watch",
 ];
 
+pub fn discover(flags: &crate::Flags) -> Result<Option<ConfigFile>, AnyError> {
+  if let Some(config_path) = flags.config_path.as_ref() {
+    Ok(Some(ConfigFile::read(config_path)?))
+  } else {
+    if let DenoSubcommand::Fmt { files, ... } = flags.subcommand {
+    } else if let DenoSubcommand::Lint { files, ... } = flags.subcommand {
+    } else {
+        todo!()
+    }
+    Ok(None)
+  }
+}
+
 /// A function that works like JavaScript's `Object.assign()`.
 pub fn json_merge(a: &mut Value, b: &Value) {
   match (a, b) {
