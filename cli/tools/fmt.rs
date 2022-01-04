@@ -19,12 +19,14 @@ use crate::fs_util::specifier_to_file_path;
 use crate::fs_util::{collect_files, get_extension, is_supported_ext_fmt};
 use crate::text_encoding;
 use deno_ast::ParsedSource;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use log::debug;
 use log::info;
+use std::borrow::Cow;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -157,7 +159,7 @@ pub async fn format(
 fn format_markdown(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
-) -> Result<String, String> {
+) -> Result<String, AnyError> {
   let markdown_config = get_resolved_markdown_config(fmt_options);
   dprint_plugin_markdown::format_text(
     file_text,
@@ -186,7 +188,7 @@ fn format_markdown(
         if matches!(extension, "json" | "jsonc") {
           let mut json_config = get_resolved_json_config(fmt_options);
           json_config.line_width = line_width;
-          dprint_plugin_json::format_text(text, &json_config)
+          dprint_plugin_json::format_text(text, &json_config).map(Cow::Owned)
         } else {
           let fake_filename =
             PathBuf::from(format!("deno_fmt_stdin.{}", extension));
@@ -198,13 +200,13 @@ fn format_markdown(
             text,
             &codeblock_config,
           )
+          .map(Cow::Owned)
         }
       } else {
-        Ok(text.to_string())
+        Ok(Cow::Borrowed(text))
       }
     },
   )
-  .map_err(|e| e.to_string())
 }
 
 /// Formats JSON and JSONC using the rules provided by .deno()
@@ -213,9 +215,9 @@ fn format_markdown(
 pub fn format_json(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
-) -> Result<String, String> {
+) -> Result<String, AnyError> {
   let config = get_resolved_json_config(fmt_options);
-  dprint_plugin_json::format_text(file_text, &config).map_err(|e| e.to_string())
+  dprint_plugin_json::format_text(file_text, &config)
 }
 
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, or MD file.
@@ -223,7 +225,7 @@ pub fn format_file(
   file_path: &Path,
   file_text: &str,
   fmt_options: FmtOptionsConfig,
-) -> Result<String, String> {
+) -> Result<String, AnyError> {
   let ext = get_extension(file_path).unwrap_or_else(String::new);
   if matches!(
     ext.as_str(),
@@ -235,19 +237,17 @@ pub fn format_file(
   } else {
     let config = get_resolved_typescript_config(&fmt_options);
     dprint_plugin_typescript::format_text(file_path, file_text, &config)
-      .map_err(|e| e.to_string())
   }
 }
 
 pub fn format_parsed_source(
   parsed_source: &ParsedSource,
   fmt_options: FmtOptionsConfig,
-) -> Result<String, String> {
+) -> Result<String, AnyError> {
   dprint_plugin_typescript::format_parsed_source(
     parsed_source,
     &get_resolved_typescript_config(&fmt_options),
   )
-  .map_err(|e| e.to_string())
 }
 
 async fn check_source_files(
@@ -373,24 +373,18 @@ pub fn format_stdin(
 ) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
-    return Err(generic_error("Failed to read from stdin"));
+    bail!("Failed to read from stdin");
   }
   let file_path = PathBuf::from(format!("_stdin.{}", fmt_flags.ext));
   let fmt_options = resolve_fmt_options(&fmt_flags, fmt_options);
 
-  match format_file(&file_path, &source, fmt_options) {
-    Ok(formatted_text) => {
-      if fmt_flags.check {
-        if formatted_text != source {
-          println!("Not formatted stdin");
-        }
-      } else {
-        stdout().write_all(formatted_text.as_bytes())?;
-      }
+  let formatted_text = format_file(&file_path, &source, fmt_options)?;
+  if fmt_flags.check {
+    if formatted_text != source {
+      println!("Not formatted stdin");
     }
-    Err(e) => {
-      return Err(generic_error(e));
-    }
+  } else {
+    stdout().write_all(formatted_text.as_bytes())?;
   }
   Ok(())
 }
