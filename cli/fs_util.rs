@@ -191,6 +191,8 @@ pub fn is_supported_test_ext(path: &Path) -> bool {
         | "jsx"
         | "mjs"
         | "mts"
+        | "cjs"
+        | "cts"
         | "md"
         | "mkd"
         | "mkdn"
@@ -493,6 +495,8 @@ mod tests {
     assert!(is_supported_test_ext(Path::new("foo.JSX")));
     assert!(is_supported_test_ext(Path::new("foo.mjs")));
     assert!(is_supported_test_ext(Path::new("foo.mts")));
+    assert!(is_supported_test_ext(Path::new("foo.cjs")));
+    assert!(is_supported_test_ext(Path::new("foo.cts")));
     assert!(!is_supported_test_ext(Path::new("foo.mjsx")));
     assert!(!is_supported_test_ext(Path::new("foo.jsonc")));
     assert!(!is_supported_test_ext(Path::new("foo.JSONC")));
