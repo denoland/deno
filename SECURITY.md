@@ -41,8 +41,8 @@ quickly address the issue.
 The following paragraphs outline the rough security model for Deno. The model
 may change slightly over time, but in general the model is as follows:
 
-- All JavaScript run in Deno is considered untrusted. Permissions are thus never
-  enforced in JavaScript, as all JavaScript is considered untrusted
+- All JavaScript run in Deno is considered untrusted, so permissions are thus never
+  enforced in JavaScript.
 - All JavaScript run in a single Deno process is considered to be part of the
   same program and is not isolated from itself. This means that Deno does not
   guarantee that values set by one JS module will be inaccessible to another, or
