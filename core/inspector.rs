@@ -224,31 +224,12 @@ impl JsRuntimeInspector {
 
     loop {
       loop {
-        // Do one "handshake" with a newly connected session at a time.
-        if let Some(mut session) = sessions.handshake.take() {
-          let poll_result = session.poll_next_unpin(cx);
-          match poll_result {
-            Poll::Pending => {
-              sessions.established.push(session);
-              continue;
-            }
-            Poll::Ready(Some(session_stream_item)) => {
-              let (v8_session_ptr, msg) = session_stream_item;
-              InspectorSession::dispatch_message(v8_session_ptr, msg);
-              sessions.established.push(session);
-              continue;
-            }
-            Poll::Ready(None) => {}
-          }
-        }
-
-        // Accept new connections.
+        // Accept a single new connection.
         let poll_result = sessions.session_rx.poll_next_unpin(cx);
         if let Poll::Ready(Some(session_proxy)) = poll_result {
           let session =
             InspectorSession::new(sessions.v8_inspector.clone(), session_proxy);
-          let prev = sessions.handshake.replace(session);
-          assert!(prev.is_none());
+          sessions.established.push(session);
         }
 
         // Poll established sessions.
@@ -384,7 +365,6 @@ struct InspectorFlags {
 struct SessionContainer {
   v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
   session_rx: UnboundedReceiver<InspectorSessionProxy>,
-  handshake: Option<Box<InspectorSession>>,
   established: SelectAll<Box<InspectorSession>>,
 }
 
@@ -396,7 +376,6 @@ impl SessionContainer {
     Self {
       v8_inspector,
       session_rx: new_session_rx,
-      handshake: None,
       established: SelectAll::new(),
     }
   }
@@ -407,12 +386,11 @@ impl SessionContainer {
   /// all sessions before dropping the inspector instance.
   fn drop_sessions(&mut self) {
     self.v8_inspector = Default::default();
-    self.handshake.take();
     self.established.clear();
   }
 
   fn has_active_sessions(&self) -> bool {
-    !self.established.is_empty() || self.handshake.is_some()
+    !self.established.is_empty()
   }
 
   /// A temporary placeholder that should be used before actual
@@ -424,7 +402,6 @@ impl SessionContainer {
     Self {
       v8_inspector: Default::default(),
       session_rx: rx,
-      handshake: None,
       established: SelectAll::new(),
     }
   }
