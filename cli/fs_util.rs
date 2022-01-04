@@ -455,7 +455,7 @@ mod tests {
     assert!(is_supported_ext_fmt(Path::new("foo.JS")));
     assert!(is_supported_ext_fmt(Path::new("foo.JSX")));
     assert!(is_supported_ext_fmt(Path::new("foo.mjs")));
-    assert!(is_supported_ext(Path::new("foo.mts")));
+    assert!(is_supported_ext_fmt(Path::new("foo.mts")));
     assert!(!is_supported_ext_fmt(Path::new("foo.mjsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.jsonc")));
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
@@ -483,7 +483,7 @@ mod tests {
     assert!(is_supported_test_ext(Path::new("foo.JS")));
     assert!(is_supported_test_ext(Path::new("foo.JSX")));
     assert!(is_supported_test_ext(Path::new("foo.mjs")));
-    assert!(is_supported_ext(Path::new("foo.mts")));
+    assert!(is_supported_test_ext(Path::new("foo.mts")));
     assert!(!is_supported_test_ext(Path::new("foo.mjsx")));
     assert!(!is_supported_test_ext(Path::new("foo.jsonc")));
     assert!(!is_supported_test_ext(Path::new("foo.JSONC")));
