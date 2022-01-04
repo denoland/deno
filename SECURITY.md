@@ -1,7 +1,7 @@
 # Security Policy
 
 Thank you for taking the time to investigate the security of Deno. The security
-of Deno is our top most priority. appreciate investigative work into system
+of Deno is our top most priority. We appreciate investigative work into system
 security carried out by well-intentioned, ethical security researchers. If you
 discover a vulnerability, however small, we would like to know about it so we
 can address it with appropriate measures, as quickly as possible. This document
