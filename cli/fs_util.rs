@@ -130,7 +130,10 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 /// Checks if the path has extension Deno supports.
 pub fn is_supported_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
-    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts")
+    matches!(
+      ext.as_str(),
+      "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts"
+    )
   } else {
     false
   }
