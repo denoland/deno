@@ -47,7 +47,7 @@ may change slightly over time, but in general the model is as follows:
   same program and is not isolated from itself. This means that Deno does not
   guarantee that values set by one JS module will be inaccessible to another, or
   that a value set in one web worker can not be accessed by another.
-- All runtime I/O is considered to be privledged and must always be guarded by a
+- All runtime I/O is considered to be privileged and must always be guarded by a
   runtime permission. This includes filesystem access, network access, etc.
 - Users should not be able to self-escalate their permissions without explicit
   consent.
