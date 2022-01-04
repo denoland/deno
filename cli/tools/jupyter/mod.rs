@@ -390,6 +390,11 @@ impl Kernel {
     let result = match msg_type {
       "kernel_info_request" => self.kernel_info_reply(comm_ctx).await,
       "execute_request" => self.execute_request(comm_ctx).await,
+      // "inspect_request" => self.inspect_request(comm_ctx).await,
+      // "complete_request" => self.complete_request(comm_ctx).await,
+      // "history_request" => self.history_request(comm_ctx).await,
+      // "is_complete_request" => self.is_complete_request(comm_ctx).await,
+      // "comm_info_request" => self.comm_info_request(comm_ctx).await,
       _ => {
         println!("[shell] no handler for {}", msg_type);
         Ok(())
@@ -889,12 +894,13 @@ impl MimeSet {
       None => "default".to_string(),
     };
 
-    let buf_vec = match fmt_str.as_ref() {
-      "string" => String::from_utf8(buf.to_vec())?,
-      "base64" | "default" => base64::encode(buf),
+    let json_data = match fmt_str.as_ref() {
+      "string" => json!(String::from_utf8(buf.to_vec())?),
+      "json" => serde_json::from_str(std::str::from_utf8(&buf.to_vec())?)?,
+      "base64" | "default" => json!(base64::encode(buf)),
       _ => return Err(anyhow!("unknown display mime format: {}", fmt_str)),
     };
-    self.add(mime_type, json!(buf_vec));
+    self.add(mime_type, json_data);
 
     Ok(())
   }
