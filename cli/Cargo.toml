@@ -32,18 +32,18 @@ deno_webgpu = { version = "0.31.0", path = "../ext/webgpu" }
 deno_websocket = { version = "0.35.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.25.0", path = "../ext/webstorage" }
 regex = "=1.5.4"
-serde = { version = "=1.0.130", features = ["derive"] }
+serde = { version = "=1.0.133", features = ["derive"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winapi = "=0.3.9"
 winres = "=0.1.11"
 
 [dependencies]
-deno_ast = { version = "0.7.0", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
+deno_ast = { version = "0.8.0", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core = { version = "0.112.0", path = "../core" }
-deno_doc = "0.24.0"
-deno_graph = "0.16.0"
-deno_lint = { version = "0.20.0", features = ["docs"] }
+deno_doc = "0.25.0"
+deno_graph = "0.17.0"
+deno_lint = { version = "0.21.0", features = ["docs"] }
 deno_runtime = { version = "0.38.0", path = "../runtime" }
 
 atty = "=0.2.14"
@@ -53,15 +53,15 @@ chrono = "=0.4.19"
 clap = "=2.33.3"
 data-url = "=0.1.1"
 dissimilar = "=1.0.2"
-dprint-plugin-json = "=0.13.2"
-dprint-plugin-markdown = "=0.11.3"
-dprint-plugin-typescript = "=0.60.0"
+dprint-plugin-json = "=0.14.0"
+dprint-plugin-markdown = "=0.12.0"
+dprint-plugin-typescript = "=0.61.0"
 encoding_rs = "=0.8.29"
 env_logger = "=0.8.4"
 fancy-regex = "=0.7.1"
 http = "=0.2.4"
 import_map = "=0.4.0"
-jsonc-parser = { version = "=0.17.0", features = ["serde"] }
+jsonc-parser = { version = "=0.17.1", features = ["serde"] }
 libc = "=0.2.106"
 log = { version = "=0.4.14", features = ["serde"] }
 lspower = "=1.4.0"
@@ -76,7 +76,7 @@ ring = "=0.16.20"
 rustyline = { version = "=9.0.0", default-features = false }
 rustyline-derive = "=0.5.0"
 semver-parser = "=0.10.2"
-serde = { version = "=1.0.130", features = ["derive"] }
+serde = { version = "=1.0.133", features = ["derive"] }
 shell-escape = "=0.1.5"
 sourcemap = "=6.0.1"
 tempfile = "=3.2.0"
