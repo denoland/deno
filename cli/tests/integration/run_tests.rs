@@ -2416,6 +2416,8 @@ fn issue12740() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(&mod1_path)
+    .stderr(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
     .spawn()
     .unwrap()
     .wait()
