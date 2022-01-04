@@ -1,10 +1,9 @@
 # Security Policy
 
 Thank you for taking the time to investigate the security of Deno. The security
-of Deno is our top most priority. We appreciate investigative work into system
-security carried out by well-intentioned, ethical security researchers. If you
-discover a vulnerability, however small, we would like to know about it so we
-can address it with appropriate measures, as quickly as possible. This document
+of Deno is our topmost priority. We appreciate investigative work into system
+security by well-intentioned, ethical security researchers. If you
+discover a vulnerability, however small, we would like to know about it to address it with appropriate measures as quickly as possible. This document
 outlines the method we use to work with the security research community to
 address runtime security.
 
@@ -25,7 +24,7 @@ quickly address the issue.
 - Do not publish or reveal the problem until it has been resolved.
 - Do not use attacks on physical security or applications of third parties.
 - Do provide sufficient information to reproduce the problem, so we will be able
-  to resolve it as quickly as possible. Usually a list of steps to follow, and
+  to resolve it as quickly as possible. Usually, a list of steps to follow, and
   the vulnerable Deno version is enough. More complex vulnerabilities may
   require further explanation.
 
@@ -52,9 +51,9 @@ may change slightly over time, but in general the model is as follows:
 - Users should not be able to self-escalate their permissions without explicit
   consent.
 - I/O required to build an initial static module graph should always follow the
-  permissions of it's parent. If there is no parent, all permissions are
+  permissions of its parent. If there is no parent, all permissions are
   granted. As an example, this means that the initial static module graph that
-  is construced when doing `deno run`, does not have any permission
+  is constructed when doing `deno run`, does not have any permission
   restrictions. However, the module graph constructed as the result of loading a
   web worker or dynamic import will be restricted to the permissions of the
   caller (the main worker most likely).
