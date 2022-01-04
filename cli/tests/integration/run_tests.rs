@@ -2359,8 +2359,9 @@ fn issue12453() {
 fn cached_only_env() {
   let _g = util::http_server();
   let deno_dir = util::new_deno_dir();
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
-  let output = deno_cmd
+
+  // First run with DENO_CACHED_ONLY=1 should fail, because nothing is cached.
+  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
     .current_dir(util::testdata_path())
     .env("DENO_CACHED_ONLY", "1")
     .arg("run")
@@ -2375,10 +2376,21 @@ fn cached_only_env() {
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
   assert!(stderr.contains("Specifier not found in cache"));
 
-  // Same but without DENO_CACHED_ONLY is ok.
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(deno_dir.path());
-  let status = deno_cmd
+  // Now cache the program.
+  let status = util::deno_cmd_with_deno_dir(deno_dir.path())
     .current_dir(util::testdata_path())
+    .arg("cache")
+    .arg("http://127.0.0.1:4545/019_media_types.ts")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+
+  // Run again with DENO_CACHED_ONLY=1, it should succeed.
+  let status = util::deno_cmd_with_deno_dir(deno_dir.path())
+    .current_dir(util::testdata_path())
+    .env("DENO_CACHED_ONLY", "1")
     .arg("run")
     .arg("--reload")
     .arg("http://127.0.0.1:4545/019_media_types.ts")
@@ -2388,7 +2400,7 @@ fn cached_only_env() {
     .unwrap()
     .wait()
     .unwrap();
-  assert!(!status.success());
+  assert!(status.success());
 }
 
 /// Regression test for https://github.com/denoland/deno/issues/12740.
