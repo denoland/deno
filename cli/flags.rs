@@ -960,12 +960,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
 fn install_subcommand<'a>() -> App<'a> {
   runtime_args(App::new("install"), true, true)
     .setting(AppSettings::TrailingVarArg)
-    .arg(
-      Arg::new("cmd")
-        .required(true)
-        .multiple_values(true)
-        .multiple_occurrences(true)
-        .allow_hyphen_values(true))
+    .arg(Arg::new("cmd").required(true).multiple_values(true))
     .arg(
       Arg::new("name")
         .long("name")
