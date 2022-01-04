@@ -233,9 +233,7 @@ impl JsRuntimeInspector {
               continue;
             }
             Poll::Ready(Some(session_stream_item)) => {
-              let (v8_session_rc, msg) = session_stream_item;
-              let mut v8_session = v8_session_rc.borrow_mut();
-              let v8_session_ptr = v8_session.as_mut();
+              let (v8_session_ptr, msg) = session_stream_item;
               InspectorSession::dispatch_message(v8_session_ptr, msg);
               sessions.established.push(session);
               continue;
@@ -256,9 +254,7 @@ impl JsRuntimeInspector {
         // Poll established sessions.
         match sessions.established.poll_next_unpin(cx) {
           Poll::Ready(Some(session_stream_item)) => {
-            let (v8_session_rc, msg) = session_stream_item;
-            let mut v8_session = v8_session_rc.borrow_mut();
-            let v8_session_ptr = v8_session.as_mut();
+            let (v8_session_ptr, msg) = session_stream_item;
             InspectorSession::dispatch_message(v8_session_ptr, msg);
             continue;
           }
@@ -510,7 +506,7 @@ impl task::ArcWake for InspectorWaker {
 /// eg. Websocket or another set of channels.
 struct InspectorSession {
   v8_channel: v8::inspector::ChannelBase,
-  v8_session: Rc<RefCell<v8::UniqueRef<v8::inspector::V8InspectorSession>>>,
+  v8_session: NonNull<v8::inspector::V8InspectorSession>,
   proxy: InspectorSessionProxy,
 }
 
@@ -525,17 +521,17 @@ impl InspectorSession {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
       let mut v8_inspector = v8_inspector_rc.borrow_mut();
       let v8_inspector_ptr = v8_inspector.as_mut().unwrap();
-      let v8_session = Rc::new(RefCell::new(v8_inspector_ptr.connect(
+      let v8_session = v8_inspector_ptr.connect(
         Self::CONTEXT_GROUP_ID,
         // Todo(piscisaureus): V8Inspector::connect() should require that
         // the 'v8_channel' argument cannot move.
         unsafe { &mut *self_ptr },
         v8::inspector::StringView::empty(),
-      )));
+      );
 
       Self {
         v8_channel,
-        v8_session,
+        v8_session: NonNull::new(v8::UniqueRef::into_raw(v8_session)).unwrap(),
         proxy: session_proxy,
       }
     })
@@ -543,11 +539,14 @@ impl InspectorSession {
 
   // Dispatch message to V8 session
   fn dispatch_message(
-    v8_session_ptr: &mut v8::inspector::V8InspectorSession,
+    v8_session_ptr: *mut v8::inspector::V8InspectorSession,
     msg: String,
   ) {
     let msg = v8::inspector::StringView::from(msg.as_bytes());
-    v8_session_ptr.dispatch_protocol_message(msg);
+    let v8_session = unsafe {
+      &mut *(v8_session_ptr as *mut v8::inspector::V8InspectorSession)
+    };
+    v8_session.dispatch_protocol_message(msg);
   }
 
   fn send_message(
@@ -565,11 +564,11 @@ impl InspectorSession {
   pub fn break_on_next_statement(&mut self) {
     let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
     let detail = v8::inspector::StringView::empty();
-    self
-      .v8_session
-      .borrow_mut()
-      .as_mut()
-      .schedule_pause_on_next_statement(reason, detail);
+
+    let v8_session = unsafe {
+      &mut *(self.v8_session.as_ptr() as *mut v8::inspector::V8InspectorSession)
+    };
+    v8_session.schedule_pause_on_next_statement(reason, detail);
   }
 }
 
@@ -601,10 +600,7 @@ impl v8::inspector::ChannelImpl for InspectorSession {
 }
 
 impl Stream for InspectorSession {
-  type Item = (
-    Rc<RefCell<v8::UniqueRef<v8::inspector::V8InspectorSession>>>,
-    String,
-  );
+  type Item = (*mut v8::inspector::V8InspectorSession, String);
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -613,7 +609,7 @@ impl Stream for InspectorSession {
     let inner = self.get_mut();
     if let Poll::Ready(maybe_msg) = inner.proxy.rx.poll_next_unpin(cx) {
       if let Some(msg) = maybe_msg {
-        return Poll::Ready(Some((inner.v8_session.clone(), msg)));
+        return Poll::Ready(Some((inner.v8_session.as_ptr(), msg)));
       } else {
         return Poll::Ready(None);
       }
