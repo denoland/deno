@@ -953,6 +953,7 @@ dependencies = [
  "regex",
  "ring",
  "serde",
+ "signal-hook-registry",
  "sys-info",
  "termcolor",
  "test_util",
