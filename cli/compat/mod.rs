@@ -102,15 +102,17 @@ fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
 
 pub(crate) fn load_cjs_module(
   js_runtime: &mut JsRuntime,
-  main_module: &str,
+  module: &str,
+  main: bool,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(async function loadCjsModule(main) {{
-      const Module = await import("{}");
-      Module.default._load(main, null, true);
-    }})('{}');"#,
-    MODULE_URL_STR.as_str(),
-    escape_for_single_quote_string(main_module),
+    r#"(async function loadCjsModule(module) {{
+      const Module = await import("{module_loader}");
+      Module.default._load(module, null, {main});
+    }})('{module}');"#,
+    module_loader = MODULE_URL_STR.as_str(),
+    main = main,
+    module = escape_for_single_quote_string(module),
   );
 
   js_runtime.execute_script(&located_script_name!(), source_code)?;
