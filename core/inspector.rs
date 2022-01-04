@@ -13,7 +13,7 @@ use crate::futures::future::select;
 use crate::futures::future::Either;
 use crate::futures::future::Future;
 use crate::futures::prelude::*;
-use crate::futures::stream::FuturesUnordered;
+use crate::futures::stream::SelectAll;
 use crate::futures::stream::StreamExt;
 use crate::futures::task;
 use crate::futures::task::Context;
@@ -241,9 +241,21 @@ impl JsRuntimeInspector {
       loop {
         // Do one "handshake" with a newly connected session at a time.
         if let Some(mut session) = sessions.handshake.take() {
-          if session.poll_unpin(cx).is_pending() {
-            sessions.established.push(session);
-            continue;
+          let poll_result = session.poll_next_unpin(cx);
+          match poll_result {
+            Poll::Pending => {
+              sessions.established.push(session);
+              continue;
+            }
+            Poll::Ready(Some(session_stream_item)) => {
+              let (v8_session_rc, msg) = session_stream_item;
+              let mut v8_session = v8_session_rc.borrow_mut();
+              let v8_session_ptr = v8_session.as_mut();
+              InspectorSession::dispatch_message(v8_session_ptr, msg);
+              sessions.established.push(session);
+              continue;
+            }
+            Poll::Ready(None) => {}
           }
         }
 
@@ -258,7 +270,13 @@ impl JsRuntimeInspector {
 
         // Poll established sessions.
         match sessions.established.poll_next_unpin(cx) {
-          Poll::Ready(Some(_)) => continue,
+          Poll::Ready(Some(session_stream_item)) => {
+            let (v8_session_rc, msg) = session_stream_item;
+            let mut v8_session = v8_session_rc.borrow_mut();
+            let v8_session_ptr = v8_session.as_mut();
+            InspectorSession::dispatch_message(v8_session_ptr, msg);
+            continue;
+          }
           Poll::Ready(None) => break,
           Poll::Pending => break,
         };
@@ -392,7 +410,7 @@ struct SessionContainer {
   v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
   session_rx: UnboundedReceiver<InspectorSessionProxy>,
   handshake: Option<Box<InspectorSession>>,
-  established: FuturesUnordered<Box<InspectorSession>>,
+  established: SelectAll<Box<InspectorSession>>,
 }
 
 impl SessionContainer {
@@ -404,7 +422,7 @@ impl SessionContainer {
       v8_inspector,
       session_rx: new_session_rx,
       handshake: None,
-      established: FuturesUnordered::new(),
+      established: SelectAll::new(),
     }
   }
 
@@ -432,7 +450,7 @@ impl SessionContainer {
       v8_inspector: Default::default(),
       session_rx: rx,
       handshake: None,
-      established: FuturesUnordered::new(),
+      established: SelectAll::new(),
     }
   }
 }
@@ -549,11 +567,11 @@ impl InspectorSession {
   }
 
   // Dispatch message to V8 session
-  #[allow(unused)]
-  fn dispatch_message(&mut self, msg: Vec<u8>) {
-    let msg = v8::inspector::StringView::from(msg.as_slice());
-    let mut v8_session = self.v8_session.borrow_mut();
-    let v8_session_ptr = v8_session.as_mut();
+  fn dispatch_message(
+    v8_session_ptr: &mut v8::inspector::V8InspectorSession,
+    msg: String,
+  ) {
+    let msg = v8::inspector::StringView::from(msg.as_bytes());
     v8_session_ptr.dispatch_protocol_message(msg);
   }
 
@@ -607,19 +625,22 @@ impl v8::inspector::ChannelImpl for InspectorSession {
   fn flush_protocol_notifications(&mut self) {}
 }
 
-/// This is a "pump" future takes care of receiving messages and dispatching
-/// them to the inspector. It resolves when receiver closes.
-impl Future for InspectorSession {
-  type Output = ();
-  fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    while let Poll::Ready(maybe_msg) = self.proxy.rx.poll_next_unpin(cx) {
+impl Stream for InspectorSession {
+  type Item = (
+    Rc<RefCell<v8::UniqueRef<v8::inspector::V8InspectorSession>>>,
+    String,
+  );
+
+  fn poll_next(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> Poll<Option<Self::Item>> {
+    let inner = self.get_mut();
+    if let Poll::Ready(maybe_msg) = inner.proxy.rx.poll_next_unpin(cx) {
       if let Some(msg) = maybe_msg {
-        let msg = v8::inspector::StringView::from(msg.as_bytes());
-        let mut v8_session = self.v8_session.borrow_mut();
-        let v8_session_ptr = v8_session.as_mut();
-        v8_session_ptr.dispatch_protocol_message(msg);
+        return Poll::Ready(Some((inner.v8_session.clone(), msg)));
       } else {
-        return Poll::Ready(());
+        return Poll::Ready(None);
       }
     }
 
