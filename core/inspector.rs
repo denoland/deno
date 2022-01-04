@@ -563,7 +563,8 @@ impl InspectorSession {
   pub fn break_on_next_statement(&mut self) {
     let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
     let detail = v8::inspector::StringView::empty();
-
+    // TODO(bartlomieju): use raw `*mut V8InspectorSession` pointer, as this
+    // reference may become aliased.
     (*self.v8_session).schedule_pause_on_next_statement(reason, detail);
   }
 }
