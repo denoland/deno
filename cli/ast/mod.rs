@@ -10,12 +10,15 @@ use deno_ast::swc::codegen::text_writer::JsWriter;
 use deno_ast::swc::codegen::Node;
 use deno_ast::swc::common::chain;
 use deno_ast::swc::common::comments::SingleThreadedComments;
+use deno_ast::swc::common::errors::Diagnostic as SwcDiagnostic;
 use deno_ast::swc::common::BytePos;
 use deno_ast::swc::common::FileName;
 use deno_ast::swc::common::Globals;
 use deno_ast::swc::common::Mark;
 use deno_ast::swc::common::SourceMap;
 use deno_ast::swc::common::Spanned;
+use deno_ast::swc::parser::error::Error as SwcError;
+use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::lexer::Lexer;
 use deno_ast::swc::parser::StringInput;
 use deno_ast::swc::transforms::fixer;
@@ -31,10 +34,13 @@ use deno_ast::Diagnostic;
 use deno_ast::LineAndColumnDisplay;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
+use std::cell::RefCell;
+use std::fmt;
 use std::rc::Rc;
 
 mod bundle_hook;
@@ -97,6 +103,25 @@ impl From<Location> for ModuleSpecifier {
 impl std::fmt::Display for Location {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     write!(f, "{}:{}:{}", self.specifier, self.line, self.col)
+  }
+}
+
+#[derive(Debug)]
+pub struct Diagnostics(pub Vec<Diagnostic>);
+
+impl std::error::Error for Diagnostics {}
+
+impl fmt::Display for Diagnostics {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    for (i, diagnostic) in self.0.iter().enumerate() {
+      if i > 0 {
+        write!(f, "\n\n")?;
+      }
+
+      write!(f, "{}", diagnostic)?
+    }
+
+    Ok(())
   }
 }
 
@@ -256,6 +281,7 @@ pub fn transpile(
   parsed_source: &ParsedSource,
   options: &EmitOptions,
 ) -> Result<(String, Option<String>), AnyError> {
+  ensure_no_fatal_diagnostics(parsed_source.diagnostics().iter())?;
   let program: Program = (*parsed_source.program()).clone();
   let source_map = Rc::new(SourceMap::default());
   let source_map_config = SourceMapConfig {
@@ -275,7 +301,7 @@ pub fn transpile(
       source_map.clone(),
       &comments,
       top_level_mark,
-    );
+    )?;
 
     let mut src_map_buf = vec![];
     let mut buf = vec![];
@@ -325,25 +351,35 @@ pub fn transpile_module(
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<deno_ast::swc::common::SourceFile>, Module), AnyError> {
   let source = strip_bom(source);
+  let source = if media_type == MediaType::Json {
+    format!(
+      "export default JSON.parse(`{}`);",
+      source.replace("${", "\\${").replace('`', "\\`")
+    )
+  } else {
+    source.to_string()
+  };
   let source_file =
-    cm.new_source_file(FileName::Url(specifier.clone()), source.to_string());
+    cm.new_source_file(FileName::Url(specifier.clone()), source);
   let input = StringInput::from(&*source_file);
   let comments = SingleThreadedComments::default();
-  let syntax = get_syntax(media_type);
-  let lexer = Lexer::new(syntax, deno_ast::TARGET, input, Some(&comments));
+  let syntax = if media_type == MediaType::Json {
+    get_syntax(MediaType::JavaScript)
+  } else {
+    get_syntax(media_type)
+  };
+  let lexer = Lexer::new(syntax, deno_ast::ES_VERSION, input, Some(&comments));
   let mut parser = deno_ast::swc::parser::Parser::new_from(lexer);
-  let module = parser.parse_module().map_err(|err| {
-    let location = cm.lookup_char_pos(err.span().lo);
-    Diagnostic {
-      specifier: specifier.to_string(),
-      span: err.span(),
-      display_position: LineAndColumnDisplay {
-        line_number: location.line,
-        column_number: location.col_display + 1,
-      },
-      kind: err.into_kind(),
-    }
-  })?;
+  let module = parser
+    .parse_module()
+    .map_err(|e| swc_err_to_diagnostic(&cm, specifier, e))?;
+  let diagnostics = parser
+    .take_errors()
+    .into_iter()
+    .map(|e| swc_err_to_diagnostic(&cm, specifier, e))
+    .collect::<Vec<_>>();
+
+  ensure_no_fatal_diagnostics(diagnostics.iter())?;
 
   let top_level_mark = Mark::fresh(Mark::root());
   let program = fold_program(
@@ -352,7 +388,7 @@ pub fn transpile_module(
     cm,
     &comments,
     top_level_mark,
-  );
+  )?;
   let module = match program {
     Program::Module(module) => module,
     _ => unreachable!(),
@@ -361,35 +397,57 @@ pub fn transpile_module(
   Ok((source_file, module))
 }
 
+#[derive(Default, Clone)]
+struct DiagnosticCollector {
+  diagnostics_cell: Rc<RefCell<Vec<SwcDiagnostic>>>,
+}
+
+impl DiagnosticCollector {
+  pub fn into_handler(self) -> deno_ast::swc::common::errors::Handler {
+    deno_ast::swc::common::errors::Handler::with_emitter(
+      true,
+      false,
+      Box::new(self),
+    )
+  }
+}
+
+impl deno_ast::swc::common::errors::Emitter for DiagnosticCollector {
+  fn emit(
+    &mut self,
+    db: &deno_ast::swc::common::errors::DiagnosticBuilder<'_>,
+  ) {
+    use std::ops::Deref;
+    self.diagnostics_cell.borrow_mut().push(db.deref().clone());
+  }
+}
+
 fn fold_program(
   program: Program,
   options: &EmitOptions,
   source_map: Rc<SourceMap>,
   comments: &SingleThreadedComments,
   top_level_mark: Mark,
-) -> Program {
-  let jsx_pass = chain!(
-    resolver_with_mark(top_level_mark),
-    react::react(
-      source_map.clone(),
-      Some(comments),
-      react::Options {
-        pragma: options.jsx_factory.clone(),
-        pragma_frag: options.jsx_fragment_factory.clone(),
-        // this will use `Object.assign()` instead of the `_extends` helper
-        // when spreading props.
-        use_builtins: true,
-        runtime: if options.jsx_automatic {
-          Some(react::Runtime::Automatic)
-        } else {
-          None
-        },
-        development: options.jsx_development,
-        import_source: options.jsx_import_source.clone().unwrap_or_default(),
-        ..Default::default()
+) -> Result<Program, AnyError> {
+  let jsx_pass = react::react(
+    source_map.clone(),
+    Some(comments),
+    react::Options {
+      pragma: options.jsx_factory.clone(),
+      pragma_frag: options.jsx_fragment_factory.clone(),
+      // this will use `Object.assign()` instead of the `_extends` helper
+      // when spreading props.
+      use_builtins: true,
+      runtime: if options.jsx_automatic {
+        Some(react::Runtime::Automatic)
+      } else {
+        None
       },
-      top_level_mark,
-    ),
+      development: options.jsx_development,
+      import_source: options.jsx_import_source.clone().unwrap_or_default(),
+      ..Default::default()
+    },
+    top_level_mark,
   );
   let mut passes = chain!(
     Optional::new(transforms::DownlevelImportsFolder, options.repl_imports),
@@ -399,15 +457,17 @@ fn fold_program(
       emit_metadata: options.emit_metadata
     }),
     helpers::inject_helpers(),
+    resolver_with_mark(top_level_mark),
     Optional::new(
-      typescript::strip::strip_with_config(strip_config_from_emit_options(
-        options
-      )),
+      typescript::strip::strip_with_config(
+        strip_config_from_emit_options(options),
+        top_level_mark
+      ),
       !options.transform_jsx
     ),
     Optional::new(
       typescript::strip::strip_with_jsx(
-        source_map,
+        source_map.clone(),
         strip_config_from_emit_options(options),
         comments,
         top_level_mark
@@ -419,9 +479,116 @@ fn fold_program(
     hygiene(),
   );
 
-  helpers::HELPERS.set(&helpers::Helpers::new(false), || {
-    program.fold_with(&mut passes)
-  })
+  let emitter = DiagnosticCollector::default();
+  let diagnostics_cell = emitter.diagnostics_cell.clone();
+  let handler = emitter.into_handler();
+  let result = deno_ast::swc::utils::HANDLER.set(&handler, || {
+    helpers::HELPERS.set(&helpers::Helpers::new(false), || {
+      program.fold_with(&mut passes)
+    })
+  });
+
+  let diagnostics = diagnostics_cell.borrow();
+  ensure_no_fatal_swc_diagnostics(&source_map, diagnostics.iter())?;
+  Ok(result)
+}
+
+fn ensure_no_fatal_swc_diagnostics<'a>(
+  source_map: &SourceMap,
+  diagnostics: impl Iterator<Item = &'a SwcDiagnostic>,
+) -> Result<(), AnyError> {
+  let fatal_diagnostics = diagnostics
+    .filter(|d| is_fatal_swc_diagnostic(d))
+    .collect::<Vec<_>>();
+  if !fatal_diagnostics.is_empty() {
+    Err(anyhow!(
+      "{}",
+      fatal_diagnostics
+        .iter()
+        .map(|d| format_swc_diagnostic(source_map, d))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+    ))
+  } else {
+    Ok(())
+  }
+}
+
+fn is_fatal_swc_diagnostic(diagnostic: &SwcDiagnostic) -> bool {
+  use deno_ast::swc::common::errors::Level;
+  match diagnostic.level {
+    Level::Bug
+    | Level::Cancelled
+    | Level::FailureNote
+    | Level::Fatal
+    | Level::PhaseFatal
+    | Level::Error => true,
+    Level::Help | Level::Note | Level::Warning => false,
+  }
+}
+
+fn format_swc_diagnostic(
+  source_map: &SourceMap,
+  diagnostic: &SwcDiagnostic,
+) -> String {
+  if let Some(span) = &diagnostic.span.primary_span() {
+    let file_name = source_map.span_to_filename(*span);
+    let loc = source_map.lookup_char_pos(span.lo);
+    format!(
+      "{} at {}:{}:{}",
+      diagnostic.message(),
+      file_name.to_string(),
+      loc.line,
+      loc.col_display + 1,
+    )
+  } else {
+    diagnostic.message()
+  }
+}
+
+fn swc_err_to_diagnostic(
+  source_map: &SourceMap,
+  specifier: &ModuleSpecifier,
+  err: SwcError,
+) -> Diagnostic {
+  let location = source_map.lookup_char_pos(err.span().lo);
+  Diagnostic {
+    specifier: specifier.to_string(),
+    span: err.span(),
+    display_position: LineAndColumnDisplay {
+      line_number: location.line,
+      column_number: location.col_display + 1,
+    },
+    kind: err.into_kind(),
+  }
+}
+
+fn ensure_no_fatal_diagnostics<'a>(
+  diagnostics: impl Iterator<Item = &'a Diagnostic>,
+) -> Result<(), Diagnostics> {
+  let fatal_diagnostics = diagnostics
+    .filter(|d| is_fatal_syntax_error(&d.kind))
+    .map(ToOwned::to_owned)
+    .collect::<Vec<_>>();
+  if !fatal_diagnostics.is_empty() {
+    Err(Diagnostics(fatal_diagnostics))
+  } else {
+    Ok(())
+  }
+}
+
+fn is_fatal_syntax_error(error_kind: &SyntaxError) -> bool {
+  matches!(
+    error_kind,
+    // expected identifier
+    SyntaxError::TS1003 |
+        // expected semi-colon
+        SyntaxError::TS1005 |
+        // expected expression
+        SyntaxError::TS1109 |
+        // unterminated string literal
+        SyntaxError::UnterminatedStrLit
+  )
 }
 
 #[cfg(test)]
@@ -431,28 +598,37 @@ mod tests {
   use deno_ast::ParseParams;
   use deno_ast::SourceTextInfo;
 
+  use pretty_assertions::assert_eq;
+
   #[test]
   fn test_transpile() {
     let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
       .expect("could not resolve specifier");
     let source = r#"
-    enum D {
-      A,
-      B,
-      C,
-    }
+enum D {
+  A,
+  B,
+}
 
-    export class A {
-      private b: string;
-      protected c: number = 1;
-      e: "foo";
-      constructor (public d = D.A) {
-        const e = "foo" as const;
-        this.e = e;
-      }
-    }
+namespace N {
+  export enum D {
+    A = "value"
+  }
+  export const Value = 5;
+}
+
+export class A {
+  private b: string;
+  protected c: number = 1;
+  e: "foo";
+  constructor (public d = D.A) {
+    const e = "foo" as const;
+    this.e = e;
+    console.log(N.Value);
+  }
+}
     "#;
-    let module = parse_module(ParseParams {
+    let module = deno_ast::parse_module(ParseParams {
       specifier: specifier.as_str().to_string(),
       source: SourceTextInfo::from_string(source.to_string()),
       media_type: deno_ast::MediaType::TypeScript,
@@ -460,10 +636,39 @@ mod tests {
       maybe_syntax: None,
       scope_analysis: false,
     })
-    .expect("could not parse module");
+    .unwrap();
     let (code, maybe_map) = transpile(&module, &EmitOptions::default())
       .expect("could not strip types");
-    assert!(code.starts_with("var D;\n(function(D) {\n"));
+    let expected_text = r#"var D;
+(function(D) {
+    D[D["A"] = 0] = "A";
+    D[D["B"] = 1] = "B";
+})(D || (D = {
+}));
+var N;
+(function(N1) {
+    let D;
+    (function(D) {
+        D["A"] = "value";
+    })(D = N1.D || (N1.D = {
+    }));
+    N1.Value = 5;
+})(N || (N = {
+}));
+export class A {
+    d;
+    b;
+    c = 1;
+    e;
+    constructor(d = D.A){
+        this.d = d;
+        const e = "foo";
+        this.e = e;
+        console.log(N.Value);
+    }
+}
+"#;
+    assert_eq!(&code[..expected_text.len()], expected_text);
     assert!(
       code.contains("\n//# sourceMappingURL=data:application/json;base64,")
     );
@@ -703,5 +908,27 @@ export function g() {
     return test(algorithm, false, keyUsages);
 }"#;
     assert_eq!(&code[..expected.len()], expected);
+  }
+
+  #[test]
+  fn diagnostic_jsx_spread_instead_of_panic() {
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts").unwrap();
+    let source = r#"const A = () => {
+  return <div>{...[]}</div>;
+};"#;
+    let parsed_source = parse_module(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      source: SourceTextInfo::from_string(source.to_string()),
+      media_type: deno_ast::MediaType::Tsx,
+      capture_tokens: false,
+      maybe_syntax: None,
+      scope_analysis: false,
+    })
+    .unwrap();
+    let err = transpile(&parsed_source, &Default::default())
+      .err()
+      .unwrap();
+
+    assert_eq!(err.to_string(), "Spread children are not supported in React. at https://deno.land/x/mod.ts:2:15");
   }
 }

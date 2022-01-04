@@ -84,7 +84,7 @@ jobs:
       - name: Install Rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.56.0
+          rust-version: 1.57.0
 
       - name: Install clippy and rustfmt
         if: matrix.job == 'lint'
@@ -199,10 +199,6 @@ jobs:
           sudo chroot /sysroot bash -c \
                                     'ln -f "$(which ld.lld-13)" "$(which ld)"'
 
-          # Make rust available inside the chroot environment.
-          sudo mkdir -p /sysroot/usr/share/rust
-          sudo mount --rbind /usr/share/rust /sysroot/usr/share/rust
-
           # Make node (needed to run the benchmarks) available.
           sudo ln --target /sysroot/usr/bin "$(which node)"
 
@@ -216,7 +212,7 @@ jobs:
             fi
 
             # Add cargo, rustc, and deno to $PATH.
-            source /usr/share/rust/.cargo/env
+            source /home/runner/.cargo/env
             export PATH="$PATH:$(pwd)/target/release"
 
             # Rust build configuration.
@@ -266,7 +262,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: 0-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 2-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -274,7 +270,7 @@ jobs:
         # when https://github.com/actions/cache/pull/489 (or 571) is merged.
         uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
         if: (matrix.profile == 'release' || matrix.profile == 'fastci') &&
-            github.ref == 'refs/heads/main' 
+            github.ref == 'refs/heads/main'
         with:
           path: |
             ./target
@@ -282,7 +278,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            0-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            2-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -298,7 +294,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            0-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            2-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
@@ -470,7 +466,7 @@ jobs:
       - name: Run web platform tests (debug)
         if: |
           startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&
-          matrix.profile == 'debug' && 
+          matrix.profile == 'debug' &&
           github.ref == 'refs/heads/main'
         env:
           DENO_BIN: ./target/debug/deno
@@ -521,7 +517,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         env:
-          WPT_FYI_USER: ${{ secrets.WPT_FYI_USER }}
+          WPT_FYI_USER: deno
           WPT_FYI_PW: ${{ secrets.WPT_FYI_PW }}
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
         run: |
@@ -622,8 +618,7 @@ jobs:
     name: publish canary
     runs-on: ubuntu-20.04
     needs: ["build"]
-    if: github.repository == 'denoland/deno' &&
-        (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     steps:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@master

@@ -163,7 +163,7 @@ itest!(_035_cached_only_flag {
 
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
-  args: "run --reload --config 038_checkjs.tsconfig.json 038_checkjs.js",
+  args: "run --reload --config checkjs.tsconfig.json 038_checkjs.js",
   exit_code: 1,
   output: "038_checkjs.js.out",
 });
@@ -233,7 +233,6 @@ itest!(_070_location {
 itest!(_071_location_unset {
   args: "run 071_location_unset.ts",
   output: "071_location_unset.ts.out",
-  exit_code: 1,
 });
 
 itest!(_072_location_relative_fetch {
@@ -563,6 +562,26 @@ itest!(fetch_response_finalization {
   exit_code: 0,
 });
 
+itest!(import_type {
+  args: "run --reload import_type.ts",
+  output: "import_type.ts.out",
+});
+
+itest!(import_type_no_check {
+  args: "run --reload --no-check import_type.ts",
+  output: "import_type.ts.out",
+});
+
+itest!(private_field_presence {
+  args: "run --reload private_field_presence.ts",
+  output: "private_field_presence.ts.out",
+});
+
+itest!(private_field_presence_no_check {
+  args: "run --reload --no-check private_field_presence.ts",
+  output: "private_field_presence.ts.out",
+});
+
 itest!(lock_write_requires_lock {
   args: "run --lock-write some_file.ts",
   output: "lock_write_requires_lock.out",
@@ -609,6 +628,16 @@ itest!(lock_check_err2 {
   output: "lock_check_err2.out",
   exit_code: 10,
   http_server: true,
+});
+
+itest!(mts_dmts_mjs {
+  args: "run subdir/import.mts",
+  output: "mts_dmts_mjs.out",
+});
+
+itest!(mts_dmts_mjs_no_check {
+  args: "run --no-check subdir/import.mts",
+  output: "mts_dmts_mjs.out",
 });
 
 itest!(async_error {
@@ -859,6 +888,30 @@ itest!(exit_error42 {
   output: "exit_error42.ts.out",
 });
 
+itest!(set_exit_code_0 {
+  args: "run --no-check --unstable set_exit_code_0.ts",
+  output: "empty.out",
+  exit_code: 0,
+});
+
+itest!(set_exit_code_1 {
+  args: "run --no-check --unstable set_exit_code_1.ts",
+  output: "empty.out",
+  exit_code: 42,
+});
+
+itest!(set_exit_code_2 {
+  args: "run --no-check --unstable set_exit_code_2.ts",
+  output: "empty.out",
+  exit_code: 42,
+});
+
+itest!(set_exit_code_in_worker {
+  args: "run --no-check --unstable --allow-read set_exit_code_in_worker.ts",
+  output: "empty.out",
+  exit_code: 42,
+});
+
 itest!(heapstats {
   args: "run --quiet --unstable --v8-flags=--expose-gc heapstats.js",
   output: "heapstats.js.out",
@@ -900,6 +953,19 @@ itest!(no_check {
 itest!(no_check_decorators {
   args: "run --quiet --reload --no-check no_check_decorators.ts",
   output: "no_check_decorators.ts.out",
+});
+
+itest!(check_remote {
+  args: "run --quiet --reload no_check_remote.ts",
+  output: "no_check_remote.ts.disabled.out",
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(no_check_remote {
+  args: "run --quiet --reload --no-check=remote no_check_remote.ts",
+  output: "no_check_remote.ts.enabled.out",
+  http_server: true,
 });
 
 itest!(runtime_decorators {
@@ -1515,6 +1581,23 @@ itest!(worker_message_before_close {
 itest!(worker_close_in_wasm_reactions {
   args: "run --quiet --reload --allow-read worker_close_in_wasm_reactions.js",
   output: "worker_close_in_wasm_reactions.js.out",
+});
+
+itest!(reference_types_error {
+  args: "run --config checkjs.tsconfig.json reference_types_error.js",
+  output: "reference_types_error.js.out",
+  exit_code: 1,
+});
+
+itest!(reference_types_error_no_check {
+  args: "run --no-check reference_types_error.js",
+  output_str: Some(""),
+});
+
+itest!(jsx_import_source_error {
+  args: "run --config jsx/deno-jsx-error.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_error.out",
+  exit_code: 1,
 });
 
 #[test]
@@ -2299,9 +2382,112 @@ fn cached_only_env() {
     .arg("run")
     .arg("--reload")
     .arg("http://127.0.0.1:4545/019_media_types.ts")
+    .stderr(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(!status.success());
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/12740.
+#[test]
+fn issue12740() {
+  let mod_dir = TempDir::new().expect("tempdir fail");
+  let mod1_path = mod_dir.path().join("mod1.ts");
+  let mod2_path = mod_dir.path().join("mod2.ts");
+  let mut deno_cmd = util::deno_cmd();
+  std::fs::write(&mod1_path, "").unwrap();
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(&mod1_path)
+    .stderr(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  std::fs::write(&mod1_path, "export { foo } from \"./mod2.ts\";").unwrap();
+  std::fs::write(&mod2_path, "(").unwrap();
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(&mod1_path)
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(!status.success());
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/12807.
+#[test]
+fn issue12807() {
+  let mod_dir = TempDir::new().expect("tempdir fail");
+  let mod1_path = mod_dir.path().join("mod1.ts");
+  let mod2_path = mod_dir.path().join("mod2.ts");
+  let mut deno_cmd = util::deno_cmd();
+  // With a fresh `DENO_DIR`, run a module with a dependency and a type error.
+  std::fs::write(&mod1_path, "import './mod2.ts'; Deno.exit('0');").unwrap();
+  std::fs::write(&mod2_path, "console.log('Hello, world!');").unwrap();
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(&mod1_path)
+    .stderr(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(!status.success());
+  // Fix the type error and run again.
+  std::fs::write(&mod1_path, "import './mod2.ts'; Deno.exit(0);").unwrap();
+  let status = deno_cmd
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(&mod1_path)
+    .stderr(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
     .spawn()
     .unwrap()
     .wait()
     .unwrap();
   assert!(status.success());
 }
+
+itest!(import_assertions_static_import {
+  args: "run --allow-read import_assertions/static_import.ts",
+  output: "import_assertions/static_import.out",
+});
+
+itest!(import_assertions_static_export {
+  args: "run --allow-read import_assertions/static_export.ts",
+  output: "import_assertions/static_export.out",
+});
+
+itest!(import_assertions_static_error {
+  args: "run --allow-read import_assertions/static_error.ts",
+  output: "import_assertions/static_error.out",
+  exit_code: 1,
+});
+
+itest!(import_assertions_dynamic_import {
+  args: "run --allow-read import_assertions/dynamic_import.ts",
+  output: "import_assertions/dynamic_import.out",
+});
+
+itest!(import_assertions_dynamic_error {
+  args: "run --allow-read import_assertions/dynamic_error.ts",
+  output: "import_assertions/dynamic_error.out",
+  exit_code: 1,
+});
+
+itest!(import_assertions_type_check {
+  args: "run --allow-read import_assertions/type_check.ts",
+  output: "import_assertions/type_check.out",
+  exit_code: 1,
+});

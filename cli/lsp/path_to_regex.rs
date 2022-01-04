@@ -26,18 +26,17 @@
 // THE SOFTWARE.
 //
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use fancy_regex::Regex as FancyRegex;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
 use std::iter::Peekable;
 
-lazy_static::lazy_static! {
-  static ref ESCAPE_STRING_RE: Regex =
-    Regex::new(r"([.+*?=^!:${}()\[\]|/\\])").unwrap();
-}
+static ESCAPE_STRING_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"([.+*?=^!:${}()\[\]|/\\])").unwrap());
 
 #[derive(Debug, PartialEq, Eq)]
 enum TokenType {
@@ -734,7 +733,7 @@ impl Compiler {
                 let prefix = k.prefix.clone().unwrap_or_default();
                 let suffix = k.suffix.clone().unwrap_or_default();
                 for segment in v {
-                  if self.validate {
+                  if !segment.is_empty() && self.validate {
                     if let Some(re) = &self.matches[i] {
                       if !re.is_match(segment) {
                         return Err(anyhow!(
@@ -910,6 +909,33 @@ mod tests {
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, "/x/y@v1.0.0/z/example.ts".to_string());
+  }
+
+  #[test]
+  fn test_compiler_ends_with_sep() {
+    let tokens = parse("/x/:a@:b/:c*", None).expect("could not parse");
+    let mut params = HashMap::<StringOrNumber, StringOrVec>::new();
+    params.insert(
+      StringOrNumber::String("a".to_string()),
+      StringOrVec::String("y".to_string()),
+    );
+    params.insert(
+      StringOrNumber::String("b".to_string()),
+      StringOrVec::String("v1.0.0".to_string()),
+    );
+    params.insert(
+      StringOrNumber::String("c".to_string()),
+      StringOrVec::Vec(vec![
+        "z".to_string(),
+        "example".to_string(),
+        "".to_string(),
+      ]),
+    );
+    let compiler = Compiler::new(&tokens, None);
+    let actual = compiler.to_path(&params);
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert_eq!(actual, "/x/y@v1.0.0/z/example/".to_string());
   }
 
   #[test]

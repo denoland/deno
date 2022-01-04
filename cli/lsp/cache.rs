@@ -4,11 +4,12 @@ use crate::cache::CacherLoader;
 use crate::cache::FetchCacher;
 use crate::config_file::ConfigFile;
 use crate::flags::Flags;
+use crate::graph_util::graph_valid;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
@@ -82,7 +83,7 @@ impl CacheServer {
           )
           .await;
 
-          if tx.send(graph.valid().map_err(|err| err.into())).is_err() {
+          if tx.send(graph_valid(&graph, true, false)).is_err() {
             log::warn!("cannot send to client");
           }
         }

@@ -52,11 +52,14 @@ declare namespace Deno {
     closeWrite(): Promise<void>;
   }
 
+  // deno-lint-ignore no-empty-interface
+  export interface TlsHandshakeInfo {}
+
   export interface TlsConn extends Conn {
     /** Runs the client or server handshake protocol to completion if that has
      * not happened yet. Calling this method is optional; the TLS handshake
      * will be completed automatically as soon as data is sent or received. */
-    handshake(): Promise<void>;
+    handshake(): Promise<TlsHandshakeInfo>;
   }
 
   export interface ListenOptions {
@@ -136,10 +139,10 @@ declare namespace Deno {
      * If not specified, defaults to `127.0.0.1`. */
     hostname?: string;
     /**
+     * Server certificate file.
+     *
      * @deprecated This option is deprecated and will be removed in a future
      * release.
-     *
-     * Server certificate file.
      */
     certFile?: string;
     /** A list of root certificates that will be used in addition to the

@@ -11,16 +11,16 @@ Before:
   - dispatched: 1
   - completed: 1
 After:
-  - dispatched: 3
-  - completed: 2
+  - dispatched: [WILDCARD]
+  - completed: [WILDCARD]
 Ops:
-  op_global_timer:
+  op_sleep:
     Before:
       - dispatched: 1
       - completed: 1
     After:
-      - dispatched: 3
-      - completed: 2
+      - dispatched: [WILDCARD]
+      - completed: [WILDCARD]
 
 Make sure to await all promises returned from Deno APIs before
 finishing test case.

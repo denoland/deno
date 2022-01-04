@@ -8,7 +8,8 @@
 - [ ] Forks and local clones of
       [`denoland/deno`](https://github.com/denoland/deno/),
       [`denoland/deno_std`](https://github.com/denoland/deno_std/),
-      [`denoland/dotland`](https://github.com/denoland/dotland/) and
+      [`denoland/dotland`](https://github.com/denoland/dotland/),
+      [`denoland/docland`](https://github.com/denoland/docland/),
       [`denoland/deno_docker`](https://github.com/denoland/deno_docker/)
 - [ ] Ensure that external dependencies are up-to date in `denoland/deno` (e.g.
       `rusty_v8`, `serde_v8`, `deno_doc`, `deno_lint`).
@@ -67,7 +68,8 @@ cut.**
 
 10. Use the output of the above command to update `Releases.md`
 
-11. Update link in `cli/compat/mod.rs` with the released version of `deno_std`.
+11. Update link in `cli/compat/mod.rs` with the released version of `deno_std`
+    and do a search through the tests to find std urls that need to be updated.
 
 12. Create a PR for these changes.
 
@@ -84,7 +86,14 @@ cut.**
     The CI pipeline will create a release draft on GitHub
     (https://github.com/denoland/deno/releases).
 
-18. Upload Apple M1 build to the release draft & to dl.deno.land.
+18. Upload Apple M1 build (`deno-aarch64-apple-darwin.zip`) to the release draft
+    and to https://console.cloud.google.com/storage/browser/dl.deno.land
+
+    ```
+    cargo build --release
+    cd target/release
+    zip -r deno-aarch64-apple-darwin.zip deno
+    ```
 
 19. Publish the release on Github
 
@@ -98,6 +107,22 @@ cut.**
 22. For minor releases: make sure https://github.com/mdn/browser-compat-data has
     been updated to reflect Web API changes in this release. Usually done ahead
     of time by @lucacasonato.
+
+## Updating `doc.deno.land`
+
+This should occur after the Deno CLI is fully published, as the build script
+queries the GitHub API to determine what it needs to change and update.
+
+1. Goto the cloned report for `denoland/docland`.
+
+2. Checkout a new branch (e.g. `git checkout -b deno_1.17.0`).
+
+3. Execute `./build.ts` (or
+   `deno run --config deno.jsonc --import-map import-map.json --allow-read=. --allow-write=./static --allow-net build.ts`).
+
+4. Commit changes and raise a PR on `denoland/docland`.
+
+5. Merging the approved PR will trigger deployment to Deploy of the updates.
 
 ## Updating `deno_docker`
 

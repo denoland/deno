@@ -511,7 +511,7 @@ mod internal {
       /// the heap allocation that contains the `CancelHandle`. Without this
       /// extra weak reference, `Rc::get_mut()` might succeed and allow the
       /// `CancelHandle` to be moved when it isn't safe to do so.
-      weak_pin: Weak<dyn Any>,
+      _weak_pin: Weak<dyn Any>,
     },
     /// All item nodes in a chain are associated with a `Cancelable` head node.
     Item {
@@ -523,8 +523,8 @@ mod internal {
 
   impl NodeKind {
     fn head(rc_pin: &Rc<dyn Any>) -> Self {
-      let weak_pin = Rc::downgrade(rc_pin);
-      Self::Head { weak_pin }
+      let _weak_pin = Rc::downgrade(rc_pin);
+      Self::Head { _weak_pin }
     }
 
     fn item(waker: &Waker) -> Self {
@@ -537,7 +537,7 @@ mod internal {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::error::AnyError;
+  use anyhow::Error;
   use futures::future::pending;
   use futures::future::poll_fn;
   use futures::future::ready;
@@ -652,7 +652,7 @@ mod tests {
       // Cancel a spawned task before it actually runs.
       let cancel_handle = Rc::new(CancelHandle::new());
       let future = spawn(async { panic!("the task should not be spawned") })
-        .map_err(AnyError::from)
+        .map_err(Error::from)
         .try_or_cancel(&cancel_handle);
       cancel_handle.cancel();
       let error = future.await.unwrap_err();

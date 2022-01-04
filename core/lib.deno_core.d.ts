@@ -21,6 +21,14 @@ declare namespace Deno {
       b?: any,
     ): Promise<any>;
 
+    /** Mark following promise as "ref", ie. event loop won't exit
+     * until all "ref" promises are resolved. All async ops are "ref" by default. */
+    function refOp(promiseId: number): void;
+
+    /** Mark following promise as "unref", ie. event loop will exit
+     * if there are only "unref" promises left. */
+    function unrefOps(promiseId: number): void;
+
     /**
      * Retrieve a list of all registered ops, in the form of a map that maps op
      * name to internal numerical op id.
@@ -86,5 +94,52 @@ declare namespace Deno {
     function setWasmStreamingCallback(
       cb: (source: any, rid: number) => void,
     ): void;
+
+    /**
+     * Set a callback that will be called after resolving ops and before resolving
+     * macrotasks.
+     */
+    function setNextTickCallback(
+      cb: () => void,
+    ): void;
+
+    /** Check if there's a scheduled "next tick". */
+    function hasNextTickScheduled(): bool;
+
+    /** Set a value telling the runtime if there are "next ticks" scheduled */
+    function setHasNextTickScheduled(value: bool): void;
+
+    /**
+     * Set a callback that will be called after resolving ops and "next ticks".
+     */
+    function setMacrotaskCallback(
+      cb: () => bool,
+    ): void;
+
+    /**
+     * Set a callback that will be called when a promise without a .catch
+     * handler is rejected. Returns the old handler or undefined.
+     */
+    function setPromiseRejectCallback(
+      cb: PromiseRejectCallback,
+    ): undefined | PromiseRejectCallback;
+
+    export type PromiseRejectCallback = (
+      type: number,
+      promise: Promise,
+      reason: any,
+    ) => void;
+
+    /**
+     * Set a callback that will be called when an exception isn't caught
+     * by any try/catch handlers. Currently only invoked when the callback
+     * to setPromiseRejectCallback() throws an exception but that is expected
+     * to change in the future. Returns the old handler or undefined.
+     */
+    function setUncaughtExceptionCallback(
+      cb: UncaughtExceptionCallback,
+    ): undefined | UncaughtExceptionCallback;
+
+    export type UncaughtExceptionCallback = (err: any) => void;
   }
 }

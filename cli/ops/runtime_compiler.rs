@@ -5,20 +5,24 @@ use crate::config_file::IgnoredCompilerOptions;
 use crate::diagnostics::Diagnostics;
 use crate::emit;
 use crate::errors::get_error_class_name;
+use crate::flags;
+use crate::graph_util::graph_valid;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
+use deno_core::op_async;
+use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_graph;
 use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
 use serde::Deserialize;
@@ -29,8 +33,10 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_async(rt, "op_emit", op_emit);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![("op_emit", op_async(op_emit))])
+    .build()
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,7 +171,9 @@ async fn op_emit(
     args.import_map_path
   {
     let import_map_specifier = resolve_url_or_path(&import_map_str)
-      .context(format!("Bad URL (\"{}\") for import map.", import_map_str))?;
+      .with_context(|| {
+        format!("Bad URL (\"{}\") for import map.", import_map_str)
+      })?;
     let import_map = if let Some(value) = args.import_map {
       ImportMap::from_json(import_map_specifier.as_str(), &value.to_string())?
     } else {
@@ -212,16 +220,15 @@ async fn op_emit(
     )
     .await,
   );
+  let check = args.check.unwrap_or(true);
   // There are certain graph errors that we want to return as an error of an op,
   // versus something that gets returned as a diagnostic of the op, this is
   // handled here.
-  if let Err(err) = graph.valid() {
-    let err: AnyError = err.into();
+  if let Err(err) = graph_valid(&graph, check, true) {
     if get_error_class_name(&err) == "PermissionDenied" {
       return Err(err);
     }
   }
-  let check = args.check.unwrap_or(true);
   let debug = ps.flags.log_level == Some(log::Level::Debug);
   let tsc_emit = check && args.bundle.is_none();
   let (ts_config, maybe_ignored_options) = emit::get_ts_config(
@@ -230,47 +237,43 @@ async fn op_emit(
     args.compiler_options.as_ref(),
   )?;
   let (files, mut diagnostics, stats) = if check && args.bundle.is_none() {
-    let (diagnostics, stats) = if args.sources.is_none()
-      && emit::valid_emit(
-        graph.as_ref(),
-        cache.as_cacher(),
-        &ts_config,
-        ps.flags.reload,
-        &HashSet::default(),
-      ) {
-      log::debug!(
-        "cache is valid for \"{}\", skipping check/emit",
-        root_specifier
-      );
-      (Diagnostics::default(), emit::Stats::default())
-    } else {
-      let emit_result = emit::check_and_maybe_emit(
-        graph.clone(),
-        cache.as_mut_cacher(),
-        emit::CheckOptions {
-          debug,
-          emit_with_diagnostics: true,
-          maybe_config_specifier: None,
-          ts_config,
-        },
-      )?;
-      (emit_result.diagnostics, emit_result.stats)
-    };
+    let emit_result = emit::check_and_maybe_emit(
+      &graph.roots,
+      Arc::new(RwLock::new(graph.as_ref().into())),
+      cache.as_mut_cacher(),
+      emit::CheckOptions {
+        check: flags::CheckFlag::All,
+        debug,
+        emit_with_diagnostics: true,
+        maybe_config_specifier: None,
+        ts_config,
+        log_checks: false,
+        reload: ps.flags.reload || args.sources.is_some(),
+        // TODO(nayeemrmn): Determine reload exclusions.
+        reload_exclusions: Default::default(),
+      },
+    )?;
     let files = emit::to_file_map(graph.as_ref(), cache.as_mut_cacher());
-    (files, diagnostics, stats)
+    (files, emit_result.diagnostics, emit_result.stats)
   } else if let Some(bundle) = &args.bundle {
     let (diagnostics, stats) = if check {
       if ts_config.get_declaration() {
         return Err(custom_error("TypeError", "The bundle option is set, but the compiler option of `declaration` is true which is not currently supported."));
       }
       let emit_result = emit::check_and_maybe_emit(
-        graph.clone(),
+        &graph.roots,
+        Arc::new(RwLock::new(graph.as_ref().into())),
         cache.as_mut_cacher(),
         emit::CheckOptions {
+          check: flags::CheckFlag::All,
           debug,
           emit_with_diagnostics: true,
           maybe_config_specifier: None,
           ts_config: ts_config.clone(),
+          log_checks: false,
+          reload: ps.flags.reload || args.sources.is_some(),
+          // TODO(nayeemrmn): Determine reload exclusions.
+          reload_exclusions: Default::default(),
         },
       )?;
       (emit_result.diagnostics, emit_result.stats)
@@ -298,8 +301,9 @@ async fn op_emit(
       graph.as_ref(),
       cache.as_mut_cacher(),
       emit::EmitOptions {
-        reload: ps.flags.reload,
         ts_config,
+        reload: ps.flags.reload || args.sources.is_some(),
+        // TODO(nayeemrmn): Determine reload exclusions.
         reload_exclusions: HashSet::default(),
       },
     )?;

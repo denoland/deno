@@ -15,9 +15,11 @@ use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::FmtFlags;
+use crate::fs_util::specifier_to_file_path;
 use crate::fs_util::{collect_files, get_extension, is_supported_ext_fmt};
 use crate::text_encoding;
 use deno_ast::ParsedSource;
+use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
@@ -59,8 +61,8 @@ pub async fn format(
         .files
         .include
         .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
 
     if exclude_files.is_empty() {
@@ -68,8 +70,8 @@ pub async fn format(
         .files
         .exclude
         .iter()
-        .map(PathBuf::from)
-        .collect::<Vec<PathBuf>>();
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
     }
   }
 
@@ -86,35 +88,34 @@ pub async fn format(
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
 
-    let collect_files =
-      collect_files(&include_files, &exclude_files, is_supported_ext_fmt);
-
-    let (result, should_refmt) = match collect_files {
-      Ok(value) => {
-        if let Some(paths) = changed {
-          let refmt_files = value
-            .clone()
-            .into_iter()
-            .filter(|path| paths.contains(path))
-            .collect::<Vec<_>>();
-
-          let should_refmt = !refmt_files.is_empty();
-
-          if check {
-            (Ok((value, fmt_options.clone())), Some(should_refmt))
+    let result =
+      collect_files(&include_files, &exclude_files, is_supported_ext_fmt).map(
+        |files| {
+          let refmt_files = if let Some(paths) = changed {
+            if check {
+              files
+                .iter()
+                .any(|path| paths.contains(path))
+                .then(|| files)
+                .unwrap_or_else(|| [].to_vec())
+            } else {
+              files
+                .into_iter()
+                .filter(|path| paths.contains(path))
+                .collect::<Vec<_>>()
+            }
           } else {
-            (Ok((refmt_files, fmt_options.clone())), Some(should_refmt))
-          }
-        } else {
-          (Ok((value, fmt_options.clone())), None)
-        }
-      }
-      Err(e) => (Err(e), None),
-    };
+            files
+          };
+          (refmt_files, fmt_options.clone())
+        },
+      );
 
     let paths_to_watch = include_files.clone();
     async move {
-      if files_changed && matches!(should_refmt, Some(false)) {
+      if files_changed
+        && matches!(result, Ok((ref files, _)) if files.is_empty())
+      {
         ResolutionResult::Ignore
       } else {
         ResolutionResult::Restart {
@@ -209,7 +210,7 @@ fn format_markdown(
 /// Formats JSON and JSONC using the rules provided by .deno()
 /// of configuration builder of <https://github.com/dprint/dprint-plugin-json>.
 /// See <https://git.io/Jt4ht> for configuration.
-fn format_json(
+pub fn format_json(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<String, String> {
@@ -525,7 +526,8 @@ struct FileContents {
 }
 
 fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
-  let file_bytes = fs::read(&file_path)?;
+  let file_bytes = fs::read(&file_path)
+    .with_context(|| format!("Error reading {}", file_path.display()))?;
   let charset = text_encoding::detect_charset(&file_bytes);
   let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
   let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);

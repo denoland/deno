@@ -20,11 +20,13 @@ try {
 
 const dylib = Deno.dlopen(libPath, {
   "print_something": { parameters: [], result: "void" },
-  "print_buffer": { parameters: ["buffer", "usize"], result: "void" },
+  "print_buffer": { parameters: ["pointer", "usize"], result: "void" },
   "print_buffer2": {
-    parameters: ["buffer", "usize", "buffer", "usize"],
+    parameters: ["pointer", "usize", "pointer", "usize"],
     result: "void",
   },
+  "return_buffer": { parameters: [], result: "pointer" },
+  "is_null_ptr": { parameters: ["pointer"], result: "u8" },
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "add_i32": { parameters: ["i32", "i32"], result: "i32" },
   "add_u64": { parameters: ["u64", "u64"], result: "u64" },
@@ -33,10 +35,10 @@ const dylib = Deno.dlopen(libPath, {
   "add_isize": { parameters: ["isize", "isize"], result: "isize" },
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
-  "fill_buffer": { parameters: ["u8", "buffer", "usize"], result: "void" },
+  "fill_buffer": { parameters: ["u8", "pointer", "usize"], result: "void" },
   "sleep_blocking": { parameters: ["u64"], result: "void", nonblocking: true },
   "nonblocking_buffer": {
-    parameters: ["buffer", "usize"],
+    parameters: ["pointer", "usize"],
     result: "void",
     nonblocking: true,
   },
@@ -47,6 +49,31 @@ const buffer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 const buffer2 = new Uint8Array([9, 10]);
 dylib.symbols.print_buffer(buffer, buffer.length);
 dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
+const ptr = dylib.symbols.return_buffer();
+dylib.symbols.print_buffer(ptr, 8);
+const ptrView = new Deno.UnsafePointerView(ptr);
+const into = new Uint8Array(6);
+const into2 = new Uint8Array(3);
+const into2ptr = Deno.UnsafePointer.of(into2);
+const into2ptrView = new Deno.UnsafePointerView(into2ptr);
+const into3 = new Uint8Array(3);
+ptrView.copyInto(into);
+console.log([...into]);
+ptrView.copyInto(into2, 3);
+console.log([...into2]);
+into2ptrView.copyInto(into3);
+console.log([...into3]);
+const string = new Uint8Array([
+  ...new TextEncoder().encode("Hello from pointer!"),
+  0,
+]);
+const stringPtr = Deno.UnsafePointer.of(string);
+const stringPtrview = new Deno.UnsafePointerView(stringPtr);
+console.log(stringPtrview.getCString());
+console.log(stringPtrview.getCString(11));
+console.log(Boolean(dylib.symbols.is_null_ptr(ptr)));
+console.log(Boolean(dylib.symbols.is_null_ptr(null)));
+console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
 console.log(dylib.symbols.add_u32(123, 456));
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(123, 456));

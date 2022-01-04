@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::AsyncRefCell;
+use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpPair;
@@ -84,6 +85,12 @@ pub struct OpPacket {
   pub remote_addr: OpAddr,
 }
 
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TlsHandshakeInfo {
+  pub alpn_protocol: Option<ByteString>,
+}
+
 #[derive(Serialize)]
 pub struct IpAddr {
   pub hostname: String,
@@ -94,6 +101,15 @@ pub struct IpAddr {
 pub(crate) struct AcceptArgs {
   pub rid: ResourceId,
   pub transport: String,
+}
+
+pub(crate) fn accept_err(e: std::io::Error) -> AnyError {
+  // FIXME(bartlomieju): compatibility with current JS implementation
+  if let std::io::ErrorKind::Interrupted = e.kind() {
+    bad_resource("Listener has been closed")
+  } else {
+    e.into()
+  }
 }
 
 async fn accept_tcp(
@@ -112,15 +128,11 @@ async fn accept_tcp(
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let (tcp_stream, _socket_addr) =
-    listener.accept().try_or_cancel(cancel).await.map_err(|e| {
-      // FIXME(bartlomieju): compatibility with current JS implementation
-      if let std::io::ErrorKind::Interrupted = e.kind() {
-        bad_resource("Listener has been closed")
-      } else {
-        e.into()
-      }
-    })?;
+  let (tcp_stream, _socket_addr) = listener
+    .accept()
+    .try_or_cancel(cancel)
+    .await
+    .map_err(accept_err)?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
@@ -433,6 +445,8 @@ fn listen_udp(
 ) -> Result<(u32, SocketAddr), AnyError> {
   let std_socket = std::net::UdpSocket::bind(&addr)?;
   std_socket.set_nonblocking(true)?;
+  // Enable messages to be sent to the broadcast address (255.255.255.255) by default
+  std_socket.set_broadcast(true)?;
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
   let socket_resource = UdpSocketResource {

@@ -1,0 +1,38 @@
+{
+  "textDocument": {
+    "uri": "file:///a/a.ts"
+  },
+  "range": {
+    "start": {
+      "line": 0,
+      "character": 14
+    },
+    "end": {
+      "line": 0,
+      "character": 27
+    }
+  },
+  "context": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 14
+          },
+          "end": {
+            "line": 0,
+            "character": 27
+          }
+        },
+        "severity": 1,
+        "code": "no-assert-type",
+        "source": "deno",
+        "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+      }
+    ],
+    "only": [
+      "quickfix"
+    ]
+  }
+}

@@ -8,8 +8,8 @@
 
 use crate::error::bad_resource_id;
 use crate::error::not_supported;
-use crate::error::AnyError;
 use crate::ZeroCopyBuf;
+use anyhow::Error;
 use futures::Future;
 use std::any::type_name;
 use std::any::Any;
@@ -21,7 +21,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 /// Returned by resource read/write/shutdown methods
-pub type AsyncResult<T> = Pin<Box<dyn Future<Output = Result<T, AnyError>>>>;
+pub type AsyncResult<T> = Pin<Box<dyn Future<Output = Result<T, Error>>>>;
 
 /// All objects that can be store in the resource table should implement the
 /// `Resource` trait.
@@ -130,7 +130,7 @@ impl ResourceTable {
   /// Returns a reference counted pointer to the resource of type `T` with the
   /// given `rid`. If `rid` is not present or has a type different than `T`,
   /// this function returns `None`.
-  pub fn get<T: Resource>(&self, rid: ResourceId) -> Result<Rc<T>, AnyError> {
+  pub fn get<T: Resource>(&self, rid: ResourceId) -> Result<Rc<T>, Error> {
     self
       .index
       .get(&rid)
@@ -139,7 +139,7 @@ impl ResourceTable {
       .ok_or_else(bad_resource_id)
   }
 
-  pub fn get_any(&self, rid: ResourceId) -> Result<Rc<dyn Resource>, AnyError> {
+  pub fn get_any(&self, rid: ResourceId) -> Result<Rc<dyn Resource>, Error> {
     self
       .index
       .get(&rid)
@@ -151,10 +151,7 @@ impl ResourceTable {
   /// If a resource with the given `rid` exists but its type does not match `T`,
   /// it is not removed from the resource table. Note that the resource's
   /// `close()` method is *not* called.
-  pub fn take<T: Resource>(
-    &mut self,
-    rid: ResourceId,
-  ) -> Result<Rc<T>, AnyError> {
+  pub fn take<T: Resource>(&mut self, rid: ResourceId) -> Result<Rc<T>, Error> {
     let resource = self.get::<T>(rid)?;
     self.index.remove(&rid);
     Ok(resource)
@@ -165,7 +162,7 @@ impl ResourceTable {
   pub fn take_any(
     &mut self,
     rid: ResourceId,
-  ) -> Result<Rc<dyn Resource>, AnyError> {
+  ) -> Result<Rc<dyn Resource>, Error> {
     self.index.remove(&rid).ok_or_else(bad_resource_id)
   }
 
@@ -175,7 +172,7 @@ impl ResourceTable {
   /// counted, therefore pending ops are not automatically cancelled. A resource
   /// may implement the `close()` method to perform clean-ups such as canceling
   /// ops.
-  pub fn close(&mut self, rid: ResourceId) -> Result<(), AnyError> {
+  pub fn close(&mut self, rid: ResourceId) -> Result<(), Error> {
     self
       .index
       .remove(&rid)
