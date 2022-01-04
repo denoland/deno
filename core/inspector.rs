@@ -230,6 +230,7 @@ impl JsRuntimeInspector {
           let session =
             InspectorSession::new(sessions.v8_inspector.clone(), session_proxy);
           sessions.established.push(session);
+          break;
         }
 
         // Poll established sessions.
