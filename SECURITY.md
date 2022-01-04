@@ -2,10 +2,10 @@
 
 Thank you for taking the time to investigate the security of Deno. The security
 of Deno is our topmost priority. We appreciate investigative work into system
-security by well-intentioned, ethical security researchers. If you
-discover a vulnerability, however small, we would like to know about it to address it with appropriate measures as quickly as possible. This document
-outlines the method we use to work with the security research community to
-address runtime security.
+security by well-intentioned, ethical security researchers. If you discover a
+vulnerability, however small, we would like to know about it to address it with
+appropriate measures as quickly as possible. This document outlines the method
+we use to work with the security research community to address runtime security.
 
 ## Reporting a vulnerability
 
@@ -40,8 +40,8 @@ quickly address the issue.
 The following paragraphs outline the rough security model for Deno. The model
 may change slightly over time, but in general the model is as follows:
 
-- All JavaScript run in Deno is considered untrusted, so permissions are thus never
-  enforced in JavaScript.
+- All JavaScript run in Deno is considered untrusted, so permissions are thus
+  never enforced in JavaScript.
 - All JavaScript run in a single Deno process is considered to be part of the
   same program and is not isolated from itself. This means that Deno does not
   guarantee that values set by one JS module will be inaccessible to another, or
@@ -51,10 +51,10 @@ may change slightly over time, but in general the model is as follows:
 - Users should not be able to self-escalate their permissions without explicit
   consent.
 - I/O required to build an initial static module graph should always follow the
-  permissions of its parent. If there is no parent, all permissions are
-  granted. As an example, this means that the initial static module graph that
-  is constructed when doing `deno run`, does not have any permission
-  restrictions. However, the module graph constructed as the result of loading a
-  web worker or dynamic import will be restricted to the permissions of the
-  caller (the main worker most likely).
+  permissions of its parent. If there is no parent, all permissions are granted.
+  As an example, this means that the initial static module graph that is
+  constructed when doing `deno run`, does not have any permission restrictions.
+  However, the module graph constructed as the result of loading a web worker or
+  dynamic import will be restricted to the permissions of the caller (the main
+  worker most likely).
 - We consider the V8 VM to be a secure sandbox.
