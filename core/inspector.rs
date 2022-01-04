@@ -506,7 +506,7 @@ impl task::ArcWake for InspectorWaker {
 /// eg. Websocket or another set of channels.
 struct InspectorSession {
   v8_channel: v8::inspector::ChannelBase,
-  v8_session: NonNull<v8::inspector::V8InspectorSession>,
+  v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
   proxy: InspectorSessionProxy,
 }
 
@@ -531,7 +531,7 @@ impl InspectorSession {
 
       Self {
         v8_channel,
-        v8_session: NonNull::new(v8::UniqueRef::into_raw(v8_session)).unwrap(),
+        v8_session,
         proxy: session_proxy,
       }
     })
@@ -543,10 +543,9 @@ impl InspectorSession {
     msg: String,
   ) {
     let msg = v8::inspector::StringView::from(msg.as_bytes());
-    let v8_session = unsafe {
-      &mut *(v8_session_ptr as *mut v8::inspector::V8InspectorSession)
+    unsafe {
+      (*v8_session_ptr).dispatch_protocol_message(msg);
     };
-    v8_session.dispatch_protocol_message(msg);
   }
 
   fn send_message(
@@ -565,10 +564,7 @@ impl InspectorSession {
     let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
     let detail = v8::inspector::StringView::empty();
 
-    let v8_session = unsafe {
-      &mut *(self.v8_session.as_ptr() as *mut v8::inspector::V8InspectorSession)
-    };
-    v8_session.schedule_pause_on_next_statement(reason, detail);
+    (*self.v8_session).schedule_pause_on_next_statement(reason, detail);
   }
 }
 
@@ -609,7 +605,7 @@ impl Stream for InspectorSession {
     let inner = self.get_mut();
     if let Poll::Ready(maybe_msg) = inner.proxy.rx.poll_next_unpin(cx) {
       if let Some(msg) = maybe_msg {
-        return Poll::Ready(Some((inner.v8_session.as_ptr(), msg)));
+        return Poll::Ready(Some((&mut *inner.v8_session, msg)));
       } else {
         return Poll::Ready(None);
       }
