@@ -31,8 +31,8 @@ function stringify(...args: unknown[]): string {
 }
 
 interface Css {
-  backgroundColor: [number, number, number] | null;
-  color: [number, number, number] | null;
+  backgroundColor: [number, number, number] | string | null;
+  color: [number, number, number] | string | null;
   fontWeight: string | null;
   fontStyle: string | null;
   textDecorationColor: [number, number, number] | null;
@@ -1010,9 +1010,9 @@ Deno.test(function consoleParseCssColor() {
 Deno.test(function consoleParseCss() {
   assertEquals(
     parseCss("background-color: red"),
-    { ...DEFAULT_CSS, backgroundColor: [255, 0, 0] },
+    { ...DEFAULT_CSS, backgroundColor: "red" },
   );
-  assertEquals(parseCss("color: blue"), { ...DEFAULT_CSS, color: [0, 0, 255] });
+  assertEquals(parseCss("color: blue"), { ...DEFAULT_CSS, color: "blue" });
   assertEquals(
     parseCss("font-weight: bold"),
     { ...DEFAULT_CSS, fontWeight: "bold" },
@@ -1047,21 +1047,29 @@ Deno.test(function consoleParseCss() {
 
   assertEquals(
     parseCss("color:red;font-weight:bold;"),
-    { ...DEFAULT_CSS, color: [255, 0, 0], fontWeight: "bold" },
+    { ...DEFAULT_CSS, color: "red", fontWeight: "bold" },
   );
   assertEquals(
     parseCss(
       " \t\ncolor \t\n: \t\nred \t\n; \t\nfont-weight \t\n: \t\nbold \t\n; \t\n",
     ),
-    { ...DEFAULT_CSS, color: [255, 0, 0], fontWeight: "bold" },
+    { ...DEFAULT_CSS, color: "red", fontWeight: "bold" },
   );
   assertEquals(
     parseCss("color: red; font-weight: bold, font-style: italic"),
-    { ...DEFAULT_CSS, color: [255, 0, 0] },
+    { ...DEFAULT_CSS, color: "red" },
   );
 });
 
 Deno.test(function consoleCssToAnsi() {
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: "black" }),
+    "_[40m",
+  );
+  assertEquals(
+    cssToAnsiEsc({ ...DEFAULT_CSS, color: "blue" }),
+    "_[34m",
+  );
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, backgroundColor: [200, 201, 202] }),
     "_[48;2;200;201;202m",

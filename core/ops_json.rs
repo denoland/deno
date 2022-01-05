@@ -123,8 +123,6 @@ mod tests {
 
   #[tokio::test]
   async fn op_async_stack_trace() {
-    let mut runtime = crate::JsRuntime::new(Default::default());
-
     async fn op_throw(
       _state: Rc<RefCell<OpState>>,
       msg: Option<String>,
@@ -134,8 +132,15 @@ mod tests {
       Err(crate::error::generic_error("foo"))
     }
 
-    runtime.register_op("op_throw", op_async(op_throw));
-    runtime.sync_ops_cache();
+    let ext = crate::Extension::builder()
+      .ops(vec![("op_throw", op_async(op_throw))])
+      .build();
+
+    let mut runtime = crate::JsRuntime::new(crate::RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    });
+
     runtime
       .execute_script(
         "<init>",

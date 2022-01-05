@@ -249,7 +249,7 @@ pub async fn run(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: metadata.unstable,
     },
-    extensions: vec![],
+    extensions: ops::cli_exts(ps.clone(), true),
     user_agent: version::get_user_agent(),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
@@ -272,27 +272,10 @@ pub async fn run(
     permissions,
     options,
   );
-  // TODO(@AaronO): move to a JsRuntime Extension passed into options
-  {
-    let js_runtime = &mut worker.js_runtime;
-    js_runtime
-      .op_state()
-      .borrow_mut()
-      .put::<ProcState>(ps.clone());
-    ops::errors::init(js_runtime);
-    ops::runtime_compiler::init(js_runtime);
-    js_runtime.sync_ops_cache();
-  }
   worker.execute_main_module(&main_module).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
   worker.run_event_loop(true).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
   std::process::exit(0);
 }
 
