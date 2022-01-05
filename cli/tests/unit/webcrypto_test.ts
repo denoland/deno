@@ -1418,6 +1418,34 @@ Deno.test(async function testImportEcSpkiPkcs8() {
   }
 });
 
+Deno.test(async function testAesGcmEncrypt() {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(16),
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+
+  // deno-fmt-ignore
+  const iv = new Uint8Array([0,1,2,3,4,5,6,7,8,9,10,11]);
+  const data = new Uint8Array([1, 2, 3]);
+
+  const cipherText = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv, additionalData: new Uint8Array() },
+    key,
+    data,
+  );
+
+  assert(cipherText instanceof ArrayBuffer);
+  assertEquals(cipherText.byteLength, 19);
+  assertEquals(
+    new Uint8Array(cipherText),
+    // deno-fmt-ignore
+    new Uint8Array([50,223,112,178,166,156,255,110,125,138,95,141,82,47,14,164,134,247,22]),
+  );
+});
+
 async function roundTripSecretJwk(
   jwk: JsonWebKey,
   algId: AlgorithmIdentifier | HmacImportParams,

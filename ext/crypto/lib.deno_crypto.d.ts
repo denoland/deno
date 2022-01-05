@@ -62,6 +62,12 @@ interface AesCbcParams extends Algorithm {
   iv: BufferSource;
 }
 
+interface AesGcmParams extends Algorithm {
+  iv: BufferSource;
+  additionalData?: BufferSource;
+  tagLength?: number;
+}
+
 interface AesCtrParams extends Algorithm {
   counter: BufferSource;
   length: number;
@@ -248,6 +254,7 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | RsaOaepParams
       | AesCbcParams
+      | AesGcmParams
       | AesCtrParams,
     key: CryptoKey,
     data: BufferSource,

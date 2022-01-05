@@ -1,7 +1,9 @@
 // Copyright 2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::generic_error;
 use deno_core::error::range_error;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op_async;
@@ -79,7 +81,17 @@ impl DynamicLibraryResource {
     symbol: String,
     foreign_fn: ForeignFunction,
   ) -> Result<(), AnyError> {
-    let fn_ptr = unsafe { self.lib.symbol::<*const c_void>(&symbol) }?;
+    // By default, Err returned by this function does not tell
+    // which symbol wasn't exported. So we'll modify the error
+    // message to include the name of symbol.
+    let fn_ptr = match unsafe { self.lib.symbol::<*const c_void>(&symbol) } {
+      Ok(value) => Ok(value),
+      Err(err) => Err(generic_error(format!(
+        "Failed to register symbol {}: {}",
+        symbol,
+        err.to_string()
+      ))),
+    }?;
     let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
     let cif = libffi::middle::Cif::new(
       foreign_fn
@@ -194,44 +206,44 @@ union NativeValue {
 }
 
 impl NativeValue {
-  fn new(native_type: NativeType, value: Value) -> Self {
-    match native_type {
+  fn new(native_type: NativeType, value: Value) -> Result<Self, AnyError> {
+    let value = match native_type {
       NativeType::Void => Self { void_value: () },
       NativeType::U8 => Self {
-        u8_value: value_as_uint::<u8>(value),
+        u8_value: value_as_uint::<u8>(value)?,
       },
       NativeType::I8 => Self {
-        i8_value: value_as_int::<i8>(value),
+        i8_value: value_as_int::<i8>(value)?,
       },
       NativeType::U16 => Self {
-        u16_value: value_as_uint::<u16>(value),
+        u16_value: value_as_uint::<u16>(value)?,
       },
       NativeType::I16 => Self {
-        i16_value: value_as_int::<i16>(value),
+        i16_value: value_as_int::<i16>(value)?,
       },
       NativeType::U32 => Self {
-        u32_value: value_as_uint::<u32>(value),
+        u32_value: value_as_uint::<u32>(value)?,
       },
       NativeType::I32 => Self {
-        i32_value: value_as_int::<i32>(value),
+        i32_value: value_as_int::<i32>(value)?,
       },
       NativeType::U64 => Self {
-        u64_value: value_as_uint::<u64>(value),
+        u64_value: value_as_uint::<u64>(value)?,
       },
       NativeType::I64 => Self {
-        i64_value: value_as_int::<i64>(value),
+        i64_value: value_as_int::<i64>(value)?,
       },
       NativeType::USize => Self {
-        usize_value: value_as_uint::<usize>(value),
+        usize_value: value_as_uint::<usize>(value)?,
       },
       NativeType::ISize => Self {
-        isize_value: value_as_int::<isize>(value),
+        isize_value: value_as_int::<isize>(value)?,
       },
       NativeType::F32 => Self {
-        f32_value: value_as_f32(value),
+        f32_value: value_as_f32(value)?,
       },
       NativeType::F64 => Self {
-        f64_value: value_as_f64(value),
+        f64_value: value_as_f64(value)?,
       },
       NativeType::Pointer => {
         if value.is_null() {
@@ -240,14 +252,13 @@ impl NativeValue {
           }
         } else {
           Self {
-            pointer: u64::from(
-              serde_json::from_value::<U32x2>(value)
-              .expect("Expected ffi arg value to be a tuple of the low and high bits of a pointer address")
-            ) as *const u8,
+            pointer: u64::from(serde_json::from_value::<U32x2>(value)?)
+              as *const u8,
           }
         }
       }
-    }
+    };
+    Ok(value)
   }
 
   fn buffer(ptr: *const u8) -> Self {
@@ -274,28 +285,38 @@ impl NativeValue {
   }
 }
 
-fn value_as_uint<T: TryFrom<u64>>(value: Value) -> T {
-  value
-    .as_u64()
-    .and_then(|v| T::try_from(v).ok())
-    .expect("Expected ffi arg value to be an unsigned integer")
+fn value_as_uint<T: TryFrom<u64>>(value: Value) -> Result<T, AnyError> {
+  match value.as_u64().and_then(|v| T::try_from(v).ok()) {
+    Some(value) => Ok(value),
+    None => Err(type_error(format!(
+      "Expected FFI argument to be an unsigned integer, but got {:?}",
+      value
+    ))),
+  }
 }
 
-fn value_as_int<T: TryFrom<i64>>(value: Value) -> T {
-  value
-    .as_i64()
-    .and_then(|v| T::try_from(v).ok())
-    .expect("Expected ffi arg value to be a signed integer")
+fn value_as_int<T: TryFrom<i64>>(value: Value) -> Result<T, AnyError> {
+  match value.as_i64().and_then(|v| T::try_from(v).ok()) {
+    Some(value) => Ok(value),
+    None => Err(type_error(format!(
+      "Expected FFI argument to be a signed integer, but got {:?}",
+      value
+    ))),
+  }
 }
 
-fn value_as_f32(value: Value) -> f32 {
-  value_as_f64(value) as f32
+fn value_as_f32(value: Value) -> Result<f32, AnyError> {
+  Ok(value_as_f64(value)? as f32)
 }
 
-fn value_as_f64(value: Value) -> f64 {
-  value
-    .as_f64()
-    .expect("Expected ffi arg value to be a float")
+fn value_as_f64(value: Value) -> Result<f64, AnyError> {
+  match value.as_f64() {
+    Some(value) => Ok(value),
+    None => Err(type_error(format!(
+      "Expected FFI argument to be a double, but got {:?}",
+      value
+    ))),
+  }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -450,22 +471,35 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     .map(|buffer| buffer.as_ref().map(|buffer| &buffer[..]))
     .collect();
 
-  let native_values = symbol
+  let mut native_values: Vec<NativeValue> = vec![];
+
+  for (&native_type, value) in symbol
     .parameter_types
     .iter()
     .zip(args.parameters.into_iter())
-    .map(|(&native_type, value)| {
-      if let NativeType::Pointer = native_type {
-        if let Some(idx) = value.as_u64() {
-          if let Some(&Some(buf)) = buffers.get(idx as usize) {
-            return NativeValue::buffer(buf.as_ptr());
-          }
+  {
+    match native_type {
+      NativeType::Pointer => match value.as_u64() {
+        Some(idx) => {
+          let buf = buffers
+            .get(idx as usize)
+            .ok_or_else(|| {
+              generic_error(format!("No buffer present at index {}", idx))
+            })?
+            .unwrap();
+          native_values.push(NativeValue::buffer(buf.as_ptr()));
         }
+        _ => {
+          let value = NativeValue::new(native_type, value)?;
+          native_values.push(value);
+        }
+      },
+      _ => {
+        let value = NativeValue::new(native_type, value)?;
+        native_values.push(value);
       }
-
-      NativeValue::new(native_type, value)
-    })
-    .collect::<Vec<_>>();
+    }
+  }
 
   let call_args = symbol
     .parameter_types
