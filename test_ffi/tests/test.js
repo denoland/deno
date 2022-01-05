@@ -1,6 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
+import { assertThrows } from "../../test_util/std/testing/asserts.ts";
+
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
 const [libPrefix, libSuffix] = {
   darwin: ["lib", "dylib"],
@@ -12,24 +14,22 @@ const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 const resourcesPre = Deno.resources();
 
 // dlopen shouldn't panic
-try {
+assertThrows(() => {
   Deno.dlopen("cli/src/main.rs", {});
-} catch (_) {
-  console.log("dlopen doesn't panic");
-}
+});
 
-try {
-  Deno.dlopen(libPath, {
-    non_existent_symbol: {
-      parameters: [],
-      result: "void",
-    },
-  });
-} catch (e) {
-  console.log(
-    `error includes symbol name? ${e.message.includes("non_existent_symbol")}`,
-  );
-}
+assertThrows(
+  () => {
+    Deno.dlopen(libPath, {
+      non_existent_symbol: {
+        parameters: [],
+        result: "void",
+      },
+    });
+  },
+  Error,
+  "Failed to register non_existent_symbol",
+);
 
 const dylib = Deno.dlopen(libPath, {
   "print_something": { parameters: [], result: "void" },
@@ -88,16 +88,12 @@ console.log(Boolean(dylib.symbols.is_null_ptr(ptr)));
 console.log(Boolean(dylib.symbols.is_null_ptr(null)));
 console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
 console.log(dylib.symbols.add_u32(123, 456));
-try {
+assertThrows(() => {
   dylib.symbols.add_u32(-1, 100);
-} catch (_) {
-  console.log("passing negative integer in u32 argument doesn't panic");
-}
-try {
+});
+assertThrows(() => {
   dylib.symbols.add_u32(null, 100);
-} catch (_) {
-  console.log("passing null in u32 argument doesn't panic");
-}
+});
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(123, 456));
 console.log(dylib.symbols.add_i64(123, 456));
