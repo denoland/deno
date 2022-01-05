@@ -3481,7 +3481,7 @@
             "OperationError",
           );
         }
-        
+
         // 2.
         if (
           normalizedAlgorithm.length == 0 || normalizedAlgorithm.length > 128
@@ -3503,6 +3503,7 @@
 
         // 4.
         return cipherText.buffer;
+      }
       case "AES-CTR": {
         normalizedAlgorithm.counter = copyBuffer(normalizedAlgorithm.counter);
 

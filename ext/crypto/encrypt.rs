@@ -3,6 +3,9 @@ use std::rc::Rc;
 
 use crate::shared::*;
 
+use aes::cipher::NewCipher;
+use aes::BlockEncrypt;
+use aes::NewBlockCipher;
 use aes_gcm::aead::generic_array::typenum::U12;
 use aes_gcm::aes::Aes192;
 use aes_gcm::AeadInPlace;
@@ -10,9 +13,6 @@ use aes_gcm::Aes128Gcm;
 use aes_gcm::Aes256Gcm;
 use aes_gcm::NewAead;
 use aes_gcm::Nonce;
-use aes::cipher::NewCipher;
-use aes::BlockEncrypt;
-use aes::NewBlockCipher;
 use ctr::Ctr;
 
 use block_modes::BlockMode;
