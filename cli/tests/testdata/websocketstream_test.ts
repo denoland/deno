@@ -3,6 +3,7 @@
 import {
   assert,
   assertEquals,
+  assertNotEquals,
   assertRejects,
   assertThrows,
   unreachable,
@@ -136,4 +137,60 @@ Deno.test("aborting immediately with a primitive as reason throws that primitive
     () => unreachable(),
     (e) => assertEquals(e, "Some string"),
   );
+});
+
+Deno.test("headers", async () => {
+  const listener = Deno.listen({ port: 4501 });
+  const promise = (async () => {
+    const httpConn = Deno.serveHttp(await listener.accept());
+    const { request, respondWith } = (await httpConn.nextRequest())!;
+    assertEquals(request.headers.get("x-some-header"), "foo");
+    const {
+      response,
+      socket,
+    } = Deno.upgradeWebSocket(request);
+    socket.onopen = () => socket.close();
+    await respondWith(response);
+  })();
+
+  const ws = new WebSocketStream("ws://localhost:4501", {
+    headers: [["x-some-header", "foo"]],
+  });
+  await promise;
+  await ws.closed;
+  listener.close();
+});
+
+Deno.test("forbidden headers", async () => {
+  const forbiddenHeaders = [
+    "sec-websocket-accept",
+    "sec-websocket-extensions",
+    "sec-websocket-key",
+    "sec-websocket-protocol",
+    "sec-websocket-version",
+    "upgrade",
+    "connection",
+  ];
+
+  const listener = Deno.listen({ port: 4501 });
+  const promise = (async () => {
+    const httpConn = Deno.serveHttp(await listener.accept());
+    const { request, respondWith } = (await httpConn.nextRequest())!;
+    for (const header of request.headers.keys()) {
+      assertNotEquals(header, "foo");
+    }
+    const {
+      response,
+      socket,
+    } = Deno.upgradeWebSocket(request);
+    socket.onopen = () => socket.close();
+    await respondWith(response);
+  })();
+
+  const ws = new WebSocketStream("ws://localhost:4501", {
+    headers: forbiddenHeaders.map((header) => [header, "foo"]),
+  });
+  await promise;
+  await ws.closed;
+  listener.close();
 });
