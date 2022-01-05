@@ -50,7 +50,10 @@ impl Fold for DownlevelImportsFolder {
             ImportSpecifier::Named(specifier) => {
               Some(match specifier.imported.as_ref() {
                 Some(name) => create_key_value(
-                  name.sym.to_string(),
+                  match name {
+                    ModuleExportName::Ident(ident) => ident.sym.to_string(),
+                    ModuleExportName::Str(str) => str.value.to_string(),
+                  },
                   specifier.local.sym.to_string(),
                 ),
                 None => create_assignment(specifier.local.sym.to_string()),
@@ -200,10 +203,12 @@ fn create_ident(name: String) -> swc_ast::Ident {
 
 fn create_key_value(key: String, value: String) -> swc_ast::ObjectPatProp {
   swc_ast::ObjectPatProp::KeyValue(swc_ast::KeyValuePatProp {
-    key: swc_ast::PropName::Ident(swc_ast::Ident {
+    // use a string literal because it will work in more scenarios than an identifier
+    key: swc_ast::PropName::Str(swc_ast::Str {
       span: DUMMY_SP,
-      sym: key.into(),
-      optional: false,
+      value: key.into(),
+      has_escape: false,
+      kind: swc_ast::StrKind::Synthesized,
     }),
     value: Box::new(swc_ast::Pat::Ident(swc_ast::BindingIdent {
       id: swc_ast::Ident {
@@ -320,7 +325,7 @@ mod test {
     test_transform(
       DownlevelImportsFolder,
       r#"import mod from "./mod.ts";"#,
-      r#"const { default: mod  } = await import("./mod.ts");"#,
+      r#"const { "default": mod  } = await import("./mod.ts");"#,
     );
   }
 
@@ -341,7 +346,7 @@ mod test {
     test_transform(
       DownlevelImportsFolder,
       r#"import { A as LocalA, B, C as LocalC  } from "./mod.ts";"#,
-      r#"const { A: LocalA , B , C: LocalC  } = await import("./mod.ts");"#,
+      r#"const { "A": LocalA , B , "C": LocalC  } = await import("./mod.ts");"#,
     );
   }
 
@@ -359,13 +364,13 @@ mod test {
     test_transform(
       DownlevelImportsFolder,
       r#"import myDefault, { A, B as LocalB } from "./mod.ts";"#,
-      r#"const { default: myDefault , A , B: LocalB  } = await import("./mod.ts");"#,
+      r#"const { "default": myDefault , A , "B": LocalB  } = await import("./mod.ts");"#,
     );
 
     test_transform(
       DownlevelImportsFolder,
       r#"import myDefault, * as mod from "./mod.ts";"#,
-      r#"const { default: myDefault  } = await import("./mod.ts"), mod = await import("./mod.ts");"#,
+      r#"const { "default": myDefault  } = await import("./mod.ts"), mod = await import("./mod.ts");"#,
     );
   }
 
@@ -374,7 +379,7 @@ mod test {
     test_transform(
       DownlevelImportsFolder,
       r#"import data from "./mod.json" assert { type: "json" };"#,
-      "const { default: data  } = await import(\"./mod.json\", {\n    assert: {\n        type: \"json\"\n    }\n});",
+      "const { \"default\": data  } = await import(\"./mod.json\", {\n    assert: {\n        type: \"json\"\n    }\n});",
     );
   }
 
@@ -433,7 +438,7 @@ mod test {
     test_transform(
       StripExportsFolder,
       "export default function test() {}",
-      "function test() {\n}",
+      "function test() {}",
     );
   }
 
@@ -455,7 +460,7 @@ mod test {
     test_transform(
       StripExportsFolder,
       "export function test() {}",
-      "function test() {\n}",
+      "function test() {}",
     );
 
     test_transform(StripExportsFolder, "export enum Test {}", "enum Test {\n}");
