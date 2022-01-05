@@ -37,9 +37,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "aes_kw"
-version = "0.1.0"
-source = "git+https://github.com/SeanWykes/key-wraps.git#f6dc2b4ab50e37cf135660f3c0f4f812437718b7"
+name = "aes-kw"
+version = "0.0.0"
+source = "git+https://github.com/RustCrypto/key-wraps.git#686be7df08239e1c12adec5e60884b5fd32f23d2"
 dependencies = [
  "aes",
  "byteorder",
@@ -802,7 +802,7 @@ name = "deno_crypto"
 version = "0.44.0"
 dependencies = [
  "aes",
- "aes_kw",
+ "aes-kw",
  "base64 0.13.0",
  "block-modes",
  "ctr",
