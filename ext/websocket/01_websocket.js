@@ -487,8 +487,8 @@
             });
             this.dispatchEvent(event);
             core.tryClose(this[_rid]);
-          }, this[_idleTimeoutDuration] / 2);
-        }, this[_idleTimeoutDuration] / 2);
+          }, (this[_idleTimeoutDuration] / 2) * 1000);
+        }, (this[_idleTimeoutDuration] / 2) * 1000);
       }
     }
   }
