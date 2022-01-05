@@ -181,8 +181,14 @@ fn op_signal_bind(
 ) -> Result<ResourceId, AnyError> {
   super::check_unstable(state, "Deno.signal");
   let signo = signal_str_to_int(&sig)?;
+  if signal_hook_registry::FORBIDDEN.contains(&signo) {
+    return Err(type_error(format!(
+      "Binding to signal '{}' is not allowed",
+      sig
+    )));
+  }
   let resource = SignalStreamResource {
-    signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo)).unwrap()),
+    signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo))?),
     cancel: Default::default(),
   };
   let rid = state.resource_table.add(resource);

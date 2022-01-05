@@ -517,7 +517,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         env:
-          WPT_FYI_USER: ${{ secrets.WPT_FYI_USER }}
+          WPT_FYI_USER: deno
           WPT_FYI_PW: ${{ secrets.WPT_FYI_PW }}
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
         run: |

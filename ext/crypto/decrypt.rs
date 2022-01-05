@@ -2,8 +2,18 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::shared::*;
+use aes::BlockEncrypt;
+use aes::NewBlockCipher;
 use block_modes::BlockMode;
+use ctr::cipher::NewCipher;
+use ctr::cipher::StreamCipher;
+use ctr::flavors::Ctr128BE;
+use ctr::flavors::Ctr32BE;
+use ctr::flavors::Ctr64BE;
+use ctr::flavors::CtrFlavor;
+use ctr::Ctr;
 use deno_core::error::custom_error;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -39,6 +49,13 @@ pub enum DecryptAlgorithm {
     iv: Vec<u8>,
     length: usize,
   },
+  #[serde(rename = "AES-CTR", rename_all = "camelCase")]
+  AesCtr {
+    #[serde(with = "serde_bytes")]
+    counter: Vec<u8>,
+    ctr_length: usize,
+    key_length: usize,
+  },
 }
 
 pub async fn op_crypto_decrypt(
@@ -54,6 +71,11 @@ pub async fn op_crypto_decrypt(
     DecryptAlgorithm::AesCbc { iv, length } => {
       decrypt_aes_cbc(key, length, iv, &data)
     }
+    DecryptAlgorithm::AesCtr {
+      counter,
+      ctr_length,
+      key_length,
+    } => decrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
   };
   let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
@@ -152,4 +174,57 @@ fn decrypt_aes_cbc(
 
   // 6.
   Ok(plaintext)
+}
+
+fn decrypt_aes_ctr_gen<B, F>(
+  key: &[u8],
+  counter: &[u8],
+  data: &[u8],
+) -> Result<Vec<u8>, AnyError>
+where
+  B: BlockEncrypt + NewBlockCipher,
+  F: CtrFlavor<B::BlockSize>,
+{
+  let mut cipher = Ctr::<B, F>::new(key.into(), counter.into());
+
+  let mut plaintext = data.to_vec();
+  cipher
+    .try_apply_keystream(&mut plaintext)
+    .map_err(|_| operation_error("tried to decrypt too much data"))?;
+
+  Ok(plaintext)
+}
+
+fn decrypt_aes_ctr(
+  key: RawKeyData,
+  key_length: usize,
+  counter: &[u8],
+  ctr_length: usize,
+  data: &[u8],
+) -> Result<Vec<u8>, deno_core::anyhow::Error> {
+  let key = key.as_secret_key()?;
+
+  match ctr_length {
+    32 => match key_length {
+      128 => decrypt_aes_ctr_gen::<aes::Aes128, Ctr32BE>(key, counter, data),
+      192 => decrypt_aes_ctr_gen::<aes::Aes192, Ctr32BE>(key, counter, data),
+      256 => decrypt_aes_ctr_gen::<aes::Aes256, Ctr32BE>(key, counter, data),
+      _ => Err(type_error("invalid length")),
+    },
+    64 => match key_length {
+      128 => decrypt_aes_ctr_gen::<aes::Aes128, Ctr64BE>(key, counter, data),
+      192 => decrypt_aes_ctr_gen::<aes::Aes192, Ctr64BE>(key, counter, data),
+      256 => decrypt_aes_ctr_gen::<aes::Aes256, Ctr64BE>(key, counter, data),
+      _ => Err(type_error("invalid length")),
+    },
+    128 => match key_length {
+      128 => decrypt_aes_ctr_gen::<aes::Aes128, Ctr128BE>(key, counter, data),
+      192 => decrypt_aes_ctr_gen::<aes::Aes192, Ctr128BE>(key, counter, data),
+      256 => decrypt_aes_ctr_gen::<aes::Aes256, Ctr128BE>(key, counter, data),
+      _ => Err(type_error("invalid length")),
+    },
+    _ => Err(type_error(
+      "invalid counter length. Currently supported 32/64/128 bits",
+    )),
+  }
 }

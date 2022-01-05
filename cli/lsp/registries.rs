@@ -112,7 +112,7 @@ fn get_completor_type(
         if let StringOrNumber::String(name) = &k.name {
           let value = match_result
             .get(name)
-            .map(|s| s.to_string(Some(k)))
+            .map(|s| s.to_string(Some(k), false))
             .unwrap_or_default();
           len += value.chars().count();
           if offset <= len {
@@ -152,6 +152,31 @@ fn get_data(
     .map(|specifier| json!({ "documentation": specifier }))
 }
 
+/// Generate a data value for a completion item that will instruct the client to
+/// resolve the completion item to obtain further information, in this case, the
+/// details/documentation endpoint for the item if it exists in the registry
+/// configuration when there is a match result that should be interpolated
+fn get_data_with_match(
+  registry: &RegistryConfiguration,
+  base: &ModuleSpecifier,
+  tokens: &[Token],
+  match_result: &MatchResult,
+  variable: &Key,
+  value: &str,
+) -> Option<Value> {
+  let url = registry.get_documentation_url_for_key(variable)?;
+  get_endpoint_with_match(
+    variable,
+    url,
+    base,
+    tokens,
+    match_result,
+    Some(value),
+  )
+  .ok()
+  .map(|specifier| json!({ "documentation": specifier }))
+}
+
 /// Convert a single variable templated string into a fully qualified URL which
 /// can be fetched to provide additional data.
 fn get_endpoint(
@@ -188,11 +213,12 @@ fn get_endpoint_with_match(
         Token::Key(k) if k.name == *key => Some(k),
         _ => None,
       });
-      url = url.replace(&format!("${{{}}}", name), &value.to_string(maybe_key));
+      url = url
+        .replace(&format!("${{{}}}", name), &value.to_string(maybe_key, true));
       url = url.replace(
         &format!("${{{{{}}}}}", name),
         &percent_encoding::percent_encode(
-          value.to_string(maybe_key).as_bytes(),
+          value.to_string(maybe_key, true).as_bytes(),
           COMPONENT,
         )
         .to_string(),
@@ -626,12 +652,17 @@ impl ModuleRegistry {
                           is_incomplete = true;
                         }
                         for (idx, item) in items.into_iter().enumerate() {
-                          let label = if let Some(p) = &prefix {
+                          let mut label = if let Some(p) = &prefix {
                             format!("{}{}", p, item)
                           } else {
                             item.clone()
                           };
-                          let kind = if key.name == last_key_name {
+                          if label.ends_with('/') {
+                            label.pop();
+                          }
+                          let kind = if key.name == last_key_name
+                            && !item.ends_with('/')
+                          {
                             Some(lsp::CompletionItemKind::FILE)
                           } else {
                             Some(lsp::CompletionItemKind::FOLDER)
@@ -641,8 +672,11 @@ impl ModuleRegistry {
                             key.name.clone(),
                             StringOrVec::from_str(&item, &key),
                           );
-                          let path =
+                          let mut path =
                             compiler.to_path(&params).unwrap_or_default();
+                          if path.ends_with('/') {
+                            path.pop();
+                          }
                           let item_specifier = base.join(&path).ok()?;
                           let full_text = item_specifier.as_str();
                           let text_edit = Some(lsp::CompletionTextEdit::Edit(
@@ -652,6 +686,7 @@ impl ModuleRegistry {
                             },
                           ));
                           let command = if key.name == last_key_name
+                            && !item.ends_with('/')
                             && !specifier_exists(&item_specifier)
                           {
                             Some(lsp::Command {
@@ -667,8 +702,14 @@ impl ModuleRegistry {
                           let sort_text = Some(format!("{:0>10}", idx + 1));
                           let preselect =
                             get_preselect(item.clone(), preselect.clone());
-                          let data =
-                            get_data(registry, &specifier, &key, &item);
+                          let data = get_data_with_match(
+                            registry,
+                            &specifier,
+                            &tokens,
+                            &match_result,
+                            &key,
+                            &item,
+                          );
                           completions.insert(
                             item,
                             lsp::CompletionItem {
@@ -1172,15 +1213,7 @@ mod tests {
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap().items;
-    assert_eq!(completions.len(), 1);
-    assert_eq!(completions[0].label, "/x");
-    assert_eq!(
-      completions[0].text_edit,
-      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-        range,
-        new_text: "http://localhost:4545/x".to_string()
-      }))
-    );
+    assert_eq!(completions.len(), 3);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1196,15 +1229,7 @@ mod tests {
       .await;
     assert!(completions.is_some());
     let completions = completions.unwrap().items;
-    assert_eq!(completions.len(), 1);
-    assert_eq!(completions[0].label, "/x");
-    assert_eq!(
-      completions[0].text_edit,
-      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-        range,
-        new_text: "http://localhost:4545/x".to_string()
-      }))
-    );
+    assert_eq!(completions.len(), 3);
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1282,6 +1307,36 @@ mod tests {
     assert!(completions.is_some());
     let completions = completions.unwrap().items;
     assert_eq!(completions.len(), 3);
+    assert_eq!(
+      completions[0].data,
+      Some(json!({
+        "documentation": format!("http://localhost:4545/lsp/registries/doc_a_{}.json", completions[0].label),
+      }))
+    );
+
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 49,
+      },
+    };
+    let completions = module_registry
+      .get_completions("http://localhost:4545/x/a@v1.", 29, &range, |_| false)
+      .await;
+    assert!(completions.is_some());
+    let completions = completions.unwrap().items;
+    assert_eq!(completions.len(), 2);
+    assert_eq!(
+      completions[0].data,
+      Some(json!({
+        "documentation": format!("http://localhost:4545/lsp/registries/doc_a_{}.json", completions[0].label),
+      }))
+    );
+
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1306,6 +1361,53 @@ mod tests {
     assert_eq!(completions[1].detail, Some("(path)".to_string()));
     assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
     assert!(completions[1].command.is_some());
+
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 54,
+      },
+    };
+    let completions = module_registry
+      .get_completions("http://localhost:4545/x/a@v1.0.0/b", 34, &range, |_| {
+        false
+      })
+      .await;
+    assert!(completions.is_some());
+    let completions = completions.unwrap().items;
+    assert_eq!(completions.len(), 1);
+    assert_eq!(completions[0].detail, Some("(path)".to_string()));
+    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
+    assert!(completions[0].command.is_some());
+
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 55,
+      },
+    };
+    let completions = module_registry
+      .get_completions(
+        "http://localhost:4545/x/a@v1.0.0/b/",
+        35,
+        &range,
+        |_| false,
+      )
+      .await;
+    assert!(completions.is_some());
+    let completions = completions.unwrap().items;
+    assert_eq!(completions.len(), 1);
+    assert_eq!(completions[0].detail, Some("(path)".to_string()));
+    assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::FILE));
+    assert!(completions[0].command.is_some());
   }
 
   #[tokio::test]
