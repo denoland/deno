@@ -13,6 +13,7 @@
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
   const { btoa } = window.__bootstrap.base64;
+  const { TextEncoder, TextDecoder } = window.__bootstrap.encoding;
 
   const {
     ArrayBuffer,
@@ -24,6 +25,8 @@
     Int16Array,
     Int32Array,
     Int8Array,
+    JSONParse,
+    JSONStringify,
     ObjectAssign,
     StringFromCharCode,
     StringPrototypeReplace,
@@ -1267,11 +1270,9 @@
       if (format !== "jwk") {
         bytes = new Uint8Array(exportedKey);
       } else {
-        // TODO(@littledivy): Implement JWK.
-        throw new DOMException(
-          "Not implemented",
-          "NotSupportedError",
-        );
+        const jwk = JSONStringify(exportedKey);
+
+        bytes = new TextEncoder("utf-8").encode(jwk);
       }
 
       // 14-15.
@@ -1301,7 +1302,17 @@
       } else if (
         supportedAlgorithms["encrypt"][normalizedAlgorithm.name] !== undefined
       ) {
-        return await encrypt(normalizedAlgorithm, wrappingKey, bytes);
+        return await encrypt(
+          normalizedAlgorithm,
+          constructKey(
+            wrappingKey[_type],
+            wrappingKey[_extractable],
+            ["encrypt"],
+            wrappingKey[_algorithm],
+            wrappingKey[_handle],
+          ),
+          bytes,
+        );
       } else {
         throw new DOMException(
           "Algorithm not supported",
@@ -1429,7 +1440,13 @@
       ) {
         key = await this.decrypt(
           normalizedAlgorithm,
-          unwrappingKey,
+          constructKey(
+            unwrappingKey[_type],
+            unwrappingKey[_extractable],
+            ["decrypt"],
+            unwrappingKey[_algorithm],
+            unwrappingKey[_handle],
+          ),
           wrappedKey,
         );
       } else {
@@ -1439,14 +1456,14 @@
         );
       }
 
+      let bytes;
       // 14.
-      const bytes = key;
-      if (format == "jwk") {
-        // TODO(@littledivy): Implement JWK.
-        throw new DOMException(
-          "Not implemented",
-          "NotSupportedError",
-        );
+      if (format !== "jwk") {
+        bytes = key;
+      } else {
+        const utf8 = new TextDecoder("utf-8").decode(key);
+
+        bytes = JSONParse(utf8);
       }
 
       // 15.
