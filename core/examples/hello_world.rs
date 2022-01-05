@@ -3,25 +3,34 @@
 //!  JavaScript.
 
 use deno_core::op_sync;
+use deno_core::Extension;
 use deno_core::JsRuntime;
+use deno_core::RuntimeOptions;
 
 fn main() {
-  // Initialize a runtime instance
-  let mut runtime = JsRuntime::new(Default::default());
+  // Build a deno_core::Extension providing custom ops
+  let ext = Extension::builder()
+    .ops(vec![
+      // An op for summing an array of numbers
+      (
+        "op_sum",
+        // The op-layer automatically deserializes inputs
+        // and serializes the returned Result & value
+        op_sync(|_state, nums: Vec<f64>, _: ()| {
+          // Sum inputs
+          let sum = nums.iter().fold(0.0, |a, v| a + v);
+          // return as a Result<f64, AnyError>
+          Ok(sum)
+        }),
+      ),
+    ])
+    .build();
 
-  // Register an op for summing a number array.
-  runtime.register_op(
-    "op_sum",
-    // The op-layer automatically deserializes inputs
-    // and serializes the returned Result & value
-    op_sync(|_state, nums: Vec<f64>, _: ()| {
-      // Sum inputs
-      let sum = nums.iter().fold(0.0, |a, v| a + v);
-      // return as a Result<f64, AnyError>
-      Ok(sum)
-    }),
-  );
-  runtime.sync_ops_cache();
+  // Initialize a runtime instance
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![ext],
+    ..Default::default()
+  });
 
   // Now we see how to invoke the op we just defined. The runtime automatically
   // contains a Deno.core object with several functions for interacting with it.

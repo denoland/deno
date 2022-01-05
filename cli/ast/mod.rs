@@ -351,11 +351,23 @@ pub fn transpile_module(
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<deno_ast::swc::common::SourceFile>, Module), AnyError> {
   let source = strip_bom(source);
+  let source = if media_type == MediaType::Json {
+    format!(
+      "export default JSON.parse(`{}`);",
+      source.replace("${", "\\${").replace('`', "\\`")
+    )
+  } else {
+    source.to_string()
+  };
   let source_file =
-    cm.new_source_file(FileName::Url(specifier.clone()), source.to_string());
+    cm.new_source_file(FileName::Url(specifier.clone()), source);
   let input = StringInput::from(&*source_file);
   let comments = SingleThreadedComments::default();
-  let syntax = get_syntax(media_type);
+  let syntax = if media_type == MediaType::Json {
+    get_syntax(MediaType::JavaScript)
+  } else {
+    get_syntax(media_type)
+  };
   let lexer = Lexer::new(syntax, deno_ast::ES_VERSION, input, Some(&comments));
   let mut parser = deno_ast::swc::parser::Parser::new_from(lexer);
   let module = parser
@@ -590,8 +602,7 @@ mod tests {
 
   #[test]
   fn test_transpile() {
-    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
-      .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts").unwrap();
     let source = r#"
 enum D {
   A,
@@ -625,24 +636,21 @@ export class A {
       scope_analysis: false,
     })
     .unwrap();
-    let (code, maybe_map) = transpile(&module, &EmitOptions::default())
-      .expect("could not strip types");
+    let (code, maybe_map) =
+      transpile(&module, &EmitOptions::default()).unwrap();
     let expected_text = r#"var D;
 (function(D) {
     D[D["A"] = 0] = "A";
     D[D["B"] = 1] = "B";
-})(D || (D = {
-}));
+})(D || (D = {}));
 var N;
 (function(N1) {
     let D;
     (function(D) {
         D["A"] = "value";
-    })(D = N1.D || (N1.D = {
-    }));
-    N1.Value = 5;
-})(N || (N = {
-}));
+    })(D = N1.D || (N1.D = {}));
+    var Value = N1.Value = 5;
+})(N || (N = {}));
 export class A {
     d;
     b;
@@ -665,8 +673,7 @@ export class A {
 
   #[test]
   fn test_transpile_tsx() {
-    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
-      .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts").unwrap();
     let source = r#"
     export class A {
       render() {
@@ -682,16 +689,14 @@ export class A {
       maybe_syntax: None,
       scope_analysis: true, // ensure scope analysis doesn't conflict with a second resolver pass
     })
-    .expect("could not parse module");
-    let (code, _) = transpile(&module, &EmitOptions::default())
-      .expect("could not strip types");
+    .unwrap();
+    let (code, _) = transpile(&module, &EmitOptions::default()).unwrap();
     assert!(code.contains("React.createElement(\"div\", null"));
   }
 
   #[test]
   fn test_transpile_jsx_pragma() {
-    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
-      .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts").unwrap();
     let source = r#"
 /** @jsx h */
 /** @jsxFrag Fragment */
@@ -721,8 +726,7 @@ function App() {
 
   #[test]
   fn test_transpile_jsx_import_source_pragma() {
-    let specifier = resolve_url_or_path("https://deno.land/x/mod.tsx")
-      .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.tsx").unwrap();
     let source = r#"
 /** @jsxImportSource jsx_lib */
 
@@ -744,8 +748,7 @@ function App() {
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 /** @jsxImportSource jsx_lib */ function App() {
     return(/*#__PURE__*/ _jsx("div", {
-        children: /*#__PURE__*/ _jsx(_Fragment, {
-        })
+        children: /*#__PURE__*/ _jsx(_Fragment, {})
     }));
 "#;
     assert_eq!(&code[..expected.len()], expected);
@@ -753,8 +756,7 @@ function App() {
 
   #[test]
   fn test_transpile_jsx_import_source_no_pragma() {
-    let specifier = resolve_url_or_path("https://deno.land/x/mod.tsx")
-      .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.tsx").unwrap();
     let source = r#"
 function App() {
   return (
@@ -779,8 +781,7 @@ function App() {
     let expected = r#"import { jsx as _jsx, Fragment as _Fragment } from "jsx_lib/jsx-runtime";
 function App() {
     return(/*#__PURE__*/ _jsx("div", {
-        children: /*#__PURE__*/ _jsx(_Fragment, {
-        })
+        children: /*#__PURE__*/ _jsx(_Fragment, {})
     }));
 }
 "#;
@@ -790,8 +791,7 @@ function App() {
   // TODO(@kitsonk) https://github.com/swc-project/swc/issues/2656
   //   #[test]
   //   fn test_transpile_jsx_import_source_no_pragma_dev() {
-  //     let specifier = resolve_url_or_path("https://deno.land/x/mod.tsx")
-  //       .expect("could not resolve specifier");
+  //     let specifier = resolve_url_or_path("https://deno.land/x/mod.tsx").unwrap();
   //     let source = r#"
   // function App() {
   //   return (
@@ -827,8 +827,7 @@ function App() {
 
   #[test]
   fn test_transpile_decorators() {
-    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts")
-      .expect("could not resolve specifier");
+    let specifier = resolve_url_or_path("https://deno.land/x/mod.ts").unwrap();
     let source = r#"
     function enumerable(value: boolean) {
       return function (
@@ -855,9 +854,8 @@ function App() {
       maybe_syntax: None,
       scope_analysis: false,
     })
-    .expect("could not parse module");
-    let (code, _) = transpile(&module, &EmitOptions::default())
-      .expect("could not strip types");
+    .unwrap();
+    let (code, _) = transpile(&module, &EmitOptions::default()).unwrap();
     assert!(code.contains("_applyDecoratedDescriptor("));
   }
 
@@ -891,8 +889,7 @@ export function g() {
     let (code, _) = transpile(&module, &emit_options).unwrap();
     let expected = r#"export function g() {
     let algorithm;
-    algorithm = {
-    };
+    algorithm = {};
     return test(algorithm, false, keyUsages);
 }"#;
     assert_eq!(&code[..expected.len()], expected);

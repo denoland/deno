@@ -146,18 +146,6 @@ fn pty_complete_imports() {
     let output = console.read_all_output();
     assert!(output.contains("Hello World"));
   });
-
-  // ensure nothing too bad happens when deleting the cwd
-  util::with_pty(&["repl"], |mut console| {
-    console.write_line("Deno.mkdirSync('./temp-repl-lsp-dir');");
-    console.write_line("Deno.chdir('./temp-repl-lsp-dir');");
-    console.write_line("Deno.removeSync('../temp-repl-lsp-dir');");
-    console.write_line("import '../001_hello\t'");
-    console.write_line("close();");
-
-    let output = console.read_all_output();
-    assert!(output.contains("Hello World"));
-  });
 }
 
 #[test]

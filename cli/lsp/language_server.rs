@@ -1035,7 +1035,7 @@ impl Inner {
         Some(Ok(parsed_source)) => {
           format_parsed_source(&parsed_source, fmt_options)
         }
-        Some(Err(err)) => Err(err.to_string()),
+        Some(Err(err)) => Err(anyhow!("{}", err)),
         None => {
           // it's not a js/ts file, so attempt to format its contents
           format_file(&file_path, document.content().as_str(), fmt_options)

@@ -126,13 +126,16 @@
     "encrypt": {
       "RSA-OAEP": "RsaOaepParams",
       "AES-CBC": "AesCbcParams",
+      "AES-CTR": "AesCtrParams",
     },
     "decrypt": {
       "RSA-OAEP": "RsaOaepParams",
       "AES-CBC": "AesCbcParams",
+      "AES-CTR": "AesCtrParams",
     },
     "get key length": {
       "AES-CBC": "AesDerivedKeyParams",
+      "AES-CTR": "AesDerivedKeyParams",
       "AES-GCM": "AesDerivedKeyParams",
       "AES-KW": "AesDerivedKeyParams",
       "HMAC": "HmacImportParams",
@@ -363,6 +366,7 @@
   function getKeyLength(algorithm) {
     switch (algorithm.name) {
       case "AES-CBC":
+      case "AES-CTR":
       case "AES-GCM":
       case "AES-KW": {
         // 1.
@@ -572,7 +576,7 @@
 
           // 3-5.
           const hashAlgorithm = key[_algorithm].hash.name;
-          const plainText = await core.opAsync("op_crypto_decrypt_key", {
+          const plainText = await core.opAsync("op_crypto_decrypt", {
             key: keyData,
             algorithm: "RSA-OAEP",
             hash: hashAlgorithm,
@@ -593,7 +597,7 @@
             );
           }
 
-          const plainText = await core.opAsync("op_crypto_decrypt_key", {
+          const plainText = await core.opAsync("op_crypto_decrypt", {
             key: keyData,
             algorithm: "AES-CBC",
             iv: normalizedAlgorithm.iv,
@@ -602,6 +606,39 @@
 
           // 6.
           return plainText.buffer;
+        }
+        case "AES-CTR": {
+          normalizedAlgorithm.counter = copyBuffer(normalizedAlgorithm.counter);
+
+          // 1.
+          if (normalizedAlgorithm.counter.byteLength !== 16) {
+            throw new DOMException(
+              "Counter vector must be 16 bytes",
+              "OperationError",
+            );
+          }
+
+          // 2.
+          if (
+            normalizedAlgorithm.length === 0 || normalizedAlgorithm.length > 128
+          ) {
+            throw new DOMException(
+              "Counter length must not be 0 or greater than 128",
+              "OperationError",
+            );
+          }
+
+          // 3.
+          const cipherText = await core.opAsync("op_crypto_decrypt", {
+            key: keyData,
+            algorithm: "AES-CTR",
+            keyLength: key[_algorithm].length,
+            counter: normalizedAlgorithm.counter,
+            ctrLength: normalizedAlgorithm.length,
+          }, data);
+
+          // 4.
+          return cipherText.buffer;
         }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
@@ -3424,6 +3461,39 @@
           algorithm: "AES-CBC",
           length: key[_algorithm].length,
           iv: normalizedAlgorithm.iv,
+        }, data);
+
+        // 4.
+        return cipherText.buffer;
+      }
+      case "AES-CTR": {
+        normalizedAlgorithm.counter = copyBuffer(normalizedAlgorithm.counter);
+
+        // 1.
+        if (normalizedAlgorithm.counter.byteLength !== 16) {
+          throw new DOMException(
+            "Counter vector must be 16 bytes",
+            "OperationError",
+          );
+        }
+
+        // 2.
+        if (
+          normalizedAlgorithm.length == 0 || normalizedAlgorithm.length > 128
+        ) {
+          throw new DOMException(
+            "Counter length must not be 0 or greater than 128",
+            "OperationError",
+          );
+        }
+
+        // 3.
+        const cipherText = await core.opAsync("op_crypto_encrypt", {
+          key: keyData,
+          algorithm: "AES-CTR",
+          keyLength: key[_algorithm].length,
+          counter: normalizedAlgorithm.counter,
+          ctrLength: normalizedAlgorithm.length,
         }, data);
 
         // 4.

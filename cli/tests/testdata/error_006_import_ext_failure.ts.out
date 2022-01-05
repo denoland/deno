@@ -1,2 +1,2 @@
-[WILDCARD]error: Cannot load module "[WILDCARD]/non-existent".
+[WILDCARD]error: Module not found "[WILDCARD]/non-existent".
     at file:///[WILDCARD]/error_006_import_ext_failure.ts:1:8
