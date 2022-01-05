@@ -1289,6 +1289,7 @@
       } else if (
         supportedAlgorithms["encrypt"][normalizedAlgorithm.name] !== undefined
       ) {
+        // must construct a new key, since keyUsages is ["wrapKey"] and not ["encrypt"]
         return await encrypt(
           normalizedAlgorithm,
           constructKey(
@@ -1425,6 +1426,7 @@
       } else if (
         supportedAlgorithms["decrypt"][normalizedAlgorithm.name] !== undefined
       ) {
+        // must construct a new key, since keyUsages is ["unwrapKey"] and not ["decrypt"]
         key = await this.decrypt(
           normalizedAlgorithm,
           constructKey(
