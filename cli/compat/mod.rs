@@ -140,3 +140,18 @@ pub(crate) fn add_global_require(
 fn escape_for_single_quote_string(text: &str) -> String {
   text.replace(r"\", r"\\").replace("'", r"\'")
 }
+
+pub fn setup_builtin_modules(
+  js_runtime: &mut JsRuntime,
+) -> Result<(), AnyError> {
+  let mut script = String::new();
+  for module in SUPPORTED_MODULES {
+    // skipping the modules that contains '/' as they are not available in NodeJS repl as well
+    if !module.contains('/') {
+      script = format!("{}const {} = require('{}');\n", script, module, module);
+    }
+  }
+
+  js_runtime.execute_script("setup_node_builtins.js", &script)?;
+  Ok(())
+}
