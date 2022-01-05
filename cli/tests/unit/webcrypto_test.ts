@@ -1444,3 +1444,61 @@ Deno.test(async function testBase64Forgiving() {
   const exportedKey = await crypto.subtle.exportKey("jwk", key);
   assertEquals(exportedKey.k, "xxw");
 });
+
+Deno.test(async function testAESWrapKey() {
+  debugger;
+  // Test wrapKey
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "AES-KW",
+      length: 128,
+    },
+    true,
+    ["wrapKey", "unwrapKey"],
+  );
+
+  const hmacKey = await crypto.subtle.generateKey(
+    {
+      name: "HMAC",
+      hash: "SHA-256",
+      length: 128,
+    },
+    true,
+    ["sign"],
+  );
+
+  const wrappedKey = await crypto.subtle.wrapKey(
+    "raw",
+    hmacKey,
+    key,
+    {
+      name: "AES-KW",
+    },
+  );
+
+  assert(wrappedKey instanceof ArrayBuffer);
+  assertEquals(wrappedKey.byteLength, 16 + 8);
+
+  const unwrappedKey = await crypto.subtle.unwrapKey(
+    "raw",
+    wrappedKey,
+    key,
+    {
+      name: "AES-KW",
+    },
+    {
+      name: "HMAC",
+      hash: "SHA-256",
+    },
+    true,
+    ["sign"],
+  );
+
+  assert(unwrappedKey instanceof CryptoKey);
+  assert((unwrappedKey.algorithm as HmacKeyAlgorithm).length == 128);
+
+  const hmacKeyBytes = await crypto.subtle.exportKey("raw", hmacKey);
+  const unwrappedKeyBytes = await crypto.subtle.exportKey("raw", unwrappedKey);
+
+  assertEquals(new Uint8Array(hmacKeyBytes), new Uint8Array(unwrappedKeyBytes));
+});

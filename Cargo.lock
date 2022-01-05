@@ -37,6 +37,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aes_kw"
+version = "0.1.0"
+source = "git+https://github.com/SeanWykes/key-wraps.git#f6dc2b4ab50e37cf135660f3c0f4f812437718b7"
+dependencies = [
+ "aes",
+ "byteorder",
+ "generic-array",
+ "lazy_static",
+]
+
+[[package]]
 name = "ahash"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -782,6 +793,7 @@ name = "deno_crypto"
 version = "0.44.0"
 dependencies = [
  "aes",
+ "aes_kw",
  "base64 0.13.0",
  "block-modes",
  "ctr",

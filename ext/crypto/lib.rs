@@ -11,11 +11,14 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use shared::operation_error;
 
 use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
+use aes_kw::unwrap;
+use aes_kw::wrap;
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::FromPrivateKey;
 use rand::rngs::OsRng;
@@ -68,6 +71,7 @@ use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
+use crate::shared::RawKeyData;
 use crate::shared::ID_MFG1;
 use crate::shared::ID_P_SPECIFIED;
 use crate::shared::ID_SHA1_OID;
@@ -95,6 +99,8 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_decrypt", op_async(op_crypto_decrypt)),
       ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
       ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
+      ("op_crypto_wrap_key", op_sync(op_crypto_wrap_key)),
+      ("op_crypto_unwrap_key", op_sync(op_crypto_unwrap_key)),
     ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
@@ -813,6 +819,52 @@ pub async fn op_crypto_subtle_digest(
   .await?;
 
   Ok(output)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WrapUnwrapKeyArg {
+  key: RawKeyData,
+  algorithm: Algorithm,
+}
+
+pub fn op_crypto_wrap_key(
+  _state: &mut OpState,
+  args: WrapUnwrapKeyArg,
+  data: ZeroCopyBuf,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let algorithm = args.algorithm;
+
+  match algorithm {
+    Algorithm::AesKw => {
+      let key = args.key.as_secret_key()?;
+
+      let wrapped_key = wrap(&key, &data)
+        .map_err(|_| operation_error("tried to encrypt too much data"))?;
+
+      Ok(wrapped_key.into())
+    }
+    _ => Err(type_error("Unsupported algorithm".to_string())),
+  }
+}
+
+pub fn op_crypto_unwrap_key(
+  _state: &mut OpState,
+  args: WrapUnwrapKeyArg,
+  data: ZeroCopyBuf,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let algorithm = args.algorithm;
+  match algorithm {
+    Algorithm::AesKw => {
+      let key = args.key.as_secret_key()?;
+
+      let unwrapped_key = unwrap(&key, &data)
+        .map_err(|_| operation_error("tried to encrypt too much data"))?;
+
+      Ok(unwrapped_key.into())
+    }
+    _ => Err(type_error("Unsupported algorithm".to_string())),
+  }
 }
 
 pub fn get_declaration() -> PathBuf {
