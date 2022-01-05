@@ -28,7 +28,7 @@ assertThrows(
     });
   },
   Error,
-  "Failed to register non_existent_symbol",
+  "Failed to register symbol non_existent_symbol",
 );
 
 const dylib = Deno.dlopen(libPath, {
@@ -88,12 +88,20 @@ console.log(Boolean(dylib.symbols.is_null_ptr(ptr)));
 console.log(Boolean(dylib.symbols.is_null_ptr(null)));
 console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
 console.log(dylib.symbols.add_u32(123, 456));
-assertThrows(() => {
-  dylib.symbols.add_u32(-1, 100);
-});
-assertThrows(() => {
-  dylib.symbols.add_u32(null, 100);
-});
+assertThrows(
+  () => {
+    dylib.symbols.add_u32(-1, 100);
+  },
+  TypeError,
+  "Expected FFI argument to be an unsigned integer, but got Number(-1)",
+);
+assertThrows(
+  () => {
+    dylib.symbols.add_u32(null, 100);
+  },
+  TypeError,
+  "Expected FFI argument to be an unsigned integer, but got Null",
+);
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(123, 456));
 console.log(dylib.symbols.add_i64(123, 456));

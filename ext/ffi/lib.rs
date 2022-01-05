@@ -291,7 +291,7 @@ fn value_as_uint<T: TryFrom<u64>>(value: Value) -> Result<T, AnyError> {
   match value.as_u64().and_then(|v| T::try_from(v).ok()) {
     Some(value) => Ok(value),
     None => Err(type_error(format!(
-      "Expected FFI argument to be an unsigned integer {:?}",
+      "Expected FFI argument to be an unsigned integer, but got {:?}",
       value
     ))),
   }
