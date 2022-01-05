@@ -523,6 +523,7 @@
     _protocol,
     _server,
     _idleTimeoutDuration,
+    _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
   };
 })(this);

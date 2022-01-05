@@ -25,6 +25,7 @@
     _protocol,
     _server,
     _idleTimeoutDuration,
+    _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
   } = window.__bootstrap.webSocket;
   const {
@@ -285,6 +286,12 @@
             ws.dispatchEvent(event);
 
             ws[_eventLoop]();
+            if (ws[_idleTimeoutDuration]) {
+              ws.addEventListener(
+                "close",
+                () => clearTimeout(ws[_idleTimeoutTimeout]),
+              );
+            }
             ws[_serverHandleIdleTimeout]();
           }
         }
@@ -388,6 +395,7 @@
     socket[_server] = true;
     response[_ws] = socket;
     socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
+    socket[_idleTimeoutTimeout] = null;
 
     return { response, socket };
   }
