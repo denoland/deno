@@ -15,8 +15,8 @@ path = "lib.rs"
 
 [dependencies]
 aes = "0.7.5"
-aes-kw = { git = "https://github.com/RustCrypto/key-wraps.git" }
 aes-gcm = "0.9.4"
+aes-kw = { git = "https://github.com/RustCrypto/key-wraps.git" }
 base64 = "0.13.0"
 block-modes = "0.8.1"
 ctr = "0.8.0"
