@@ -1,1 +1,1 @@
-error: Specifier not found in cache: "http://127.0.0.1:4545/019_media_types.ts", --cached-only is specified.
+error: Specifier not found in cache: "http://127.0.0.1:4545/019_media_types.ts", --cached-only or DENO_CACHED_ONLY is specified.
