@@ -370,5 +370,6 @@ fn export_key_ec(
         _ => Err(not_supported_error("Unsupported namedCurve")),
       }
     }
+    ExportKeyFormat::JwkSecret => Err(unsupported_format()),
   }
 }
