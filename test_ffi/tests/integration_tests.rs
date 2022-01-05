@@ -24,22 +24,19 @@ fn basic() {
     .arg("--allow-ffi")
     .arg("--allow-read")
     .arg("--unstable")
+    .arg("--quiet")
     .arg("tests/test.js")
     .env("NO_COLOR", "1")
     .output()
     .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
-  let mut stderr = std::str::from_utf8(&output.stderr).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
   if !output.status.success() {
     println!("stdout {}", stdout);
     println!("stderr {}", stderr);
   }
   println!("{:?}", output.status);
   assert!(output.status.success());
-  if stderr.starts_with("Check ") {
-    // Remove the "Check ..." line from stderr.
-    stderr = &stderr[(stderr.find('\n').unwrap() + 1)..];
-  }
   let expected = "\
     something\n\
     [1, 2, 3, 4, 5, 6, 7, 8]\n\

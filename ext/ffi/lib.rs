@@ -252,10 +252,8 @@ impl NativeValue {
           }
         } else {
           Self {
-            pointer: u64::from(
-              serde_json::from_value::<U32x2>(value)
-              .expect("Expected ffi arg value to be a tuple of the low and high bits of a pointer address")
-            ) as *const u8,
+            pointer: u64::from(serde_json::from_value::<U32x2>(value)?)
+              as *const u8,
           }
         }
       }
@@ -483,7 +481,12 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
     match native_type {
       NativeType::Pointer => match value.as_u64() {
         Some(idx) => {
-          let buf = buffers.get(idx as usize).unwrap().unwrap();
+          let buf = buffers
+            .get(idx as usize)
+            .ok_or_else(|| {
+              generic_error(format!("No buffer present at index {}", idx))
+            })?
+            .unwrap();
           native_values.push(NativeValue::buffer(buf.as_ptr()));
         }
         _ => {
