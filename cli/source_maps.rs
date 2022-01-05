@@ -79,8 +79,14 @@ pub fn apply_source_map<G: SourceMapGetter>(
     }
   }
 
+  let cause = js_error
+    .cause
+    .clone()
+    .map(|cause| Box::new(apply_source_map(&*cause, getter)));
+
   JsError {
     message: js_error.message.clone(),
+    cause,
     source_line,
     script_resource_name,
     line_number,
@@ -238,6 +244,7 @@ mod tests {
   fn apply_source_map_line() {
     let e = JsError {
       message: "TypeError: baz".to_string(),
+      cause: None,
       source_line: Some("foo".to_string()),
       script_resource_name: Some("foo_bar.ts".to_string()),
       line_number: Some(4),

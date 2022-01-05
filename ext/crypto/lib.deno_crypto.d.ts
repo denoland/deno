@@ -68,6 +68,11 @@ interface AesGcmParams extends Algorithm {
   tagLength?: number;
 }
 
+interface AesCtrParams extends Algorithm {
+  counter: BufferSource;
+  length: number;
+}
+
 interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
@@ -250,11 +255,16 @@ interface SubtleCrypto {
       | RsaOaepParams
       | AesCbcParams
       | AesGcmParams,
+      | AesCtrParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   decrypt(
-    algorithm: AlgorithmIdentifier | RsaOaepParams | AesCbcParams,
+    algorithm:
+      | AlgorithmIdentifier
+      | RsaOaepParams
+      | AesCbcParams
+      | AesCtrParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;

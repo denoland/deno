@@ -415,6 +415,21 @@
       converter: webidl.converters["BufferSource"],
     },
   ];
+  
+  const dictAesCtrParams = [
+    ...dictAlgorithm,
+    {
+      key: "counter",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+    {
+      key: "length",
+      converter: (V, opts) =>
+        webidl.converters["unsigned short"](V, { ...opts, enforceRange: true }),
+      required: true,
+    },
+  ];
 
   webidl.converters.AesDerivedKeyParams = webidl
     .createDictionaryConverter("AesDerivedKeyParams", dictAesDerivedKeyParams);
@@ -424,6 +439,9 @@
 
   webidl.converters.AesGcmParams = webidl
     .createDictionaryConverter("AesGcmParams", dictAesGcmParams);
+
+  webidl.converters.AesCtrParams = webidl
+    .createDictionaryConverter("AesCtrParams", dictAesCtrParams);
 
   webidl.converters.CryptoKey = webidl.createInterfaceConverter(
     "CryptoKey",

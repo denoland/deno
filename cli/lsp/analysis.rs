@@ -18,52 +18,58 @@ use deno_core::ModuleSpecifier;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-lazy_static::lazy_static! {
-  /// Diagnostic error codes which actually are the same, and so when grouping
-  /// fixes we treat them the same.
-  static ref FIX_ALL_ERROR_CODES: HashMap<&'static str, &'static str> =
-    (&[("2339", "2339"), ("2345", "2339"),])
+/// Diagnostic error codes which actually are the same, and so when grouping
+/// fixes we treat them the same.
+static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
+  Lazy::new(|| {
+    (&[("2339", "2339"), ("2345", "2339")])
       .iter()
       .cloned()
-      .collect();
+      .collect()
+  });
 
-  /// Fixes which help determine if there is a preferred fix when there are
-  /// multiple fixes available.
-  static ref PREFERRED_FIXES: HashMap<&'static str, (u32, bool)> = (&[
-    ("annotateWithTypeFromJSDoc", (1, false)),
-    ("constructorForDerivedNeedSuperCall", (1, false)),
-    ("extendsInterfaceBecomesImplements", (1, false)),
-    ("awaitInSyncFunction", (1, false)),
-    ("classIncorrectlyImplementsInterface", (3, false)),
-    ("classDoesntImplementInheritedAbstractMember", (3, false)),
-    ("unreachableCode", (1, false)),
-    ("unusedIdentifier", (1, false)),
-    ("forgottenThisPropertyAccess", (1, false)),
-    ("spelling", (2, false)),
-    ("addMissingAwait", (1, false)),
-    ("fixImport", (0, true)),
-  ])
-  .iter()
-  .cloned()
-  .collect();
+/// Fixes which help determine if there is a preferred fix when there are
+/// multiple fixes available.
+static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
+  Lazy::new(|| {
+    (&[
+      ("annotateWithTypeFromJSDoc", (1, false)),
+      ("constructorForDerivedNeedSuperCall", (1, false)),
+      ("extendsInterfaceBecomesImplements", (1, false)),
+      ("awaitInSyncFunction", (1, false)),
+      ("classIncorrectlyImplementsInterface", (3, false)),
+      ("classDoesntImplementInheritedAbstractMember", (3, false)),
+      ("unreachableCode", (1, false)),
+      ("unusedIdentifier", (1, false)),
+      ("forgottenThisPropertyAccess", (1, false)),
+      ("spelling", (2, false)),
+      ("addMissingAwait", (1, false)),
+      ("fixImport", (0, true)),
+    ])
+      .iter()
+      .cloned()
+      .collect()
+  });
 
-  static ref IMPORT_SPECIFIER_RE: Regex = Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap();
+static IMPORT_SPECIFIER_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap());
 
-  static ref DENO_TYPES_RE: Regex =
-    Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#)
-      .unwrap();
-  static ref TRIPLE_SLASH_REFERENCE_RE: Regex =
-    Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap();
-  static ref PATH_REFERENCE_RE: Regex =
-    Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap();
-  static ref TYPES_REFERENCE_RE: Regex =
-    Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap();
+static DENO_TYPES_RE: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#).unwrap()
+});
 
-}
+static TRIPLE_SLASH_REFERENCE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap());
+
+static PATH_REFERENCE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap());
+static TYPES_REFERENCE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap());
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
 

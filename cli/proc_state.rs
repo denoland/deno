@@ -338,9 +338,11 @@ impl ProcState {
       if self.flags.check == flags::CheckFlag::None
         || graph_data.is_type_checked(&roots, &lib)
       {
-        if let Some(result) =
-          graph_data.check(&roots, self.flags.check != flags::CheckFlag::None)
-        {
+        if let Some(result) = graph_data.check(
+          &roots,
+          self.flags.check != flags::CheckFlag::None,
+          false,
+        ) {
           return result;
         }
       }
@@ -417,8 +419,13 @@ impl ProcState {
     {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph, reload_on_watch);
+      let check_js = self
+        .maybe_config_file
+        .as_ref()
+        .map(|cf| cf.get_check_js())
+        .unwrap_or(false);
       graph_data
-        .check(&roots, self.flags.check != flags::CheckFlag::None)
+        .check(&roots, self.flags.check != flags::CheckFlag::None, check_js)
         .unwrap()?;
     }
 

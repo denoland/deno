@@ -989,7 +989,7 @@ fn test_watch_module_graph_error_referrer() {
   assert_contains!(&line1, CLEAR_SCREEN);
   assert_contains!(&line1, "Process started");
   let line2 = stderr_lines.next().unwrap();
-  assert_contains!(&line2, "error: Cannot load module");
+  assert_contains!(&line2, "error: Module not found");
   assert_contains!(&line2, "nonexistent.js");
   let line3 = stderr_lines.next().unwrap();
   assert_contains!(&line3, "    at ");

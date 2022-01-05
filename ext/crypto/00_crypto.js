@@ -12,7 +12,6 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
-  const { btoa } = window.__bootstrap.base64;
 
   const {
     ArrayBuffer,
@@ -25,8 +24,6 @@
     Int32Array,
     Int8Array,
     ObjectAssign,
-    StringFromCharCode,
-    StringPrototypeReplace,
     StringPrototypeToLowerCase,
     StringPrototypeToUpperCase,
     Symbol,
@@ -128,13 +125,16 @@
       "RSA-OAEP": "RsaOaepParams",
       "AES-CBC": "AesCbcParams",
       "AES-GCM": "AesGcmParams",
+      "AES-CTR": "AesCtrParams",
     },
     "decrypt": {
       "RSA-OAEP": "RsaOaepParams",
       "AES-CBC": "AesCbcParams",
+      "AES-CTR": "AesCtrParams",
     },
     "get key length": {
       "AES-CBC": "AesDerivedKeyParams",
+      "AES-CTR": "AesDerivedKeyParams",
       "AES-GCM": "AesDerivedKeyParams",
       "AES-KW": "AesDerivedKeyParams",
       "HMAC": "HmacImportParams",
@@ -173,15 +173,6 @@
       256: "A256KW",
     },
   };
-
-  function unpaddedBase64(bytes) {
-    let binaryString = "";
-    for (let i = 0; i < bytes.length; i++) {
-      binaryString += StringFromCharCode(bytes[i]);
-    }
-    const base64String = btoa(binaryString);
-    return StringPrototypeReplace(base64String, /=/g, "");
-  }
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
   // 18.4.4
@@ -365,6 +356,7 @@
   function getKeyLength(algorithm) {
     switch (algorithm.name) {
       case "AES-CBC":
+      case "AES-CTR":
       case "AES-GCM":
       case "AES-KW": {
         // 1.
@@ -574,7 +566,7 @@
 
           // 3-5.
           const hashAlgorithm = key[_algorithm].hash.name;
-          const plainText = await core.opAsync("op_crypto_decrypt_key", {
+          const plainText = await core.opAsync("op_crypto_decrypt", {
             key: keyData,
             algorithm: "RSA-OAEP",
             hash: hashAlgorithm,
@@ -595,7 +587,7 @@
             );
           }
 
-          const plainText = await core.opAsync("op_crypto_decrypt_key", {
+          const plainText = await core.opAsync("op_crypto_decrypt", {
             key: keyData,
             algorithm: "AES-CBC",
             iv: normalizedAlgorithm.iv,
@@ -604,6 +596,39 @@
 
           // 6.
           return plainText.buffer;
+        }
+        case "AES-CTR": {
+          normalizedAlgorithm.counter = copyBuffer(normalizedAlgorithm.counter);
+
+          // 1.
+          if (normalizedAlgorithm.counter.byteLength !== 16) {
+            throw new DOMException(
+              "Counter vector must be 16 bytes",
+              "OperationError",
+            );
+          }
+
+          // 2.
+          if (
+            normalizedAlgorithm.length === 0 || normalizedAlgorithm.length > 128
+          ) {
+            throw new DOMException(
+              "Counter length must not be 0 or greater than 128",
+              "OperationError",
+            );
+          }
+
+          // 3.
+          const cipherText = await core.opAsync("op_crypto_decrypt", {
+            key: keyData,
+            algorithm: "AES-CTR",
+            keyLength: key[_algorithm].length,
+            counter: normalizedAlgorithm.counter,
+            ctrLength: normalizedAlgorithm.length,
+          }, data);
+
+          // 4.
+          return cipherText.buffer;
         }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
@@ -1801,15 +1826,17 @@
         return data.buffer;
       }
       case "jwk": {
-        // 1-3.
+        // 1-2.
         const jwk = {
           kty: "oct",
-          // 5.
-          ext: key[_extractable],
-          // 6.
-          "key_ops": key.usages,
-          k: unpaddedBase64(innerKey.data),
         };
+
+        // 3.
+        const data = core.opSync("op_crypto_export_key", {
+          format: "jwksecret",
+          algorithm: "AES",
+        }, innerKey);
+        ObjectAssign(jwk, data);
 
         // 4.
         const algorithm = key[_algorithm];
@@ -1829,6 +1856,12 @@
               "NotSupportedError",
             );
         }
+
+        // 5.
+        jwk.key_ops = key.usages;
+
+        // 6.
+        jwk.ext = key[_extractable];
 
         // 7.
         return jwk;
@@ -3057,11 +3090,18 @@
         return bits.buffer;
       }
       case "jwk": {
-        // 1-3.
+        // 1-2.
         const jwk = {
           kty: "oct",
-          k: unpaddedBase64(innerKey.data),
         };
+
+        // 3.
+        const data = core.opSync("op_crypto_export_key", {
+          format: "jwksecret",
+          algorithm: key[_algorithm].name,
+        }, innerKey);
+        jwk.k = data.k;
+
         // 4.
         const algorithm = key[_algorithm];
         // 5.
@@ -3441,6 +3481,38 @@
             "OperationError",
           );
         }
+        
+        // 2.
+        if (
+          normalizedAlgorithm.length == 0 || normalizedAlgorithm.length > 128
+        ) {
+          throw new DOMException(
+            "Counter length must not be 0 or greater than 128",
+            "OperationError",
+          );
+        }
+
+        // 3.
+        const cipherText = await core.opAsync("op_crypto_encrypt", {
+          key: keyData,
+          algorithm: "AES-CTR",
+          keyLength: key[_algorithm].length,
+          counter: normalizedAlgorithm.counter,
+          ctrLength: normalizedAlgorithm.length,
+        }, data);
+
+        // 4.
+        return cipherText.buffer;
+      case "AES-CTR": {
+        normalizedAlgorithm.counter = copyBuffer(normalizedAlgorithm.counter);
+
+        // 1.
+        if (normalizedAlgorithm.counter.byteLength !== 16) {
+          throw new DOMException(
+            "Counter vector must be 16 bytes",
+            "OperationError",
+          );
+        }
 
         // 2.
         // We only support 96-bit nonce for now.
@@ -3475,7 +3547,6 @@
             "OperationError",
           );
         }
-
         // 5.
         if (normalizedAlgorithm.additionalData) {
           normalizedAlgorithm.additionalData = copyBuffer(

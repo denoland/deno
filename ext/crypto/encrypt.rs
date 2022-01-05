@@ -10,7 +10,18 @@ use aes_gcm::Aes128Gcm;
 use aes_gcm::Aes256Gcm;
 use aes_gcm::NewAead;
 use aes_gcm::Nonce;
+use aes::cipher::NewCipher;
+use aes::BlockEncrypt;
+use aes::NewBlockCipher;
+use ctr::Ctr;
+
 use block_modes::BlockMode;
+use ctr::cipher::StreamCipher;
+use ctr::flavors::Ctr128BE;
+
+use ctr::flavors::Ctr32BE;
+use ctr::flavors::Ctr64BE;
+use ctr::flavors::CtrFlavor;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::OpState;
@@ -58,6 +69,13 @@ pub enum EncryptAlgorithm {
     length: usize,
     tag_length: usize,
   },
+  #[serde(rename = "AES-CTR", rename_all = "camelCase")]
+  AesCtr {
+    #[serde(with = "serde_bytes")]
+    counter: Vec<u8>,
+    ctr_length: usize,
+    key_length: usize,
+  },
 }
 pub async fn op_crypto_encrypt(
   _state: Rc<RefCell<OpState>>,
@@ -78,6 +96,11 @@ pub async fn op_crypto_encrypt(
       length,
       tag_length,
     } => encrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
+    EncryptAlgorithm::AesCtr {
+      counter,
+      ctr_length,
+      key_length,
+    } => encrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
   };
   let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
@@ -214,4 +237,57 @@ fn encrypt_aes_gcm(
   ciphertext.extend_from_slice(tag);
 
   Ok(ciphertext)
+}
+
+fn encrypt_aes_ctr_gen<B, F>(
+  key: &[u8],
+  counter: &[u8],
+  data: &[u8],
+) -> Result<Vec<u8>, AnyError>
+where
+  B: BlockEncrypt + NewBlockCipher,
+  F: CtrFlavor<B::BlockSize>,
+{
+  let mut cipher = Ctr::<B, F>::new(key.into(), counter.into());
+
+  let mut ciphertext = data.to_vec();
+  cipher
+    .try_apply_keystream(&mut ciphertext)
+    .map_err(|_| operation_error("tried to encrypt too much data"))?;
+
+  Ok(ciphertext)
+}
+
+fn encrypt_aes_ctr(
+  key: RawKeyData,
+  key_length: usize,
+  counter: &[u8],
+  ctr_length: usize,
+  data: &[u8],
+) -> Result<Vec<u8>, AnyError> {
+  let key = key.as_secret_key()?;
+
+  match ctr_length {
+    32 => match key_length {
+      128 => encrypt_aes_ctr_gen::<aes::Aes128, Ctr32BE>(key, counter, data),
+      192 => encrypt_aes_ctr_gen::<aes::Aes192, Ctr32BE>(key, counter, data),
+      256 => encrypt_aes_ctr_gen::<aes::Aes256, Ctr32BE>(key, counter, data),
+      _ => Err(type_error("invalid length")),
+    },
+    64 => match key_length {
+      128 => encrypt_aes_ctr_gen::<aes::Aes128, Ctr64BE>(key, counter, data),
+      192 => encrypt_aes_ctr_gen::<aes::Aes192, Ctr64BE>(key, counter, data),
+      256 => encrypt_aes_ctr_gen::<aes::Aes256, Ctr64BE>(key, counter, data),
+      _ => Err(type_error("invalid length")),
+    },
+    128 => match key_length {
+      128 => encrypt_aes_ctr_gen::<aes::Aes128, Ctr128BE>(key, counter, data),
+      192 => encrypt_aes_ctr_gen::<aes::Aes192, Ctr128BE>(key, counter, data),
+      256 => encrypt_aes_ctr_gen::<aes::Aes256, Ctr128BE>(key, counter, data),
+      _ => Err(type_error("invalid length")),
+    },
+    _ => Err(type_error(
+      "invalid counter length. Currently supported 32/64/128 bits",
+    )),
+  }
 }

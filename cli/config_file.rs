@@ -499,6 +499,18 @@ impl ConfigFile {
     })
   }
 
+  /// Returns true if the configuration indicates that JavaScript should be
+  /// type checked, otherwise false.
+  pub fn get_check_js(&self) -> bool {
+    self
+      .json
+      .compiler_options
+      .as_ref()
+      .map(|co| co.get("checkJs").map(|v| v.as_bool()).flatten())
+      .flatten()
+      .unwrap_or(false)
+  }
+
   /// Parse `compilerOptions` and return a serde `Value`.
   /// The result also contains any options that were ignored.
   pub fn to_compiler_options(

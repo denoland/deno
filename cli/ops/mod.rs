@@ -1,7 +1,29 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-pub mod errors;
-pub mod runtime_compiler;
+use crate::proc_state::ProcState;
+use deno_core::Extension;
+
+mod errors;
+mod runtime_compiler;
 pub mod testing;
 
-pub use deno_runtime::ops::{reg_async, reg_sync};
+pub fn cli_exts(ps: ProcState, enable_compiler: bool) -> Vec<Extension> {
+  if enable_compiler {
+    vec![
+      init_proc_state(ps),
+      errors::init(),
+      runtime_compiler::init(),
+    ]
+  } else {
+    vec![init_proc_state(ps), errors::init()]
+  }
+}
+
+fn init_proc_state(ps: ProcState) -> Extension {
+  Extension::builder()
+    .state(move |state| {
+      state.put(ps.clone());
+      Ok(())
+    })
+    .build()
+}

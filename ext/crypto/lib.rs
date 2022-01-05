@@ -16,9 +16,6 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
-use block_modes::BlockMode;
-use lazy_static::lazy_static;
-use num_traits::cast::FromPrimitive;
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::FromPrivateKey;
 use rand::rngs::OsRng;
@@ -42,7 +39,6 @@ use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::FromRsaPublicKey;
 use rsa::pkcs8::der::asn1;
-use rsa::BigUint;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
@@ -55,6 +51,7 @@ use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
+mod decrypt;
 mod encrypt;
 mod export_key;
 mod generate_key;
@@ -62,6 +59,7 @@ mod import_key;
 mod key;
 mod shared;
 
+pub use crate::decrypt::op_crypto_decrypt;
 pub use crate::encrypt::op_crypto_encrypt;
 pub use crate::export_key::op_crypto_export_key;
 pub use crate::generate_key::op_crypto_generate_key;
@@ -73,12 +71,7 @@ use crate::key::HkdfOutput;
 use crate::shared::ID_MFG1;
 use crate::shared::ID_P_SPECIFIED;
 use crate::shared::ID_SHA1_OID;
-
-// Allowlist for RSA public exponents.
-lazy_static! {
-  static ref PUB_EXPONENT_1: BigUint = BigUint::from_u64(3).unwrap();
-  static ref PUB_EXPONENT_2: BigUint = BigUint::from_u64(65537).unwrap();
-}
+use once_cell::sync::Lazy;
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
@@ -99,7 +92,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_import_key", op_sync(op_crypto_import_key)),
       ("op_crypto_export_key", op_sync(op_crypto_export_key)),
       ("op_crypto_encrypt", op_async(op_crypto_encrypt)),
-      ("op_crypto_decrypt_key", op_async(op_crypto_decrypt_key)),
+      ("op_crypto_decrypt", op_async(op_crypto_decrypt)),
       ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
       ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
     ])
@@ -642,53 +635,64 @@ const SALT_LENGTH_TAG: rsa::pkcs8::der::TagNumber =
 const P_SOURCE_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
   rsa::pkcs8::der::TagNumber::new(2);
 
-lazy_static! {
-  // Default HashAlgorithm for RSASSA-PSS-params (sha1)
-  //
-  // sha1 HashAlgorithm ::= {
-  //   algorithm   id-sha1,
-  //   parameters  SHA1Parameters : NULL
-  // }
-  //
-  // SHA1Parameters ::= NULL
-  static ref SHA1_HASH_ALGORITHM: rsa::pkcs8::AlgorithmIdentifier<'static> = rsa::pkcs8::AlgorithmIdentifier {
-    // id-sha1
-    oid: ID_SHA1_OID,
-    // NULL
-    parameters: Some(asn1::Any::from(asn1::Null)),
-  };
+// Default HashAlgorithm for RSASSA-PSS-params (sha1)
+//
+// sha1 HashAlgorithm ::= {
+//   algorithm   id-sha1,
+//   parameters  SHA1Parameters : NULL
+// }
+//
+// SHA1Parameters ::= NULL
+static SHA1_HASH_ALGORITHM: Lazy<rsa::pkcs8::AlgorithmIdentifier<'static>> =
+  Lazy::new(|| {
+    rsa::pkcs8::AlgorithmIdentifier {
+      // id-sha1
+      oid: ID_SHA1_OID,
+      // NULL
+      parameters: Some(asn1::Any::from(asn1::Null)),
+    }
+  });
 
-  // TODO(@littledivy): `pkcs8` should provide AlgorithmIdentifier to Any conversion.
-  static ref ENCODED_SHA1_HASH_ALGORITHM: Vec<u8> = SHA1_HASH_ALGORITHM.to_vec().unwrap();
-  // Default MaskGenAlgrithm for RSASSA-PSS-params (mgf1SHA1)
-  //
-  // mgf1SHA1 MaskGenAlgorithm ::= {
-  //   algorithm   id-mgf1,
-  //   parameters  HashAlgorithm : sha1
-  // }
-  static ref MGF1_SHA1_MASK_ALGORITHM: rsa::pkcs8::AlgorithmIdentifier<'static> = rsa::pkcs8::AlgorithmIdentifier {
+// TODO(@littledivy): `pkcs8` should provide AlgorithmIdentifier to Any conversion.
+static ENCODED_SHA1_HASH_ALGORITHM: Lazy<Vec<u8>> =
+  Lazy::new(|| SHA1_HASH_ALGORITHM.to_vec().unwrap());
+// Default MaskGenAlgrithm for RSASSA-PSS-params (mgf1SHA1)
+//
+// mgf1SHA1 MaskGenAlgorithm ::= {
+//   algorithm   id-mgf1,
+//   parameters  HashAlgorithm : sha1
+// }
+static MGF1_SHA1_MASK_ALGORITHM: Lazy<
+  rsa::pkcs8::AlgorithmIdentifier<'static>,
+> = Lazy::new(|| {
+  rsa::pkcs8::AlgorithmIdentifier {
     // id-mgf1
     oid: ID_MFG1,
     // sha1
-    parameters: Some(asn1::Any::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap()),
-  };
+    parameters: Some(
+      asn1::Any::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap(),
+    ),
+  }
+});
 
-  // Default PSourceAlgorithm for RSAES-OAEP-params
-  // The default label is an empty string.
-  //
-  // pSpecifiedEmpty    PSourceAlgorithm ::= {
-  //   algorithm   id-pSpecified,
-  //   parameters  EncodingParameters : emptyString
-  // }
-  //
-  // emptyString    EncodingParameters ::= ''H
-  static ref P_SPECIFIED_EMPTY: rsa::pkcs8::AlgorithmIdentifier<'static> = rsa::pkcs8::AlgorithmIdentifier {
-    // id-pSpecified
-    oid: ID_P_SPECIFIED,
-    // EncodingParameters
-    parameters: Some(asn1::Any::from(asn1::OctetString::new(b"").unwrap())),
-  };
-}
+// Default PSourceAlgorithm for RSAES-OAEP-params
+// The default label is an empty string.
+//
+// pSpecifiedEmpty    PSourceAlgorithm ::= {
+//   algorithm   id-pSpecified,
+//   parameters  EncodingParameters : emptyString
+// }
+//
+// emptyString    EncodingParameters ::= ''H
+static P_SPECIFIED_EMPTY: Lazy<rsa::pkcs8::AlgorithmIdentifier<'static>> =
+  Lazy::new(|| {
+    rsa::pkcs8::AlgorithmIdentifier {
+      // id-pSpecified
+      oid: ID_P_SPECIFIED,
+      // EncodingParameters
+      parameters: Some(asn1::Any::from(asn1::OctetString::new(b"").unwrap())),
+    }
+  });
 
 impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
   for PssPrivateKeyParameters<'a>
@@ -773,127 +777,6 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
         p_source_algorithm,
       })
     })
-  }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DecryptArg {
-  key: KeyData,
-  algorithm: Algorithm,
-  // RSA-OAEP
-  hash: Option<CryptoHash>,
-  label: Option<ZeroCopyBuf>,
-  // AES-CBC
-  iv: Option<ZeroCopyBuf>,
-  length: Option<usize>,
-}
-
-pub async fn op_crypto_decrypt_key(
-  _state: Rc<RefCell<OpState>>,
-  args: DecryptArg,
-  zero_copy: ZeroCopyBuf,
-) -> Result<ZeroCopyBuf, AnyError> {
-  let data = &*zero_copy;
-  let algorithm = args.algorithm;
-
-  match algorithm {
-    Algorithm::RsaOaep => {
-      let private_key: RsaPrivateKey =
-        RsaPrivateKey::from_pkcs1_der(&*args.key.data)?;
-      let label = args.label.map(|l| String::from_utf8_lossy(&*l).to_string());
-      let padding = match args
-        .hash
-        .ok_or_else(|| type_error("Missing argument hash".to_string()))?
-      {
-        CryptoHash::Sha1 => PaddingScheme::OAEP {
-          digest: Box::new(Sha1::new()),
-          mgf_digest: Box::new(Sha1::new()),
-          label,
-        },
-        CryptoHash::Sha256 => PaddingScheme::OAEP {
-          digest: Box::new(Sha256::new()),
-          mgf_digest: Box::new(Sha256::new()),
-          label,
-        },
-        CryptoHash::Sha384 => PaddingScheme::OAEP {
-          digest: Box::new(Sha384::new()),
-          mgf_digest: Box::new(Sha384::new()),
-          label,
-        },
-        CryptoHash::Sha512 => PaddingScheme::OAEP {
-          digest: Box::new(Sha512::new()),
-          mgf_digest: Box::new(Sha512::new()),
-          label,
-        },
-      };
-
-      Ok(
-        private_key
-          .decrypt(padding, data)
-          .map_err(|e| {
-            custom_error("DOMExceptionOperationError", e.to_string())
-          })?
-          .into(),
-      )
-    }
-    Algorithm::AesCbc => {
-      let key = &*args.key.data;
-      let length = args
-        .length
-        .ok_or_else(|| type_error("Missing argument length".to_string()))?;
-      let iv = args
-        .iv
-        .ok_or_else(|| type_error("Missing argument iv".to_string()))?;
-
-      // 2.
-      let plaintext = match length {
-        128 => {
-          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
-          type Aes128Cbc =
-            block_modes::Cbc<aes::Aes128, block_modes::block_padding::Pkcs7>;
-          let cipher = Aes128Cbc::new_from_slices(key, &iv)?;
-
-          cipher.decrypt_vec(data).map_err(|_| {
-            custom_error(
-              "DOMExceptionOperationError",
-              "Decryption failed".to_string(),
-            )
-          })?
-        }
-        192 => {
-          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
-          type Aes192Cbc =
-            block_modes::Cbc<aes::Aes192, block_modes::block_padding::Pkcs7>;
-          let cipher = Aes192Cbc::new_from_slices(key, &iv)?;
-
-          cipher.decrypt_vec(data).map_err(|_| {
-            custom_error(
-              "DOMExceptionOperationError",
-              "Decryption failed".to_string(),
-            )
-          })?
-        }
-        256 => {
-          // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
-          type Aes256Cbc =
-            block_modes::Cbc<aes::Aes256, block_modes::block_padding::Pkcs7>;
-          let cipher = Aes256Cbc::new_from_slices(key, &iv)?;
-
-          cipher.decrypt_vec(data).map_err(|_| {
-            custom_error(
-              "DOMExceptionOperationError",
-              "Decryption failed".to_string(),
-            )
-          })?
-        }
-        _ => unreachable!(),
-      };
-
-      // 6.
-      Ok(plaintext.into())
-    }
-    _ => Err(type_error("Unsupported algorithm".to_string())),
   }
 }
 

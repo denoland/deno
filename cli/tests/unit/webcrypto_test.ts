@@ -1,4 +1,9 @@
-import { assert, assertEquals, assertRejects } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  assertRejects,
+} from "./test_util.ts";
 
 // https://github.com/denoland/deno/issues/11664
 Deno.test(async function testImportArrayBufferKey() {
@@ -606,6 +611,110 @@ Deno.test(async function testAesCbcEncryptDecrypt() {
   assert(decrypted instanceof ArrayBuffer);
   assertEquals(decrypted.byteLength, 6);
   assertEquals(new Uint8Array(decrypted), new Uint8Array([1, 2, 3, 4, 5, 6]));
+});
+
+Deno.test(async function testAesCtrEncryptDecrypt() {
+  async function aesCtrRoundTrip(
+    key: CryptoKey,
+    counter: Uint8Array,
+    length: number,
+    plainText: Uint8Array,
+  ) {
+    const cipherText = await crypto.subtle.encrypt(
+      {
+        name: "AES-CTR",
+        counter,
+        length,
+      },
+      key,
+      plainText,
+    );
+
+    assert(cipherText instanceof ArrayBuffer);
+    assertEquals(cipherText.byteLength, plainText.byteLength);
+    assertNotEquals(new Uint8Array(cipherText), plainText);
+
+    const decryptedText = await crypto.subtle.decrypt(
+      {
+        name: "AES-CTR",
+        counter,
+        length,
+      },
+      key,
+      cipherText,
+    );
+
+    assert(decryptedText instanceof ArrayBuffer);
+    assertEquals(decryptedText.byteLength, plainText.byteLength);
+    assertEquals(new Uint8Array(decryptedText), plainText);
+  }
+  for (const keySize of [128, 192, 256]) {
+    const key = await crypto.subtle.generateKey(
+      { name: "AES-CTR", length: keySize },
+      true,
+      ["encrypt", "decrypt"],
+    ) as CryptoKey;
+
+    // test normal operation
+    for (const length of [128 /*, 64, 128 */]) {
+      const counter = await crypto.getRandomValues(new Uint8Array(16));
+
+      await aesCtrRoundTrip(
+        key,
+        counter,
+        length,
+        new Uint8Array([1, 2, 3, 4, 5, 6]),
+      );
+    }
+
+    // test counter-wrapping
+    for (const length of [32, 64, 128]) {
+      const plaintext1 = await crypto.getRandomValues(new Uint8Array(32));
+      const counter = new Uint8Array(16);
+
+      // fixed upper part
+      for (let off = 0; off < 16 - (length / 8); ++off) {
+        counter[off] = off;
+      }
+      const ciphertext1 = await crypto.subtle.encrypt(
+        {
+          name: "AES-CTR",
+          counter,
+          length,
+        },
+        key,
+        plaintext1,
+      );
+
+      // Set lower [length] counter bits to all '1's
+      for (let off = 16 - (length / 8); off < 16; ++off) {
+        counter[off] = 0xff;
+      }
+
+      // = [ 1 block of 0x00 + plaintext1 ]
+      const plaintext2 = new Uint8Array(48);
+      plaintext2.set(plaintext1, 16);
+
+      const ciphertext2 = await crypto.subtle.encrypt(
+        {
+          name: "AES-CTR",
+          counter,
+          length,
+        },
+        key,
+        plaintext2,
+      );
+
+      // If counter wrapped, 2nd block of ciphertext2 should be equal to 1st block of ciphertext1
+      // since ciphertext1 used counter = 0x00...00
+      // and ciphertext2 used counter = 0xFF..FF which should wrap to 0x00..00 without affecting
+      // higher bits
+      assertEquals(
+        new Uint8Array(ciphertext1),
+        new Uint8Array(ciphertext2).slice(16),
+      );
+    }
+  }
 });
 
 // TODO(@littledivy): Enable WPT when we have importKey support
@@ -1279,8 +1388,6 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     for (
       const hash of [/*"SHA-1", */ "SHA-256" /*"SHA-384", "SHA-512"*/]
     ) {
-      console.log(hash);
-
       const signatureECDSA = await subtle.sign(
         { name: "ECDSA", hash },
         privateKeyECDSA,
@@ -1336,5 +1443,121 @@ Deno.test(async function testAesGcmEncrypt() {
     new Uint8Array(cipherText),
     // deno-fmt-ignore
     new Uint8Array([50,223,112,178,166,156,255,110,125,138,95,141,82,47,14,164,134,247,22]),
+  );
+});
+
+async function roundTripSecretJwk(
+  jwk: JsonWebKey,
+  algId: AlgorithmIdentifier | HmacImportParams,
+  ops: KeyUsage[],
+  validateKeys: (
+    key: CryptoKey,
+    originalJwk: JsonWebKey,
+    exportedJwk: JsonWebKey,
+  ) => void,
+) {
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    algId,
+    true,
+    ops,
+  );
+
+  assert(key instanceof CryptoKey);
+  assertEquals(key.type, "secret");
+
+  const exportedKey = await crypto.subtle.exportKey("jwk", key);
+
+  validateKeys(key, jwk, exportedKey);
+}
+
+Deno.test(async function testSecretJwkBase64Url() {
+  // Test 16bits with "overflow" in 3rd pos of 'quartet', no padding
+  const keyData = `{
+      "kty": "oct",
+      "k": "xxx",
+      "alg": "HS512",
+      "key_ops": ["sign", "verify"],
+      "ext": true
+    }`;
+
+  await roundTripSecretJwk(
+    JSON.parse(keyData),
+    { name: "HMAC", hash: "SHA-512" },
+    ["sign", "verify"],
+    (key, _orig, exp) => {
+      assertEquals((key.algorithm as HmacKeyAlgorithm).length, 16);
+
+      assertEquals(exp.k, "xxw");
+    },
+  );
+
+  // HMAC 128bits with base64url characters (-_)
+  await roundTripSecretJwk(
+    {
+      kty: "oct",
+      k: "HnZXRyDKn-_G5Fx4JWR1YA",
+      alg: "HS256",
+      "key_ops": ["sign", "verify"],
+      ext: true,
+    },
+    { name: "HMAC", hash: "SHA-256" },
+    ["sign", "verify"],
+    (key, orig, exp) => {
+      assertEquals((key.algorithm as HmacKeyAlgorithm).length, 128);
+
+      assertEquals(orig.k, exp.k);
+    },
+  );
+
+  // HMAC 104bits/(12+1) bytes with base64url characters (-_), padding and overflow in 2rd pos of "quartet"
+  await roundTripSecretJwk(
+    {
+      kty: "oct",
+      k: "a-_AlFa-2-OmEGa_-z==",
+      alg: "HS384",
+      "key_ops": ["sign", "verify"],
+      ext: true,
+    },
+    { name: "HMAC", hash: "SHA-384" },
+    ["sign", "verify"],
+    (key, _orig, exp) => {
+      assertEquals((key.algorithm as HmacKeyAlgorithm).length, 104);
+
+      assertEquals("a-_AlFa-2-OmEGa_-w", exp.k);
+    },
+  );
+
+  // AES-CBC 128bits with base64url characters (-_) no padding
+  await roundTripSecretJwk(
+    {
+      kty: "oct",
+      k: "_u3K_gEjRWf-7cr-ASNFZw",
+      alg: "A128CBC",
+      "key_ops": ["encrypt", "decrypt"],
+      ext: true,
+    },
+    { name: "AES-CBC" },
+    ["encrypt", "decrypt"],
+    (_key, orig, exp) => {
+      assertEquals(orig.k, exp.k);
+    },
+  );
+
+  // AES-CBC 128bits of '1' with padding chars
+  await roundTripSecretJwk(
+    {
+      kty: "oct",
+      k: "_____________________w==",
+      alg: "A128CBC",
+      "key_ops": ["encrypt", "decrypt"],
+      ext: true,
+    },
+    { name: "AES-CBC" },
+    ["encrypt", "decrypt"],
+    (_key, _orig, exp) => {
+      assertEquals(exp.k, "_____________________w");
+    },
   );
 });

@@ -9,6 +9,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
+use deno_runtime::deno_fetch::reqwest::header::ACCEPT;
 use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
 use deno_runtime::deno_fetch::reqwest::header::IF_NONE_MATCH;
 use deno_runtime::deno_fetch::reqwest::header::LOCATION;
@@ -209,6 +210,7 @@ pub enum FetchOnceResult {
 pub struct FetchOnceArgs {
   pub client: Client,
   pub url: Url,
+  pub maybe_accept: Option<String>,
   pub maybe_etag: Option<String>,
   pub maybe_auth_token: Option<AuthToken>,
 }
@@ -224,13 +226,16 @@ pub async fn fetch_once(
   let mut request = args.client.get(args.url.clone());
 
   if let Some(etag) = args.maybe_etag {
-    let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
+    let if_none_match_val = HeaderValue::from_str(&etag)?;
     request = request.header(IF_NONE_MATCH, if_none_match_val);
   }
   if let Some(auth_token) = args.maybe_auth_token {
-    let authorization_val =
-      HeaderValue::from_str(&auth_token.to_string()).unwrap();
+    let authorization_val = HeaderValue::from_str(&auth_token.to_string())?;
     request = request.header(AUTHORIZATION, authorization_val);
+  }
+  if let Some(accept) = args.maybe_accept {
+    let accepts_val = HeaderValue::from_str(&accept)?;
+    request = request.header(ACCEPT, accepts_val);
   }
   let response = request.send().await?;
 
@@ -324,6 +329,7 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
+      maybe_accept: None,
       maybe_etag: None,
       maybe_auth_token: None,
     })
@@ -348,6 +354,7 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
+      maybe_accept: None,
       maybe_etag: None,
       maybe_auth_token: None,
     })
@@ -373,6 +380,7 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client: client.clone(),
       url: url.clone(),
+      maybe_accept: None,
       maybe_etag: None,
       maybe_auth_token: None,
     })
@@ -392,6 +400,7 @@ mod tests {
     let res = fetch_once(FetchOnceArgs {
       client,
       url,
+      maybe_accept: None,
       maybe_etag: Some("33a64df551425fcc55e".to_string()),
       maybe_auth_token: None,
     })
@@ -409,6 +418,7 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
+      maybe_accept: None,
       maybe_etag: None,
       maybe_auth_token: None,
     })
@@ -428,6 +438,27 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_fetch_accept() {
+    let _http_server_guard = test_util::http_server();
+    // Relies on external http server. See target/debug/test_server
+    let url = Url::parse("http://127.0.0.1:4545/echo_accept").unwrap();
+    let client = create_test_client();
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_accept: Some("application/json".to_string()),
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
+    if let Ok(FetchOnceResult::Code(body, _)) = result {
+      assert_eq!(body, r#"{"accept":"application/json"}"#.as_bytes());
+    } else {
+      panic!();
+    }
+  }
+
+  #[tokio::test]
   async fn test_fetch_once_with_redirect() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
@@ -438,6 +469,7 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
+      maybe_accept: None,
       maybe_etag: None,
       maybe_auth_token: None,
     })
@@ -511,6 +543,7 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
+      maybe_accept: None,
       maybe_etag: None,
       maybe_auth_token: None,
     })
@@ -543,6 +576,7 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
+      maybe_accept: None,
       maybe_etag: None,
       maybe_auth_token: None,
     })
@@ -578,6 +612,7 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
+      maybe_accept: None,
       maybe_etag: None,
       maybe_auth_token: None,
     })
@@ -614,6 +649,7 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
+      maybe_accept: None,
       maybe_etag: None,
       maybe_auth_token: None,
     })
@@ -653,6 +689,7 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client: client.clone(),
       url: url.clone(),
+      maybe_accept: None,
       maybe_etag: None,
       maybe_auth_token: None,
     })
@@ -673,6 +710,7 @@ mod tests {
     let res = fetch_once(FetchOnceArgs {
       client,
       url,
+      maybe_accept: None,
       maybe_etag: Some("33a64df551425fcc55e".to_string()),
       maybe_auth_token: None,
     })
@@ -705,6 +743,7 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
+      maybe_accept: None,
       maybe_etag: None,
       maybe_auth_token: None,
     })
@@ -732,6 +771,7 @@ mod tests {
     let result = fetch_once(FetchOnceArgs {
       client,
       url,
+      maybe_accept: None,
       maybe_etag: None,
       maybe_auth_token: None,
     })
