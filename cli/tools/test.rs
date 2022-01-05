@@ -35,7 +35,6 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::v8;
-use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_graph::Module;
 use deno_runtime::permissions::Permissions;
@@ -470,12 +469,14 @@ async fn test_specifier(
     vec![ops::testing::init(channel.clone())],
   );
 
-  let thread_safe_handle = js_runtime.v8_isolate().thread_safe_handle();
-  worker
-    .js_runtime
-    .op_state()
-    .borrow_mut()
-    .put::<v8::IsolateHandle>(thread_safe_handle);
+  {
+    let js_runtime = &mut worker.js_runtime;
+    let thread_safe_handle = js_runtime.v8_isolate().thread_safe_handle();
+    js_runtime
+      .op_state()
+      .borrow_mut()
+      .put::<v8::IsolateHandle>(thread_safe_handle);
+  }
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     ps.coverage_dir

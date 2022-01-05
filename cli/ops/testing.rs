@@ -4,7 +4,6 @@ use deno_core::error::AnyError;
 use deno_core::op_sync;
 use deno_core::v8;
 use deno_core::Extension;
-use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
