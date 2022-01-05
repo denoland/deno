@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::disk_cache::DiskCache;
+use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 
 use deno_core::error::AnyError;
@@ -157,6 +158,8 @@ impl Loader for FetchCacher {
               if err.kind() == std::io::ErrorKind::NotFound {
                 return Ok(None);
               }
+            } else if get_error_class_name(&err) == "NotFound" {
+              return Ok(None);
             }
             Err(err)
           },

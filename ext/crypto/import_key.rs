@@ -105,9 +105,12 @@ pub fn op_crypto_import_key(
   }
 }
 
+const URL_SAFE_FORGIVING: base64::Config =
+  base64::URL_SAFE_NO_PAD.decode_allow_trailing_bits(true);
+
 macro_rules! jwt_b64_int_or_err {
   ($name:ident, $b64:expr, $err:expr) => {
-    let bytes = base64::decode_config($b64, base64::URL_SAFE)
+    let bytes = base64::decode_config($b64, URL_SAFE_FORGIVING)
       .map_err(|_| data_error($err))?;
     let $name = UIntBytes::new(&bytes).map_err(|_| data_error($err))?;
   };
@@ -1001,7 +1004,7 @@ fn import_key_ec(
 fn import_key_aes(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
   Ok(match key_data {
     KeyData::JwkSecret { k } => {
-      let data = base64::decode_config(k, base64::URL_SAFE)
+      let data = base64::decode_config(k, URL_SAFE_FORGIVING)
         .map_err(|_| data_error("invalid key data"))?;
       ImportKeyResult::Hmac {
         raw_data: RawKeyData::Secret(data.into()),
@@ -1014,7 +1017,7 @@ fn import_key_aes(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
 fn import_key_hmac(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
   Ok(match key_data {
     KeyData::JwkSecret { k } => {
-      let data = base64::decode_config(k, base64::URL_SAFE)
+      let data = base64::decode_config(k, URL_SAFE_FORGIVING)
         .map_err(|_| data_error("invalid key data"))?;
       ImportKeyResult::Hmac {
         raw_data: RawKeyData::Secret(data.into()),

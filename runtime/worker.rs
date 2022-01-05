@@ -184,10 +184,10 @@ impl MainWorker {
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
   pub fn execute_script(
     &mut self,
-    name: &str,
+    script_name: &str,
     source_code: &str,
   ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(name, source_code)?;
+    self.js_runtime.execute_script(script_name, source_code)?;
     Ok(())
   }
 
@@ -304,6 +304,27 @@ impl MainWorker {
     let op_state = op_state_rc.borrow();
     let exit_code = op_state.borrow::<Arc<AtomicI32>>().load(Relaxed);
     exit_code
+  }
+
+  /// Dispatches "load" event to the JavaScript runtime.
+  ///
+  /// Does not poll event loop, and thus not await any of the "load" event handlers.
+  pub fn dispatch_load_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<(), AnyError> {
+    self.execute_script(script_name, "window.dispatchEvent(new Event('load'))")
+  }
+
+  /// Dispatches "unload" event to the JavaScript runtime.
+  ///
+  /// Does not poll event loop, and thus not await any of the "unload" event handlers.
+  pub fn dispatch_unload_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<(), AnyError> {
+    self
+      .execute_script(script_name, "window.dispatchEvent(new Event('unload'))")
   }
 }
 

@@ -3,6 +3,7 @@
 mod in_memory_broadcast_channel;
 
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
+pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;

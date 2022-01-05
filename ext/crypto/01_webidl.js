@@ -398,11 +398,50 @@
     },
   ];
 
+  const dictAesGcmParams = [
+    ...dictAlgorithm,
+    {
+      key: "iv",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+    {
+      key: "tagLength",
+      converter: (V, opts) =>
+        webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+    },
+    {
+      key: "additionalData",
+      converter: webidl.converters["BufferSource"],
+    },
+  ];
+
+  const dictAesCtrParams = [
+    ...dictAlgorithm,
+    {
+      key: "counter",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+    {
+      key: "length",
+      converter: (V, opts) =>
+        webidl.converters["unsigned short"](V, { ...opts, enforceRange: true }),
+      required: true,
+    },
+  ];
+
   webidl.converters.AesDerivedKeyParams = webidl
     .createDictionaryConverter("AesDerivedKeyParams", dictAesDerivedKeyParams);
 
   webidl.converters.AesCbcParams = webidl
     .createDictionaryConverter("AesCbcParams", dictAesCbcParams);
+
+  webidl.converters.AesGcmParams = webidl
+    .createDictionaryConverter("AesGcmParams", dictAesGcmParams);
+
+  webidl.converters.AesCtrParams = webidl
+    .createDictionaryConverter("AesCtrParams", dictAesCtrParams);
 
   webidl.converters.CryptoKey = webidl.createInterfaceConverter(
     "CryptoKey",

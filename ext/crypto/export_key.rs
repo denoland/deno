@@ -29,6 +29,7 @@ pub enum ExportKeyFormat {
   Spki,
   JwkPublic,
   JwkPrivate,
+  JwkSecret,
 }
 
 #[derive(Deserialize)]
@@ -44,6 +45,10 @@ pub enum ExportKeyAlgorithm {
   Ecdsa { named_curve: EcNamedCurve },
   #[serde(rename = "ECDH", rename_all = "camelCase")]
   Ecdh { named_curve: EcNamedCurve },
+  #[serde(rename = "AES")]
+  Aes {},
+  #[serde(rename = "HMAC")]
+  Hmac {},
 }
 
 #[derive(Serialize)]
@@ -51,6 +56,9 @@ pub enum ExportKeyAlgorithm {
 pub enum ExportKeyResult {
   Pkcs8(ZeroCopyBuf),
   Spki(ZeroCopyBuf),
+  JwkSecret {
+    k: String,
+  },
   JwkPublicRsa {
     n: String,
     e: String,
@@ -89,11 +97,18 @@ pub fn op_crypto_export_key(
     | ExportKeyAlgorithm::Ecdsa { named_curve } => {
       export_key_ec(opts.format, key_data, opts.algorithm, named_curve)
     }
+    ExportKeyAlgorithm::Aes {} | ExportKeyAlgorithm::Hmac {} => {
+      export_key_symmetric(opts.format, key_data)
+    }
   }
 }
 
 fn uint_to_b64(bytes: UIntBytes) -> String {
   base64::encode_config(bytes.as_bytes(), base64::URL_SAFE_NO_PAD)
+}
+
+fn bytes_to_b64(bytes: &[u8]) -> String {
+  base64::encode_config(bytes, base64::URL_SAFE_NO_PAD)
 }
 
 fn export_key_rsa(
@@ -186,11 +201,24 @@ fn export_key_rsa(
         qi: uint_to_b64(private_key.coefficient),
       })
     }
+    _ => Err(unsupported_format()),
   }
 }
 
-fn bytes_to_b64(bytes: &[u8]) -> String {
-  base64::encode_config(bytes, base64::URL_SAFE_NO_PAD)
+fn export_key_symmetric(
+  format: ExportKeyFormat,
+  key_data: RawKeyData,
+) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
+  match format {
+    ExportKeyFormat::JwkSecret => {
+      let bytes = key_data.as_secret_key()?;
+
+      Ok(ExportKeyResult::JwkSecret {
+        k: bytes_to_b64(bytes),
+      })
+    }
+    _ => Err(unsupported_format()),
+  }
 }
 
 fn export_key_ec(

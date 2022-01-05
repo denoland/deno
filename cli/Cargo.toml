@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.17.0"
+version = "1.17.1"
 authors = ["the Deno authors"]
 default-run = "deno"
 edition = "2021"
@@ -20,31 +20,31 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_broadcast_channel = { version = "0.23.0", path = "../ext/broadcast_channel" }
-deno_console = { version = "0.29.0", path = "../ext/console" }
-deno_core = { version = "0.111.0", path = "../core" }
-deno_crypto = { version = "0.43.0", path = "../ext/crypto" }
-deno_fetch = { version = "0.52.0", path = "../ext/fetch" }
-deno_net = { version = "0.21.0", path = "../ext/net" }
-deno_url = { version = "0.29.0", path = "../ext/url" }
-deno_web = { version = "0.60.0", path = "../ext/web" }
-deno_webgpu = { version = "0.30.0", path = "../ext/webgpu" }
-deno_websocket = { version = "0.34.0", path = "../ext/websocket" }
-deno_webstorage = { version = "0.24.0", path = "../ext/webstorage" }
+deno_broadcast_channel = { version = "0.24.0", path = "../ext/broadcast_channel" }
+deno_console = { version = "0.30.0", path = "../ext/console" }
+deno_core = { version = "0.112.0", path = "../core" }
+deno_crypto = { version = "0.44.0", path = "../ext/crypto" }
+deno_fetch = { version = "0.53.0", path = "../ext/fetch" }
+deno_net = { version = "0.22.0", path = "../ext/net" }
+deno_url = { version = "0.30.0", path = "../ext/url" }
+deno_web = { version = "0.61.0", path = "../ext/web" }
+deno_webgpu = { version = "0.31.0", path = "../ext/webgpu" }
+deno_websocket = { version = "0.35.0", path = "../ext/websocket" }
+deno_webstorage = { version = "0.25.0", path = "../ext/webstorage" }
 regex = "=1.5.4"
-serde = { version = "=1.0.130", features = ["derive"] }
+serde = { version = "=1.0.133", features = ["derive"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winapi = "=0.3.9"
 winres = "=0.1.11"
 
 [dependencies]
-deno_ast = { version = "0.7.0", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
-deno_core = { version = "0.111.0", path = "../core" }
-deno_doc = "0.23.0"
-deno_graph = "0.14.2"
-deno_lint = { version = "0.20.0", features = ["docs"] }
-deno_runtime = { version = "0.37.0", path = "../runtime" }
+deno_ast = { version = "0.8.0", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
+deno_core = { version = "0.112.0", path = "../core" }
+deno_doc = "0.25.0"
+deno_graph = "0.17.0"
+deno_lint = { version = "0.21.0", features = ["docs"] }
+deno_runtime = { version = "0.38.0", path = "../runtime" }
 
 atty = "=0.2.14"
 base64 = "=0.13.0"
@@ -53,15 +53,15 @@ chrono = "=0.4.19"
 clap = "=2.33.3"
 data-url = "=0.1.1"
 dissimilar = "=1.0.2"
-dprint-plugin-json = "=0.13.2"
-dprint-plugin-markdown = "=0.11.3"
-dprint-plugin-typescript = "=0.60.0"
+dprint-plugin-json = "=0.14.0"
+dprint-plugin-markdown = "=0.12.0"
+dprint-plugin-typescript = "=0.61.0"
 encoding_rs = "=0.8.29"
 env_logger = "=0.8.4"
 fancy-regex = "=0.7.1"
 http = "=0.2.4"
 import_map = "=0.4.0"
-jsonc-parser = { version = "=0.17.0", features = ["serde"] }
+jsonc-parser = { version = "=0.17.1", features = ["serde"] }
 libc = "=0.2.106"
 log = { version = "=0.4.14", features = ["serde"] }
 lspower = "=1.4.0"
@@ -76,11 +76,12 @@ ring = "=0.16.20"
 rustyline = { version = "=9.0.0", default-features = false }
 rustyline-derive = "=0.5.0"
 semver-parser = "=0.10.2"
-serde = { version = "=1.0.130", features = ["derive"] }
+serde = { version = "=1.0.133", features = ["derive"] }
 shell-escape = "=0.1.5"
 sourcemap = "=6.0.1"
 tempfile = "=3.2.0"
 text-size = "=1.1.0"
+text_lines = "=0.4.1"
 tokio = { version = "=1.14", features = ["full"] }
 uuid = { version = "=0.8.2", features = ["v4", "serde"] }
 walkdir = "=2.3.2"

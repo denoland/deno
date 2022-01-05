@@ -163,7 +163,7 @@ itest!(_035_cached_only_flag {
 
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
-  args: "run --reload --config 038_checkjs.tsconfig.json 038_checkjs.js",
+  args: "run --reload --config checkjs.tsconfig.json 038_checkjs.js",
   exit_code: 1,
   output: "038_checkjs.js.out",
 });
@@ -1584,7 +1584,7 @@ itest!(worker_close_in_wasm_reactions {
 });
 
 itest!(reference_types_error {
-  args: "run reference_types_error.js",
+  args: "run --config checkjs.tsconfig.json reference_types_error.js",
   output: "reference_types_error.js.out",
   exit_code: 1,
 });

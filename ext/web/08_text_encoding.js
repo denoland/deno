@@ -292,6 +292,9 @@
         transform: (chunk, controller) => {
           try {
             chunk = webidl.converters.DOMString(chunk);
+            if (chunk === "") {
+              return PromiseResolve();
+            }
             if (this.#pendingHighSurrogate !== null) {
               chunk = this.#pendingHighSurrogate + chunk;
             }

@@ -464,6 +464,18 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
+itest!(error_cause {
+  args: "run error_cause.ts",
+  output: "error_cause.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_cause_recursive {
+  args: "run error_cause_recursive.ts",
+  output: "error_cause_recursive.ts.out",
+  exit_code: 1,
+});
+
 itest_flaky!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
   output: "cafile_url_imports.ts.out",
@@ -1100,9 +1112,8 @@ fn basic_auth_tokens() {
   let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
   eprintln!("{}", stderr_str);
 
-  assert!(stderr_str.contains(
-    "Import 'http://127.0.0.1:4554/001_hello.js' failed, not found."
-  ));
+  assert!(stderr_str
+    .contains("Module not found \"http://127.0.0.1:4554/001_hello.js\"."));
 
   let output = util::deno_cmd()
     .current_dir(util::root_path())

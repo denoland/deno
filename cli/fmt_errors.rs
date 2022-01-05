@@ -128,9 +128,11 @@ fn format_frame(frame: &JsStackFrame) -> String {
   result
 }
 
+#[allow(clippy::too_many_arguments)]
 fn format_stack(
   is_error: bool,
   message_line: &str,
+  cause: Option<&str>,
   source_line: Option<&str>,
   start_column: Option<i64>,
   end_column: Option<i64>,
@@ -151,6 +153,14 @@ fn format_stack(
       "\n{:indent$}    at {}",
       "",
       format_frame(frame),
+      indent = level
+    ));
+  }
+  if let Some(cause) = cause {
+    s.push_str(&format!(
+      "\n{:indent$}Caused by: {}",
+      "",
+      cause,
       indent = level
     ));
   }
@@ -262,12 +272,19 @@ impl fmt::Display for PrettyJsError {
       )];
     }
 
+    let cause = self
+      .0
+      .cause
+      .clone()
+      .map(|cause| format!("{}", PrettyJsError(*cause)));
+
     write!(
       f,
       "{}",
       &format_stack(
         true,
         &self.0.message,
+        cause.as_deref(),
         self.0.source_line.as_deref(),
         self.0.start_column,
         self.0.end_column,
