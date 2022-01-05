@@ -24,6 +24,7 @@ fn basic() {
     .arg("--allow-ffi")
     .arg("--allow-read")
     .arg("--unstable")
+    .arg("--quiet")
     .arg("tests/test.js")
     .env("NO_COLOR", "1")
     .output()
@@ -37,7 +38,6 @@ fn basic() {
   println!("{:?}", output.status);
   assert!(output.status.success());
   let expected = "\
-    dlopen doesn't panic\n\
     something\n\
     [1, 2, 3, 4, 5, 6, 7, 8]\n\
     [1, 2, 3, 4, 5, 6, 7, 8] [9, 10]\n\
