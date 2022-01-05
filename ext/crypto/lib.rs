@@ -839,7 +839,7 @@ pub fn op_crypto_wrap_key(
     Algorithm::AesKw => {
       let key = args.key.as_secret_key()?;
 
-      let wrapped_key = wrap(&key, &data)
+      let wrapped_key = wrap(key, &data)
         .map_err(|_| operation_error("tried to encrypt too much data"))?;
 
       Ok(wrapped_key.into())
@@ -858,7 +858,7 @@ pub fn op_crypto_unwrap_key(
     Algorithm::AesKw => {
       let key = args.key.as_secret_key()?;
 
-      let unwrapped_key = unwrap(&key, &data)
+      let unwrapped_key = unwrap(key, &data)
         .map_err(|_| operation_error("tried to encrypt too much data"))?;
 
       Ok(unwrapped_key.into())

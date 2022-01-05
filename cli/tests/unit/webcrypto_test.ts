@@ -1446,8 +1446,6 @@ Deno.test(async function testBase64Forgiving() {
 });
 
 Deno.test(async function testAESWrapKey() {
-  debugger;
-  // Test wrapKey
   const key = await crypto.subtle.generateKey(
     {
       name: "AES-KW",
@@ -1467,6 +1465,8 @@ Deno.test(async function testAESWrapKey() {
     ["sign"],
   );
 
+  //round-trip
+  // wrap-unwrap-export compare
   const wrappedKey = await crypto.subtle.wrapKey(
     "raw",
     hmacKey,
@@ -1477,7 +1477,7 @@ Deno.test(async function testAESWrapKey() {
   );
 
   assert(wrappedKey instanceof ArrayBuffer);
-  assertEquals(wrappedKey.byteLength, 16 + 8);
+  assertEquals(wrappedKey.byteLength, 16 + 8); // 8 = 'auth tag'
 
   const unwrappedKey = await crypto.subtle.unwrapKey(
     "raw",
