@@ -57,6 +57,7 @@
   ];
 
   const simpleAlgorithmDictionaries = {
+    AesGcmParams: { iv: "BufferSource", additionalData: "BufferSource" },
     RsaHashedKeyGenParams: { hash: "HashAlgorithmIdentifier" },
     EcKeyGenParams: {},
     HmacKeyGenParams: { hash: "HashAlgorithmIdentifier" },
@@ -126,6 +127,7 @@
     "encrypt": {
       "RSA-OAEP": "RsaOaepParams",
       "AES-CBC": "AesCbcParams",
+      "AES-GCM": "AesGcmParams",
       "AES-CTR": "AesCtrParams",
     },
     "decrypt": {
@@ -3517,6 +3519,69 @@
         }, data);
 
         // 4.
+        return cipherText.buffer;
+      }
+      case "AES-GCM": {
+        normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
+
+        // 1.
+        if (data.byteLength > (2 ** 39) - 256) {
+          throw new DOMException(
+            "Plaintext too large",
+            "OperationError",
+          );
+        }
+
+        // 2.
+        // We only support 96-bit nonce for now.
+        if (normalizedAlgorithm.iv.byteLength !== 12) {
+          throw new DOMException(
+            "Initialization vector length not supported",
+            "NotSupportedError",
+          );
+        }
+
+        // 3.
+        if (normalizedAlgorithm.additionalData !== undefined) {
+          if (normalizedAlgorithm.additionalData.byteLength > (2 ** 64) - 1) {
+            throw new DOMException(
+              "Additional data too large",
+              "OperationError",
+            );
+          }
+        }
+
+        // 4.
+        if (normalizedAlgorithm.tagLength == undefined) {
+          normalizedAlgorithm.tagLength = 128;
+        } else if (
+          !ArrayPrototypeIncludes(
+            [32, 64, 96, 104, 112, 120, 128],
+            normalizedAlgorithm.tagLength,
+          )
+        ) {
+          throw new DOMException(
+            "Invalid tag length",
+            "OperationError",
+          );
+        }
+        // 5.
+        if (normalizedAlgorithm.additionalData) {
+          normalizedAlgorithm.additionalData = copyBuffer(
+            normalizedAlgorithm.additionalData,
+          );
+        }
+        // 6-7.
+        const cipherText = await core.opAsync("op_crypto_encrypt", {
+          key: keyData,
+          algorithm: "AES-GCM",
+          length: key[_algorithm].length,
+          iv: normalizedAlgorithm.iv,
+          additionalData: normalizedAlgorithm.additionalData,
+          tagLength: normalizedAlgorithm.tagLength,
+        }, data);
+
+        // 8.
         return cipherText.buffer;
       }
       default:

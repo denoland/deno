@@ -398,11 +398,23 @@
     },
   ];
 
-  webidl.converters.AesDerivedKeyParams = webidl
-    .createDictionaryConverter("AesDerivedKeyParams", dictAesDerivedKeyParams);
-
-  webidl.converters.AesCbcParams = webidl
-    .createDictionaryConverter("AesCbcParams", dictAesCbcParams);
+  const dictAesGcmParams = [
+    ...dictAlgorithm,
+    {
+      key: "iv",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+    {
+      key: "tagLength",
+      converter: (V, opts) =>
+        webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+    },
+    {
+      key: "additionalData",
+      converter: webidl.converters["BufferSource"],
+    },
+  ];
 
   const dictAesCtrParams = [
     ...dictAlgorithm,
@@ -418,6 +430,15 @@
       required: true,
     },
   ];
+
+  webidl.converters.AesDerivedKeyParams = webidl
+    .createDictionaryConverter("AesDerivedKeyParams", dictAesDerivedKeyParams);
+
+  webidl.converters.AesCbcParams = webidl
+    .createDictionaryConverter("AesCbcParams", dictAesCbcParams);
+
+  webidl.converters.AesGcmParams = webidl
+    .createDictionaryConverter("AesGcmParams", dictAesGcmParams);
 
   webidl.converters.AesCtrParams = webidl
     .createDictionaryConverter("AesCtrParams", dictAesCtrParams);
