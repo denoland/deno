@@ -3471,13 +3471,13 @@
         // 4.
         return cipherText.buffer;
       }
-      case "AES-GCM": {
-        normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
+      case "AES-CTR": {
+        normalizedAlgorithm.counter = copyBuffer(normalizedAlgorithm.counter);
 
         // 1.
-        if (data.byteLength > (2 ** 39) - 256) {
+        if (normalizedAlgorithm.counter.byteLength !== 16) {
           throw new DOMException(
-            "Plaintext too large",
+            "Counter vector must be 16 bytes",
             "OperationError",
           );
         }
@@ -3504,13 +3504,13 @@
         // 4.
         return cipherText.buffer;
       }
-      case "AES-CTR": {
-        normalizedAlgorithm.counter = copyBuffer(normalizedAlgorithm.counter);
+      case "AES-GCM": {
+        normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
 
         // 1.
-        if (normalizedAlgorithm.counter.byteLength !== 16) {
+        if (data.byteLength > (2 ** 39) - 256) {
           throw new DOMException(
-            "Counter vector must be 16 bytes",
+            "Plaintext too large",
             "OperationError",
           );
         }
