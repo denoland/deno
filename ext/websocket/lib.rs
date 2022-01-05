@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::invalid_hostname;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
@@ -273,10 +274,12 @@ where
 
   if let Some(headers) = args.headers {
     for (key, value) in headers {
-      let name = HeaderName::from_bytes(&key).unwrap();
-      let v = HeaderValue::from_bytes(&value).unwrap();
+      let name = HeaderName::from_bytes(&key)
+        .map_err(|err| type_error(err.to_string()))?;
+      let v = HeaderValue::from_bytes(&value)
+        .map_err(|err| type_error(err.to_string()))?;
 
-      let is_diallowed_header = matches!(
+      let is_disallowed_header = matches!(
         name,
         http::header::HOST
           | http::header::SEC_WEBSOCKET_ACCEPT
@@ -287,7 +290,7 @@ where
           | http::header::UPGRADE
           | http::header::CONNECTION
       );
-      if !is_diallowed_header {
+      if !is_disallowed_header {
         request = request.header(name, v);
       }
     }
