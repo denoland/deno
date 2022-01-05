@@ -28,12 +28,14 @@ pub struct ECPrivateKey<'a, C: elliptic_curve::Curve> {
   pub encoded_point: &'a [u8],
 }
 
+#[allow(dead_code)]
+///todo(@sean) - to be removed in #13154
 impl<'a, C> ECPrivateKey<'a, C>
 where
   C: elliptic_curve::Curve + AlgorithmParameters,
 {
   /// Create a new ECPrivateKey from a serialized private scalar and encoded public key
-  pub fn _from_private_and_public_bytes(
+  pub fn from_private_and_public_bytes(
     private_d: elliptic_curve::FieldBytes<C>,
     encoded_point: &'a [u8],
   ) -> Self {
@@ -44,7 +46,7 @@ where
     }
   }
 
-  pub fn _named_curve_oid(&self) -> Result<ObjectIdentifier, AnyError> {
+  pub fn named_curve_oid(&self) -> Result<ObjectIdentifier, AnyError> {
     let parameters = self
       .algorithm
       .parameters
@@ -53,7 +55,7 @@ where
     Ok(parameters.oid().unwrap())
   }
 
-  fn _internal_to_pkcs8_der(&self) -> der::Result<Vec<u8>> {
+  fn internal_to_pkcs8_der(&self) -> der::Result<Vec<u8>> {
     // Shamelessly copied from pkcs8 crate and modified so as
     // to not require Arithmetic trait currently missing from p384
     let secret_key_field = OctetString::new(&self.private_d)?;
@@ -76,9 +78,9 @@ where
     Ok(der_message.to_vec())
   }
 
-  pub fn _to_pkcs8_der(&self) -> Result<PrivateKeyDocument, AnyError> {
+  pub fn to_pkcs8_der(&self) -> Result<PrivateKeyDocument, AnyError> {
     let pkcs8_der = self
-      ._internal_to_pkcs8_der()
+      .internal_to_pkcs8_der()
       .map_err(|_| data_error("expected valid PKCS#8 data"))?;
 
     let pki =
