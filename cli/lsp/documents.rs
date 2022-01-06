@@ -590,7 +590,8 @@ pub(crate) fn to_hover_text(
         "{}&#8203;{}",
         specifier[..url::Position::AfterScheme].to_string(),
         specifier[url::Position::AfterScheme..].to_string()
-      ),
+      )
+      .replace('@', "&#8203;@"),
     },
     Err(_) => "_[errored]_".to_string(),
   }

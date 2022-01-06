@@ -3075,7 +3075,7 @@ fn lsp_cache_location() {
     load_fixture("did_open_params_import_hover.json"),
   );
   let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  assert_eq!(diagnostics.count(), 12);
+  assert_eq!(diagnostics.count(), 14);
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
       "deno/cache",
@@ -3119,6 +3119,40 @@ fn lsp_cache_location() {
         "end":{
           "line": 0,
           "character": 62
+        }
+      }
+    }))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 7,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://localhost:4545/x/a/mod.ts\n\n\n---\n\n**a**\n\nmod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 7,
+          "character": 19
+        },
+        "end": {
+          "line": 7,
+          "character": 53
         }
       }
     }))
