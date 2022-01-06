@@ -376,6 +376,7 @@ pub enum SendValue {
   Text(String),
   Binary(ZeroCopyBuf),
   Pong,
+  Ping,
 }
 
 pub async fn op_ws_send(
@@ -387,6 +388,7 @@ pub async fn op_ws_send(
     SendValue::Text(text) => Message::Text(text),
     SendValue::Binary(buf) => Message::Binary(buf.to_vec()),
     SendValue::Pong => Message::Pong(vec![]),
+    SendValue::Ping => Message::Ping(vec![]),
   };
 
   let resource = state
