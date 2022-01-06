@@ -105,28 +105,12 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
         op_async(op_message_port_recv_message),
       ),
       (
-        "op_compression_create_compressor",
-        op_sync(compression::op_compression_create_compressor),
+        "op_compression_compressor_create",
+        op_sync(compression::op_compression_compressor_create),
       ),
       (
-        "op_compression_compress",
-        op_async(compression::op_compression_compress),
-      ),
-      (
-        "op_compression_compress_finalize",
-        op_async(compression::op_compression_compress_finalize),
-      ),
-      (
-        "op_compression_create_decompressor",
-        op_sync(compression::op_compression_create_decompressor),
-      ),
-      (
-        "op_compression_decompress",
-        op_async(compression::op_compression_decompress),
-      ),
-      (
-        "op_compression_decompress_finalize",
-        op_async(compression::op_compression_decompress_finalize),
+        "op_compression_decompressor_create",
+        op_sync(compression::op_compression_decompressor_create),
       ),
     ])
     .state(move |state| {

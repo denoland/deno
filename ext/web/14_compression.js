@@ -28,31 +28,26 @@
         prefix,
         context: "Argument 1",
       });
-      const rid = core.opSync("op_compression_create_compressor", format);
+      const rid = core.opSync("op_compression_compressor_create", format);
 
       super({
-        transform: async (chunk, controller) => {
-          const data = webidl.converters.BufferSource(chunk); // TODO: info?
-          const buffer = await core.opAsync("op_compression_compress", {
-            format,
-            rid,
-            data,
-          });
-          if (buffer.byteLength === 0) {
-            return;
+        async start(controller) {
+          while (true) {
+            const chunk = new Uint8Array(65536);
+            const read = await core.read(rid, chunk);
+            if (read === null) {
+              break;
+            } else {
+              controller.enqueue(chunk.subarray(0, read));
+            }
           }
-          controller.enqueue(buffer);
         },
-        flush: async (controller) => {
-          const buffer = await core.opAsync(
-            "op_compression_compress_finalize",
-            format,
-            rid,
-          );
-          if (buffer.byteLength === 0) {
-            return;
+        async transform(chunk) {
+          const data = webidl.converters.BufferSource(chunk);
+          let nwritten = 0;
+          while (nwritten < data.byteLength) {
+            nwritten += await core.write(rid, data.subarray(nwritten));
           }
-          controller.enqueue(buffer);
         },
       });
     }
@@ -66,31 +61,26 @@
         prefix,
         context: "Argument 1",
       });
-      const rid = core.opSync("op_compression_create_decompressor", format);
+      const rid = core.opSync("op_compression_decompressor_create", format);
 
       super({
-        transform: async (chunk, controller) => {
-          const data = webidl.converters.BufferSource(chunk); // TODO: info?
-          const buffer = await core.opAsync("op_compression_decompress", {
-            format,
-            rid,
-            data,
-          });
-          if (buffer.byteLength === 0) {
-            return;
+        async start(controller) {
+          while (true) {
+            const chunk = new Uint8Array(65536);
+            const read = await core.read(rid, chunk);
+            if (read === null) {
+              break;
+            } else {
+              controller.enqueue(chunk.subarray(0, read));
+            }
           }
-          controller.enqueue(buffer);
         },
-        flush: async (controller) => {
-          const buffer = await core.opAsync(
-            "op_compression_decompress_finalize",
-            format,
-            rid,
-          );
-          if (buffer.byteLength === 0) {
-            return;
+        async transform(chunk) {
+          const data = webidl.converters.BufferSource(chunk);
+          let nwritten = 0;
+          while (nwritten < data.byteLength) {
+            nwritten += await core.write(rid, data.subarray(nwritten));
           }
-          controller.enqueue(buffer);
         },
       });
     }

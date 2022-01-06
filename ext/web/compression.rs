@@ -1,11 +1,11 @@
 use deno_core::error::AnyError;
+use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use serde::Deserialize;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use async_compression::tokio::write::DeflateDecoder;
@@ -17,46 +17,118 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::DuplexStream;
 
 pub struct GzipCompressorResource {
-  encoder: RefCell<GzipEncoder<DuplexStream>>,
-  tx: RefCell<DuplexStream>,
+  encoder: AsyncRefCell<GzipEncoder<DuplexStream>>,
+  tx: AsyncRefCell<DuplexStream>,
 }
 impl Resource for GzipCompressorResource {
   fn name(&self) -> Cow<str> {
     "gzipCompressor".into()
   }
+
+  fn read(self: Rc<Self>, mut buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(async move {
+      let resource = deno_core::RcRef::map(self, |r| &r.tx);
+      let mut tx = resource.borrow_mut().await;
+      let n = tx.read(&mut buf).await?;
+      Ok(n)
+    })
+  }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(async move {
+      let resource = deno_core::RcRef::map(self, |r| &r.encoder);
+      let mut encoder = resource.borrow_mut().await;
+      let n = encoder.write(&buf).await?;
+      Ok(n)
+    })
+  }
 }
 
 pub struct GzipDecompressorResource {
-  decoder: RefCell<GzipDecoder<DuplexStream>>,
-  tx: RefCell<DuplexStream>,
+  decoder: AsyncRefCell<GzipDecoder<DuplexStream>>,
+  tx: AsyncRefCell<DuplexStream>,
 }
 impl Resource for GzipDecompressorResource {
   fn name(&self) -> Cow<str> {
     "gzipDecompressor".into()
   }
+
+  fn read(self: Rc<Self>, mut buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(async move {
+      let resource = deno_core::RcRef::map(self, |r| &r.tx);
+      let mut tx = resource.borrow_mut().await;
+      let n = tx.read(&mut buf).await?;
+      Ok(n)
+    })
+  }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(async move {
+      let resource = deno_core::RcRef::map(self, |r| &r.decoder);
+      let mut encoder = resource.borrow_mut().await;
+      let n = encoder.write(&buf).await?;
+      Ok(n)
+    })
+  }
 }
 
 pub struct DeflateCompressorResource {
-  encoder: RefCell<DeflateEncoder<DuplexStream>>,
-  tx: RefCell<DuplexStream>,
+  encoder: AsyncRefCell<DeflateEncoder<DuplexStream>>,
+  tx: AsyncRefCell<DuplexStream>,
 }
 impl Resource for DeflateCompressorResource {
   fn name(&self) -> Cow<str> {
     "deflateCompressor".into()
   }
+
+  fn read(self: Rc<Self>, mut buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(async move {
+      let resource = deno_core::RcRef::map(self, |r| &r.tx);
+      let mut tx = resource.borrow_mut().await;
+      let n = tx.read(&mut buf).await?;
+      Ok(n)
+    })
+  }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(async move {
+      let resource = deno_core::RcRef::map(self, |r| &r.encoder);
+      let mut encoder = resource.borrow_mut().await;
+      let n = encoder.write(&buf).await?;
+      Ok(n)
+    })
+  }
 }
 
 pub struct DeflateDecompressorResource {
-  decoder: RefCell<DeflateDecoder<DuplexStream>>,
-  tx: RefCell<DuplexStream>,
+  decoder: AsyncRefCell<DeflateDecoder<DuplexStream>>,
+  tx: AsyncRefCell<DuplexStream>,
 }
 impl Resource for DeflateDecompressorResource {
   fn name(&self) -> Cow<str> {
     "deflateDecompressor".into()
   }
+
+  fn read(self: Rc<Self>, mut buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(async move {
+      let resource = deno_core::RcRef::map(self, |r| &r.tx);
+      let mut tx = resource.borrow_mut().await;
+      let n = tx.read(&mut buf).await?;
+      Ok(n)
+    })
+  }
+
+  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+    Box::pin(async move {
+      let resource = deno_core::RcRef::map(self, |r| &r.decoder);
+      let mut encoder = resource.borrow_mut().await;
+      let n = encoder.write(&buf).await?;
+      Ok(n)
+    })
+  }
 }
 
-pub fn op_compression_create_compressor(
+pub fn op_compression_compressor_create(
   state: &mut OpState,
   format: String,
   _: (),
@@ -67,8 +139,8 @@ pub fn op_compression_create_compressor(
       let encoder =
         GzipEncoder::with_quality(rx, async_compression::Level::Precise(8));
       state.resource_table.add(GzipCompressorResource {
-        encoder: RefCell::new(encoder),
-        tx: RefCell::new(tx),
+        encoder: AsyncRefCell::new(encoder),
+        tx: AsyncRefCell::new(tx),
       })
     }
     "deflate" => {
@@ -76,8 +148,8 @@ pub fn op_compression_create_compressor(
       let encoder =
         DeflateEncoder::with_quality(rx, async_compression::Level::Precise(8));
       state.resource_table.add(DeflateCompressorResource {
-        encoder: RefCell::new(encoder),
-        tx: RefCell::new(tx),
+        encoder: AsyncRefCell::new(encoder),
+        tx: AsyncRefCell::new(tx),
       })
     }
     _ => unreachable!(),
@@ -86,87 +158,7 @@ pub fn op_compression_create_compressor(
   Ok(rid)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CompressArgs {
-  format: String,
-  rid: ResourceId,
-  data: ZeroCopyBuf,
-}
-
-pub async fn op_compression_compress(
-  state: Rc<RefCell<OpState>>,
-  args: CompressArgs,
-  _: (),
-) -> Result<ZeroCopyBuf, AnyError> {
-  let data = match args.format.as_str() {
-    "gzip" => {
-      let compressor = state
-        .borrow()
-        .resource_table
-        .get::<GzipCompressorResource>(args.rid)?;
-      compressor
-        .encoder
-        .borrow_mut()
-        .write_all(args.data.as_ref())
-        .await?;
-      let mut data = vec![];
-      let n = compressor.tx.borrow_mut().read(data.as_mut_slice()).await?;
-      data[0..n].to_vec()
-    }
-    "deflate" => {
-      let compressor = state
-        .borrow()
-        .resource_table
-        .get::<DeflateCompressorResource>(args.rid)?;
-      compressor
-        .encoder
-        .borrow_mut()
-        .write_all(args.data.as_ref())
-        .await?;
-      let mut data = vec![];
-      let n = compressor.tx.borrow_mut().read(data.as_mut_slice()).await?;
-      data[0..n].to_vec()
-    }
-    _ => unreachable!(),
-  };
-
-  Ok(data.into())
-}
-
-pub async fn op_compression_compress_finalize(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  format: String,
-) -> Result<ZeroCopyBuf, AnyError> {
-  let data = match format.as_str() {
-    "gzip" => {
-      let compressor = state
-        .borrow()
-        .resource_table
-        .get::<GzipCompressorResource>(rid)?;
-      compressor.encoder.borrow_mut().shutdown().await?;
-      let mut data = vec![];
-      let n = compressor.tx.borrow_mut().read_to_end(&mut data).await?;
-      data[0..n].to_vec()
-    }
-    "deflate" => {
-      let compressor = state
-        .borrow()
-        .resource_table
-        .get::<DeflateCompressorResource>(rid)?;
-      compressor.encoder.borrow_mut().shutdown().await?;
-      let mut data = vec![];
-      let n = compressor.tx.borrow_mut().read_to_end(&mut data).await?;
-      data[0..n].to_vec()
-    }
-    _ => unreachable!(),
-  };
-
-  Ok(data.into())
-}
-
-pub fn op_compression_create_decompressor(
+pub fn op_compression_decompressor_create(
   state: &mut OpState,
   format: String,
   _: (),
@@ -176,92 +168,20 @@ pub fn op_compression_create_decompressor(
       let (rx, tx) = tokio::io::duplex(65536);
       let decoder = GzipDecoder::new(rx);
       state.resource_table.add(GzipDecompressorResource {
-        decoder: RefCell::new(decoder),
-        tx: RefCell::new(tx),
+        decoder: AsyncRefCell::new(decoder),
+        tx: AsyncRefCell::new(tx),
       })
     }
     "deflate" => {
       let (rx, tx) = tokio::io::duplex(65536);
       let decoder = DeflateDecoder::new(rx);
       state.resource_table.add(DeflateDecompressorResource {
-        decoder: RefCell::new(decoder),
-        tx: RefCell::new(tx),
+        decoder: AsyncRefCell::new(decoder),
+        tx: AsyncRefCell::new(tx),
       })
     }
     _ => unreachable!(),
   };
 
   Ok(rid)
-}
-
-pub async fn op_compression_decompress(
-  state: Rc<RefCell<OpState>>,
-  args: CompressArgs,
-  _: (),
-) -> Result<ZeroCopyBuf, AnyError> {
-  let data = match args.format.as_str() {
-    "gzip" => {
-      let compressor = state
-        .borrow()
-        .resource_table
-        .get::<GzipDecompressorResource>(args.rid)?;
-      compressor
-        .decoder
-        .borrow_mut()
-        .write_all(args.data.as_ref())
-        .await?;
-      let mut data = vec![];
-      let n = compressor.tx.borrow_mut().read(data.as_mut_slice()).await?;
-      data[0..n].to_vec()
-    }
-    "deflate" => {
-      let compressor = state
-        .borrow()
-        .resource_table
-        .get::<DeflateDecompressorResource>(args.rid)?;
-      compressor
-        .decoder
-        .borrow_mut()
-        .write_all(args.data.as_ref())
-        .await?;
-      let mut data = vec![];
-      let n = compressor.tx.borrow_mut().read(data.as_mut_slice()).await?;
-      data[0..n].to_vec()
-    }
-    _ => unreachable!(),
-  };
-
-  Ok(data.into())
-}
-
-pub async fn op_compression_decompress_finalize(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  format: String,
-) -> Result<ZeroCopyBuf, AnyError> {
-  let data = match format.as_str() {
-    "gzip" => {
-      let compressor = state
-        .borrow()
-        .resource_table
-        .get::<GzipDecompressorResource>(rid)?;
-      compressor.decoder.borrow_mut().shutdown().await?;
-      let mut data = vec![];
-      let n = compressor.tx.borrow_mut().read_to_end(&mut data).await?;
-      data[0..n].to_vec()
-    }
-    "deflate" => {
-      let compressor = state
-        .borrow()
-        .resource_table
-        .get::<DeflateDecompressorResource>(rid)?;
-      compressor.decoder.borrow_mut().shutdown().await?;
-      let mut data = vec![];
-      let n = compressor.tx.borrow_mut().read_to_end(&mut data).await?;
-      data[0..n].to_vec()
-    }
-    _ => unreachable!(),
-  };
-
-  Ok(data.into())
 }
