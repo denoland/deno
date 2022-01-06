@@ -62,12 +62,10 @@ dependencies = [
 [[package]]
 name = "aes-kw"
 version = "0.0.0"
-source = "git+https://github.com/RustCrypto/key-wraps.git#235fafffad1e4121f2ea72719a24b11075aea51b"
+source = "git+https://github.com/RustCrypto/key-wraps.git?rev=d0602c5c7683aaca93d6c279e5029bc40e10299e#d0602c5c7683aaca93d6c279e5029bc40e10299e"
 dependencies = [
  "aes",
- "byteorder",
  "generic-array",
- "lazy_static",
 ]
 
 [[package]]

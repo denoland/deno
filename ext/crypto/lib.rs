@@ -17,8 +17,7 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
-use aes_kw::unwrap;
-use aes_kw::wrap;
+use aes_kw::Kek;
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::FromPrivateKey;
 use rand::rngs::OsRng;
@@ -50,6 +49,7 @@ use sha2::Digest;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
+use std::convert::TryFrom;
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
@@ -839,12 +839,21 @@ pub fn op_crypto_wrap_key(
     Algorithm::AesKw => {
       let key = args.key.as_secret_key()?;
 
-      let wrapped_key = wrap(key, &data)
-        .map_err(|_| operation_error("tried to encrypt too much data"))?;
+      if data.len() % 8 != 0 {
+        return Err(type_error("Data must be multiple of 8 bytes"));
+      }
+
+      let wrapped_key = match key.len() {
+        16 => Kek::<aes::Aes128>::new(key.into()).wrap(&data),
+        24 => Kek::<aes::Aes192>::new(key.into()).wrap(&data),
+        32 => Kek::<aes::Aes256>::new(key.into()).wrap(&data),
+        _ => return Err(type_error("Invalid key length")),
+      }
+      .map_err(|_| operation_error("encryption error"))?;
 
       Ok(wrapped_key.into())
     }
-    _ => Err(type_error("Unsupported algorithm".to_string())),
+    _ => Err(type_error("Unsupported algorithm")),
   }
 }
 
@@ -858,12 +867,23 @@ pub fn op_crypto_unwrap_key(
     Algorithm::AesKw => {
       let key = args.key.as_secret_key()?;
 
-      let unwrapped_key = unwrap(key, &data)
-        .map_err(|_| operation_error("tried to encrypt too much data"))?;
+      if data.len() % 8 != 0 {
+        return Err(type_error("Data must be multiple of 8 bytes"));
+      }
+
+      let unwrapped_key = match key.len() {
+        16 => Kek::<aes::Aes128>::new(key.into()).unwrap(&data),
+        24 => Kek::<aes::Aes192>::new(key.into()).unwrap(&data),
+        32 => Kek::<aes::Aes256>::new(key.into()).unwrap(&data),
+        _ => return Err(type_error("Invalid key length")),
+      }
+      .map_err(|_| {
+        operation_error("decryption error - integrity check failed")
+      })?;
 
       Ok(unwrapped_key.into())
     }
-    _ => Err(type_error("Unsupported algorithm".to_string())),
+    _ => Err(type_error("Unsupported algorithm")),
   }
 }
 
