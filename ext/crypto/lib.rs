@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
-use aes_kw::Kek;
+use aes_kw::{KekAes128,KekAes192,KekAes256};
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::FromPrivateKey;
 use rand::rngs::OsRng;
@@ -844,10 +844,10 @@ pub fn op_crypto_wrap_key(
       }
 
       let wrapped_key = match key.len() {
-        16 => Kek::<aes::Aes128>::new(key.into()).wrap(&data),
-        24 => Kek::<aes::Aes192>::new(key.into()).wrap(&data),
-        32 => Kek::<aes::Aes256>::new(key.into()).wrap(&data),
-        _ => return Err(type_error("Invalid key length")),
+        16 => KekAes128::new(key.into()).wrap_vec(&data),
+        24 => KekAes192::new(key.into()).wrap_vec(&data),
+        32 => KekAes256::new(key.into()).wrap_vec(&data),
+        _ => return Err(type_error("Invalid key length"))
       }
       .map_err(|_| operation_error("encryption error"))?;
 
@@ -871,11 +871,12 @@ pub fn op_crypto_unwrap_key(
         return Err(type_error("Data must be multiple of 8 bytes"));
       }
 
+
       let unwrapped_key = match key.len() {
-        16 => Kek::<aes::Aes128>::new(key.into()).unwrap(&data),
-        24 => Kek::<aes::Aes192>::new(key.into()).unwrap(&data),
-        32 => Kek::<aes::Aes256>::new(key.into()).unwrap(&data),
-        _ => return Err(type_error("Invalid key length")),
+        16 => KekAes128::new(key.into()).unwrap_vec(&data),
+        24 => KekAes192::new(key.into()).unwrap_vec(&data),
+        32 => KekAes256::new(key.into()).unwrap_vec(&data),
+        _ => return Err(type_error("Invalid key length"))
       }
       .map_err(|_| {
         operation_error("decryption error - integrity check failed")
