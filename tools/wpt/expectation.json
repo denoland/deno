@@ -4160,5 +4160,69 @@
       "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
       "Pattern: [{\"pathname\":\"{:foo\\\\bar}\"}] Inputs: [{\"pathname\":\"foobar\"}]"
     ]
+  },
+  "compression": {
+    "compression-including-empty-chunk.tentative.any.html": false,
+    "compression-including-empty-chunk.tentative.any.worker.html": false,
+    "compression-bad-chunks.tentative.any.html": true,
+    "compression-bad-chunks.tentative.any.worker.html": true,
+    "compression-multiple-chunks.tentative.any.html": false,
+    "compression-multiple-chunks.tentative.any.worker.html": false,
+    "compression-output-length.tentative.any.html": true,
+    "compression-output-length.tentative.any.worker.html": true,
+    "compression-stream.tentative.any.html": [
+      "deflated empty data should be reinflated back to its origin",
+      "deflated small amount data should be reinflated back to its origin",
+      "deflated large amount data should be reinflated back to its origin",
+      "gzipped empty data should be reinflated back to its origin",
+      "gzipped small amount data should be reinflated back to its origin",
+      "gzipped large amount data should be reinflated back to its origin"
+    ],
+    "compression-stream.tentative.any.worker.html": [
+      "deflated empty data should be reinflated back to its origin",
+      "deflated small amount data should be reinflated back to its origin",
+      "deflated large amount data should be reinflated back to its origin",
+      "gzipped empty data should be reinflated back to its origin",
+      "gzipped small amount data should be reinflated back to its origin",
+      "gzipped large amount data should be reinflated back to its origin"
+    ],
+    "compression-with-detach.tentative.window.html": false,
+    "decompression-bad-chunks.tentative.any.html": false,
+    "decompression-bad-chunks.tentative.any.worker.html": false,
+    "decompression-buffersource.tentative.any.html": false,
+    "decompression-buffersource.tentative.any.worker.html": false,
+    "decompression-constructor-error.tentative.any.html": true,
+    "decompression-constructor-error.tentative.any.worker.html": true,
+    "decompression-correct-input.tentative.any.html": false,
+    "decompression-correct-input.tentative.any.worker.html": false,
+    "decompression-corrupt-input.tentative.any.html": false,
+    "decompression-corrupt-input.tentative.any.worker.html": false,
+    "decompression-empty-input.tentative.any.html": [
+      "decompressing deflate empty input should work"
+    ],
+    "decompression-empty-input.tentative.any.worker.html": [
+      "decompressing deflate empty input should work"
+    ],
+    "decompression-split-chunk.tentative.any.html": false,
+    "decompression-split-chunk.tentative.any.worker.html": false,
+    "decompression-uint8array-output.tentative.any.html": false,
+    "decompression-uint8array-output.tentative.any.worker.html": false,
+    "decompression-with-detach.tentative.window.html": false,
+    "idlharness.https.any.html": [
+      "CompressionStream interface: existence and properties of interface object",
+      "CompressionStream interface: existence and properties of interface prototype object",
+      "Stringification of new CompressionStream(\"deflate\")",
+      "DecompressionStream interface: existence and properties of interface object",
+      "DecompressionStream interface: existence and properties of interface prototype object",
+      "Stringification of new DecompressionStream(\"deflate\")"
+    ],
+    "idlharness.https.any.worker.html": [
+      "CompressionStream interface: existence and properties of interface object",
+      "CompressionStream interface: existence and properties of interface prototype object",
+      "Stringification of new CompressionStream(\"deflate\")",
+      "DecompressionStream interface: existence and properties of interface object",
+      "DecompressionStream interface: existence and properties of interface prototype object",
+      "Stringification of new DecompressionStream(\"deflate\")"
+    ]
   }
 }
