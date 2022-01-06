@@ -1,5 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use aes_kw::KekAes128;
+use aes_kw::KekAes192;
+use aes_kw::KekAes256;
+
 use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::type_error;
@@ -17,7 +21,6 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
-use aes_kw::{KekAes128,KekAes192,KekAes256};
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::FromPrivateKey;
 use rand::rngs::OsRng;
@@ -847,7 +850,7 @@ pub fn op_crypto_wrap_key(
         16 => KekAes128::new(key.into()).wrap_vec(&data),
         24 => KekAes192::new(key.into()).wrap_vec(&data),
         32 => KekAes256::new(key.into()).wrap_vec(&data),
-        _ => return Err(type_error("Invalid key length"))
+        _ => return Err(type_error("Invalid key length")),
       }
       .map_err(|_| operation_error("encryption error"))?;
 
@@ -871,12 +874,11 @@ pub fn op_crypto_unwrap_key(
         return Err(type_error("Data must be multiple of 8 bytes"));
       }
 
-
       let unwrapped_key = match key.len() {
         16 => KekAes128::new(key.into()).unwrap_vec(&data),
         24 => KekAes192::new(key.into()).unwrap_vec(&data),
         32 => KekAes256::new(key.into()).unwrap_vec(&data),
-        _ => return Err(type_error("Invalid key length"))
+        _ => return Err(type_error("Invalid key length")),
       }
       .map_err(|_| {
         operation_error("decryption error - integrity check failed")
