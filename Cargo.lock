@@ -61,8 +61,9 @@ dependencies = [
 
 [[package]]
 name = "aes-kw"
-version = "0.0.0"
-source = "git+https://github.com/RustCrypto/key-wraps.git?rev=f070adc7464ac6f4381db86d596a2c9e285b799b#f070adc7464ac6f4381db86d596a2c9e285b799b"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da2cfe3156f99bc2978b812bcc9c98c6850810e2c0cd48366abb7163a1beeed0"
 dependencies = [
  "aes",
  "generic-array",
