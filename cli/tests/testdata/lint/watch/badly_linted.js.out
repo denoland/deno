@@ -1,0 +1,2 @@
+(no-unused-vars) `a` is never used
+(prefer-const) `a` is never reassigned

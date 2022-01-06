@@ -3,15 +3,10 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { build } = window.__bootstrap.build;
-  const { errors } = window.__bootstrap.errors;
   const {
-    Error,
-    ObjectAssign,
-    Promise,
-    PromisePrototypeThen,
-    PromiseResolve,
-    SymbolAsyncIterator,
+    Set,
+    SymbolFor,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   function bindSignal(signo) {
@@ -19,265 +14,72 @@
   }
 
   function pollSignal(rid) {
-    return core.opAsync("op_signal_poll", rid);
+    const promise = core.opAsync("op_signal_poll", rid);
+    core.unrefOp(promise[SymbolFor("Deno.core.internalPromiseId")]);
+    return promise;
   }
 
   function unbindSignal(rid) {
     core.opSync("op_signal_unbind", rid);
   }
 
-  // From `kill -l`
-  const LinuxSignal = {
-    1: "SIGHUP",
-    2: "SIGINT",
-    3: "SIGQUIT",
-    4: "SIGILL",
-    5: "SIGTRAP",
-    6: "SIGABRT",
-    7: "SIGBUS",
-    8: "SIGFPE",
-    9: "SIGKILL",
-    10: "SIGUSR1",
-    11: "SIGSEGV",
-    12: "SIGUSR2",
-    13: "SIGPIPE",
-    14: "SIGALRM",
-    15: "SIGTERM",
-    16: "SIGSTKFLT",
-    17: "SIGCHLD",
-    18: "SIGCONT",
-    19: "SIGSTOP",
-    20: "SIGTSTP",
-    21: "SIGTTIN",
-    22: "SIGTTOU",
-    23: "SIGURG",
-    24: "SIGXCPU",
-    25: "SIGXFSZ",
-    26: "SIGVTALRM",
-    27: "SIGPROF",
-    28: "SIGWINCH",
-    29: "SIGIO",
-    30: "SIGPWR",
-    31: "SIGSYS",
-    SIGHUP: 1,
-    SIGINT: 2,
-    SIGQUIT: 3,
-    SIGILL: 4,
-    SIGTRAP: 5,
-    SIGABRT: 6,
-    SIGBUS: 7,
-    SIGFPE: 8,
-    SIGKILL: 9,
-    SIGUSR1: 10,
-    SIGSEGV: 11,
-    SIGUSR2: 12,
-    SIGPIPE: 13,
-    SIGALRM: 14,
-    SIGTERM: 15,
-    SIGSTKFLT: 16,
-    SIGCHLD: 17,
-    SIGCONT: 18,
-    SIGSTOP: 19,
-    SIGTSTP: 20,
-    SIGTTIN: 21,
-    SIGTTOU: 22,
-    SIGURG: 23,
-    SIGXCPU: 24,
-    SIGXFSZ: 25,
-    SIGVTALRM: 26,
-    SIGPROF: 27,
-    SIGWINCH: 28,
-    SIGIO: 29,
-    SIGPWR: 30,
-    SIGSYS: 31,
-  };
+  // Stores signal listeners and resource data. This has type of
+  // `Record<string, { rid: number | undefined, listeners: Set<() => void> }`
+  const signalData = {};
 
-  // From `kill -l`
-  const MacOSSignal = {
-    1: "SIGHUP",
-    2: "SIGINT",
-    3: "SIGQUIT",
-    4: "SIGILL",
-    5: "SIGTRAP",
-    6: "SIGABRT",
-    7: "SIGEMT",
-    8: "SIGFPE",
-    9: "SIGKILL",
-    10: "SIGBUS",
-    11: "SIGSEGV",
-    12: "SIGSYS",
-    13: "SIGPIPE",
-    14: "SIGALRM",
-    15: "SIGTERM",
-    16: "SIGURG",
-    17: "SIGSTOP",
-    18: "SIGTSTP",
-    19: "SIGCONT",
-    20: "SIGCHLD",
-    21: "SIGTTIN",
-    22: "SIGTTOU",
-    23: "SIGIO",
-    24: "SIGXCPU",
-    25: "SIGXFSZ",
-    26: "SIGVTALRM",
-    27: "SIGPROF",
-    28: "SIGWINCH",
-    29: "SIGINFO",
-    30: "SIGUSR1",
-    31: "SIGUSR2",
-    SIGHUP: 1,
-    SIGINT: 2,
-    SIGQUIT: 3,
-    SIGILL: 4,
-    SIGTRAP: 5,
-    SIGABRT: 6,
-    SIGEMT: 7,
-    SIGFPE: 8,
-    SIGKILL: 9,
-    SIGBUS: 10,
-    SIGSEGV: 11,
-    SIGSYS: 12,
-    SIGPIPE: 13,
-    SIGALRM: 14,
-    SIGTERM: 15,
-    SIGURG: 16,
-    SIGSTOP: 17,
-    SIGTSTP: 18,
-    SIGCONT: 19,
-    SIGCHLD: 20,
-    SIGTTIN: 21,
-    SIGTTOU: 22,
-    SIGIO: 23,
-    SIGXCPU: 24,
-    SIGXFSZ: 25,
-    SIGVTALRM: 26,
-    SIGPROF: 27,
-    SIGWINCH: 28,
-    SIGINFO: 29,
-    SIGUSR1: 30,
-    SIGUSR2: 31,
-  };
+  /** Gets the signal handlers and resource data of the given signal */
+  function getSignalData(signo) {
+    return signalData[signo] ??
+      (signalData[signo] = { rid: undefined, listeners: new Set() });
+  }
 
-  const Signal = {};
-
-  function setSignals() {
-    if (build.os === "darwin") {
-      ObjectAssign(Signal, MacOSSignal);
-    } else {
-      ObjectAssign(Signal, LinuxSignal);
+  function checkSignalListenerType(listener) {
+    if (typeof listener !== "function") {
+      throw new TypeError(
+        `Signal listener must be a function. "${typeof listener}" is given.`,
+      );
     }
   }
 
-  function signal(signo) {
-    if (build.os === "windows") {
-      throw new Error("not implemented!");
+  function addSignalListener(signo, listener) {
+    checkSignalListenerType(listener);
+
+    const sigData = getSignalData(signo);
+    sigData.listeners.add(listener);
+
+    if (!sigData.rid) {
+      // If signal resource doesn't exist, create it.
+      // The program starts listening to the signal
+      sigData.rid = bindSignal(signo);
+      loop(sigData);
     }
-    return new SignalStream(signo);
   }
 
-  const signals = {
-    alarm() {
-      return signal(Signal.SIGALRM);
-    },
-    child() {
-      return signal(Signal.SIGCHLD);
-    },
-    hungup() {
-      return signal(Signal.SIGHUP);
-    },
-    interrupt() {
-      return signal(Signal.SIGINT);
-    },
-    io() {
-      return signal(Signal.SIGIO);
-    },
-    pipe() {
-      return signal(Signal.SIGPIPE);
-    },
-    quit() {
-      return signal(Signal.SIGQUIT);
-    },
-    terminate() {
-      return signal(Signal.SIGTERM);
-    },
-    userDefined1() {
-      return signal(Signal.SIGUSR1);
-    },
-    userDefined2() {
-      return signal(Signal.SIGUSR2);
-    },
-    windowChange() {
-      return signal(Signal.SIGWINCH);
-    },
-  };
+  function removeSignalListener(signo, listener) {
+    checkSignalListenerType(listener);
 
-  class SignalStream {
-    #disposed = false;
-    #pollingPromise = PromiseResolve(false);
-    #rid = 0;
+    const sigData = getSignalData(signo);
+    sigData.listeners.delete(listener);
 
-    constructor(signo) {
-      this.#rid = bindSignal(signo);
-      this.#loop();
+    if (sigData.listeners.size === 0 && sigData.rid) {
+      unbindSignal(sigData.rid);
+      sigData.rid = undefined;
     }
+  }
 
-    #pollSignal = async () => {
-      let done;
-      try {
-        done = await pollSignal(this.#rid);
-      } catch (error) {
-        if (error instanceof errors.BadResource) {
-          return true;
-        }
-        throw error;
-      }
-      return done;
-    };
-
-    #loop = async () => {
-      do {
-        this.#pollingPromise = this.#pollSignal();
-      } while (!(await this.#pollingPromise) && !this.#disposed);
-    };
-
-    then(
-      f,
-      g,
-    ) {
-      const p = PromisePrototypeThen(this.#pollingPromise, (done) => {
-        if (done) {
-          // If pollingPromise returns true, then
-          // this signal stream is finished and the promise API
-          // should never be resolved.
-          return new Promise(() => {});
-        }
+  async function loop(sigData) {
+    while (sigData.rid) {
+      if (await pollSignal(sigData.rid)) {
         return;
-      });
-      return PromisePrototypeThen(p, f, g);
-    }
-
-    async next() {
-      return { done: await this.#pollingPromise, value: undefined };
-    }
-
-    [SymbolAsyncIterator]() {
-      return this;
-    }
-
-    dispose() {
-      if (this.#disposed) {
-        throw new Error("The stream has already been disposed.");
       }
-      this.#disposed = true;
-      unbindSignal(this.#rid);
+      for (const listener of sigData.listeners) {
+        listener();
+      }
     }
   }
 
   window.__bootstrap.signals = {
-    signal,
-    signals,
-    Signal,
-    SignalStream,
-    setSignals,
+    addSignalListener,
+    removeSignalListener,
   };
 })(this);

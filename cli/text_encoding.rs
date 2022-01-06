@@ -6,6 +6,8 @@ use std::{
   io::{Error, ErrorKind},
 };
 
+pub const BOM_CHAR: char = '\u{FEFF}';
+
 /// Attempts to detect the character encoding of the provided bytes.
 ///
 /// Supports UTF-8, UTF-16 Little Endian and UTF-16 Big Endian.
@@ -27,7 +29,7 @@ pub fn detect_charset(bytes: &'_ [u8]) -> &'static str {
 ///
 /// Supports all encodings supported by the encoding_rs crate, which includes
 /// all encodings specified in the WHATWG Encoding Standard, and only those
-/// encodings (see: https://encoding.spec.whatwg.org/).
+/// encodings (see: <https://encoding.spec.whatwg.org/>).
 pub fn convert_to_utf8<'a>(
   bytes: &'a [u8],
   charset: &'_ str,
@@ -40,6 +42,15 @@ pub fn convert_to_utf8<'a>(
       ErrorKind::InvalidInput,
       format!("Unsupported charset: {}", charset),
     )),
+  }
+}
+
+/// Strips the byte order mark from the provided text if it exists.
+pub fn strip_bom(text: &str) -> &str {
+  if text.starts_with(BOM_CHAR) {
+    &text[BOM_CHAR.len_utf8()..]
+  } else {
+    text
   }
 }
 

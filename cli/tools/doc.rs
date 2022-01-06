@@ -1,101 +1,126 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast;
 use crate::colors;
 use crate::file_fetcher::File;
+use crate::flags::DocFlags;
 use crate::flags::Flags;
 use crate::get_types;
-use crate::media_type::MediaType;
-use crate::module_graph;
-use crate::program_state::ProgramState;
-use crate::specifier_handler::FetchHandler;
+use crate::proc_state::ProcState;
 use crate::write_json_to_stdout;
 use crate::write_to_stdout_ignore_sigpipe;
+use deno_ast::MediaType;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
 use deno_core::futures::future::FutureExt;
-use deno_core::futures::Future;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
-use deno_doc::parser::DocFileLoader;
+use deno_graph::create_graph;
+use deno_graph::source::LoadFuture;
+use deno_graph::source::LoadResponse;
+use deno_graph::source::Loader;
+use deno_graph::source::Resolver;
+use deno_graph::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use import_map::ImportMap;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::sync::Arc;
-use swc_ecmascript::parser::Syntax;
 
-type DocResult = Result<(Syntax, String), doc::DocError>;
-
-/// When parsing lib.deno.d.ts, only `DocParser::parse_source` is used,
-/// which never even references the loader, so this is just a stub for that scenario.
-///
-/// TODO(Liamolucko): Refactor `deno_doc` so this isn't necessary.
 struct StubDocLoader;
 
-impl DocFileLoader for StubDocLoader {
-  fn resolve(
-    &self,
-    _specifier: &str,
-    _referrer: &str,
-  ) -> Result<String, doc::DocError> {
-    unreachable!()
-  }
-
-  fn load_source_code(
-    &self,
-    _specifier: &str,
-  ) -> Pin<Box<dyn Future<Output = DocResult>>> {
-    unreachable!()
+impl Loader for StubDocLoader {
+  fn load(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    _is_dynamic: bool,
+  ) -> LoadFuture {
+    Box::pin(future::ready((specifier.clone(), Ok(None))))
   }
 }
 
-impl DocFileLoader for module_graph::Graph {
+#[derive(Debug)]
+struct DocResolver {
+  import_map: Option<Arc<ImportMap>>,
+}
+
+impl Resolver for DocResolver {
   fn resolve(
     &self,
     specifier: &str,
-    referrer: &str,
-  ) -> Result<String, doc::DocError> {
-    let referrer =
-      resolve_url_or_path(referrer).expect("Expected valid specifier");
-    match self.resolve(specifier, &referrer, true) {
-      Ok(specifier) => Ok(specifier.to_string()),
-      Err(e) => Err(doc::DocError::Resolve(e.to_string())),
+    referrer: &ModuleSpecifier,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    if let Some(import_map) = &self.import_map {
+      return import_map
+        .resolve(specifier, referrer.as_str())
+        .map_err(AnyError::from);
     }
-  }
 
-  fn load_source_code(
-    &self,
-    specifier: &str,
-  ) -> Pin<Box<dyn Future<Output = DocResult>>> {
-    let specifier =
-      resolve_url_or_path(specifier).expect("Expected valid specifier");
-    let source = self.get_source(&specifier).expect("Unknown dependency");
-    let media_type =
-      self.get_media_type(&specifier).expect("Unknown media type");
-    let syntax = ast::get_syntax(&media_type);
-    async move { Ok((syntax, source)) }.boxed_local()
+    let module_specifier =
+      deno_core::resolve_import(specifier, referrer.as_str())?;
+
+    Ok(module_specifier)
+  }
+}
+
+struct DocLoader {
+  ps: ProcState,
+}
+
+impl Loader for DocLoader {
+  fn load(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    _is_dynamic: bool,
+  ) -> LoadFuture {
+    let specifier = specifier.clone();
+    let ps = self.ps.clone();
+    async move {
+      let result = ps
+        .file_fetcher
+        .fetch(&specifier, &mut Permissions::allow_all())
+        .await
+        .map(|file| {
+          Some(LoadResponse {
+            specifier: specifier.clone(),
+            content: file.source.clone(),
+            maybe_headers: file.maybe_headers,
+          })
+        });
+      (specifier.clone(), result)
+    }
+    .boxed_local()
   }
 }
 
 pub async fn print_docs(
   flags: Flags,
-  source_file: Option<String>,
-  json: bool,
-  maybe_filter: Option<String>,
-  private: bool,
+  doc_flags: DocFlags,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags.clone()).await?;
-  let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
+  let ps = ProcState::build(flags.clone()).await?;
+  let source_file = doc_flags
+    .source_file
+    .unwrap_or_else(|| "--builtin".to_string());
+  let source_parser = deno_graph::DefaultSourceParser::new();
 
   let parse_result = if source_file == "--builtin" {
-    let loader = Box::new(StubDocLoader);
-    let doc_parser = doc::DocParser::new(loader, private);
-
-    let syntax = ast::get_syntax(&MediaType::Dts);
+    let mut loader = StubDocLoader;
+    let source_file_specifier =
+      ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
+    let graph = create_graph(
+      vec![source_file_specifier.clone()],
+      false,
+      None,
+      &mut loader,
+      None,
+      None,
+      None,
+    )
+    .await;
+    let doc_parser =
+      doc::DocParser::new(graph, doc_flags.private, &source_parser);
     doc_parser.parse_source(
-      "lib.deno.d.ts",
-      syntax,
-      get_types(flags.unstable).as_str(),
+      &source_file_specifier,
+      MediaType::Dts,
+      Arc::new(get_types(flags.unstable)),
     )
   } else {
     let module_specifier = resolve_url_or_path(&source_file)?;
@@ -107,33 +132,31 @@ pub async fn print_docs(
       local: PathBuf::from("./$deno$doc.ts"),
       maybe_types: None,
       media_type: MediaType::TypeScript,
-      source: format!("export * from \"{}\";", module_specifier),
+      source: Arc::new(format!("export * from \"{}\";", module_specifier)),
       specifier: root_specifier.clone(),
+      maybe_headers: None,
     };
 
     // Save our fake file into file fetcher cache.
-    program_state.file_fetcher.insert_cached(root);
+    ps.file_fetcher.insert_cached(root);
 
-    let handler = Arc::new(Mutex::new(FetchHandler::new(
-      &program_state,
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-    )?));
-    let mut builder = module_graph::GraphBuilder::new(
-      handler,
-      program_state.maybe_import_map.clone(),
-      program_state.lockfile.clone(),
-    );
-    builder.add(&root_specifier, false).await?;
-    builder
-      .analyze_config_file(&program_state.maybe_config_file)
-      .await?;
-    let graph = builder.get_graph();
-
-    let doc_parser = doc::DocParser::new(Box::new(graph), private);
-    doc_parser
-      .parse_with_reexports(root_specifier.as_str())
-      .await
+    let mut loader = DocLoader { ps: ps.clone() };
+    let resolver = DocResolver {
+      import_map: ps.maybe_import_map.clone(),
+    };
+    let graph = create_graph(
+      vec![root_specifier.clone()],
+      false,
+      None,
+      &mut loader,
+      Some(&resolver),
+      None,
+      None,
+    )
+    .await;
+    let doc_parser =
+      doc::DocParser::new(graph, doc_flags.private, &source_parser);
+    doc_parser.parse_with_reexports(&root_specifier)
   };
 
   let mut doc_nodes = match parse_result {
@@ -144,11 +167,11 @@ pub async fn print_docs(
     }
   };
 
-  if json {
+  if doc_flags.json {
     write_json_to_stdout(&doc_nodes)
   } else {
     doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
-    let details = if let Some(filter) = maybe_filter {
+    let details = if let Some(filter) = doc_flags.filter {
       let nodes =
         doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
       if nodes.is_empty() {
@@ -157,12 +180,16 @@ pub async fn print_docs(
       }
       format!(
         "{}",
-        doc::DocPrinter::new(&nodes, colors::use_color(), private)
+        doc::DocPrinter::new(&nodes, colors::use_color(), doc_flags.private)
       )
     } else {
       format!(
         "{}",
-        doc::DocPrinter::new(&doc_nodes, colors::use_color(), private)
+        doc::DocPrinter::new(
+          &doc_nodes,
+          colors::use_color(),
+          doc_flags.private
+        )
       )
     };
 

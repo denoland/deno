@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-explicit-any
+// deno-lint-ignore-file no-explicit-any no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -22,54 +22,54 @@ interface EventInit {
 declare class Event {
   constructor(type: string, eventInitDict?: EventInit);
   /** Returns true or false depending on how event was initialized. True if
-     * event goes through its target's ancestors in reverse tree order, and
-     * false otherwise. */
+   * event goes through its target's ancestors in reverse tree order, and
+   * false otherwise. */
   readonly bubbles: boolean;
   cancelBubble: boolean;
   /** Returns true or false depending on how event was initialized. Its return
-     * value does not always carry meaning, but true can indicate that part of the
-     * operation during which event was dispatched, can be canceled by invoking
-     * the preventDefault() method. */
+   * value does not always carry meaning, but true can indicate that part of the
+   * operation during which event was dispatched, can be canceled by invoking
+   * the preventDefault() method. */
   readonly cancelable: boolean;
   /** Returns true or false depending on how event was initialized. True if
-     * event invokes listeners past a ShadowRoot node that is the root of its
-     * target, and false otherwise. */
+   * event invokes listeners past a ShadowRoot node that is the root of its
+   * target, and false otherwise. */
   readonly composed: boolean;
   /** Returns the object whose event listener's callback is currently being
-     * invoked. */
+   * invoked. */
   readonly currentTarget: EventTarget | null;
   /** Returns true if preventDefault() was invoked successfully to indicate
-     * cancellation, and false otherwise. */
+   * cancellation, and false otherwise. */
   readonly defaultPrevented: boolean;
   /** Returns the event's phase, which is one of NONE, CAPTURING_PHASE,
-     * AT_TARGET, and BUBBLING_PHASE. */
+   * AT_TARGET, and BUBBLING_PHASE. */
   readonly eventPhase: number;
   /** Returns true if event was dispatched by the user agent, and false
-     * otherwise. */
+   * otherwise. */
   readonly isTrusted: boolean;
   /** Returns the object to which event is dispatched (its target). */
   readonly target: EventTarget | null;
   /** Returns the event's timestamp as the number of milliseconds measured
-     * relative to the time origin. */
+   * relative to the time origin. */
   readonly timeStamp: number;
   /** Returns the type of event, e.g. "click", "hashchange", or "submit". */
   readonly type: string;
   /** Returns the invocation target objects of event's path (objects on which
-     * listeners will be invoked), except for any nodes in shadow trees of which
-     * the shadow root's mode is "closed" that are not reachable from event's
-     * currentTarget. */
+   * listeners will be invoked), except for any nodes in shadow trees of which
+   * the shadow root's mode is "closed" that are not reachable from event's
+   * currentTarget. */
   composedPath(): EventTarget[];
   /** If invoked when the cancelable attribute value is true, and while
-     * executing a listener for the event with passive set to false, signals to
-     * the operation that caused event to be dispatched that it needs to be
-     * canceled. */
+   * executing a listener for the event with passive set to false, signals to
+   * the operation that caused event to be dispatched that it needs to be
+   * canceled. */
   preventDefault(): void;
   /** Invoking this method prevents event from reaching any registered event
-     * listeners after the current one finishes running and, when dispatched in a
-     * tree, also prevents event from reaching any other objects. */
+   * listeners after the current one finishes running and, when dispatched in a
+   * tree, also prevents event from reaching any other objects. */
   stopImmediatePropagation(): void;
   /** When dispatched in a tree, invoking this method prevents event from
-     * reaching any objects other than the current object. */
+   * reaching any objects other than the current object. */
   stopPropagation(): void;
   readonly AT_TARGET: number;
   readonly BUBBLING_PHASE: number;
@@ -82,9 +82,9 @@ declare class Event {
 }
 
 /**
-   * EventTarget is a DOM interface implemented by objects that can receive events
-   * and may have listeners for them.
-   */
+ * EventTarget is a DOM interface implemented by objects that can receive events
+ * and may have listeners for them.
+ */
 declare class EventTarget {
   /** Appends an event listener for events whose type attribute value is type.
    * The callback argument sets the callback that will be invoked when the event
@@ -186,26 +186,29 @@ declare interface TextDecodeOptions {
   stream?: boolean;
 }
 
-declare class TextDecoder {
-  constructor(label?: string, options?: TextDecoderOptions);
-
+interface TextDecoder {
   /** Returns encoding's name, lowercased. */
   readonly encoding: string;
   /** Returns `true` if error mode is "fatal", and `false` otherwise. */
   readonly fatal: boolean;
   /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-  readonly ignoreBOM = false;
+  readonly ignoreBOM: boolean;
 
   /** Returns the result of running encoding's decoder. */
   decode(input?: BufferSource, options?: TextDecodeOptions): string;
 }
+
+declare var TextDecoder: {
+  prototype: TextDecoder;
+  new (label?: string, options?: TextDecoderOptions): TextDecoder;
+};
 
 declare interface TextEncoderEncodeIntoResult {
   read: number;
   written: number;
 }
 
-declare class TextEncoder {
+interface TextEncoder {
   /** Returns "utf-8". */
   readonly encoding: "utf-8";
   /** Returns the result of running UTF-8's encoder. */
@@ -213,20 +216,29 @@ declare class TextEncoder {
   encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
 }
 
-declare class TextDecoderStream {
+declare var TextEncoder: {
+  prototype: TextEncoder;
+  new (): TextEncoder;
+};
+
+interface TextDecoderStream {
   /** Returns encoding's name, lowercased. */
   readonly encoding: string;
   /** Returns `true` if error mode is "fatal", and `false` otherwise. */
   readonly fatal: boolean;
   /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-  readonly ignoreBOM = false;
-  constructor(label?: string, options?: TextDecoderOptions);
+  readonly ignoreBOM: boolean;
   readonly readable: ReadableStream<string>;
   readonly writable: WritableStream<BufferSource>;
   readonly [Symbol.toStringTag]: string;
 }
 
-declare class TextEncoderStream {
+declare var TextDecoderStream: {
+  prototype: TextDecoderStream;
+  new (label?: string, options?: TextDecoderOptions): TextDecoderStream;
+};
+
+interface TextEncoderStream {
   /** Returns "utf-8". */
   readonly encoding: "utf-8";
   readonly readable: ReadableStream<Uint8Array>;
@@ -234,14 +246,19 @@ declare class TextEncoderStream {
   readonly [Symbol.toStringTag]: string;
 }
 
+declare var TextEncoderStream: {
+  prototype: TextEncoderStream;
+  new (): TextEncoderStream;
+};
+
 /** A controller object that allows you to abort one or more DOM requests as and
  * when desired. */
 declare class AbortController {
   /** Returns the AbortSignal object associated with this object. */
   readonly signal: AbortSignal;
   /** Invoking this method will set this object's AbortSignal's aborted flag and
-    * signal to any observers that the associated activity is to be aborted. */
-  abort(): void;
+   * signal to any observers that the associated activity is to be aborted. */
+  abort(reason?: any): void;
 }
 
 interface AbortSignalEventMap {
@@ -249,11 +266,12 @@ interface AbortSignalEventMap {
 }
 
 /** A signal object that allows you to communicate with a DOM request (such as a
-  * Fetch) and abort it if required via an AbortController object. */
+ * Fetch) and abort it if required via an AbortController object. */
 interface AbortSignal extends EventTarget {
   /** Returns true if this AbortSignal's AbortController has signaled to abort,
-    * and false otherwise. */
+   * and false otherwise. */
   readonly aborted: boolean;
+  readonly reason?: unknown;
   onabort: ((this: AbortSignal, ev: Event) => any) | null;
   addEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
@@ -275,11 +293,16 @@ interface AbortSignal extends EventTarget {
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions,
   ): void;
+
+  /** Throws this AbortSignal's abort reason, if its AbortController has
+   * signaled to abort; otherwise, does nothing. */
+  throwIfAborted(): void;
 }
 
 declare var AbortSignal: {
   prototype: AbortSignal;
   new (): AbortSignal;
+  abort(reason?: any): AbortSignal;
 };
 
 interface FileReaderEventMap {
@@ -399,6 +422,35 @@ interface ReadableStreamDefaultReader<R = any> {
   releaseLock(): void;
 }
 
+interface ReadableStreamBYOBReadDoneResult<V extends ArrayBufferView> {
+  done: true;
+  value?: V;
+}
+
+interface ReadableStreamBYOBReadValueResult<V extends ArrayBufferView> {
+  done: false;
+  value: V;
+}
+
+type ReadableStreamBYOBReadResult<V extends ArrayBufferView> =
+  | ReadableStreamBYOBReadDoneResult<V>
+  | ReadableStreamBYOBReadValueResult<V>;
+
+interface ReadableStreamBYOBReader {
+  readonly closed: Promise<void>;
+  cancel(reason?: any): Promise<void>;
+  read<V extends ArrayBufferView>(
+    view: V,
+  ): Promise<ReadableStreamBYOBReadResult<V>>;
+  releaseLock(): void;
+}
+
+interface ReadableStreamBYOBRequest {
+  readonly view: ArrayBufferView | null;
+  respond(bytesWritten: number): void;
+  respondWithNewView(view: ArrayBufferView): void;
+}
+
 declare var ReadableStreamDefaultReader: {
   prototype: ReadableStreamDefaultReader;
   new <R>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
@@ -463,7 +515,7 @@ declare var ReadableStreamDefaultController: {
 };
 
 interface ReadableByteStreamController {
-  readonly byobRequest: undefined;
+  readonly byobRequest: ReadableStreamBYOBRequest | null;
   readonly desiredSize: number | null;
   close(): void;
   enqueue(chunk: ArrayBufferView): void;
@@ -493,18 +545,25 @@ interface QueuingStrategy<T = any> {
 
 /** This Streams API interface provides a built-in byte length queuing strategy
  * that can be used when constructing streams. */
-declare class CountQueuingStrategy implements QueuingStrategy {
-  constructor(options: { highWaterMark: number });
+interface CountQueuingStrategy extends QueuingStrategy {
   highWaterMark: number;
   size(chunk: any): 1;
 }
 
-declare class ByteLengthQueuingStrategy
-  implements QueuingStrategy<ArrayBufferView> {
-  constructor(options: { highWaterMark: number });
+declare var CountQueuingStrategy: {
+  prototype: CountQueuingStrategy;
+  new (options: { highWaterMark: number }): CountQueuingStrategy;
+};
+
+interface ByteLengthQueuingStrategy extends QueuingStrategy<ArrayBufferView> {
   highWaterMark: number;
   size(chunk: ArrayBufferView): number;
 }
+
+declare var ByteLengthQueuingStrategy: {
+  prototype: ByteLengthQueuingStrategy;
+  new (options: { highWaterMark: number }): ByteLengthQueuingStrategy;
+};
 
 /** This Streams API interface represents a readable stream of byte data. The
  * Fetch API offers a concrete instance of a ReadableStream through the body
@@ -512,13 +571,8 @@ declare class ByteLengthQueuingStrategy
 interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
-  /**
-   * @deprecated This is no longer part of the Streams standard and the async
-   *             iterable should be obtained by just using the stream as an
-   *             async iterator.
-   */
-  getIterator(options?: { preventCancel?: boolean }): AsyncIterableIterator<R>;
-  getReader(): ReadableStreamDefaultReader<R>;
+  getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
+  getReader(options?: { mode?: undefined }): ReadableStreamDefaultReader<R>;
   pipeThrough<T>(
     { writable, readable }: {
       writable: WritableStream<R>;
@@ -587,8 +641,11 @@ declare var WritableStream: {
  * sink is given a corresponding WritableStreamDefaultController instance to
  * manipulate. */
 interface WritableStreamDefaultController {
+  signal: AbortSignal;
   error(error?: any): void;
 }
+
+declare var WritableStreamDefaultController: WritableStreamDefaultController;
 
 /** This Streams API interface is the object returned by
  * WritableStream.getWriter() and once created locks the < writer to the
@@ -629,6 +686,8 @@ interface TransformStreamDefaultController<O = any> {
   error(reason?: any): void;
   terminate(): void;
 }
+
+declare var TransformStreamDefaultController: TransformStreamDefaultController;
 
 interface Transformer<I = any, O = any> {
   flush?: TransformStreamDefaultControllerCallback<O>;

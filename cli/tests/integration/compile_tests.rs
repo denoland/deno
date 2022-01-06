@@ -370,3 +370,40 @@ fn standalone_runtime_flags() {
   assert!(util::strip_ansi_codes(&stderr_str)
     .contains("PermissionDenied: Requires write access"));
 }
+
+#[test]
+// https://github.com/denoland/deno/issues/12670
+fn skip_rebundle() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let exe = if cfg!(windows) {
+    dir.path().join("hello_world.exe")
+  } else {
+    dir.path().join("hello_world")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg("./001_hello.js")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+
+  //no "Bundle testdata_path/001_hello.js" in output
+  assert!(!String::from_utf8(output.stderr).unwrap().contains("Bundle"));
+
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, "Hello World\n".as_bytes());
+}

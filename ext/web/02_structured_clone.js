@@ -38,7 +38,7 @@
   }
 
   /** Clone a value in a similar way to structured cloning.  It is similar to a
-* StructureDeserialize(StructuredSerialize(...)). */
+   * StructureDeserialize(StructuredSerialize(...)). */
   function structuredClone(value) {
     // Performance optimization for buffers, otherwise
     // `serialize/deserialize` will allocate new buffer.

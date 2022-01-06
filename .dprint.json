@@ -1,6 +1,4 @@
 {
-  "$schema": "https://dprint.dev/schemas/v0.json",
-  "projectType": "openSource",
   "incremental": true,
   "typescript": {
     "deno": true
@@ -11,7 +9,9 @@
   "json": {
     "deno": true
   },
-  "includes": ["**/*.{ts,tsx,js,jsx,json,md,toml}"],
+  "includes": [
+    "**/*.{ts,tsx,js,jsx,json,md,toml}"
+  ],
   "excludes": [
     ".cargo_home",
     ".git",
@@ -25,6 +25,9 @@
     "cli/tests/testdata/inline_js_source_map*",
     "cli/tests/testdata/badly_formatted.md",
     "cli/tests/testdata/badly_formatted.json",
+    "cli/tests/testdata/byte_order_mark.ts",
+    "cli/tests/testdata/fmt/*",
+    "cli/tests/testdata/test/markdown_windows.md",
     "cli/tsc/*typescript.js",
     "test_util/std",
     "test_util/wpt",
@@ -35,9 +38,9 @@
     "tools/wpt/manifest.json"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.50.0.wasm",
-    "https://plugins.dprint.dev/json-0.12.1.wasm",
-    "https://plugins.dprint.dev/markdown-0.9.2.wasm",
-    "https://plugins.dprint.dev/toml-0.4.1.wasm"
+    "https://plugins.dprint.dev/typescript-0.61.0.wasm",
+    "https://plugins.dprint.dev/json-0.14.0.wasm",
+    "https://plugins.dprint.dev/markdown-0.12.0.wasm",
+    "https://plugins.dprint.dev/toml-0.5.3.wasm"
   ]
 }

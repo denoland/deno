@@ -10,16 +10,23 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { Interrupted } = core;
   const webidl = window.__bootstrap.webidl;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { defineEventHandler } = window.__bootstrap.event;
   const { DOMException } = window.__bootstrap.domException;
   const {
+    ArrayBuffer,
+    ArrayPrototypeFilter,
+    ArrayPrototypeIncludes,
+    ArrayPrototypePush,
     ObjectSetPrototypeOf,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
+    WeakSet,
+    WeakSetPrototypeAdd,
+    WeakSetPrototypeHas,
   } = window.__bootstrap.primordials;
 
   class MessageChannel {
@@ -51,10 +58,6 @@
       return `MessageChannel ${
         inspect({ port1: this.port1, port2: this.port2 })
       }`;
-    }
-
-    get [SymbolToStringTag]() {
-      return "MessageChannel";
     }
   }
 
@@ -117,7 +120,7 @@
         );
       }
       const { transfer } = options;
-      if (transfer.includes(this)) {
+      if (ArrayPrototypeIncludes(transfer, this)) {
         throw new DOMException("Can not tranfer self", "DataCloneError");
       }
       const data = serializeJsMessageData(message, transfer);
@@ -132,16 +135,22 @@
         this[_enabled] = true;
         while (true) {
           if (this[_id] === null) break;
-          const data = await core.opAsync(
-            "op_message_port_recv_message",
-            this[_id],
-          );
+          let data;
+          try {
+            data = await core.opAsync(
+              "op_message_port_recv_message",
+              this[_id],
+            );
+          } catch (err) {
+            if (err instanceof Interrupted) break;
+            throw err;
+          }
           if (data === null) break;
-          let message, transfer;
+          let message, transferables;
           try {
             const v = deserializeJsMessageData(data);
             message = v[0];
-            transfer = v[1];
+            transferables = v[1];
           } catch (err) {
             const event = new MessageEvent("messageerror", { data: err });
             this.dispatchEvent(event);
@@ -149,7 +158,10 @@
           }
           const event = new MessageEvent("message", {
             data: message,
-            ports: transfer,
+            ports: ArrayPrototypeFilter(
+              transferables,
+              (t) => t instanceof MessagePort,
+            ),
           });
           this.dispatchEvent(event);
         }
@@ -163,10 +175,6 @@
         core.close(this[_id]);
         this[_id] = null;
       }
-    }
-
-    get [SymbolToStringTag]() {
-      return "MessagePort";
     }
   }
 
@@ -191,12 +199,22 @@
   function deserializeJsMessageData(messageData) {
     /** @type {object[]} */
     const transferables = [];
+    const hostObjects = [];
+    const arrayBufferIdsInTransferables = [];
+    const transferedArrayBuffers = [];
 
     for (const transferable of messageData.transferables) {
       switch (transferable.kind) {
         case "messagePort": {
           const port = createMessagePort(transferable.data);
-          transferables.push(port);
+          ArrayPrototypePush(transferables, port);
+          ArrayPrototypePush(hostObjects, port);
+          break;
+        }
+        case "arrayBuffer": {
+          ArrayPrototypePush(transferedArrayBuffers, transferable.data);
+          const i = ArrayPrototypePush(transferables, null);
+          ArrayPrototypePush(arrayBufferIdsInTransferables, i);
           break;
         }
         default:
@@ -205,21 +223,53 @@
     }
 
     const data = core.deserialize(messageData.data, {
-      hostObjects: transferables,
+      hostObjects,
+      transferedArrayBuffers,
     });
+
+    for (const i in arrayBufferIdsInTransferables) {
+      const id = arrayBufferIdsInTransferables[i];
+      transferables[id] = transferedArrayBuffers[i];
+    }
 
     return [data, transferables];
   }
 
+  const detachedArrayBuffers = new WeakSet();
+
   /**
    * @param {any} data
-   * @param {object[]} tranferables
+   * @param {object[]} transferables
    * @returns {globalThis.__bootstrap.messagePort.MessageData}
    */
-  function serializeJsMessageData(data, tranferables) {
+  function serializeJsMessageData(data, transferables) {
+    const transferedArrayBuffers = ArrayPrototypeFilter(
+      transferables,
+      (a) => a instanceof ArrayBuffer,
+    );
+
+    for (const arrayBuffer of transferedArrayBuffers) {
+      // This is hacky with both false positives and false negatives for
+      // detecting detached array buffers. V8  needs to add a way to tell if a
+      // buffer is detached or not.
+      if (WeakSetPrototypeHas(detachedArrayBuffers, arrayBuffer)) {
+        throw new DOMException(
+          "Can not transfer detached ArrayBuffer",
+          "DataCloneError",
+        );
+      }
+      WeakSetPrototypeAdd(detachedArrayBuffers, arrayBuffer);
+    }
+
     let serializedData;
     try {
-      serializedData = core.serialize(data, { hostObjects: tranferables });
+      serializedData = core.serialize(data, {
+        hostObjects: ArrayPrototypeFilter(
+          transferables,
+          (a) => a instanceof MessagePort,
+        ),
+        transferedArrayBuffers,
+      });
     } catch (err) {
       throw new DOMException(err.message, "DataCloneError");
     }
@@ -227,7 +277,8 @@
     /** @type {globalThis.__bootstrap.messagePort.Transferable[]} */
     const serializedTransferables = [];
 
-    for (const transferable of tranferables) {
+    let arrayBufferI = 0;
+    for (const transferable of transferables) {
       if (transferable instanceof MessagePort) {
         webidl.assertBranded(transferable, MessagePort);
         const id = transferable[_id];
@@ -238,7 +289,16 @@
           );
         }
         transferable[_id] = null;
-        serializedTransferables.push({ kind: "messagePort", data: id });
+        ArrayPrototypePush(serializedTransferables, {
+          kind: "messagePort",
+          data: id,
+        });
+      } else if (transferable instanceof ArrayBuffer) {
+        ArrayPrototypePush(serializedTransferables, {
+          kind: "arrayBuffer",
+          data: transferedArrayBuffers[arrayBufferI],
+        });
+        arrayBufferI++;
       } else {
         throw new DOMException("Value not transferable", "DataCloneError");
       }

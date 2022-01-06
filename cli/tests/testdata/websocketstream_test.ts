@@ -1,9 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 import {
+  assert,
   assertEquals,
+  assertNotEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
+  unreachable,
 } from "../../../test_util/std/testing/asserts.ts";
 
 Deno.test("fragment", () => {
@@ -57,12 +60,12 @@ Deno.test("echo string tls", async () => {
 Deno.test("websocket error", async () => {
   const ws = new WebSocketStream("wss://localhost:4242");
   await Promise.all([
-    assertThrowsAsync(
+    assertRejects(
       () => ws.connection,
       Deno.errors.UnexpectedEof,
       "tls handshake eof",
     ),
-    assertThrowsAsync(
+    assertRejects(
       () => ws.closed,
       Deno.errors.UnexpectedEof,
       "tls handshake eof",
@@ -79,4 +82,115 @@ Deno.test("echo uint8array", async () => {
   assertEquals(res.value, uint);
   ws.close();
   await ws.closed;
+});
+
+Deno.test("aborting immediately throws an AbortError", async () => {
+  const controller = new AbortController();
+  const wss = new WebSocketStream("ws://localhost:4242", {
+    signal: controller.signal,
+  });
+  controller.abort();
+  await assertRejects(
+    () => wss.connection,
+    (error: Error) => {
+      assert(error instanceof DOMException);
+      assertEquals(error.name, "AbortError");
+    },
+  );
+  await assertRejects(
+    () => wss.closed,
+    (error: Error) => {
+      assert(error instanceof DOMException);
+      assertEquals(error.name, "AbortError");
+    },
+  );
+});
+
+Deno.test("aborting immediately with a reason throws that reason", async () => {
+  const controller = new AbortController();
+  const wss = new WebSocketStream("ws://localhost:4242", {
+    signal: controller.signal,
+  });
+  const abortReason = new Error();
+  controller.abort(abortReason);
+  await assertRejects(
+    () => wss.connection,
+    (error: Error) => assertEquals(error, abortReason),
+  );
+  await assertRejects(
+    () => wss.closed,
+    (error: Error) => assertEquals(error, abortReason),
+  );
+});
+
+Deno.test("aborting immediately with a primitive as reason throws that primitive", async () => {
+  const controller = new AbortController();
+  const wss = new WebSocketStream("ws://localhost:4242", {
+    signal: controller.signal,
+  });
+  controller.abort("Some string");
+  await wss.connection.then(
+    () => unreachable(),
+    (e) => assertEquals(e, "Some string"),
+  );
+  await wss.closed.then(
+    () => unreachable(),
+    (e) => assertEquals(e, "Some string"),
+  );
+});
+
+Deno.test("headers", async () => {
+  const listener = Deno.listen({ port: 4501 });
+  const promise = (async () => {
+    const httpConn = Deno.serveHttp(await listener.accept());
+    const { request, respondWith } = (await httpConn.nextRequest())!;
+    assertEquals(request.headers.get("x-some-header"), "foo");
+    const {
+      response,
+      socket,
+    } = Deno.upgradeWebSocket(request);
+    socket.onopen = () => socket.close();
+    await respondWith(response);
+  })();
+
+  const ws = new WebSocketStream("ws://localhost:4501", {
+    headers: [["x-some-header", "foo"]],
+  });
+  await promise;
+  await ws.closed;
+  listener.close();
+});
+
+Deno.test("forbidden headers", async () => {
+  const forbiddenHeaders = [
+    "sec-websocket-accept",
+    "sec-websocket-extensions",
+    "sec-websocket-key",
+    "sec-websocket-protocol",
+    "sec-websocket-version",
+    "upgrade",
+    "connection",
+  ];
+
+  const listener = Deno.listen({ port: 4501 });
+  const promise = (async () => {
+    const httpConn = Deno.serveHttp(await listener.accept());
+    const { request, respondWith } = (await httpConn.nextRequest())!;
+    for (const header of request.headers.keys()) {
+      assertNotEquals(header, "foo");
+    }
+    const {
+      response,
+      socket,
+    } = Deno.upgradeWebSocket(request);
+    socket.onopen = () => socket.close();
+    await respondWith(response);
+  })();
+
+  const ws = new WebSocketStream("ws://localhost:4501", {
+    headers: forbiddenHeaders.map((header) => [header, "foo"]),
+  });
+  await promise;
+  await ws.closed;
+  listener.close();
 });

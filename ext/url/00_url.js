@@ -22,12 +22,59 @@
     Symbol,
     SymbolFor,
     SymbolIterator,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
   const _list = Symbol("list");
   const _urlObject = Symbol("url object");
+
+  // WARNING: must match rust code's UrlSetter::*
+  const SET_HASH = 1;
+  const SET_HOST = 2;
+  const SET_HOSTNAME = 3;
+  const SET_PASSWORD = 4;
+  const SET_PATHNAME = 5;
+  const SET_PORT = 6;
+  const SET_PROTOCOL = 7;
+  const SET_SEARCH = 8;
+  const SET_USERNAME = 9;
+
+  // Helper functions
+  function opUrlReparse(href, setter, value) {
+    return _urlParts(core.opSync("op_url_reparse", href, [setter, value]));
+  }
+  function opUrlParse(href, maybeBase) {
+    return _urlParts(core.opSync("op_url_parse", href, maybeBase));
+  }
+  function _urlParts(internalParts) {
+    // WARNING: must match UrlParts serialization rust's url_result()
+    const {
+      0: href,
+      1: hash,
+      2: host,
+      3: hostname,
+      4: origin,
+      5: password,
+      6: pathname,
+      7: port,
+      8: protocol,
+      9: search,
+      10: username,
+    } = internalParts.split("\n");
+    return {
+      href,
+      hash,
+      host,
+      hostname,
+      origin,
+      password,
+      pathname,
+      port,
+      protocol,
+      search,
+      username,
+    };
+  }
 
   class URLSearchParams {
     [_list];
@@ -58,8 +105,9 @@
         this[_list] = ArrayPrototypeMap(init, (pair, i) => {
           if (pair.length !== 2) {
             throw new TypeError(
-              `${prefix}: Item ${i +
-                0} in the parameter list does have length 2 exactly.`,
+              `${prefix}: Item ${
+                i + 0
+              } in the parameter list does have length 2 exactly.`,
             );
           }
           return [pair[0], pair[1]];
@@ -78,11 +126,7 @@
       if (url === null) {
         return;
       }
-      const parts = core.opSync("op_url_parse", {
-        href: url.href,
-        setSearch: this.toString(),
-      });
-      url[_url] = parts;
+      url[_url] = opUrlReparse(url.href, SET_SEARCH, this.toString());
     }
 
     /**
@@ -247,10 +291,6 @@
       webidl.assertBranded(this, URLSearchParams);
       return core.opSync("op_url_stringify_search_params", this[_list]);
     }
-
-    get [SymbolToStringTag]() {
-      return "URLSearchParams";
-    }
   }
 
   webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
@@ -269,17 +309,15 @@
      */
     constructor(url, base = undefined) {
       const prefix = "Failed to construct 'URL'";
-      url = webidl.converters.USVString(url, { prefix, context: "Argument 1" });
+      url = webidl.converters.DOMString(url, { prefix, context: "Argument 1" });
       if (base !== undefined) {
-        base = webidl.converters.USVString(base, {
+        base = webidl.converters.DOMString(base, {
           prefix,
           context: "Argument 2",
         });
       }
       this[webidl.brand] = webidl.brand;
-
-      const parts = core.opSync("op_url_parse", { href: url, baseHref: base });
-      this[_url] = parts;
+      this[_url] = opUrlParse(url, base);
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -321,15 +359,12 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'hash' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setHash: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_HASH, value);
       } catch {
         /* pass */
       }
@@ -346,15 +381,12 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'host' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setHost: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_HOST, value);
       } catch {
         /* pass */
       }
@@ -371,15 +403,12 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'hostname' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setHostname: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_HOSTNAME, value);
       } catch {
         /* pass */
       }
@@ -396,13 +425,11 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'href' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
-      this[_url] = core.opSync("op_url_parse", {
-        href: value,
-      });
+      this[_url] = opUrlParse(value);
       this.#updateSearchParams();
     }
 
@@ -423,15 +450,12 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'password' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setPassword: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_PASSWORD, value);
       } catch {
         /* pass */
       }
@@ -448,15 +472,12 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'pathname' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setPathname: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_PATHNAME, value);
       } catch {
         /* pass */
       }
@@ -473,15 +494,12 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'port' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setPort: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_PORT, value);
       } catch {
         /* pass */
       }
@@ -498,15 +516,12 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'protocol' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setProtocol: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_PROTOCOL, value);
       } catch {
         /* pass */
       }
@@ -523,15 +538,12 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'search' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setSearch: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_SEARCH, value);
         this.#updateSearchParams();
       } catch {
         /* pass */
@@ -549,15 +561,12 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'username' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setUsername: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_USERNAME, value);
       } catch {
         /* pass */
       }
@@ -582,10 +591,6 @@
     toJSON() {
       webidl.assertBranded(this, URL);
       return this[_url].href;
-    }
-
-    get [SymbolToStringTag]() {
-      return "URL";
     }
   }
 

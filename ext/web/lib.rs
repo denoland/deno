@@ -4,7 +4,6 @@ mod blob;
 mod compression;
 mod message_port;
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -31,6 +30,7 @@ use std::usize;
 
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;
+use crate::blob::op_blob_from_object_url;
 use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
@@ -91,6 +91,7 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
         "op_blob_revoke_object_url",
         op_sync(op_blob_revoke_object_url),
       ),
+      ("op_blob_from_object_url", op_sync(op_blob_from_object_url)),
       (
         "op_message_port_create_entangled",
         op_sync(op_message_port_create_entangled),
@@ -266,10 +267,7 @@ fn op_encoding_decode(
 ) -> Result<String, AnyError> {
   let DecodeOptions { rid, stream } = options;
 
-  let resource = state
-    .resource_table
-    .get::<TextDecoderResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+  let resource = state.resource_table.get::<TextDecoderResource>(rid)?;
 
   let mut decoder = resource.decoder.borrow_mut();
   let fatal = resource.fatal;

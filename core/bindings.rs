@@ -1,26 +1,28 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::error::AnyError;
+use crate::error::is_instance_of_error;
+use crate::modules::get_module_type_from_assertions;
+use crate::modules::parse_import_assertions;
+use crate::modules::validate_import_assertions;
+use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
 use crate::OpPayload;
+use crate::OpResult;
 use crate::OpTable;
 use crate::PromiseId;
-use crate::ResourceId;
 use crate::ZeroCopyBuf;
+use anyhow::Error;
 use log::debug;
-use rusty_v8 as v8;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
 use std::cell::RefCell;
-use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::option::Option;
-use std::rc::Rc;
 use url::Url;
 use v8::HandleScope;
 use v8::Local;
@@ -29,41 +31,76 @@ use v8::SharedArrayBuffer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
-lazy_static::lazy_static! {
-  pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
+const UNDEFINED_OP_ID_MSG: &str =
+  "invalid op id: received `undefined` instead of an integer.
+This error is often caused by a typo in an op name, or not calling
+JsRuntime::sync_ops_cache() after JsRuntime initialization.";
+
+pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
+  Lazy::new(|| {
     v8::ExternalReferences::new(&[
       v8::ExternalReference {
-        function: opcall.map_fn_to()
+        function: opcall_async.map_fn_to(),
       },
       v8::ExternalReference {
-        function: set_macrotask_callback.map_fn_to()
+        function: opcall_sync.map_fn_to(),
       },
       v8::ExternalReference {
-        function: eval_context.map_fn_to()
+        function: ref_op.map_fn_to(),
       },
       v8::ExternalReference {
-        function: queue_microtask.map_fn_to()
+        function: unref_op.map_fn_to(),
       },
       v8::ExternalReference {
-        function: create_host_object.map_fn_to()
+        function: set_macrotask_callback.map_fn_to(),
       },
       v8::ExternalReference {
-        function: encode.map_fn_to()
+        function: set_nexttick_callback.map_fn_to(),
       },
       v8::ExternalReference {
-        function: decode.map_fn_to()
+        function: set_promise_reject_callback.map_fn_to(),
       },
       v8::ExternalReference {
-        function: serialize.map_fn_to()
+        function: set_uncaught_exception_callback.map_fn_to(),
       },
       v8::ExternalReference {
-        function: deserialize.map_fn_to()
+        function: run_microtasks.map_fn_to(),
       },
       v8::ExternalReference {
-        function: get_promise_details.map_fn_to()
+        function: has_tick_scheduled.map_fn_to(),
       },
       v8::ExternalReference {
-        function: get_proxy_details.map_fn_to()
+        function: set_has_tick_scheduled.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: eval_context.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: queue_microtask.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: create_host_object.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: encode.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: decode.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: serialize.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: deserialize.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: get_promise_details.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: get_proxy_details.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: is_proxy.map_fn_to(),
       },
       v8::ExternalReference {
         function: memory_usage.map_fn_to(),
@@ -72,13 +109,10 @@ lazy_static::lazy_static! {
         function: call_console.map_fn_to(),
       },
       v8::ExternalReference {
-        function: set_wasm_streaming_callback.map_fn_to()
+        function: set_wasm_streaming_callback.map_fn_to(),
       },
-      v8::ExternalReference {
-        function: wasm_streaming_feed.map_fn_to()
-      }
-    ]);
-}
+    ])
+  });
 
 pub fn script_origin<'a>(
   s: &mut v8::HandleScope<'a>,
@@ -137,12 +171,41 @@ pub fn initialize_context<'s>(
   deno_val.set(scope, core_key.into(), core_val.into());
 
   // Bind functions to Deno.core.*
-  set_func(scope, core_val, "opcall", opcall);
+  set_func(scope, core_val, "opcallSync", opcall_sync);
+  set_func(scope, core_val, "opcallAsync", opcall_async);
+  set_func(scope, core_val, "refOp", ref_op);
+  set_func(scope, core_val, "unrefOp", unref_op);
   set_func(
     scope,
     core_val,
     "setMacrotaskCallback",
     set_macrotask_callback,
+  );
+  set_func(
+    scope,
+    core_val,
+    "setNextTickCallback",
+    set_nexttick_callback,
+  );
+  set_func(
+    scope,
+    core_val,
+    "setPromiseRejectCallback",
+    set_promise_reject_callback,
+  );
+  set_func(
+    scope,
+    core_val,
+    "setUncaughtExceptionCallback",
+    set_uncaught_exception_callback,
+  );
+  set_func(scope, core_val, "runMicrotasks", run_microtasks);
+  set_func(scope, core_val, "hasTickScheduled", has_tick_scheduled);
+  set_func(
+    scope,
+    core_val,
+    "setHasTickScheduled",
+    set_has_tick_scheduled,
   );
   set_func(scope, core_val, "evalContext", eval_context);
   set_func(scope, core_val, "encode", encode);
@@ -151,6 +214,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "deserialize", deserialize);
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
+  set_func(scope, core_val, "isProxy", is_proxy);
   set_func(scope, core_val, "memoryUsage", memory_usage);
   set_func(scope, core_val, "callConsole", call_console);
   set_func(scope, core_val, "createHostObject", create_host_object);
@@ -160,8 +224,6 @@ pub fn initialize_context<'s>(
     "setWasmStreamingCallback",
     set_wasm_streaming_callback,
   );
-  set_func(scope, core_val, "wasmStreamingFeed", wasm_streaming_feed);
-
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 
@@ -178,6 +240,7 @@ pub fn set_func(
   let key = v8::String::new(scope, name).unwrap();
   let tmpl = v8::FunctionTemplate::new(scope, callback);
   let val = tmpl.get_function(scope).unwrap();
+  val.set_name(key);
   obj.set(scope, key.into(), val.into());
 }
 
@@ -185,7 +248,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
   referrer: v8::Local<v8::ScriptOrModule>,
   specifier: v8::Local<v8::String>,
-  _import_assertions: v8::Local<v8::FixedArray>,
+  import_assertions: v8::Local<v8::FixedArray>,
 ) -> *mut v8::Promise {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
@@ -209,6 +272,22 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
+  let assertions = parse_import_assertions(
+    scope,
+    import_assertions,
+    ImportAssertionsKind::DynamicImport,
+  );
+
+  {
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    validate_import_assertions(tc_scope, &assertions);
+    if tc_scope.has_caught() {
+      let e = tc_scope.exception().unwrap();
+      resolver.reject(tc_scope, e);
+    }
+  }
+  let module_type = get_module_type_from_assertions(&assertions);
+
   let resolver_handle = v8::Global::new(scope, resolver);
   {
     let state_rc = JsRuntime::state(scope);
@@ -222,6 +301,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
       module_map_rc,
       &specifier_str,
       &referrer_name_str,
+      module_type,
       resolver_handle,
     );
     state_rc.borrow_mut().notify_new_dynamic_import();
@@ -235,14 +315,35 @@ pub extern "C" fn host_import_module_dynamically_callback(
                  args: v8::FunctionCallbackArguments,
                  _rv: v8::ReturnValue| {
     let arg = args.get(0);
-    if arg.is_native_error() {
+    if is_instance_of_error(scope, arg) {
+      let e: crate::error::NativeJsError =
+        serde_v8::from_v8(scope, arg).unwrap();
+      let name = e.name.unwrap_or_else(|| "Error".to_string());
       let message = v8::Exception::create_message(scope, arg);
       if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
         let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
         let message_key = v8::String::new(scope, "message").unwrap();
         let message = arg.get(scope, message_key.into()).unwrap();
-        let exception =
-          v8::Exception::type_error(scope, message.try_into().unwrap());
+        let exception = match name.as_str() {
+          "RangeError" => {
+            v8::Exception::range_error(scope, message.try_into().unwrap())
+          }
+          "TypeError" => {
+            v8::Exception::type_error(scope, message.try_into().unwrap())
+          }
+          "SyntaxError" => {
+            v8::Exception::syntax_error(scope, message.try_into().unwrap())
+          }
+          "ReferenceError" => {
+            v8::Exception::reference_error(scope, message.try_into().unwrap())
+          }
+          _ => v8::Exception::error(scope, message.try_into().unwrap()),
+        };
+        let code_key = v8::String::new(scope, "code").unwrap();
+        let code_value =
+          v8::String::new(scope, "ERR_MODULE_NOT_FOUND").unwrap();
+        let exception_obj = exception.to_object(scope).unwrap();
+        exception_obj.set(scope, code_key.into(), code_value.into());
         scope.throw_exception(exception);
         return;
       }
@@ -280,47 +381,111 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
+  use v8::PromiseRejectEvent::*;
+
   let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  let promise = message.get_promise();
-  let promise_global = v8::Global::new(scope, promise);
+  // Node compat: perform synchronous process.emit("unhandledRejection").
+  //
+  // Note the callback follows the (type, promise, reason) signature of Node's
+  // internal promiseRejectHandler from lib/internal/process/promises.js, not
+  // the (promise, reason) signature of the "unhandledRejection" event listener.
+  //
+  // Short-circuits Deno's regular unhandled rejection logic because that's
+  // a) asynchronous, and b) always terminates.
+  if let Some(js_promise_reject_cb) = state.js_promise_reject_cb.clone() {
+    let js_uncaught_exception_cb = state.js_uncaught_exception_cb.clone();
+    drop(state); // Drop borrow, callbacks can call back into runtime.
 
-  match message.get_event() {
-    v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
-      let error = message.get_value().unwrap();
-      let error_global = v8::Global::new(scope, error);
-      state
-        .pending_promise_exceptions
-        .insert(promise_global, error_global);
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
+    let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
+    let promise = message.get_promise();
+
+    let reason = match message.get_event() {
+      PromiseRejectWithNoHandler
+      | PromiseRejectAfterResolved
+      | PromiseResolveAfterResolved => message.get_value().unwrap_or(undefined),
+      PromiseHandlerAddedAfterReject => undefined,
+    };
+
+    let args = &[type_.into(), promise.into(), reason];
+    js_promise_reject_cb
+      .open(tc_scope)
+      .call(tc_scope, undefined, args);
+
+    if let Some(exception) = tc_scope.exception() {
+      if let Some(js_uncaught_exception_cb) = js_uncaught_exception_cb {
+        tc_scope.reset(); // Cancel pending exception.
+        js_uncaught_exception_cb.open(tc_scope).call(
+          tc_scope,
+          undefined,
+          &[exception],
+        );
+      }
     }
-    v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
-      state.pending_promise_exceptions.remove(&promise_global);
+
+    if tc_scope.has_caught() {
+      // If we get here, an exception was thrown by the unhandledRejection
+      // handler and there is ether no uncaughtException handler or the
+      // handler threw an exception of its own.
+      //
+      // TODO(bnoordhuis) Node terminates the process or worker thread
+      // but we don't really have that option. The exception won't bubble
+      // up either because V8 cancels it when this function returns.
+      let exception = tc_scope
+        .stack_trace()
+        .or_else(|| tc_scope.exception())
+        .map(|value| value.to_rust_string_lossy(tc_scope))
+        .unwrap_or_else(|| "no exception".into());
+      eprintln!("Unhandled exception: {}", exception);
     }
-    v8::PromiseRejectEvent::PromiseRejectAfterResolved => {}
-    v8::PromiseRejectEvent::PromiseResolveAfterResolved => {
-      // Should not warn. See #1272
+  } else {
+    let promise = message.get_promise();
+    let promise_global = v8::Global::new(scope, promise);
+
+    match message.get_event() {
+      PromiseRejectWithNoHandler => {
+        let error = message.get_value().unwrap();
+        let error_global = v8::Global::new(scope, error);
+        state
+          .pending_promise_exceptions
+          .insert(promise_global, error_global);
+      }
+      PromiseHandlerAddedAfterReject => {
+        state.pending_promise_exceptions.remove(&promise_global);
+      }
+      PromiseRejectAfterResolved => {}
+      PromiseResolveAfterResolved => {
+        // Should not warn. See #1272
+      }
     }
-  };
+  }
 }
 
-fn opcall<'s>(
+fn opcall_sync<'s>(
   scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
   let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
     .map(|l| l.value() as OpId)
-    .map_err(AnyError::from)
+    .map_err(Error::from)
   {
     Ok(op_id) => op_id,
     Err(err) => {
-      throw_type_error(scope, format!("invalid op id: {}", err));
+      let msg = if args.get(0).is_undefined() {
+        UNDEFINED_OP_ID_MSG.to_string()
+      } else {
+        format!("invalid op id: {}", err)
+      };
+      throw_type_error(scope, msg);
       return;
     }
   };
@@ -333,17 +498,66 @@ fn opcall<'s>(
     return;
   }
 
+  // Deserializable args (may be structured args or ZeroCopyBuf)
+  let a = args.get(1);
+  let b = args.get(2);
+
+  let payload = OpPayload {
+    scope,
+    a,
+    b,
+    op_id,
+    promise_id: 0,
+  };
+  let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
+  match op {
+    Op::Sync(result) => {
+      state.op_state.borrow().tracker.track_sync(op_id);
+      rv.set(result.to_v8(scope).unwrap());
+    }
+    Op::NotFound => {
+      throw_type_error(scope, format!("Unknown op id: {}", op_id));
+    }
+    // Async ops (ref or unref)
+    _ => {
+      throw_type_error(
+        scope,
+        format!("Can not call an async op [{}] with opSync()", op_id),
+      );
+    }
+  }
+}
+
+fn opcall_async<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map(|l| l.value() as OpId)
+    .map_err(Error::from)
+  {
+    Ok(op_id) => op_id,
+    Err(err) => {
+      let msg = if args.get(0).is_undefined() {
+        UNDEFINED_OP_ID_MSG.to_string()
+      } else {
+        format!("invalid op id: {}", err)
+      };
+      throw_type_error(scope, msg);
+      return;
+    }
+  };
+
   // PromiseId
   let arg1 = args.get(1);
-  let promise_id = if arg1.is_null_or_undefined() {
-    Ok(0) // Accept null or undefined as 0
-  } else {
-    // Otherwise expect int
-    v8::Local::<v8::Integer>::try_from(arg1)
-      .map(|l| l.value() as PromiseId)
-      .map_err(AnyError::from)
-  };
-  // Fail if promise id invalid (not null/undefined or int)
+  let promise_id = v8::Local::<v8::Integer>::try_from(arg1)
+    .map(|l| l.value() as PromiseId)
+    .map_err(Error::from);
+  // Fail if promise id invalid (not an int)
   let promise_id: PromiseId = match promise_id {
     Ok(promise_id) => promise_id,
     Err(err) => {
@@ -360,19 +574,21 @@ fn opcall<'s>(
     scope,
     a,
     b,
+    op_id,
     promise_id,
   };
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {
-    Op::Sync(result) => {
-      rv.set(result.to_v8(scope).unwrap());
-    }
+    Op::Sync(result) => match result {
+      OpResult::Ok(_) => throw_type_error(
+        scope,
+        format!("Can not call a sync op [{}] with opAsync()", op_id),
+      ),
+      OpResult::Err(_) => rv.set(result.to_v8(scope).unwrap()),
+    },
     Op::Async(fut) => {
+      state.op_state.borrow().tracker.track_async(op_id);
       state.pending_ops.push(fut);
-      state.have_unpolled_ops = true;
-    }
-    Op::AsyncUnref(fut) => {
-      state.pending_unref_ops.push(fut);
       state.have_unpolled_ops = true;
     }
     Op::NotFound => {
@@ -381,7 +597,61 @@ fn opcall<'s>(
   }
 }
 
-fn set_macrotask_callback(
+fn ref_op<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let promise_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map(|l| l.value() as PromiseId)
+    .map_err(Error::from)
+  {
+    Ok(promise_id) => promise_id,
+    Err(err) => {
+      throw_type_error(scope, format!("invalid promise id: {}", err));
+      return;
+    }
+  };
+
+  state.unrefed_ops.remove(&promise_id);
+}
+
+fn unref_op<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let promise_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map(|l| l.value() as PromiseId)
+    .map_err(Error::from)
+  {
+    Ok(promise_id) => promise_id,
+    Err(err) => {
+      throw_type_error(scope, format!("invalid promise id: {}", err));
+      return;
+    }
+  };
+
+  state.unrefed_ops.insert(promise_id);
+}
+
+fn has_tick_scheduled(
+  scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
+  rv.set(to_v8(scope, state.has_tick_scheduled).unwrap());
+}
+
+fn set_has_tick_scheduled(
   scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
@@ -389,22 +659,84 @@ fn set_macrotask_callback(
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
-    Ok(cb) => cb,
-    Err(err) => return throw_type_error(scope, err.to_string()),
-  };
+  state.has_tick_scheduled = args.get(0).is_true();
+}
 
-  let slot = match &mut state.js_macrotask_cb {
-    slot @ None => slot,
-    _ => {
-      return throw_type_error(
-        scope,
-        "Deno.core.setMacrotaskCallback() already called",
-      );
+fn run_microtasks(
+  scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  scope.perform_microtask_checkpoint();
+}
+
+fn set_nexttick_callback(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  if let Ok(cb) = arg0_to_cb(scope, args) {
+    JsRuntime::state(scope)
+      .borrow_mut()
+      .js_nexttick_cbs
+      .push(cb);
+  }
+}
+
+fn set_macrotask_callback(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  if let Ok(cb) = arg0_to_cb(scope, args) {
+    JsRuntime::state(scope)
+      .borrow_mut()
+      .js_macrotask_cbs
+      .push(cb);
+  }
+}
+
+fn set_promise_reject_callback(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  if let Ok(new) = arg0_to_cb(scope, args) {
+    if let Some(old) = JsRuntime::state(scope)
+      .borrow_mut()
+      .js_promise_reject_cb
+      .replace(new)
+    {
+      let old = v8::Local::new(scope, old);
+      rv.set(old.into());
     }
-  };
+  }
+}
 
-  slot.replace(v8::Global::new(scope, cb));
+fn set_uncaught_exception_callback(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  if let Ok(new) = arg0_to_cb(scope, args) {
+    if let Some(old) = JsRuntime::state(scope)
+      .borrow_mut()
+      .js_uncaught_exception_cb
+      .replace(new)
+    {
+      let old = v8::Local::new(scope, old);
+      rv.set(old.into());
+    }
+  }
+}
+
+fn arg0_to_cb(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+) -> Result<v8::Global<v8::Function>, ()> {
+  v8::Local::<v8::Function>::try_from(args.get(0))
+    .map(|cb| v8::Global::new(scope, cb))
+    .map_err(|err| throw_type_error(scope, err.to_string()))
 }
 
 fn eval_context(
@@ -458,7 +790,7 @@ fn eval_context(
       None,
       Some(ErrInfo {
         thrown: exception.into(),
-        is_native_error: exception.is_native_error(),
+        is_native_error: is_instance_of_error(tc_scope, exception),
         is_compile_error: true,
       }),
     );
@@ -475,7 +807,7 @@ fn eval_context(
       None,
       Some(ErrInfo {
         thrown: exception.into(),
-        is_native_error: exception.is_native_error(),
+        is_native_error: is_instance_of_error(tc_scope, exception),
         is_compile_error: false,
       }),
     );
@@ -515,10 +847,12 @@ fn call_console(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  assert!(args.length() >= 2);
-
-  assert!(args.get(0).is_function());
-  assert!(args.get(1).is_function());
+  if args.length() < 2
+    || !args.get(0).is_function()
+    || !args.get(1).is_function()
+  {
+    return throw_type_error(scope, "Invalid arguments");
+  }
 
   let mut call_args = vec![];
   for i in 2..args.length() {
@@ -535,27 +869,26 @@ fn call_console(
   deno_console_method.call(scope, receiver.into(), &call_args);
 }
 
-struct WasmStreamingResource(RefCell<v8::WasmStreaming>);
-impl crate::Resource for WasmStreamingResource {}
-
 fn set_wasm_streaming_callback(
   scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
+  use crate::ops_builtin::WasmStreamingResource;
+
+  let cb = match arg0_to_cb(scope, args) {
+    Ok(cb) => cb,
+    Err(()) => return,
+  };
+
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
-
-  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
-    Ok(cb) => cb,
-    Err(err) => return throw_type_error(scope, err.to_string()),
-  };
 
   // The callback to pass to the v8 API has to be a unit type, so it can't
   // borrow or move any local variables. Therefore, we're storing the JS
   // callback in a JsRuntimeState slot.
   if let slot @ None = &mut state.js_wasm_streaming_cb {
-    slot.replace(v8::Global::new(scope, cb));
+    slot.replace(cb);
   } else {
     return throw_type_error(
       scope,
@@ -579,69 +912,9 @@ fn set_wasm_streaming_callback(
     let undefined = v8::undefined(scope);
     let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
     cb_handle
-      .get(scope)
+      .open(scope)
       .call(scope, undefined.into(), &[arg, rid]);
   });
-}
-
-fn wasm_streaming_feed(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
-  #[derive(Deserialize)]
-  #[serde(rename_all = "snake_case")]
-  enum MessageType {
-    Bytes,
-    Abort,
-    Finish,
-  }
-
-  let rid: ResourceId = match serde_v8::from_v8(scope, args.get(0)) {
-    Ok(rid) => rid,
-    Err(_) => return throw_type_error(scope, "Invalid argument"),
-  };
-  let message_type = match serde_v8::from_v8(scope, args.get(1)) {
-    Ok(message_type) => message_type,
-    Err(_) => return throw_type_error(scope, "Invalid argument"),
-  };
-
-  let wasm_streaming = {
-    let state_rc = JsRuntime::state(scope);
-    let state = state_rc.borrow();
-    // If message_type is not Bytes, we'll be consuming the WasmStreaming
-    // instance, so let's also remove it from the resource table.
-    let wasm_streaming: Option<Rc<WasmStreamingResource>> = match message_type {
-      MessageType::Bytes => state.op_state.borrow().resource_table.get(rid),
-      _ => state.op_state.borrow_mut().resource_table.take(rid),
-    };
-    match wasm_streaming {
-      Some(wasm_streaming) => wasm_streaming,
-      None => return throw_type_error(scope, "Invalid resource ID."),
-    }
-  };
-
-  match message_type {
-    MessageType::Bytes => {
-      let bytes: ZeroCopyBuf = match serde_v8::from_v8(scope, args.get(2)) {
-        Ok(bytes) => bytes,
-        Err(_) => return throw_type_error(scope, "Invalid resource ID."),
-      };
-      wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
-    }
-    _ => {
-      // These types need to consume the WasmStreaming instance.
-      let wasm_streaming = match Rc::try_unwrap(wasm_streaming) {
-        Ok(streaming) => streaming.0.into_inner(),
-        Err(_) => panic!("Couldn't consume WasmStreamingResource."),
-      };
-      match message_type {
-        MessageType::Bytes => unreachable!(),
-        MessageType::Finish => wasm_streaming.finish(),
-        MessageType::Abort => wasm_streaming.abort(Some(args.get(2))),
-      }
-    }
-  }
 }
 
 fn encode(
@@ -733,6 +1006,23 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     }
   }
 
+  fn get_wasm_module_transfer_id(
+    &mut self,
+    scope: &mut HandleScope<'_>,
+    module: Local<v8::WasmModuleObject>,
+  ) -> Option<u32> {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    if let Some(compiled_wasm_module_store) = &state.compiled_wasm_module_store
+    {
+      let compiled_wasm_module = module.get_compiled_module();
+      let id = compiled_wasm_module_store.insert(compiled_wasm_module);
+      Some(id)
+    } else {
+      None
+    }
+  }
+
   fn write_host_object<'s>(
     &mut self,
     scope: &mut v8::HandleScope<'s>,
@@ -767,6 +1057,22 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
       let shared_array_buffer =
         v8::SharedArrayBuffer::with_backing_store(scope, &backing_store);
       Some(shared_array_buffer)
+    } else {
+      None
+    }
+  }
+
+  fn get_wasm_module_from_id<'s>(
+    &mut self,
+    scope: &mut HandleScope<'s>,
+    clone_id: u32,
+  ) -> Option<Local<'s, v8::WasmModuleObject>> {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    if let Some(compiled_wasm_module_store) = &state.compiled_wasm_module_store
+    {
+      let compiled_module = compiled_wasm_module_store.take(clone_id)?;
+      v8::WasmModuleObject::from_compiled_module(scope, &compiled_module)
     } else {
       None
     }
@@ -812,8 +1118,10 @@ fn serialize(
       }
     };
 
-  let options =
-    options.unwrap_or(SerializeDeserializeOptions { host_objects: None });
+  let options = options.unwrap_or(SerializeDeserializeOptions {
+    host_objects: None,
+    transfered_array_buffers: None,
+  });
 
   let host_objects = match options.host_objects {
     Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
@@ -826,10 +1134,61 @@ fn serialize(
     None => None,
   };
 
+  let transfered_array_buffers = match options.transfered_array_buffers {
+    Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
+      Ok(transfered_array_buffers) => Some(transfered_array_buffers),
+      Err(_) => {
+        throw_type_error(scope, "transfered_array_buffers not an array");
+        return;
+      }
+    },
+    None => None,
+  };
+
   let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
   let mut value_serializer =
     v8::ValueSerializer::new(scope, serialize_deserialize);
+
   value_serializer.write_header();
+
+  if let Some(transfered_array_buffers) = transfered_array_buffers {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    for i in 0..transfered_array_buffers.length() {
+      let i = v8::Number::new(scope, i as f64).into();
+      let buf = transfered_array_buffers.get(scope, i).unwrap();
+      let buf = match v8::Local::<v8::ArrayBuffer>::try_from(buf) {
+        Ok(buf) => buf,
+        Err(_) => {
+          throw_type_error(
+            scope,
+            "item in transfered_array_buffers not an ArrayBuffer",
+          );
+          return;
+        }
+      };
+      if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store
+      {
+        // TODO(lucacasonato): we need to check here that the buffer is not
+        // already detached. We can not do that because V8 does not provide
+        // a way to check if a buffer is already detached.
+        if !buf.is_detachable() {
+          throw_type_error(
+            scope,
+            "item in transfered_array_buffers is not transferable",
+          );
+          return;
+        }
+        let backing_store = buf.get_backing_store();
+        buf.detach();
+        let id = shared_array_buffer_store.insert(backing_store);
+        value_serializer.transfer_array_buffer(id, buf);
+        let id = v8::Number::new(scope, id as f64).into();
+        transfered_array_buffers.set(scope, i, id);
+      }
+    }
+  }
+
   match value_serializer.write_value(scope.get_current_context(), value) {
     Some(true) => {
       let vector = value_serializer.release();
@@ -842,10 +1201,11 @@ fn serialize(
   }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SerializeDeserializeOptions<'a> {
   host_objects: Option<serde_v8::Value<'a>>,
+  transfered_array_buffers: Option<serde_v8::Value<'a>>,
 }
 
 fn deserialize(
@@ -870,8 +1230,10 @@ fn deserialize(
       }
     };
 
-  let options =
-    options.unwrap_or(SerializeDeserializeOptions { host_objects: None });
+  let options = options.unwrap_or(SerializeDeserializeOptions {
+    host_objects: None,
+    transfered_array_buffers: None,
+  });
 
   let host_objects = match options.host_objects {
     Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
@@ -884,9 +1246,21 @@ fn deserialize(
     None => None,
   };
 
+  let transfered_array_buffers = match options.transfered_array_buffers {
+    Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
+      Ok(transfered_array_buffers) => Some(transfered_array_buffers),
+      Err(_) => {
+        throw_type_error(scope, "transfered_array_buffers not an array");
+        return;
+      }
+    },
+    None => None,
+  };
+
   let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
   let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
+
   let parsed_header = value_deserializer
     .read_header(scope.get_current_context())
     .unwrap_or_default();
@@ -896,6 +1270,40 @@ fn deserialize(
     scope.throw_exception(exception);
     return;
   }
+
+  if let Some(transfered_array_buffers) = transfered_array_buffers {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
+      for i in 0..transfered_array_buffers.length() {
+        let i = v8::Number::new(scope, i as f64).into();
+        let id_val = transfered_array_buffers.get(scope, i).unwrap();
+        let id = match id_val.number_value(scope) {
+          Some(id) => id as u32,
+          None => {
+            throw_type_error(
+              scope,
+              "item in transfered_array_buffers not number",
+            );
+            return;
+          }
+        };
+        if let Some(backing_store) = shared_array_buffer_store.take(id) {
+          let array_buffer =
+            v8::ArrayBuffer::with_backing_store(scope, &backing_store);
+          value_deserializer.transfer_array_buffer(id, array_buffer);
+          transfered_array_buffers.set(scope, id_val, array_buffer.into());
+        } else {
+          throw_type_error(
+            scope,
+            "transfered array buffer not present in shared_array_buffer_store",
+          );
+          return;
+        }
+      }
+    }
+  }
+
   let value = value_deserializer.read_value(scope.get_current_context());
 
   match value {
@@ -941,7 +1349,7 @@ fn create_host_object(
 pub fn module_resolve_callback<'s>(
   context: v8::Local<'s, v8::Context>,
   specifier: v8::Local<'s, v8::String>,
-  _import_assertions: v8::Local<'s, v8::FixedArray>,
+  import_assertions: v8::Local<'s, v8::FixedArray>,
   referrer: v8::Local<'s, v8::Module>,
 ) -> Option<v8::Local<'s, v8::Module>> {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
@@ -958,8 +1366,17 @@ pub fn module_resolve_callback<'s>(
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  let maybe_module =
-    module_map.resolve_callback(scope, &specifier_str, &referrer_name);
+  let assertions = parse_import_assertions(
+    scope,
+    import_assertions,
+    ImportAssertionsKind::StaticImport,
+  );
+  let maybe_module = module_map.resolve_callback(
+    scope,
+    &specifier_str,
+    &referrer_name,
+    assertions,
+  );
   if let Some(module) = maybe_module {
     return Some(module);
   }
@@ -1050,6 +1467,14 @@ fn get_proxy_details(
   let handler = proxy.get_handler(scope);
   let p: (serde_v8::Value, serde_v8::Value) = (target.into(), handler.into());
   rv.set(to_v8(scope, p).unwrap());
+}
+
+fn is_proxy(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  rv.set(v8::Boolean::new(scope, args.get(0).is_proxy()).into())
 }
 
 fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {

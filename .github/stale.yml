@@ -8,6 +8,8 @@ exemptLabels:
   - bug
   - suggestion
   - feat
+  - refactor
+  - chore
   - tests
   - build
   - docs

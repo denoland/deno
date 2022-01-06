@@ -1,0 +1,10 @@
+{
+  "items": [
+    "a",
+    "aa",
+    "ab",
+    "aba"
+  ],
+  "isIncomplete": false,
+  "preselect": "a"
+}

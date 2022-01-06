@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::ZeroCopyBuf;
@@ -17,6 +16,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 enum Transferable {
   MessagePort(MessagePort),
+  ArrayBuffer(u32),
 }
 
 type MessagePortMessage = (Vec<u8>, Vec<Transferable>);
@@ -48,6 +48,7 @@ impl MessagePort {
     &self,
     state: Rc<RefCell<OpState>>,
   ) -> Result<Option<JsMessageData>, AnyError> {
+    #![allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
     let mut rx = self
       .rx
       .try_borrow_mut()
@@ -128,6 +129,7 @@ pub fn op_message_port_create_entangled(
 pub enum JsTransferable {
   #[serde(rename_all = "camelCase")]
   MessagePort(ResourceId),
+  ArrayBuffer(u32),
 }
 
 fn deserialize_js_transferables(
@@ -141,11 +143,14 @@ fn deserialize_js_transferables(
         let resource = state
           .resource_table
           .take::<MessagePortResource>(id)
-          .ok_or_else(|| type_error("Invalid message port transfer"))?;
+          .map_err(|_| type_error("Invalid message port transfer"))?;
         resource.cancel.cancel();
         let resource = Rc::try_unwrap(resource)
           .map_err(|_| type_error("Message port is not ready for transfer"))?;
         transferables.push(Transferable::MessagePort(resource.port));
+      }
+      JsTransferable::ArrayBuffer(id) => {
+        transferables.push(Transferable::ArrayBuffer(id));
       }
     }
   }
@@ -166,6 +171,9 @@ fn serialize_transferables(
         });
         js_transferables.push(JsTransferable::MessagePort(rid));
       }
+      Transferable::ArrayBuffer(id) => {
+        js_transferables.push(JsTransferable::ArrayBuffer(id));
+      }
     }
   }
   js_transferables
@@ -183,19 +191,14 @@ pub fn op_message_port_post_message(
   data: JsMessageData,
 ) -> Result<(), AnyError> {
   for js_transferable in &data.transferables {
-    match js_transferable {
-      JsTransferable::MessagePort(id) => {
-        if *id == rid {
-          return Err(type_error("Can not transfer self message port"));
-        }
+    if let JsTransferable::MessagePort(id) = js_transferable {
+      if *id == rid {
+        return Err(type_error("Can not transfer self message port"));
       }
     }
   }
 
-  let resource = state
-    .resource_table
-    .get::<MessagePortResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+  let resource = state.resource_table.get::<MessagePortResource>(rid)?;
 
   resource.port.send(state, data)
 }
@@ -208,8 +211,8 @@ pub async fn op_message_port_recv_message(
   let resource = {
     let state = state.borrow();
     match state.resource_table.get::<MessagePortResource>(rid) {
-      Some(resource) => resource,
-      None => return Ok(None),
+      Ok(resource) => resource,
+      Err(_) => return Ok(None),
     }
   };
   let cancel = RcRef::map(resource.clone(), |r| &r.cancel);

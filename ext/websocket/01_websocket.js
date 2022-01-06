@@ -9,6 +9,7 @@
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
   const { DOMException } = window.__bootstrap.domException;
+  const { defineEventHandler } = window.__bootstrap.event;
   const { Blob } = globalThis.__bootstrap.file;
   const {
     ArrayBuffer,
@@ -16,16 +17,11 @@
     ArrayPrototypeJoin,
     DataView,
     ErrorPrototypeToString,
-    ObjectDefineProperty,
-    Map,
-    MapPrototypeGet,
-    MapPrototypeSet,
     Set,
     Symbol,
     String,
     StringPrototypeToLowerCase,
     StringPrototypeEndsWith,
-    FunctionPrototypeCall,
     RegExpPrototypeTest,
     ObjectDefineProperties,
     ArrayPrototypeMap,
@@ -64,58 +60,6 @@
   const OPEN = 1;
   const CLOSING = 2;
   const CLOSED = 3;
-
-  /**
-   * Tries to close the resource (and ignores BadResource errors).
-   * @param {number} rid
-   */
-  function tryClose(rid) {
-    try {
-      core.close(rid);
-    } catch (err) {
-      // Ignore error if the socket has already been closed.
-      if (!(err instanceof Deno.errors.BadResource)) throw err;
-    }
-  }
-
-  const handlerSymbol = Symbol("eventHandlers");
-  function makeWrappedHandler(handler) {
-    function wrappedHandler(...args) {
-      if (typeof wrappedHandler.handler !== "function") {
-        return;
-      }
-      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
-    }
-    wrappedHandler.handler = handler;
-    return wrappedHandler;
-  }
-  // TODO(lucacasonato) reuse when we can reuse code between web crates
-  function defineEventHandler(emitter, name) {
-    // HTML specification section 8.1.5.1
-    ObjectDefineProperty(emitter, `on${name}`, {
-      get() {
-        if (!this[handlerSymbol]) {
-          return null;
-        }
-        return MapPrototypeGet(this[handlerSymbol], name)?.handler;
-      },
-      set(value) {
-        if (!this[handlerSymbol]) {
-          this[handlerSymbol] = new Map();
-        }
-        let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
-        if (handlerWrapper) {
-          handlerWrapper.handler = value;
-        } else {
-          handlerWrapper = makeWrappedHandler(value);
-          this.addEventListener(name, handlerWrapper);
-        }
-        MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
-      },
-      configurable: true,
-      enumerable: true,
-    });
-  }
 
   const _readyState = Symbol("[[readyState]]");
   const _url = Symbol("[[url]]");
@@ -292,7 +236,7 @@
 
                 const event = new CloseEvent("close");
                 this.dispatchEvent(event);
-                tryClose(this[_rid]);
+                core.tryClose(this[_rid]);
               },
             );
           } else {
@@ -337,10 +281,10 @@
       const sendTypedArray = (ta) => {
         this[_bufferedAmount] += ta.byteLength;
         PromisePrototypeThen(
-          core.opAsync("op_ws_send", {
-            rid: this[_rid],
+          core.opAsync("op_ws_send", this[_rid], {
             kind: "binary",
-          }, ta),
+            value: ta,
+          }),
           () => {
             this[_bufferedAmount] -= ta.byteLength;
           },
@@ -361,10 +305,9 @@
         const d = core.encode(string);
         this[_bufferedAmount] += d.byteLength;
         PromisePrototypeThen(
-          core.opAsync("op_ws_send", {
-            rid: this[_rid],
+          core.opAsync("op_ws_send", this[_rid], {
             kind: "text",
-            text: string,
+            value: string,
           }),
           () => {
             this[_bufferedAmount] -= d.byteLength;
@@ -430,7 +373,7 @@
               reason,
             });
             this.dispatchEvent(event);
-            tryClose(this[_rid]);
+            core.tryClose(this[_rid]);
           },
         );
       }
@@ -469,12 +412,12 @@
             break;
           }
           case "ping": {
-            core.opAsync("op_ws_send", {
-              rid: this[_rid],
+            core.opAsync("op_ws_send", this[_rid], {
               kind: "pong",
             });
             break;
           }
+          case "closed":
           case "close": {
             this[_readyState] = CLOSED;
 
@@ -484,7 +427,7 @@
               reason: value.reason,
             });
             this.dispatchEvent(event);
-            tryClose(this[_rid]);
+            core.tryClose(this[_rid]);
             break;
           }
           case "error": {
@@ -497,7 +440,7 @@
 
             const closeEv = new CloseEvent("close");
             this.dispatchEvent(closeEv);
-            tryClose(this[_rid]);
+            core.tryClose(this[_rid]);
             break;
           }
         }

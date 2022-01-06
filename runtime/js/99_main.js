@@ -8,6 +8,7 @@ delete Object.prototype.__proto__;
 ((window) => {
   const core = Deno.core;
   const {
+    ArrayPrototypeMap,
     Error,
     FunctionPrototypeCall,
     FunctionPrototypeBind,
@@ -21,6 +22,7 @@ delete Object.prototype.__proto__;
     SymbolFor,
     SymbolIterator,
     PromisePrototypeThen,
+    TypeError,
   } = window.__bootstrap.primordials;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
@@ -36,11 +38,11 @@ delete Object.prototype.__proto__;
   const Console = window.__bootstrap.console.Console;
   const compression = window.__bootstrap.compression;
   const worker = window.__bootstrap.worker;
-  const signals = window.__bootstrap.signals;
   const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
+  const urlPattern = window.__bootstrap.urlPattern;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
@@ -58,7 +60,7 @@ delete Object.prototype.__proto__;
   const errors = window.__bootstrap.errors.errors;
   const webidl = window.__bootstrap.webidl;
   const domException = window.__bootstrap.domException;
-  const { defineEventHandler } = window.__bootstrap.webUtil;
+  const { defineEventHandler } = window.__bootstrap.event;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
 
@@ -134,12 +136,12 @@ delete Object.prototype.__proto__;
       if (data === null) break;
       const v = deserializeJsMessageData(data);
       const message = v[0];
-      const transfer = v[1];
+      const transferables = v[1];
 
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transfer,
+        ports: transferables.filter((t) => t instanceof MessagePort),
       });
 
       try {
@@ -156,11 +158,46 @@ delete Object.prototype.__proto__;
 
         globalDispatchEvent(errorEvent);
         if (!errorEvent.defaultPrevented) {
-          core.opSync(
-            "op_worker_unhandled_error",
-            e.message,
-          );
+          throw e;
         }
+      }
+    }
+  }
+
+  let loadedMainWorkerScript = false;
+
+  function importScripts(...urls) {
+    if (core.opSync("op_worker_get_type") === "module") {
+      throw new TypeError("Can't import scripts in a module worker.");
+    }
+
+    const baseUrl = location.getLocationHref();
+    const parsedUrls = ArrayPrototypeMap(urls, (scriptUrl) => {
+      try {
+        return new url.URL(scriptUrl, baseUrl ?? undefined).href;
+      } catch {
+        throw new domException.DOMException(
+          "Failed to parse URL.",
+          "SyntaxError",
+        );
+      }
+    });
+
+    // A classic worker's main script has looser MIME type checks than any
+    // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
+    // TODO(andreubotella) Refactor worker creation so the main script isn't
+    // loaded with `importScripts()`.
+    const scripts = core.opSync(
+      "op_worker_sync_fetch",
+      parsedUrls,
+      !loadedMainWorkerScript,
+    );
+    loadedMainWorkerScript = true;
+
+    for (const { url, script } of scripts) {
+      const err = core.evalContext(script, url)[1];
+      if (err !== null) {
+        throw err.thrown;
       }
     }
   }
@@ -177,19 +214,19 @@ delete Object.prototype.__proto__;
       runtimeOptions.v8Version,
       runtimeOptions.tsVersion,
     );
+    if (runtimeOptions.unstableFlag) {
+      internals.enableTestSteps();
+    }
     build.setBuildInfo(runtimeOptions.target);
     util.setLogDebug(runtimeOptions.debugFlag, source);
-    // TODO(bartlomieju): a very crude way to disable
-    // source mapping of errors. This condition is true
-    // only for compiled standalone binaries.
-    let prepareStackTrace;
-    if (runtimeOptions.applySourceMaps) {
-      prepareStackTrace = core.createPrepareStackTrace(
-        errorStack.opApplySourceMap,
-      );
-    } else {
-      prepareStackTrace = core.createPrepareStackTrace();
-    }
+    const prepareStackTrace = core.createPrepareStackTrace(
+      // TODO(bartlomieju): a very crude way to disable
+      // source mapping of errors. This condition is true
+      // only for compiled standalone binaries.
+      runtimeOptions.applySourceMaps ? errorStack.opApplySourceMap : undefined,
+      errorStack.opFormatFileName,
+    );
+    // deno-lint-ignore prefer-primordials
     Error.prepareStackTrace = prepareStackTrace;
   }
 
@@ -247,6 +284,12 @@ delete Object.prototype.__proto__;
       "DOMExceptionInvalidCharacterError",
       function DOMExceptionInvalidCharacterError(msg) {
         return new domException.DOMException(msg, "InvalidCharacterError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionDataError",
+      function DOMExceptionDataError(msg) {
+        return new domException.DOMException(msg, "DataError");
       },
     );
   }
@@ -309,7 +352,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, Navigator);
+        webidl.assertBranded(this, WorkerNavigator);
         return numCpus;
       },
     },
@@ -355,6 +398,7 @@ delete Object.prototype.__proto__;
     TextEncoderStream: util.nonEnumerable(encoding.TextEncoderStream),
     TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
+    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
     MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
@@ -370,6 +414,12 @@ delete Object.prototype.__proto__;
     ReadableByteStreamController: util.nonEnumerable(
       streams.ReadableByteStreamController,
     ),
+    ReadableStreamBYOBReader: util.nonEnumerable(
+      streams.ReadableStreamBYOBReader,
+    ),
+    ReadableStreamBYOBRequest: util.nonEnumerable(
+      streams.ReadableStreamBYOBRequest,
+    ),
     ReadableStreamDefaultController: util.nonEnumerable(
       streams.ReadableStreamDefaultController,
     ),
@@ -380,7 +430,7 @@ delete Object.prototype.__proto__;
     btoa: util.writable(base64.btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
-    console: util.writable(
+    console: util.nonEnumerable(
       new Console((msg, level) => core.print(msg, level > 1)),
     ),
     crypto: util.readOnly(crypto.crypto),
@@ -394,8 +444,8 @@ delete Object.prototype.__proto__;
   };
 
   const unstableWindowOrWorkerGlobalScope = {
-    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
+    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
@@ -429,27 +479,18 @@ delete Object.prototype.__proto__;
     GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
   };
 
-  // The console seems to be the only one that should be writable and non-enumerable
-  // thus we don't have a unique helper for it. If other properties follow the same
-  // structure, it might be worth it to define a helper in `util`
-  windowOrWorkerGlobalScope.console.enumerable = false;
-
   const mainRuntimeGlobalProperties = {
     Location: location.locationConstructorDescriptor,
     location: location.locationDescriptor,
     Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),
-    self: util.readOnly(globalThis),
+    self: util.writable(globalThis),
     Navigator: util.nonEnumerable(Navigator),
     navigator: {
       configurable: true,
       enumerable: true,
       get: () => navigator,
     },
-    // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
-    // it seems those two properties should be available to workers as well
-    onload: util.writable(null),
-    onunload: util.writable(null),
     close: util.writable(windowClose),
     closed: util.getterOnly(() => windowIsClosing),
     alert: util.writable(prompt.alert),
@@ -481,8 +522,6 @@ delete Object.prototype.__proto__;
       get: () => workerNavigator,
     },
     self: util.readOnly(globalThis),
-    onmessage: util.writable(null),
-    onerror: util.writable(null),
     // TODO(bartlomieju): should be readonly?
     close: util.nonEnumerable(workerClose),
     postMessage: util.writable(postMessage),
@@ -515,8 +554,8 @@ delete Object.prototype.__proto__;
 
     eventTarget.setEventTargetData(globalThis);
 
-    defineEventHandler(window, "load", null);
-    defineEventHandler(window, "unload", null);
+    defineEventHandler(window, "load");
+    defineEventHandler(window, "unload");
 
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");
     // Stores the flag for checking whether unload is dispatched or not.
@@ -571,7 +610,6 @@ delete Object.prototype.__proto__;
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
     ObjectFreeze(globalThis.Deno.core);
-    signals.setSignals();
 
     util.log("args", args);
   }
@@ -599,7 +637,14 @@ delete Object.prototype.__proto__;
       ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
     }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
-    ObjectDefineProperties(globalThis, { name: util.readOnly(name) });
+    ObjectDefineProperties(globalThis, { name: util.writable(name) });
+    if (runtimeOptions.enableTestingFeaturesFlag) {
+      ObjectDefineProperty(
+        globalThis,
+        "importScripts",
+        util.writable(importScripts),
+      );
+    }
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     const consoleFromDeno = globalThis.console;
@@ -607,8 +652,8 @@ delete Object.prototype.__proto__;
 
     eventTarget.setEventTargetData(globalThis);
 
-    defineEventHandler(self, "message", null);
-    defineEventHandler(self, "error", null, true);
+    defineEventHandler(self, "message");
+    defineEventHandler(self, "error", undefined, true);
 
     runtimeStart(
       runtimeOptions,
@@ -650,10 +695,8 @@ delete Object.prototype.__proto__;
       });
       // Setup `Deno` global - we're actually overriding already
       // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      util.immutableDefine(globalThis, "Deno", finalDenoNs);
-      ObjectFreeze(globalThis.Deno);
+      ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
       ObjectFreeze(globalThis.Deno.core);
-      signals.setSignals();
     } else {
       delete globalThis.Deno;
       util.assert(globalThis.Deno === undefined);

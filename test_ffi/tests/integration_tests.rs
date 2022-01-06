@@ -24,6 +24,7 @@ fn basic() {
     .arg("--allow-ffi")
     .arg("--allow-read")
     .arg("--unstable")
+    .arg("--quiet")
     .arg("tests/test.js")
     .env("NO_COLOR", "1")
     .output()
@@ -38,7 +39,29 @@ fn basic() {
   assert!(output.status.success());
   let expected = "\
     something\n\
+    [1, 2, 3, 4, 5, 6, 7, 8]\n\
+    [1, 2, 3, 4, 5, 6, 7, 8] [9, 10]\n\
+    [1, 2, 3, 4, 5, 6, 7, 8]\n\
+    [ 1, 2, 3, 4, 5, 6 ]\n\
+    [ 4, 5, 6 ]\n\
+    [ 4, 5, 6 ]\n\
+    Hello from pointer!\n\
+    pointer!\n\
+    false\n\
+    true\n\
+    false\n\
     579\n\
+    579\n\
+    579\n\
+    579\n\
+    579\n\
+    579\n\
+    579.9119873046875\n\
+    579.912\n\
+    Before\n\
+    true\n\
+    After\n\
+    true\n\
     Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");

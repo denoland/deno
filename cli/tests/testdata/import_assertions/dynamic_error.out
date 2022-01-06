@@ -1,0 +1,5 @@
+[WILDCARD]
+error: Uncaught (in promise) TypeError: Expected a "JavaScript" module but loaded a "JSON" module.
+const data = await import("./data.json");
+             ^
+    at async [WILDCARD]dynamic_error.ts:1:14

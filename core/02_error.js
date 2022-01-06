@@ -70,7 +70,7 @@
   }
 
   // Keep in sync with `cli/fmt_errors.rs`.
-  function formatLocation(callSite) {
+  function formatLocation(callSite, formatFileNameFn) {
     if (callSite.isNative()) {
       return "native";
     }
@@ -80,7 +80,7 @@
     const fileName = callSite.getFileName();
 
     if (fileName) {
-      result += fileName;
+      result += formatFileNameFn(fileName);
     } else {
       if (callSite.isEval()) {
         const evalOrigin = callSite.getEvalOrigin();
@@ -106,7 +106,7 @@
   }
 
   // Keep in sync with `cli/fmt_errors.rs`.
-  function formatCallSite(callSite) {
+  function formatCallSite(callSite, formatFileNameFn) {
     let result = "";
     const functionName = callSite.getFunctionName();
 
@@ -159,11 +159,11 @@
     } else if (functionName) {
       result += functionName;
     } else {
-      result += formatLocation(callSite);
+      result += formatLocation(callSite, formatFileNameFn);
       return result;
     }
 
-    result += ` (${formatLocation(callSite)})`;
+    result += ` (${formatLocation(callSite, formatFileNameFn)})`;
     return result;
   }
 
@@ -205,7 +205,7 @@
    *  columnNumber: number
    * }} sourceMappingFn
    */
-  function createPrepareStackTrace(sourceMappingFn) {
+  function createPrepareStackTrace(sourceMappingFn, formatFileNameFn) {
     return function prepareStackTrace(
       error,
       callSites,
@@ -235,7 +235,10 @@
       const formattedCallSites = [];
       for (const callSite of mappedCallSites) {
         ArrayPrototypePush(error.__callSiteEvals, evaluateCallSite(callSite));
-        ArrayPrototypePush(formattedCallSites, formatCallSite(callSite));
+        ArrayPrototypePush(
+          formattedCallSites,
+          formatCallSite(callSite, formatFileNameFn),
+        );
       }
       const message = error.message !== undefined ? error.message : "";
       const name = error.name !== undefined ? error.name : "Error";

@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
-use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
@@ -39,7 +37,7 @@ pub struct CreateBufferArgs {
   label: Option<String>,
   size: u64,
   usage: u32,
-  mapped_at_creation: Option<bool>,
+  mapped_at_creation: bool,
 }
 
 pub fn op_webgpu_create_buffer(
@@ -50,16 +48,15 @@ pub fn op_webgpu_create_buffer(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::WebGpuDevice>(args.device_rid)?;
   let device = device_resource.0;
 
   let descriptor = wgpu_core::resource::BufferDescriptor {
     label: args.label.map(Cow::from),
     size: args.size,
-    usage: wgpu_types::BufferUsage::from_bits(args.usage)
+    usage: wgpu_types::BufferUsages::from_bits(args.usage)
       .ok_or_else(|| type_error("usage is not valid"))?,
-    mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
+    mapped_at_creation: args.mapped_at_creation,
   };
 
   gfx_put!(device => instance.device_create_buffer(
@@ -90,15 +87,12 @@ pub async fn op_webgpu_buffer_get_map_async(
   {
     let state_ = state.borrow();
     let instance = state_.borrow::<super::Instance>();
-    let buffer_resource = state_
-      .resource_table
-      .get::<WebGpuBuffer>(args.buffer_rid)
-      .ok_or_else(bad_resource_id)?;
+    let buffer_resource =
+      state_.resource_table.get::<WebGpuBuffer>(args.buffer_rid)?;
     let buffer = buffer_resource.0;
     let device_resource = state_
       .resource_table
-      .get::<super::WebGpuDevice>(args.device_rid)
-      .ok_or_else(bad_resource_id)?;
+      .get::<super::WebGpuDevice>(args.device_rid)?;
     device = device_resource.0;
 
     let boxed_sender = Box::new(sender);
@@ -176,14 +170,11 @@ pub struct BufferGetMappedRangeArgs {
 pub fn op_webgpu_buffer_get_mapped_range(
   state: &mut OpState,
   args: BufferGetMappedRangeArgs,
-  zero_copy: Option<ZeroCopyBuf>,
+  mut zero_copy: ZeroCopyBuf,
 ) -> Result<WebGpuResult, AnyError> {
-  let mut zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let instance = state.borrow::<super::Instance>();
-  let buffer_resource = state
-    .resource_table
-    .get::<WebGpuBuffer>(args.buffer_rid)
-    .ok_or_else(bad_resource_id)?;
+  let buffer_resource =
+    state.resource_table.get::<WebGpuBuffer>(args.buffer_rid)?;
   let buffer = buffer_resource.0;
 
   let (slice_pointer, range_size) =
@@ -220,13 +211,10 @@ pub fn op_webgpu_buffer_unmap(
 ) -> Result<WebGpuResult, AnyError> {
   let mapped_resource = state
     .resource_table
-    .take::<WebGpuBufferMapped>(args.mapped_rid)
-    .ok_or_else(bad_resource_id)?;
+    .take::<WebGpuBufferMapped>(args.mapped_rid)?;
   let instance = state.borrow::<super::Instance>();
-  let buffer_resource = state
-    .resource_table
-    .get::<WebGpuBuffer>(args.buffer_rid)
-    .ok_or_else(bad_resource_id)?;
+  let buffer_resource =
+    state.resource_table.get::<WebGpuBuffer>(args.buffer_rid)?;
   let buffer = buffer_resource.0;
 
   let slice_pointer = mapped_resource.0;

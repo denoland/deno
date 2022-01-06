@@ -14,6 +14,7 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const { byteLowerCase } = window.__bootstrap.infra;
   const { errorReadableStream } = window.__bootstrap.streams;
   const { InnerBody, extractBody } = window.__bootstrap.fetchBody;
   const {
@@ -26,7 +27,6 @@
     abortedNetworkError,
   } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
-  const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayPrototypePush,
     ArrayPrototypeSplice,
@@ -35,10 +35,17 @@
     Promise,
     PromisePrototypeThen,
     PromisePrototypeCatch,
+    String,
+    StringPrototypeStartsWith,
     StringPrototypeToLowerCase,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
+    WeakMap,
+    WeakMapPrototypeDelete,
+    WeakMapPrototypeGet,
+    WeakMapPrototypeHas,
+    WeakMapPrototypeSet,
   } = window.__bootstrap.primordials;
 
   const REQUEST_BODY_HEADER_NAMES = [
@@ -47,6 +54,8 @@
     "content-location",
     "content-type",
   ];
+
+  const requestBodyReaders = new WeakMap();
 
   /**
    * @param {{ method: string, url: string, headers: [string, string][], clientRid: number | null, hasBody: boolean }} args
@@ -65,31 +74,9 @@
     return core.opAsync("op_fetch_send", rid);
   }
 
-  /**
-   * @param {number} rid
-   * @param {Uint8Array} body
-   * @returns {Promise<void>}
-   */
-  function opFetchRequestWrite(rid, body) {
-    return core.opAsync("op_fetch_request_write", rid, body);
-  }
-
-  /**
-   * @param {number} rid
-   * @param {Uint8Array} body
-   * @returns {Promise<number>}
-   */
-  function opFetchResponseRead(rid, body) {
-    return core.opAsync("op_fetch_response_read", rid, body);
-  }
-
   // A finalization registry to clean up underlying fetch resources that are GC'ed.
   const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
-    try {
-      core.close(rid);
-    } catch {
-      // might have already been closed
-    }
+    core.tryClose(rid);
   });
 
   /**
@@ -100,16 +87,9 @@
   function createResponseBodyStream(responseBodyRid, terminator) {
     function onAbort() {
       if (readable) {
-        errorReadableStream(
-          readable,
-          new DOMException("Ongoing fetch was aborted.", "AbortError"),
-        );
+        errorReadableStream(readable, terminator.reason);
       }
-      try {
-        core.close(responseBodyRid);
-      } catch (_) {
-        // might have already been closed
-      }
+      core.tryClose(responseBodyRid);
     }
     // TODO(lucacasonato): clean up registration
     terminator[abortSignal.add](onAbort);
@@ -120,7 +100,8 @@
           // This is the largest possible size for a single packet on a TLS
           // stream.
           const chunk = new Uint8Array(16 * 1024 + 256);
-          const read = await opFetchResponseRead(
+          // TODO(@AaronO): switch to handle nulls if that's moved to core
+          const read = await core.read(
             responseBodyRid,
             chunk,
           );
@@ -131,28 +112,18 @@
             RESOURCE_REGISTRY.unregister(readable);
             // We have reached the end of the body, so we close the stream.
             controller.close();
-            try {
-              core.close(responseBodyRid);
-            } catch (_) {
-              // might have already been closed
-            }
+            core.tryClose(responseBodyRid);
           }
         } catch (err) {
           RESOURCE_REGISTRY.unregister(readable);
           if (terminator.aborted) {
-            controller.error(
-              new DOMException("Ongoing fetch was aborted.", "AbortError"),
-            );
+            controller.error(terminator.reason);
           } else {
             // There was an error while reading a chunk of the body, so we
             // error.
             controller.error(err);
           }
-          try {
-            core.close(responseBodyRid);
-          } catch (_) {
-            // might have already been closed
-          }
+          core.tryClose(responseBodyRid);
         }
       },
       cancel() {
@@ -172,6 +143,31 @@
    * @returns {Promise<InnerResponse>}
    */
   async function mainFetch(req, recursive, terminator) {
+    if (req.blobUrlEntry !== null) {
+      if (req.method !== "GET") {
+        throw new TypeError("Blob URL fetch only supports GET method.");
+      }
+
+      const body = new InnerBody(req.blobUrlEntry.stream());
+      terminator[abortSignal.add](() => body.error(terminator.reason));
+
+      return {
+        headerList: [
+          ["content-length", String(req.blobUrlEntry.size)],
+          ["content-type", req.blobUrlEntry.type],
+        ],
+        status: 200,
+        statusMessage: "OK",
+        body,
+        type: "basic",
+        url() {
+          if (this.urlList.length == 0) return null;
+          return this.urlList[this.urlList.length - 1];
+        },
+        urlList: recursive ? [] : [...req.urlList],
+      };
+    }
+
     /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
     let reqBody = null;
 
@@ -181,6 +177,7 @@
           reqBody = req.body.stream;
         } else {
           const reader = req.body.stream.getReader();
+          WeakMapPrototypeSet(requestBodyReaders, req, reader);
           const r1 = await reader.read();
           if (r1.done) {
             reqBody = new Uint8Array(0);
@@ -189,10 +186,13 @@
             const r2 = await reader.read();
             if (!r2.done) throw new TypeError("Unreachable");
           }
+          WeakMapPrototypeDelete(requestBodyReaders, req);
         }
       } else {
         req.body.streamOrStatic.consumed = true;
         reqBody = req.body.streamOrStatic.body;
+        // TODO(@AaronO): plumb support for StringOrBuffer all the way
+        reqBody = typeof reqBody === "string" ? core.encode(reqBody) : reqBody;
       }
     }
 
@@ -206,15 +206,11 @@
     }, reqBody instanceof Uint8Array ? reqBody : null);
 
     function onAbort() {
-      try {
-        core.close(cancelHandleRid);
-      } catch (_) {
-        // might have already been closed
+      if (cancelHandleRid !== null) {
+        core.tryClose(cancelHandleRid);
       }
-      try {
-        core.close(requestBodyRid);
-      } catch (_) {
-        // might have already been closed
+      if (requestBodyRid !== null) {
+        core.tryClose(requestBodyRid);
       }
     }
     terminator[abortSignal.add](onAbort);
@@ -224,6 +220,7 @@
         throw new TypeError("Unreachable");
       }
       const reader = reqBody.getReader();
+      WeakMapPrototypeSet(requestBodyReaders, req, reader);
       (async () => {
         while (true) {
           const { value, done } = await PromisePrototypeCatch(
@@ -240,7 +237,7 @@
           }
           try {
             await PromisePrototypeCatch(
-              opFetchRequestWrite(requestBodyRid, value),
+              core.write(requestBodyRid, value),
               (err) => {
                 if (terminator.aborted) return;
                 throw err;
@@ -252,11 +249,8 @@
             break;
           }
         }
-        try {
-          core.close(requestBodyRid);
-        } catch (_) {
-          // might have already been closed
-        }
+        WeakMapPrototypeDelete(requestBodyReaders, req);
+        core.tryClose(requestBodyRid);
       })();
     }
 
@@ -267,10 +261,8 @@
         throw err;
       });
     } finally {
-      try {
-        core.close(cancelHandleRid);
-      } catch (_) {
-        // might have already been closed
+      if (cancelHandleRid !== null) {
+        core.tryClose(cancelHandleRid);
       }
     }
     if (terminator.aborted) return abortedNetworkError();
@@ -328,12 +320,13 @@
   /**
    * @param {InnerRequest} request
    * @param {InnerResponse} response
+   * @param {AbortSignal} terminator
    * @returns {Promise<InnerResponse>}
    */
   function httpRedirectFetch(request, response, terminator) {
     const locationHeaders = ArrayPrototypeFilter(
       response.headerList,
-      (entry) => entry[0] === "location",
+      (entry) => byteLowerCase(entry[0]) === "location",
     );
     if (locationHeaders.length === 0) {
       return response;
@@ -374,7 +367,7 @@
         if (
           ArrayPrototypeIncludes(
             REQUEST_BODY_HEADER_NAMES,
-            request.headerList[i][0],
+            byteLowerCase(request.headerList[i][0]),
           )
         ) {
           ArrayPrototypeSplice(request.headerList, i, 1);
@@ -396,25 +389,16 @@
    */
   function fetch(input, init = {}) {
     // 1.
-    const p = new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const prefix = "Failed to call 'fetch'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      input = webidl.converters["RequestInfo"](input, {
-        prefix,
-        context: "Argument 1",
-      });
-      init = webidl.converters["RequestInit"](init, {
-        prefix,
-        context: "Argument 2",
-      });
-
       // 2.
       const requestObject = new Request(input, init);
       // 3.
       const request = toInnerRequest(requestObject);
       // 4.
       if (requestObject.signal.aborted) {
-        reject(abortFetch(request, null));
+        reject(abortFetch(request, null, requestObject.signal.reason));
         return;
       }
 
@@ -425,12 +409,14 @@
       // 10.
       function onabort() {
         locallyAborted = true;
-        reject(abortFetch(request, responseObject));
+        reject(
+          abortFetch(request, responseObject, requestObject.signal.reason),
+        );
       }
       requestObject.signal[abortSignal.add](onabort);
 
-      if (!requestObject.headers.has("accept")) {
-        ArrayPrototypePush(request.headerList, ["accept", "*/*"]);
+      if (!requestObject.headers.has("Accept")) {
+        ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
       }
 
       // 12.
@@ -442,7 +428,13 @@
             if (locallyAborted) return;
             // 12.2.
             if (response.aborted) {
-              reject(request, responseObject);
+              reject(
+                abortFetch(
+                  request,
+                  responseObject,
+                  requestObject.signal.reason,
+                ),
+              );
               requestObject.signal[abortSignal.remove](onabort);
               return;
             }
@@ -466,12 +458,16 @@
         },
       );
     });
-    return p;
   }
 
-  function abortFetch(request, responseObject) {
-    const error = new DOMException("Ongoing fetch was aborted.", "AbortError");
-    if (request.body !== null) request.body.cancel(error);
+  function abortFetch(request, responseObject, error) {
+    if (request.body !== null) {
+      if (WeakMapPrototypeHas(requestBodyReaders, request)) {
+        WeakMapPrototypeGet(requestBodyReaders, request).cancel(error);
+      } else {
+        request.body.cancel(error);
+      }
+    }
     if (responseObject !== null) {
       const response = toInnerResponse(responseObject);
       if (response.body !== null) response.body.error(error);
@@ -486,8 +482,8 @@
    *
    * @param {any} source The source parameter that the WebAssembly
    * streaming API was called with.
-   * @param {number} rid An rid that can be used with
-   * `Deno.core.wasmStreamingFeed`.
+   * @param {number} rid An rid that represents the wasm streaming
+   * resource.
    */
   function handleWasmStreaming(source, rid) {
     // This implements part of
@@ -503,17 +499,25 @@
         // The spec is ambiguous here, see
         // https://github.com/WebAssembly/spec/issues/1138. The WPT tests
         // expect the raw value of the Content-Type attribute lowercased.
-        if (
-          StringPrototypeToLowerCase(res.headers.get("Content-Type")) !==
-            "application/wasm"
-        ) {
-          throw new TypeError("Invalid WebAssembly content type.");
+        // We ignore this for file:// because file fetches don't have a
+        // Content-Type.
+        if (!StringPrototypeStartsWith(res.url, "file://")) {
+          const contentType = res.headers.get("Content-Type");
+          if (
+            typeof contentType !== "string" ||
+            StringPrototypeToLowerCase(contentType) !== "application/wasm"
+          ) {
+            throw new TypeError("Invalid WebAssembly content type.");
+          }
         }
 
         // 2.5.
         if (!res.ok) {
           throw new TypeError(`HTTP status code ${res.status}`);
         }
+
+        // Pass the resolved URL to v8.
+        core.opSync("op_wasm_streaming_set_url", rid, res.url);
 
         // 2.6.
         // Rather than consuming the body as an ArrayBuffer, this passes each
@@ -523,15 +527,15 @@
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            Deno.core.wasmStreamingFeed(rid, "bytes", chunk);
+            core.opSync("op_wasm_streaming_feed", rid, chunk);
           }
         }
 
         // 2.7.
-        Deno.core.wasmStreamingFeed(rid, "finish");
+        core.close(rid);
       } catch (err) {
         // 2.8 and 3
-        Deno.core.wasmStreamingFeed(rid, "abort", err);
+        core.opSync("op_wasm_streaming_abort", rid, err);
       }
     })();
   }

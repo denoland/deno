@@ -1,0 +1,4 @@
+error: Failed to parse "lint" configuration
+
+Caused by:
+    unknown field `dont_know_this_field`, expected `rules` or `files`

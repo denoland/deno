@@ -12,7 +12,10 @@
     Map,
     Array,
     ArrayPrototypeFill,
+    ArrayPrototypeMap,
+    ErrorCaptureStackTrace,
     Promise,
+    ObjectEntries,
     ObjectFreeze,
     ObjectFromEntries,
     MapPrototypeGet,
@@ -20,10 +23,11 @@
     MapPrototypeSet,
     PromisePrototypeThen,
     ObjectAssign,
+    SymbolFor,
   } = window.__bootstrap.primordials;
 
   // Available on start due to bindings.
-  const { opcall } = window.Deno.core;
+  const { opcallSync, opcallAsync } = window.Deno.core;
 
   let opsCache = {};
   const errorMap = {};
@@ -40,6 +44,9 @@
   const RING_SIZE = 4 * 1024;
   const NO_PROMISE = null; // Alias to null is faster than plain nulls
   const promiseRing = ArrayPrototypeFill(new Array(RING_SIZE), NO_PROMISE);
+  // TODO(bartlomieju): it future use `v8::Private` so it's not visible
+  // to users. Currently missing bindings.
+  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   function setPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
@@ -85,21 +92,16 @@
 
   function syncOpsCache() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    opsCache = ObjectFreeze(ObjectFromEntries(opcall(0)));
+    opsCache = ObjectFreeze(ObjectFromEntries(opcallSync(0)));
   }
 
-  function handleAsyncMsgFromRust() {
+  function opresolve() {
     for (let i = 0; i < arguments.length; i += 2) {
       const promiseId = arguments[i];
       const res = arguments[i + 1];
       const promise = getPromise(promiseId);
       promise.resolve(res);
     }
-  }
-
-  function dispatch(opName, promiseId, control, zeroCopy) {
-    const opId = typeof opName === "string" ? opsCache[opName] : opName;
-    return opcall(opId, promiseId, control, zeroCopy);
   }
 
   function registerErrorClass(className, errorClass) {
@@ -118,38 +120,70 @@
     if (res?.$err_class_name) {
       const className = res.$err_class_name;
       const errorBuilder = errorMap[className];
-      if (!errorBuilder) {
-        throw new Error(
-          `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
-        );
+      const err = errorBuilder ? errorBuilder(res.message) : new Error(
+        `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+      );
+      // Set .code if error was a known OS error, see error_codes.rs
+      if (res.code) {
+        err.code = res.code;
       }
-      throw errorBuilder(res.message);
+      // Strip unwrapOpResult() and errorBuilder() calls from stack trace
+      ErrorCaptureStackTrace(err, unwrapOpResult);
+      throw err;
     }
     return res;
   }
 
   function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
-    const maybeError = dispatch(opName, promiseId, arg1, arg2);
+    const maybeError = opcallAsync(opsCache[opName], promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
-    return PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    const p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    // Save the id on the promise so it can later be ref'ed or unref'ed
+    p[promiseIdSymbol] = promiseId;
+    return p;
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {
-    return unwrapOpResult(dispatch(opName, null, arg1, arg2));
+    return unwrapOpResult(opcallSync(opsCache[opName], arg1, arg2));
   }
 
   function resources() {
     return ObjectFromEntries(opSync("op_resources"));
   }
 
+  function read(rid, buf) {
+    return opAsync("op_read", rid, buf);
+  }
+
+  function write(rid, buf) {
+    return opAsync("op_write", rid, buf);
+  }
+
+  function shutdown(rid) {
+    return opAsync("op_shutdown", rid);
+  }
+
   function close(rid) {
     opSync("op_close", rid);
   }
 
+  function tryClose(rid) {
+    opSync("op_try_close", rid);
+  }
+
   function print(str, isErr = false) {
     opSync("op_print", str, isErr);
+  }
+
+  function metrics() {
+    const [aggregate, perOps] = opSync("op_metrics");
+    aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
+      ObjectEntries(opsCache),
+      ([opName, opId]) => [opName, perOps[opId]],
+    ));
+    return aggregate;
   }
 
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
@@ -175,11 +209,16 @@
     opSync,
     ops,
     close,
+    tryClose,
+    read,
+    write,
+    shutdown,
     print,
     resources,
+    metrics,
     registerErrorBuilder,
     registerErrorClass,
-    handleAsyncMsgFromRust,
+    opresolve,
     syncOpsCache,
     BadResource,
     Interrupted,

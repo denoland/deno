@@ -1,9 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_dir::DenoDir;
+use crate::flags::CheckFlag;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
-use deno_core::error::bail;
+use crate::flags::RunFlags;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fetch::reqwest::Client;
@@ -199,9 +201,9 @@ pub fn compile_to_runtime_flags(
   // change to `Flags` should be reflected here.
   Ok(Flags {
     argv: baked_args,
-    subcommand: DenoSubcommand::Run {
+    subcommand: DenoSubcommand::Run(RunFlags {
       script: "placeholder".to_string(),
-    },
+    }),
     allow_env: flags.allow_env,
     allow_hrtime: flags.allow_hrtime,
     allow_net: flags.allow_net,
@@ -225,7 +227,8 @@ pub fn compile_to_runtime_flags(
     lock_write: false,
     lock: None,
     log_level: flags.log_level,
-    no_check: false,
+    check: CheckFlag::All,
+    compat: flags.compat,
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors,
     no_remote: false,
@@ -236,6 +239,6 @@ pub fn compile_to_runtime_flags(
     unstable: flags.unstable,
     v8_flags: flags.v8_flags,
     version: false,
-    watch: false,
+    watch: None,
   })
 }

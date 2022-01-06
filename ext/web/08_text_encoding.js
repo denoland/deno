@@ -20,7 +20,6 @@
     PromiseResolve,
     StringPrototypeCharCodeAt,
     StringPrototypeSlice,
-    SymbolToStringTag,
     TypedArrayPrototypeSubarray,
     TypedArrayPrototypeSlice,
     Uint8Array,
@@ -38,7 +37,6 @@
     #rid = null;
 
     /**
-     *
      * @param {string} label
      * @param {TextDecoderOptions} options
      */
@@ -107,16 +105,28 @@
       }
 
       try {
-        if (ArrayBufferIsView(input)) {
-          input = new Uint8Array(
-            input.buffer,
-            input.byteOffset,
-            input.byteLength,
-          );
-        } else {
+        try {
+          if (ArrayBufferIsView(input)) {
+            input = new Uint8Array(
+              input.buffer,
+              input.byteOffset,
+              input.byteLength,
+            );
+          } else {
+            input = new Uint8Array(input);
+          }
+        } catch {
+          // If the buffer is detached, just create a new empty Uint8Array.
+          input = new Uint8Array();
+        }
+        if (input.buffer instanceof SharedArrayBuffer) {
+          // We clone the data into a non-shared ArrayBuffer so we can pass it
+          // to Rust.
+          // `input` is now a Uint8Array, and calling the TypedArray constructor
+          // with a TypedArray argument copies the data.
           input = new Uint8Array(input);
         }
-        return core.opSync("op_encoding_decode", new Uint8Array(input), {
+        return core.opSync("op_encoding_decode", input, {
           rid: this.#rid,
           stream: options.stream,
         });
@@ -126,10 +136,6 @@
           this.#rid = null;
         }
       }
-    }
-
-    get [SymbolToStringTag]() {
-      return "TextDecoder";
     }
   }
 
@@ -183,10 +189,6 @@
       });
       return core.opSync("op_encoding_encode_into", source, destination);
     }
-
-    get [SymbolToStringTag]() {
-      return "TextEncoder";
-    }
   }
 
   webidl.configurePrototype(TextEncoder);
@@ -198,7 +200,6 @@
     #transform;
 
     /**
-     *
      * @param {string} label
      * @param {TextDecoderOptions} options
      */
@@ -274,10 +275,6 @@
       webidl.assertBranded(this, TextDecoderStream);
       return this.#transform.writable;
     }
-
-    get [SymbolToStringTag]() {
-      return "TextDecoderStream";
-    }
   }
 
   webidl.configurePrototype(TextDecoderStream);
@@ -295,6 +292,9 @@
         transform: (chunk, controller) => {
           try {
             chunk = webidl.converters.DOMString(chunk);
+            if (chunk === "") {
+              return PromiseResolve();
+            }
             if (this.#pendingHighSurrogate !== null) {
               chunk = this.#pendingHighSurrogate + chunk;
             }
@@ -346,10 +346,6 @@
     get writable() {
       webidl.assertBranded(this, TextEncoderStream);
       return this.#transform.writable;
-    }
-
-    get [SymbolToStringTag]() {
-      return "TextEncoderStream";
     }
   }
 

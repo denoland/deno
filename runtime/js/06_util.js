@@ -3,7 +3,6 @@
 
 ((window) => {
   const {
-    ObjectDefineProperty,
     StringPrototypeReplace,
     TypeError,
     Promise,
@@ -53,18 +52,6 @@
     promise.resolve = resolve;
     promise.reject = reject;
     return promise;
-  }
-
-  function immutableDefine(
-    o,
-    p,
-    value,
-  ) {
-    ObjectDefineProperty(o, p, {
-      value,
-      configurable: false,
-      writable: false,
-    });
   }
 
   // Keep in sync with `fromFileUrl()` in `std/path/win32.ts`.
@@ -164,7 +151,6 @@
     createResolvable,
     assert,
     AssertionError,
-    immutableDefine,
     pathFromURL,
     writable,
     nonEnumerable,

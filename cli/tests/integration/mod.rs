@@ -2,9 +2,10 @@
 
 use crate::itest;
 use deno_core::url;
+use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
-use deno_runtime::deno_tls::webpki;
+use deno_runtime::deno_tls::rustls_pemfile;
 use std::fs;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -53,6 +54,8 @@ macro_rules! itest_flaky(
 mod bundle;
 #[path = "cache_tests.rs"]
 mod cache;
+#[path = "compat_tests.rs"]
+mod compat;
 #[path = "compile_tests.rs"]
 mod compile;
 #[path = "coverage_tests.rs"]
@@ -379,13 +382,14 @@ fn ts_reload() {
 
   // check the output of the the bundle program.
   let output_path = hello_ts.canonicalize().unwrap();
-  assert!(std::str::from_utf8(&output.stderr)
-    .unwrap()
-    .trim()
-    .contains(&format!(
-      "host.getSourceFile(\"{}\", Latest)",
-      url::Url::from_file_path(&output_path).unwrap().as_str()
-    )));
+  assert!(
+    dbg!(std::str::from_utf8(&output.stderr).unwrap().trim()).contains(
+      &format!(
+        "host.getSourceFile(\"{}\", Latest)",
+        url::Url::from_file_path(&output_path).unwrap().as_str()
+      )
+    )
+  );
 }
 
 #[test]
@@ -459,6 +463,18 @@ fn broken_stdout() {
   assert!(stderr.contains("Uncaught BrokenPipe"));
   assert!(!stderr.contains("panic"));
 }
+
+itest!(error_cause {
+  args: "run error_cause.ts",
+  output: "error_cause.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_cause_recursive {
+  args: "run error_cause_recursive.ts",
+  output: "error_cause_recursive.ts.out",
+  exit_code: 1,
+});
 
 itest_flaky!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
@@ -684,6 +700,41 @@ fn websocketstream() {
   assert!(status.success());
 }
 
+#[test]
+fn websocket_server_multi_field_connection_header() {
+  let script = util::testdata_path()
+    .join("websocket_server_multi_field_connection_header_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
+
+  let req = http::request::Builder::new()
+    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+    .uri("ws://localhost:4319")
+    .body(())
+    .unwrap();
+  assert!(
+    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+      .is_ok()
+  );
+  assert!(child.wait().unwrap().success());
+}
+
 #[cfg(not(windows))]
 #[test]
 fn set_raw_should_not_panic_on_no_tty() {
@@ -887,7 +938,6 @@ async fn test_resolve_dns() {
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
@@ -913,7 +963,6 @@ async fn test_resolve_dns() {
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net=127.0.0.1:4553")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
@@ -939,7 +988,6 @@ async fn test_resolve_dns() {
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net=deno.land")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
@@ -961,7 +1009,6 @@ async fn test_resolve_dns() {
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
       .arg("run")
-      .arg("--unstable")
       .arg("resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
@@ -982,29 +1029,29 @@ async fn test_resolve_dns() {
 
 #[test]
 fn typecheck_declarations_ns() {
-  let status = util::deno_cmd()
+  let output = util::deno_cmd()
     .arg("test")
     .arg("--doc")
     .arg(util::root_path().join("cli/dts/lib.deno.ns.d.ts"))
-    .spawn()
-    .unwrap()
-    .wait()
+    .output()
     .unwrap();
-  assert!(status.success());
+  println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
+  println!("stderr: {}", String::from_utf8(output.stderr).unwrap());
+  assert!(output.status.success());
 }
 
 #[test]
 fn typecheck_declarations_unstable() {
-  let status = util::deno_cmd()
+  let output = util::deno_cmd()
     .arg("test")
     .arg("--doc")
     .arg("--unstable")
     .arg(util::root_path().join("cli/dts/lib.deno.unstable.d.ts"))
-    .spawn()
-    .unwrap()
-    .wait()
+    .output()
     .unwrap();
-  assert!(status.success());
+  println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
+  println!("stderr: {}", String::from_utf8(output.stderr).unwrap());
+  assert!(output.status.success());
 }
 
 #[test]
@@ -1042,6 +1089,53 @@ fn js_unit_tests() {
   assert!(status.success());
 }
 
+#[test]
+fn basic_auth_tokens() {
+  let _g = util::http_server();
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("http://127.0.0.1:4554/001_hello.js")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  assert!(!output.status.success());
+
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert!(stdout_str.is_empty());
+
+  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+  eprintln!("{}", stderr_str);
+
+  assert!(stderr_str
+    .contains("Module not found \"http://127.0.0.1:4554/001_hello.js\"."));
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("http://127.0.0.1:4554/001_hello.js")
+    .env("DENO_AUTH_TOKENS", "testuser123:testpassabc@127.0.0.1:4554")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+  eprintln!("{}", stderr_str);
+
+  assert!(output.status.success());
+
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!(util::strip_ansi_codes(stdout_str), "Hello World");
+}
+
 #[tokio::test]
 async fn listen_tls_alpn() {
   // TLS streams require the presence of an ambient local task set to gracefully
@@ -1061,36 +1155,40 @@ async fn listen_tls_alpn() {
         .spawn()
         .unwrap();
       let stdout = child.stdout.as_mut().unwrap();
-      let mut buffer = [0; 5];
-      let read = stdout.read(&mut buffer).unwrap();
+      let mut msg = [0; 5];
+      let read = stdout.read(&mut msg).unwrap();
       assert_eq!(read, 5);
-      let msg = std::str::from_utf8(&buffer).unwrap();
-      assert_eq!(msg, "READY");
+      assert_eq!(&msg, b"READY");
 
-      let mut cfg = rustls::ClientConfig::new();
-      let reader = &mut BufReader::new(Cursor::new(include_bytes!(
+      let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
         "../testdata/tls/RootCA.crt"
       )));
-      cfg.root_store.add_pem_file(reader).unwrap();
-      cfg.alpn_protocols.push("foobar".as_bytes().to_vec());
+      let certs = rustls_pemfile::certs(&mut reader).unwrap();
+      let mut root_store = rustls::RootCertStore::empty();
+      root_store.add_parsable_certificates(&certs);
+      let mut cfg = rustls::ClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+      cfg.alpn_protocols.push(b"foobar".to_vec());
       let cfg = Arc::new(cfg);
 
-      let hostname =
-        webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
+      let hostname = rustls::ServerName::try_from("localhost").unwrap();
 
       let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
         .await
         .unwrap();
       let mut tls_stream =
-        TlsStream::new_client_side(tcp_stream, &cfg, hostname);
+        TlsStream::new_client_side(tcp_stream, cfg, hostname);
+
       tls_stream.handshake().await.unwrap();
-      let (_, session) = tls_stream.get_ref();
 
-      let alpn = session.get_alpn_protocol().unwrap();
-      assert_eq!(std::str::from_utf8(alpn).unwrap(), "foobar");
+      let (_, rustls_connection) = tls_stream.get_ref();
+      let alpn = rustls_connection.alpn_protocol().unwrap();
+      assert_eq!(alpn, b"foobar");
 
-      child.kill().unwrap();
-      child.wait().unwrap();
+      let status = child.wait().unwrap();
+      assert!(status.success());
     })
     .await;
 }
@@ -1108,8 +1206,64 @@ async fn listen_tls_alpn_fail() {
         .arg("--quiet")
         .arg("--allow-net")
         .arg("--allow-read")
-        .arg("./listen_tls_alpn.ts")
+        .arg("./listen_tls_alpn_fail.ts")
         .arg("4505")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+      let stdout = child.stdout.as_mut().unwrap();
+      let mut msg = [0; 5];
+      let read = stdout.read(&mut msg).unwrap();
+      assert_eq!(read, 5);
+      assert_eq!(&msg, b"READY");
+
+      let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
+        "../testdata/tls/RootCA.crt"
+      )));
+      let certs = rustls_pemfile::certs(&mut reader).unwrap();
+      let mut root_store = rustls::RootCertStore::empty();
+      root_store.add_parsable_certificates(&certs);
+      let mut cfg = rustls::ClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+      cfg.alpn_protocols.push(b"boofar".to_vec());
+      let cfg = Arc::new(cfg);
+
+      let hostname = rustls::ServerName::try_from("localhost").unwrap();
+
+      let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
+        .await
+        .unwrap();
+      let mut tls_stream =
+        TlsStream::new_client_side(tcp_stream, cfg, hostname);
+
+      tls_stream.handshake().await.unwrap_err();
+
+      let (_, rustls_connection) = tls_stream.get_ref();
+      assert!(rustls_connection.alpn_protocol().is_none());
+
+      let status = child.wait().unwrap();
+      assert!(status.success());
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn http2_request_url() {
+  // TLS streams require the presence of an ambient local task set to gracefully
+  // close dropped connections in the background.
+  LocalSet::new()
+    .run_until(async {
+      let mut child = util::deno_cmd()
+        .current_dir(util::testdata_path())
+        .arg("run")
+        .arg("--unstable")
+        .arg("--quiet")
+        .arg("--allow-net")
+        .arg("--allow-read")
+        .arg("./http2_request_url.ts")
+        .arg("4506")
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
@@ -1120,26 +1274,22 @@ async fn listen_tls_alpn_fail() {
       let msg = std::str::from_utf8(&buffer).unwrap();
       assert_eq!(msg, "READY");
 
-      let mut cfg = rustls::ClientConfig::new();
-      let reader = &mut BufReader::new(Cursor::new(include_bytes!(
+      let cert = reqwest::Certificate::from_pem(include_bytes!(
         "../testdata/tls/RootCA.crt"
-      )));
-      cfg.root_store.add_pem_file(reader).unwrap();
-      cfg.alpn_protocols.push("boofar".as_bytes().to_vec());
-      let cfg = Arc::new(cfg);
+      ))
+      .unwrap();
 
-      let hostname =
-        webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
-
-      let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
-        .await
+      let client = reqwest::Client::builder()
+        .add_root_certificate(cert)
+        .http2_prior_knowledge()
+        .build()
         .unwrap();
-      let mut tls_stream =
-        TlsStream::new_client_side(tcp_stream, &cfg, hostname);
-      tls_stream.handshake().await.unwrap();
-      let (_, session) = tls_stream.get_ref();
 
-      assert!(session.get_alpn_protocol().is_none());
+      let res = client.get("http://127.0.0.1:4506").send().await.unwrap();
+      assert_eq!(200, res.status());
+
+      let body = res.text().await.unwrap();
+      assert_eq!(body, "http://127.0.0.1:4506/");
 
       child.kill().unwrap();
       child.wait().unwrap();

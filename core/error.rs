@@ -1,26 +1,22 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-pub use anyhow::anyhow;
-pub use anyhow::bail;
-pub use anyhow::Context;
-use rusty_v8 as v8;
+use anyhow::Error;
 use std::borrow::Cow;
-use std::convert::TryFrom;
-use std::convert::TryInto;
-use std::error::Error;
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
 /// A generic wrapper that can encapsulate any concrete error type.
+// TODO(ry) Deprecate AnyError and encourage deno_core::anyhow::Error instead.
 pub type AnyError = anyhow::Error;
 
 /// Creates a new error with a caller-specified error class name and message.
 pub fn custom_error(
   class: &'static str,
   message: impl Into<Cow<'static, str>>,
-) -> AnyError {
+) -> Error {
   CustomError {
     class,
     message: message.into(),
@@ -28,52 +24,48 @@ pub fn custom_error(
   .into()
 }
 
-pub fn generic_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+pub fn generic_error(message: impl Into<Cow<'static, str>>) -> Error {
   custom_error("Error", message)
 }
 
-pub fn type_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+pub fn type_error(message: impl Into<Cow<'static, str>>) -> Error {
   custom_error("TypeError", message)
 }
 
-pub fn range_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+pub fn range_error(message: impl Into<Cow<'static, str>>) -> Error {
   custom_error("RangeError", message)
 }
 
-pub fn invalid_hostname(hostname: &str) -> AnyError {
+pub fn invalid_hostname(hostname: &str) -> Error {
   type_error(format!("Invalid hostname: '{}'", hostname))
 }
 
-pub fn uri_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+pub fn uri_error(message: impl Into<Cow<'static, str>>) -> Error {
   custom_error("URIError", message)
 }
 
-pub fn bad_resource(message: impl Into<Cow<'static, str>>) -> AnyError {
+pub fn bad_resource(message: impl Into<Cow<'static, str>>) -> Error {
   custom_error("BadResource", message)
 }
 
-pub fn bad_resource_id() -> AnyError {
+pub fn bad_resource_id() -> Error {
   custom_error("BadResource", "Bad resource ID")
 }
 
-pub fn not_supported() -> AnyError {
+pub fn not_supported() -> Error {
   custom_error("NotSupported", "The operation is not supported")
 }
 
-pub fn resource_unavailable() -> AnyError {
+pub fn resource_unavailable() -> Error {
   custom_error(
     "Busy",
     "Resource is unavailable because it is in use by a promise",
   )
 }
 
-pub fn null_opbuf() -> AnyError {
-  type_error("expected non-null op buffer arg")
-}
-
 /// A simple error type that lets the creator specify both the error message and
 /// the error class name. This type is private; externally it only ever appears
-/// wrapped in an `AnyError`. To retrieve the error class name from a wrapped
+/// wrapped in an `anyhow::Error`. To retrieve the error class name from a wrapped
 /// `CustomError`, use the function `get_custom_error_class()`.
 #[derive(Debug)]
 struct CustomError {
@@ -87,11 +79,11 @@ impl Display for CustomError {
   }
 }
 
-impl Error for CustomError {}
+impl std::error::Error for CustomError {}
 
 /// If this error was crated with `custom_error()`, return the specified error
 /// class name. In all other cases this function returns `None`.
-pub fn get_custom_error_class(error: &AnyError) -> Option<&'static str> {
+pub fn get_custom_error_class(error: &Error) -> Option<&'static str> {
   error.downcast_ref::<CustomError>().map(|e| e.class)
 }
 
@@ -101,6 +93,7 @@ pub fn get_custom_error_class(error: &AnyError) -> Option<&'static str> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct JsError {
   pub message: String,
+  pub cause: Option<Box<JsError>>,
   pub source_line: Option<String>,
   pub script_resource_name: Option<String>,
   pub line_number: Option<i64>,
@@ -167,15 +160,15 @@ fn get_property<'a>(
 }
 
 #[derive(serde::Deserialize)]
-struct NativeJsError {
-  name: Option<String>,
-  message: Option<String>,
+pub(crate) struct NativeJsError {
+  pub name: Option<String>,
+  pub message: Option<String>,
   // Warning! .stack is special so handled by itself
   // stack: Option<String>,
 }
 
 impl JsError {
-  pub(crate) fn create(js_error: Self) -> AnyError {
+  pub(crate) fn create(js_error: Self) -> Error {
     js_error.into()
   }
 
@@ -183,59 +176,86 @@ impl JsError {
     scope: &mut v8::HandleScope,
     exception: v8::Local<v8::Value>,
   ) -> Self {
+    Self::inner_from_v8_exception(scope, exception, Default::default())
+  }
+
+  fn inner_from_v8_exception<'a>(
+    scope: &'a mut v8::HandleScope,
+    exception: v8::Local<'a, v8::Value>,
+    mut seen: HashSet<v8::Local<'a, v8::Value>>,
+  ) -> Self {
     // Create a new HandleScope because we're creating a lot of new local
     // handles below.
     let scope = &mut v8::HandleScope::new(scope);
 
     let msg = v8::Exception::create_message(scope, exception);
 
-    let (message, frames, stack) = if exception.is_native_error() {
-      // The exception is a JS Error object.
-      let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
+    let (message, frames, stack, cause) =
+      if is_instance_of_error(scope, exception) {
+        // The exception is a JS Error object.
+        let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
+        let cause = get_property(scope, exception, "cause");
+        let e: NativeJsError =
+          serde_v8::from_v8(scope, exception.into()).unwrap();
+        // Get the message by formatting error.name and error.message.
+        let name = e.name.unwrap_or_else(|| "Error".to_string());
+        let message_prop = e.message.unwrap_or_else(|| "".to_string());
+        let message = if !name.is_empty() && !message_prop.is_empty() {
+          format!("Uncaught {}: {}", name, message_prop)
+        } else if !name.is_empty() {
+          format!("Uncaught {}", name)
+        } else if !message_prop.is_empty() {
+          format!("Uncaught {}", message_prop)
+        } else {
+          "Uncaught".to_string()
+        };
+        let cause = cause.and_then(|cause| {
+          if cause.is_undefined() || seen.contains(&cause) {
+            None
+          } else {
+            seen.insert(cause);
+            Some(Box::new(JsError::inner_from_v8_exception(
+              scope, cause, seen,
+            )))
+          }
+        });
 
-      let e: NativeJsError =
-        serde_v8::from_v8(scope, exception.into()).unwrap();
-      // Get the message by formatting error.name and error.message.
-      let name = e.name.unwrap_or_else(|| "Error".to_string());
-      let message_prop = e.message.unwrap_or_else(|| "".to_string());
-      let message = if !name.is_empty() && !message_prop.is_empty() {
-        format!("Uncaught {}: {}", name, message_prop)
-      } else if !name.is_empty() {
-        format!("Uncaught {}", name)
-      } else if !message_prop.is_empty() {
-        format!("Uncaught {}", message_prop)
+        // Access error.stack to ensure that prepareStackTrace() has been called.
+        // This should populate error.__callSiteEvals.
+        let stack = get_property(scope, exception, "stack");
+        let stack: Option<v8::Local<v8::String>> =
+          stack.and_then(|s| s.try_into().ok());
+        let stack = stack.map(|s| s.to_rust_string_lossy(scope));
+
+        // Read an array of structured frames from error.__callSiteEvals.
+        let frames_v8 = get_property(scope, exception, "__callSiteEvals");
+        // Ignore non-array values
+        let frames_v8: Option<v8::Local<v8::Array>> =
+          frames_v8.and_then(|a| a.try_into().ok());
+
+        // Convert them into Vec<JsStackFrame>
+        let frames: Vec<JsStackFrame> = match frames_v8 {
+          Some(frames_v8) => {
+            serde_v8::from_v8(scope, frames_v8.into()).unwrap()
+          }
+          None => vec![],
+        };
+        (message, frames, stack, cause)
       } else {
-        "Uncaught".to_string()
+        // The exception is not a JS Error object.
+        // Get the message given by V8::Exception::create_message(), and provide
+        // empty frames.
+        (
+          msg.get(scope).to_rust_string_lossy(scope),
+          vec![],
+          None,
+          None,
+        )
       };
-
-      // Access error.stack to ensure that prepareStackTrace() has been called.
-      // This should populate error.__callSiteEvals.
-      let stack = get_property(scope, exception, "stack");
-      let stack: Option<v8::Local<v8::String>> =
-        stack.and_then(|s| s.try_into().ok());
-      let stack = stack.map(|s| s.to_rust_string_lossy(scope));
-
-      // Read an array of structured frames from error.__callSiteEvals.
-      let frames_v8 = get_property(scope, exception, "__callSiteEvals");
-      // Ignore non-array values
-      let frames_v8: Option<v8::Local<v8::Array>> =
-        frames_v8.and_then(|a| a.try_into().ok());
-
-      // Convert them into Vec<JsStackFrame>
-      let frames: Vec<JsStackFrame> = match frames_v8 {
-        Some(frames_v8) => serde_v8::from_v8(scope, frames_v8.into()).unwrap(),
-        None => vec![],
-      };
-      (message, frames, stack)
-    } else {
-      // The exception is not a JS Error object.
-      // Get the message given by V8::Exception::create_message(), and provide
-      // empty frames.
-      (msg.get(scope).to_rust_string_lossy(scope), vec![], None)
-    };
 
     Self {
       message,
+      cause,
       script_resource_name: msg
         .get_script_resource_name(scope)
         .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
@@ -252,7 +272,7 @@ impl JsError {
   }
 }
 
-impl Error for JsError {}
+impl std::error::Error for JsError {}
 
 fn format_source_loc(
   file_name: &str,
@@ -290,23 +310,54 @@ impl Display for JsError {
 
 pub(crate) fn attach_handle_to_error(
   scope: &mut v8::Isolate,
-  err: AnyError,
+  err: Error,
   handle: v8::Local<v8::Value>,
-) -> AnyError {
+) -> Error {
   ErrWithV8Handle::new(scope, err, handle).into()
+}
+
+/// Implements `value instanceof primordials.Error` in JS. Similar to
+/// `Value::is_native_error()` but more closely matches the semantics
+/// of `instanceof`. `Value::is_native_error()` also checks for static class
+/// inheritance rather than just scanning the prototype chain, which doesn't
+/// work with our WebIDL implementation of `DOMException`.
+pub(crate) fn is_instance_of_error<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  value: v8::Local<v8::Value>,
+) -> bool {
+  if !value.is_object() {
+    return false;
+  }
+  let message = v8::String::empty(scope);
+  let error_prototype = v8::Exception::error(scope, message)
+    .to_object(scope)
+    .unwrap()
+    .get_prototype(scope)
+    .unwrap();
+  let mut maybe_prototype =
+    value.to_object(scope).unwrap().get_prototype(scope);
+  while let Some(prototype) = maybe_prototype {
+    if prototype.strict_equals(error_prototype) {
+      return true;
+    }
+    maybe_prototype = prototype
+      .to_object(scope)
+      .and_then(|o| o.get_prototype(scope));
+  }
+  false
 }
 
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on
 // values of type v8::Global<T>.
 pub(crate) struct ErrWithV8Handle {
-  err: AnyError,
+  err: Error,
   handle: v8::Global<v8::Value>,
 }
 
 impl ErrWithV8Handle {
   pub fn new(
     scope: &mut v8::Isolate,
-    err: AnyError,
+    err: Error,
     handle: v8::Local<v8::Value>,
   ) -> Self {
     let handle = v8::Global::new(scope, handle);
@@ -324,11 +375,11 @@ impl ErrWithV8Handle {
 unsafe impl Send for ErrWithV8Handle {}
 unsafe impl Sync for ErrWithV8Handle {}
 
-impl Error for ErrWithV8Handle {}
+impl std::error::Error for ErrWithV8Handle {}
 
 impl Display for ErrWithV8Handle {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-    <AnyError as Display>::fmt(&self.err, f)
+    <Error as Display>::fmt(&self.err, f)
   }
 }
 

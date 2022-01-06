@@ -3,7 +3,7 @@ struct PrimeIndices {
     data: [[stride(4)]] array<u32>;
 }; // this is used as both input and output for convenience
 [[group(0), binding(0)]]
-var<storage> v_indices: [[access(read_write)]] PrimeIndices;
+var<storage, read_write> v_indices: PrimeIndices;
 // The Collatz Conjecture states that for any integer n:
 // If n is even, n = n/2
 // If n is odd, n = 3n+1

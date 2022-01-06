@@ -3,14 +3,20 @@ import {
   assert,
   assertEquals,
   assertNotEquals,
+  assertRejects,
   assertThrows,
-  assertThrowsAsync,
   deferred,
   delay,
-  unitTest,
 } from "./test_util.ts";
 
-unitTest({ perms: { net: true } }, function netTcpListenClose() {
+let isCI: boolean;
+try {
+  isCI = Deno.env.get("CI") !== undefined;
+} catch {
+  isCI = true;
+}
+
+Deno.test({ permissions: { net: true } }, function netTcpListenClose() {
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 3500 });
   assert(listener.addr.transport === "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
@@ -19,9 +25,9 @@ unitTest({ perms: { net: true } }, function netTcpListenClose() {
   listener.close();
 });
 
-unitTest(
+Deno.test(
   {
-    perms: { net: true },
+    permissions: { net: true },
   },
   function netUdpListenClose() {
     const socket = Deno.listenDatagram({
@@ -36,8 +42,11 @@ unitTest(
   },
 );
 
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
   function netUnixListenClose() {
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listen({
@@ -50,8 +59,11 @@ unitTest(
   },
 );
 
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
   function netUnixPacketListenClose() {
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listenDatagram({
@@ -64,8 +76,11 @@ unitTest(
   },
 );
 
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true } },
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: false },
+  },
   function netUnixListenWritePermission() {
     assertThrows(() => {
       const filePath = Deno.makeTempFileSync();
@@ -80,8 +95,11 @@ unitTest(
   },
 );
 
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true } },
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: false },
+  },
   function netUnixPacketListenWritePermission() {
     assertThrows(() => {
       const filePath = Deno.makeTempFileSync();
@@ -96,26 +114,29 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
-    perms: { net: true },
+    permissions: { net: true },
   },
   async function netTcpCloseWhileAccept() {
     const listener = Deno.listen({ port: 4501 });
     const p = listener.accept();
     listener.close();
-    await assertThrowsAsync(
-      async () => {
-        await p;
-      },
+    // TODO(piscisaureus): the error type should be `Interrupted` here, which
+    // gets thrown, but then ext/net catches it and rethrows `BadResource`.
+    await assertRejects(
+      () => p,
       Deno.errors.BadResource,
       "Listener has been closed",
     );
   },
 );
 
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
   async function netUnixCloseWhileAccept() {
     const filePath = await Deno.makeTempFile();
     const listener = Deno.listen({
@@ -124,18 +145,16 @@ unitTest(
     });
     const p = listener.accept();
     listener.close();
-    await assertThrowsAsync(
-      async () => {
-        await p;
-      },
+    await assertRejects(
+      () => p,
       Deno.errors.BadResource,
       "Listener has been closed",
     );
   },
 );
 
-unitTest(
-  { perms: { net: true } },
+Deno.test(
+  { permissions: { net: true } },
   async function netTcpConcurrentAccept() {
     const listener = Deno.listen({ port: 4502 });
     let acceptErrCount = 0;
@@ -157,9 +176,11 @@ unitTest(
   },
 );
 
-// TODO(jsouto): Enable when tokio updates mio to v0.7!
-unitTest(
-  { ignore: true, perms: { read: true, write: true } },
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
   async function netUnixConcurrentAccept() {
     const filePath = await Deno.makeTempFile();
     const listener = Deno.listen({ transport: "unix", path: filePath });
@@ -167,22 +188,22 @@ unitTest(
     const checkErr = (e: Error) => {
       if (e.message === "Listener has been closed") {
         assertEquals(acceptErrCount, 1);
-      } else if (e.message === "Another accept task is ongoing") {
+      } else if (e instanceof Deno.errors.Busy) { // "Listener already in use"
         acceptErrCount++;
       } else {
-        throw new Error("Unexpected error message");
+        throw e;
       }
     };
     const p = listener.accept().catch(checkErr);
     const p1 = listener.accept().catch(checkErr);
     await Promise.race([p, p1]);
     listener.close();
-    await [p, p1];
+    await Promise.all([p, p1]);
     assertEquals(acceptErrCount, 1);
   },
 );
 
-unitTest({ perms: { net: true } }, async function netTcpDialListen() {
+Deno.test({ permissions: { net: true } }, async function netTcpDialListen() {
   const listener = Deno.listen({ port: 3500 });
   listener.accept().then(
     async (conn) => {
@@ -217,8 +238,11 @@ unitTest({ perms: { net: true } }, async function netTcpDialListen() {
   conn.close();
 });
 
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
   async function netUnixDialListen() {
     const filePath = await Deno.makeTempFile();
     const listener = Deno.listen({ path: filePath, transport: "unix" });
@@ -253,8 +277,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { net: true } },
+Deno.test(
+  { permissions: { net: true } },
   async function netUdpSendReceive() {
     const alice = Deno.listenDatagram({ port: 3500, transport: "udp" });
     assert(alice.addr.transport === "udp");
@@ -283,8 +307,46 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { net: true } },
+Deno.test(
+  { permissions: { net: true } },
+  async function netUdpSendReceiveBroadcast() {
+    // Must bind sender to an address that can send to the broadcast address on MacOS.
+    // Macos will give us error 49 when sending the broadcast packet if we omit hostname here.
+    const alice = Deno.listenDatagram({
+      port: 3500,
+      transport: "udp",
+      hostname: "0.0.0.0",
+    });
+
+    const bob = Deno.listenDatagram({
+      port: 4501,
+      transport: "udp",
+      hostname: "0.0.0.0",
+    });
+    assert(bob.addr.transport === "udp");
+    assertEquals(bob.addr.port, 4501);
+    assertEquals(bob.addr.hostname, "0.0.0.0");
+
+    const broadcastAddr = { ...bob.addr, hostname: "255.255.255.255" };
+
+    const sent = new Uint8Array([1, 2, 3]);
+    const byteLength = await alice.send(sent, broadcastAddr);
+
+    assertEquals(byteLength, 3);
+    const [recvd, remote] = await bob.receive();
+    assert(remote.transport === "udp");
+    assertEquals(remote.port, 3500);
+    assertEquals(recvd.length, 3);
+    assertEquals(1, recvd[0]);
+    assertEquals(2, recvd[1]);
+    assertEquals(3, recvd[2]);
+    alice.close();
+    bob.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function netUdpConcurrentSendReceive() {
     const socket = Deno.listenDatagram({ port: 3500, transport: "udp" });
     assert(socket.addr.transport === "udp");
@@ -307,8 +369,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { net: true } },
+Deno.test(
+  { permissions: { net: true } },
   async function netUdpBorrowMutError() {
     const socket = Deno.listenDatagram({
       port: 4501,
@@ -322,8 +384,11 @@ unitTest(
   },
 );
 
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
   async function netUnixPacketSendReceive() {
     const filePath = await Deno.makeTempFile();
     const alice = Deno.listenDatagram({
@@ -357,8 +422,8 @@ unitTest(
 );
 
 // TODO(piscisaureus): Enable after Tokio v0.3/v1.0 upgrade.
-unitTest(
-  { ignore: true, perms: { read: true, write: true } },
+Deno.test(
+  { ignore: true, permissions: { read: true, write: true } },
   async function netUnixPacketConcurrentSendReceive() {
     const filePath = await Deno.makeTempFile();
     const socket = Deno.listenDatagram({
@@ -384,11 +449,9 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { net: true } },
+Deno.test(
+  { permissions: { net: true } },
   async function netTcpListenIteratorBreakClosesResource() {
-    const promise = deferred();
-
     async function iterate(listener: Deno.Listener) {
       let i = 0;
 
@@ -400,13 +463,11 @@ unitTest(
           break;
         }
       }
-
-      promise.resolve();
     }
 
     const addr = { hostname: "127.0.0.1", port: 8888 };
     const listener = Deno.listen(addr);
-    iterate(listener);
+    const iteratePromise = iterate(listener);
 
     await delay(100);
     const conn1 = await Deno.connect(addr);
@@ -414,12 +475,12 @@ unitTest(
     const conn2 = await Deno.connect(addr);
     conn2.close();
 
-    await promise;
+    await iteratePromise;
   },
 );
 
-unitTest(
-  { perms: { net: true } },
+Deno.test(
+  { permissions: { net: true } },
   async function netTcpListenCloseWhileIterating() {
     const listener = Deno.listen({ port: 8001 });
     const nextWhileClosing = listener[Symbol.asyncIterator]().next();
@@ -431,8 +492,8 @@ unitTest(
   },
 );
 
-unitTest(
-  { perms: { net: true } },
+Deno.test(
+  { permissions: { net: true } },
   async function netUdpListenCloseWhileIterating() {
     const socket = Deno.listenDatagram({ port: 8000, transport: "udp" });
     const nextWhileClosing = socket[Symbol.asyncIterator]().next();
@@ -444,8 +505,11 @@ unitTest(
   },
 );
 
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
   async function netUnixListenCloseWhileIterating() {
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listen({ path: filePath, transport: "unix" });
@@ -458,8 +522,11 @@ unitTest(
   },
 );
 
-unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
   async function netUnixPacketListenCloseWhileIterating() {
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listenDatagram({
@@ -475,12 +542,8 @@ unitTest(
   },
 );
 
-unitTest(
-  {
-    // FIXME(bartlomieju)
-    ignore: true,
-    perms: { net: true },
-  },
+Deno.test(
+  { permissions: { net: true } },
   async function netListenAsyncIterator() {
     const addr = { hostname: "127.0.0.1", port: 3500 };
     const listener = Deno.listen(addr);
@@ -510,9 +573,9 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
-    perms: { net: true },
+    permissions: { net: true },
   },
   async function netCloseWriteSuccess() {
     const addr = { hostname: "127.0.0.1", port: 3500 };
@@ -534,7 +597,7 @@ unitTest(
     assertEquals(3, buf[2]);
     // Verify that the write end of the socket is closed.
     // TODO(piscisaureus): assert that thrown error is of a specific type.
-    await assertThrowsAsync(async () => {
+    await assertRejects(async () => {
       await conn.write(new Uint8Array([1, 2, 3]));
     });
     closeDeferred.resolve();
@@ -543,9 +606,11 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
-    perms: { net: true },
+    // https://github.com/denoland/deno/issues/11580
+    ignore: Deno.build.os === "darwin" && isCI,
+    permissions: { net: true },
   },
   async function netHangsOnClose() {
     let acceptedConn: Deno.Conn;
@@ -564,8 +629,8 @@ unitTest(
           await conn.write(new Uint8Array([1, 2, 3]));
         }
       } catch (err) {
-        assert(!!err);
-        assert(err instanceof Deno.errors.BadResource);
+        assert(err);
+        assert(err instanceof Deno.errors.Interrupted);
       }
     }
 
@@ -589,13 +654,28 @@ unitTest(
   },
 );
 
-unitTest(
+Deno.test(
   {
-    perms: { net: true },
+    permissions: { net: true },
   },
   function netExplicitUndefinedHostname() {
     const listener = Deno.listen({ hostname: undefined, port: 8080 });
     assertEquals((listener.addr as Deno.NetAddr).hostname, "0.0.0.0");
+    listener.close();
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { read: true, write: true },
+  },
+  function netUnixAbstractPathShouldNotPanic() {
+    const listener = Deno.listen({
+      path: "\0aaa",
+      transport: "unix",
+    });
+    assert("not panic");
     listener.close();
   },
 );

@@ -31,12 +31,6 @@ pub(crate) fn benchmark(
   // res.insert("deno_udp".to_string(), deno_udp(deno_exe)?);
   res.insert("deno_http".to_string(), deno_http(deno_exe)?);
   res.insert("deno_http_native".to_string(), deno_http_native(deno_exe)?);
-  // TODO(ry) deno_proxy disabled to make fetch() standards compliant.
-  // res.insert("deno_proxy".to_string(), deno_http_proxy(deno_exe) hyper_hello_exe))
-  res.insert(
-    "deno_proxy_tcp".to_string(),
-    deno_tcp_proxy(deno_exe, hyper_hello_exe)?,
-  );
   // "core_http_json_ops" previously had a "bin op" counterpart called "core_http_bin_ops",
   // which was previously also called "deno_core_http_bench", "deno_core_single"
   res.insert(
@@ -45,11 +39,6 @@ pub(crate) fn benchmark(
   );
   // "node_http" was once called "node"
   res.insert("node_http".to_string(), node_http()?);
-  res.insert("node_proxy".to_string(), node_http_proxy(hyper_hello_exe)?);
-  res.insert(
-    "node_proxy_tcp".to_string(),
-    node_tcp_proxy(hyper_hello_exe)?,
-  );
   res.insert("node_tcp".to_string(), node_tcp()?);
   res.insert("hyper".to_string(), hyper_http(hyper_hello_exe)?);
 
@@ -150,31 +139,6 @@ fn deno_tcp(deno_exe: &str) -> Result<HttpBenchmarkResult> {
   )
 }
 
-fn deno_tcp_proxy(
-  deno_exe: &str,
-  hyper_exe: &str,
-) -> Result<HttpBenchmarkResult> {
-  let port = get_port();
-  let origin_port = get_port();
-
-  println!("http_proxy_benchmark testing DENO using net/tcp.");
-  run(
-    &[
-      deno_exe,
-      "run",
-      "--allow-net",
-      "--reload",
-      "--unstable",
-      "cli/bench/deno_tcp_proxy.ts",
-      &server_addr(port),
-      &server_addr(origin_port),
-    ],
-    port,
-    None,
-    Some(&[hyper_exe, &origin_port.to_string()]),
-  )
-}
-
 fn deno_http(deno_exe: &str) -> Result<HttpBenchmarkResult> {
   let port = get_port();
   println!("http_benchmark testing DENO using net/http.");
@@ -212,32 +176,6 @@ fn deno_http_native(deno_exe: &str) -> Result<HttpBenchmarkResult> {
   )
 }
 
-#[allow(dead_code)]
-fn deno_http_proxy(
-  deno_exe: &str,
-  hyper_exe: &str,
-) -> Result<HttpBenchmarkResult> {
-  let port = get_port();
-  let origin_port = get_port();
-
-  println!("http_proxy_benchmark testing DENO using net/http.");
-  run(
-    &[
-      deno_exe,
-      "run",
-      "--allow-net",
-      "--reload",
-      "--unstable",
-      "cli/bench/deno_http_proxy.ts",
-      &server_addr(port),
-      &server_addr(origin_port),
-    ],
-    port,
-    None,
-    Some(&[hyper_exe, &origin_port.to_string()]),
-  )
-}
-
 fn core_http_json_ops(exe: &str) -> Result<HttpBenchmarkResult> {
   println!("http_benchmark testing CORE http_bench_json_ops");
   run(&[exe], 4544, None, None)
@@ -251,44 +189,6 @@ fn node_http() -> Result<HttpBenchmarkResult> {
     port,
     None,
     None,
-  )
-}
-
-fn node_http_proxy(hyper_exe: &str) -> Result<HttpBenchmarkResult> {
-  let port = get_port();
-  let origin_port = get_port();
-  let origin_port = origin_port.to_string();
-
-  println!("http_proxy_benchmark testing NODE.");
-  run(
-    &[
-      "node",
-      "cli/bench/node_http_proxy.js",
-      &port.to_string(),
-      &origin_port,
-    ],
-    port,
-    None,
-    Some(&[hyper_exe, &origin_port]),
-  )
-}
-
-fn node_tcp_proxy(exe: &str) -> Result<HttpBenchmarkResult> {
-  let port = get_port();
-  let origin_port = get_port();
-  let origin_port = origin_port.to_string();
-
-  println!("http_proxy_benchmark testing NODE tcp.");
-  run(
-    &[
-      "node",
-      "cli/bench/node_tcp_proxy.js",
-      &port.to_string(),
-      &origin_port,
-    ],
-    port,
-    None,
-    Some(&[exe, &origin_port]),
   )
 }
 

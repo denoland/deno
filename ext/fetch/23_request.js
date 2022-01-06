@@ -19,6 +19,7 @@
   const { mixinBody, extractBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
   const mimesniff = window.__bootstrap.mimesniff;
+  const { blobFromObjectUrl } = window.__bootstrap.file;
   const {
     headersFromHeaderList,
     headerListFromHeaders,
@@ -38,7 +39,6 @@
     RegExpPrototypeTest,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -59,34 +59,37 @@
    * @property {number} redirectCount
    * @property {string[]} urlList
    * @property {number | null} clientRid NOTE: non standard extension for `Deno.HttpClient`.
+   * @property {Blob | null} blobUrlEntry
    */
-
-  const defaultInnerRequest = {
-    url() {
-      return this.urlList[0];
-    },
-    currentUrl() {
-      return this.urlList[this.urlList.length - 1];
-    },
-    redirectMode: "follow",
-    redirectCount: 0,
-    clientRid: null,
-  };
 
   /**
    * @param {string} method
    * @param {string} url
    * @param {[string, string][]} headerList
    * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
+   * @param {boolean} maybeBlob
    * @returns
    */
-  function newInnerRequest(method, url, headerList = [], body = null) {
+  function newInnerRequest(method, url, headerList, body, maybeBlob) {
+    let blobUrlEntry = null;
+    if (maybeBlob && url.startsWith("blob:")) {
+      blobUrlEntry = blobFromObjectUrl(url);
+    }
     return {
-      method: method,
+      method,
       headerList,
       body,
+      redirectMode: "follow",
+      redirectCount: 0,
       urlList: [url],
-      ...defaultInnerRequest,
+      clientRid: null,
+      blobUrlEntry,
+      url() {
+        return this.urlList[0];
+      },
+      currentUrl() {
+        return this.urlList[this.urlList.length - 1];
+      },
     };
   }
 
@@ -106,18 +109,19 @@
 
     return {
       method: request.method,
-      url() {
-        return this.urlList[0];
-      },
-      currentUrl() {
-        return this.urlList[this.urlList.length - 1];
-      },
       headerList,
       body,
       redirectMode: request.redirectMode,
       redirectCount: request.redirectCount,
       urlList: request.urlList,
       clientRid: request.clientRid,
+      blobUrlEntry: request.blobUrlEntry,
+      url() {
+        return this.urlList[0];
+      },
+      currentUrl() {
+        return this.urlList[this.urlList.length - 1];
+      },
     };
   }
 
@@ -169,8 +173,10 @@
       let charset = null;
       let essence = null;
       let mimeType = null;
-      const headerList = headerListFromHeaders(this[_headers]);
-      const values = getDecodeSplitHeader(headerList, "content-type");
+      const values = getDecodeSplitHeader(
+        headerListFromHeaders(this[_headers]),
+        "Content-Type",
+      );
       if (values === null) return null;
       for (const value of values) {
         const temporaryMimeType = mimesniff.parseMimeType(value);
@@ -212,7 +218,7 @@
     constructor(input, init = {}) {
       const prefix = "Failed to construct 'Request'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      input = webidl.converters["RequestInfo"](input, {
+      input = webidl.converters["RequestInfo_DOMString"](input, {
         prefix,
         context: "Argument 1",
       });
@@ -233,7 +239,7 @@
       // 5.
       if (typeof input === "string") {
         const parsedURL = new URL(input, baseURL);
-        request = newInnerRequest("GET", parsedURL.href, [], null);
+        request = newInnerRequest("GET", parsedURL.href, [], null, true);
       } else { // 6.
         if (!(input instanceof Request)) throw new TypeError("Unreachable");
         request = input[_request];
@@ -389,10 +395,6 @@
       );
     }
 
-    get [SymbolToStringTag]() {
-      return "Request";
-    }
-
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
@@ -416,14 +418,15 @@
     "Request",
     Request,
   );
-  webidl.converters["RequestInfo"] = (V, opts) => {
+  webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
     // Union for (Request or USVString)
     if (typeof V == "object") {
       if (V instanceof Request) {
         return webidl.converters["Request"](V, opts);
       }
     }
-    return webidl.converters["USVString"](V, opts);
+    // Passed to new URL(...) which implictly converts DOMString -> USVString
+    return webidl.converters["DOMString"](V, opts);
   };
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
     "RequestRedirect",
@@ -441,7 +444,7 @@
       {
         key: "body",
         converter: webidl.createNullableConverter(
-          webidl.converters["BodyInit"],
+          webidl.converters["BodyInit_DOMString"],
         ),
       },
       { key: "redirect", converter: webidl.converters["RequestRedirect"] },
