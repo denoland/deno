@@ -12,10 +12,11 @@ export const {
   rebuild,
   ["--"]: rest,
   ["auto-config"]: autoConfig,
+  ["inspect-brk"]: inspectBrk,
   binary,
 } = parse(Deno.args, {
   "--": true,
-  boolean: ["quiet", "release", "no-interactive"],
+  boolean: ["quiet", "release", "no-interactive", "inspect-brk"],
   string: ["json", "wptreport", "binary"],
 });
 
