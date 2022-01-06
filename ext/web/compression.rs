@@ -1,4 +1,3 @@
-use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -105,8 +104,7 @@ pub async fn op_compression_compress(
       let compressor = state
         .borrow()
         .resource_table
-        .get::<GzipCompressorResource>(args.rid)
-        .ok_or_else(bad_resource_id)?;
+        .get::<GzipCompressorResource>(args.rid)?;
       compressor
         .encoder
         .borrow_mut()
@@ -120,8 +118,7 @@ pub async fn op_compression_compress(
       let compressor = state
         .borrow()
         .resource_table
-        .get::<DeflateCompressorResource>(args.rid)
-        .ok_or_else(bad_resource_id)?;
+        .get::<DeflateCompressorResource>(args.rid)?;
       compressor
         .encoder
         .borrow_mut()
@@ -147,8 +144,7 @@ pub async fn op_compression_compress_finalize(
       let compressor = state
         .borrow()
         .resource_table
-        .get::<GzipCompressorResource>(rid)
-        .ok_or_else(bad_resource_id)?;
+        .get::<GzipCompressorResource>(rid)?;
       compressor.encoder.borrow_mut().shutdown().await?;
       let mut data = vec![];
       let n = compressor.tx.borrow_mut().read_to_end(&mut data).await?;
@@ -158,8 +154,7 @@ pub async fn op_compression_compress_finalize(
       let compressor = state
         .borrow()
         .resource_table
-        .get::<DeflateCompressorResource>(rid)
-        .ok_or_else(bad_resource_id)?;
+        .get::<DeflateCompressorResource>(rid)?;
       compressor.encoder.borrow_mut().shutdown().await?;
       let mut data = vec![];
       let n = compressor.tx.borrow_mut().read_to_end(&mut data).await?;
@@ -209,8 +204,7 @@ pub async fn op_compression_decompress(
       let compressor = state
         .borrow()
         .resource_table
-        .get::<GzipDecompressorResource>(args.rid)
-        .ok_or_else(bad_resource_id)?;
+        .get::<GzipDecompressorResource>(args.rid)?;
       compressor
         .decoder
         .borrow_mut()
@@ -224,8 +218,7 @@ pub async fn op_compression_decompress(
       let compressor = state
         .borrow()
         .resource_table
-        .get::<DeflateDecompressorResource>(args.rid)
-        .ok_or_else(bad_resource_id)?;
+        .get::<DeflateDecompressorResource>(args.rid)?;
       compressor
         .decoder
         .borrow_mut()
@@ -251,8 +244,7 @@ pub async fn op_compression_decompress_finalize(
       let compressor = state
         .borrow()
         .resource_table
-        .get::<GzipDecompressorResource>(rid)
-        .ok_or_else(bad_resource_id)?;
+        .get::<GzipDecompressorResource>(rid)?;
       compressor.decoder.borrow_mut().shutdown().await?;
       let mut data = vec![];
       let n = compressor.tx.borrow_mut().read_to_end(&mut data).await?;
@@ -262,8 +254,7 @@ pub async fn op_compression_decompress_finalize(
       let compressor = state
         .borrow()
         .resource_table
-        .get::<DeflateDecompressorResource>(rid)
-        .ok_or_else(bad_resource_id)?;
+        .get::<DeflateDecompressorResource>(rid)?;
       compressor.decoder.borrow_mut().shutdown().await?;
       let mut data = vec![];
       let n = compressor.tx.borrow_mut().read_to_end(&mut data).await?;
