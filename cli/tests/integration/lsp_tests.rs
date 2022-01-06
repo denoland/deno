@@ -3044,7 +3044,8 @@ fn lsp_cache_location() {
   let _g = http_server();
   let temp_dir = TempDir::new().expect("could not create temp dir");
   let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+    serde_json::from_value(load_fixture("initialize_params_registry.json"))
+      .unwrap();
 
   params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
   if let Some(Value::Object(mut map)) = params.initialization_options {
