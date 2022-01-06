@@ -31,16 +31,18 @@
       const rid = core.opSync("op_compression_compressor_create", format);
 
       super({
-        async start(controller) {
-          while (true) {
-            const chunk = new Uint8Array(65536);
-            const read = await core.read(rid, chunk);
-            if (read === null) {
-              break;
-            } else {
-              controller.enqueue(chunk.subarray(0, read));
+        start(controller) {
+          (async () => {
+            while (true) {
+              const chunk = new Uint8Array(65536);
+              const read = await core.read(rid, chunk);
+              if (read === null) {
+                break;
+              } else {
+                controller.enqueue(chunk.subarray(0, read));
+              }
             }
-          }
+          })();
         },
         async transform(chunk) {
           const data = webidl.converters.BufferSource(chunk);
@@ -64,16 +66,18 @@
       const rid = core.opSync("op_compression_decompressor_create", format);
 
       super({
-        async start(controller) {
-          while (true) {
-            const chunk = new Uint8Array(65536);
-            const read = await core.read(rid, chunk);
-            if (read === null) {
-              break;
-            } else {
-              controller.enqueue(chunk.subarray(0, read));
+        start(controller) {
+          (async () => {
+            while (true) {
+              const chunk = new Uint8Array(65536);
+              const read = await core.read(rid, chunk);
+              if (read === null) {
+                break;
+              } else {
+                controller.enqueue(chunk.subarray(0, read));
+              }
             }
-          }
+          })();
         },
         async transform(chunk) {
           const data = webidl.converters.BufferSource(chunk);
