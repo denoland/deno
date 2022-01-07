@@ -27,6 +27,7 @@ use deno_core::url::ParseError;
 use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::Dependency;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use log::error;
@@ -565,6 +566,60 @@ impl ModuleRegistry {
     Ok(())
   }
 
+  pub(crate) async fn get_hover(
+    &self,
+    dependency: &Dependency,
+  ) -> Option<String> {
+    let maybe_code = dependency.get_code();
+    let maybe_type = dependency.get_type();
+    let specifier = match (maybe_code, maybe_type) {
+      (Some(specifier), _) => Some(specifier),
+      (_, Some(specifier)) => Some(specifier),
+      _ => None,
+    }?;
+    let origin = base_url(specifier);
+    let registries = self.origins.get(&origin)?;
+    let path = &specifier[Position::BeforePath..];
+    for registry in registries {
+      let tokens = parse(&registry.schema, None).ok()?;
+      let matcher = Matcher::new(&tokens, None).ok()?;
+      if let Some(match_result) = matcher.matches(path) {
+        let key = if let Some(Token::Key(key)) = tokens.iter().last() {
+          Some(key)
+        } else {
+          None
+        }?;
+        let url = registry.get_documentation_url_for_key(key)?;
+        let endpoint = get_endpoint_with_match(
+          key,
+          url,
+          specifier,
+          &tokens,
+          &match_result,
+          None,
+        )
+        .ok()?;
+        let file = self
+          .file_fetcher
+          .fetch(&endpoint, &mut Permissions::allow_all())
+          .await
+          .ok()?;
+        let documentation: lsp::Documentation =
+          serde_json::from_str(&file.source).ok()?;
+        return match documentation {
+          lsp::Documentation::String(doc) => Some(doc),
+          lsp::Documentation::MarkupContent(lsp::MarkupContent {
+            value,
+            ..
+          }) => Some(value),
+          _ => None,
+        };
+      }
+    }
+
+    None
+  }
+
   /// For a string specifier from the client, provide a set of completions, if
   /// any, for the specifier.
   pub(crate) async fn get_completions(
@@ -858,7 +913,7 @@ impl ModuleRegistry {
     self.get_origin_completions(current_specifier, range)
   }
 
-  pub async fn get_documentation(
+  pub(crate) async fn get_documentation(
     &self,
     url: &str,
   ) -> Option<lsp::Documentation> {
