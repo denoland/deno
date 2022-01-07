@@ -1,6 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache;
+use crate::cache::Cacher;
+use crate::cache::VersionedCacheType;
 use crate::colors;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
@@ -561,8 +563,8 @@ impl ProcState {
     );
 
     let graph_data = self.graph_data.read();
-    let found = graph_data.follow_redirect(&specifier);
-    match graph_data.get(&found) {
+    let found_url = graph_data.follow_redirect(&specifier);
+    match graph_data.get(&found_url) {
       Some(ModuleEntry::Module {
         code, media_type, ..
       }) => {
@@ -574,23 +576,16 @@ impl ProcState {
           | MediaType::Json => code.as_ref().clone(),
           MediaType::Dts => "".to_string(),
           _ => {
-            let emit_path = self
-              .dir
-              .gen_cache
-              .get_cache_filename_with_extension(&found, "js")
-              .unwrap_or_else(|| {
-                unreachable!("Unable to get cache filename: {}", &found)
-              });
-            match self.dir.gen_cache.get(&emit_path) {
-              Ok(b) => String::from_utf8(b).unwrap(),
-              Err(_) => unreachable!("Unexpected missing emit: {}", found),
+            match self.dir.gen_cache.get_versioned(VersionedCacheType::Emit, &found_url) {
+              Some(data) => data.text,
+              None => unreachable!("Unexpected missing emit: {}", found_url),
             }
           }
         };
         Ok(ModuleSource {
           code,
           module_url_specified: specifier.to_string(),
-          module_url_found: found.to_string(),
+          module_url_found: found_url.to_string(),
           module_type: match media_type {
             MediaType::Json => ModuleType::Json,
             _ => ModuleType::JavaScript,
@@ -605,22 +600,14 @@ impl ProcState {
   }
 
   // TODO(@kitsonk) this should be refactored to get it from the module graph
-  fn get_emit(&self, url: &Url) -> Option<(Vec<u8>, Option<Vec<u8>>)> {
-    let emit_path = self
-      .dir
-      .gen_cache
-      .get_cache_filename_with_extension(url, "js")?;
-    let emit_map_path = self
-      .dir
-      .gen_cache
-      .get_cache_filename_with_extension(url, "js.map")?;
-    if let Ok(code) = self.dir.gen_cache.get(&emit_path) {
-      let maybe_map = if let Ok(map) = self.dir.gen_cache.get(&emit_map_path) {
-        Some(map)
+  fn get_emit(&self, url: &Url) -> Option<(String, Option<String>)> {
+    if let Some(code_data) = self.dir.gen_cache.get_versioned(VersionedCacheType::Emit, url) {
+      let maybe_map = if let Some(map_data) = self.dir.gen_cache.get_versioned(VersionedCacheType::SourceMap, url) {
+        Some(map_data.text)
       } else {
         None
       };
-      Some((code, maybe_map))
+      Some((code_data.text, maybe_map))
     } else {
       None
     }
@@ -639,8 +626,7 @@ impl SourceMapGetter for ProcState {
         _ => return None,
       }
       if let Some((code, maybe_map)) = self.get_emit(&specifier) {
-        let code = String::from_utf8(code).unwrap();
-        source_map_from_code(code).or(maybe_map)
+        source_map_from_code(code).or(maybe_map.map(|m| m.into_bytes()))
       } else if let Ok(source) = self.load(specifier, None, false) {
         source_map_from_code(source.code)
       } else {

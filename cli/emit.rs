@@ -7,6 +7,8 @@
 use crate::ast;
 use crate::cache::CacheType;
 use crate::cache::Cacher;
+use crate::cache::VersionedCacheData;
+use crate::cache::VersionedCacheType;
 use crate::colors;
 use crate::config_file::ConfigFile;
 use crate::config_file::IgnoredCompilerOptions;
@@ -378,7 +380,7 @@ pub(crate) fn check_and_maybe_emit(
   let maybe_tsbuildinfo = if options.reload {
     None
   } else {
-    cache.get(CacheType::TypeScriptBuildInfo, &roots[0])
+    cache.get_value(CacheType::TypeScriptBuildInfo, &roots[0])
   };
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
@@ -420,7 +422,7 @@ pub(crate) fn check_and_maybe_emit(
       // while we retrieve the build info for just the first module, it can be
       // used for all the roots in the graph, so we will cache it for all roots
       for root in roots {
-        cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
+        cache.set_value(CacheType::TypeScriptBuildInfo, root, info.clone())?;
       }
     }
     for emit in response.emitted_files.into_iter() {
@@ -452,25 +454,21 @@ pub(crate) fn check_and_maybe_emit(
           log::debug!("skipping emit for {}", specifier);
           continue;
         }
-        match emit.media_type {
-          MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
-            let version = get_version(source_bytes, &config_bytes);
-            cache.set(CacheType::Version, &specifier, version)?;
-            cache.set(CacheType::Emit, &specifier, emit.data)?;
-          }
-          MediaType::SourceMap => {
-            cache.set(CacheType::SourceMap, &specifier, emit.data)?;
-          }
+        let cache_type = match emit.media_type {
+          MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => VersionedCacheType::Emit,
+          MediaType::SourceMap => VersionedCacheType::SourceMap,
           // this only occurs with the runtime emit, but we are using the same
           // code paths, so we handle it here.
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
-            cache.set(CacheType::Declaration, &specifier, emit.data)?;
-          }
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => VersionedCacheType::Declaration,
           _ => unreachable!(
             "unexpected media_type {} {}",
             emit.media_type, specifier
           ),
-        }
+        };
+        cache.set_versioned(cache_type, &specifier, VersionedCacheData {
+          version_hash: get_version(source_bytes, &config_bytes),
+          text: emit.data,
+        })?;
       }
     }
   }
@@ -694,26 +692,31 @@ pub(crate) fn emit(
     if !is_emittable(&module.media_type, include_js) {
       continue;
     }
+    // todo(dsherret): the below code is racy as it's inserting items from
+    // the graph into the cache that will be read from later. We should keep
+    // all this data in memory.
     let needs_reload =
       options.reload && !options.reload_exclusions.contains(&module.specifier);
     let version = get_version(module.source.as_bytes(), &config_bytes);
     let is_valid = cache
-      .get(CacheType::Version, &module.specifier)
-      .map_or(false, |v| {
-        v == get_version(module.source.as_bytes(), &config_bytes)
-      });
+      .get_versioned(VersionedCacheType::Emit, &module.specifier)
+      .map_or(false, |v| v.version_hash == version);
+
     if is_valid && !needs_reload {
       continue;
     }
-    let (emit, maybe_map) =
+    let (emitted_text, maybe_map) =
       ast::transpile(&module.parsed_source, &emit_options)?;
     emit_count += 1;
-    cache.set(CacheType::Emit, &module.specifier, emit)?;
-    if let Some(map) = maybe_map {
-      cache.set(CacheType::SourceMap, &module.specifier, map)?;
-    }
-    if !is_valid {
-      cache.set(CacheType::Version, &module.specifier, version)?;
+    cache.set_versioned(VersionedCacheType::Emit, &module.specifier, VersionedCacheData {
+      text: emitted_text,
+      version_hash: version.clone(),
+    })?;
+    if let Some(map_text) = maybe_map {
+      cache.set_versioned(VersionedCacheType::SourceMap, &module.specifier, VersionedCacheData {
+        text: map_text,
+        version_hash: version,
+      })?;
     }
   }
 
@@ -763,8 +766,8 @@ fn valid_emit(
       if reload && !reload_exclusions.contains(specifier) {
         return false;
       }
-      if let Some(version) = cache.get(CacheType::Version, specifier) {
-        if version != get_version(code.as_bytes(), &config_bytes) {
+      if let Some(cache_data) = cache.get_versioned(VersionedCacheType::Emit, specifier) {
+        if cache_data.version_hash != get_version(code.as_bytes(), &config_bytes) {
           return false;
         }
       } else {
@@ -813,13 +816,15 @@ pub(crate) fn to_file_map(
   graph: &ModuleGraph,
   cache: &dyn Cacher,
 ) -> HashMap<String, String> {
+  // todo(dsherret): we need to ensure we're not relying on
+  // the file system cache which might be changed from underneath us
   let mut files = HashMap::new();
   for (_, result) in graph.specifiers().into_iter() {
     if let Ok((specifier, media_type)) = result {
-      if let Some(emit) = cache.get(CacheType::Emit, &specifier) {
-        files.insert(format!("{}.js", specifier), emit);
-        if let Some(map) = cache.get(CacheType::SourceMap, &specifier) {
-          files.insert(format!("{}.js.map", specifier), map);
+      if let Some(emit) = cache.get_versioned(VersionedCacheType::Emit, &specifier) {
+        files.insert(format!("{}.js", specifier), emit.text);
+        if let Some(map) = cache.get_versioned(VersionedCacheType::SourceMap, &specifier) {
+          files.insert(format!("{}.js.map", specifier), map.text);
         }
       } else if matches!(
         media_type,
@@ -836,8 +841,8 @@ pub(crate) fn to_file_map(
           );
         }
       }
-      if let Some(declaration) = cache.get(CacheType::Declaration, &specifier) {
-        files.insert(format!("{}.d.ts", specifier), declaration);
+      if let Some(declaration) = cache.get_versioned(VersionedCacheType::Declaration, &specifier) {
+        files.insert(format!("{}.d.ts", specifier), declaration.text);
       }
     }
   }
