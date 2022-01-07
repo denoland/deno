@@ -20,6 +20,7 @@ import {
   getExpectation,
   getExpectFailForCase,
   getManifest,
+  inspectBrk,
   json,
   ManifestFolder,
   ManifestTestOptions,
@@ -161,6 +162,7 @@ async function run() {
         test.url,
         test.options,
         createReportTestCase(test.expectation),
+        inspectBrk,
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -312,6 +314,7 @@ async function update() {
         test.url,
         test.options,
         json ? () => {} : createReportTestCase(test.expectation),
+        inspectBrk,
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
