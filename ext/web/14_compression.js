@@ -30,13 +30,16 @@
       });
       const rid = core.opSync("op_compression_compressor_create", format);
 
+      /** @type {Promise<void>} */
+      let readPromise;
+
       super({
         start(controller) {
-          (async () => {
+          readPromise = (async () => {
             while (true) {
               const chunk = new Uint8Array(65536);
               const read = await core.read(rid, chunk);
-              if (read === null) {
+              if (read === null || read === 0) {
                 break;
               } else {
                 controller.enqueue(chunk.subarray(0, read));
@@ -50,6 +53,11 @@
           while (nwritten < data.byteLength) {
             nwritten += await core.write(rid, data.subarray(nwritten));
           }
+        },
+        async flush() {
+          await core.shutdown(rid);
+          await readPromise;
+          core.close(rid);
         },
       });
     }
@@ -67,13 +75,16 @@
       });
       const rid = core.opSync("op_compression_decompressor_create", format);
 
+      /** @type {Promise<void>} */
+      let readPromise;
+
       super({
         start(controller) {
-          (async () => {
+          readPromise = (async () => {
             while (true) {
               const chunk = new Uint8Array(65536);
               const read = await core.read(rid, chunk);
-              if (read === null) {
+              if (read === null || read === 0) {
                 break;
               } else {
                 controller.enqueue(chunk.subarray(0, read));
@@ -88,12 +99,16 @@
             nwritten += await core.write(rid, data.subarray(nwritten));
           }
         },
+        async flush() {
+          await core.shutdown(rid);
+          await readPromise;
+          core.close(rid);
+        },
       });
     }
   }
 
   webidl.configurePrototype(DecompressionStream);
-
 
   window.__bootstrap.compression = {
     CompressionStream,

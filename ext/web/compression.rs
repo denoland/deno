@@ -42,6 +42,15 @@ impl Resource for GzipCompressorResource {
       Ok(n)
     })
   }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(async move {
+      let resource = deno_core::RcRef::map(self, |r| &r.encoder);
+      let mut encoder = resource.borrow_mut().await;
+      encoder.shutdown().await?;
+      Ok(())
+    })
+  }
 }
 
 pub struct GzipDecompressorResource {
@@ -68,6 +77,15 @@ impl Resource for GzipDecompressorResource {
       let mut encoder = resource.borrow_mut().await;
       let n = encoder.write(&buf).await?;
       Ok(n)
+    })
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(async move {
+      let resource = deno_core::RcRef::map(self, |r| &r.decoder);
+      let mut encoder = resource.borrow_mut().await;
+      encoder.shutdown().await?;
+      Ok(())
     })
   }
 }
@@ -98,6 +116,15 @@ impl Resource for DeflateCompressorResource {
       Ok(n)
     })
   }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(async move {
+      let resource = deno_core::RcRef::map(self, |r| &r.encoder);
+      let mut encoder = resource.borrow_mut().await;
+      encoder.shutdown().await?;
+      Ok(())
+    })
+  }
 }
 
 pub struct DeflateDecompressorResource {
@@ -124,6 +151,15 @@ impl Resource for DeflateDecompressorResource {
       let mut encoder = resource.borrow_mut().await;
       let n = encoder.write(&buf).await?;
       Ok(n)
+    })
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(async move {
+      let resource = deno_core::RcRef::map(self, |r| &r.decoder);
+      let mut encoder = resource.borrow_mut().await;
+      encoder.shutdown().await?;
+      Ok(())
     })
   }
 }
