@@ -24,6 +24,7 @@ use crate::source_maps::SourceMapGetter;
 use crate::version;
 
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -582,7 +583,10 @@ impl ProcState {
               .map(|data| data.text)
             {
               Some(text) => text,
-              None => unreachable!("Unexpected missing emit: {}", found_url),
+              None => {
+                // the user might have deleted the cache file
+                bail!("Unexpected missing emit: {}\n\nTry reloading with the --reload CLI flag.", found_url)
+              }
             }
           }
         };
