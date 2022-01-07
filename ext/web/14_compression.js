@@ -55,6 +55,8 @@
     }
   }
 
+  webidl.configurePrototype(CompressionStream);
+
   class DecompressionStream extends TransformStream {
     constructor(format) {
       const prefix = "Failed to construct 'DecompressionStream'";
@@ -89,6 +91,9 @@
       });
     }
   }
+
+  webidl.configurePrototype(DecompressionStream);
+
 
   window.__bootstrap.compression = {
     CompressionStream,

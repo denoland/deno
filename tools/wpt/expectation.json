@@ -4211,18 +4211,14 @@
     "idlharness.https.any.html": [
       "CompressionStream interface: existence and properties of interface object",
       "CompressionStream interface: existence and properties of interface prototype object",
-      "Stringification of new CompressionStream(\"deflate\")",
       "DecompressionStream interface: existence and properties of interface object",
-      "DecompressionStream interface: existence and properties of interface prototype object",
-      "Stringification of new DecompressionStream(\"deflate\")"
+      "DecompressionStream interface: existence and properties of interface prototype object"
     ],
     "idlharness.https.any.worker.html": [
       "CompressionStream interface: existence and properties of interface object",
       "CompressionStream interface: existence and properties of interface prototype object",
-      "Stringification of new CompressionStream(\"deflate\")",
       "DecompressionStream interface: existence and properties of interface object",
-      "DecompressionStream interface: existence and properties of interface prototype object",
-      "Stringification of new DecompressionStream(\"deflate\")"
+      "DecompressionStream interface: existence and properties of interface prototype object"
     ]
   }
 }
