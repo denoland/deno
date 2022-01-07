@@ -5,15 +5,16 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::http_cache::url_to_filename;
 
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::FutureExt;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
-use deno_core::ModuleSpecifier;
 use deno_core::url::Host;
 use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
@@ -27,12 +28,6 @@ use std::path::PathBuf;
 use std::path::Prefix;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct VersionedCacheData {
-  pub version_hash: String,
-  pub text: String,
-}
-
 pub(crate) enum CacheType {
   TypeScriptBuildInfo,
 }
@@ -45,20 +40,14 @@ impl CacheType {
   }
 }
 
-pub(crate) enum VersionedCacheType {
-  Declaration,
-  Emit,
-  SourceMap,
-}
+const EMIT_CACHE_DATA_EXT: &str = "emitinfo";
 
-impl VersionedCacheType {
-  fn as_extension(&self) -> &'static str {
-    match self {
-      VersionedCacheType::Declaration => "dtsinfo",
-      VersionedCacheType::Emit => "emitinfo",
-      VersionedCacheType::SourceMap => "mapinfo",
-    }
-  }
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EmitCacheData {
+  pub version_hash: String,
+  pub text: String,
+  pub map: Option<String>,
+  pub declaration: Option<String>,
 }
 
 /// A trait which provides a concise implementation to getting and setting
@@ -73,8 +62,10 @@ pub(crate) trait Cacher {
     cache_type: CacheType,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    let filename = get_cache_filename_with_extension(specifier, cache_type.as_extension())?;
-    self.get(&filename)
+    let filename =
+      get_cache_filename_with_extension(specifier, cache_type.as_extension())?;
+    self
+      .get(&filename)
       .ok()
       .map(|b| String::from_utf8(b).ok())
       .flatten()
@@ -87,28 +78,34 @@ pub(crate) trait Cacher {
     specifier: &ModuleSpecifier,
     value: String,
   ) -> Result<(), AnyError> {
-    let filename = get_cache_filename_with_extension(specifier, cache_type.as_extension())
-      .unwrap();
-    self.set(&filename, value.as_bytes())
-      .map_err(|e| e.into())
+    let filename =
+      get_cache_filename_with_extension(specifier, cache_type.as_extension())
+        .unwrap();
+    self.set(&filename, value.as_bytes()).map_err(|e| e.into())
   }
 
-  /// Gets a versioned value from the cache.
-  fn get_versioned(&self, cache_type: VersionedCacheType, specifier: &ModuleSpecifier) -> Option<VersionedCacheData> {
-    let filename = get_cache_filename_with_extension(specifier, cache_type.as_extension())?;
+  /// Gets the emit data from the cache.
+  fn get_emit_data(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<EmitCacheData> {
+    let filename =
+      get_cache_filename_with_extension(specifier, EMIT_CACHE_DATA_EXT)?;
     let bytes = self.get(&filename).ok()?;
     serde_json::from_slice(&bytes).ok()
   }
 
-  /// Sets a versioned value in the cache.
-  fn set_versioned(
+  /// Sets the emit data in the cache.
+  fn set_emit_data(
     &mut self,
-    cache_type: VersionedCacheType,
     specifier: &ModuleSpecifier,
-    data: VersionedCacheData,
+    data: EmitCacheData,
   ) -> Result<(), AnyError> {
-    let filename = get_cache_filename_with_extension(specifier, cache_type.as_extension())
-      .unwrap();
+    let filename =
+      get_cache_filename_with_extension(specifier, EMIT_CACHE_DATA_EXT)
+        .ok_or_else(|| {
+          anyhow!("Could not get cache filename from specifier: {}", specifier)
+        })?;
     let bytes = serde_json::to_vec(&data)?;
     self.set(&filename, &bytes).map_err(|e| e.into())
   }
@@ -155,16 +152,15 @@ impl Loader for FetchCacher {
     let local = self.file_fetcher.get_local_path(specifier)?;
     if local.is_file() {
       let location = &self.disk_cache.location;
-      let emit = get_cache_filename_with_extension(specifier, VersionedCacheType::Emit.as_extension())
-        .map(|p| location.join(p))
-        .filter(|p| p.is_file()); // todo: dsherret: this condition is racy so we should remove it
-      let map = get_cache_filename_with_extension(specifier, VersionedCacheType::SourceMap.as_extension())
-        .map(|p| location.join(p))
-        .filter(|p| p.is_file()); // todo: dsherret: this condition is racy so we should remove it
+      let emit =
+        get_cache_filename_with_extension(specifier, EMIT_CACHE_DATA_EXT)
+          .map(|p| location.join(p))
+          .filter(|p| p.is_file()); // todo: dsherret: this condition is racy so we should remove it
       Some(CacheInfo {
         local: Some(local),
-        emit,
-        map,
+        // todo(dsherret): deno_graph should not have multiple files for emit and map
+        emit: emit.clone(),
+        map: emit,
       })
     } else {
       None
@@ -243,19 +239,15 @@ impl CacherLoader for FetchCacher {
 #[derive(Debug)]
 pub(crate) struct MemoryCacher {
   sources: HashMap<String, Arc<String>>,
-  declarations: HashMap<ModuleSpecifier, VersionedCacheData>,
   build_infos: HashMap<ModuleSpecifier, String>,
-  emits: HashMap<ModuleSpecifier, VersionedCacheData>,
-  maps: HashMap<ModuleSpecifier, VersionedCacheData>,
+  emits: HashMap<ModuleSpecifier, EmitCacheData>,
 }
 
 impl MemoryCacher {
   pub fn new(sources: HashMap<String, Arc<String>>) -> Self {
     Self {
       sources,
-      declarations: HashMap::default(),
       emits: HashMap::default(),
-      maps: HashMap::default(),
       build_infos: HashMap::default(),
     }
   }
@@ -318,31 +310,19 @@ impl Cacher for MemoryCacher {
     Ok(())
   }
 
-  fn get_versioned(&self, cache_type: VersionedCacheType, specifier: &ModuleSpecifier) -> Option<VersionedCacheData> {
-    match cache_type {
-      VersionedCacheType::Declaration => self.declarations.get(specifier).cloned(),
-      VersionedCacheType::Emit => self.emits.get(specifier).cloned(),
-      VersionedCacheType::SourceMap => self.maps.get(specifier).cloned(),
-    }
+  fn get_emit_data(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<EmitCacheData> {
+    self.emits.get(specifier).cloned()
   }
 
-  fn set_versioned(
+  fn set_emit_data(
     &mut self,
-    cache_type: VersionedCacheType,
     specifier: &ModuleSpecifier,
-    data: VersionedCacheData,
+    data: EmitCacheData,
   ) -> Result<(), AnyError> {
-    match cache_type {
-      VersionedCacheType::Declaration => {
-        self.declarations.insert(specifier.clone(), data);
-      },
-      VersionedCacheType::Emit => {
-        self.emits.insert(specifier.clone(), data);
-      },
-      VersionedCacheType::SourceMap => {
-        self.maps.insert(specifier.clone(), data);
-      },
-    }
+    self.emits.insert(specifier.clone(), data);
     Ok(())
   }
 }
@@ -402,8 +382,7 @@ fn get_cache_filename(url: &Url) -> Option<PathBuf> {
               let disk = (disk_byte as char).to_string();
               out.push(disk);
             }
-            Prefix::UNC(server, share)
-            | Prefix::VerbatimUNC(server, share) => {
+            Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => {
               out.push("UNC");
               let host = Host::parse(server.to_str().unwrap()).unwrap();
               let host = host.to_string().replace(":", "_");
@@ -492,7 +471,8 @@ mod test {
     }
 
     for test_case in &test_cases {
-      let cache_filename = get_cache_filename(&Url::parse(test_case.0).unwrap());
+      let cache_filename =
+        get_cache_filename(&Url::parse(test_case.0).unwrap());
       assert_eq!(cache_filename, Some(PathBuf::from(test_case.1)));
     }
   }

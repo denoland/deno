@@ -2,7 +2,6 @@
 
 use crate::cache;
 use crate::cache::Cacher;
-use crate::cache::VersionedCacheType;
 use crate::colors;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
@@ -576,8 +575,13 @@ impl ProcState {
           | MediaType::Json => code.as_ref().clone(),
           MediaType::Dts => "".to_string(),
           _ => {
-            match self.dir.gen_cache.get_versioned(VersionedCacheType::Emit, &found_url) {
-              Some(data) => data.text,
+            match self
+              .dir
+              .gen_cache
+              .get_emit_data(&found_url)
+              .map(|data| data.text)
+            {
+              Some(text) => text,
               None => unreachable!("Unexpected missing emit: {}", found_url),
             }
           }
@@ -601,16 +605,11 @@ impl ProcState {
 
   // TODO(@kitsonk) this should be refactored to get it from the module graph
   fn get_emit(&self, url: &Url) -> Option<(String, Option<String>)> {
-    if let Some(code_data) = self.dir.gen_cache.get_versioned(VersionedCacheType::Emit, url) {
-      let maybe_map = if let Some(map_data) = self.dir.gen_cache.get_versioned(VersionedCacheType::SourceMap, url) {
-        Some(map_data.text)
-      } else {
-        None
-      };
-      Some((code_data.text, maybe_map))
-    } else {
-      None
-    }
+    self
+      .dir
+      .gen_cache
+      .get_emit_data(url)
+      .map(|emit_data| (emit_data.text, emit_data.map))
   }
 }
 
@@ -626,7 +625,7 @@ impl SourceMapGetter for ProcState {
         _ => return None,
       }
       if let Some((code, maybe_map)) = self.get_emit(&specifier) {
-        source_map_from_code(code).or(maybe_map.map(|m| m.into_bytes()))
+        source_map_from_code(code).or_else(|| maybe_map.map(|m| m.into_bytes()))
       } else if let Ok(source) = self.load(specifier, None, false) {
         source_map_from_code(source.code)
       } else {

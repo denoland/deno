@@ -7,8 +7,7 @@
 use crate::ast;
 use crate::cache::CacheType;
 use crate::cache::Cacher;
-use crate::cache::VersionedCacheData;
-use crate::cache::VersionedCacheType;
+use crate::cache::EmitCacheData;
 use crate::colors;
 use crate::config_file::ConfigFile;
 use crate::config_file::IgnoredCompilerOptions;
@@ -425,6 +424,28 @@ pub(crate) fn check_and_maybe_emit(
         cache.set_value(CacheType::TypeScriptBuildInfo, root, info.clone())?;
       }
     }
+
+    struct SpecifierEmitData {
+      pub version_hash: String,
+      pub text: Option<String>,
+      pub map: Option<String>,
+      pub declaration: Option<String>,
+    }
+
+    impl SpecifierEmitData {
+      fn into_cache_data(self) -> Option<EmitCacheData> {
+        self.text.map(|text| EmitCacheData {
+          version_hash: self.version_hash,
+          text,
+          map: self.map,
+          declaration: self.declaration,
+        })
+      }
+    }
+
+    // combine the emitted files into groups based on their specifier and media type
+    let mut emit_data_items: HashMap<ModuleSpecifier, SpecifierEmitData> =
+      Default::default();
     for emit in response.emitted_files.into_iter() {
       if let Some(specifiers) = emit.maybe_specifiers {
         assert!(specifiers.len() == 1);
@@ -454,21 +475,38 @@ pub(crate) fn check_and_maybe_emit(
           log::debug!("skipping emit for {}", specifier);
           continue;
         }
-        let cache_type = match emit.media_type {
-          MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => VersionedCacheType::Emit,
-          MediaType::SourceMap => VersionedCacheType::SourceMap,
+        let mut emit_data_item = emit_data_items
+          .entry(specifier.clone())
+          .or_insert_with(|| SpecifierEmitData {
+            version_hash: get_version(source_bytes, &config_bytes),
+            text: None,
+            declaration: None,
+            map: None,
+          });
+        match emit.media_type {
+          MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+            emit_data_item.text = Some(emit.data);
+          }
+          MediaType::SourceMap => {
+            emit_data_item.map = Some(emit.data);
+          }
           // this only occurs with the runtime emit, but we are using the same
           // code paths, so we handle it here.
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => VersionedCacheType::Declaration,
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
+            emit_data_item.declaration = Some(emit.data);
+          }
           _ => unreachable!(
             "unexpected media_type {} {}",
             emit.media_type, specifier
           ),
-        };
-        cache.set_versioned(cache_type, &specifier, VersionedCacheData {
-          version_hash: get_version(source_bytes, &config_bytes),
-          text: emit.data,
-        })?;
+        }
+      }
+    }
+
+    // now insert these items into the cache
+    for (specifier, data) in emit_data_items.into_iter() {
+      if let Some(cache_data) = data.into_cache_data() {
+        cache.set_emit_data(&specifier, cache_data)?;
       }
     }
   }
@@ -699,8 +737,8 @@ pub(crate) fn emit(
       options.reload && !options.reload_exclusions.contains(&module.specifier);
     let version = get_version(module.source.as_bytes(), &config_bytes);
     let is_valid = cache
-      .get_versioned(VersionedCacheType::Emit, &module.specifier)
-      .map_or(false, |v| v.version_hash == version);
+      .get_emit_data(&module.specifier)
+      .map_or(false, |d| d.version_hash == version);
 
     if is_valid && !needs_reload {
       continue;
@@ -708,16 +746,15 @@ pub(crate) fn emit(
     let (emitted_text, maybe_map) =
       ast::transpile(&module.parsed_source, &emit_options)?;
     emit_count += 1;
-    cache.set_versioned(VersionedCacheType::Emit, &module.specifier, VersionedCacheData {
-      text: emitted_text,
-      version_hash: version.clone(),
-    })?;
-    if let Some(map_text) = maybe_map {
-      cache.set_versioned(VersionedCacheType::SourceMap, &module.specifier, VersionedCacheData {
-        text: map_text,
-        version_hash: version,
-      })?;
-    }
+    cache.set_emit_data(
+      &module.specifier,
+      EmitCacheData {
+        version_hash: version.clone(),
+        text: emitted_text,
+        map: maybe_map,
+        declaration: None,
+      },
+    )?;
   }
 
   let stats = Stats(vec![
@@ -766,8 +803,10 @@ fn valid_emit(
       if reload && !reload_exclusions.contains(specifier) {
         return false;
       }
-      if let Some(cache_data) = cache.get_versioned(VersionedCacheType::Emit, specifier) {
-        if cache_data.version_hash != get_version(code.as_bytes(), &config_bytes) {
+      if let Some(cache_data) = cache.get_emit_data(specifier) {
+        if cache_data.version_hash
+          != get_version(code.as_bytes(), &config_bytes)
+        {
           return false;
         }
       } else {
@@ -816,15 +855,18 @@ pub(crate) fn to_file_map(
   graph: &ModuleGraph,
   cache: &dyn Cacher,
 ) -> HashMap<String, String> {
-  // todo(dsherret): we need to ensure we're not relying on
-  // the file system cache which might be changed from underneath us
   let mut files = HashMap::new();
   for (_, result) in graph.specifiers().into_iter() {
     if let Ok((specifier, media_type)) = result {
-      if let Some(emit) = cache.get_versioned(VersionedCacheType::Emit, &specifier) {
-        files.insert(format!("{}.js", specifier), emit.text);
-        if let Some(map) = cache.get_versioned(VersionedCacheType::SourceMap, &specifier) {
-          files.insert(format!("{}.js.map", specifier), map.text);
+      // todo(dsherret): no version check of the emit data here? How do we know we're
+      // using the same source that's in the graph?
+      if let Some(emit_data) = cache.get_emit_data(&specifier) {
+        files.insert(format!("{}.js", specifier), emit_data.text);
+        if let Some(map_text) = emit_data.map {
+          files.insert(format!("{}.js.map", specifier), map_text);
+        }
+        if let Some(declaration_text) = emit_data.declaration {
+          files.insert(format!("{}.d.ts", specifier), declaration_text);
         }
       } else if matches!(
         media_type,
@@ -840,9 +882,6 @@ pub(crate) fn to_file_map(
             module.maybe_source().unwrap_or("").to_string(),
           );
         }
-      }
-      if let Some(declaration) = cache.get_versioned(VersionedCacheType::Declaration, &specifier) {
-        files.insert(format!("{}.d.ts", specifier), declaration.text);
       }
     }
   }
