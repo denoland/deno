@@ -271,3 +271,19 @@ detest!(de_bigint_i64, i64, "BigInt(-(2**59))", -(1 << 59));
 
 defail!(defail_struct, MathOp, "123", |e| e
   == Err(Error::ExpectedObject));
+
+#[derive(PartialEq, Debug, Deserialize)]
+pub struct SomeThing {
+  pub a: String,
+  #[serde(default)]
+  pub b: String,
+}
+detest!(
+  de_struct_defaults,
+  SomeThing,
+  "({ a: 'hello' })",
+  SomeThing {
+    a: "hello".into(),
+    b: "".into()
+  }
+);
