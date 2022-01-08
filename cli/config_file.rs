@@ -885,14 +885,14 @@ mod tests {
   fn discover_inner_success() {
     // testdata/fmt/deno.jsonc exists
     let testdata = test_util::testdata_path();
-    let c_md = testdata.join("fmt/fmt_with_config/c.md");
+    let c_md = testdata.join("fmt/with_config/subdir/c.md");
     let mut checked = HashSet::new();
     let config_file = discover_inner(&c_md, &mut checked).unwrap().unwrap();
     assert!(checked.contains(c_md.parent().unwrap()));
     assert!(!checked.contains(&testdata));
     let fmt_config = config_file.to_fmt_config().unwrap().unwrap();
     let expected_exclude = ModuleSpecifier::from_file_path(
-      testdata.join("fmt/fmt_with_config/b.ts"),
+      testdata.join("fmt/with_config/subdir/b.ts"),
     )
     .unwrap();
     assert_eq!(fmt_config.files.exclude, vec![expected_exclude]);
