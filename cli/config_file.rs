@@ -166,7 +166,7 @@ pub fn discover(flags: &crate::Flags) -> Result<Option<ConfigFile>, AnyError> {
     Ok(Some(ConfigFile::read(config_path)?))
   } else {
     let mut checked = HashSet::new();
-    for f in crate::flags::extract_path_args(flags) {
+    for f in flags.config_path_args() {
       if let Some(cf) = discover_inner(&f, &mut checked)? {
         return Ok(Some(cf));
       }
