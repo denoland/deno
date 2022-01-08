@@ -480,6 +480,28 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   Ok(flags)
 }
 
+/// Extract arguments from flags for config search paths.
+pub fn extract_path_args(flags: &Flags) -> Vec<PathBuf> {
+  use DenoSubcommand::*;
+  if let Fmt(FmtFlags { files, .. }) = &flags.subcommand {
+    files.clone()
+  } else if let Lint(LintFlags { files, .. }) = &flags.subcommand {
+    files.clone()
+  } else if let Run(RunFlags { script }) = &flags.subcommand {
+    if let Ok(module_specifier) = deno_core::resolve_url_or_path(&script) {
+      if let Ok(p) = module_specifier.to_file_path() {
+        vec![p]
+      } else {
+        vec![]
+      }
+    } else {
+      vec![]
+    }
+  } else {
+    vec![]
+  }
+}
+
 fn clap_root<'a, 'b>(version: &'b str) -> App<'a, 'b> {
   clap::App::new("deno")
     .bin_name("deno")
@@ -4633,6 +4655,32 @@ mod tests {
         unstable: true,
         ..Flags::default()
       }
+    );
+  }
+
+  #[test]
+  fn test_extract_path_args() {
+    let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
+    assert_eq!(
+      extract_path_args(&flags),
+      vec![std::env::current_dir().unwrap().join("foo.js")]
+    );
+
+    let flags =
+      flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
+    assert_eq!(
+      extract_path_args(&flags),
+      vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")]
+    );
+
+    let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
+    assert!(extract_path_args(&flags).is_empty());
+
+    let flags =
+      flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
+    assert_eq!(
+      extract_path_args(&flags),
+      vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")]
     );
   }
 }

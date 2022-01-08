@@ -166,43 +166,15 @@ pub fn discover(flags: &crate::Flags) -> Result<Option<ConfigFile>, AnyError> {
     Ok(Some(ConfigFile::read(config_path)?))
   } else {
     let mut checked = HashSet::new();
-    if let Some(files) = extract_path_args(flags) {
-      for f in files {
-        if let Some(cf) = discover_inner(&f, &mut checked)? {
-          return Ok(Some(cf));
-        }
+    for f in crate::flags::extract_path_args(flags) {
+      if let Some(cf) = discover_inner(&f, &mut checked)? {
+        return Ok(Some(cf));
       }
     }
 
     // From CWD walk up to root looking for deno.json or deno.jsonc
     let cwd = std::env::current_dir()?;
     discover_inner(&cwd, &mut checked)
-  }
-}
-
-/// Extract arguments from flags for config search paths.
-fn extract_path_args(flags: &crate::Flags) -> Option<Vec<PathBuf>> {
-  use crate::flags::DenoSubcommand::*;
-  use crate::flags::FmtFlags;
-  use crate::flags::LintFlags;
-  use crate::flags::RunFlags;
-
-  if let Fmt(FmtFlags { files, .. }) = &flags.subcommand {
-    Some(files.clone())
-  } else if let Lint(LintFlags { files, .. }) = &flags.subcommand {
-    Some(files.clone())
-  } else if let Run(RunFlags { script }) = &flags.subcommand {
-    if let Ok(module_specifier) = deno_core::resolve_url_or_path(&script) {
-      if let Ok(p) = module_specifier.to_file_path() {
-        Some(vec![p])
-      } else {
-        None
-      }
-    } else {
-      None
-    }
-  } else {
-    None
   }
 }
 
