@@ -99,7 +99,7 @@ async fn assert_inspector_messages(
 
 #[tokio::test]
 async fn inspector_connect() {
-  let script = util::testdata_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
