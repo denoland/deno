@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Context;
 use deno_core::error::{uri_error, AnyError};
@@ -130,7 +130,10 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 /// Checks if the path has extension Deno supports.
 pub fn is_supported_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
-    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs")
+    matches!(
+      ext.as_str(),
+      "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts"
+    )
   } else {
     false
   }
@@ -138,26 +141,12 @@ pub fn is_supported_ext(path: &Path) -> bool {
 
 /// Checks if the path has a basename and extension Deno supports for tests.
 pub fn is_supported_test_path(path: &Path) -> bool {
-  use std::path::Component;
-  if let Some(Component::Normal(basename_os_str)) =
-    path.components().next_back()
-  {
-    let basename = basename_os_str.to_string_lossy();
-    basename.ends_with("_test.ts")
-      || basename.ends_with("_test.tsx")
-      || basename.ends_with("_test.js")
-      || basename.ends_with("_test.mjs")
-      || basename.ends_with("_test.jsx")
-      || basename.ends_with(".test.ts")
-      || basename.ends_with(".test.tsx")
-      || basename.ends_with(".test.js")
-      || basename.ends_with(".test.mjs")
-      || basename.ends_with(".test.jsx")
-      || basename == "test.ts"
-      || basename == "test.tsx"
-      || basename == "test.js"
-      || basename == "test.mjs"
-      || basename == "test.jsx"
+  if let Some(name) = path.file_stem() {
+    let basename = name.to_string_lossy();
+    (basename.ends_with("_test")
+      || basename.ends_with(".test")
+      || basename == "test")
+      && is_supported_ext(path)
   } else {
     false
   }
@@ -173,6 +162,9 @@ pub fn is_supported_test_ext(path: &Path) -> bool {
         | "js"
         | "jsx"
         | "mjs"
+        | "mts"
+        | "cjs"
+        | "cts"
         | "md"
         | "mkd"
         | "mkdn"
@@ -418,6 +410,9 @@ mod tests {
     assert!(is_supported_ext(Path::new("foo.JS")));
     assert!(is_supported_ext(Path::new("foo.JSX")));
     assert!(is_supported_ext(Path::new("foo.mjs")));
+    assert!(is_supported_ext(Path::new("foo.mts")));
+    assert!(is_supported_ext(Path::new("foo.cjs")));
+    assert!(is_supported_ext(Path::new("foo.cts")));
     assert!(!is_supported_ext(Path::new("foo.mjsx")));
   }
 
@@ -436,6 +431,9 @@ mod tests {
     assert!(is_supported_test_ext(Path::new("foo.JS")));
     assert!(is_supported_test_ext(Path::new("foo.JSX")));
     assert!(is_supported_test_ext(Path::new("foo.mjs")));
+    assert!(is_supported_test_ext(Path::new("foo.mts")));
+    assert!(is_supported_test_ext(Path::new("foo.cjs")));
+    assert!(is_supported_test_ext(Path::new("foo.cts")));
     assert!(!is_supported_test_ext(Path::new("foo.mjsx")));
     assert!(!is_supported_test_ext(Path::new("foo.jsonc")));
     assert!(!is_supported_test_ext(Path::new("foo.JSONC")));

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use deno_ast::swc::bundler::Hook;
 use deno_ast::swc::bundler::ModuleRecord;
 use deno_ast::swc::common::Span;
