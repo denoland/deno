@@ -13,6 +13,15 @@ use std::pin::Pin;
 use test_util as util;
 use tokio::net::TcpStream;
 
+macro_rules! assert_starts_with {
+  ($string:expr, $($test:expr),+) => {
+    let string = $string; // This might be a function call or something
+    if !($(string.starts_with($test))||+) {
+      panic!("{:?} does not start with {:?}", string, [$($test),+]);
+    }
+  }
+}
+
 fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
   use std::sync::atomic::{AtomicU16, Ordering};
   static PORT: AtomicU16 = AtomicU16::new(9229);
@@ -24,7 +33,7 @@ fn extract_ws_url_from_stderr(
   stderr_lines: &mut impl std::iter::Iterator<Item = String>,
 ) -> url::Url {
   let stderr_first_line = stderr_lines.next().unwrap();
-  assert!(stderr_first_line.starts_with("Debugger listening on "));
+  assert_starts_with!(&stderr_first_line, "Debugger listening on ");
   let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
   assert_eq!(v.len(), 1);
   let ws_url_index = v[0].0;
@@ -263,7 +272,7 @@ async fn inspector_pause() {
 
   let msg = ws_read_msg(&mut socket).await;
   println!("response msg 1 {}", msg);
-  assert!(msg.starts_with(r#"{"id":6,"result":{"debuggerId":"#));
+  assert_starts_with!(msg, r#"{"id":6,"result":{"debuggerId":"#);
 
   socket
     .send(r#"{"id":31,"method":"Debugger.pause"}"#.into())
@@ -733,10 +742,7 @@ async fn inspector_break_on_first_line_in_test() {
   )
   .await;
 
-  assert!(&stdout_lines
-    .next()
-    .unwrap()
-    .starts_with("running 1 test from"));
+  assert_starts_with!(&stdout_lines.next().unwrap(), "running 1 test from");
   assert!(&stdout_lines
     .next()
     .unwrap()
