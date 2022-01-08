@@ -364,7 +364,7 @@ impl Flags {
     } else if let Lint(LintFlags { files, .. }) = &self.subcommand {
       files.clone()
     } else if let Run(RunFlags { script }) = &self.subcommand {
-      if let Ok(module_specifier) = deno_core::resolve_url_or_path(&script) {
+      if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
         if let Ok(p) = module_specifier.to_file_path() {
           vec![p]
         } else {

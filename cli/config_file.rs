@@ -159,7 +159,7 @@ pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
 ];
 
 /// Filenames that Deno will recognize when discovering config.
-const CONFIG_FILE_NAMES: [&'static str; 2] = ["deno.json", "deno.jsonc"];
+const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
 
 pub fn discover(flags: &crate::Flags) -> Result<Option<ConfigFile>, AnyError> {
   if let Some(config_path) = flags.config_path.as_ref() {
