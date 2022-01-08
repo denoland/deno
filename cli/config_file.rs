@@ -156,17 +156,71 @@ pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "watch",
 ];
 
+/// Filenames that Deno will recognize when discovering config.
+const CONFIG_FILE_NAMES: [&'static str; 2] = ["deno.json", "deno.jsonc"];
+
+use std::collections::HashSet;
+use std::path::PathBuf;
+
 pub fn discover(flags: &crate::Flags) -> Result<Option<ConfigFile>, AnyError> {
   if let Some(config_path) = flags.config_path.as_ref() {
     Ok(Some(ConfigFile::read(config_path)?))
   } else {
-    if let DenoSubcommand::Fmt { files, ... } = flags.subcommand {
-    } else if let DenoSubcommand::Lint { files, ... } = flags.subcommand {
-    } else {
-        todo!()
+    use crate::flags::DenoSubcommand;
+    use crate::flags::FmtFlags;
+    let mut checked = HashSet::new();
+    if let DenoSubcommand::Fmt(FmtFlags { files, .. }) = &flags.subcommand {
+      for f in files {
+        if let Some(cf) = discover_inner(&f, &mut checked)? {
+          return Ok(Some(cf));
+        }
+      }
     }
-    Ok(None)
+
+    // From CWD walk up to root looking for deno.json or deno.jsonc
+    let cwd = std::env::current_dir()?;
+    discover_inner(&cwd, &mut checked)
   }
+}
+
+fn discover_inner(
+  start: &Path,
+  checked: &mut HashSet<PathBuf>,
+) -> Result<Option<ConfigFile>, AnyError> {
+  for ancestor in start.ancestors() {
+    println!("ancestor {:?}", ancestor.display());
+    for config_filename in CONFIG_FILE_NAMES {
+      let f = ancestor.join(config_filename);
+      if checked.insert(f.clone()) {
+        println!("f {:?}", f.display());
+        match ConfigFile::read(f) {
+          Ok(cf) => {
+            return Ok(Some(cf));
+          }
+          Err(e) => {
+            if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
+              let kind = ioerr.kind();
+              match kind {
+                std::io::ErrorKind::InvalidInput => {
+                  // ok keep going
+                }
+                _ => {
+                  // Unknown error. Stop.
+                  println!("unknown ioerr {:?}", kind);
+                  return Err(e);
+                }
+              }
+            } else {
+              // Parse error or something else. Stop.
+              return Err(e);
+            }
+          }
+        }
+      }
+    }
+  }
+  // No config file found.
+  Ok(None)
 }
 
 /// A function that works like JavaScript's `Object.assign()`.
