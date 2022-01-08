@@ -18,8 +18,10 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt;
 use std::path::Path;
+use std::path::PathBuf;
 
 pub(crate) type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
@@ -159,17 +161,12 @@ pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
 /// Filenames that Deno will recognize when discovering config.
 const CONFIG_FILE_NAMES: [&'static str; 2] = ["deno.json", "deno.jsonc"];
 
-use std::collections::HashSet;
-use std::path::PathBuf;
-
 pub fn discover(flags: &crate::Flags) -> Result<Option<ConfigFile>, AnyError> {
   if let Some(config_path) = flags.config_path.as_ref() {
     Ok(Some(ConfigFile::read(config_path)?))
   } else {
-    use crate::flags::DenoSubcommand;
-    use crate::flags::FmtFlags;
     let mut checked = HashSet::new();
-    if let DenoSubcommand::Fmt(FmtFlags { files, .. }) = &flags.subcommand {
+    if let Some(files) = extract_path_args(flags) {
       for f in files {
         if let Some(cf) = discover_inner(&f, &mut checked)? {
           return Ok(Some(cf));
@@ -180,6 +177,32 @@ pub fn discover(flags: &crate::Flags) -> Result<Option<ConfigFile>, AnyError> {
     // From CWD walk up to root looking for deno.json or deno.jsonc
     let cwd = std::env::current_dir()?;
     discover_inner(&cwd, &mut checked)
+  }
+}
+
+/// Extract arguments from flags for config search paths.
+fn extract_path_args(flags: &crate::Flags) -> Option<Vec<PathBuf>> {
+  use crate::flags::DenoSubcommand::*;
+  use crate::flags::FmtFlags;
+  use crate::flags::LintFlags;
+  use crate::flags::RunFlags;
+
+  if let Fmt(FmtFlags { files, .. }) = &flags.subcommand {
+    Some(files.clone())
+  } else if let Lint(LintFlags { files, .. }) = &flags.subcommand {
+    Some(files.clone())
+  } else if let Run(RunFlags { script }) = &flags.subcommand {
+    if let Ok(module_specifier) = deno_core::resolve_url_or_path(&script) {
+      if let Ok(p) = module_specifier.to_file_path() {
+        Some(vec![p])
+      } else {
+        None
+      }
+    } else {
+      None
+    }
+  } else {
+    None
   }
 }
 

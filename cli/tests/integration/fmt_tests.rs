@@ -181,6 +181,11 @@ itest!(fmt_with_config {
   output: "fmt/fmt_with_config.out",
 });
 
+itest!(fmt_with_config_default {
+  args: "fmt fmt/fmt_with_config/",
+  output: "fmt/fmt_with_config.out",
+});
+
 // Check if CLI flags take precedence
 itest!(fmt_with_config_and_flags {
   args: "fmt --config fmt/deno.jsonc --ignore=fmt/fmt_with_config/a.ts,fmt/fmt_with_config/b.ts",
