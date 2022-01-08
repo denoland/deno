@@ -772,7 +772,9 @@ async fn inspector_with_ts_files() {
   let mut socket_rx = socket_rx
     .map(|msg| msg.unwrap().to_string())
     .filter(|msg| {
-      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+      let pass = (msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
+        && msg.contains("testdata/inspector"))
+        || !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
       futures::future::ready(pass)
     })
     .boxed_local();
@@ -792,11 +794,39 @@ async fn inspector_with_ts_files() {
     &mut socket_rx,
     &[
       r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#,
     ],
     &[
       r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
     ],
+  )
+  .await;
+
+  // receive messages with sources from this test
+  let script1 = socket_rx.next().await.unwrap();
+  assert!(script1.contains("testdata/inspector/test.ts"));
+  let script1_id = {
+    let v: serde_json::Value = serde_json::from_str(&script1).unwrap();
+    v["params"]["scriptId"].as_str().unwrap().to_string()
+  };
+  let script2 = socket_rx.next().await.unwrap();
+  assert!(script2.contains("testdata/inspector/foo.ts"));
+  let script2_id = {
+    let v: serde_json::Value = serde_json::from_str(&script2).unwrap();
+    v["params"]["scriptId"].as_str().unwrap().to_string()
+  };
+  let script3 = socket_rx.next().await.unwrap();
+  assert!(script3.contains("testdata/inspector/bar.js"));
+  let script3_id = {
+    let v: serde_json::Value = serde_json::from_str(&script3).unwrap();
+    v["params"]["scriptId"].as_str().unwrap().to_string()
+  };
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[],
+    &mut socket_rx,
+    &[r#"{"id":2,"result":{"debuggerId":"#],
+    &[],
   )
   .await;
 
@@ -811,9 +841,26 @@ async fn inspector_with_ts_files() {
 
   assert_inspector_messages(
     &mut socket_tx,
-    &[r#"{"id":5,"method":"Debugger.resume"}"#],
+    &[
+      &format!(r#"{{"id":4,"method":"Debugger.getScriptSource","params":{{"scriptId":"{}"}}}}"#, script1_id),
+      &format!(r#"{{"id":5,"method":"Debugger.getScriptSource","params":{{"scriptId":"{}"}}}}"#, script2_id),
+      &format!(r#"{{"id":6,"method":"Debugger.getScriptSource","params":{{"scriptId":"{}"}}}}"#, script3_id),
+    ],
     &mut socket_rx,
-    &[r#"{"id":5,"result":{}}"#],
+    &[
+      r#"{"id":4,"result":{"scriptSource":"import { foo } from \"./foo.ts\";\nimport { bar } from \"./bar.js\";\nconsole.log(foo());\nconsole.log(bar());\n//# sourceMappingURL=data:application/json;base64,"#,
+      r#"{"id":5,"result":{"scriptSource":"class Foo {\n    hello() {\n        return \"hello\";\n    }\n}\nexport function foo() {\n    const f = new Foo();\n    return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
+      r#"{"id":6,"result":{"scriptSource":"export function bar() {\n  return \"world\";\n}\n"#,
+    ],
+    &[],
+  )
+  .await;
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":7,"method":"Debugger.resume"}"#],
+    &mut socket_rx,
+    &[r#"{"id":7,"result":{}}"#],
     &[],
   )
   .await;
