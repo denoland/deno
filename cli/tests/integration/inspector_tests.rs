@@ -125,7 +125,7 @@ async fn inspector_connect() {
 
 #[tokio::test]
 async fn inspector_break_on_first_line() {
-  let script = util::testdata_path().join("inspector2.js");
+  let script = util::testdata_path().join("inspector/inspector2.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -216,7 +216,7 @@ async fn inspector_break_on_first_line() {
 
 #[tokio::test]
 async fn inspector_pause() {
-  let script = util::testdata_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -286,7 +286,7 @@ async fn inspector_port_collision() {
     return;
   }
 
-  let script = util::testdata_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector/inspector1.js");
   let inspect_flag = inspect_flag_with_unique_port("--inspect");
 
   let mut child1 = util::deno_cmd()
@@ -326,7 +326,7 @@ async fn inspector_port_collision() {
 
 #[tokio::test]
 async fn inspector_does_not_hang() {
-  let script = util::testdata_path().join("inspector3.js");
+  let script = util::testdata_path().join("inspector/inspector3.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -438,7 +438,7 @@ async fn inspector_does_not_hang() {
 
 #[tokio::test]
 async fn inspector_without_brk_runs_code() {
-  let script = util::testdata_path().join("inspector4.js");
+  let script = util::testdata_path().join("inspector/inspector4.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -566,7 +566,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
 #[tokio::test]
 async fn inspector_json() {
-  let script = util::testdata_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -595,7 +595,7 @@ async fn inspector_json() {
 
 #[tokio::test]
 async fn inspector_json_list() {
-  let script = util::testdata_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -626,7 +626,7 @@ async fn inspector_json_list() {
 async fn inspector_connect_non_ws() {
   // https://github.com/denoland/deno/issues/11449
   // Verify we don't panic if non-WS connection is being established
-  let script = util::testdata_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -650,7 +650,7 @@ async fn inspector_connect_non_ws() {
 
 #[tokio::test]
 async fn inspector_break_on_first_line_in_test() {
-  let script = util::testdata_path().join("inspector_test.js");
+  let script = util::testdata_path().join("inspector/inspector_test.js");
   let mut child = util::deno_cmd()
     .arg("test")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -741,6 +741,85 @@ async fn inspector_break_on_first_line_in_test() {
     .next()
     .unwrap()
     .contains("test has finished running"));
+
+  child.kill().unwrap();
+  child.wait().unwrap();
+}
+
+#[tokio::test]
+async fn inspector_with_ts_files() {
+  let script = util::testdata_path().join("inspector/test.ts");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
+  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+    .await
+    .expect("Can't connect");
+  assert_eq!(response.status(), 101); // Switching protocols.
+
+  let (mut socket_tx, socket_rx) = socket.split();
+  let mut socket_rx = socket_rx
+    .map(|msg| msg.unwrap().to_string())
+    .filter(|msg| {
+      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+      futures::future::ready(pass)
+    })
+    .boxed_local();
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+
+  assert_stderr_for_inspect_brk(&mut stderr_lines);
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[
+      r#"{"id":1,"method":"Runtime.enable"}"#,
+      r#"{"id":2,"method":"Debugger.enable"}"#,
+    ],
+    &mut socket_rx,
+    &[
+      r#"{"id":1,"result":{}}"#,
+      r#"{"id":2,"result":{"debuggerId":"#,
+    ],
+    &[
+      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+    ],
+  )
+  .await;
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
+    &mut socket_rx,
+    &[r#"{"id":3,"result":{}}"#],
+    &[r#"{"method":"Debugger.paused","#],
+  )
+  .await;
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":5,"method":"Debugger.resume"}"#],
+    &mut socket_rx,
+    &[r#"{"id":5,"result":{}}"#],
+    &[],
+  )
+  .await;
+
+  assert_eq!(&stdout_lines.next().unwrap(), "hello");
+  assert_eq!(&stdout_lines.next().unwrap(), "world");
 
   child.kill().unwrap();
   child.wait().unwrap();
