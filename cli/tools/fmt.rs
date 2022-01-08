@@ -91,7 +91,6 @@ pub async fn format(
     let result =
       collect_files(&include_files, &exclude_files, is_supported_ext_fmt).map(
         |files| {
-          eprintln!("fmt files {:?}", files);
           let refmt_files = if let Some(paths) = changed {
             if check {
               files
