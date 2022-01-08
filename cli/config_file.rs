@@ -184,9 +184,9 @@ fn discover_inner(
 ) -> Result<Option<ConfigFile>, AnyError> {
   for ancestor in start.ancestors() {
     println!("ancestor {:?}", ancestor.display());
-    for config_filename in CONFIG_FILE_NAMES {
-      let f = ancestor.join(config_filename);
-      if checked.insert(f.clone()) {
+    if checked.insert(ancestor.to_path_buf()) {
+      for config_filename in CONFIG_FILE_NAMES {
+        let f = ancestor.join(config_filename);
         println!("f {:?}", f.display());
         match ConfigFile::read(f) {
           Ok(cf) => {
@@ -884,5 +884,30 @@ mod tests {
       "target": "es5",
     }));
     assert_eq!(tsconfig1.as_bytes(), tsconfig2.as_bytes());
+  }
+
+  #[test]
+  fn test_discover_inner() {
+    // testdata/fmt/deno.jsonc exists
+    let testdata = test_util::testdata_path();
+    let c_md = testdata.join("fmt/fmt_with_config/c.md");
+    let mut checked = HashSet::new();
+    let config_file = discover_inner(&c_md, &mut checked).unwrap().unwrap();
+    assert!(checked.contains(c_md.parent().unwrap()));
+    assert!(!checked.contains(&testdata));
+    let fmt_config = config_file.to_fmt_config().unwrap().unwrap();
+    let expected_exclude = ModuleSpecifier::from_file_path(
+      testdata.join("fmt/fmt_with_config/b.ts"),
+    )
+    .unwrap();
+    assert_eq!(fmt_config.files.exclude, vec![expected_exclude]);
+
+    // Now add all ancestors of testdata to checked.
+    for a in testdata.ancestors() {
+      checked.insert(a.to_path_buf());
+    }
+
+    // If we call discover_inner again starting at testdata, we ought to get None.
+    assert!(discover_inner(&testdata, &mut checked).unwrap().is_none());
   }
 }
