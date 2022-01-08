@@ -183,31 +183,26 @@ fn discover_inner(
   checked: &mut HashSet<PathBuf>,
 ) -> Result<Option<ConfigFile>, AnyError> {
   for ancestor in start.ancestors() {
-    println!("ancestor {:?}", ancestor.display());
     if checked.insert(ancestor.to_path_buf()) {
       for config_filename in CONFIG_FILE_NAMES {
         let f = ancestor.join(config_filename);
-        println!("f {:?}", f.display());
         match ConfigFile::read(f) {
           Ok(cf) => {
             return Ok(Some(cf));
           }
           Err(e) => {
             if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
-              let kind = ioerr.kind();
-              match kind {
-                std::io::ErrorKind::InvalidInput => {
+              use std::io::ErrorKind::*;
+              match ioerr.kind() {
+                InvalidInput | PermissionDenied | NotFound => {
                   // ok keep going
                 }
                 _ => {
-                  // Unknown error. Stop.
-                  println!("unknown ioerr {:?}", kind);
-                  return Err(e);
+                  return Err(e); // Unknown error. Stop.
                 }
               }
             } else {
-              // Parse error or something else. Stop.
-              return Err(e);
+              return Err(e); // Parse error or something else. Stop.
             }
           }
         }
@@ -887,7 +882,7 @@ mod tests {
   }
 
   #[test]
-  fn test_discover_inner() {
+  fn discover_inner_success() {
     // testdata/fmt/deno.jsonc exists
     let testdata = test_util::testdata_path();
     let c_md = testdata.join("fmt/fmt_with_config/c.md");
@@ -909,5 +904,14 @@ mod tests {
 
     // If we call discover_inner again starting at testdata, we ought to get None.
     assert!(discover_inner(&testdata, &mut checked).unwrap().is_none());
+  }
+
+  #[test]
+  fn discover_inner_malformed() {
+    let testdata = test_util::testdata_path();
+    let d = testdata.join("malformed_config/");
+    let mut checked = HashSet::new();
+    let err = discover_inner(&d, &mut checked).unwrap_err();
+    assert!(err.to_string().contains("Unable to parse config file"));
   }
 }
