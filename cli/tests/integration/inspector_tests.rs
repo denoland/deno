@@ -32,14 +32,28 @@ fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
 fn extract_ws_url_from_stderr(
   stderr_lines: &mut impl std::iter::Iterator<Item = String>,
 ) -> url::Url {
-  let mut stderr_first_line = stderr_lines.next().unwrap();
-  stderr_first_line = util::strip_ansi_codes(&stderr_first_line).to_string();
+  let stderr_first_line = skip_check_line(stderr_lines);
   assert_starts_with!(&stderr_first_line, "Debugger listening on ");
   let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
   assert_eq!(v.len(), 1);
   let ws_url_index = v[0].0;
   let ws_url = &stderr_first_line[ws_url_index..];
   url::Url::parse(ws_url).unwrap()
+}
+
+fn skip_check_line(
+  stderr_lines: &mut impl std::iter::Iterator<Item = String>,
+) -> String {
+  loop {
+    let mut line = stderr_lines.next().unwrap();
+    line = util::strip_ansi_codes(&line).to_string();
+
+    if line.starts_with("Check") {
+      continue;
+    }
+
+    return line;
+  }
 }
 
 fn assert_stderr(
@@ -49,12 +63,7 @@ fn assert_stderr(
   let mut expected_index = 0;
 
   loop {
-    let mut line = stderr_lines.next().unwrap();
-    line = util::strip_ansi_codes(&line).to_string();
-
-    if line.starts_with("Check") {
-      continue;
-    }
+    let line = skip_check_line(stderr_lines);
 
     assert_eq!(line, expected_lines[expected_index]);
     expected_index += 1;
