@@ -51,7 +51,7 @@ fn assert_stderr(
     let mut line = stderr_lines.next().unwrap();
     line = util::strip_ansi_codes(&line).to_string();
 
-    if line.starts_with("Chech") {
+    if line.starts_with("Check") {
       continue;
     }
 
