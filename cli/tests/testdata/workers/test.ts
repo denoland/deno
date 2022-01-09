@@ -798,3 +798,24 @@ Deno.test({
     worker.terminate();
   },
 });
+
+Deno.test({
+  name: "worker Deno.memoryUsage",
+  fn: async function () {
+    const w = new Worker(
+      "data:application/typescript;base64,c2VsZi5vbm1lc3NhZ2UgPSBmdW5jdGlvbigpIHtzZWxmLnBvc3RNZXNzYWdlKERlbm8ubWVtb3J5VXNhZ2UoKSl9",
+      { type: "module", name: "tsWorker", deno: true },
+    );
+
+    w.postMessage(null);
+
+    const memoryUsagePromise = deferred();
+    w.onmessage = function (evt) {
+      memoryUsagePromise.resolve(evt.data);
+    };
+
+    console.log(await memoryUsagePromise);
+    w.terminate();
+  },
+});
+
