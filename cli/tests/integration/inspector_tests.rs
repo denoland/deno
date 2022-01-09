@@ -41,25 +41,46 @@ fn extract_ws_url_from_stderr(
   url::Url::parse(ws_url).unwrap()
 }
 
+fn assert_stderr(
+  stderr_lines: &mut impl std::iter::Iterator<Item = String>,
+  expected_lines: &[&str],
+) {
+  let mut expected_index = 0;
+
+  loop {
+    let line = stderr_lines.next().unwrap();
+
+    if line.starts_with("Chech") {
+      continue;
+    }
+
+    assert_eq!(line, expected_lines[expected_index]);
+    expected_index += 1;
+
+    if expected_index >= expected_lines.len() {
+      break;
+    }
+  }
+}
+
 fn assert_stderr_for_inspect(
   stderr_lines: &mut impl std::iter::Iterator<Item = String>,
 ) {
-  assert_eq!(
-    &stderr_lines.next().unwrap(),
-    "Visit chrome://inspect to connect to the debugger."
+  assert_stderr(
+    stderr_lines,
+    &["Visit chrome://inspect to connect to the debugger."],
   );
 }
 
 fn assert_stderr_for_inspect_brk(
   stderr_lines: &mut impl std::iter::Iterator<Item = String>,
 ) {
-  assert_eq!(
-    &stderr_lines.next().unwrap(),
-    "Visit chrome://inspect to connect to the debugger."
-  );
-  assert_eq!(
-    &stderr_lines.next().unwrap(),
-    "Deno is waiting for debugger to connect."
+  assert_stderr(
+    stderr_lines,
+    &[
+      "Visit chrome://inspect to connect to the debugger.",
+      "Deno is waiting for debugger to connect.",
+    ],
   );
 }
 
