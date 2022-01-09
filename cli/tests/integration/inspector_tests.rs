@@ -32,7 +32,8 @@ fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
 fn extract_ws_url_from_stderr(
   stderr_lines: &mut impl std::iter::Iterator<Item = String>,
 ) -> url::Url {
-  let stderr_first_line = stderr_lines.next().unwrap();
+  let mut stderr_first_line = stderr_lines.next().unwrap();
+  stderr_first_line = util::strip_ansi_codes(&stderr_first_line).to_string();
   assert_starts_with!(&stderr_first_line, "Debugger listening on ");
   let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
   assert_eq!(v.len(), 1);
