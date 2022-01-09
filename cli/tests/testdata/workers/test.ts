@@ -803,6 +803,10 @@ Deno.test({
   name: "worker Deno.memoryUsage",
   fn: async function () {
     const w = new Worker(
+      /**
+       * Source code
+       * self.onmessage = function() {self.postMessage(Deno.memoryUsage())}
+       */
       "data:application/typescript;base64,c2VsZi5vbm1lc3NhZ2UgPSBmdW5jdGlvbigpIHtzZWxmLnBvc3RNZXNzYWdlKERlbm8ubWVtb3J5VXNhZ2UoKSl9",
       { type: "module", name: "tsWorker", deno: true },
     );
@@ -814,7 +818,12 @@ Deno.test({
       memoryUsagePromise.resolve(evt.data);
     };
 
-    console.log(await memoryUsagePromise);
+    assertEquals(
+      Object.keys(
+        await memoryUsagePromise as unknown as Record<string, number>,
+      ),
+      ["rss", "heapTotal", "heapUsed", "external"],
+    );
     w.terminate();
   },
 });
