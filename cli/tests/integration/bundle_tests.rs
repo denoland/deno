@@ -442,3 +442,8 @@ itest!(bundle_export_specifier_with_alias {
   args: "bundle bundle/file_tests-fixture16.ts",
   output: "bundle/fixture16.out",
 });
+
+itest!(bundle_ignore_directives {
+  args: "bundle subdir/mod1.ts",
+  output: "bundle_ignore_directives.test.out",
+});
