@@ -48,7 +48,8 @@ fn assert_stderr(
   let mut expected_index = 0;
 
   loop {
-    let line = stderr_lines.next().unwrap();
+    let mut line = stderr_lines.next().unwrap();
+    line = util::strip_ansi_codes(&line).to_string();
 
     if line.starts_with("Chech") {
       continue;
