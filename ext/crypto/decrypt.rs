@@ -2,8 +2,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::shared::*;
+use aes::Aes192;
 use aes::BlockEncrypt;
 use aes::NewBlockCipher;
+use aes_gcm::AeadInPlace;
+use aes_gcm::Aes128Gcm;
+use aes_gcm::Aes256Gcm;
+use aes_gcm::NewAead;
+use aes_gcm::Nonce;
 use block_modes::BlockMode;
 use ctr::cipher::NewCipher;
 use ctr::cipher::StreamCipher;
@@ -17,6 +23,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use elliptic_curve::consts::U12;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::PaddingScheme;
 use serde::Deserialize;
@@ -56,6 +63,15 @@ pub enum DecryptAlgorithm {
     ctr_length: usize,
     key_length: usize,
   },
+  #[serde(rename = "AES-GCM", rename_all = "camelCase")]
+  AesGcm {
+    #[serde(with = "serde_bytes")]
+    iv: Vec<u8>,
+    #[serde(with = "serde_bytes")]
+    additional_data: Option<Vec<u8>>,
+    length: usize,
+    tag_length: usize,
+  },
 }
 
 pub async fn op_crypto_decrypt(
@@ -76,6 +92,12 @@ pub async fn op_crypto_decrypt(
       ctr_length,
       key_length,
     } => decrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
+    DecryptAlgorithm::AesGcm {
+      iv,
+      additional_data,
+      length,
+      tag_length,
+    } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
   };
   let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
@@ -227,4 +249,70 @@ fn decrypt_aes_ctr(
       "invalid counter length. Currently supported 32/64/128 bits",
     )),
   }
+}
+
+fn decrypt_aes_gcm(
+  key: RawKeyData,
+  length: usize,
+  tag_length: usize,
+  iv: Vec<u8>,
+  additional_data: Option<Vec<u8>>,
+  data: &[u8],
+) -> Result<Vec<u8>, AnyError> {
+  let key = key.as_secret_key()?;
+  let additional_data = additional_data.unwrap_or_default();
+
+  // Fixed 96-bit nonce
+  if iv.len() != 12 {
+    return Err(type_error("iv length not equal to 12"));
+  }
+
+  let nonce = Nonce::from_slice(&iv);
+
+  let tag = &data[(tag_length / 8)..];
+  // The actual ciphertext, called plaintext because it is reused in place.
+  let mut plaintext = data[..(tag_length / 8)].to_vec();
+  match length {
+    128 => {
+      let cipher = Aes128Gcm::new_from_slice(key)
+        .map_err(|_| operation_error("Decryption failed"))?;
+      cipher
+        .decrypt_in_place_detached(
+          nonce,
+          &additional_data,
+          &mut plaintext,
+          tag.into(),
+        )
+        .map_err(|_| operation_error("Decryption failed"))?
+    }
+    192 => {
+      type Aes192Gcm = aes_gcm::AesGcm<Aes192, U12>;
+
+      let cipher = Aes192Gcm::new_from_slice(key)
+        .map_err(|_| operation_error("Decryption failed"))?;
+      cipher
+        .decrypt_in_place_detached(
+          nonce,
+          &additional_data,
+          &mut plaintext,
+          tag.into(),
+        )
+        .map_err(|_| operation_error("Decryption failed"))?
+    }
+    256 => {
+      let cipher = Aes256Gcm::new_from_slice(key)
+        .map_err(|_| operation_error("Decryption failed"))?;
+      cipher
+        .decrypt_in_place_detached(
+          nonce,
+          &additional_data,
+          &mut plaintext,
+          tag.into(),
+        )
+        .map_err(|_| operation_error("Decryption failed"))?
+    }
+    _ => return Err(type_error("invalid length")),
+  };
+
+  Ok(plaintext)
 }
