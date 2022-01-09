@@ -6,7 +6,7 @@
 /// <reference lib="esnext" />
 
 declare namespace Deno {
-  declare namespace core {
+  namespace core {
     /** Call an op in Rust, and synchronously receive the result. */
     function opSync(
       opName: string,
@@ -104,16 +104,16 @@ declare namespace Deno {
     ): void;
 
     /** Check if there's a scheduled "next tick". */
-    function hasNextTickScheduled(): bool;
+    function hasNextTickScheduled(): boolean;
 
     /** Set a value telling the runtime if there are "next ticks" scheduled */
-    function setHasNextTickScheduled(value: bool): void;
+    function setHasNextTickScheduled(value: boolean): void;
 
     /**
      * Set a callback that will be called after resolving ops and "next ticks".
      */
     function setMacrotaskCallback(
-      cb: () => bool,
+      cb: () => boolean,
     ): void;
 
     /**
@@ -126,7 +126,7 @@ declare namespace Deno {
 
     export type PromiseRejectCallback = (
       type: number,
-      promise: Promise,
+      promise: Promise<unknown>,
       reason: any,
     ) => void;
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // TODO: maybe add a Payload type that holds scope & v8::Value
 // so it can implement Deserialize by itself

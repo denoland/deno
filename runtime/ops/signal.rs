@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 #[cfg(not(unix))]
 use deno_core::error::generic_error;
 #[cfg(not(target_os = "windows"))]
