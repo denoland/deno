@@ -214,6 +214,7 @@ pub struct Flags {
   pub argv: Vec<String>,
   pub subcommand: DenoSubcommand,
 
+  pub allow_all: bool,
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
@@ -268,6 +269,11 @@ impl Flags {
   /// to the ones used to create `self`.
   pub fn to_permission_args(&self) -> Vec<String> {
     let mut args = vec![];
+
+    if self.allow_all {
+      args.push("--allow-all".to_string());
+      return args;
+    }
 
     match &self.allow_read {
       Some(read_allowlist) if read_allowlist.is_empty() => {
@@ -2252,6 +2258,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_hrtime = true;
   }
   if matches.is_present("allow-all") {
+    flags.allow_all = true;
     flags.allow_read = Some(vec![]);
     flags.allow_env = Some(vec![]);
     flags.allow_net = Some(vec![]);
@@ -2647,6 +2654,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "gist.ts".to_string(),
         }),
+        allow_all: true,
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
