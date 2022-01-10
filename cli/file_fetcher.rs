@@ -328,7 +328,7 @@ impl FileFetcher {
   /// Fetch cached remote file.
   ///
   /// This is a recursive operation if source file has redirections.
-  fn fetch_cached(
+  pub(crate) fn fetch_cached(
     &self,
     specifier: &ModuleSpecifier,
     redirect_limit: i64,
