@@ -264,6 +264,7 @@ interface SubtleCrypto {
       | AlgorithmIdentifier
       | RsaOaepParams
       | AesCbcParams
+      | AesGcmParams
       | AesCtrParams,
     key: CryptoKey,
     data: BufferSource,
