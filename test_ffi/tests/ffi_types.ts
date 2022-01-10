@@ -29,7 +29,9 @@ const remote = Deno.dlopen(
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method1(0);
-remote.symbols.method1(0, 0);
+// @ts-expect-error: Invalid return type
+<number> remote.symbols.method1(0, 0);
+<void> remote.symbols.method1(0, 0);
 
 // @ts-expect-error: Invalid argument
 remote.symbols.method2(null);

@@ -122,9 +122,9 @@ declare namespace Deno {
 
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction<
-    Parameters extends readonly NativeType[],
-    Result extends NativeType,
-    NonBlocking extends boolean,
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeType = NativeType,
+    NonBlocking extends boolean = boolean,
   > {
     parameters: Parameters;
     result: Result;
@@ -134,50 +134,41 @@ declare namespace Deno {
 
   /** A foreign function interface descriptor */
   export interface ForeignFunctionInterface {
-    [name: string]: ForeignFunction<readonly NativeType[], NativeType, boolean>;
+    [name: string]: ForeignFunction;
   }
 
-  /** Infers the associative TypeScript type for the given NativeType */
-  type StaticNativeType<T extends NativeType> = T extends "void" ? void
-    : T extends "u8" ? number
-    : T extends "i8" ? number
-    : T extends "u16" ? number
-    : T extends "i16" ? number
-    : T extends "u32" ? number
-    : T extends "i32" ? number
-    : T extends "u64" ? number
-    : T extends "i64" ? number
-    : T extends "usize" ? number
-    : T extends "isize" ? number
-    : T extends "f32" ? number
-    : T extends "f64" ? number
-    : T extends "pointer" ? Deno.UnsafePointer
+  /** All possible number types interfacing with foreign functions */
+  type StaticNativeNumberType = Exclude<NativeType, "void" | "pointer">;
+
+  /** Infers a foreign function return type */
+  type StaticForeignFunctionResult<T extends NativeType> = T extends "void"
+    ? void
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? UnsafePointer
     : never;
+
+  type StaticForeignFunctionParameter<T> = T extends "void" ? void
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray
+    : unknown;
 
   /** Infers a foreign function parameter list. */
   type StaticForeignFunctionParameters<T extends readonly NativeType[]> = [
     ...{
-      [K in keyof T]: T[K] extends NativeType
-        ? StaticNativeType<T[K]> extends infer R ? // Pointer arguments can be passed either as UnsafePointer or TypedArray
-        R extends Deno.UnsafePointer ? Deno.TypedArray | R
-        : R
-        : unknown
-        : unknown;
+      [K in keyof T]: StaticForeignFunctionParameter<T[K]>;
     },
   ];
 
-  /** Infers a foreign function return type */
-  type StaticForeignFunctionResult<T extends NativeType> = StaticNativeType<T>;
-
   /** Infers a foreign function */
-  type StaticForeignFunction<
-    T extends ForeignFunction<readonly NativeType[], NativeType, boolean>,
-  > = T["nonblocking"] extends true ? (
-    ...args: [...StaticForeignFunctionParameters<T["parameters"]>]
-  ) => Promise<StaticForeignFunctionResult<T["result"]>>
-    : (
-      ...args: [...StaticForeignFunctionParameters<T["parameters"]>]
-    ) => StaticForeignFunctionResult<T["result"]>;
+  type StaticForeignFunction<T extends ForeignFunction> = (
+    ...args: StaticForeignFunctionParameters<T["parameters"]>
+  ) => ConditionalAsync<
+    T["nonblocking"],
+    StaticForeignFunctionResult<T["result"]>
+  >;
+
+  type ConditionalAsync<IsAsync extends boolean | undefined, T> =
+    IsAsync extends true ? Promise<T> : T;
 
   /** Infers a foreign function interface */
   type StaticForeignFunctionInterface<T extends ForeignFunctionInterface> = {
