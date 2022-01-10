@@ -730,6 +730,43 @@ mod tests {
   }
 
   #[test]
+  fn install_allow_all() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+
+    install(
+      Flags {
+        allow_all: true,
+        ..Flags::default()
+      },
+      InstallFlags {
+        module_url: "http://localhost:4545/echo_server.ts".to_string(),
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_path_buf()),
+        force: false,
+      },
+    )
+    .unwrap();
+
+    let mut file_path = bin_dir.join("echo_test");
+    if cfg!(windows) {
+      file_path = file_path.with_extension("cmd");
+    }
+
+    let content = fs::read_to_string(file_path).unwrap();
+    if cfg!(windows) {
+      assert!(content.contains(
+        r#""run" "--allow-all" "http://localhost:4545/echo_server.ts""#
+      ));
+    } else {
+      assert!(content
+        .contains(r#"run --allow-all 'http://localhost:4545/echo_server.ts'"#));
+    }
+  }
+
+  #[test]
   fn install_local_module() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
