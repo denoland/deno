@@ -41,13 +41,15 @@ fn run_coverage_text(test_name: &str, extension: &str) {
   let output = util::deno_cmd_with_deno_dir(deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("coverage")
-    .arg("--quiet")
     .arg("--unstable")
     .arg(format!("{}/", tempdir.to_str().unwrap()))
     .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::inherit())
+    .stderr(std::process::Stdio::piped())
     .output()
     .expect("failed to spawn coverage reporter");
+
+  // Verify there's no "Check" being printed
+  assert!(output.stderr.is_empty());
 
   let actual =
     util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
