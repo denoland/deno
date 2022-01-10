@@ -20,9 +20,11 @@ fn final_blankline() {
 }
 
 fn run_coverage_text(test_name: &str, extension: &str) {
+  let deno_dir = TempDir::new().expect("tempdir fail");
   let tempdir = TempDir::new().expect("tempdir fail");
   let tempdir = tempdir.path().join("cov");
-  let status = util::deno_cmd()
+
+  let status = util::deno_cmd_with_deno_dir(deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("test")
     .arg("--quiet")
@@ -36,7 +38,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
   assert!(status.success());
 
-  let output = util::deno_cmd()
+  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--quiet")
@@ -64,7 +66,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
   assert!(output.status.success());
 
-  let output = util::deno_cmd()
+  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--quiet")

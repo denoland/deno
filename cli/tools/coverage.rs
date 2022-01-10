@@ -658,7 +658,7 @@ pub async fn cover_files(
     } else {
       return Err(
         anyhow!("Failed to fetch \"{}\" from cache. 
-          Before generating coverage report run `deno test --coverage` to generate coverage data.", 
+          Before generating coverage report, run `deno test --coverage` to ensure consistent state.", 
           module_specifier
         )
       );
@@ -684,8 +684,9 @@ pub async fn cover_files(
           Ok(b) => String::from_utf8(b).unwrap(),
           Err(_) => {
             return Err(anyhow!(
-              "Missing transpiled source code for: \"{}\"",
-              file.specifier
+              "Missing transpiled source code for: \"{}\".
+              Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
+              file.specifier,
             ))
           }
         }
