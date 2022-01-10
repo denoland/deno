@@ -15,6 +15,8 @@ pub static CLI_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
         as usize;
     let mut vec = Vec::with_capacity(size);
 
+    // SAFETY: vec is allocated with exact snapshot size (+ alignment)
+    // SAFETY: non zeroed bytes are overwritten with decompressed snapshot
     unsafe {
       vec.set_len(size);
     }
