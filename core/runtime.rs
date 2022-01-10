@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
 use crate::error::attach_handle_to_error;
@@ -1651,6 +1651,7 @@ pub mod tests {
     futures::executor::block_on(lazy(move |cx| f(cx)));
   }
 
+  #[derive(Copy, Clone)]
   enum Mode {
     Async,
     AsyncZeroCopy(bool),
@@ -1661,7 +1662,7 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  fn dispatch(rc_op_state: Rc<RefCell<OpState>>, payload: OpPayload) -> Op {
+  fn op_test(rc_op_state: Rc<RefCell<OpState>>, payload: OpPayload) -> Op {
     let rc_op_state2 = rc_op_state.clone();
     let op_state_ = rc_op_state2.borrow();
     let test_state = op_state_.borrow::<TestState>();
@@ -1687,15 +1688,21 @@ pub mod tests {
 
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let mut runtime = JsRuntime::new(Default::default());
-    let op_state = runtime.op_state();
-    op_state.borrow_mut().put(TestState {
-      mode,
-      dispatch_count: dispatch_count.clone(),
+    let dispatch_count2 = dispatch_count.clone();
+    let ext = Extension::builder()
+      .ops(vec![("op_test", Box::new(op_test))])
+      .state(move |state| {
+        state.put(TestState {
+          mode,
+          dispatch_count: dispatch_count2.clone(),
+        });
+        Ok(())
+      })
+      .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
     });
-
-    runtime.register_op("op_test", dispatch);
-    runtime.sync_ops_cache();
 
     runtime
       .execute_script(
@@ -1904,8 +1911,6 @@ pub mod tests {
   #[test]
   fn terminate_execution() {
     let (mut isolate, _dispatch_count) = setup(Mode::Async);
-    // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
-    // should not require a mutable reference to `struct rusty_v8::Isolate`.
     let v8_isolate_handle = isolate.v8_isolate().thread_safe_handle();
 
     let terminator_thread = std::thread::spawn(move || {
@@ -1943,8 +1948,6 @@ pub mod tests {
     let v8_isolate_handle = {
       // isolate is dropped at the end of this block
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
-      // should not require a mutable reference to `struct rusty_v8::Isolate`.
       runtime.v8_isolate().thread_safe_handle()
     };
 
@@ -2029,12 +2032,14 @@ pub mod tests {
     }
 
     run_in_task(|cx| {
+      let ext = Extension::builder()
+        .ops(vec![("op_err", op_sync(op_err))])
+        .build();
       let mut runtime = JsRuntime::new(RuntimeOptions {
+        extensions: vec![ext],
         get_error_class_fn: Some(&get_error_class_name),
         ..Default::default()
       });
-      runtime.register_op("op_err", op_sync(op_err));
-      runtime.sync_ops_cache();
       runtime
         .execute_script(
           "error_builder_test.js",

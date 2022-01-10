@@ -1227,6 +1227,7 @@ declare interface WorkerOptions {
 declare interface WebSocketStreamOptions {
   protocols?: string[];
   signal?: AbortSignal;
+  headers?: HeadersInit;
 }
 
 declare interface WebSocketConnection {

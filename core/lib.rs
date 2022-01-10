@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 mod async_cancel;
 mod async_cell;
 mod bindings;
@@ -88,6 +88,7 @@ pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
 pub use crate::resources::ResourceTable;
 pub use crate::runtime::CompiledWasmModuleStore;
+pub use crate::runtime::CrossIsolateStore;
 pub use crate::runtime::GetErrorClassFn;
 pub use crate::runtime::JsErrorCreateFn;
 pub use crate::runtime::JsRuntime;
@@ -96,6 +97,7 @@ pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::Snapshot;
 // pub use crate::runtime_modules::include_js_files!;
 pub use crate::extensions::Extension;
+pub use crate::extensions::ExtensionBuilder;
 pub use crate::extensions::OpMiddlewareFn;
 pub use crate::extensions::OpPair;
 
