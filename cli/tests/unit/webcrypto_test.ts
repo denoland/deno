@@ -1388,8 +1388,6 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     for (
       const hash of [/*"SHA-1", */ "SHA-256" /*"SHA-384", "SHA-512"*/]
     ) {
-      console.log(hash);
-
       const signatureECDSA = await subtle.sign(
         { name: "ECDSA", hash },
         privateKeyECDSA,
@@ -1420,27 +1418,146 @@ Deno.test(async function testImportEcSpkiPkcs8() {
   }
 });
 
-Deno.test(async function testBase64Forgiving() {
-  const keyData = `{
-    "kty": "oct",
-    "k": "xxx",
-    "alg": "HS512",
-    "key_ops": ["sign", "verify"],
-    "ext": true
-  }`;
+Deno.test(async function testAesGcmEncrypt() {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(16),
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
 
+  // deno-fmt-ignore
+  const iv = new Uint8Array([0,1,2,3,4,5,6,7,8,9,10,11]);
+  const data = new Uint8Array([1, 2, 3]);
+
+  const cipherText = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv, additionalData: new Uint8Array() },
+    key,
+    data,
+  );
+
+  assert(cipherText instanceof ArrayBuffer);
+  assertEquals(cipherText.byteLength, 19);
+  assertEquals(
+    new Uint8Array(cipherText),
+    // deno-fmt-ignore
+    new Uint8Array([50,223,112,178,166,156,255,110,125,138,95,141,82,47,14,164,134,247,22]),
+  );
+});
+
+async function roundTripSecretJwk(
+  jwk: JsonWebKey,
+  algId: AlgorithmIdentifier | HmacImportParams,
+  ops: KeyUsage[],
+  validateKeys: (
+    key: CryptoKey,
+    originalJwk: JsonWebKey,
+    exportedJwk: JsonWebKey,
+  ) => void,
+) {
   const key = await crypto.subtle.importKey(
     "jwk",
-    JSON.parse(keyData),
-    { name: "HMAC", hash: "SHA-512" },
+    jwk,
+    algId,
     true,
-    ["sign", "verify"],
+    ops,
   );
 
   assert(key instanceof CryptoKey);
   assertEquals(key.type, "secret");
-  assertEquals((key.algorithm as HmacKeyAlgorithm).length, 16);
 
   const exportedKey = await crypto.subtle.exportKey("jwk", key);
-  assertEquals(exportedKey.k, "xxw");
+
+  validateKeys(key, jwk, exportedKey);
+}
+
+Deno.test(async function testSecretJwkBase64Url() {
+  // Test 16bits with "overflow" in 3rd pos of 'quartet', no padding
+  const keyData = `{
+      "kty": "oct",
+      "k": "xxx",
+      "alg": "HS512",
+      "key_ops": ["sign", "verify"],
+      "ext": true
+    }`;
+
+  await roundTripSecretJwk(
+    JSON.parse(keyData),
+    { name: "HMAC", hash: "SHA-512" },
+    ["sign", "verify"],
+    (key, _orig, exp) => {
+      assertEquals((key.algorithm as HmacKeyAlgorithm).length, 16);
+
+      assertEquals(exp.k, "xxw");
+    },
+  );
+
+  // HMAC 128bits with base64url characters (-_)
+  await roundTripSecretJwk(
+    {
+      kty: "oct",
+      k: "HnZXRyDKn-_G5Fx4JWR1YA",
+      alg: "HS256",
+      "key_ops": ["sign", "verify"],
+      ext: true,
+    },
+    { name: "HMAC", hash: "SHA-256" },
+    ["sign", "verify"],
+    (key, orig, exp) => {
+      assertEquals((key.algorithm as HmacKeyAlgorithm).length, 128);
+
+      assertEquals(orig.k, exp.k);
+    },
+  );
+
+  // HMAC 104bits/(12+1) bytes with base64url characters (-_), padding and overflow in 2rd pos of "quartet"
+  await roundTripSecretJwk(
+    {
+      kty: "oct",
+      k: "a-_AlFa-2-OmEGa_-z==",
+      alg: "HS384",
+      "key_ops": ["sign", "verify"],
+      ext: true,
+    },
+    { name: "HMAC", hash: "SHA-384" },
+    ["sign", "verify"],
+    (key, _orig, exp) => {
+      assertEquals((key.algorithm as HmacKeyAlgorithm).length, 104);
+
+      assertEquals("a-_AlFa-2-OmEGa_-w", exp.k);
+    },
+  );
+
+  // AES-CBC 128bits with base64url characters (-_) no padding
+  await roundTripSecretJwk(
+    {
+      kty: "oct",
+      k: "_u3K_gEjRWf-7cr-ASNFZw",
+      alg: "A128CBC",
+      "key_ops": ["encrypt", "decrypt"],
+      ext: true,
+    },
+    { name: "AES-CBC" },
+    ["encrypt", "decrypt"],
+    (_key, orig, exp) => {
+      assertEquals(orig.k, exp.k);
+    },
+  );
+
+  // AES-CBC 128bits of '1' with padding chars
+  await roundTripSecretJwk(
+    {
+      kty: "oct",
+      k: "_____________________w==",
+      alg: "A128CBC",
+      "key_ops": ["encrypt", "decrypt"],
+      ext: true,
+    },
+    { name: "AES-CBC" },
+    ["encrypt", "decrypt"],
+    (_key, _orig, exp) => {
+      assertEquals(exp.k, "_____________________w");
+    },
+  );
 });

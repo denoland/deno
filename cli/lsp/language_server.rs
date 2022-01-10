@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -1119,6 +1119,12 @@ impl Inner {
         ),
         (None, None, _) => unreachable!("{}", json!(params)),
       };
+      let value =
+        if let Some(docs) = self.module_registries.get_hover(&dep).await {
+          format!("{}\n\n---\n\n{}", value, docs)
+        } else {
+          value
+        };
       Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
           kind: MarkupKind::Markdown,

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 /// <reference path="../../core/internal.d.ts" />
@@ -38,6 +38,10 @@
       {
         key: "signal",
         converter: webidl.converters.AbortSignal,
+      },
+      {
+        key: "headers",
+        converter: webidl.converters.HeadersInit,
       },
     ],
   );
@@ -139,6 +143,7 @@
               ? ArrayPrototypeJoin(options.protocols, ", ")
               : "",
             cancelHandle: cancelRid,
+            headers: [...new Headers(options.headers).entries()],
           }),
           (create) => {
             options.signal?.[remove](abort);

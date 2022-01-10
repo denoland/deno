@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::process::Command;
 use test_util::deno_cmd;
@@ -24,6 +24,7 @@ fn basic() {
     .arg("--allow-ffi")
     .arg("--allow-read")
     .arg("--unstable")
+    .arg("--quiet")
     .arg("tests/test.js")
     .env("NO_COLOR", "1")
     .output()
@@ -37,7 +38,6 @@ fn basic() {
   println!("{:?}", output.status);
   assert!(output.status.success());
   let expected = "\
-    dlopen doesn't panic\n\
     something\n\
     [1, 2, 3, 4, 5, 6, 7, 8]\n\
     [1, 2, 3, 4, 5, 6, 7, 8] [9, 10]\n\
