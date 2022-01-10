@@ -122,6 +122,8 @@ declare namespace Deno {
 
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction {
+    /** Name of the symbol, defaults to the key name in symbols object. */
+    name?: string;
     parameters: NativeType[];
     result: NativeType;
     /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
