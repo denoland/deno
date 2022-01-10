@@ -510,6 +510,7 @@ impl From<BundleType> for swc::bundler::ModuleType {
 pub(crate) struct BundleOptions {
   pub bundle_type: BundleType,
   pub ts_config: TsConfig,
+  pub emit_ignore_directives: bool,
 }
 
 /// A module loader for swc which does the appropriate retrieval and transpiling
@@ -644,11 +645,13 @@ pub(crate) fn bundle(
         Some(&mut srcmap),
       ));
 
-      // write leading comments in bundled file
-      use swc::codegen::text_writer::WriteJs;
-      use swc::common::source_map::DUMMY_SP;
-      let cmt = IGNORE_DIRECTIVES.join("\n") + "\n";
-      wr.write_comment(DUMMY_SP, &cmt)?;
+      if options.emit_ignore_directives {
+        // write leading comments in bundled file
+        use swc::codegen::text_writer::WriteJs;
+        use swc::common::source_map::DUMMY_SP;
+        let cmt = IGNORE_DIRECTIVES.join("\n") + "\n";
+        wr.write_comment(DUMMY_SP, &cmt)?;
+      }
 
       let mut emitter = swc::codegen::Emitter {
         cfg,
