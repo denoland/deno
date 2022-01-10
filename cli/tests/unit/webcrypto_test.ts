@@ -1612,7 +1612,7 @@ Deno.test(async function testAESWrapKey() {
   );
 
   assert(unwrappedKey instanceof CryptoKey);
-  assert((unwrappedKey.algorithm as HmacKeyAlgorithm).length == 128);
+  assertEquals((unwrappedKey.algorithm as HmacKeyAlgorithm).length, 128);
 
   const hmacKeyBytes = await crypto.subtle.exportKey("raw", hmacKey);
   const unwrappedKeyBytes = await crypto.subtle.exportKey("raw", unwrappedKey);
