@@ -130,6 +130,7 @@
     "decrypt": {
       "RSA-OAEP": "RsaOaepParams",
       "AES-CBC": "AesCbcParams",
+      "AES-GCM": "AesGcmParams",
       "AES-CTR": "AesCtrParams",
     },
     "get key length": {
@@ -649,7 +650,7 @@
           }
 
           // 2.
-          if (data.byteLength < tagLength / 8) {
+          if (data.byteLength < normalizedAlgorithm.tagLength / 8) {
             throw new DOMException(
               "Tag length overflows ciphertext",
               "OperationError",

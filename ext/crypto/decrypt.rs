@@ -269,9 +269,10 @@ fn decrypt_aes_gcm(
 
   let nonce = Nonce::from_slice(&iv);
 
-  let tag = &data[(tag_length / 8)..];
+  let sep = data.len() - (tag_length / 8);
+  let tag = &data[sep..];
   // The actual ciphertext, called plaintext because it is reused in place.
-  let mut plaintext = data[..(tag_length / 8)].to_vec();
+  let mut plaintext = data[..sep].to_vec();
   match length {
     128 => {
       let cipher = Aes128Gcm::new_from_slice(key)
