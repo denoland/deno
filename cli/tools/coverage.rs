@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::emit;
 use crate::flags::CoverageFlags;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
@@ -11,11 +10,12 @@ use crate::tools::fmt::format_json;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_runtime::permissions::Permissions;
 use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
@@ -643,40 +643,69 @@ pub async fn cover_files(
   for script_coverage in script_coverages {
     let module_specifier =
       deno_core::resolve_url_or_path(&script_coverage.url)?;
-    ps.prepare_module_load(
-      vec![module_specifier.clone()],
-      false,
-      emit::TypeLib::UnstableDenoWindow,
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-      false,
-    )
-    .await?;
 
-    let module_source = ps.load(module_specifier.clone(), None, false)?;
-    let script_source = &module_source.code;
+    let maybe_file = if module_specifier.scheme() == "file" {
+      ps.file_fetcher.get_source(&module_specifier)
+    } else {
+      ps.file_fetcher
+        .fetch_cached(&module_specifier, 10)
+        .with_context(|| {
+          format!("Failed to fetch \"{}\" from cache.", module_specifier)
+        })?
+    };
+    let file = maybe_file.ok_or_else(|| {
+      anyhow!("Failed to fetch \"{}\" from cache. 
+          Before generating coverage report, run `deno test --coverage` to ensure consistent state.", 
+          module_specifier
+        )
+    })?;
 
+    // Check if file was transpiled
+    let transpiled_source = match file.media_type {
+      MediaType::JavaScript
+      | MediaType::Unknown
+      | MediaType::Cjs
+      | MediaType::Mjs
+      | MediaType::Json => file.source.as_ref().clone(),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => "".to_string(),
+      MediaType::TypeScript
+      | MediaType::Jsx
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Tsx => {
+        let emit_path = ps
+          .dir
+          .gen_cache
+          .get_cache_filename_with_extension(&file.specifier, "js")
+          .unwrap_or_else(|| {
+            unreachable!("Unable to get cache filename: {}", &file.specifier)
+          });
+        match ps.dir.gen_cache.get(&emit_path) {
+          Ok(b) => String::from_utf8(b).unwrap(),
+          Err(_) => {
+            return Err(anyhow!(
+              "Missing transpiled source code for: \"{}\".
+              Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
+              file.specifier,
+            ))
+          }
+        }
+      }
+      MediaType::Wasm | MediaType::TsBuildInfo | MediaType::SourceMap => {
+        unreachable!()
+      }
+    };
+
+    let original_source = &file.source;
     let maybe_source_map = ps.get_source_map(&script_coverage.url);
-    let maybe_cached_source = ps
-      .file_fetcher
-      .get_source(&module_specifier)
-      .map(|f| f.source);
 
     let coverage_report = generate_coverage_report(
       &script_coverage,
-      script_source,
+      &transpiled_source,
       &maybe_source_map,
     );
 
-    let file_text = if let Some(original_source) =
-      maybe_source_map.and(maybe_cached_source.as_ref())
-    {
-      original_source.as_str()
-    } else {
-      script_source
-    };
-
-    reporter.report(&coverage_report, file_text);
+    reporter.report(&coverage_report, original_source);
   }
 
   reporter.done();
