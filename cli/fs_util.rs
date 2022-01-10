@@ -380,7 +380,11 @@ pub fn specifier_parent(specifier: &ModuleSpecifier) -> ModuleSpecifier {
 /// has trailing slash it will return true else it will return false.
 pub fn path_has_trailing_slash(path: &Path) -> bool {
   if let Some(path_str) = path.to_str() {
-    cfg!(windows) && path_str.ends_with('\\') || path_str.ends_with('/')
+    if cfg!(windows) {
+      path_str.ends_with('\\')
+    } else {
+      path_str.ends_with('/')
+    }
   } else {
     false
   }
