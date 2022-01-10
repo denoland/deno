@@ -379,7 +379,7 @@ async fn compile_command(
   let deno_dir = &ps.dir;
 
   let output = compile_flags.output.and_then(|output| {
-    if tools::standalone::path_has_trailing_slash(&output) {
+    if fs_util::path_has_trailing_slash(&output) {
       let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
       Some(output.join(infer_file_name))
     } else {
