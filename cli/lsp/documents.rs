@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::text::LineIndex;
 use super::tsc;
@@ -590,7 +590,8 @@ pub(crate) fn to_hover_text(
         "{}&#8203;{}",
         specifier[..url::Position::AfterScheme].to_string(),
         specifier[url::Position::AfterScheme..].to_string()
-      ),
+      )
+      .replace('@', "&#8203;@"),
     },
     Err(_) => "_[errored]_".to_string(),
   }
