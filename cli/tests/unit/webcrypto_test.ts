@@ -1446,7 +1446,7 @@ Deno.test(async function testAesGcmEncrypt() {
   );
 
   const plainText = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
+    { name: "AES-GCM", iv, additionalData: new Uint8Array() },
     key,
     cipherText,
   );
