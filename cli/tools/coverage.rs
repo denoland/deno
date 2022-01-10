@@ -653,16 +653,12 @@ pub async fn cover_files(
           format!("Failed to fetch \"{}\" from cache.", module_specifier)
         })?
     };
-    let file = if let Some(f) = maybe_file {
-      f
-    } else {
-      return Err(
-        anyhow!("Failed to fetch \"{}\" from cache. 
+    let file = maybe_file.ok_or_else(|| {
+      anyhow!("Failed to fetch \"{}\" from cache. 
           Before generating coverage report, run `deno test --coverage` to ensure consistent state.", 
           module_specifier
         )
-      );
-    };
+    })?;
 
     // Check if file was transpiled
     let transpiled_source = match file.media_type {
@@ -671,8 +667,12 @@ pub async fn cover_files(
       | MediaType::Cjs
       | MediaType::Mjs
       | MediaType::Json => file.source.as_ref().clone(),
-      MediaType::Dts => "".to_string(),
-      _ => {
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => "".to_string(),
+      MediaType::TypeScript
+      | MediaType::Jsx
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Tsx => {
         let emit_path = ps
           .dir
           .gen_cache
@@ -690,6 +690,9 @@ pub async fn cover_files(
             ))
           }
         }
+      }
+      MediaType::Wasm | MediaType::TsBuildInfo | MediaType::SourceMap => {
+        unreachable!()
       }
     };
 
