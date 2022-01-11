@@ -252,7 +252,7 @@ declare namespace Deno {
 
   /**
    * **UNSTABLE**: Unsafe and new API, beware!
-   * 
+   *
    * An unsafe pointer to a function, for calling functions that are not
    * present as symbols.
    */
@@ -262,7 +262,9 @@ declare namespace Deno {
 
     constructor(pointer: UnsafePointer, definition: Fn);
 
-    call(...args: StaticForeignFunctionParameters<Fn["parameters"]>): ConditionalAsync<
+    call(
+      ...args: StaticForeignFunctionParameters<Fn["parameters"]>
+    ): ConditionalAsync<
       Fn["nonblocking"],
       StaticForeignFunctionResult<Fn["result"]>
     >;

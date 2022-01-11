@@ -186,7 +186,10 @@
     }
 
     call(...args) {
-      const { parameters, buffers } = prepareArgs(this.definition.parameters, args);
+      const { parameters, buffers } = prepareArgs(
+        this.definition.parameters,
+        args,
+      );
       if (this.definition.nonblocking) {
         const promise = core.opAsync("op_ffi_call_ptr_nonblocking", {
           pointer: packU64(this.pointer.value),
@@ -196,9 +199,7 @@
         });
 
         if (this.definition.result === "pointer") {
-          return promise.then((value) =>
-            new UnsafePointer(unpackU64(value))
-          );
+          return promise.then((value) => new UnsafePointer(unpackU64(value)));
         }
 
         return promise;

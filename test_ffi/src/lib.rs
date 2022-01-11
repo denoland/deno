@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::os::raw::c_void;
 use std::thread::sleep;
 use std::time::Duration;
-use std::os::raw::c_void;
 
 static BUFFER: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
 

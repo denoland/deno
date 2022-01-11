@@ -131,7 +131,10 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       ("op_ffi_call", op_sync(op_ffi_call)),
       ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
       ("op_ffi_call_ptr", op_sync(op_ffi_call_ptr)),
-      ("op_ffi_call_ptr_nonblocking", op_async(op_ffi_call_ptr_nonblocking)),
+      (
+        "op_ffi_call_ptr_nonblocking",
+        op_async(op_ffi_call_ptr_nonblocking),
+      ),
       ("op_ffi_ptr_of", op_sync(op_ffi_ptr_of::<P>)),
       ("op_ffi_buf_copy_into", op_sync(op_ffi_buf_copy_into::<P>)),
       ("op_ffi_cstr_read", op_sync(op_ffi_cstr_read::<P>)),
@@ -480,13 +483,13 @@ struct FfiCallPtrArgs {
   buffers: Vec<Option<ZeroCopyBuf>>,
 }
 
-impl Into<FfiCallArgs> for FfiCallPtrArgs {
-  fn into(self) -> FfiCallArgs {
+impl From<FfiCallPtrArgs> for FfiCallArgs {
+  fn from(args: FfiCallPtrArgs) -> Self {
     FfiCallArgs {
       rid: 0,
       symbol: String::new(),
-      parameters: self.parameters,
-      buffers: self.buffers,
+      parameters: args.parameters,
+      buffers: args.buffers,
     }
   }
 }
@@ -496,7 +499,8 @@ impl FfiCallPtrArgs {
     let fn_ptr: u64 = self.pointer.into();
     let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
     let cif = libffi::middle::Cif::new(
-      self.def
+      self
+        .def
         .parameters
         .clone()
         .into_iter()
@@ -508,7 +512,7 @@ impl FfiCallPtrArgs {
       cif,
       ptr,
       parameter_types: self.def.parameters.clone(),
-      result_type: self.def.result.clone(),
+      result_type: self.def.result,
     }
   }
 }
