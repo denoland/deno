@@ -378,7 +378,14 @@ async fn compile_command(
   let ps = ProcState::build(flags.clone()).await?;
   let deno_dir = &ps.dir;
 
-  let output = compile_flags.output.or_else(|| {
+  let output = compile_flags.output.and_then(|output| {
+    if fs_util::path_has_trailing_slash(&output) {
+      let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
+      Some(output.join(infer_file_name))
+    } else {
+      Some(output)
+    }
+  }).or_else(|| {
     infer_name_from_url(&module_specifier).map(PathBuf::from)
   }).ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
