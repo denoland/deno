@@ -29,8 +29,10 @@
    * @returns {string}
    */
   function atob(data) {
+    const prefix = "Failed to execute 'atob'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
     data = webidl.converters.DOMString(data, {
-      prefix: "Failed to execute 'atob'",
+      prefix,
       context: "Argument 1",
     });
 
