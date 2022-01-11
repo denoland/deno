@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-mod ast;
 mod auth_tokens;
 mod cache;
 mod checksum;

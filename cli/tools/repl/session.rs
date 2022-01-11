@@ -1,10 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast::transpile;
-use crate::ast::Diagnostics;
-use crate::ast::ImportsNotUsedAsValues;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
+use deno_ast::DiagnosticsError;
+use deno_ast::ImportsNotUsedAsValues;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
@@ -184,7 +183,7 @@ impl ReplSession {
           Some(diagnostic) => {
             Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
           }
-          None => match err.downcast_ref::<Diagnostics>() {
+          None => match err.downcast_ref::<DiagnosticsError>() {
             Some(diagnostics) => Ok(EvaluationOutput::Error(
               diagnostics
                 .0
@@ -311,9 +310,8 @@ impl ReplSession {
       scope_analysis: false,
     })?;
 
-    let transpiled_src = transpile(
-      &parsed_module,
-      &crate::ast::EmitOptions {
+    let transpiled_src = parsed_module
+      .transpile(&deno_ast::EmitOptions {
         emit_metadata: false,
         source_map: false,
         inline_source_map: false,
@@ -326,10 +324,9 @@ impl ReplSession {
         jsx_factory: "React.createElement".into(),
         jsx_fragment_factory: "React.Fragment".into(),
         jsx_import_source: None,
-        repl_imports: true,
-      },
-    )?
-    .0;
+        var_decl_imports: true,
+      })?
+      .text;
 
     let value = self
       .evaluate_expression(&format!(
