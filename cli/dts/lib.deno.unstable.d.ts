@@ -126,6 +126,8 @@ declare namespace Deno {
     Result extends NativeType = NativeType,
     NonBlocking extends boolean = boolean,
   > {
+    /** Name of the symbol, defaults to the key name in symbols object. */
+    name?: string;
     parameters: Parameters;
     result: Result;
     /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
