@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -292,6 +292,9 @@
         transform: (chunk, controller) => {
           try {
             chunk = webidl.converters.DOMString(chunk);
+            if (chunk === "") {
+              return PromiseResolve();
+            }
             if (this.#pendingHighSurrogate !== null) {
               chunk = this.#pendingHighSurrogate + chunk;
             }

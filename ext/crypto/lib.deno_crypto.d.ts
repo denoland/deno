@@ -62,6 +62,17 @@ interface AesCbcParams extends Algorithm {
   iv: BufferSource;
 }
 
+interface AesGcmParams extends Algorithm {
+  iv: BufferSource;
+  additionalData?: BufferSource;
+  tagLength?: number;
+}
+
+interface AesCtrParams extends Algorithm {
+  counter: BufferSource;
+  length: number;
+}
+
 interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
@@ -239,12 +250,21 @@ interface SubtleCrypto {
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   encrypt(
-    algorithm: AlgorithmIdentifier | RsaOaepParams | AesCbcParams,
+    algorithm:
+      | AlgorithmIdentifier
+      | RsaOaepParams
+      | AesCbcParams
+      | AesGcmParams
+      | AesCtrParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
   decrypt(
-    algorithm: AlgorithmIdentifier | RsaOaepParams | AesCbcParams,
+    algorithm:
+      | AlgorithmIdentifier
+      | RsaOaepParams
+      | AesCbcParams
+      | AesCtrParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
@@ -273,7 +293,11 @@ interface SubtleCrypto {
     format: KeyFormat,
     key: CryptoKey,
     wrappingKey: CryptoKey,
-    wrapAlgorithm: AlgorithmIdentifier | RsaOaepParams,
+    wrapAlgorithm:
+      | AlgorithmIdentifier
+      | RsaOaepParams
+      | AesCbcParams
+      | AesCtrParams,
   ): Promise<ArrayBuffer>;
   unwrapKey(
     format: KeyFormat,
@@ -282,12 +306,13 @@ interface SubtleCrypto {
     unwrapAlgorithm:
       | AlgorithmIdentifier
       | RsaOaepParams
-      | AesCbcParams,
+      | AesCbcParams
+      | AesCtrParams,
     unwrappedKeyAlgorithm:
       | AlgorithmIdentifier
-      | RsaHashedImportParams
       | HmacImportParams
-      | AesKeyAlgorithm,
+      | RsaHashedImportParams
+      | EcImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;

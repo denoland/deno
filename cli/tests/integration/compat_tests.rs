@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 use deno_core::url::Url;
@@ -52,6 +52,44 @@ itest!(import_esm_from_cjs {
   output_str: Some("function\n"),
 });
 
+itest!(test_runner_cjs {
+  args: "test --compat --unstable -A --quiet compat/test_runner/cjs.js",
+  exit_code: 1,
+  output: "compat/test_runner/cjs.out",
+});
+
+itest!(test_runner_esm {
+  args: "test --compat --unstable -A --quiet compat/test_runner/esm.mjs",
+  exit_code: 1,
+  output: "compat/test_runner/esm.out",
+});
+
+// Top level assertion test mostly just make sure that the test runner finishes correctly on compat mode
+// when there is no tests
+itest!(top_level_assertion_cjs {
+  args: "test --compat --unstable -A --quiet compat/test_runner/top_level_assertion_cjs.js",
+	exit_code: 0,
+  output: "compat/test_runner/top_level_assertion_cjs.out",
+});
+
+itest!(top_level_assertion_esm {
+  args: "test --compat --unstable -A --quiet compat/test_runner/top_level_assertion_esm.mjs",
+	exit_code: 0,
+  output: "compat/test_runner/top_level_assertion_esm.out",
+});
+
+itest!(top_level_fail_cjs {
+  args: "test --compat --unstable -A --quiet compat/test_runner/top_level_fail_cjs.js",
+	exit_code: 1,
+  output: "compat/test_runner/top_level_fail_cjs.out",
+});
+
+itest!(top_level_fail_esm {
+  args: "test --compat --unstable -A --quiet compat/test_runner/top_level_fail_esm.mjs",
+	exit_code: 1,
+  output: "compat/test_runner/top_level_fail_esm.out",
+});
+
 #[test]
 fn globals_in_repl() {
   let (out, _err) = util::run_and_collect_output_with_args(
@@ -93,4 +131,16 @@ fn node_compat_url() {
   assert!(out.is_empty());
   assert!(!err.is_empty());
   assert!(err.contains("file:///non_existent/node/global.ts"));
+}
+
+#[test]
+fn native_modules_as_global_vars() {
+  let (out, _err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--compat", "--unstable", "--quiet"],
+    Some(vec!["if(cluster && v8 && sys) { true } else { false }"]),
+    None,
+    false,
+  );
+  assert!(out.contains("true"));
 }

@@ -1,7 +1,8 @@
 use crate::tools::test::TestEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::JsRuntime;
+use deno_core::op_sync;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
@@ -10,15 +11,25 @@ use deno_runtime::permissions::Permissions;
 use std::sync::mpsc::Sender;
 use uuid::Uuid;
 
-pub fn init(rt: &mut JsRuntime) {
-  super::reg_sync(rt, "op_pledge_test_permissions", op_pledge_test_permissions);
-  super::reg_sync(
-    rt,
-    "op_restore_test_permissions",
-    op_restore_test_permissions,
-  );
-  super::reg_sync(rt, "op_get_test_origin", op_get_test_origin);
-  super::reg_sync(rt, "op_dispatch_test_event", op_dispatch_test_event);
+pub fn init(sender: Sender<TestEvent>) -> Extension {
+  Extension::builder()
+    .ops(vec![
+      (
+        "op_pledge_test_permissions",
+        op_sync(op_pledge_test_permissions),
+      ),
+      (
+        "op_restore_test_permissions",
+        op_sync(op_restore_test_permissions),
+      ),
+      ("op_get_test_origin", op_sync(op_get_test_origin)),
+      ("op_dispatch_test_event", op_sync(op_dispatch_test_event)),
+    ])
+    .state(move |state| {
+      state.put(sender.clone());
+      Ok(())
+    })
+    .build()
 }
 
 #[derive(Clone)]
