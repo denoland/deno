@@ -237,7 +237,11 @@ fn standalone_compiler_ops() {
 #[test]
 fn compile_with_directory_output_flag() {
   let dir = TempDir::new().expect("tempdir fail");
-  let output_path = dir.path().join("args/random/");
+  let output_path = if cfg!(windows) {
+    dir.path().join(r"args\random\")
+  } else {
+    dir.path().join("args/random/")
+  };
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
@@ -271,6 +275,11 @@ fn compile_with_directory_output_flag() {
 #[test]
 fn compile_with_file_exists_error() {
   let dir = TempDir::new().expect("tempdir fail");
+  let output_path = if cfg!(windows) {
+    dir.path().join(r"args\")
+  } else {
+    dir.path().join("args/")
+  };
   let file_path = dir.path().join("args");
   File::create(&file_path).expect("cannot create file");
   let output = util::deno_cmd()
@@ -278,7 +287,7 @@ fn compile_with_file_exists_error() {
     .arg("compile")
     .arg("--unstable")
     .arg("--output")
-    .arg(dir.path().join("args/"))
+    .arg(&output_path)
     .arg("./028_args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
