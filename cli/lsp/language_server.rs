@@ -290,6 +290,8 @@ impl Inner {
     Ok(navigation_tree)
   }
 
+  // TODO(ry): We can just return ConfigFile and use ConfigFile::specifier
+  // instead of returning URL in the tuple.
   /// Returns a tuple with parsed `ConfigFile` and `Url` pointing to that file.
   /// If there's no config file specified in settings returns `None`.
   fn get_config_file_and_url(
@@ -320,7 +322,18 @@ impl Inner {
       }
     }
 
-    Ok(None)
+    // Auto-discover config
+
+    let root_uri = maybe_root_uri.unwrap();
+    let root_path = root_uri.to_file_path().unwrap();
+    let mut checked = std::collections::HashSet::new();
+    let maybe_config =
+      crate::config_file::discover_from(&root_path, &mut checked)?;
+    Ok(maybe_config.map(|c| {
+      let s = c.specifier.clone();
+      lsp_log!("  Auto-resolved configuration file: \"{}\"", s);
+      (c, s)
+    }))
   }
 
   fn is_diagnosable(&self, specifier: &ModuleSpecifier) -> bool {

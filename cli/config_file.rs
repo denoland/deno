@@ -167,18 +167,18 @@ pub fn discover(flags: &crate::Flags) -> Result<Option<ConfigFile>, AnyError> {
   } else {
     let mut checked = HashSet::new();
     for f in flags.config_path_args() {
-      if let Some(cf) = discover_inner(&f, &mut checked)? {
+      if let Some(cf) = discover_from(&f, &mut checked)? {
         return Ok(Some(cf));
       }
     }
 
     // From CWD walk up to root looking for deno.json or deno.jsonc
     let cwd = std::env::current_dir()?;
-    discover_inner(&cwd, &mut checked)
+    discover_from(&cwd, &mut checked)
   }
 }
 
-fn discover_inner(
+pub fn discover_from(
   start: &Path,
   checked: &mut HashSet<PathBuf>,
 ) -> Result<Option<ConfigFile>, AnyError> {
@@ -882,12 +882,12 @@ mod tests {
   }
 
   #[test]
-  fn discover_inner_success() {
+  fn discover_from_success() {
     // testdata/fmt/deno.jsonc exists
     let testdata = test_util::testdata_path();
     let c_md = testdata.join("fmt/with_config/subdir/c.md");
     let mut checked = HashSet::new();
-    let config_file = discover_inner(&c_md, &mut checked).unwrap().unwrap();
+    let config_file = discover_from(&c_md, &mut checked).unwrap().unwrap();
     assert!(checked.contains(c_md.parent().unwrap()));
     assert!(!checked.contains(&testdata));
     let fmt_config = config_file.to_fmt_config().unwrap().unwrap();
@@ -902,16 +902,16 @@ mod tests {
       checked.insert(a.to_path_buf());
     }
 
-    // If we call discover_inner again starting at testdata, we ought to get None.
-    assert!(discover_inner(&testdata, &mut checked).unwrap().is_none());
+    // If we call discover_from again starting at testdata, we ought to get None.
+    assert!(discover_from(&testdata, &mut checked).unwrap().is_none());
   }
 
   #[test]
-  fn discover_inner_malformed() {
+  fn discover_from_malformed() {
     let testdata = test_util::testdata_path();
     let d = testdata.join("malformed_config/");
     let mut checked = HashSet::new();
-    let err = discover_inner(&d, &mut checked).unwrap_err();
+    let err = discover_from(&d, &mut checked).unwrap_err();
     assert!(err.to_string().contains("Unable to parse config file"));
   }
 }
