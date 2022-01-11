@@ -86,7 +86,7 @@ remote.symbols.method14(null);
 remote.symbols.method14(0);
 
 // @ts-expect-error: Invalid argument
-remote.symbols.method15(null);
+remote.symbols.method15(0);
 remote.symbols.method15(new Uint16Array(1));
 remote.symbols.method15({} as Deno.UnsafePointer);
 

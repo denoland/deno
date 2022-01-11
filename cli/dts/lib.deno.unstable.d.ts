@@ -151,7 +151,7 @@ declare namespace Deno {
 
   type StaticForeignFunctionParameter<T> = T extends "void" ? void
     : T extends StaticNativeNumberType ? number
-    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray
+    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray | null
     : unknown;
 
   /** Infers a foreign function parameter list. */
