@@ -261,3 +261,4 @@
   ObjectAssign(globalThis.__bootstrap.core, { createPrepareStackTrace });
   ObjectFreeze(globalThis.__bootstrap.core);
 })(this);
+// ok
