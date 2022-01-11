@@ -33,6 +33,7 @@ deno_websocket = { version = "0.36.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.26.0", path = "../ext/webstorage" }
 regex = "=1.5.4"
 serde = { version = "=1.0.133", features = ["derive"] }
+zstd = '=0.9.2'
 
 [target.'cfg(windows)'.build-dependencies]
 winapi = "=0.3.9"
@@ -85,6 +86,7 @@ text_lines = "=0.4.1"
 tokio = { version = "=1.14", features = ["full"] }
 uuid = { version = "=0.8.2", features = ["v4", "serde"] }
 walkdir = "=2.3.2"
+zstd = '=0.9.2'
 
 [target.'cfg(windows)'.dependencies]
 fwdansi = "=1.1.0"

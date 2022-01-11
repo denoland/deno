@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::fs::File;
 use std::process::Command;
 use tempfile::TempDir;
 use test_util as util;
@@ -231,6 +232,73 @@ fn standalone_compiler_ops() {
     .unwrap();
   assert!(output.status.success());
   assert_eq!(output.stdout, b"Hello, Compiler API!\n");
+}
+
+#[test]
+fn compile_with_directory_output_flag() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let output_path = if cfg!(windows) {
+    dir.path().join(r"args\random\")
+  } else {
+    dir.path().join("args/random/")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&output_path)
+    .arg("./standalone_compiler_ops.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let exe = if cfg!(windows) {
+    output_path.join("standalone_compiler_ops.exe")
+  } else {
+    output_path.join("standalone_compiler_ops")
+  };
+  assert!(&exe.exists());
+  let output = Command::new(exe)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Hello, Compiler API!\n");
+}
+
+#[test]
+fn compile_with_file_exists_error() {
+  let dir = TempDir::new().expect("tempdir fail");
+  let output_path = if cfg!(windows) {
+    dir.path().join(r"args\")
+  } else {
+    dir.path().join("args/")
+  };
+  let file_path = dir.path().join("args");
+  File::create(&file_path).expect("cannot create file");
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&output_path)
+    .arg("./028_args.ts")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let expected_stderr =
+    format!("Could not compile: {:?} is a file.\n", &file_path);
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.contains(&expected_stderr));
 }
 
 #[test]

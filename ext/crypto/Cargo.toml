@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 aes = "0.7.5"
 aes-gcm = "0.9.4"
+aes-kw = { version = "0.1", features = ["alloc"] }
 base64 = "0.13.0"
 block-modes = "0.8.1"
 ctr = "0.8.0"
