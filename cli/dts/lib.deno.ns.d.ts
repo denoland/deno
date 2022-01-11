@@ -870,7 +870,7 @@ declare namespace Deno {
    *
    * Returns the number of bytes written.  This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather use
-   * Deno.writeAllSync() instead.
+   * `writeAllSync()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -2745,6 +2745,14 @@ declare namespace Deno {
 
   export interface UpgradeWebSocketOptions {
     protocol?: string;
+    /**
+     * If the client does not respond to this frame with a
+     * `pong` within the timeout specified, the connection is deemed
+     * unhealthy and is closed. The `close` and `error` event will be emitted.
+     *
+     * The default is 120 seconds. Set to 0 to disable timeouts.
+     */
+    idleTimeout?: number;
   }
 
   /**
