@@ -136,14 +136,14 @@ pub async fn write_standalone_binary(
   let output = match target {
     Some(target) => {
       if target.contains("windows") {
-        PathBuf::from(output.display().to_string() + ".exe")
+        output.with_extension("exe")
       } else {
         output
       }
     }
     None => {
       if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
-        PathBuf::from(output.display().to_string() + ".exe")
+        output.with_extension("exe")
       } else {
         output
       }
@@ -175,7 +175,14 @@ pub async fn write_standalone_binary(
     // Remove file if it was indeed a deno compiled binary, to avoid corruption
     // (see https://github.com/denoland/deno/issues/10310)
     std::fs::remove_file(&output)?;
+  } else {
+    let output_base = &output.parent().unwrap();
+    if output_base.exists() && output_base.is_file() {
+      bail!("Could not compile: {:?} is a file.", &output_base);
+    }
+    tokio::fs::create_dir_all(output_base).await?;
   }
+
   tokio::fs::write(&output, final_bin).await?;
   #[cfg(unix)]
   {

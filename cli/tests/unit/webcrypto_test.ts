@@ -1561,3 +1561,61 @@ Deno.test(async function testSecretJwkBase64Url() {
     },
   );
 });
+
+Deno.test(async function testAESWrapKey() {
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "AES-KW",
+      length: 128,
+    },
+    true,
+    ["wrapKey", "unwrapKey"],
+  );
+
+  const hmacKey = await crypto.subtle.generateKey(
+    {
+      name: "HMAC",
+      hash: "SHA-256",
+      length: 128,
+    },
+    true,
+    ["sign"],
+  );
+
+  //round-trip
+  // wrap-unwrap-export compare
+  const wrappedKey = await crypto.subtle.wrapKey(
+    "raw",
+    hmacKey,
+    key,
+    {
+      name: "AES-KW",
+    },
+  );
+
+  assert(wrappedKey instanceof ArrayBuffer);
+  assertEquals(wrappedKey.byteLength, 16 + 8); // 8 = 'auth tag'
+
+  const unwrappedKey = await crypto.subtle.unwrapKey(
+    "raw",
+    wrappedKey,
+    key,
+    {
+      name: "AES-KW",
+    },
+    {
+      name: "HMAC",
+      hash: "SHA-256",
+    },
+    true,
+    ["sign"],
+  );
+
+  assert(unwrappedKey instanceof CryptoKey);
+  assertEquals((unwrappedKey.algorithm as HmacKeyAlgorithm).length, 128);
+
+  const hmacKeyBytes = await crypto.subtle.exportKey("raw", hmacKey);
+  const unwrappedKeyBytes = await crypto.subtle.exportKey("raw", unwrappedKey);
+
+  assertEquals(new Uint8Array(hmacKeyBytes), new Uint8Array(unwrappedKeyBytes));
+});

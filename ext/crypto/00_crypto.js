@@ -145,12 +145,10 @@
       "PBKDF2": null,
     },
     "wrapKey": {
-      // TODO(@littledivy): Enable this once implemented.
-      // "AES-KW": "AesKeyWrapParams",
+      "AES-KW": null,
     },
     "unwrapKey": {
-      // TODO(@littledivy): Enable this once implemented.
-      // "AES-KW": "AesKeyWrapParams",
+      "AES-KW": null,
     },
   };
 
@@ -1271,14 +1269,30 @@
       if (
         supportedAlgorithms["wrapKey"][normalizedAlgorithm.name] !== undefined
       ) {
-        // TODO(@littledivy): Implement this for AES-KW.
-        throw new DOMException(
-          "Not implemented",
-          "NotSupportedError",
-        );
+        const handle = wrappingKey[_handle];
+        const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
+
+        switch (normalizedAlgorithm.name) {
+          case "AES-KW": {
+            const cipherText = await core.opSync("op_crypto_wrap_key", {
+              key: keyData,
+              algorithm: normalizedAlgorithm.name,
+            }, bytes);
+
+            // 4.
+            return cipherText.buffer;
+          }
+          default: {
+            throw new DOMException(
+              "Not implemented",
+              "NotSupportedError",
+            );
+          }
+        }
       } else if (
         supportedAlgorithms["encrypt"][normalizedAlgorithm.name] !== undefined
       ) {
+        // must construct a new key, since keyUsages is ["wrapKey"] and not ["encrypt"]
         return await encrypt(
           normalizedAlgorithm,
           constructKey(
@@ -1391,14 +1405,31 @@
       if (
         supportedAlgorithms["unwrapKey"][normalizedAlgorithm.name] !== undefined
       ) {
-        // TODO(@littledivy): Implement this for AES-KW.
-        throw new DOMException(
-          "Not implemented",
-          "NotSupportedError",
-        );
+        const handle = unwrappingKey[_handle];
+        const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
+
+        switch (normalizedAlgorithm.name) {
+          case "AES-KW": {
+            const plainText = await core.opSync("op_crypto_unwrap_key", {
+              key: keyData,
+              algorithm: normalizedAlgorithm.name,
+            }, wrappedKey);
+
+            // 4.
+            key = plainText.buffer;
+            break;
+          }
+          default: {
+            throw new DOMException(
+              "Not implemented",
+              "NotSupportedError",
+            );
+          }
+        }
       } else if (
         supportedAlgorithms["decrypt"][normalizedAlgorithm.name] !== undefined
       ) {
+        // must construct a new key, since keyUsages is ["unwrapKey"] and not ["decrypt"]
         key = await this.decrypt(
           normalizedAlgorithm,
           constructKey(

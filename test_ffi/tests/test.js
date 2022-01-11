@@ -32,7 +32,11 @@ assertThrows(
 );
 
 const dylib = Deno.dlopen(libPath, {
-  "print_something": { parameters: [], result: "void" },
+  "printSomething": {
+    name: "print_something",
+    parameters: [],
+    result: "void",
+  },
   "print_buffer": { parameters: ["pointer", "usize"], result: "void" },
   "print_buffer2": {
     parameters: ["pointer", "usize", "pointer", "usize"],
@@ -49,7 +53,13 @@ const dylib = Deno.dlopen(libPath, {
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
   "fill_buffer": { parameters: ["u8", "pointer", "usize"], result: "void" },
-  "sleep_blocking": { parameters: ["u64"], result: "void", nonblocking: true },
+  "sleep_nonblocking": {
+    name: "sleep_blocking",
+    parameters: ["u64"],
+    result: "void",
+    nonblocking: true,
+  },
+  "sleep_blocking": { parameters: ["u64"], result: "void" },
   "nonblocking_buffer": {
     parameters: ["pointer", "usize"],
     result: "void",
@@ -57,7 +67,7 @@ const dylib = Deno.dlopen(libPath, {
   },
 });
 
-dylib.symbols.print_something();
+dylib.symbols.printSomething();
 const buffer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 const buffer2 = new Uint8Array([9, 10]);
 dylib.symbols.print_buffer(buffer, buffer.length);
@@ -150,8 +160,13 @@ dylib.symbols.nonblocking_buffer(buffer3, buffer3.length).then(() => {
 });
 await promise;
 
-const start = performance.now();
-dylib.symbols.sleep_blocking(100).then(() => {
+let start = performance.now();
+dylib.symbols.sleep_blocking(100);
+console.log("After sleep_blocking");
+console.log(performance.now() - start >= 100);
+
+start = performance.now();
+dylib.symbols.sleep_nonblocking(100).then(() => {
   console.log("After");
   console.log(performance.now() - start >= 100);
   // Close after task is complete.
