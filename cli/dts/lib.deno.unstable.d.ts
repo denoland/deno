@@ -120,6 +120,7 @@ declare namespace Deno {
     | "f64"
     | "pointer";
 
+  /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
     Result extends NativeType = NativeType,
