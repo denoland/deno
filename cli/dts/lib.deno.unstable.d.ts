@@ -120,15 +120,61 @@ declare namespace Deno {
     | "f64"
     | "pointer";
 
-  /** A foreign function as defined by its parameter and result types */
-  export interface ForeignFunction {
+  export interface ForeignFunction<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeType = NativeType,
+    NonBlocking extends boolean = boolean,
+  > {
     /** Name of the symbol, defaults to the key name in symbols object. */
     name?: string;
-    parameters: NativeType[];
-    result: NativeType;
+    parameters: Parameters;
+    result: Result;
     /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
-    nonblocking?: boolean;
+    nonblocking?: NonBlocking;
   }
+
+  /** A foreign function interface descriptor */
+  export interface ForeignFunctionInterface {
+    [name: string]: ForeignFunction;
+  }
+
+  /** All possible number types interfacing with foreign functions */
+  type StaticNativeNumberType = Exclude<NativeType, "void" | "pointer">;
+
+  /** Infers a foreign function return type */
+  type StaticForeignFunctionResult<T extends NativeType> = T extends "void"
+    ? void
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? UnsafePointer
+    : never;
+
+  type StaticForeignFunctionParameter<T> = T extends "void" ? void
+    : T extends StaticNativeNumberType ? number
+    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray
+    : unknown;
+
+  /** Infers a foreign function parameter list. */
+  type StaticForeignFunctionParameters<T extends readonly NativeType[]> = [
+    ...{
+      [K in keyof T]: StaticForeignFunctionParameter<T[K]>;
+    },
+  ];
+
+  /** Infers a foreign function */
+  type StaticForeignFunction<T extends ForeignFunction> = (
+    ...args: StaticForeignFunctionParameters<T["parameters"]>
+  ) => ConditionalAsync<
+    T["nonblocking"],
+    StaticForeignFunctionResult<T["result"]>
+  >;
+
+  type ConditionalAsync<IsAsync extends boolean | undefined, T> =
+    IsAsync extends true ? Promise<T> : T;
+
+  /** Infers a foreign function interface */
+  type StaticForeignFunctionInterface<T extends ForeignFunctionInterface> = {
+    [K in keyof T]: StaticForeignFunction<T[K]>;
+  };
 
   type TypedArray =
     | Int8Array
@@ -204,10 +250,9 @@ declare namespace Deno {
   }
 
   /** A dynamic library resource */
-  export interface DynamicLibrary<S extends Record<string, ForeignFunction>> {
+  export interface DynamicLibrary<S extends ForeignFunctionInterface> {
     /** All of the registered symbols along with functions for calling them */
-    symbols: { [K in keyof S]: (...args: unknown[]) => unknown };
-
+    symbols: StaticForeignFunctionInterface<S>;
     close(): void;
   }
 
@@ -215,7 +260,7 @@ declare namespace Deno {
    *
    * Opens a dynamic library and registers symbols
    */
-  export function dlopen<S extends Record<string, ForeignFunction>>(
+  export function dlopen<S extends ForeignFunctionInterface>(
     filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
