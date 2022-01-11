@@ -17,8 +17,6 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use regex::Regex;
-use serde::Deserialize;
-use serde::Serialize;
 use sourcemap::SourceMap;
 use std::fs;
 use std::fs::File;
@@ -28,52 +26,11 @@ use std::path::PathBuf;
 use text_lines::TextLines;
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct CoverageRange {
-  /// Start byte index.
-  start_offset: usize,
-  /// End byte index.
-  end_offset: usize,
-  count: usize,
-}
+mod json_types;
+mod merge;
+mod range_tree;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct FunctionCoverage {
-  function_name: String,
-  ranges: Vec<CoverageRange>,
-  is_block_coverage: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct ScriptCoverage {
-  script_id: String,
-  url: String,
-  functions: Vec<FunctionCoverage>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StartPreciseCoverageParameters {
-  call_count: bool,
-  detailed: bool,
-  allow_triggered_updates: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StartPreciseCoverageReturnObject {
-  timestamp: f64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TakePreciseCoverageReturnObject {
-  result: Vec<ScriptCoverage>,
-  timestamp: f64,
-}
+use json_types::*;
 
 pub struct CoverageCollector {
   pub dir: PathBuf,
