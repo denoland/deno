@@ -10,7 +10,7 @@ pub struct CoverageRange {
   pub start_offset: usize,
   /// End byte index.
   pub end_offset: usize,
-  pub count: usize,
+  pub count: i64,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
@@ -50,6 +50,7 @@ pub struct TakePreciseCoverageReturnObject {
   pub timestamp: f64,
 }
 
+// TODO(bartlomieju): remove me
 #[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessCoverage {

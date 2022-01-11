@@ -132,21 +132,21 @@ struct BranchCoverageItem {
   line_index: usize,
   block_number: usize,
   branch_number: usize,
-  taken: Option<usize>,
+  taken: Option<i64>,
   is_hit: bool,
 }
 
 struct FunctionCoverageItem {
   name: String,
   line_index: usize,
-  execution_count: usize,
+  execution_count: i64,
 }
 
 struct CoverageReport {
   url: ModuleSpecifier,
   named_functions: Vec<FunctionCoverageItem>,
   branches: Vec<BranchCoverageItem>,
-  found_lines: Vec<(usize, usize)>,
+  found_lines: Vec<(usize, i64)>,
 }
 
 fn generate_coverage_report(
@@ -310,7 +310,7 @@ fn generate_coverage_report(
           results.into_iter()
         })
         .flatten()
-        .collect::<Vec<(usize, usize)>>();
+        .collect::<Vec<(usize, i64)>>();
 
       found_lines.sort_unstable_by_key(|(index, _)| *index);
       // combine duplicated lines
@@ -326,7 +326,7 @@ fn generate_coverage_report(
         .into_iter()
         .enumerate()
         .map(|(index, count)| (index, count))
-        .collect::<Vec<(usize, usize)>>()
+        .collect::<Vec<(usize, i64)>>()
     };
 
   coverage_report
@@ -510,38 +510,7 @@ fn collect_coverages(
   for file_path in file_paths {
     let json = fs::read_to_string(file_path.as_path())?;
     let new_coverage: ScriptCoverage = serde_json::from_str(&json)?;
-
-    let existing_coverage =
-      coverages.iter_mut().find(|x| x.url == new_coverage.url);
-
-    if let Some(existing_coverage) = existing_coverage {
-      for new_function in new_coverage.functions {
-        let existing_function = existing_coverage
-          .functions
-          .iter_mut()
-          .find(|x| x.function_name == new_function.function_name);
-
-        if let Some(existing_function) = existing_function {
-          for new_range in new_function.ranges {
-            let existing_range =
-              existing_function.ranges.iter_mut().find(|x| {
-                x.start_offset == new_range.start_offset
-                  && x.end_offset == new_range.end_offset
-              });
-
-            if let Some(existing_range) = existing_range {
-              existing_range.count += new_range.count;
-            } else {
-              existing_function.ranges.push(new_range);
-            }
-          }
-        } else {
-          existing_coverage.functions.push(new_function);
-        }
-      }
-    } else {
-      coverages.push(new_coverage);
-    }
+    coverages.push(new_coverage);
   }
 
   coverages.sort_by_key(|k| k.url.clone());
@@ -588,6 +557,18 @@ pub async fn cover_files(
     coverage_flags.include,
     coverage_flags.exclude,
   );
+
+  let proc_coverages: Vec<_> = script_coverages
+    .into_iter()
+    .map(|cov| ProcessCoverage { result: vec![cov] })
+    .collect();
+
+  let script_coverages = if let Some(c) = merge::merge_processes(proc_coverages)
+  {
+    c.result
+  } else {
+    vec![]
+  };
 
   let reporter_kind = if coverage_flags.lcov {
     CoverageReporterKind::Lcov

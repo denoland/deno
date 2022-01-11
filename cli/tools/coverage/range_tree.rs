@@ -1,5 +1,6 @@
 // Forked from https://github.com/demurgos/v8-coverage/tree/d0ca18da8740198681e0bc68971b0a6cdb11db3e/rust
 // Copyright 2021 Charles Samborski. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::json_types::CoverageRange;
 use std::iter::Peekable;
@@ -8,6 +9,7 @@ use typed_arena::Arena;
 pub struct RangeTreeArena<'a>(Arena<RangeTree<'a>>);
 
 impl<'a> RangeTreeArena<'a> {
+  #[cfg(test)]
   pub fn new() -> Self {
     RangeTreeArena(Arena::new())
   }
@@ -16,6 +18,7 @@ impl<'a> RangeTreeArena<'a> {
     RangeTreeArena(Arena::with_capacity(n))
   }
 
+  #[allow(clippy::mut_from_ref)]
   pub fn alloc(&'a self, value: RangeTree<'a>) -> &'a mut RangeTree<'a> {
     self.0.alloc(value)
   }
@@ -25,7 +28,7 @@ impl<'a> RangeTreeArena<'a> {
 pub struct RangeTree<'a> {
   pub start: usize,
   pub end: usize,
-  pub delta: usize,
+  pub delta: i64,
   pub children: Vec<&'a mut RangeTree<'a>>,
 }
 
@@ -33,7 +36,7 @@ impl<'rt> RangeTree<'rt> {
   pub fn new<'a>(
     start: usize,
     end: usize,
-    delta: usize,
+    delta: i64,
     children: Vec<&'a mut RangeTree<'a>>,
   ) -> RangeTree<'a> {
     RangeTree {
@@ -125,15 +128,11 @@ impl<'rt> RangeTree<'rt> {
     tree
   }
 
-  pub fn add_count(&mut self, value: usize) -> () {
-    self.delta += value;
-  }
-
   pub fn to_ranges(&self) -> Vec<CoverageRange> {
     let mut ranges: Vec<CoverageRange> = Vec::new();
-    let mut stack: Vec<(&RangeTree, usize)> = vec![(self, 0)];
-    while let Some((ref cur, parent_count)) = stack.pop() {
-      let count = parent_count + cur.delta;
+    let mut stack: Vec<(&RangeTree, i64)> = vec![(self, 0)];
+    while let Some((cur, parent_count)) = stack.pop() {
+      let count: i64 = parent_count + cur.delta;
       ranges.push(CoverageRange {
         start_offset: cur.start,
         end_offset: cur.end,
@@ -162,11 +161,11 @@ impl<'rt> RangeTree<'rt> {
     rta: &'a RangeTreeArena<'a>,
     ranges: &'b mut Peekable<impl Iterator<Item = &'c CoverageRange>>,
     parent_end: usize,
-    parent_count: usize,
+    parent_count: i64,
   ) -> Option<&'a mut RangeTree<'a>> {
     let has_range: bool = match ranges.peek() {
       None => false,
-      Some(ref range) => range.start_offset < parent_end,
+      Some(range) => range.start_offset < parent_end,
     };
     if !has_range {
       return None;
@@ -174,8 +173,8 @@ impl<'rt> RangeTree<'rt> {
     let range = ranges.next().unwrap();
     let start: usize = range.start_offset;
     let end: usize = range.end_offset;
-    let count = range.count;
-    let delta = count - parent_count;
+    let count: i64 = range.count;
+    let delta: i64 = count - parent_count;
     let mut children: Vec<&mut RangeTree> = Vec::new();
     while let Some(child) =
       Self::from_sorted_ranges_inner(rta, ranges, end, count)
@@ -188,9 +187,7 @@ impl<'rt> RangeTree<'rt> {
 
 #[cfg(test)]
 mod tests {
-  use super::RangeTree;
-  use super::RangeTreeArena;
-  use crate::coverage::CoverageRange;
+  use super::*;
 
   #[test]
   fn from_sorted_ranges_empty() {

@@ -25,19 +25,15 @@ pub fn merge_processes(
     for script_cov in process_cov.result {
       url_to_scripts
         .entry(script_cov.url.clone())
-        .or_insert(Vec::new())
+        .or_insert_with(Vec::new)
         .push(script_cov);
     }
   }
 
-  let result: Vec<(usize, Vec<ScriptCoverage>)> = url_to_scripts
+  let result: Vec<ScriptCoverage> = url_to_scripts
     .into_iter()
     .enumerate()
     .map(|(script_id, (_, scripts))| (script_id, scripts))
-    .collect();
-
-  let result: Vec<ScriptCoverage> = result
-    .into_iter()
     .map(|(script_id, scripts)| {
       let mut merged: ScriptCoverage = merge_scripts(scripts.to_vec()).unwrap();
       merged.script_id = script_id.to_string();
@@ -71,7 +67,7 @@ pub fn merge_scripts(
       };
       range_to_funcs
         .entry(root_range)
-        .or_insert(Vec::new())
+        .or_insert_with(Vec::new)
         .push(func_cov);
     }
   }
@@ -153,7 +149,7 @@ fn merge_range_trees<'a>(
     let first = &trees[0];
     (first.start, first.end)
   };
-  let delta: usize = trees.iter().fold(0, |acc, tree| acc + tree.delta);
+  let delta: i64 = trees.iter().fold(0, |acc, tree| acc + tree.delta);
   let children = merge_range_tree_children(rta, trees);
 
   Some(rta.alloc(RangeTree::new(start, end, delta, children)))
@@ -171,7 +167,7 @@ fn into_start_events<'a>(trees: Vec<&'a mut RangeTree<'a>>) -> Vec<StartEvent> {
     for child in tree.children.drain(..) {
       result
         .entry(child.start)
-        .or_insert(Vec::new())
+        .or_insert_with(Vec::new)
         .push((parent_index, child));
     }
   }
@@ -194,7 +190,7 @@ impl<'a> StartEventQueue<'a> {
     }
   }
 
-  pub(crate) fn set_pending_offset(&mut self, offset: usize) -> () {
+  pub(crate) fn set_pending_offset(&mut self, offset: usize) {
     self.pending = Some(StartEvent {
       offset,
       trees: Vec::new(),
@@ -204,7 +200,7 @@ impl<'a> StartEventQueue<'a> {
   pub(crate) fn push_pending_tree(
     &mut self,
     tree: (usize, &'a mut RangeTree<'a>),
-  ) -> () {
+  ) {
     self.pending = self.pending.take().map(|mut start_event| {
       start_event.trees.push(tree);
       start_event
@@ -258,7 +254,7 @@ fn merge_range_tree_children<'a>(
     Vec::with_capacity(parent_trees.len());
   let mut open_range: Option<Range> = None;
 
-  for parent_tree in parent_trees.iter() {
+  for _parent_tree in parent_trees.iter() {
     flat_children.push(Vec::new());
     wrapped_children.push(Vec::new());
   }
@@ -291,7 +287,7 @@ fn merge_range_tree_children<'a>(
 
     match open_range {
       Some(open_range) => {
-        for (parent_index, mut tree) in event.trees {
+        for (parent_index, tree) in event.trees {
           let child = if tree.end > open_range.end {
             let (left, right) = RangeTree::split(rta, tree, open_range.end);
             start_event_queue.push_pending_tree((parent_index, right));
@@ -301,7 +297,7 @@ fn merge_range_tree_children<'a>(
           };
           parent_to_nested
             .entry(parent_index)
-            .or_insert(Vec::new())
+            .or_insert_with(Vec::new)
             .push(child);
         }
       }
@@ -321,7 +317,7 @@ fn merge_range_tree_children<'a>(
           }
           parent_to_nested
             .entry(parent_index)
-            .or_insert(Vec::new())
+            .or_insert_with(Vec::new)
             .push(tree);
         }
         start_event_queue.set_pending_offset(open_range_end);
@@ -361,7 +357,7 @@ fn merge_range_tree_children<'a>(
   let mut result: Vec<&'a mut RangeTree<'a>> = Vec::new();
   for event in events.iter() {
     let mut matching_trees: Vec<&'a mut RangeTree<'a>> = Vec::new();
-    for (parent_index, children) in child_forests.iter_mut().enumerate() {
+    for (_parent_index, children) in child_forests.iter_mut().enumerate() {
       let next_tree: Option<&'a mut RangeTree<'a>> = {
         if children.peek().map_or(false, |tree| tree.start == *event) {
           children.next()
@@ -373,7 +369,7 @@ fn merge_range_tree_children<'a>(
         matching_trees.push(next_tree);
       }
     }
-    if let Some(mut merged) = merge_range_trees(rta, matching_trees) {
+    if let Some(merged) = merge_range_trees(rta, matching_trees) {
       result.push(merged);
     }
   }
@@ -382,7 +378,7 @@ fn merge_range_tree_children<'a>(
 }
 
 fn get_child_events_from_forests<'a>(
-  forests: &Vec<Vec<&'a mut RangeTree<'a>>>,
+  forests: &[Vec<&'a mut RangeTree<'a>>],
 ) -> BTreeSet<usize> {
   let mut event_set: BTreeSet<usize> = BTreeSet::new();
   for forest in forests {
@@ -437,11 +433,8 @@ fn merge_children_lists<'a>(
 
 #[cfg(test)]
 mod tests {
-  use super::merge_processes;
-  use crate::coverage::{
-    CoverageRange, FunctionCoverage, ProcessCoverage, ScriptCoverage,
-  };
-  use test_generator::test_resources;
+  use super::*;
+  //   use test_generator::test_resources;
 
   #[test]
   fn empty() {
@@ -843,55 +836,5 @@ mod tests {
     });
 
     assert_eq!(merge_processes(inputs), expected);
-  }
-
-  fn is_test_blacklisted(test_name: &str) -> bool {
-    match test_name {
-      "is-block-coverage" => true,
-      "issue-2-mixed-is-block-coverage" => true,
-      "node-10.11.0" => true,
-      "npm-6.4.1" => true,
-      "yargs-12.0.2" => true,
-      _ => false,
-    }
-  }
-
-  #[test_resources("./tests/merge/*/")]
-  fn test_merge(path: &str) -> () {
-    use std::path::{Path, PathBuf};
-    let path: PathBuf = Path::join(Path::new(".."), path);
-    let name = path
-      .components()
-      .last()
-      .unwrap()
-      .as_os_str()
-      .to_str()
-      .expect("Failed to retrieve test name");
-
-    if is_test_blacklisted(&name) {
-      eprintln!("Skipping blacklisted test");
-      return;
-    }
-
-    let test_path = path.join("test.json");
-
-    let test_json =
-      ::std::fs::read_to_string(test_path).expect("Failed to read test file");
-
-    let test: Vec<MergeTestItem> =
-      serde_json::from_str(&test_json).expect("Failed to read test");
-
-    for item in test {
-      assert_eq!(merge_processes(item.inputs).unwrap(), item.expected);
-    }
-  }
-
-  use serde::{Deserialize, Serialize};
-
-  #[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  pub struct MergeTestItem {
-    pub inputs: Vec<ProcessCoverage>,
-    pub expected: ProcessCoverage,
   }
 }
