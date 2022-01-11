@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
@@ -376,6 +376,7 @@ pub enum SendValue {
   Text(String),
   Binary(ZeroCopyBuf),
   Pong,
+  Ping,
 }
 
 pub async fn op_ws_send(
@@ -387,6 +388,7 @@ pub async fn op_ws_send(
     SendValue::Text(text) => Message::Text(text),
     SendValue::Binary(buf) => Message::Binary(buf.to_vec()),
     SendValue::Pong => Message::Pong(vec![]),
+    SendValue::Ping => Message::Ping(vec![]),
   };
 
   let resource = state

@@ -78,13 +78,17 @@ impl Resource for DynamicLibraryResource {
 impl DynamicLibraryResource {
   fn register(
     &mut self,
-    symbol: String,
+    name: String,
     foreign_fn: ForeignFunction,
   ) -> Result<(), AnyError> {
+    let symbol = match &foreign_fn.name {
+      Some(symbol) => symbol,
+      None => &name,
+    };
     // By default, Err returned by this function does not tell
     // which symbol wasn't exported. So we'll modify the error
     // message to include the name of symbol.
-    let fn_ptr = match unsafe { self.lib.symbol::<*const c_void>(&symbol) } {
+    let fn_ptr = match unsafe { self.lib.symbol::<*const c_void>(symbol) } {
       Ok(value) => Ok(value),
       Err(err) => Err(generic_error(format!(
         "Failed to register symbol {}: {}",
@@ -103,7 +107,7 @@ impl DynamicLibraryResource {
     );
 
     self.symbols.insert(
-      symbol,
+      name,
       Symbol {
         cif,
         ptr,
@@ -337,6 +341,7 @@ impl From<U32x2> for u64 {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct ForeignFunction {
+  name: Option<String>,
   parameters: Vec<NativeType>,
   result: NativeType,
 }

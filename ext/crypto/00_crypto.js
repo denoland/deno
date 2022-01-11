@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -12,6 +12,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
+  const { TextEncoder, TextDecoder } = window.__bootstrap.encoding;
 
   const {
     ArrayBuffer,
@@ -23,6 +24,8 @@
     Int16Array,
     Int32Array,
     Int8Array,
+    JSONParse,
+    JSONStringify,
     ObjectAssign,
     StringPrototypeToLowerCase,
     StringPrototypeToUpperCase,
@@ -142,12 +145,10 @@
       "PBKDF2": null,
     },
     "wrapKey": {
-      // TODO(@littledivy): Enable this once implemented.
-      // "AES-KW": "AesKeyWrapParams",
+      "AES-KW": null,
     },
     "unwrapKey": {
-      // TODO(@littledivy): Enable this once implemented.
-      // "AES-KW": "AesKeyWrapParams",
+      "AES-KW": null,
     },
   };
 
@@ -1263,26 +1264,50 @@
       if (format !== "jwk") {
         bytes = new Uint8Array(exportedKey);
       } else {
-        // TODO(@littledivy): Implement JWK.
-        throw new DOMException(
-          "Not implemented",
-          "NotSupportedError",
-        );
+        const jwk = JSONStringify(exportedKey);
+
+        bytes = new TextEncoder("utf-8").encode(jwk);
       }
 
       // 14-15.
       if (
         supportedAlgorithms["wrapKey"][normalizedAlgorithm.name] !== undefined
       ) {
-        // TODO(@littledivy): Implement this for AES-KW.
-        throw new DOMException(
-          "Not implemented",
-          "NotSupportedError",
-        );
+        const handle = wrappingKey[_handle];
+        const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
+
+        switch (normalizedAlgorithm.name) {
+          case "AES-KW": {
+            const cipherText = await core.opSync("op_crypto_wrap_key", {
+              key: keyData,
+              algorithm: normalizedAlgorithm.name,
+            }, bytes);
+
+            // 4.
+            return cipherText.buffer;
+          }
+          default: {
+            throw new DOMException(
+              "Not implemented",
+              "NotSupportedError",
+            );
+          }
+        }
       } else if (
         supportedAlgorithms["encrypt"][normalizedAlgorithm.name] !== undefined
       ) {
-        return await encrypt(normalizedAlgorithm, wrappingKey, bytes);
+        // must construct a new key, since keyUsages is ["wrapKey"] and not ["encrypt"]
+        return await encrypt(
+          normalizedAlgorithm,
+          constructKey(
+            wrappingKey[_type],
+            wrappingKey[_extractable],
+            ["encrypt"],
+            wrappingKey[_algorithm],
+            wrappingKey[_handle],
+          ),
+          bytes,
+        );
       } else {
         throw new DOMException(
           "Algorithm not supported",
@@ -1384,17 +1409,40 @@
       if (
         supportedAlgorithms["unwrapKey"][normalizedAlgorithm.name] !== undefined
       ) {
-        // TODO(@littledivy): Implement this for AES-KW.
-        throw new DOMException(
-          "Not implemented",
-          "NotSupportedError",
-        );
+        const handle = unwrappingKey[_handle];
+        const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
+
+        switch (normalizedAlgorithm.name) {
+          case "AES-KW": {
+            const plainText = await core.opSync("op_crypto_unwrap_key", {
+              key: keyData,
+              algorithm: normalizedAlgorithm.name,
+            }, wrappedKey);
+
+            // 4.
+            key = plainText.buffer;
+            break;
+          }
+          default: {
+            throw new DOMException(
+              "Not implemented",
+              "NotSupportedError",
+            );
+          }
+        }
       } else if (
         supportedAlgorithms["decrypt"][normalizedAlgorithm.name] !== undefined
       ) {
+        // must construct a new key, since keyUsages is ["unwrapKey"] and not ["decrypt"]
         key = await this.decrypt(
           normalizedAlgorithm,
-          unwrappingKey,
+          constructKey(
+            unwrappingKey[_type],
+            unwrappingKey[_extractable],
+            ["decrypt"],
+            unwrappingKey[_algorithm],
+            unwrappingKey[_handle],
+          ),
           wrappedKey,
         );
       } else {
@@ -1404,14 +1452,14 @@
         );
       }
 
+      let bytes;
       // 14.
-      const bytes = key;
-      if (format == "jwk") {
-        // TODO(@littledivy): Implement JWK.
-        throw new DOMException(
-          "Not implemented",
-          "NotSupportedError",
-        );
+      if (format !== "jwk") {
+        bytes = key;
+      } else {
+        const utf8 = new TextDecoder("utf-8").decode(key);
+
+        bytes = JSONParse(utf8);
       }
 
       // 15.

@@ -76,6 +76,7 @@ export async function runSingleTest(
   url: URL,
   _options: ManifestTestOptions,
   reporter: (result: TestCaseResult) => void,
+  inspectBrk: boolean,
 ): Promise<TestResult> {
   const bundle = await generateBundle(url);
   const tempFile = await Deno.makeTempFile({
@@ -88,20 +89,32 @@ export async function runSingleTest(
 
     const startTime = new Date().getTime();
 
+    const cmd = [
+      denoBinary(),
+      "run",
+    ];
+
+    cmd.push(
+      "-A",
+      "--unstable",
+    );
+
+    if (inspectBrk) {
+      cmd.push("--inspect-brk");
+    }
+
+    cmd.push(
+      "--enable-testing-features-do-not-use",
+      "--location",
+      url.toString(),
+      "--cert",
+      join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`),
+      tempFile,
+      "[]",
+    );
+
     const proc = Deno.run({
-      cmd: [
-        denoBinary(),
-        "run",
-        "-A",
-        "--unstable",
-        "--enable-testing-features-do-not-use",
-        "--location",
-        url.toString(),
-        "--cert",
-        join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`),
-        tempFile,
-        "[]",
-      ],
+      cmd,
       env: {
         NO_COLOR: "1",
       },
