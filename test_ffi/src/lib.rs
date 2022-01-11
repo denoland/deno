@@ -2,6 +2,7 @@
 
 use std::thread::sleep;
 use std::time::Duration;
+use std::os::raw::c_void;
 
 static BUFFER: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -100,4 +101,14 @@ pub extern "C" fn fill_buffer(value: u8, buf: *mut u8, len: usize) {
 pub extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) {
   let buf = unsafe { std::slice::from_raw_parts(ptr, len) };
   assert_eq!(buf, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+}
+
+#[no_mangle]
+pub extern "C" fn get_add_u32_ptr() -> *const c_void {
+  add_u32 as *const c_void
+}
+
+#[no_mangle]
+pub extern "C" fn get_sleep_blocking_ptr() -> *const c_void {
+  sleep_blocking as *const c_void
 }

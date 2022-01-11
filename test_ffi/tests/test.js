@@ -65,6 +65,14 @@ const dylib = Deno.dlopen(libPath, {
     result: "void",
     nonblocking: true,
   },
+  "get_add_u32_ptr": {
+    parameters: [],
+    result: "pointer",
+  },
+  "get_sleep_blocking_ptr": {
+    parameters: [],
+    result: "pointer",
+  },
 });
 
 dylib.symbols.printSomething();
@@ -97,6 +105,24 @@ console.log(stringPtrview.getCString(11));
 console.log(Boolean(dylib.symbols.is_null_ptr(ptr)));
 console.log(Boolean(dylib.symbols.is_null_ptr(null)));
 console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
+
+const addU32Ptr = dylib.symbols.get_add_u32_ptr();
+const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
+  parameters: ["u32", "u32"],
+  result: "u32",
+});
+console.log(addU32.call(123, 456));
+
+const sleepBlockingPtr = dylib.symbols.get_sleep_blocking_ptr();
+const sleepNonBlocking = new Deno.UnsafeFnPointer(sleepBlockingPtr, {
+  nonblocking: true,
+  parameters: ["u64"],
+  result: "void",
+});
+const before = performance.now();
+await sleepNonBlocking.call(100);
+console.log(performance.now() - before >= 100);
+
 console.log(dylib.symbols.add_u32(123, 456));
 assertThrows(
   () => {
