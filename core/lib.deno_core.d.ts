@@ -104,7 +104,7 @@ declare namespace Deno {
     ): void;
 
     /** Check if there's a scheduled "next tick". */
-    function hasNextTickScheduled(): boolean;
+    function hasNextTickScheduled(): bool;
 
     /** Set a value telling the runtime if there are "next ticks" scheduled */
     function setHasNextTickScheduled(value: boolean): void;
