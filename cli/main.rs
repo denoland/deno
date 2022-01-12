@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 mod ast;
 mod auth_tokens;
@@ -378,7 +378,14 @@ async fn compile_command(
   let ps = ProcState::build(flags.clone()).await?;
   let deno_dir = &ps.dir;
 
-  let output = compile_flags.output.or_else(|| {
+  let output = compile_flags.output.and_then(|output| {
+    if fs_util::path_has_trailing_slash(&output) {
+      let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
+      Some(output.join(infer_file_name))
+    } else {
+      Some(output)
+    }
+  }).or_else(|| {
     infer_name_from_url(&module_specifier).map(PathBuf::from)
   }).ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
@@ -903,6 +910,8 @@ async fn repl_command(
   if flags.compat {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
     compat::add_global_require(&mut worker.js_runtime, main_module.as_str())?;
+    worker.run_event_loop(false).await?;
+    compat::setup_builtin_modules(&mut worker.js_runtime)?;
   }
   worker.run_event_loop(false).await?;
 
@@ -1175,6 +1184,7 @@ async fn run_command(
       compat::load_cjs_module(
         &mut worker.js_runtime,
         &main_module.to_file_path().unwrap().display().to_string(),
+        true,
       )?;
     }
   } else {

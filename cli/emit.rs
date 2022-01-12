@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 //! The collection of APIs to be able to take `deno_graph` module graphs and
 //! populate a cache, emit files, and transform a graph into the structures for

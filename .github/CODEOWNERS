@@ -15,16 +15,17 @@ cli/schemas/    @kitsonk
 cli/tsc/        @kitsonk
 core/           @bartlomieju @bnoordhuis
 docs/           @ry
-ext/            @bartlomieju @crowlKats @lucacasonato
+ext/            @bartlomieju @crowlKats @lucacasonato @littledivy
 ext/tls/        @bnoordhuis @piscisaureus
 ext/console/    @kt3k
-ext/crypto/     @bnoordhuis @lucacasonato
+ext/crypto/     @bnoordhuis @lucacasonato @littledivy
 ext/web/        @crowlKats @lucacasonato
 ext/webidl/     @lucacasonato
 ext/webgpu/     @crowlKats @lucacasonato
+ext/ffi/        @littledivy @piscisaureus
 runtime/        @bartlomieju
 serde_v8/       @AaronO
-test_ffi/       @bartlomieju
+test_ffi/       @bartlomieju @littledivy
 test_util/      @bartlomieju
 test_util/wpt/  @lucacasonato
 test_util/      @bartlomieju
