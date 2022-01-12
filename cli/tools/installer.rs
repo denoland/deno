@@ -290,6 +290,10 @@ pub fn install(
     executable_args.push("--cached-only".to_string());
   }
 
+  if flags.prompt {
+    executable_args.push("--prompt".to_string());
+  }
+
   if !flags.v8_flags.is_empty() {
     executable_args.push(format!("--v8-flags={}", flags.v8_flags.join(",")));
   }
