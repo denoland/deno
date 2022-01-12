@@ -285,6 +285,7 @@ async fn op_emit(
       emit::BundleOptions {
         bundle_type: bundle.into(),
         ts_config,
+        emit_ignore_directives: true,
       },
     )?;
     let mut files = HashMap::new();

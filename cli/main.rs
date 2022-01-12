@@ -732,6 +732,7 @@ fn bundle_module_graph(
     emit::BundleOptions {
       bundle_type: emit::BundleType::Module,
       ts_config,
+      emit_ignore_directives: true,
     },
   )
 }
