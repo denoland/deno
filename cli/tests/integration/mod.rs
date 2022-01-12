@@ -1095,7 +1095,10 @@ fn typecheck_core() {
     test_file,
     format!(
       "import \"{}\";",
-      util::root_path().join("core/lib.deno_core.d.ts").to_str().unwrap()
+      util::root_path()
+        .join("core/lib.deno_core.d.ts")
+        .to_str()
+        .unwrap()
     ),
   )
   .unwrap();
