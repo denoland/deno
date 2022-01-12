@@ -1088,20 +1088,20 @@ fn typecheck_declarations_unstable() {
 }
 
 #[test]
-fn typecheck_declarations_unstable() {
+fn typecheck_core() {
   let deno_dir = TempDir::new().expect("tempdir fail");
   let test_file = deno_dir.path().join("test_deno_core_types.ts");
   std::fs::write(
     test_file,
     format!(
       "import \"{}\";",
-      util::root_path().join("core/lib.deno_core.d.ts")
+      util::root_path().join("core/lib.deno_core.d.ts").to_str()
     ),
   )
   .unwrap();
   let output = util::deno_cmd_with_deno_dir(deno_dir.path())
     .arg("run")
-    .arg(test_file.as_str())
+    .arg(test_file.to_str())
     .output()
     .unwrap();
   println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
