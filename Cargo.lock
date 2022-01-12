@@ -765,6 +765,7 @@ dependencies = [
  "tokio",
  "trust-dns-client",
  "trust-dns-server",
+ "typed-arena",
  "uuid",
  "walkdir",
  "winapi 0.3.9",
