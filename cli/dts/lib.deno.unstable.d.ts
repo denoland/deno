@@ -250,6 +250,26 @@ declare namespace Deno {
     copyInto(destination: TypedArray, offset?: number): void;
   }
 
+  /**
+   * **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * An unsafe pointer to a function, for calling functions that are not
+   * present as symbols.
+   */
+  export class UnsafeFnPointer<Fn extends ForeignFunction> {
+    pointer: UnsafePointer;
+    definition: Fn;
+
+    constructor(pointer: UnsafePointer, definition: Fn);
+
+    call(
+      ...args: StaticForeignFunctionParameters<Fn["parameters"]>
+    ): ConditionalAsync<
+      Fn["nonblocking"],
+      StaticForeignFunctionResult<Fn["result"]>
+    >;
+  }
+
   /** A dynamic library resource */
   export interface DynamicLibrary<S extends ForeignFunctionInterface> {
     /** All of the registered symbols along with functions for calling them */
