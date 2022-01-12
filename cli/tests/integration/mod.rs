@@ -1095,13 +1095,13 @@ fn typecheck_core() {
     test_file,
     format!(
       "import \"{}\";",
-      util::root_path().join("core/lib.deno_core.d.ts").to_str()
+      util::root_path().join("core/lib.deno_core.d.ts").to_str().unwrap()
     ),
   )
   .unwrap();
   let output = util::deno_cmd_with_deno_dir(deno_dir.path())
     .arg("run")
-    .arg(test_file.to_str())
+    .arg(test_file.to_str().unwrap())
     .output()
     .unwrap();
   println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
