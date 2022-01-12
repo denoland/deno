@@ -689,7 +689,7 @@ mod tests {
           })
         })
         .map_err(|err| err.into());
-      Box::pin(future::ready((specifier.clone(), response)))
+      Box::pin(future::ready(response))
     }
   }
 
@@ -708,6 +708,7 @@ mod tests {
       false,
       None,
       &mut loader,
+      None,
       None,
       None,
       None,
@@ -734,6 +735,7 @@ mod tests {
       false,
       None,
       &mut loader,
+      None,
       None,
       None,
       None,

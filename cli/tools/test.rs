@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast::Location;
 use crate::cache;
 use crate::cache::CacherLoader;
 use crate::colors;
@@ -535,9 +534,10 @@ async fn test_specifier(
 }
 
 fn extract_files_from_regex_blocks(
-  location: &Location,
+  specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
+  file_line_index: usize,
   blocks_regex: &Regex,
   lines_regex: &Regex,
 ) -> Result<Vec<File>, AnyError> {
@@ -594,9 +594,9 @@ fn extract_files_from_regex_blocks(
 
       let file_specifier = deno_core::resolve_url_or_path(&format!(
         "{}${}-{}{}",
-        location.specifier,
-        location.line + line_offset,
-        location.line + line_offset + line_count,
+        specifier,
+        file_line_index + line_offset + 1,
+        file_line_index + line_offset + line_count + 1,
         file_media_type.as_ts_extension(),
       ))
       .unwrap();
@@ -642,12 +642,11 @@ fn extract_files_from_source_comments(
       true
     })
     .flat_map(|comment| {
-      let location = Location::from_pos(&parsed_source, comment.span.lo);
-
       extract_files_from_regex_blocks(
-        &location,
+        specifier,
         &comment.text,
         media_type,
+        parsed_source.source().line_index(comment.span.lo),
         &blocks_regex,
         &lines_regex,
       )
@@ -663,19 +662,14 @@ fn extract_files_from_fenced_blocks(
   source: &str,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
-  let location = Location {
-    specifier: specifier.to_string(),
-    line: 1,
-    col: 0,
-  };
-
   let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
-    &location,
+    specifier,
     source,
     media_type,
+    /* file line index */ 0,
     &blocks_regex,
     &lines_regex,
   )
@@ -1149,6 +1143,7 @@ pub async fn run_tests_with_watch(
         cache.as_mut_loader(),
         maybe_resolver,
         maybe_locker,
+        None,
         None,
       )
       .await;

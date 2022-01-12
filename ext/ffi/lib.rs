@@ -130,6 +130,11 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       ("op_ffi_load", op_sync(op_ffi_load::<P>)),
       ("op_ffi_call", op_sync(op_ffi_call)),
       ("op_ffi_call_nonblocking", op_async(op_ffi_call_nonblocking)),
+      ("op_ffi_call_ptr", op_sync(op_ffi_call_ptr)),
+      (
+        "op_ffi_call_ptr_nonblocking",
+        op_async(op_ffi_call_ptr_nonblocking),
+      ),
       ("op_ffi_ptr_of", op_sync(op_ffi_ptr_of::<P>)),
       ("op_ffi_buf_copy_into", op_sync(op_ffi_buf_copy_into::<P>)),
       ("op_ffi_cstr_read", op_sync(op_ffi_cstr_read::<P>)),
@@ -323,7 +328,7 @@ fn value_as_f64(value: Value) -> Result<f64, AnyError> {
   }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 struct U32x2(u32, u32);
 
 impl From<u64> for U32x2 {
@@ -469,6 +474,49 @@ struct FfiCallArgs {
   buffers: Vec<Option<ZeroCopyBuf>>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FfiCallPtrArgs {
+  pointer: U32x2,
+  def: ForeignFunction,
+  parameters: Vec<Value>,
+  buffers: Vec<Option<ZeroCopyBuf>>,
+}
+
+impl From<FfiCallPtrArgs> for FfiCallArgs {
+  fn from(args: FfiCallPtrArgs) -> Self {
+    FfiCallArgs {
+      rid: 0,
+      symbol: String::new(),
+      parameters: args.parameters,
+      buffers: args.buffers,
+    }
+  }
+}
+
+impl FfiCallPtrArgs {
+  fn get_symbol(&self) -> Symbol {
+    let fn_ptr: u64 = self.pointer.into();
+    let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
+    let cif = libffi::middle::Cif::new(
+      self
+        .def
+        .parameters
+        .clone()
+        .into_iter()
+        .map(libffi::middle::Type::from),
+      self.def.result.into(),
+    );
+
+    Symbol {
+      cif,
+      ptr,
+      parameter_types: self.def.parameters.clone(),
+      result_type: self.def.result,
+    }
+  }
+}
+
 fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
   let buffers: Vec<Option<&[u8]>> = args
     .buffers
@@ -561,6 +609,26 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol) -> Result<Value, AnyError> {
       } as u64))
     }
   })
+}
+
+fn op_ffi_call_ptr(
+  _state: &mut deno_core::OpState,
+  args: FfiCallPtrArgs,
+  _: (),
+) -> Result<Value, AnyError> {
+  let symbol = args.get_symbol();
+  ffi_call(args.into(), &symbol)
+}
+
+async fn op_ffi_call_ptr_nonblocking(
+  _state: Rc<RefCell<deno_core::OpState>>,
+  args: FfiCallPtrArgs,
+  _: (),
+) -> Result<Value, AnyError> {
+  let symbol = args.get_symbol();
+  tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol))
+    .await
+    .unwrap()
 }
 
 fn op_ffi_call(

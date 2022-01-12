@@ -56,6 +56,8 @@ fn basic() {
     true\n\
     false\n\
     579\n\
+    true\n\
+    579\n\
     579\n\
     579\n\
     579\n\
