@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 use deno_core::url;
@@ -732,6 +732,39 @@ fn websocket_server_multi_field_connection_header() {
     deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
       .is_ok()
   );
+  assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn websocket_server_idletimeout() {
+  let script = util::testdata_path().join("websocket_server_idletimeout.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let mut child = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
+
+  let req = http::request::Builder::new()
+    .uri("ws://localhost:4502")
+    .body(())
+    .unwrap();
+  let (_ws, _request) =
+    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+      .unwrap();
+
   assert!(child.wait().unwrap().success());
 }
 

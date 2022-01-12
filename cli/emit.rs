@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 //! The collection of APIs to be able to take `deno_graph` module graphs and
 //! populate a cache, emit files, and transform a graph into the structures for
@@ -41,6 +41,13 @@ use std::rc::Rc;
 use std::result;
 use std::sync::Arc;
 use std::time::Instant;
+
+const IGNORE_DIRECTIVES: &[&str] = &[
+  "// deno-fmt-ignore-file",
+  "// deno-lint-ignore-file",
+  "// This code was bundled using `deno bundle` and it's not recommended to edit it manually",
+  ""
+];
 
 /// Represents the "default" type library that should be used when type
 /// checking the code in the module graph.  Note that a user provided config
@@ -503,6 +510,7 @@ impl From<BundleType> for swc::bundler::ModuleType {
 pub(crate) struct BundleOptions {
   pub bundle_type: BundleType,
   pub ts_config: TsConfig,
+  pub emit_ignore_directives: bool,
 }
 
 /// A module loader for swc which does the appropriate retrieval and transpiling
@@ -630,12 +638,21 @@ pub(crate) fn bundle(
     let mut srcmap = Vec::new();
     {
       let cfg = swc::codegen::Config { minify: false };
-      let wr = Box::new(swc::codegen::text_writer::JsWriter::new(
+      let mut wr = Box::new(swc::codegen::text_writer::JsWriter::new(
         cm.clone(),
         "\n",
         &mut buf,
         Some(&mut srcmap),
       ));
+
+      if options.emit_ignore_directives {
+        // write leading comments in bundled file
+        use swc::codegen::text_writer::WriteJs;
+        use swc::common::source_map::DUMMY_SP;
+        let cmt = IGNORE_DIRECTIVES.join("\n") + "\n";
+        wr.write_comment(DUMMY_SP, &cmt)?;
+      }
+
       let mut emitter = swc::codegen::Emitter {
         cfg,
         cm: cm.clone(),

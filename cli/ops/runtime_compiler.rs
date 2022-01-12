@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache;
 use crate::config_file::IgnoredCompilerOptions;
@@ -285,6 +285,7 @@ async fn op_emit(
       emit::BundleOptions {
         bundle_type: bundle.into(),
         ts_config,
+        emit_ignore_directives: true,
       },
     )?;
     let mut files = HashMap::new();

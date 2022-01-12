@@ -1,7 +1,6 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::emit;
 use crate::flags::CoverageFlags;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
@@ -11,14 +10,13 @@ use crate::tools::fmt::format_json;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_runtime::permissions::Permissions;
 use regex::Regex;
-use serde::Deserialize;
-use serde::Serialize;
 use sourcemap::SourceMap;
 use std::fs;
 use std::fs::File;
@@ -28,52 +26,11 @@ use std::path::PathBuf;
 use text_lines::TextLines;
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct CoverageRange {
-  /// Start byte index.
-  start_offset: usize,
-  /// End byte index.
-  end_offset: usize,
-  count: usize,
-}
+mod json_types;
+mod merge;
+mod range_tree;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct FunctionCoverage {
-  function_name: String,
-  ranges: Vec<CoverageRange>,
-  is_block_coverage: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct ScriptCoverage {
-  script_id: String,
-  url: String,
-  functions: Vec<FunctionCoverage>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StartPreciseCoverageParameters {
-  call_count: bool,
-  detailed: bool,
-  allow_triggered_updates: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StartPreciseCoverageReturnObject {
-  timestamp: f64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TakePreciseCoverageReturnObject {
-  result: Vec<ScriptCoverage>,
-  timestamp: f64,
-}
+use json_types::*;
 
 pub struct CoverageCollector {
   pub dir: PathBuf,
@@ -175,21 +132,21 @@ struct BranchCoverageItem {
   line_index: usize,
   block_number: usize,
   branch_number: usize,
-  taken: Option<usize>,
+  taken: Option<i64>,
   is_hit: bool,
 }
 
 struct FunctionCoverageItem {
   name: String,
   line_index: usize,
-  execution_count: usize,
+  execution_count: i64,
 }
 
 struct CoverageReport {
   url: ModuleSpecifier,
   named_functions: Vec<FunctionCoverageItem>,
   branches: Vec<BranchCoverageItem>,
-  found_lines: Vec<(usize, usize)>,
+  found_lines: Vec<(usize, i64)>,
 }
 
 fn generate_coverage_report(
@@ -353,7 +310,7 @@ fn generate_coverage_report(
           results.into_iter()
         })
         .flatten()
-        .collect::<Vec<(usize, usize)>>();
+        .collect::<Vec<(usize, i64)>>();
 
       found_lines.sort_unstable_by_key(|(index, _)| *index);
       // combine duplicated lines
@@ -369,7 +326,7 @@ fn generate_coverage_report(
         .into_iter()
         .enumerate()
         .map(|(index, count)| (index, count))
-        .collect::<Vec<(usize, usize)>>()
+        .collect::<Vec<(usize, i64)>>()
     };
 
   coverage_report
@@ -553,38 +510,7 @@ fn collect_coverages(
   for file_path in file_paths {
     let json = fs::read_to_string(file_path.as_path())?;
     let new_coverage: ScriptCoverage = serde_json::from_str(&json)?;
-
-    let existing_coverage =
-      coverages.iter_mut().find(|x| x.url == new_coverage.url);
-
-    if let Some(existing_coverage) = existing_coverage {
-      for new_function in new_coverage.functions {
-        let existing_function = existing_coverage
-          .functions
-          .iter_mut()
-          .find(|x| x.function_name == new_function.function_name);
-
-        if let Some(existing_function) = existing_function {
-          for new_range in new_function.ranges {
-            let existing_range =
-              existing_function.ranges.iter_mut().find(|x| {
-                x.start_offset == new_range.start_offset
-                  && x.end_offset == new_range.end_offset
-              });
-
-            if let Some(existing_range) = existing_range {
-              existing_range.count += new_range.count;
-            } else {
-              existing_function.ranges.push(new_range);
-            }
-          }
-        } else {
-          existing_coverage.functions.push(new_function);
-        }
-      }
-    } else {
-      coverages.push(new_coverage);
-    }
+    coverages.push(new_coverage);
   }
 
   coverages.sort_by_key(|k| k.url.clone());
@@ -632,6 +558,18 @@ pub async fn cover_files(
     coverage_flags.exclude,
   );
 
+  let proc_coverages: Vec<_> = script_coverages
+    .into_iter()
+    .map(|cov| ProcessCoverage { result: vec![cov] })
+    .collect();
+
+  let script_coverages = if let Some(c) = merge::merge_processes(proc_coverages)
+  {
+    c.result
+  } else {
+    vec![]
+  };
+
   let reporter_kind = if coverage_flags.lcov {
     CoverageReporterKind::Lcov
   } else {
@@ -643,40 +581,69 @@ pub async fn cover_files(
   for script_coverage in script_coverages {
     let module_specifier =
       deno_core::resolve_url_or_path(&script_coverage.url)?;
-    ps.prepare_module_load(
-      vec![module_specifier.clone()],
-      false,
-      emit::TypeLib::UnstableDenoWindow,
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-      false,
-    )
-    .await?;
 
-    let module_source = ps.load(module_specifier.clone(), None, false)?;
-    let script_source = &module_source.code;
+    let maybe_file = if module_specifier.scheme() == "file" {
+      ps.file_fetcher.get_source(&module_specifier)
+    } else {
+      ps.file_fetcher
+        .fetch_cached(&module_specifier, 10)
+        .with_context(|| {
+          format!("Failed to fetch \"{}\" from cache.", module_specifier)
+        })?
+    };
+    let file = maybe_file.ok_or_else(|| {
+      anyhow!("Failed to fetch \"{}\" from cache. 
+          Before generating coverage report, run `deno test --coverage` to ensure consistent state.", 
+          module_specifier
+        )
+    })?;
 
+    // Check if file was transpiled
+    let transpiled_source = match file.media_type {
+      MediaType::JavaScript
+      | MediaType::Unknown
+      | MediaType::Cjs
+      | MediaType::Mjs
+      | MediaType::Json => file.source.as_ref().clone(),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => "".to_string(),
+      MediaType::TypeScript
+      | MediaType::Jsx
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Tsx => {
+        let emit_path = ps
+          .dir
+          .gen_cache
+          .get_cache_filename_with_extension(&file.specifier, "js")
+          .unwrap_or_else(|| {
+            unreachable!("Unable to get cache filename: {}", &file.specifier)
+          });
+        match ps.dir.gen_cache.get(&emit_path) {
+          Ok(b) => String::from_utf8(b).unwrap(),
+          Err(_) => {
+            return Err(anyhow!(
+              "Missing transpiled source code for: \"{}\".
+              Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
+              file.specifier,
+            ))
+          }
+        }
+      }
+      MediaType::Wasm | MediaType::TsBuildInfo | MediaType::SourceMap => {
+        unreachable!()
+      }
+    };
+
+    let original_source = &file.source;
     let maybe_source_map = ps.get_source_map(&script_coverage.url);
-    let maybe_cached_source = ps
-      .file_fetcher
-      .get_source(&module_specifier)
-      .map(|f| f.source);
 
     let coverage_report = generate_coverage_report(
       &script_coverage,
-      script_source,
+      &transpiled_source,
       &maybe_source_map,
     );
 
-    let file_text = if let Some(original_source) =
-      maybe_source_map.and(maybe_cached_source.as_ref())
-    {
-      original_source.as_str()
-    } else {
-      script_source
-    };
-
-    reporter.report(&coverage_report, file_text);
+    reporter.report(&coverage_report, original_source);
   }
 
   reporter.done();
