@@ -11,6 +11,7 @@
       [`denoland/dotland`](https://github.com/denoland/dotland/),
       [`denoland/docland`](https://github.com/denoland/docland/),
       [`denoland/deno_docker`](https://github.com/denoland/deno_docker/)
+      [`denoland/manual`](https://github.com/denoland/manual/)
 - [ ] Ensure that external dependencies are up-to date in `denoland/deno` (e.g.
       `rusty_v8`, `serde_v8`, `deno_doc`, `deno_lint`).
 - [ ] Ownership access on crates.io for the 19 (🙀) crates that you will be
