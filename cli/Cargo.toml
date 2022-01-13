@@ -19,6 +19,11 @@ name = "deno_bench"
 harness = false
 path = "./bench/main.rs"
 
+[[bench]]
+name = "lsp_bench_standalone"
+harness = false
+path = "./bench/lsp_bench_standalone.rs"
+
 [build-dependencies]
 deno_broadcast_channel = { version = "0.25.0", path = "../ext/broadcast_channel" }
 deno_console = { version = "0.31.0", path = "../ext/console" }
@@ -100,11 +105,8 @@ pretty_assertions = "=0.7.2"
 test_util = { path = "../test_util" }
 trust-dns-client = "=0.20.3"
 trust-dns-server = "=0.20.3"
-bencher = "0.1"
+deno_bench_util = { version = "0.25.0", path = "../bench_util" }
 
-[[bench]]
-name = "lsp"
-harness = false
 
 [target.'cfg(unix)'.dev-dependencies]
 nix = "=0.22.1"

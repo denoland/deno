@@ -694,12 +694,12 @@ version = "1.17.2"
 dependencies = [
  "atty",
  "base64 0.13.0",
- "bencher",
  "cache_control",
  "chrono",
  "clap",
  "data-url",
  "deno_ast",
+ "deno_bench_util",
  "deno_broadcast_channel",
  "deno_console",
  "deno_core",

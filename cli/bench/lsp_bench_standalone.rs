@@ -1,6 +1,4 @@
-#[macro_use]
-extern crate bencher;
-use bencher::Bencher;
+use bench_util::bencher::Bencher;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -12,7 +10,7 @@ fn incremental_change_wait_benchmark(bench: &mut Bencher) {
   let mut client = test_util::lsp::LspClient::new(&deno_exe).unwrap();
 
   static FIXTURE_INIT_JSON: &[u8] =
-    include_bytes!("../bench/testdata/initialize_params.json");
+    include_bytes!("testdata/initialize_params.json");
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON).unwrap();
   let (_, maybe_err) = client
     .write_request::<_, _, Value>("initialize", params)
@@ -21,7 +19,7 @@ fn incremental_change_wait_benchmark(bench: &mut Bencher) {
   client.write_notification("initialized", json!({})).unwrap();
 
   static FIXTURE_INIT_JSON: &[u8] =
-    include_bytes!("../benches/express-router.js");
+    include_bytes!("testdata/express-router.js");
 
   client
     .write_notification(
