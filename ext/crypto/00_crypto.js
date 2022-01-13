@@ -635,7 +635,7 @@
           normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
 
           // 1.
-          if (normalizedAlgorithm.tagLength == undefined) {
+          if (normalizedAlgorithm.tagLength === undefined) {
             normalizedAlgorithm.tagLength = 128;
           } else if (
             !ArrayPrototypeIncludes(

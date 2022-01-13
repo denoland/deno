@@ -2,9 +2,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::shared::*;
+use aes::cipher::generic_array::GenericArray;
 use aes::Aes192;
 use aes::BlockEncrypt;
 use aes::NewBlockCipher;
+use aes_gcm::AeadCore;
 use aes_gcm::AeadInPlace;
 use aes_gcm::Aes128Gcm;
 use aes_gcm::Aes256Gcm;
@@ -73,6 +75,8 @@ pub enum DecryptAlgorithm {
     tag_length: usize,
   },
 }
+
+type Aes192Gcm = aes_gcm::AesGcm<Aes192, U12>;
 
 pub async fn op_crypto_decrypt(
   _state: Rc<RefCell<OpState>>,
@@ -217,6 +221,30 @@ where
   Ok(plaintext)
 }
 
+fn decrypt_aes_gcm_gen<B>(
+  key: &[u8],
+  tag: &GenericArray<u8, <B as AeadCore>::TagSize>,
+  nonce: &GenericArray<u8, <B as AeadCore>::NonceSize>,
+  additional_data: Vec<u8>,
+  plaintext: &mut [u8],
+) -> Result<(), AnyError>
+where
+  B: AeadInPlace + NewAead,
+{
+  let cipher =
+    B::new_from_slice(key).map_err(|_| operation_error("Decryption failed"))?;
+  cipher
+    .decrypt_in_place_detached(
+      nonce,
+      additional_data.as_slice(),
+      plaintext,
+      tag,
+    )
+    .map_err(|_| operation_error("Decryption failed"))?;
+
+  Ok(())
+}
+
 fn decrypt_aes_ctr(
   key: RawKeyData,
   key_length: usize,
@@ -274,44 +302,27 @@ fn decrypt_aes_gcm(
   // The actual ciphertext, called plaintext because it is reused in place.
   let mut plaintext = data[..sep].to_vec();
   match length {
-    128 => {
-      let cipher = Aes128Gcm::new_from_slice(key)
-        .map_err(|_| operation_error("Decryption failed"))?;
-      cipher
-        .decrypt_in_place_detached(
-          nonce,
-          &additional_data,
-          &mut plaintext,
-          tag.into(),
-        )
-        .map_err(|_| operation_error("Decryption failed"))?
-    }
-    192 => {
-      type Aes192Gcm = aes_gcm::AesGcm<Aes192, U12>;
-
-      let cipher = Aes192Gcm::new_from_slice(key)
-        .map_err(|_| operation_error("Decryption failed"))?;
-      cipher
-        .decrypt_in_place_detached(
-          nonce,
-          &additional_data,
-          &mut plaintext,
-          tag.into(),
-        )
-        .map_err(|_| operation_error("Decryption failed"))?
-    }
-    256 => {
-      let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|_| operation_error("Decryption failed"))?;
-      cipher
-        .decrypt_in_place_detached(
-          nonce,
-          &additional_data,
-          &mut plaintext,
-          tag.into(),
-        )
-        .map_err(|_| operation_error("Decryption failed"))?
-    }
+    128 => decrypt_aes_gcm_gen::<Aes128Gcm>(
+      key,
+      tag.into(),
+      &nonce,
+      additional_data,
+      &mut plaintext,
+    )?,
+    192 => decrypt_aes_gcm_gen::<Aes192Gcm>(
+      key,
+      tag.into(),
+      &nonce,
+      additional_data,
+      &mut plaintext,
+    )?,
+    256 => decrypt_aes_gcm_gen::<Aes256Gcm>(
+      key,
+      tag.into(),
+      &nonce,
+      additional_data,
+      &mut plaintext,
+    )?,
     _ => return Err(type_error("invalid length")),
   };
 
