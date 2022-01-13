@@ -1444,6 +1444,15 @@ Deno.test(async function testAesGcmEncrypt() {
     // deno-fmt-ignore
     new Uint8Array([50,223,112,178,166,156,255,110,125,138,95,141,82,47,14,164,134,247,22]),
   );
+
+  const plainText = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv, additionalData: new Uint8Array() },
+    key,
+    cipherText,
+  );
+  assert(plainText instanceof ArrayBuffer);
+  assertEquals(plainText.byteLength, 3);
+  assertEquals(new Uint8Array(plainText), data);
 });
 
 async function roundTripSecretJwk(
