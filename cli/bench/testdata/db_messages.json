@@ -3,7 +3,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 2
       },
       "contentChanges": [
@@ -28,7 +28,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 3
       },
       "contentChanges": [
@@ -53,7 +53,7 @@
     "type": "completion",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8330,
@@ -68,7 +68,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 4
       },
       "contentChanges": [
@@ -93,7 +93,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 5
       },
       "contentChanges": [
@@ -118,7 +118,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 6
       },
       "contentChanges": [
@@ -143,7 +143,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 7
       },
       "contentChanges": [
@@ -168,7 +168,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 8
       },
       "contentChanges": [
@@ -193,7 +193,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 9
       },
       "contentChanges": [
@@ -218,7 +218,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 10
       },
       "contentChanges": [
@@ -243,7 +243,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 11
       },
       "contentChanges": [
@@ -268,7 +268,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 12
       },
       "contentChanges": [
@@ -293,7 +293,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -314,7 +314,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 13
       },
       "contentChanges": [
@@ -339,7 +339,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -360,7 +360,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -381,7 +381,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 14
       },
       "contentChanges": [
@@ -406,7 +406,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 15
       },
       "contentChanges": [
@@ -431,7 +431,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 16
       },
       "contentChanges": [
@@ -456,7 +456,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 17
       },
       "contentChanges": [
@@ -481,7 +481,7 @@
     "type": "completion",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -496,7 +496,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 18
       },
       "contentChanges": [
@@ -521,7 +521,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 19
       },
       "contentChanges": [
@@ -546,7 +546,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 20
       },
       "contentChanges": [
@@ -571,7 +571,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 21
       },
       "contentChanges": [
@@ -596,7 +596,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -617,7 +617,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -638,7 +638,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -659,7 +659,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -680,7 +680,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 22
       },
       "contentChanges": [
@@ -705,7 +705,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 23
       },
       "contentChanges": [
@@ -730,7 +730,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 24
       },
       "contentChanges": [
@@ -755,7 +755,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 25
       },
       "contentChanges": [
@@ -780,7 +780,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 26
       },
       "contentChanges": [
@@ -805,7 +805,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 27
       },
       "contentChanges": [
@@ -830,7 +830,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 28
       },
       "contentChanges": [
@@ -855,7 +855,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 29
       },
       "contentChanges": [
@@ -880,7 +880,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -901,7 +901,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 30
       },
       "contentChanges": [
@@ -926,7 +926,7 @@
     "type": "completion",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -942,7 +942,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -963,7 +963,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -984,7 +984,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1005,7 +1005,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1026,7 +1026,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1047,7 +1047,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1068,7 +1068,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1089,7 +1089,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1110,7 +1110,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1131,7 +1131,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1152,7 +1152,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1173,7 +1173,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1194,7 +1194,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1215,7 +1215,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1236,7 +1236,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1257,7 +1257,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1278,7 +1278,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1299,7 +1299,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1320,7 +1320,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1341,7 +1341,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1362,7 +1362,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1383,7 +1383,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1404,7 +1404,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 31
       },
       "contentChanges": [
@@ -1429,7 +1429,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1450,7 +1450,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 32
       },
       "contentChanges": [
@@ -1475,7 +1475,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1496,7 +1496,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1517,7 +1517,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1538,7 +1538,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 33
       },
       "contentChanges": [
@@ -1563,7 +1563,7 @@
     "type": "completion",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -1579,7 +1579,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1600,7 +1600,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1621,7 +1621,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 34
       },
       "contentChanges": [
@@ -1646,7 +1646,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1667,7 +1667,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1688,7 +1688,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 35
       },
       "contentChanges": [
@@ -1713,7 +1713,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1734,7 +1734,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1755,7 +1755,7 @@
     "type": "hover",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -1767,7 +1767,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1809,7 +1809,7 @@
     "type": "hover",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -1821,7 +1821,7 @@
     "type": "hover",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -1833,7 +1833,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1875,7 +1875,7 @@
     "type": "hover",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -1887,7 +1887,7 @@
     "type": "hover",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -1899,7 +1899,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -1941,7 +1941,7 @@
     "type": "hover",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -1953,7 +1953,7 @@
     "type": "hover",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -1965,7 +1965,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -2007,7 +2007,7 @@
     "type": "hover",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -2019,7 +2019,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -2061,7 +2061,7 @@
     "type": "highlight",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -2073,7 +2073,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -2112,7 +2112,7 @@
     "type": "hover",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "position": {
         "line": 8331,
@@ -2124,7 +2124,7 @@
     "type": "change",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "version": 36
       },
       "contentChanges": [
@@ -2149,7 +2149,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -2188,7 +2188,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {
@@ -2227,7 +2227,7 @@
     "type": "action",
     "params": {
       "textDocument": {
-        "uri": "file:///fixtures/db.ts"
+        "uri": "file:///testdata/db.ts"
       },
       "range": {
         "start": {

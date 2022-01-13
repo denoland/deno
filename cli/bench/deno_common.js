@@ -78,7 +78,7 @@ function benchRead128k() {
   return benchAsync(
     "read_128k",
     5e4,
-    () => Deno.readFile("./cli/bench/fixtures/128k.bin"),
+    () => Deno.readFile("./cli/bench/testdata/128k.bin"),
   );
 }
 
