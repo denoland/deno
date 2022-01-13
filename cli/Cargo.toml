@@ -100,6 +100,11 @@ pretty_assertions = "=0.7.2"
 test_util = { path = "../test_util" }
 trust-dns-client = "=0.20.3"
 trust-dns-server = "=0.20.3"
+bencher = "0.1"
+
+[[bench]]
+name = "lsp"
+harness = false
 
 [target.'cfg(unix)'.dev-dependencies]
 nix = "=0.22.1"

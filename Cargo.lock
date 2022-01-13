@@ -694,6 +694,7 @@ version = "1.17.2"
 dependencies = [
  "atty",
  "base64 0.13.0",
+ "bencher",
  "cache_control",
  "chrono",
  "clap",
