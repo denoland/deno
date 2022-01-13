@@ -217,6 +217,7 @@ async fn op_emit(
       maybe_resolver,
       None,
       None,
+      None,
     )
     .await,
   );

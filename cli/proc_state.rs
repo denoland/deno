@@ -382,10 +382,9 @@ impl ProcState {
         let graph_data = self.graph_data.read();
         let found_specifier = graph_data.follow_redirect(specifier);
         match graph_data.get(&found_specifier) {
-          Some(_) if !self.reload => Box::pin(futures::future::ready((
-            specifier.clone(),
-            Err(anyhow!("")),
-          ))),
+          Some(_) if !self.reload => {
+            Box::pin(futures::future::ready(Err(anyhow!(""))))
+          }
           _ => self.inner.load(specifier, is_dynamic),
         }
       }
@@ -402,6 +401,7 @@ impl ProcState {
       &mut loader,
       maybe_resolver,
       maybe_locker,
+      None,
       None,
     )
     .await;
