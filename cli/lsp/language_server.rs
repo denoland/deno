@@ -62,6 +62,7 @@ use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
 use crate::logger;
 use crate::lsp::logging::lsp_log;
+use crate::proc_state::import_map_from_text;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 
@@ -482,12 +483,9 @@ impl Inner {
           )
         })?
       };
-      let import_map = Arc::new(ImportMap::from_json(
-        &import_map_url.to_string(),
-        &import_map_json,
-      )?);
+      let import_map = import_map_from_text(&import_map_url, &import_map_json)?;
       self.maybe_import_map_uri = Some(import_map_url);
-      self.maybe_import_map = Some(import_map);
+      self.maybe_import_map = Some(Arc::new(import_map));
     } else {
       self.maybe_import_map = None;
     }
