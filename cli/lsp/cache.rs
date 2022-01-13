@@ -80,6 +80,7 @@ impl CacheServer {
             maybe_resolver,
             None,
             None,
+            None,
           )
           .await;
 

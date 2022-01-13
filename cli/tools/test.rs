@@ -1144,6 +1144,7 @@ pub async fn run_tests_with_watch(
         maybe_resolver,
         maybe_locker,
         None,
+        None,
       )
       .await;
       graph_valid(&graph, !no_check, check_js)?;

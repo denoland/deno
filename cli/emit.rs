@@ -616,7 +616,7 @@ fn transpile_module(
     cm,
     &comments,
     top_level_mark,
-    diagnostics.iter(),
+    &diagnostics,
   )?;
   let module = match program {
     swc::ast::Program::Module(module) => module,
@@ -973,17 +973,11 @@ impl Hook for BundleHook {
         value: Box::new(if module_record.is_entry {
           ast::Expr::Member(ast::MemberExpr {
             span,
-            obj: ast::ExprOrSuper::Expr(Box::new(ast::Expr::MetaProp(
-              ast::MetaPropExpr {
-                meta: ast::Ident::new("import".into(), span),
-                prop: ast::Ident::new("meta".into(), span),
-              },
-            ))),
-            prop: Box::new(ast::Expr::Ident(ast::Ident::new(
-              "main".into(),
+            obj: Box::new(ast::Expr::MetaProp(ast::MetaPropExpr {
               span,
-            ))),
-            computed: false,
+              kind: ast::MetaPropKind::ImportMeta,
+            })),
+            prop: ast::MemberProp::Ident(ast::Ident::new("main".into(), span)),
           })
         } else {
           ast::Expr::Lit(ast::Lit::Bool(ast::Bool { span, value: false }))
