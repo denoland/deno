@@ -50,7 +50,7 @@ impl Resolver for DocResolver {
   ) -> Result<ModuleSpecifier, AnyError> {
     if let Some(import_map) = &self.import_map {
       return import_map
-        .resolve(specifier, referrer.as_str())
+        .resolve(specifier, referrer)
         .map_err(AnyError::from);
     }
 
