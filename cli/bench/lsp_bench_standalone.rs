@@ -1,11 +1,13 @@
-use bench_util::bencher::Bencher;
+use deno_bench_util::bencher::benchmark_group;
+use deno_bench_util::bencher::benchmark_main;
+use deno_bench_util::bencher::Bencher;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 
 // Intended to match the benchmark in quick-lint-js
 // https://github.com/quick-lint/quick-lint-js/blob/35207e6616267c6c81be63f47ce97ec2452d60df/benchmark/benchmark-lsp/lsp-benchmarks.cpp#L223-L268
-fn incremental_change_wait_benchmark(bench: &mut Bencher) {
+fn incremental_change_wait(bench: &mut Bencher) {
   let deno_exe = test_util::deno_exe_path();
   let mut client = test_util::lsp::LspClient::new(&deno_exe).unwrap();
 
@@ -18,9 +20,6 @@ fn incremental_change_wait_benchmark(bench: &mut Bencher) {
   assert!(maybe_err.is_none());
   client.write_notification("initialized", json!({})).unwrap();
 
-  static FIXTURE_INIT_JSON: &[u8] =
-    include_bytes!("testdata/express-router.js");
-
   client
     .write_notification(
       "textDocument/didOpen",
@@ -29,14 +28,48 @@ fn incremental_change_wait_benchmark(bench: &mut Bencher) {
           "uri": "file:///testdata/express-router.js",
           "languageId": "javascript",
           "version": 0,
-          "text": EXPRESS_JS
+          "text": include_str!("testdata/express-router.js")
         }
       }),
     )
     .unwrap();
+  let (method, maybe_diag): (String, Option<Value>) =
+    client.read_notification().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let _expected_num_diagnostics = get_num_diagnostics(maybe_diag);
 
-  bench.iter(|| {})
+  let mut version = 0;
+  bench.iter(|| {
+      let text = format!("m{:05}", version);
+      client
+        .write_notification(
+          "textDocument/didChange",
+          json!({
+              "textDocument": {
+                  "version": version,
+                  "uri":"file:///testdata/express-router.js"
+              },
+              "contentChanges":[
+                {"text": text, "range":{"start":{"line":506,"character":39},"end":{"line":506,"character":45}}},
+                {"text": text, "range":{"start":{"line":507,"character":8},"end":{"line":507,"character":14}}},
+                {"text": text, "range":{"start":{"line":509,"character":10},"end":{"line":509,"character":16}}}
+              ]
+          })
+      ).unwrap();
+      let (method, maybe_diag): (String, Option<Value>) =
+        client.read_notification().unwrap();
+      assert_eq!(method, "textDocument/publishDiagnostics");
+      let _num_diagnostics = get_num_diagnostics(maybe_diag);
+      //assert_eq!(num_diagnostics, expected_num_diagnostics);
+      version += 1;
+    })
 }
 
-benchmark_group!(benches, a);
+fn get_num_diagnostics(maybe_diag: Option<Value>) -> usize {
+  let d = maybe_diag.unwrap();
+  let msg = d.as_object().unwrap();
+  msg.get("diagnostics").unwrap().as_array().unwrap().len()
+}
+
+benchmark_group!(benches, incremental_change_wait);
 benchmark_main!(benches);
