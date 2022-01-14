@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::cache::Cacher;
 use crate::colors;
 use crate::flags::CoverageFlags;
 use crate::flags::Flags;
@@ -592,8 +593,8 @@ pub async fn cover_files(
         })?
     };
     let file = maybe_file.ok_or_else(|| {
-      anyhow!("Failed to fetch \"{}\" from cache. 
-          Before generating coverage report, run `deno test --coverage` to ensure consistent state.", 
+      anyhow!("Failed to fetch \"{}\" from cache.
+          Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
           module_specifier
         )
     })?;
@@ -611,16 +612,12 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        let emit_path = ps
+        match ps
           .dir
           .gen_cache
-          .get_cache_filename_with_extension(&file.specifier, "js")
-          .unwrap_or_else(|| {
-            unreachable!("Unable to get cache filename: {}", &file.specifier)
-          });
-        match ps.dir.gen_cache.get(&emit_path) {
-          Ok(b) => String::from_utf8(b).unwrap(),
-          Err(_) => {
+          .get_emit_data(&file.specifier) {
+          Some(emit_data) => emit_data.text,
+          None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".
               Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
