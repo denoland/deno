@@ -584,7 +584,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(PathBuf::from("/tmp")),
+        root: Some(std::env::temp_dir()),
         force: false,
       },
     )
@@ -605,7 +605,7 @@ mod tests {
         module_url: "http://localhost:4545/subdir/main.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(PathBuf::from("/tmp")),
+        root: Some(std::env::temp_dir()),
         force: false,
       },
     )
@@ -626,7 +626,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(PathBuf::from("/tmp")),
+        root: Some(std::env::temp_dir()),
         force: false,
       },
     )
@@ -689,7 +689,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec!["--foobar".to_string()],
         name: Some("echo_test".to_string()),
-        root: Some(PathBuf::from("/tmp")),
+        root: Some(std::env::temp_dir()),
         force: false,
       },
     )
@@ -721,7 +721,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(PathBuf::from("/tmp")),
+        root: Some(std::env::temp_dir()),
         force: false,
       },
     )
@@ -744,7 +744,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(PathBuf::from("/tmp")),
+        root: Some(std::env::temp_dir()),
         force: false,
       },
     )
