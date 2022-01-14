@@ -1094,11 +1094,14 @@ fn typecheck_core() {
   std::fs::write(
     &test_file,
     format!(
-      "import \"file://{}\";",
-      util::root_path()
-        .join("core/lib.deno_core.d.ts")
-        .to_str()
-        .unwrap()
+      "import \"{}\";",
+      deno_core::resolve_path(
+        util::root_path()
+          .join("core/lib.deno_core.d.ts")
+          .to_str()
+          .unwrap()
+      )
+      .unwrap()
     ),
   )
   .unwrap();
