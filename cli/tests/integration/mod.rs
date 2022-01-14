@@ -1092,7 +1092,7 @@ fn typecheck_core() {
   let deno_dir = TempDir::new().expect("tempdir fail");
   let test_file = deno_dir.path().join("test_deno_core_types.ts");
   std::fs::write(
-    test_file,
+    &test_file,
     format!(
       "import \"{}\";",
       util::root_path()
