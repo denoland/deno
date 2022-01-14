@@ -409,7 +409,7 @@ impl fmt::Display for Diagnostics {
       if i > 0 {
         write!(f, "\n\n")?;
       }
-      write!(f, "{}", item.to_string())?;
+      write!(f, "{}", item)?;
       i += 1;
     }
 

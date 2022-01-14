@@ -304,11 +304,11 @@ pub fn install(
   }
 
   if let Some(inspect) = flags.inspect {
-    executable_args.push(format!("--inspect={}", inspect.to_string()));
+    executable_args.push(format!("--inspect={}", inspect));
   }
 
   if let Some(inspect_brk) = flags.inspect_brk {
-    executable_args.push(format!("--inspect-brk={}", inspect_brk.to_string()));
+    executable_args.push(format!("--inspect-brk={}", inspect_brk));
   }
 
   if let Some(import_map_path) = flags.import_map_path {

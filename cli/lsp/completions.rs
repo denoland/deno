@@ -431,14 +431,14 @@ fn relative_specifier(
         format!(
           "./{}{}",
           last_a,
-          specifier[Position::AfterPath..].to_string()
+          &specifier[Position::AfterPath..]
         )
       } else {
         parts.push(last_a);
         format!(
           "{}{}",
           parts.join("/"),
-          specifier[Position::AfterPath..].to_string()
+          &specifier[Position::AfterPath..]
         )
       }
     } else {

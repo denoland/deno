@@ -270,7 +270,7 @@ impl PrettyTestReporter {
     println!(
       "{} {}",
       status,
-      colors::gray(human_elapsed(elapsed.into())).to_string()
+      colors::gray(human_elapsed(elapsed.into()))
     );
 
     if let Some(error_text) = result.error() {
@@ -360,7 +360,7 @@ impl TestReporter for PrettyTestReporter {
     println!(
       "{} {}",
       status,
-      colors::gray(human_elapsed(elapsed.into())).to_string()
+      colors::gray(human_elapsed(elapsed.into()))
     );
   }
 

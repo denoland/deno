@@ -57,6 +57,7 @@ struct Symbol {
   result_type: NativeType,
 }
 
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl Send for Symbol {}
 unsafe impl Sync for Symbol {}
 
@@ -93,7 +94,7 @@ impl DynamicLibraryResource {
       Err(err) => Err(generic_error(format!(
         "Failed to register symbol {}: {}",
         symbol,
-        err.to_string()
+        err
       ))),
     }?;
     let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
