@@ -1094,7 +1094,7 @@ fn typecheck_core() {
   std::fs::write(
     &test_file,
     format!(
-      "import \"{}\";",
+      "import \"file://{}\";",
       util::root_path()
         .join("core/lib.deno_core.d.ts")
         .to_str()
