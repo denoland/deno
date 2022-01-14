@@ -1430,42 +1430,12 @@
       "construct-byob-request.any.html": true,
       "construct-byob-request.any.worker.html": true,
       "general.any.html": [
-        "ReadableStream with byte source: releaseLock() on ReadableStreamDefaultReader must reject pending read()",
-        "ReadableStream with byte source: releaseLock() on ReadableStreamBYOBReader must reject pending read()",
         "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()",
-        "pull() resolving should not resolve read()",
-        "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request",
-        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, respond()",
-        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader with 1 element Uint16Array, respond(1)",
-        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader with 2 element Uint8Array, respond(3)",
-        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, respondWithNewView()",
-        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, enqueue()",
-        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, close(), respond(0)",
-        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read() on second reader, respond()",
-        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read() on second reader, enqueue()",
-        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read(view) on second reader, respond()",
-        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read(view) on second reader, enqueue()",
-        "ReadableStream with byte source: read(view) with 1 element Uint16Array, respond(1), releaseLock(), read(view) on second reader with 1 element Uint16Array, respond(1)",
-        "ReadableStream with byte source: read(view) with 1 element Uint16Array, respond(1), releaseLock(), read() on second reader, enqueue()"
+        "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request"
       ],
       "general.any.worker.html": [
-        "ReadableStream with byte source: releaseLock() on ReadableStreamDefaultReader must reject pending read()",
-        "ReadableStream with byte source: releaseLock() on ReadableStreamBYOBReader must reject pending read()",
         "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()",
-        "pull() resolving should not resolve read()",
-        "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request",
-        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, respond()",
-        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader with 1 element Uint16Array, respond(1)",
-        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader with 2 element Uint8Array, respond(3)",
-        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, respondWithNewView()",
-        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, enqueue()",
-        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, close(), respond(0)",
-        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read() on second reader, respond()",
-        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read() on second reader, enqueue()",
-        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read(view) on second reader, respond()",
-        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read(view) on second reader, enqueue()",
-        "ReadableStream with byte source: read(view) with 1 element Uint16Array, respond(1), releaseLock(), read(view) on second reader with 1 element Uint16Array, respond(1)",
-        "ReadableStream with byte source: read(view) with 1 element Uint16Array, respond(1), releaseLock(), read() on second reader, enqueue()"
+        "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request"
       ],
       "non-transferable-buffers.any.html": false,
       "non-transferable-buffers.any.worker.html": false,
@@ -1487,12 +1457,8 @@
       "constructor.any.worker.html": true,
       "count-queuing-strategy-integration.any.html": true,
       "count-queuing-strategy-integration.any.worker.html": true,
-      "default-reader.any.html": [
-        "Second reader can read chunks after first reader was released with pending read requests"
-      ],
-      "default-reader.any.worker.html": [
-        "Second reader can read chunks after first reader was released with pending read requests"
-      ],
+      "default-reader.any.html": true,
+      "default-reader.any.worker.html": true,
       "floating-point-total-queue-size.any.html": true,
       "floating-point-total-queue-size.any.worker.html": true,
       "garbage-collection.any.html": true,
@@ -1505,12 +1471,8 @@
       "reentrant-strategies.any.worker.html": true,
       "tee.any.html": false,
       "tee.any.worker.html": false,
-      "templated.any.html": [
-        "ReadableStream (empty) reader: releasing the lock should reject all pending read requests"
-      ],
-      "templated.any.worker.html": [
-        "ReadableStream (empty) reader: releasing the lock should reject all pending read requests"
-      ]
+      "templated.any.html": true,
+      "templated.any.worker.html": true
     },
     "transform-streams": {
       "backpressure.any.html": true,
