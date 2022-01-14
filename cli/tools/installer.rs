@@ -1040,12 +1040,12 @@ mod tests {
 
     let mut expected_string = format!(
       "--import-map '{}' 'http://localhost:4545/cat.ts'",
-      import_map_url.to_string()
+      import_map_url
     );
     if cfg!(windows) {
       expected_string = format!(
         "\"--import-map\" \"{}\" \"http://localhost:4545/cat.ts\"",
-        import_map_url.to_string()
+        import_map_url
       );
     }
 
