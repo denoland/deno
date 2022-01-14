@@ -428,18 +428,10 @@ fn relative_specifier(
         }
       }
       if parts.is_empty() {
-        format!(
-          "./{}{}",
-          last_a,
-          &specifier[Position::AfterPath..]
-        )
+        format!("./{}{}", last_a, &specifier[Position::AfterPath..])
       } else {
         parts.push(last_a);
-        format!(
-          "{}{}",
-          parts.join("/"),
-          &specifier[Position::AfterPath..]
-        )
+        format!("{}{}", parts.join("/"), &specifier[Position::AfterPath..])
       }
     } else {
       specifier[Position::BeforePath..].into()

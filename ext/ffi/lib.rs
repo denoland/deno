@@ -93,8 +93,7 @@ impl DynamicLibraryResource {
       Ok(value) => Ok(value),
       Err(err) => Err(generic_error(format!(
         "Failed to register symbol {}: {}",
-        symbol,
-        err
+        symbol, err
       ))),
     }?;
     let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
