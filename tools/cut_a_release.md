@@ -11,6 +11,7 @@
       [`denoland/dotland`](https://github.com/denoland/dotland/),
       [`denoland/docland`](https://github.com/denoland/docland/),
       [`denoland/deno_docker`](https://github.com/denoland/deno_docker/)
+      [`denoland/manual`](https://github.com/denoland/manual/)
 - [ ] Ensure that external dependencies are up-to date in `denoland/deno` (e.g.
       `rusty_v8`, `serde_v8`, `deno_doc`, `deno_lint`).
 - [ ] Ownership access on crates.io for the 19 (🙀) crates that you will be
@@ -22,19 +23,43 @@
 release from) should be frozen and no commits should land until the release is
 cut.**
 
+Before starting the process write a message in company's #general channel:
+`:lock: deno and deno_std are now locked`
+
 ## Updating `deno_std`
 
 1. Checkout a branch for releasing `std` (e.g. `release_#.#.#`).
 
 2. Open a PR on the `deno_std` repo that bumps the version in `version.ts` and
-   updates `Releases.md`
+   updates `Releases.md`. You can use following command to generate a short list
+   that needs to be updated: `git log --oneline <previous_tag>..` (replace
+   `<previous_tag>` with actual latest tag). Remove all commits that are not
+   `feat` or `fix`.
 
 3. Before merging the PR, make sure that all tests pass when run using binary
    produced from bumping crates (point 3. from below).
 
-4. Create a tag with the version number (_without_ `v` prefix).
+4. When merging the PR, ensure that the commit name is exactly the version name.
+   Eg. `0.121.0`, not `0.121.0 (#1810)`.
+
+5. Create a tag with the version number (_without_ `v` prefix).
+
+6. Once CI passes, copy contents of `Releases.md` you added, and create a new
+   release on GitHub (https://github.com/denoland/deno_std/releases).
 
 ## Updating the main repo
+
+**If you are cutting a patch release**: First you need to sync commit to the
+relevant minor branch, so if you are cutting a `v1.17.3` release you need to
+sync `v1.17` branch.
+
+To do that, you need to cherry-pick commits from the main branch to the `v1.17`
+branch. For patch releases we want to cherry-pick all commits that are not
+`feat` commits. Check what was the last commit on `v1.17` branch before the
+previous release and start cherry-picking newer commits from the `main`.
+
+Once all relevant commits are cherry-picked, push the branch to the upstream and
+verify on GitHub that everything looks correct.
 
 1. Checkout a branch for releasing crate dependencies (e.g. `deps_#.#.#`).
 
@@ -43,7 +68,9 @@ cut.**
    `runtime` directories.
 
 3. Commit these changes with a commit message like
-   `chore: bump crate version for #.#.#` and create a PR for this change.
+   `chore: bump crate version for #.#.#` and create a PR for this change. **If
+   you are cutting a patch release**: make sure to target `v1.XX` branch instead
+   of `main` in your PR.
 
 4. Make sure CI pipeline passes (DO NOT merge yet).
 
@@ -71,7 +98,8 @@ cut.**
 11. Update link in `cli/compat/mod.rs` with the released version of `deno_std`
     and do a search through the tests to find std urls that need to be updated.
 
-12. Create a PR for these changes.
+12. Create a PR for these changes. **If you are cutting a patch release**: make
+    sure to target `v1.XX` branch instead of `main` in your PR.
 
 13. Make sure CI pipeline passes.
 
@@ -108,6 +136,9 @@ cut.**
     been updated to reflect Web API changes in this release. Usually done ahead
     of time by @lucacasonato.
 
+23. **If you are cutting a patch release**: open a PR that forwards all commits
+    created in the release process to the `main` branch.
+
 ## Updating `doc.deno.land`
 
 This should occur after the Deno CLI is fully published, as the build script
@@ -129,3 +160,6 @@ queries the GitHub API to determine what it needs to change and update.
 1. Open a PR on the `deno_docker` repo that bumps the Deno version in all
    Dockerfiles, the README and the example Dockerfile
 2. Create a tag with the version number (_without_ `v` prefix).
+
+Write a message in company's #general channel:
+`:unlock: deno and deno_std are now unlocked`.
