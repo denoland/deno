@@ -1505,8 +1505,12 @@
       "reentrant-strategies.any.worker.html": true,
       "tee.any.html": false,
       "tee.any.worker.html": false,
-      "templated.any.html": true,
-      "templated.any.worker.html": true
+      "templated.any.html": [
+        "ReadableStream (empty) reader: releasing the lock should reject all pending read requests"
+      ],
+      "templated.any.worker.html": [
+        "ReadableStream (empty) reader: releasing the lock should reject all pending read requests"
+      ]
     },
     "transform-streams": {
       "backpressure.any.html": true,
@@ -3279,12 +3283,14 @@
         "reporterror.any.html": [
           "self.reportError(1)",
           "self.reportError(TypeError)",
-          "self.reportError(undefined)"
+          "self.reportError(undefined)",
+          "self.reportError() doesn't invoke getters"
         ],
         "reporterror.any.worker.html": [
           "self.reportError(1)",
           "self.reportError(TypeError)",
-          "self.reportError(undefined)"
+          "self.reportError(undefined)",
+          "self.reportError() doesn't invoke getters"
         ]
       },
       "structured-clone": {
