@@ -665,7 +665,7 @@ mod tests {
     }
 
     assert_eq!(
-      shim_data.installation_dir,
+      fs::canonicalize(shim_data.installation_dir).unwrap(),
       fs::canonicalize(bin_dir).unwrap()
     );
     assert_eq!(shim_data.name, "echo_test");
