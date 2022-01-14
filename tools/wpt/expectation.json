@@ -1430,12 +1430,42 @@
       "construct-byob-request.any.html": true,
       "construct-byob-request.any.worker.html": true,
       "general.any.html": [
+        "ReadableStream with byte source: releaseLock() on ReadableStreamDefaultReader must reject pending read()",
+        "ReadableStream with byte source: releaseLock() on ReadableStreamBYOBReader must reject pending read()",
         "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()",
-        "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request"
+        "pull() resolving should not resolve read()",
+        "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request",
+        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, respond()",
+        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader with 1 element Uint16Array, respond(1)",
+        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader with 2 element Uint8Array, respond(3)",
+        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, respondWithNewView()",
+        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, enqueue()",
+        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, close(), respond(0)",
+        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read() on second reader, respond()",
+        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read() on second reader, enqueue()",
+        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read(view) on second reader, respond()",
+        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read(view) on second reader, enqueue()",
+        "ReadableStream with byte source: read(view) with 1 element Uint16Array, respond(1), releaseLock(), read(view) on second reader with 1 element Uint16Array, respond(1)",
+        "ReadableStream with byte source: read(view) with 1 element Uint16Array, respond(1), releaseLock(), read() on second reader, enqueue()"
       ],
       "general.any.worker.html": [
+        "ReadableStream with byte source: releaseLock() on ReadableStreamDefaultReader must reject pending read()",
+        "ReadableStream with byte source: releaseLock() on ReadableStreamBYOBReader must reject pending read()",
         "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()",
-        "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request"
+        "pull() resolving should not resolve read()",
+        "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request",
+        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, respond()",
+        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader with 1 element Uint16Array, respond(1)",
+        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader with 2 element Uint8Array, respond(3)",
+        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, respondWithNewView()",
+        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, enqueue()",
+        "ReadableStream with byte source: releaseLock() with pending read(view), read(view) on second reader, close(), respond(0)",
+        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read() on second reader, respond()",
+        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read() on second reader, enqueue()",
+        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read(view) on second reader, respond()",
+        "ReadableStream with byte source: autoAllocateChunkSize, releaseLock() with pending read(), read(view) on second reader, enqueue()",
+        "ReadableStream with byte source: read(view) with 1 element Uint16Array, respond(1), releaseLock(), read(view) on second reader with 1 element Uint16Array, respond(1)",
+        "ReadableStream with byte source: read(view) with 1 element Uint16Array, respond(1), releaseLock(), read() on second reader, enqueue()"
       ],
       "non-transferable-buffers.any.html": false,
       "non-transferable-buffers.any.worker.html": false,
@@ -1457,8 +1487,12 @@
       "constructor.any.worker.html": true,
       "count-queuing-strategy-integration.any.html": true,
       "count-queuing-strategy-integration.any.worker.html": true,
-      "default-reader.any.html": true,
-      "default-reader.any.worker.html": true,
+      "default-reader.any.html": [
+        "Second reader can read chunks after first reader was released with pending read requests"
+      ],
+      "default-reader.any.worker.html": [
+        "Second reader can read chunks after first reader was released with pending read requests"
+      ],
       "floating-point-total-queue-size.any.html": true,
       "floating-point-total-queue-size.any.worker.html": true,
       "garbage-collection.any.html": true,
@@ -4098,7 +4132,13 @@
       "Pattern: [{\"hostname\":\"bad|hostname\"}] Inputs: undefined",
       "Pattern: [] Inputs: [\"https://example.com/\"]",
       "Pattern: [] Inputs: [{}]",
-      "Pattern: [] Inputs: []"
+      "Pattern: [] Inputs: []",
+      "Pattern: [{\"pathname\":\"{:foo}{(.*)bar}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"*/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
+      "Pattern: [{\"pathname\":\"*\\\\/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
+      "Pattern: [{\"pathname\":\"*/{*}\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
+      "Pattern: [{\"pathname\":\"*//*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]"
     ],
     "urlpattern.any.worker.html": [
       "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
@@ -4106,7 +4146,13 @@
       "Pattern: [{\"hostname\":\"bad|hostname\"}] Inputs: undefined",
       "Pattern: [] Inputs: [\"https://example.com/\"]",
       "Pattern: [] Inputs: [{}]",
-      "Pattern: [] Inputs: []"
+      "Pattern: [] Inputs: []",
+      "Pattern: [{\"pathname\":\"{:foo}{(.*)bar}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"*/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
+      "Pattern: [{\"pathname\":\"*\\\\/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
+      "Pattern: [{\"pathname\":\"*/{*}\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
+      "Pattern: [{\"pathname\":\"*//*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]"
     ],
     "urlpattern.https.any.html": [
       "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
@@ -4114,7 +4160,13 @@
       "Pattern: [{\"hostname\":\"bad|hostname\"}] Inputs: undefined",
       "Pattern: [] Inputs: [\"https://example.com/\"]",
       "Pattern: [] Inputs: [{}]",
-      "Pattern: [] Inputs: []"
+      "Pattern: [] Inputs: []",
+      "Pattern: [{\"pathname\":\"{:foo}{(.*)bar}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"*/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
+      "Pattern: [{\"pathname\":\"*\\\\/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
+      "Pattern: [{\"pathname\":\"*/{*}\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
+      "Pattern: [{\"pathname\":\"*//*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]"
     ],
     "urlpattern.https.any.worker.html": [
       "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
@@ -4122,7 +4174,13 @@
       "Pattern: [{\"hostname\":\"bad|hostname\"}] Inputs: undefined",
       "Pattern: [] Inputs: [\"https://example.com/\"]",
       "Pattern: [] Inputs: [{}]",
-      "Pattern: [] Inputs: []"
+      "Pattern: [] Inputs: []",
+      "Pattern: [{\"pathname\":\"{:foo}{(.*)bar}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"{:foo}{bar(.*)}\"}] Inputs: [{\"pathname\":\"foobarbaz\"}]",
+      "Pattern: [{\"pathname\":\"*/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
+      "Pattern: [{\"pathname\":\"*\\\\/*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
+      "Pattern: [{\"pathname\":\"*/{*}\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
+      "Pattern: [{\"pathname\":\"*//*\"}] Inputs: [{\"pathname\":\"foo/bar\"}]"
     ]
   }
 }
