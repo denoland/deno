@@ -1286,9 +1286,7 @@
    */
   function readableStreamBYOBReaderRelease(reader) {
     readableStreamReaderGenericRelease(reader);
-    const e = new TypeError(
-      "There are pending read requests, so the reader cannot be released.",
-    );
+    const e = new TypeError("The Reader was released.");
     readableStreamBYOBReaderErrorReadIntoRequests(reader, e);
   }
 
@@ -1843,9 +1841,7 @@
    */
   function readableStreamDefaultReaderRelease(reader) {
     readableStreamReaderGenericRelease(reader);
-    const e = new TypeError(
-      "There are pending read requests, so the reader cannot be released.",
-    );
+    const e = new TypeError("The Reader was released.");
     readableStreamDefaultReaderErrorReadRequests(reader, e);
   }
 
