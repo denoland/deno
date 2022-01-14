@@ -664,7 +664,10 @@ mod tests {
       env::set_var("DENO_INSTALL_ROOT", install_root);
     }
 
-    assert_eq!(shim_data.installation_dir, fs::canonicalize(bin_dir).unwrap());
+    assert_eq!(
+      shim_data.installation_dir,
+      fs::canonicalize(bin_dir).unwrap()
+    );
     assert_eq!(shim_data.name, "echo_test");
     assert_eq!(
       shim_data.args,
