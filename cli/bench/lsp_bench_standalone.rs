@@ -38,7 +38,7 @@ fn incremental_change_wait(bench: &mut Bencher) {
   assert_eq!(method, "textDocument/publishDiagnostics");
   let _expected_num_diagnostics = get_num_diagnostics(maybe_diag);
 
-  let mut version = 0;
+  let mut version: usize = 0;
   bench.iter(|| {
       let text = format!("m{:05}", version);
       client
@@ -56,11 +56,14 @@ fn incremental_change_wait(bench: &mut Bencher) {
               ]
           })
       ).unwrap();
-      let (method, maybe_diag): (String, Option<Value>) =
-        client.read_notification().unwrap();
-      assert_eq!(method, "textDocument/publishDiagnostics");
-      let _num_diagnostics = get_num_diagnostics(maybe_diag);
-      //assert_eq!(num_diagnostics, expected_num_diagnostics);
+      const EXPECTED_DIAGNOSTIC_MESSAGES: usize = 3;
+      for _ in EXPECTED_DIAGNOSTIC_MESSAGES {
+          let (method, maybe_diag): (String, Option<Value>) =
+            client.read_notification().unwrap();
+          assert_eq!(method, "textDocument/publishDiagnostics");
+          let _num_diagnostics = get_num_diagnostics(maybe_diag);
+          //assert_eq!(num_diagnostics, expected_num_diagnostics);
+      }
       version += 1;
     })
 }
