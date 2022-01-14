@@ -82,7 +82,7 @@ fn generate_executable_file(shim_data: &ShimData) -> Result<(), AnyError> {
   use shell_escape::escape;
   let args: Vec<String> = shim_data
     .args
-    .into_iter()
+    .iter()
     .map(|c| escape(c.into()).into_owned())
     .collect();
   let template = format!(
