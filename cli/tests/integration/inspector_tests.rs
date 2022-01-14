@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::futures;
 use deno_core::futures::prelude::*;
@@ -13,6 +13,15 @@ use std::pin::Pin;
 use test_util as util;
 use tokio::net::TcpStream;
 
+macro_rules! assert_starts_with {
+  ($string:expr, $($test:expr),+) => {
+    let string = $string; // This might be a function call or something
+    if !($(string.starts_with($test))||+) {
+      panic!("{:?} does not start with {:?}", string, [$($test),+]);
+    }
+  }
+}
+
 fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
   use std::sync::atomic::{AtomicU16, Ordering};
   static PORT: AtomicU16 = AtomicU16::new(9229);
@@ -23,8 +32,8 @@ fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
 fn extract_ws_url_from_stderr(
   stderr_lines: &mut impl std::iter::Iterator<Item = String>,
 ) -> url::Url {
-  let stderr_first_line = stderr_lines.next().unwrap();
-  assert!(stderr_first_line.starts_with("Debugger listening on "));
+  let stderr_first_line = skip_check_line(stderr_lines);
+  assert_starts_with!(&stderr_first_line, "Debugger listening on ");
   let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
   assert_eq!(v.len(), 1);
   let ws_url_index = v[0].0;
@@ -32,25 +41,57 @@ fn extract_ws_url_from_stderr(
   url::Url::parse(ws_url).unwrap()
 }
 
+fn skip_check_line(
+  stderr_lines: &mut impl std::iter::Iterator<Item = String>,
+) -> String {
+  loop {
+    let mut line = stderr_lines.next().unwrap();
+    line = util::strip_ansi_codes(&line).to_string();
+
+    if line.starts_with("Check") {
+      continue;
+    }
+
+    return line;
+  }
+}
+
+fn assert_stderr(
+  stderr_lines: &mut impl std::iter::Iterator<Item = String>,
+  expected_lines: &[&str],
+) {
+  let mut expected_index = 0;
+
+  loop {
+    let line = skip_check_line(stderr_lines);
+
+    assert_eq!(line, expected_lines[expected_index]);
+    expected_index += 1;
+
+    if expected_index >= expected_lines.len() {
+      break;
+    }
+  }
+}
+
 fn assert_stderr_for_inspect(
   stderr_lines: &mut impl std::iter::Iterator<Item = String>,
 ) {
-  assert_eq!(
-    &stderr_lines.next().unwrap(),
-    "Visit chrome://inspect to connect to the debugger."
+  assert_stderr(
+    stderr_lines,
+    &["Visit chrome://inspect to connect to the debugger."],
   );
 }
 
 fn assert_stderr_for_inspect_brk(
   stderr_lines: &mut impl std::iter::Iterator<Item = String>,
 ) {
-  assert_eq!(
-    &stderr_lines.next().unwrap(),
-    "Visit chrome://inspect to connect to the debugger."
-  );
-  assert_eq!(
-    &stderr_lines.next().unwrap(),
-    "Deno is waiting for debugger to connect."
+  assert_stderr(
+    stderr_lines,
+    &[
+      "Visit chrome://inspect to connect to the debugger.",
+      "Deno is waiting for debugger to connect.",
+    ],
   );
 }
 
@@ -99,7 +140,7 @@ async fn assert_inspector_messages(
 
 #[tokio::test]
 async fn inspector_connect() {
-  let script = util::testdata_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -125,7 +166,7 @@ async fn inspector_connect() {
 
 #[tokio::test]
 async fn inspector_break_on_first_line() {
-  let script = util::testdata_path().join("inspector2.js");
+  let script = util::testdata_path().join("inspector/inspector2.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -216,7 +257,7 @@ async fn inspector_break_on_first_line() {
 
 #[tokio::test]
 async fn inspector_pause() {
-  let script = util::testdata_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -263,7 +304,7 @@ async fn inspector_pause() {
 
   let msg = ws_read_msg(&mut socket).await;
   println!("response msg 1 {}", msg);
-  assert!(msg.starts_with(r#"{"id":6,"result":{"debuggerId":"#));
+  assert_starts_with!(msg, r#"{"id":6,"result":{"debuggerId":"#);
 
   socket
     .send(r#"{"id":31,"method":"Debugger.pause"}"#.into())
@@ -286,7 +327,7 @@ async fn inspector_port_collision() {
     return;
   }
 
-  let script = util::testdata_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector/inspector1.js");
   let inspect_flag = inspect_flag_with_unique_port("--inspect");
 
   let mut child1 = util::deno_cmd()
@@ -326,7 +367,7 @@ async fn inspector_port_collision() {
 
 #[tokio::test]
 async fn inspector_does_not_hang() {
-  let script = util::testdata_path().join("inspector3.js");
+  let script = util::testdata_path().join("inspector/inspector3.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -438,7 +479,7 @@ async fn inspector_does_not_hang() {
 
 #[tokio::test]
 async fn inspector_without_brk_runs_code() {
-  let script = util::testdata_path().join("inspector4.js");
+  let script = util::testdata_path().join("inspector/inspector4.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -566,7 +607,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
 #[tokio::test]
 async fn inspector_json() {
-  let script = util::testdata_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -595,7 +636,7 @@ async fn inspector_json() {
 
 #[tokio::test]
 async fn inspector_json_list() {
-  let script = util::testdata_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -626,7 +667,7 @@ async fn inspector_json_list() {
 async fn inspector_connect_non_ws() {
   // https://github.com/denoland/deno/issues/11449
   // Verify we don't panic if non-WS connection is being established
-  let script = util::testdata_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector/inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -650,7 +691,7 @@ async fn inspector_connect_non_ws() {
 
 #[tokio::test]
 async fn inspector_break_on_first_line_in_test() {
-  let script = util::testdata_path().join("inspector_test.js");
+  let script = util::testdata_path().join("inspector/inspector_test.js");
   let mut child = util::deno_cmd()
     .arg("test")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -733,14 +774,137 @@ async fn inspector_break_on_first_line_in_test() {
   )
   .await;
 
-  assert!(&stdout_lines
-    .next()
-    .unwrap()
-    .starts_with("running 1 test from"));
+  assert_starts_with!(&stdout_lines.next().unwrap(), "running 1 test from");
   assert!(&stdout_lines
     .next()
     .unwrap()
     .contains("test has finished running"));
+
+  child.kill().unwrap();
+  child.wait().unwrap();
+}
+
+#[tokio::test]
+async fn inspector_with_ts_files() {
+  let script = util::testdata_path().join("inspector/test.ts");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
+  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+    .await
+    .expect("Can't connect");
+  assert_eq!(response.status(), 101); // Switching protocols.
+
+  let (mut socket_tx, socket_rx) = socket.split();
+  let mut socket_rx = socket_rx
+    .map(|msg| msg.unwrap().to_string())
+    .filter(|msg| {
+      let pass = (msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
+        && msg.contains("testdata/inspector"))
+        || !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+      futures::future::ready(pass)
+    })
+    .boxed_local();
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+
+  assert_stderr_for_inspect_brk(&mut stderr_lines);
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[
+      r#"{"id":1,"method":"Runtime.enable"}"#,
+      r#"{"id":2,"method":"Debugger.enable"}"#,
+    ],
+    &mut socket_rx,
+    &[
+      r#"{"id":1,"result":{}}"#,
+    ],
+    &[
+      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+    ],
+  )
+  .await;
+
+  // receive messages with sources from this test
+  let script1 = socket_rx.next().await.unwrap();
+  assert!(script1.contains("testdata/inspector/test.ts"));
+  let script1_id = {
+    let v: serde_json::Value = serde_json::from_str(&script1).unwrap();
+    v["params"]["scriptId"].as_str().unwrap().to_string()
+  };
+  let script2 = socket_rx.next().await.unwrap();
+  assert!(script2.contains("testdata/inspector/foo.ts"));
+  let script2_id = {
+    let v: serde_json::Value = serde_json::from_str(&script2).unwrap();
+    v["params"]["scriptId"].as_str().unwrap().to_string()
+  };
+  let script3 = socket_rx.next().await.unwrap();
+  assert!(script3.contains("testdata/inspector/bar.js"));
+  let script3_id = {
+    let v: serde_json::Value = serde_json::from_str(&script3).unwrap();
+    v["params"]["scriptId"].as_str().unwrap().to_string()
+  };
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[],
+    &mut socket_rx,
+    &[r#"{"id":2,"result":{"debuggerId":"#],
+    &[],
+  )
+  .await;
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
+    &mut socket_rx,
+    &[r#"{"id":3,"result":{}}"#],
+    &[r#"{"method":"Debugger.paused","#],
+  )
+  .await;
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[
+      &format!(r#"{{"id":4,"method":"Debugger.getScriptSource","params":{{"scriptId":"{}"}}}}"#, script1_id),
+      &format!(r#"{{"id":5,"method":"Debugger.getScriptSource","params":{{"scriptId":"{}"}}}}"#, script2_id),
+      &format!(r#"{{"id":6,"method":"Debugger.getScriptSource","params":{{"scriptId":"{}"}}}}"#, script3_id),
+    ],
+    &mut socket_rx,
+    &[
+      r#"{"id":4,"result":{"scriptSource":"import { foo } from \"./foo.ts\";\nimport { bar } from \"./bar.js\";\nconsole.log(foo());\nconsole.log(bar());\n//# sourceMappingURL=data:application/json;base64,"#,
+      r#"{"id":5,"result":{"scriptSource":"class Foo {\n    hello() {\n        return \"hello\";\n    }\n}\nexport function foo() {\n    const f = new Foo();\n    return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
+      r#"{"id":6,"result":{"scriptSource":"export function bar() {\n  return \"world\";\n}\n"#,
+    ],
+    &[],
+  )
+  .await;
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[r#"{"id":7,"method":"Debugger.resume"}"#],
+    &mut socket_rx,
+    &[r#"{"id":7,"result":{}}"#],
+    &[],
+  )
+  .await;
+
+  assert_eq!(&stdout_lines.next().unwrap(), "hello");
+  assert_eq!(&stdout_lines.next().unwrap(), "world");
 
   child.kill().unwrap();
   child.wait().unwrap();

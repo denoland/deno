@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache;
 use crate::cache::Cacher;
@@ -53,6 +53,7 @@ use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
+use log::warn;
 use std::collections::HashSet;
 use std::env;
 use std::fs::File;
@@ -232,7 +233,7 @@ impl ProcState {
               import_map_specifier
             ))?;
           let import_map =
-            ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
+            import_map_from_text(&import_map_specifier, &file.source)?;
           Some(Arc::new(import_map))
         }
       };
@@ -384,10 +385,9 @@ impl ProcState {
         let graph_data = self.graph_data.read();
         let found_specifier = graph_data.follow_redirect(specifier);
         match graph_data.get(&found_specifier) {
-          Some(_) if !self.reload => Box::pin(futures::future::ready((
-            specifier.clone(),
-            Err(anyhow!("")),
-          ))),
+          Some(_) if !self.reload => {
+            Box::pin(futures::future::ready(Err(anyhow!(""))))
+          }
           _ => self.inner.load(specifier, is_dynamic),
         }
       }
@@ -404,6 +404,7 @@ impl ProcState {
       &mut loader,
       maybe_resolver,
       maybe_locker,
+      None,
       None,
     )
     .await;
@@ -663,6 +664,25 @@ impl SourceMapGetter for ProcState {
       None
     }
   }
+}
+
+pub fn import_map_from_text(
+  specifier: &Url,
+  json_text: &str,
+) -> Result<ImportMap, AnyError> {
+  let result = ImportMap::from_json_with_diagnostics(specifier, json_text)?;
+  if !result.diagnostics.is_empty() {
+    warn!(
+      "Import map diagnostics:\n{}",
+      result
+        .diagnostics
+        .into_iter()
+        .map(|d| format!("  - {}", d))
+        .collect::<Vec<_>>()
+        .join("\n")
+    )
+  }
+  Ok(result.import_map)
 }
 
 fn source_map_from_code(code: String) -> Option<Vec<u8>> {

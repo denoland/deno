@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 use deno_core::url;
@@ -1080,6 +1080,34 @@ fn typecheck_declarations_unstable() {
     .arg("--doc")
     .arg("--unstable")
     .arg(util::root_path().join("cli/dts/lib.deno.unstable.d.ts"))
+    .output()
+    .unwrap();
+  println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
+  println!("stderr: {}", String::from_utf8(output.stderr).unwrap());
+  assert!(output.status.success());
+}
+
+#[test]
+fn typecheck_core() {
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let test_file = deno_dir.path().join("test_deno_core_types.ts");
+  std::fs::write(
+    &test_file,
+    format!(
+      "import \"{}\";",
+      deno_core::resolve_path(
+        util::root_path()
+          .join("core/lib.deno_core.d.ts")
+          .to_str()
+          .unwrap()
+      )
+      .unwrap()
+    ),
+  )
+  .unwrap();
+  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+    .arg("run")
+    .arg(test_file.to_str().unwrap())
     .output()
     .unwrap();
   println!("stdout: {}", String::from_utf8(output.stdout).unwrap());

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache::CacherLoader;
 use crate::cache::FetchCacher;
@@ -78,6 +78,7 @@ impl CacheServer {
             maybe_imports.clone(),
             cache.as_mut_loader(),
             maybe_resolver,
+            None,
             None,
             None,
           )

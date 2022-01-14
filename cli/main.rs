@@ -1,6 +1,5 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-mod ast;
 mod auth_tokens;
 mod cache;
 mod checksum;
@@ -378,7 +377,14 @@ async fn compile_command(
   let ps = ProcState::build(flags.clone()).await?;
   let deno_dir = &ps.dir;
 
-  let output = compile_flags.output.or_else(|| {
+  let output = compile_flags.output.and_then(|output| {
+    if fs_util::path_has_trailing_slash(&output) {
+      let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
+      Some(output.join(infer_file_name))
+    } else {
+      Some(output)
+    }
+  }).or_else(|| {
     infer_name_from_url(&module_specifier).map(PathBuf::from)
   }).ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
@@ -467,6 +473,7 @@ async fn info_command(
       &mut cache,
       maybe_resolver,
       maybe_locker,
+      None,
       None,
     )
     .await;
@@ -647,6 +654,7 @@ async fn create_graph_and_maybe_check(
       maybe_resolver,
       maybe_locker,
       None,
+      None,
     )
     .await,
   );
@@ -725,6 +733,7 @@ fn bundle_module_graph(
     emit::BundleOptions {
       bundle_type: emit::BundleType::Module,
       ts_config,
+      emit_ignore_directives: true,
     },
   )
 }
@@ -990,6 +999,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         &mut cache,
         maybe_resolver,
         maybe_locker,
+        None,
         None,
       )
       .await;
@@ -1366,7 +1376,11 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      eprintln!("{}: {:?}", colors::red_bold("error"), error);
+      eprintln!(
+        "{}: {}",
+        colors::red_bold("error"),
+        format!("{:?}", error).trim_start_matches("error: ")
+      );
       std::process::exit(1);
     }
   }
@@ -1394,11 +1408,10 @@ pub fn main() {
   let flags = match flags::flags_from_vec(args) {
     Ok(flags) => flags,
     Err(err @ clap::Error { .. })
-      if err.kind == clap::ErrorKind::HelpDisplayed
-        || err.kind == clap::ErrorKind::VersionDisplayed =>
+      if err.kind == clap::ErrorKind::DisplayHelp
+        || err.kind == clap::ErrorKind::DisplayVersion =>
     {
-      err.write_to(&mut std::io::stdout()).unwrap();
-      std::io::stdout().write_all(b"\n").unwrap();
+      err.print().unwrap();
       std::process::exit(0);
     }
     Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
