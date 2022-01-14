@@ -4,12 +4,13 @@ use deno_bench_util::bencher::Bencher;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use test_util::lsp::LspClient;
 
 // Intended to match the benchmark in quick-lint-js
 // https://github.com/quick-lint/quick-lint-js/blob/35207e6616267c6c81be63f47ce97ec2452d60df/benchmark/benchmark-lsp/lsp-benchmarks.cpp#L223-L268
 fn incremental_change_wait(bench: &mut Bencher) {
   let deno_exe = test_util::deno_exe_path();
-  let mut client = test_util::lsp::LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe).unwrap();
 
   static FIXTURE_INIT_JSON: &[u8] =
     include_bytes!("testdata/initialize_params.json");
@@ -33,46 +34,71 @@ fn incremental_change_wait(bench: &mut Bencher) {
       }),
     )
     .unwrap();
-  let (method, maybe_diag): (String, Option<Value>) =
+  let (method, _maybe_diag): (String, Option<Value>) =
     client.read_notification().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
-  let _expected_num_diagnostics = get_num_diagnostics(maybe_diag);
+  //let _expected_num_diagnostics = get_num_diagnostics(maybe_diag);
 
-  let mut version: usize = 0;
+  let mut document_version: u64 = 0;
   bench.iter(|| {
-      let text = format!("m{:05}", version);
+      println!("document_version {}", document_version);
+      let text = format!("m{:05}", document_version);
       client
         .write_notification(
           "textDocument/didChange",
           json!({
               "textDocument": {
-                  "version": version,
+                  "version": document_version,
                   "uri":"file:///testdata/express-router.js"
               },
-              "contentChanges":[
+              "contentChanges": [
                 {"text": text, "range":{"start":{"line":506,"character":39},"end":{"line":506,"character":45}}},
                 {"text": text, "range":{"start":{"line":507,"character":8},"end":{"line":507,"character":14}}},
                 {"text": text, "range":{"start":{"line":509,"character":10},"end":{"line":509,"character":16}}}
               ]
           })
       ).unwrap();
-      const DIAGNOSTICS_MESSAGES_TO_IGNORE: usize = 2;
+
+      const DIAGNOSTICS_MESSAGES_TO_IGNORE: usize = 1;
       for _ in 0..DIAGNOSTICS_MESSAGES_TO_IGNORE {
-          let (method, maybe_diag): (String, Option<Value>) =
-            client.read_notification().unwrap();
-          assert_eq!(method, "textDocument/publishDiagnostics");
-          let _num_diagnostics = get_num_diagnostics(maybe_diag);
-          //assert_eq!(num_diagnostics, expected_num_diagnostics);
+          wait_for_first_diagnostics_notification(document_version, &mut client);
       }
-      version += 1;
+       wait_for_first_diagnostics_notification(document_version, &mut client);
+
+      document_version += 1;
     })
 }
 
-fn get_num_diagnostics(maybe_diag: Option<Value>) -> usize {
-  let d = maybe_diag.unwrap();
-  let msg = d.as_object().unwrap();
+fn wait_for_first_diagnostics_notification(
+  document_version: u64,
+  client: &mut LspClient,
+) -> Value {
+  loop {
+    let (method, maybe_diag): (String, Option<Value>) =
+      client.read_notification().unwrap();
+    if method == "textDocument/publishDiagnostics" {
+      let d = maybe_diag.unwrap();
+      if document_version == get_diagnostic_version(&d) {
+        return d;
+      }
+    } else {
+      // handle_misc_message
+      todo!()
+    }
+  }
+}
+
+fn get_diagnostic_version(diag: &Value) -> u64 {
+  let msg = diag.as_object().unwrap();
+  msg.get("version").unwrap().as_u64().unwrap()
+}
+
+/*
+fn get_num_diagnostics(diag: &Value) -> usize {
+  let msg = diag.as_object().unwrap();
   msg.get("diagnostics").unwrap().as_array().unwrap().len()
 }
+*/
 
 benchmark_group!(benches, incremental_change_wait);
 benchmark_main!(benches);
