@@ -4,10 +4,10 @@
 //! populate a cache, emit files, and transform a graph into the structures for
 //! loading into an isolate.
 
-use crate::ast;
 use crate::cache::CacheType;
 use crate::cache::Cacher;
 use crate::colors;
+use crate::config_file;
 use crate::config_file::ConfigFile;
 use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
@@ -15,10 +15,25 @@ use crate::diagnostics::Diagnostics;
 use crate::flags;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
+use crate::text_encoding::strip_bom;
 use crate::tsc;
 use crate::version;
 
+use deno_ast::get_syntax;
 use deno_ast::swc;
+use deno_ast::swc::bundler::Hook;
+use deno_ast::swc::bundler::ModuleRecord;
+use deno_ast::swc::common::comments::SingleThreadedComments;
+use deno_ast::swc::common::FileName;
+use deno_ast::swc::common::Mark;
+use deno_ast::swc::common::SourceMap;
+use deno_ast::swc::common::Span;
+use deno_ast::swc::common::Spanned;
+use deno_ast::swc::parser::error::Error as SwcError;
+use deno_ast::swc::parser::lexer::Lexer;
+use deno_ast::swc::parser::StringInput;
+use deno_ast::Diagnostic;
+use deno_ast::LineAndColumnDisplay;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -27,6 +42,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
+use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
@@ -517,7 +533,7 @@ pub(crate) struct BundleOptions {
 /// of modules from the graph.
 struct BundleLoader<'a> {
   cm: Rc<swc::common::SourceMap>,
-  emit_options: &'a ast::EmitOptions,
+  emit_options: &'a deno_ast::EmitOptions,
   graph: &'a ModuleGraph,
 }
 
@@ -529,7 +545,7 @@ impl swc::bundler::Load for BundleLoader<'_> {
     match file_name {
       swc::common::FileName::Url(specifier) => {
         if let Some(m) = self.graph.get(specifier) {
-          let (fm, module) = ast::transpile_module(
+          let (fm, module) = transpile_module(
             specifier,
             m.maybe_source().unwrap_or(""),
             *m.media_type(),
@@ -553,6 +569,77 @@ impl swc::bundler::Load for BundleLoader<'_> {
         file_name
       ),
     }
+  }
+}
+
+/// Transpiles a source module into an swc SourceFile.
+fn transpile_module(
+  specifier: &ModuleSpecifier,
+  source: &str,
+  media_type: MediaType,
+  options: &deno_ast::EmitOptions,
+  cm: Rc<swc::common::SourceMap>,
+) -> Result<(Rc<swc::common::SourceFile>, swc::ast::Module), AnyError> {
+  let source = strip_bom(source);
+  let source = if media_type == MediaType::Json {
+    format!(
+      "export default JSON.parse(`{}`);",
+      source.replace("${", "\\${").replace('`', "\\`")
+    )
+  } else {
+    source.to_string()
+  };
+  let source_file =
+    cm.new_source_file(FileName::Url(specifier.clone()), source);
+  let input = StringInput::from(&*source_file);
+  let comments = SingleThreadedComments::default();
+  let syntax = if media_type == MediaType::Json {
+    get_syntax(MediaType::JavaScript)
+  } else {
+    get_syntax(media_type)
+  };
+  let lexer = Lexer::new(syntax, deno_ast::ES_VERSION, input, Some(&comments));
+  let mut parser = swc::parser::Parser::new_from(lexer);
+  let module = parser
+    .parse_module()
+    .map_err(|e| swc_err_to_diagnostic(&cm, specifier, e))?;
+  let diagnostics = parser
+    .take_errors()
+    .into_iter()
+    .map(|e| swc_err_to_diagnostic(&cm, specifier, e))
+    .collect::<Vec<_>>();
+
+  let top_level_mark = Mark::fresh(Mark::root());
+  let program = deno_ast::fold_program(
+    swc::ast::Program::Module(module),
+    options,
+    cm,
+    &comments,
+    top_level_mark,
+    &diagnostics,
+  )?;
+  let module = match program {
+    swc::ast::Program::Module(module) => module,
+    _ => unreachable!(),
+  };
+
+  Ok((source_file, module))
+}
+
+fn swc_err_to_diagnostic(
+  source_map: &SourceMap,
+  specifier: &ModuleSpecifier,
+  err: SwcError,
+) -> Diagnostic {
+  let location = source_map.lookup_char_pos(err.span().lo);
+  Diagnostic {
+    specifier: specifier.to_string(),
+    span: err.span(),
+    display_position: LineAndColumnDisplay {
+      line_number: location.line,
+      column_number: location.col_display + 1,
+    },
+    kind: err.into_kind(),
   }
 }
 
@@ -597,8 +684,8 @@ pub(crate) fn bundle(
 ) -> Result<(String, Option<String>), AnyError> {
   let globals = swc::common::Globals::new();
   deno_ast::swc::common::GLOBALS.set(&globals, || {
-    let emit_options: ast::EmitOptions = options.ts_config.into();
-    let source_map_config = ast::SourceMapConfig {
+    let emit_options: deno_ast::EmitOptions = options.ts_config.into();
+    let source_map_config = deno_ast::SourceMapConfig {
       inline_sources: emit_options.inline_sources,
     };
 
@@ -617,7 +704,7 @@ pub(crate) fn bundle(
     };
     // This hook will rewrite the `import.meta` when bundling to give a consistent
     // behavior between bundled and unbundled code.
-    let hook = Box::new(ast::BundleHook);
+    let hook = Box::new(BundleHook);
     let mut bundler = swc::bundler::Bundler::new(
       &globals,
       cm.clone(),
@@ -722,11 +809,10 @@ pub(crate) fn emit(
     if is_valid && !needs_reload {
       continue;
     }
-    let (emit, maybe_map) =
-      ast::transpile(&module.parsed_source, &emit_options)?;
+    let transpiled_source = module.parsed_source.transpile(&emit_options)?;
     emit_count += 1;
-    cache.set(CacheType::Emit, &module.specifier, emit)?;
-    if let Some(map) = maybe_map {
+    cache.set(CacheType::Emit, &module.specifier, transpiled_source.text)?;
+    if let Some(map) = transpiled_source.source_map {
       cache.set(CacheType::SourceMap, &module.specifier, map)?;
     }
     if !is_valid {
@@ -859,6 +945,80 @@ pub(crate) fn to_file_map(
     }
   }
   files
+}
+
+/// This contains the logic for Deno to rewrite the `import.meta` when bundling.
+pub struct BundleHook;
+
+impl Hook for BundleHook {
+  fn get_import_meta_props(
+    &self,
+    span: Span,
+    module_record: &ModuleRecord,
+  ) -> Result<Vec<deno_ast::swc::ast::KeyValueProp>, AnyError> {
+    use deno_ast::swc::ast;
+
+    Ok(vec![
+      ast::KeyValueProp {
+        key: ast::PropName::Ident(ast::Ident::new("url".into(), span)),
+        value: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
+          span,
+          value: module_record.file_name.to_string().into(),
+          kind: ast::StrKind::Synthesized,
+          has_escape: false,
+        }))),
+      },
+      ast::KeyValueProp {
+        key: ast::PropName::Ident(ast::Ident::new("main".into(), span)),
+        value: Box::new(if module_record.is_entry {
+          ast::Expr::Member(ast::MemberExpr {
+            span,
+            obj: Box::new(ast::Expr::MetaProp(ast::MetaPropExpr {
+              span,
+              kind: ast::MetaPropKind::ImportMeta,
+            })),
+            prop: ast::MemberProp::Ident(ast::Ident::new("main".into(), span)),
+          })
+        } else {
+          ast::Expr::Lit(ast::Lit::Bool(ast::Bool { span, value: false }))
+        }),
+      },
+    ])
+  }
+}
+
+impl From<config_file::TsConfig> for deno_ast::EmitOptions {
+  fn from(config: config_file::TsConfig) -> Self {
+    let options: config_file::EmitConfigOptions =
+      serde_json::from_value(config.0).unwrap();
+    let imports_not_used_as_values =
+      match options.imports_not_used_as_values.as_str() {
+        "preserve" => deno_ast::ImportsNotUsedAsValues::Preserve,
+        "error" => deno_ast::ImportsNotUsedAsValues::Error,
+        _ => deno_ast::ImportsNotUsedAsValues::Remove,
+      };
+    let (transform_jsx, jsx_automatic, jsx_development) =
+      match options.jsx.as_str() {
+        "react" => (true, false, false),
+        "react-jsx" => (true, true, false),
+        "react-jsxdev" => (true, true, true),
+        _ => (false, false, false),
+      };
+    deno_ast::EmitOptions {
+      emit_metadata: options.emit_decorator_metadata,
+      imports_not_used_as_values,
+      inline_source_map: options.inline_source_map,
+      inline_sources: options.inline_sources,
+      source_map: options.source_map,
+      jsx_automatic,
+      jsx_development,
+      jsx_factory: options.jsx_factory,
+      jsx_fragment_factory: options.jsx_fragment_factory,
+      jsx_import_source: options.jsx_import_source,
+      transform_jsx,
+      var_decl_imports: false,
+    }
+  }
 }
 
 #[cfg(test)]

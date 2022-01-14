@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-mod ast;
 mod auth_tokens;
 mod cache;
 mod checksum;
@@ -475,6 +474,7 @@ async fn info_command(
       maybe_resolver,
       maybe_locker,
       None,
+      None,
     )
     .await;
 
@@ -653,6 +653,7 @@ async fn create_graph_and_maybe_check(
       &mut cache,
       maybe_resolver,
       maybe_locker,
+      None,
       None,
     )
     .await,
@@ -998,6 +999,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         &mut cache,
         maybe_resolver,
         maybe_locker,
+        None,
         None,
       )
       .await;

@@ -7,6 +7,7 @@ use crate::emit;
 use crate::errors::get_error_class_name;
 use crate::flags;
 use crate::graph_util::graph_valid;
+use crate::proc_state::import_map_from_text;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -24,7 +25,6 @@ use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
-use import_map::ImportMap;
 use serde::Deserialize;
 use serde::Serialize;
 use std::cell::RefCell;
@@ -174,8 +174,8 @@ async fn op_emit(
       .with_context(|| {
         format!("Bad URL (\"{}\") for import map.", import_map_str)
       })?;
-    let import_map = if let Some(value) = args.import_map {
-      ImportMap::from_json(import_map_specifier.as_str(), &value.to_string())?
+    let import_map_source = if let Some(value) = args.import_map {
+      Arc::new(value.to_string())
     } else {
       let file = ps
         .file_fetcher
@@ -187,8 +187,10 @@ async fn op_emit(
             import_map_specifier, e
           ))
         })?;
-      ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
+      file.source
     };
+    let import_map =
+      import_map_from_text(&import_map_specifier, &import_map_source)?;
     Some(ImportMapResolver::new(Arc::new(import_map)))
   } else if args.import_map.is_some() {
     return Err(generic_error("An importMap was specified, but no importMapPath was provided, which is required."));
@@ -215,6 +217,7 @@ async fn op_emit(
       maybe_imports,
       cache.as_mut_loader(),
       maybe_resolver,
+      None,
       None,
       None,
     )
