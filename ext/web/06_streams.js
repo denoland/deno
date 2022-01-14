@@ -1286,7 +1286,7 @@
    */
   function readableStreamBYOBReaderRelease(reader) {
     readableStreamReaderGenericRelease(reader);
-    const e = new TypeError("The Reader was released.");
+    const e = new TypeError("The reader was released.");
     readableStreamBYOBReaderErrorReadIntoRequests(reader, e);
   }
 
