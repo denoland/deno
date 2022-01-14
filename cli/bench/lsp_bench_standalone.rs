@@ -56,8 +56,8 @@ fn incremental_change_wait(bench: &mut Bencher) {
               ]
           })
       ).unwrap();
-      const EXPECTED_DIAGNOSTIC_MESSAGES: usize = 3;
-      for _ in 0..EXPECTED_DIAGNOSTIC_MESSAGES {
+      const DIAGNOSTICS_MESSAGES_TO_IGNORE: usize = 2;
+      for _ in 0..DIAGNOSTICS_MESSAGES_TO_IGNORE {
           let (method, maybe_diag): (String, Option<Value>) =
             client.read_notification().unwrap();
           assert_eq!(method, "textDocument/publishDiagnostics");
