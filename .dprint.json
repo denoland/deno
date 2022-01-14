@@ -21,6 +21,7 @@
     "cli/dts/lib.scripthost.d.ts",
     "cli/dts/lib.webworker*.d.ts",
     "cli/dts/typescript.d.ts",
+    "cli/bench/testdata/express-router.js",
     "cli/tests/testdata/encoding",
     "cli/tests/testdata/inline_js_source_map*",
     "cli/tests/testdata/badly_formatted.md",
