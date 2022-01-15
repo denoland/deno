@@ -37,7 +37,32 @@ mod not_docs {
     let snapshot = js_runtime.snapshot();
     let snapshot_slice: &[u8] = &*snapshot;
     println!("Snapshot size: {}", snapshot_slice.len());
-    std::fs::write(&snapshot_path, snapshot_slice).unwrap();
+
+    let compressed_snapshot_with_size = {
+      let mut vec = vec![];
+
+      vec.extend_from_slice(
+        &u32::try_from(snapshot.len())
+          .expect("snapshot larger than 4gb")
+          .to_le_bytes(),
+      );
+
+      lzzzz::lz4_hc::compress_to_vec(
+        snapshot_slice,
+        &mut vec,
+        lzzzz::lz4_hc::CLEVEL_MAX,
+      )
+      .expect("snapshot compression failed");
+
+      vec
+    };
+
+    println!(
+      "Snapshot compressed size: {}",
+      compressed_snapshot_with_size.len()
+    );
+
+    std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
     println!("Snapshot written to: {} ", snapshot_path.display());
   }
 

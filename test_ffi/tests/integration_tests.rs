@@ -56,6 +56,8 @@ fn basic() {
     true\n\
     false\n\
     579\n\
+    true\n\
+    579\n\
     579\n\
     579\n\
     579\n\
@@ -63,6 +65,8 @@ fn basic() {
     579\n\
     579.9119873046875\n\
     579.912\n\
+    After sleep_blocking\n\
+    true\n\
     Before\n\
     true\n\
     After\n\

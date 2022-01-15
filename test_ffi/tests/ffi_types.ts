@@ -86,7 +86,7 @@ remote.symbols.method14(null);
 remote.symbols.method14(0);
 
 // @ts-expect-error: Invalid argument
-remote.symbols.method15(null);
+remote.symbols.method15(0);
 remote.symbols.method15(new Uint16Array(1));
 remote.symbols.method15({} as Deno.UnsafePointer);
 
@@ -109,3 +109,15 @@ const result4 = remote.symbols.method19();
 // @ts-expect-error: Invalid argument
 result4.then((_0: Deno.TypedArray) => {});
 result4.then((_1: Deno.UnsafePointer) => {});
+
+const ptr = new Deno.UnsafePointer(0n);
+const fnptr = new Deno.UnsafeFnPointer(
+  ptr,
+  {
+    parameters: ["u32", "pointer"],
+    result: "void",
+  } as const,
+);
+// @ts-expect-error: Invalid argument
+fnptr.call(null, null);
+fnptr.call(0, null);

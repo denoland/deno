@@ -1,5 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use aes_kw::KekAes128;
+use aes_kw::KekAes192;
+use aes_kw::KekAes256;
+
 use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::type_error;
@@ -11,6 +15,7 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use shared::operation_error;
 
 use std::cell::RefCell;
 use std::num::NonZeroU32;
@@ -47,6 +52,7 @@ use sha2::Digest;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
+use std::convert::TryFrom;
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
@@ -68,6 +74,7 @@ use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
+use crate::shared::RawKeyData;
 use crate::shared::ID_MFG1;
 use crate::shared::ID_P_SPECIFIED;
 use crate::shared::ID_SHA1_OID;
@@ -95,6 +102,8 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_decrypt", op_async(op_crypto_decrypt)),
       ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
       ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
+      ("op_crypto_wrap_key", op_sync(op_crypto_wrap_key)),
+      ("op_crypto_unwrap_key", op_sync(op_crypto_unwrap_key)),
     ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
@@ -813,6 +822,72 @@ pub async fn op_crypto_subtle_digest(
   .await?;
 
   Ok(output)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WrapUnwrapKeyArg {
+  key: RawKeyData,
+  algorithm: Algorithm,
+}
+
+pub fn op_crypto_wrap_key(
+  _state: &mut OpState,
+  args: WrapUnwrapKeyArg,
+  data: ZeroCopyBuf,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let algorithm = args.algorithm;
+
+  match algorithm {
+    Algorithm::AesKw => {
+      let key = args.key.as_secret_key()?;
+
+      if data.len() % 8 != 0 {
+        return Err(type_error("Data must be multiple of 8 bytes"));
+      }
+
+      let wrapped_key = match key.len() {
+        16 => KekAes128::new(key.into()).wrap_vec(&data),
+        24 => KekAes192::new(key.into()).wrap_vec(&data),
+        32 => KekAes256::new(key.into()).wrap_vec(&data),
+        _ => return Err(type_error("Invalid key length")),
+      }
+      .map_err(|_| operation_error("encryption error"))?;
+
+      Ok(wrapped_key.into())
+    }
+    _ => Err(type_error("Unsupported algorithm")),
+  }
+}
+
+pub fn op_crypto_unwrap_key(
+  _state: &mut OpState,
+  args: WrapUnwrapKeyArg,
+  data: ZeroCopyBuf,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let algorithm = args.algorithm;
+  match algorithm {
+    Algorithm::AesKw => {
+      let key = args.key.as_secret_key()?;
+
+      if data.len() % 8 != 0 {
+        return Err(type_error("Data must be multiple of 8 bytes"));
+      }
+
+      let unwrapped_key = match key.len() {
+        16 => KekAes128::new(key.into()).unwrap_vec(&data),
+        24 => KekAes192::new(key.into()).unwrap_vec(&data),
+        32 => KekAes256::new(key.into()).unwrap_vec(&data),
+        _ => return Err(type_error("Invalid key length")),
+      }
+      .map_err(|_| {
+        operation_error("decryption error - integrity check failed")
+      })?;
+
+      Ok(unwrapped_key.into())
+    }
+    _ => Err(type_error("Unsupported algorithm")),
+  }
 }
 
 pub fn get_declaration() -> PathBuf {

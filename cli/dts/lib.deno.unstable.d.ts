@@ -126,6 +126,8 @@ declare namespace Deno {
     Result extends NativeType = NativeType,
     NonBlocking extends boolean = boolean,
   > {
+    /** Name of the symbol, defaults to the key name in symbols object. */
+    name?: string;
     parameters: Parameters;
     result: Result;
     /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
@@ -149,7 +151,7 @@ declare namespace Deno {
 
   type StaticForeignFunctionParameter<T> = T extends "void" ? void
     : T extends StaticNativeNumberType ? number
-    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray
+    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray | null
     : unknown;
 
   /** Infers a foreign function parameter list. */
@@ -246,6 +248,26 @@ declare namespace Deno {
     getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
     /** Copies the memory of the pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional offset from the pointer. */
     copyInto(destination: TypedArray, offset?: number): void;
+  }
+
+  /**
+   * **UNSTABLE**: Unsafe and new API, beware!
+   *
+   * An unsafe pointer to a function, for calling functions that are not
+   * present as symbols.
+   */
+  export class UnsafeFnPointer<Fn extends ForeignFunction> {
+    pointer: UnsafePointer;
+    definition: Fn;
+
+    constructor(pointer: UnsafePointer, definition: Fn);
+
+    call(
+      ...args: StaticForeignFunctionParameters<Fn["parameters"]>
+    ): ConditionalAsync<
+      Fn["nonblocking"],
+      StaticForeignFunctionResult<Fn["result"]>
+    >;
   }
 
   /** A dynamic library resource */

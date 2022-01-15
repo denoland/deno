@@ -33,7 +33,7 @@ interface PullIntoDescriptor {
   elementSize: number;
   // deno-lint-ignore no-explicit-any
   viewConstructor: any;
-  readerType: "default" | "byob";
+  readerType: "default" | "byob" | "none";
 }
 
 interface ReadableByteStreamQueueEntry {
