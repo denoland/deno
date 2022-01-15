@@ -956,6 +956,7 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
   }
 }
 
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl std::marker::Send for HyperAcceptor<'_> {}
 
 async fn wrap_redirect_server() {

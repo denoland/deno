@@ -288,7 +288,7 @@ impl GraphData {
               if !range.specifier.as_str().contains("$deno") {
                 return Some(Err(custom_error(
                   get_error_class_name(&error.clone().into()),
-                  format!("{}\n    at {}", error.to_string(), range),
+                  format!("{}\n    at {}", error, range),
                 )));
               }
               return Some(Err(error.clone().into()));
@@ -307,7 +307,7 @@ impl GraphData {
                   if !range.specifier.as_str().contains("$deno") {
                     return Some(Err(custom_error(
                       get_error_class_name(&error.clone().into()),
-                      format!("{}\n    at {}", error.to_string(), range),
+                      format!("{}\n    at {}", error, range),
                     )));
                   }
                   return Some(Err(error.clone().into()));
@@ -323,7 +323,7 @@ impl GraphData {
               if !range.specifier.as_str().contains("$deno") {
                 return Some(Err(custom_error(
                   get_error_class_name(&error.clone().into()),
-                  format!("{}\n    at {}", error.to_string(), range),
+                  format!("{}\n    at {}", error, range),
                 )));
               }
               return Some(Err(error.clone().into()));
