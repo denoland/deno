@@ -6,6 +6,18 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.17.3 / 2022.01.12
+
+- fix: Get lib.deno_core.d.ts to parse correctly (#13238)
+- fix: expose "Deno.memoryUsage()" in worker context (#13293)
+- fix: install shim with `--allow-all` should not output each permission
+  individually (#13325)
+- fix(compile): fix output flag behaviour on compile command (#13299)
+- fix(coverage): don't type check (#13324)
+- fix(coverage): merge coverage ranges (#13334)
+- fix(ext/web): handle no arguments in atob (#13341)
+- fix(serde_v8): support #[serde(default)] (#13300)
+
 ### 1.17.2 / 2022.01.05
 
 - fix(cli): include JSON modules in bundle (#13188)

@@ -30,10 +30,10 @@ struct StubDocLoader;
 impl Loader for StubDocLoader {
   fn load(
     &mut self,
-    specifier: &ModuleSpecifier,
+    _specifier: &ModuleSpecifier,
     _is_dynamic: bool,
   ) -> LoadFuture {
-    Box::pin(future::ready((specifier.clone(), Ok(None))))
+    Box::pin(future::ready(Ok(None)))
   }
 }
 
@@ -50,7 +50,7 @@ impl Resolver for DocResolver {
   ) -> Result<ModuleSpecifier, AnyError> {
     if let Some(import_map) = &self.import_map {
       return import_map
-        .resolve(specifier, referrer.as_str())
+        .resolve(specifier, referrer)
         .map_err(AnyError::from);
     }
 
@@ -74,18 +74,16 @@ impl Loader for DocLoader {
     let specifier = specifier.clone();
     let ps = self.ps.clone();
     async move {
-      let result = ps
-        .file_fetcher
+      ps.file_fetcher
         .fetch(&specifier, &mut Permissions::allow_all())
         .await
         .map(|file| {
           Some(LoadResponse {
-            specifier: specifier.clone(),
+            specifier,
             content: file.source.clone(),
             maybe_headers: file.maybe_headers,
           })
-        });
-      (specifier.clone(), result)
+        })
     }
     .boxed_local()
   }
@@ -110,6 +108,7 @@ pub async fn print_docs(
       false,
       None,
       &mut loader,
+      None,
       None,
       None,
       None,
@@ -150,6 +149,7 @@ pub async fn print_docs(
       None,
       &mut loader,
       Some(&resolver),
+      None,
       None,
       None,
     )
