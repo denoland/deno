@@ -2457,3 +2457,8 @@ itest!(import_assertions_type_check {
   output: "import_assertions/type_check.out",
   exit_code: 1,
 });
+
+itest!(colors_without_global_this {
+  args: "run colors_without_globalThis.js",
+  output_str: Some("true\n"),
+});

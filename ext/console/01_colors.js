@@ -11,6 +11,12 @@
     ArrayPrototypeJoin,
   } = window.__bootstrap.primordials;
 
+  let noColor = false;
+
+  function setNoColor(value) {
+    noColor = value;
+  }
+
   function code(open, close) {
     return {
       open: `\x1b[${open}m`,
@@ -79,7 +85,7 @@
   }
 
   function maybeColor(fn) {
-    return !(globalThis.Deno?.noColor ?? false) ? fn : (s) => s;
+    return !noColor ? fn : (s) => s;
   }
 
   window.__bootstrap.colors = {
@@ -95,5 +101,7 @@
     magenta,
     stripColor,
     maybeColor,
+    setNoColor,
+    noColor,
   };
 })(this);

@@ -35,6 +35,7 @@ delete Object.prototype.__proto__;
   const timers = window.__bootstrap.timers;
   const base64 = window.__bootstrap.base64;
   const encoding = window.__bootstrap.encoding;
+  const colors = window.__bootstrap.colors;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
   const internals = window.__bootstrap.internals;
@@ -574,6 +575,7 @@ delete Object.prototype.__proto__;
       cpuCount,
     } = runtimeOptions;
 
+    colors.setNoColor(noColor);
     if (locationHref != null) {
       location.setLocationHref(locationHref);
     }
@@ -593,7 +595,7 @@ delete Object.prototype.__proto__;
     ObjectDefineProperties(finalDenoNs, {
       pid: util.readOnly(pid),
       ppid: util.readOnly(ppid),
-      noColor: util.readOnly(noColor),
+      noColor: util.readOnly(colors.noColor),
       args: util.readOnly(ObjectFreeze(args)),
       mainModule: util.getterOnly(opMainModule),
     });
@@ -664,6 +666,7 @@ delete Object.prototype.__proto__;
       cpuCount,
     } = runtimeOptions;
 
+    colors.setNoColor(noColor);
     location.setLocationHref(locationHref);
     numCpus = cpuCount;
     registerErrors();
@@ -686,7 +689,7 @@ delete Object.prototype.__proto__;
       }
       ObjectDefineProperties(finalDenoNs, {
         pid: util.readOnly(pid),
-        noColor: util.readOnly(noColor),
+        noColor: util.readOnly(colors.noColor),
         args: util.readOnly(ObjectFreeze(args)),
       });
       // Setup `Deno` global - we're actually overriding already
