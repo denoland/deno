@@ -55,12 +55,12 @@ where
   client
     .write_response(
       id,
-      json!({
+      json!([{
         "enable": true,
         "codeLens": {
           "test": true
         }
-      }),
+      }]),
     )
     .unwrap();
 
@@ -564,7 +564,7 @@ fn lsp_hover_disabled() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": false }))
+    .write_response(id, json!([{ "enable": false }]))
     .unwrap();
 
   let (maybe_res, maybe_err) = client
@@ -814,7 +814,7 @@ fn lsp_hover_closed_document() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(id, json!([{ "enable": true }]))
     .unwrap();
 
   client
@@ -833,7 +833,7 @@ fn lsp_hover_closed_document() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(id, json!([{ "enable": true }]))
     .unwrap();
 
   let (method, _) = client.read_notification::<Value>().unwrap();
@@ -1545,35 +1545,25 @@ fn lsp_format_exclude_with_config() {
 #[test]
 fn lsp_format_exclude_default_config() {
   let temp_dir = TempDir::new().unwrap();
-  let workspace_root = temp_dir.path();
-
-  fs::write(
-    workspace_root.join("deno.json"),
-    br#"
-      {
-        "fmt": {
-          "files": {
-            "exclude": [ "ignored.ts" ]
-          }
-        }
-      }
-    "#,
-  )
-  .unwrap();
-
+  let workspace_root = temp_dir.path().canonicalize().unwrap();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  params.root_uri = Some(Url::from_file_path(workspace_root).unwrap());
+  let deno_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
+  fs::write(workspace_root.clone().join("deno.jsonc"), deno_jsonc).unwrap();
 
-  let mut client = LspClient::new(&deno_exe_path()).unwrap();
+  params.root_uri = Some(Url::from_file_path(workspace_root.clone()).unwrap());
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
 
   let file_uri =
-    ModuleSpecifier::from_file_path(workspace_root.join("ignored.ts")).unwrap();
-
-  fs::write(workspace_root.join("ignored.ts"), "foo").unwrap();
+    ModuleSpecifier::from_file_path(workspace_root.join("ignored.ts"))
+      .unwrap()
+      .to_string();
   did_open(
     &mut client,
     json!({
@@ -2147,12 +2137,12 @@ fn lsp_code_lens_test_disabled() {
   client
     .write_response(
       id,
-      json!({
+      json!([{
         "enable": true,
         "codeLens": {
           "test": false
         }
-      }),
+      }]),
     )
     .unwrap();
 
@@ -2529,7 +2519,7 @@ fn lsp_code_actions_deno_cache() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(id, json!([{ "enable": true }]))
     .unwrap();
   let (method, _) = client.read_notification::<Value>().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
@@ -2703,7 +2693,7 @@ fn lsp_code_actions_deadlock() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(id, json!([{ "enable": true }]))
     .unwrap();
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
@@ -3363,7 +3353,7 @@ fn lsp_diagnostics_deno_types() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(id, json!([{ "enable": true }]))
     .unwrap();
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
@@ -3433,7 +3423,7 @@ fn lsp_diagnostics_refresh_dependents() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": false }))
+    .write_response(id, json!([{ "enable": false }]))
     .unwrap();
   let (method, _) = client.read_notification::<Value>().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");

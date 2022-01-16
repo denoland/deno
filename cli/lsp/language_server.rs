@@ -325,16 +325,22 @@ impl Inner {
 
     // Auto-discover config
 
-    let root_uri = maybe_root_uri.unwrap();
-    let root_path = root_uri.to_file_path().unwrap();
-    let mut checked = std::collections::HashSet::new();
-    let maybe_config =
-      crate::config_file::discover_from(&root_path, &mut checked)?;
-    Ok(maybe_config.map(|c| {
-      let s = c.specifier.clone();
-      lsp_log!("  Auto-resolved configuration file: \"{}\"", s);
-      (c, s)
-    }))
+    // It is possible that root_uri is not set, for example when having a single
+    // file open and not a workspace.  In those situations we can't
+    // automatically discover the configuration
+    if let Some(root_uri) = maybe_root_uri {
+      let root_path = root_uri.to_file_path().unwrap();
+      let mut checked = std::collections::HashSet::new();
+      let maybe_config =
+        crate::config_file::discover_from(&root_path, &mut checked)?;
+      Ok(maybe_config.map(|c| {
+        let s = c.specifier.clone();
+        lsp_log!("  Auto-resolved configuration file: \"{}\"", s);
+        (c, s)
+      }))
+    } else {
+      Ok(None)
+    }
   }
 
   fn is_diagnosable(&self, specifier: &ModuleSpecifier) -> bool {
