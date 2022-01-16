@@ -13,11 +13,11 @@ use std::time::Duration;
 use test_util::lsp::LspClient;
 use test_util::lsp::LspResponseError;
 
-static FIXTURE_CODE_LENS_TS: &str = include_str!("fixtures/code_lens.ts");
-static FIXTURE_DB_TS: &str = include_str!("fixtures/db.ts");
-static FIXTURE_DB_MESSAGES: &[u8] = include_bytes!("fixtures/db_messages.json");
+static FIXTURE_CODE_LENS_TS: &str = include_str!("testdata/code_lens.ts");
+static FIXTURE_DB_TS: &str = include_str!("testdata/db.ts");
+static FIXTURE_DB_MESSAGES: &[u8] = include_bytes!("testdata/db_messages.json");
 static FIXTURE_INIT_JSON: &[u8] =
-  include_bytes!("fixtures/initialize_params.json");
+  include_bytes!("testdata/initialize_params.json");
 
 #[derive(Debug, Deserialize)]
 enum FixtureType {
@@ -57,7 +57,7 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
     "textDocument/didOpen",
     json!({
       "textDocument": {
-        "uri": "file:///fixtures/db.ts",
+        "uri": "file:///testdata/db.ts",
         "languageId": "typescript",
         "version": 1,
         "text": FIXTURE_DB_TS
@@ -137,7 +137,7 @@ fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
     "textDocument/didOpen",
     json!({
       "textDocument": {
-        "uri": "file:///fixtures/code_lens.ts",
+        "uri": "file:///testdata/code_lens.ts",
         "languageId": "typescript",
         "version": 1,
         "text": FIXTURE_CODE_LENS_TS
@@ -167,7 +167,7 @@ fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
       "textDocument/codeLens",
       json!({
         "textDocument": {
-          "uri": "file:///fixtures/code_lens.ts"
+          "uri": "file:///testdata/code_lens.ts"
         }
       }),
     )

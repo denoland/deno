@@ -38,7 +38,30 @@ fn create_snapshot(
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &*snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
-  std::fs::write(&snapshot_path, snapshot_slice).unwrap();
+
+  let compressed_snapshot_with_size = {
+    let mut vec = vec![];
+
+    vec.extend_from_slice(
+      &u32::try_from(snapshot.len())
+        .expect("snapshot larger than 4gb")
+        .to_le_bytes(),
+    );
+
+    vec.extend_from_slice(
+      &zstd::block::compress(snapshot_slice, 22)
+        .expect("snapshot compression failed"),
+    );
+
+    vec
+  };
+
+  println!(
+    "Snapshot compressed size: {}",
+    compressed_snapshot_with_size.len()
+  );
+
+  std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
   println!("Snapshot written to: {} ", snapshot_path.display());
 }
 

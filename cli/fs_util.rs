@@ -376,6 +376,20 @@ pub fn specifier_parent(specifier: &ModuleSpecifier) -> ModuleSpecifier {
   specifier
 }
 
+/// This function checks if input path has trailing slash or not. If input path
+/// has trailing slash it will return true else it will return false.
+pub fn path_has_trailing_slash(path: &Path) -> bool {
+  if let Some(path_str) = path.to_str() {
+    if cfg!(windows) {
+      path_str.ends_with('\\')
+    } else {
+      path_str.ends_with('/')
+    }
+  } else {
+    false
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -752,6 +766,31 @@ mod tests {
       let result =
         specifier_parent(&ModuleSpecifier::parse(specifier).unwrap());
       assert_eq!(result.to_string(), expected);
+    }
+  }
+
+  #[test]
+  fn test_path_has_trailing_slash() {
+    #[cfg(not(windows))]
+    {
+      run_test("/Users/johndoe/Desktop/deno-project/target/", true);
+      run_test(r"/Users/johndoe/deno-project/target//", true);
+      run_test("/Users/johndoe/Desktop/deno-project", false);
+      run_test(r"/Users/johndoe/deno-project\", false);
+    }
+
+    #[cfg(windows)]
+    {
+      run_test(r"C:\test\deno-project\", true);
+      run_test(r"C:\test\deno-project\\", true);
+      run_test(r"C:\test\file.txt", false);
+      run_test(r"C:\test\file.txt/", false);
+    }
+
+    fn run_test(path_str: &str, expected: bool) {
+      let path = Path::new(path_str);
+      let result = path_has_trailing_slash(path);
+      assert_eq!(result, expected);
     }
   }
 }

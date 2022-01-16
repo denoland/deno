@@ -31,7 +31,7 @@ impl Resolver for ImportMapResolver {
   ) -> Result<ModuleSpecifier, AnyError> {
     self
       .0
-      .resolve(specifier, referrer.as_str())
+      .resolve(specifier, referrer)
       .map_err(|err| err.into())
   }
 }

@@ -334,7 +334,7 @@ where
     .map_err(|err| {
       DomExceptionNetworkError::new(&format!(
         "failed to connect to WebSocket: {}",
-        err.to_string()
+        err
       ))
     })?;
 

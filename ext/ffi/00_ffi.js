@@ -142,6 +142,84 @@
     }
   }
 
+  function prepareArgs(types, args) {
+    const parameters = [];
+    const buffers = [];
+
+    for (let i = 0; i < types.length; i++) {
+      const type = types[i];
+      const arg = args[i];
+
+      if (type === "pointer") {
+        if (
+          arg?.buffer instanceof ArrayBuffer &&
+          arg.byteLength !== undefined
+        ) {
+          parameters.push(buffers.length);
+          buffers.push(arg);
+        } else if (arg instanceof UnsafePointer) {
+          parameters.push(packU64(arg.value));
+          buffers.push(undefined);
+        } else if (arg === null) {
+          parameters.push(null);
+          buffers.push(undefined);
+        } else {
+          throw new TypeError(
+            "Invalid ffi arg value, expected TypedArray, UnsafePointer or null",
+          );
+        }
+      } else {
+        parameters.push(arg);
+      }
+    }
+
+    return { parameters, buffers };
+  }
+
+  class UnsafeFnPointer {
+    pointer;
+    definition;
+
+    constructor(pointer, definition) {
+      this.pointer = pointer;
+      this.definition = definition;
+    }
+
+    call(...args) {
+      const { parameters, buffers } = prepareArgs(
+        this.definition.parameters,
+        args,
+      );
+      if (this.definition.nonblocking) {
+        const promise = core.opAsync("op_ffi_call_ptr_nonblocking", {
+          pointer: packU64(this.pointer.value),
+          def: this.definition,
+          parameters,
+          buffers,
+        });
+
+        if (this.definition.result === "pointer") {
+          return promise.then((value) => new UnsafePointer(unpackU64(value)));
+        }
+
+        return promise;
+      } else {
+        const result = core.opSync("op_ffi_call_ptr", {
+          pointer: packU64(this.pointer.value),
+          def: this.definition,
+          parameters,
+          buffers,
+        });
+
+        if (this.definition.result === "pointer") {
+          return new UnsafePointer(unpackU64(result));
+        }
+
+        return result;
+      }
+    }
+  }
+
   class DynamicLibrary {
     #rid;
     symbols = {};
@@ -154,35 +232,7 @@
         const types = symbols[symbol].parameters;
 
         this.symbols[symbol] = (...args) => {
-          const parameters = [];
-          const buffers = [];
-
-          for (let i = 0; i < types.length; i++) {
-            const type = types[i];
-            const arg = args[i];
-
-            if (type === "pointer") {
-              if (
-                arg?.buffer instanceof ArrayBuffer &&
-                arg.byteLength !== undefined
-              ) {
-                parameters.push(buffers.length);
-                buffers.push(arg);
-              } else if (arg instanceof UnsafePointer) {
-                parameters.push(packU64(arg.value));
-                buffers.push(undefined);
-              } else if (arg === null) {
-                parameters.push(null);
-                buffers.push(undefined);
-              } else {
-                throw new TypeError(
-                  "Invalid ffi arg value, expected TypedArray, UnsafePointer or null",
-                );
-              }
-            } else {
-              parameters.push(arg);
-            }
-          }
+          const { parameters, buffers } = prepareArgs(types, args);
 
           if (isNonBlocking) {
             const promise = core.opAsync("op_ffi_call_nonblocking", {
@@ -228,5 +278,10 @@
     return new DynamicLibrary(pathFromURL(path), symbols);
   }
 
-  window.__bootstrap.ffi = { dlopen, UnsafePointer, UnsafePointerView };
+  window.__bootstrap.ffi = {
+    dlopen,
+    UnsafePointer,
+    UnsafePointerView,
+    UnsafeFnPointer,
+  };
 })(this);

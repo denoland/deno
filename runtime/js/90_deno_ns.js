@@ -138,6 +138,7 @@
     dlopen: __bootstrap.ffi.dlopen,
     UnsafePointer: __bootstrap.ffi.UnsafePointer,
     UnsafePointerView: __bootstrap.ffi.UnsafePointerView,
+    UnsafeFnPointer: __bootstrap.ffi.UnsafeFnPointer,
     flock: __bootstrap.fs.flock,
     flockSync: __bootstrap.fs.flockSync,
     funlock: __bootstrap.fs.funlock,

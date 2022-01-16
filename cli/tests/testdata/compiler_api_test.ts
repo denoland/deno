@@ -418,10 +418,21 @@ Deno.test({
         "/b.ts": `export const b = "b";`,
       },
     });
+    const ignoreDirecives = [
+      "// deno-fmt-ignore-file",
+      "// deno-lint-ignore-file",
+      "// This code was bundled using `deno bundle` and it's not recommended to edit it manually",
+      "",
+      "",
+    ].join("\n");
     assert(diagnostics);
     assertEquals(diagnostics.length, 0);
     assertEquals(Object.keys(files).length, 2);
-    assert(files["deno:///bundle.js"].startsWith("(function() {\n"));
+    assert(
+      files["deno:///bundle.js"].startsWith(
+        ignoreDirecives + "(function() {\n",
+      ),
+    );
     assert(files["deno:///bundle.js"].endsWith("})();\n"));
     assert(files["deno:///bundle.js.map"]);
   },
