@@ -23,3 +23,35 @@ Deno.test(function errorCause() {
   const e = new Error("test", { cause: "something" });
   assertEquals(e.cause, "something");
 });
+
+Deno.test(function intlListFormat() {
+  const formatter = new Intl.ListFormat("en", {
+    style: "long",
+    type: "conjunction",
+  });
+  assertEquals(
+    formatter.format(["red", "green", "blue"]),
+    "red, green, and blue",
+  );
+
+  const formatter2 = new Intl.ListFormat("en", {
+    style: "short",
+    type: "disjunction",
+  });
+  assertEquals(formatter2.formatToParts(["Rust", "golang"]), [
+    { type: "element", value: "Rust" },
+    { type: "literal", value: " or " },
+    { type: "element", value: "golang" },
+  ]);
+
+  // Works with iterables as well
+  assertEquals(
+    formatter.format(new Set(["red", "green", "blue"])),
+    "red, green, and blue",
+  );
+  assertEquals(formatter2.formatToParts(new Set(["Rust", "golang"])), [
+    { type: "element", value: "Rust" },
+    { type: "literal", value: " or " },
+    { type: "element", value: "golang" },
+  ]);
+});
