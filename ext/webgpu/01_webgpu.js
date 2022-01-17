@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -219,10 +219,10 @@
    */
 
   /**
-   * @param {string} name
-   * @param {InnerGPUAdapter} inner
-   * @returns {GPUAdapter}
-   */
+    * @param {string} name
+    * @param {InnerGPUAdapter} inner
+    * @returns {GPUAdapter}
+    */
   function createGPUAdapter(name, inner) {
     /** @type {GPUAdapter} */
     const adapter = webidl.createBranded(GPUAdapter);
@@ -544,6 +544,7 @@
   const _message = Symbol("[[message]]");
 
   /**
+   *
    * @param {string | undefined} reason
    * @param {string} message
    * @returns {GPUDeviceLostInfo}
@@ -849,7 +850,7 @@
         descriptor.usage,
         options,
       );
-      device.trackResource(buffer);
+      device.trackResource((buffer));
       return buffer;
     }
 
@@ -878,7 +879,7 @@
         device,
         rid,
       );
-      device.trackResource(texture);
+      device.trackResource((texture));
       return texture;
     }
 
@@ -905,7 +906,7 @@
         device,
         rid,
       );
-      device.trackResource(sampler);
+      device.trackResource((sampler));
       return sampler;
     }
 
@@ -948,7 +949,7 @@
         device,
         rid,
       );
-      device.trackResource(bindGroupLayout);
+      device.trackResource((bindGroupLayout));
       return bindGroupLayout;
     }
 
@@ -990,7 +991,7 @@
         device,
         rid,
       );
-      device.trackResource(pipelineLayout);
+      device.trackResource((pipelineLayout));
       return pipelineLayout;
     }
 
@@ -1083,7 +1084,7 @@
         device,
         rid,
       );
-      device.trackResource(bindGroup);
+      device.trackResource((bindGroup));
       return bindGroup;
     }
 
@@ -1115,7 +1116,7 @@
         device,
         rid,
       );
-      device.trackResource(shaderModule);
+      device.trackResource((shaderModule));
       return shaderModule;
     }
 
@@ -1172,7 +1173,7 @@
         device,
         rid,
       );
-      device.trackResource(computePipeline);
+      device.trackResource((computePipeline));
       return computePipeline;
     }
 
@@ -1247,7 +1248,7 @@
         device,
         rid,
       );
-      device.trackResource(renderPipeline);
+      device.trackResource((renderPipeline));
       return renderPipeline;
     }
 
@@ -1284,7 +1285,7 @@
         device,
         rid,
       );
-      device.trackResource(commandEncoder);
+      device.trackResource((commandEncoder));
       return commandEncoder;
     }
 
@@ -1319,7 +1320,7 @@
         device,
         rid,
       );
-      device.trackResource(renderBundleEncoder);
+      device.trackResource((renderBundleEncoder));
       return renderBundleEncoder;
     }
 
@@ -1351,7 +1352,7 @@
         rid,
         descriptor,
       );
-      device.trackResource(querySet);
+      device.trackResource((querySet));
       return querySet;
     }
 
@@ -2268,8 +2269,8 @@
 
   /**
    * @param {string | null} label
-   * @param {InnerGPUDevice} device
-   * @param {number} rid
+    * @param {InnerGPUDevice} device
+  * @param {number} rid
    * @returns {GPUBindGroup}
    */
   function createGPUBindGroup(label, device, rid) {
@@ -2311,8 +2312,8 @@
 
   /**
    * @param {string | null} label
-   * @param {InnerGPUDevice} device
-   * @param {number} rid
+    * @param {InnerGPUDevice} device
+  * @param {number} rid
    * @returns {GPUShaderModule}
    */
   function createGPUShaderModule(label, device, rid) {
@@ -2436,7 +2437,7 @@
         device,
         rid,
       );
-      device.trackResource(bindGroupLayout);
+      device.trackResource((bindGroupLayout));
       return bindGroupLayout;
     }
 
@@ -2511,7 +2512,7 @@
         device,
         rid,
       );
-      device.trackResource(bindGroupLayout);
+      device.trackResource((bindGroupLayout));
       return bindGroupLayout;
     }
 
@@ -3061,6 +3062,49 @@
     }
 
     /**
+     * @param {GPUBuffer} destination
+     * @param {GPUSize64} destinationOffset
+     * @param {GPUSize64} size
+     */
+    clearBuffer(destination, destinationOffset, size) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix =
+        "Failed to execute 'clearBuffer' on 'GPUCommandEncoder'";
+      webidl.requiredArguments(arguments.length, 3, { prefix });
+      destination = webidl.converters.GPUBuffer(destination, {
+        prefix,
+        context: "Argument 1",
+      });
+      destinationOffset = webidl.converters.GPUSize64(destinationOffset, {
+        prefix,
+        context: "Argument 2",
+      });
+      size = webidl.converters.GPUSize64(size, {
+        prefix,
+        context: "Argument 3",
+      });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const destinationRid = assertResource(destination, {
+        prefix,
+        context: "Argument 1",
+      });
+      const { err } = core.opSync(
+        "op_webgpu_command_encoder_clear_buffer",
+        {
+          commandEncoderRid,
+          destinationRid,
+          destinationOffset,
+          size,
+        },
+      );
+      device.pushError(err);
+    }
+
+    /**
      * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
@@ -3203,7 +3247,7 @@
         prefix,
         context: "Argument 3",
       });
-      destination = webidl.converters.GPUQuerySet(destination, {
+      destination = webidl.converters.GPUBuffer(destination, {
         prefix,
         context: "Argument 4",
       });
@@ -3277,7 +3321,7 @@
         device,
         rid,
       );
-      device.trackResource(commandBuffer);
+      device.trackResource((commandBuffer));
       return commandBuffer;
     }
 
@@ -3376,6 +3420,7 @@
     }
 
     /**
+     *
      * @param {number} x
      * @param {number} y
      * @param {number} width
@@ -4527,15 +4572,10 @@
       webidl.illegalConstructor();
     }
 
-    get executionTime() {
-      throw new Error("Not yet implemented");
-    }
-
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
-          // TODO(crowlKats): executionTime
         })
       }`;
     }
@@ -4606,7 +4646,7 @@
         device,
         rid,
       );
-      device.trackResource(renderBundle);
+      device.trackResource((renderBundle));
       return renderBundle;
     }
 
