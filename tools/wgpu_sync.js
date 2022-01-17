@@ -10,7 +10,7 @@ const V_WGPU = "0.12.0";
 const V_DENO_CORE = "0.114.0";
 const TARGET_DIR = join(ROOT_PATH, "ext", "webgpu");
 
-async function bashThrough(subcmd, opts = {}) {
+async function bash(subcmd, opts = {}) {
   const p = Deno.run({ ...opts, cmd: ["bash", "-c", subcmd] });
 
   // Exit process on failure
@@ -23,7 +23,7 @@ async function bashThrough(subcmd, opts = {}) {
 }
 
 async function clearTargetDir() {
-  await bashThrough(`rm -r ${TARGET_DIR}/*`);
+  await bash(`rm -r ${TARGET_DIR}/*`);
 }
 
 async function checkoutUpstream() {
@@ -32,7 +32,7 @@ async function checkoutUpstream() {
   const cmd =
     `curl -L https://api.github.com/repos/${REPO}/tarball/${COMMIT} | tar -C '${TARGET_DIR}' -xzvf - --strip=2 '${tarPrefix}'`;
   // console.log(cmd);
-  await bashThrough(cmd);
+  await bash(cmd);
 }
 
 async function patchCargo() {
@@ -65,6 +65,7 @@ async function main() {
   await clearTargetDir();
   await checkoutUpstream();
   await patchCargo();
+  await bash(join(ROOT_PATH, "tools", "format.js"));
 }
 
 await main();
