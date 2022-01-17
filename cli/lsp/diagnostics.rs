@@ -5,7 +5,9 @@ use super::client::Client;
 use super::documents;
 use super::documents::Documents;
 use super::language_server;
+use super::performance::Performance;
 use super::tsc;
+use super::tsc::TsServer;
 
 use crate::diagnostics;
 
@@ -91,13 +93,30 @@ impl DiagnosticCollection {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct DiagnosticsServer {
   channel: Option<mpsc::UnboundedSender<()>>,
   collection: Arc<Mutex<DiagnosticCollection>>,
+  client: Client,
+  performance: Arc<Performance>,
+  ts_server: Arc<TsServer>,
 }
 
 impl DiagnosticsServer {
+  pub fn new(
+    client: Client,
+    performance: Arc<Performance>,
+    ts_server: Arc<TsServer>,
+  ) -> Self {
+    DiagnosticsServer {
+      channel: Default::default(),
+      collection: Default::default(),
+      client,
+      performance,
+      ts_server,
+    }
+  }
+
   pub(crate) async fn get(
     &self,
     specifier: &ModuleSpecifier,
@@ -127,12 +146,13 @@ impl DiagnosticsServer {
   pub(crate) fn start(
     &mut self,
     language_server: Arc<Mutex<language_server::Inner>>,
-    client: Client,
-    ts_server: Arc<tsc::TsServer>,
   ) {
     let (tx, mut rx) = mpsc::unbounded_channel::<()>();
     self.channel = Some(tx);
     let collection = self.collection.clone();
+    let client = self.client.clone();
+    let performance = self.performance.clone();
+    let ts_server = self.ts_server.clone();
 
     let _join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
@@ -178,7 +198,8 @@ impl DiagnosticsServer {
                 &client,
                 collection.clone(),
                 snapshot,
-                &ts_server
+                &ts_server,
+                performance.clone(),
               ).await;
             }
           }
@@ -609,13 +630,12 @@ async fn update_diagnostics(
   collection: Arc<Mutex<DiagnosticCollection>>,
   snapshot: Arc<language_server::StateSnapshot>,
   ts_server: &tsc::TsServer,
+  performance: Arc<Performance>,
 ) {
-  let mark = snapshot.performance.mark("update_diagnostics", None::<()>);
+  let mark = performance.mark("update_diagnostics", None::<()>);
 
   let lint = async {
-    let mark = snapshot
-      .performance
-      .mark("update_diagnostics_lint", None::<()>);
+    let mark = performance.mark("update_diagnostics_lint", None::<()>);
     let collection = collection.clone();
     let diagnostics = generate_lint_diagnostics(&snapshot, collection.clone())
       .await
@@ -629,13 +649,11 @@ async fn update_diagnostics(
       collection.set(DiagnosticSource::DenoLint, diagnostic_record);
     }
     publish_diagnostics(client, &mut collection, &snapshot).await;
-    snapshot.performance.measure(mark);
+    performance.measure(mark);
   };
 
   let ts = async {
-    let mark = snapshot
-      .performance
-      .mark("update_diagnostics_ts", None::<()>);
+    let mark = performance.mark("update_diagnostics_ts", None::<()>);
     let collection = collection.clone();
     let diagnostics =
       generate_ts_diagnostics(snapshot.clone(), collection.clone(), ts_server)
@@ -649,13 +667,11 @@ async fn update_diagnostics(
       collection.set(DiagnosticSource::TypeScript, diagnostic_record);
     }
     publish_diagnostics(client, &mut collection, &snapshot).await;
-    snapshot.performance.measure(mark);
+    performance.measure(mark);
   };
 
   let deps = async {
-    let mark = snapshot
-      .performance
-      .mark("update_diagnostics_deps", None::<()>);
+    let mark = performance.mark("update_diagnostics_deps", None::<()>);
     let collection = collection.clone();
     let diagnostics =
       generate_deps_diagnostics(snapshot.clone(), collection.clone())
@@ -669,11 +685,11 @@ async fn update_diagnostics(
       collection.set(DiagnosticSource::Deno, diagnostic_record);
     }
     publish_diagnostics(client, &mut collection, &snapshot).await;
-    snapshot.performance.measure(mark);
+    performance.measure(mark);
   };
 
   tokio::join!(lint, ts, deps);
-  snapshot.performance.measure(mark);
+  performance.measure(mark);
 }
 
 #[cfg(test)]

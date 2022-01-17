@@ -37,6 +37,7 @@ use super::config::ConfigSnapshot;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
+use super::diagnostics::DiagnosticsServer;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
@@ -80,7 +81,6 @@ pub(crate) struct StateSnapshot {
   pub maybe_lint_config: Option<LintConfig>,
   pub maybe_fmt_config: Option<FmtConfig>,
   pub module_registries: registries::ModuleRegistry,
-  pub performance: Performance,
   pub url_map: urls::LspUrlMap,
 }
 
@@ -118,7 +118,7 @@ pub(crate) struct Inner {
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// A collection of measurements which instrument that performance of the LSP.
-  performance: Performance,
+  performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
   /// An abstraction that handles interactions with TypeScript.
@@ -143,14 +143,20 @@ impl Inner {
       registries::ModuleRegistry::new(&module_registries_location);
     let location = dir.root.join(CACHE_PATH);
     let documents = Documents::new(&location);
-    let ts_server = Arc::new(TsServer::new());
+    let performance = Arc::new(Performance::default());
+    let ts_server = Arc::new(TsServer::new(performance.clone()));
     let config = Config::new(client.clone());
+    let diagnostics_server = DiagnosticsServer::new(
+      client.clone(),
+      performance.clone(),
+      ts_server.clone(),
+    );
 
     Self {
       assets: Default::default(),
       client,
       config,
-      diagnostics_server: Default::default(),
+      diagnostics_server,
       documents,
       maybe_cache_path: None,
       maybe_lint_config: None,
@@ -161,7 +167,7 @@ impl Inner {
       maybe_import_map_uri: None,
       module_registries,
       module_registries_location,
-      performance: Default::default(),
+      performance,
       ts_fixable_diagnostics: Default::default(),
       ts_server,
       url_map: Default::default(),
@@ -370,7 +376,6 @@ impl Inner {
       maybe_lint_config: self.maybe_lint_config.clone(),
       maybe_fmt_config: self.maybe_fmt_config.clone(),
       module_registries: self.module_registries.clone(),
-      performance: self.performance.clone(),
       url_map: self.url_map.clone(),
     }))
   }
@@ -2360,11 +2365,7 @@ impl lspower::LanguageServer for LanguageServer {
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
     let mut language_server = self.0.lock().await;
-    let client = language_server.client.clone();
-    let ts_server = language_server.ts_server.clone();
-    language_server
-      .diagnostics_server
-      .start(self.0.clone(), client, ts_server);
+    language_server.diagnostics_server.start(self.0.clone());
     language_server.initialize(params).await
   }
 
