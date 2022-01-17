@@ -3406,34 +3406,20 @@ fn lsp_diagnostics_refresh_dependents() {
       },
     }),
   );
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file_02.ts",
-          "languageId": "typescript",
-          "version": 1,
-          "text": "import { a, b } from \"./file_01.ts\";\n\nconsole.log(a, b);\n"
-        }
-      }),
-    )
-    .unwrap();
-
-  let (id, method, _) = client.read_request::<Value>().unwrap();
-  assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(id, json!([{ "enable": false }]))
-    .unwrap();
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, maybe_params) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_02.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import { a, b } from \"./file_01.ts\";\n\nconsole.log(a, b);\n"
+      }
+    }),
+  );
   assert_eq!(
-    maybe_params,
-    Some(json!({
+    json!(diagnostics[2]),
+    json!({
       "uri": "file:///a/file_02.ts",
       "diagnostics": [
         {
@@ -3454,7 +3440,7 @@ fn lsp_diagnostics_refresh_dependents() {
         }
       ],
       "version": 1
-    }))
+    })
   );
   client
     .write_notification(
