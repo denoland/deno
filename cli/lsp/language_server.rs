@@ -37,6 +37,7 @@ use super::config::ConfigSnapshot;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
+use super::diagnostics::DiagnosticsServer;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
@@ -79,9 +80,7 @@ pub(crate) struct StateSnapshot {
   pub documents: Documents,
   pub maybe_lint_config: Option<LintConfig>,
   pub maybe_fmt_config: Option<FmtConfig>,
-  pub maybe_config_uri: Option<ModuleSpecifier>,
   pub module_registries: registries::ModuleRegistry,
-  pub performance: Performance,
   pub url_map: urls::LspUrlMap,
 }
 
@@ -114,15 +113,12 @@ pub(crate) struct Inner {
   maybe_lint_config: Option<LintConfig>,
   /// An optional configuration for formatter which has been taken from specified config file.
   maybe_fmt_config: Option<FmtConfig>,
-  /// An optional URL which provides the location of a TypeScript configuration
-  /// file which will be used by the Deno LSP.
-  maybe_config_uri: Option<Url>,
   /// An optional import map which is used to resolve modules.
   pub(crate) maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// A collection of measurements which instrument that performance of the LSP.
-  performance: Performance,
+  performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
   ts_fixable_diagnostics: Vec<String>,
   /// An abstraction that handles interactions with TypeScript.
@@ -147,26 +143,31 @@ impl Inner {
       registries::ModuleRegistry::new(&module_registries_location);
     let location = dir.root.join(CACHE_PATH);
     let documents = Documents::new(&location);
-    let ts_server = Arc::new(TsServer::new());
+    let performance = Arc::new(Performance::default());
+    let ts_server = Arc::new(TsServer::new(performance.clone()));
     let config = Config::new(client.clone());
+    let diagnostics_server = DiagnosticsServer::new(
+      client.clone(),
+      performance.clone(),
+      ts_server.clone(),
+    );
 
     Self {
       assets: Default::default(),
       client,
       config,
-      diagnostics_server: Default::default(),
+      diagnostics_server,
       documents,
       maybe_cache_path: None,
       maybe_lint_config: None,
       maybe_fmt_config: None,
       maybe_cache_server: None,
       maybe_config_file: None,
-      maybe_config_uri: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
       module_registries,
       module_registries_location,
-      performance: Default::default(),
+      performance,
       ts_fixable_diagnostics: Default::default(),
       ts_server,
       url_map: Default::default(),
@@ -293,9 +294,7 @@ impl Inner {
 
   /// Returns a tuple with parsed `ConfigFile` and `Url` pointing to that file.
   /// If there's no config file specified in settings returns `None`.
-  fn get_config_file_and_url(
-    &self,
-  ) -> Result<Option<(ConfigFile, Url)>, AnyError> {
+  fn get_config_file(&self) -> Result<Option<ConfigFile>, AnyError> {
     let workspace_settings = self.config.get_workspace_settings();
     let maybe_root_uri = self.config.root_uri.clone();
     let maybe_config = workspace_settings.config;
@@ -317,7 +316,7 @@ impl Inner {
         lsp_log!("  Resolved configuration file: \"{}\"", config_url);
 
         let config_file = ConfigFile::from_specifier(&config_url)?;
-        return Ok(Some((config_file, config_url)));
+        return Ok(Some(config_file));
       }
     }
 
@@ -376,9 +375,7 @@ impl Inner {
       documents: self.documents.clone(),
       maybe_lint_config: self.maybe_lint_config.clone(),
       maybe_fmt_config: self.maybe_fmt_config.clone(),
-      maybe_config_uri: self.maybe_config_uri.clone(),
       module_registries: self.module_registries.clone(),
-      performance: self.performance.clone(),
       url_map: self.url_map.clone(),
     }))
   }
@@ -521,13 +518,10 @@ impl Inner {
 
   fn update_config_file(&mut self) -> Result<(), AnyError> {
     self.maybe_config_file = None;
-    self.maybe_config_uri = None;
     self.maybe_fmt_config = None;
     self.maybe_lint_config = None;
 
-    let maybe_file_and_url = self.get_config_file_and_url()?;
-
-    if let Some((config_file, config_url)) = maybe_file_and_url {
+    if let Some(config_file) = self.get_config_file()? {
       let lint_config = config_file
         .to_lint_config()
         .map_err(|err| {
@@ -542,7 +536,6 @@ impl Inner {
         .unwrap_or_default();
 
       self.maybe_config_file = Some(config_file);
-      self.maybe_config_uri = Some(config_url);
       self.maybe_lint_config = Some(lint_config);
       self.maybe_fmt_config = Some(fmt_config);
     }
@@ -940,8 +933,8 @@ impl Inner {
       }
     }
     // if the current tsconfig has changed, we need to reload it
-    if let Some(config_uri) = &self.maybe_config_uri {
-      if changes.iter().any(|uri| config_uri == uri) {
+    if let Some(config_file) = &self.maybe_config_file {
+      if changes.iter().any(|uri| config_file.specifier == *uri) {
         if let Err(err) = self.update_config_file() {
           self.client.show_message(MessageType::WARNING, err).await;
         }
@@ -2372,11 +2365,7 @@ impl lspower::LanguageServer for LanguageServer {
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
     let mut language_server = self.0.lock().await;
-    let client = language_server.client.clone();
-    let ts_server = language_server.ts_server.clone();
-    language_server
-      .diagnostics_server
-      .start(self.0.clone(), client, ts_server);
+    language_server.diagnostics_server.start(self.0.clone());
     language_server.initialize(params).await
   }
 
