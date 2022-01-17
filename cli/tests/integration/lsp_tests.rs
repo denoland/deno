@@ -1550,7 +1550,7 @@ fn lsp_format_exclude_default_config() {
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_jsonc =
     serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
-  fs::write(workspace_root.clone().join("deno.jsonc"), deno_jsonc).unwrap();
+  fs::write(workspace_root.join("deno.jsonc"), deno_jsonc).unwrap();
 
   params.root_uri = Some(Url::from_file_path(workspace_root.clone()).unwrap());
 
