@@ -17,6 +17,10 @@
     noColor = value;
   }
 
+  function getNoColor() {
+    return noColor;
+  }
+
   function code(open, close) {
     return {
       open: `\x1b[${open}m`,
@@ -102,6 +106,6 @@
     stripColor,
     maybeColor,
     setNoColor,
-    noColor,
+    getNoColor,
   };
 })(this);

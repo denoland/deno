@@ -595,7 +595,7 @@ delete Object.prototype.__proto__;
     ObjectDefineProperties(finalDenoNs, {
       pid: util.readOnly(pid),
       ppid: util.readOnly(ppid),
-      noColor: util.readOnly(colors.noColor),
+      noColor: util.readOnly(noColor),
       args: util.readOnly(ObjectFreeze(args)),
       mainModule: util.getterOnly(opMainModule),
     });
@@ -689,7 +689,7 @@ delete Object.prototype.__proto__;
       }
       ObjectDefineProperties(finalDenoNs, {
         pid: util.readOnly(pid),
-        noColor: util.readOnly(colors.noColor),
+        noColor: util.readOnly(noColor),
         args: util.readOnly(ObjectFreeze(args)),
       });
       // Setup `Deno` global - we're actually overriding already
