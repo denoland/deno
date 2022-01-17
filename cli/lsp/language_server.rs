@@ -286,8 +286,6 @@ impl Inner {
     Ok(navigation_tree)
   }
 
-  // TODO(ry): We can just return ConfigFile and use ConfigFile::specifier
-  // instead of returning URL in the tuple.
   /// Returns a tuple with parsed `ConfigFile` and `Url` pointing to that file.
   /// If there's no config file specified in settings returns `None`.
   fn get_config_file(&self) -> Result<Option<ConfigFile>, AnyError> {
