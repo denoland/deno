@@ -1074,6 +1074,7 @@ dependencies = [
  "base64 0.13.0",
  "deno_core",
  "encoding_rs",
+ "flate2",
  "serde",
  "tokio",
  "uuid",

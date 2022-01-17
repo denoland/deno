@@ -16,6 +16,43 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::io::DuplexStream;
 
+pub struct CompressResource {
+  data: flate2::Compress,
+}
+
+impl Resource for CompressResource {
+  fn name(&self) -> Cow<str> {
+    "compress".into()
+  }
+}
+
+pub fn op_compression_compress_new(
+  state: &mut OpState,
+  format: String,
+  _: (),
+) -> Result<ResourceId, AnyError> {
+  let rid = match format.as_str() {
+    "gzip" => state.resource_table.add(CompressResource {
+      data: flate2::Compress::new(flate2::Compression::fast(), true),
+    }),
+    "deflate" => {
+      todo!()
+    }
+    _ => unreachable!(),
+  };
+  Ok(rid)
+}
+
+pub fn op_compression_compress(
+  state: &mut OpState,
+  rid: ResourceId,
+  input_output: (ZeroCopyBuf, ZeroCopyBuf),
+) -> Result<i32, AnyError> {
+  // translate rid to CompressResource
+  // run Compress::compress
+  // return result
+}
+
 pub struct GzipCompressorResource {
   encoder: AsyncRefCell<GzipEncoder<DuplexStream>>,
   tx: AsyncRefCell<DuplexStream>,
