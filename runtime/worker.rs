@@ -315,7 +315,10 @@ impl MainWorker {
   ) -> Result<(), AnyError> {
     self.execute_script(
       script_name,
-      "globalThis.dispatchEvent(new Event('load'))",
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('load'))",
     )
   }
 
@@ -328,7 +331,10 @@ impl MainWorker {
   ) -> Result<(), AnyError> {
     self.execute_script(
       script_name,
-      "globalThis.dispatchEvent(new Event('unload'))",
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('unload'))",
     )
   }
 }
