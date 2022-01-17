@@ -202,8 +202,8 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
     if features.contains(wgpu_types::Features::VERTEX_WRITABLE_STORAGE) {
         return_features.push("vertex-writable-storage");
     }
-    if features.contains(wgpu_types::Features::CLEAR_COMMANDS) {
-        return_features.push("clear-commands");
+    if features.contains(wgpu_types::Features::CLEAR_TEXTURE) {
+        return_features.push("clear-texture");
     }
     if features.contains(wgpu_types::Features::SPIRV_SHADER_PASSTHROUGH) {
         return_features.push("spirv-shader-passthrough");
@@ -417,7 +417,7 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
             required_features.0.contains("vertex-writable-storage"),
         );
         features.set(
-            wgpu_types::Features::CLEAR_COMMANDS,
+            wgpu_types::Features::CLEAR_TEXTURE,
             required_features.0.contains("clear-commands"),
         );
         features.set(

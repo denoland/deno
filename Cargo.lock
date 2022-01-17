@@ -136,9 +136,9 @@ dependencies = [
 
 [[package]]
 name = "ash"
-version = "0.34.0+1.2.203"
+version = "0.33.3+1.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0f780da53d0063880d45554306489f09dd8d1bda47688b4a57bc579119356df"
+checksum = "cc4f1d82f164f838ae413296d1131aa6fa79b917d25bebaa7033d25620c09219"
 dependencies = [
  "libloading",
 ]
@@ -4893,9 +4893,8 @@ dependencies = [
 
 [[package]]
 name = "wgpu-core"
-version = "0.12.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4688c000eb841ca55f7b35db659b78d6e1cd77d7caf8fb929f4e181f754047d"
+version = "0.12.0"
+source = "git+https://github.com/gfx-rs/wgpu?rev=c00e471274b6c21acda89b4b13d41742c0285d71#c00e471274b6c21acda89b4b13d41742c0285d71"
 dependencies = [
  "arrayvec 0.7.2",
  "bitflags",
@@ -4917,9 +4916,8 @@ dependencies = [
 
 [[package]]
 name = "wgpu-hal"
-version = "0.12.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e33cb9c380dd1166f316dfc511ad9646f72cf2deb47e90bd714db3617a6998"
+version = "0.12.0"
+source = "git+https://github.com/gfx-rs/wgpu?rev=c00e471274b6c21acda89b4b13d41742c0285d71#c00e471274b6c21acda89b4b13d41742c0285d71"
 dependencies = [
  "arrayvec 0.7.2",
  "ash",
@@ -4956,8 +4954,7 @@ dependencies = [
 [[package]]
 name = "wgpu-types"
 version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "549533d9e1cdd4b4cda7718d33ff500fc4c34b5467b71d76b547ae0324f3b2a2"
+source = "git+https://github.com/gfx-rs/wgpu?rev=c00e471274b6c21acda89b4b13d41742c0285d71#c00e471274b6c21acda89b4b13d41742c0285d71"
 dependencies = [
  "bitflags",
  "bitflags_serde_shim",
