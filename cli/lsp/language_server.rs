@@ -325,9 +325,8 @@ impl Inner {
       let maybe_config =
         crate::config_file::discover_from(&root_path, &mut checked)?;
       Ok(maybe_config.map(|c| {
-        let s = c.specifier.clone();
-        lsp_log!("  Auto-resolved configuration file: \"{}\"", s);
-        (c, s)
+        lsp_log!("  Auto-resolved configuration file: \"{}\"", c.specifier);
+        c
       }))
     } else {
       Ok(None)
