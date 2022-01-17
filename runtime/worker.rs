@@ -313,7 +313,10 @@ impl MainWorker {
     &mut self,
     script_name: &str,
   ) -> Result<(), AnyError> {
-    self.execute_script(script_name, "window.dispatchEvent(new Event('load'))")
+    self.execute_script(
+      script_name,
+      "globalThis.dispatchEvent(new Event('load'))",
+    )
   }
 
   /// Dispatches "unload" event to the JavaScript runtime.
@@ -323,8 +326,10 @@ impl MainWorker {
     &mut self,
     script_name: &str,
   ) -> Result<(), AnyError> {
-    self
-      .execute_script(script_name, "window.dispatchEvent(new Event('unload'))")
+    self.execute_script(
+      script_name,
+      "globalThis.dispatchEvent(new Event('unload'))",
+    )
   }
 }
 

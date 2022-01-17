@@ -2479,3 +2479,8 @@ itest!(import_assertions_type_check {
   output: "import_assertions/type_check.out",
   exit_code: 1,
 });
+
+itest!(delete_window {
+  args: "run delete_window.js",
+  output_str: Some("true\n"),
+});
