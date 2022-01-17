@@ -970,7 +970,11 @@
       webidl.requiredArguments(arguments.length, 1, {
         prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
       });
-      const self = this ?? globalThis;
+      // If `this` is not present, then fallback to global scope. We don't use
+      // `globalThis` directly here, because it could be deleted by user.
+      // Instead use saved reference to global scope when the script was
+      // executed.
+      const self = this ?? window;
 
       const { listeners } = self[eventTargetData];
       if (!(event.type in listeners)) {
