@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use anyhow::Error;
 use std::borrow::Cow;
@@ -372,6 +372,7 @@ impl ErrWithV8Handle {
   }
 }
 
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl Send for ErrWithV8Handle {}
 unsafe impl Sync for ErrWithV8Handle {}
 

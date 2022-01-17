@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_runtime::colors;
 
@@ -409,7 +409,7 @@ impl fmt::Display for Diagnostics {
       if i > 0 {
         write!(f, "\n\n")?;
       }
-      write!(f, "{}", item.to_string())?;
+      write!(f, "{}", item)?;
       i += 1;
     }
 

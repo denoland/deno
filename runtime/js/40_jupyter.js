@@ -5,6 +5,7 @@
   const core = window.__bootstrap.core;
   const {
     TypeError,
+    JSONStringify
   } = window.__bootstrap.primordials;
   const jupyter = {};
 
@@ -55,16 +56,20 @@
 
   function displayVegaLite(spec) {
     if (typeof spec === "object") {
-      spec = JSON.stringify(spec);
+      spec = JSONStringify(spec);
     }
 
-    display("application/vnd.vegalite.v3+json", new TextEncoder().encode(spec), { dataFormat: "json" });
-  } 
+    display(
+      "application/vnd.vegalite.v3+json",
+      new TextEncoder().encode(spec),
+      { dataFormat: "json" },
+    );
+  }
 
   async function displayVegaLiteFile(path) {
     const buf = await Deno.readFile(path);
     display("application/vnd.vegalite.v3+json", buf, { dataFormat: "json" });
-  } 
+  }
 
   // from: https://jupyterlab.readthedocs.io/en/stable/user/file_formats.html
   // application/json
@@ -90,10 +95,14 @@
     fileType = fileType.toLowerCase();
 
     switch (fileType) {
-      case "png": return displayPngFile(path, opt);
-      case "html": return displayHtmlFile(path);
-      case "vl": return displayVegaLiteFile(path);
-      default: throw new TypeError(`unknown file type: ${fileType}`)
+      case "png":
+        return displayPngFile(path, opt);
+      case "html":
+        return displayHtmlFile(path);
+      case "vl":
+        return displayVegaLiteFile(path);
+      default:
+        throw new TypeError(`unknown file type: ${fileType}`);
     }
   }
 

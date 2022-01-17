@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_core::error::AnyError;
@@ -152,11 +152,7 @@ fn handle_ws_request(
       _ => http::Response::builder()
         .status(http::StatusCode::BAD_REQUEST)
         .body("Not a valid Websocket Request".into()),
-    });
-
-  if resp.is_err() {
-    return resp;
-  }
+    })?;
 
   let (parts, _) = req.into_parts();
   let req = http::Request::from_parts(parts, body);
@@ -193,7 +189,7 @@ fn handle_ws_request(
     pump_websocket_messages(websocket, inbound_tx, outbound_rx).await;
   });
 
-  resp
+  Ok(resp)
 }
 
 fn handle_json_request(

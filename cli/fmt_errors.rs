@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
 use crate::colors::cyan;
 use crate::colors::italic_bold;
@@ -81,7 +81,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
   if frame.is_promise_all {
     result += &italic_bold(&format!(
       "Promise.all (index {})",
-      frame.promise_index.unwrap_or_default().to_string()
+      frame.promise_index.unwrap_or_default()
     ))
     .to_string();
     return result;

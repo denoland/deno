@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // The logic of this module is heavily influenced by path-to-regexp at:
 // https://github.com/pillarjs/path-to-regexp/ which is licensed as follows:
@@ -249,7 +249,11 @@ impl StringOrVec {
     }
   }
 
-  pub fn to_string(&self, maybe_key: Option<&Key>) -> String {
+  pub fn to_string(
+    &self,
+    maybe_key: Option<&Key>,
+    omit_initial_prefix: bool,
+  ) -> String {
     match self {
       Self::String(s) => s.clone(),
       Self::Vec(v) => {
@@ -262,8 +266,12 @@ impl StringOrVec {
           ("/".to_string(), "".to_string())
         };
         let mut s = String::new();
-        for segment in v {
-          s.push_str(&format!("{}{}{}", prefix, segment, suffix));
+        for (i, segment) in v.iter().enumerate() {
+          if omit_initial_prefix && i == 0 {
+            s.push_str(&format!("{}{}", segment, suffix));
+          } else {
+            s.push_str(&format!("{}{}{}", prefix, segment, suffix));
+          }
         }
         s
       }

@@ -1,9 +1,10 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::code_lens;
 use super::config;
 use super::language_server;
 use super::language_server::StateSnapshot;
+use super::performance::Performance;
 use super::refactor::RefactorCodeActionData;
 use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::refactor::EXTRACT_CONSTANT;
@@ -89,10 +90,10 @@ type Request = (
 pub struct TsServer(mpsc::UnboundedSender<Request>);
 
 impl TsServer {
-  pub fn new() -> Self {
+  pub fn new(performance: Arc<Performance>) -> Self {
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime();
+      let mut ts_runtime = js_runtime(performance);
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -2182,6 +2183,7 @@ struct Response {
 
 struct State<'a> {
   last_id: usize,
+  performance: Arc<Performance>,
   response: Option<Response>,
   state_snapshot: Arc<StateSnapshot>,
   snapshots: HashMap<(ModuleSpecifier, Cow<'a, str>), String>,
@@ -2189,9 +2191,13 @@ struct State<'a> {
 }
 
 impl<'a> State<'a> {
-  fn new(state_snapshot: Arc<StateSnapshot>) -> Self {
+  fn new(
+    state_snapshot: Arc<StateSnapshot>,
+    performance: Arc<Performance>,
+  ) -> Self {
     Self {
       last_id: 1,
+      performance,
       response: None,
       state_snapshot,
       snapshots: HashMap::default(),
@@ -2285,13 +2291,10 @@ fn op_dispose(
   state: &mut State,
   args: SourceSnapshotArgs,
 ) -> Result<bool, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_dispose", Some(&args));
+  let mark = state.performance.mark("op_dispose", Some(&args));
   let specifier = state.normalize_specifier(&args.specifier)?;
   state.snapshots.remove(&(specifier, args.version.into()));
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   Ok(true)
 }
 
@@ -2302,16 +2305,13 @@ struct SpecifierArgs {
 }
 
 fn op_exists(state: &mut State, args: SpecifierArgs) -> Result<bool, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_exists", Some(&args));
+  let mark = state.performance.mark("op_exists", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let result = state
     .state_snapshot
     .documents
     .contains_specifier(&specifier);
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   Ok(result)
 }
 
@@ -2330,10 +2330,7 @@ fn op_get_change_range(
   state: &mut State,
   args: GetChangeRangeArgs,
 ) -> Result<Value, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_get_change_range", Some(&args));
+  let mark = state.performance.mark("op_get_change_range", Some(&args));
   let specifier = state.normalize_specifier(&args.specifier)?;
   cache_snapshot(state, &specifier, args.version.clone())?;
   let r = if let Some(current) = state
@@ -2369,7 +2366,7 @@ fn op_get_change_range(
     ))
   };
 
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   r
 }
 
@@ -2377,10 +2374,7 @@ fn op_get_length(
   state: &mut State,
   args: SourceSnapshotArgs,
 ) -> Result<usize, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_get_length", Some(&args));
+  let mark = state.performance.mark("op_get_length", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let r = if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier)
   {
@@ -2393,7 +2387,7 @@ fn op_get_length(
       .unwrap();
     Ok(content.encode_utf16().count())
   };
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   r
 }
 
@@ -2410,10 +2404,7 @@ fn op_get_text(
   state: &mut State,
   args: GetTextArgs,
 ) -> Result<String, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_get_text", Some(&args));
+  let mark = state.performance.mark("op_get_text", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
@@ -2425,7 +2416,7 @@ fn op_get_text(
         .get(&(specifier, args.version.into()))
         .unwrap()
     };
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   Ok(text::slice(content, args.start..args.end).to_string())
 }
 
@@ -2433,13 +2424,10 @@ fn op_load(
   state: &mut State,
   args: SpecifierArgs,
 ) -> Result<Option<String>, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_load", Some(&args));
+  let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let document = state.state_snapshot.documents.get(&specifier);
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   Ok(document.map(|d| d.content().to_string()))
 }
 
@@ -2447,10 +2435,7 @@ fn op_resolve(
   state: &mut State,
   args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_resolve", Some(&args));
+  let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
 
   let result = if let Some(resolved) = state
@@ -2476,7 +2461,7 @@ fn op_resolve(
     ))
   };
 
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   result
 }
 
@@ -2510,10 +2495,7 @@ fn op_script_version(
   state: &mut State,
   args: ScriptVersionArgs,
 ) -> Result<Option<String>, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_script_version", Some(&args));
+  let mark = state.performance.mark("op_script_version", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let r = if specifier.scheme() == "asset" {
     if state.state_snapshot.assets.contains_key(&specifier) {
@@ -2530,22 +2512,22 @@ fn op_script_version(
     Ok(script_version)
   };
 
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   r
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
-fn js_runtime() -> JsRuntime {
+fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions: vec![init_extension()],
+    extensions: vec![init_extension(performance)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   })
 }
 
-fn init_extension() -> Extension {
+fn init_extension(performance: Arc<Performance>) -> Extension {
   Extension::builder()
     .ops(vec![
       ("op_dispose", op_lsp(op_dispose)),
@@ -2559,8 +2541,11 @@ fn init_extension() -> Extension {
       ("op_script_names", op_lsp(op_script_names)),
       ("op_script_version", op_lsp(op_script_version)),
     ])
-    .state(|state| {
-      state.put(State::new(Arc::new(StateSnapshot::default())));
+    .state(move |state| {
+      state.put(State::new(
+        Arc::new(StateSnapshot::default()),
+        performance.clone(),
+      ));
       Ok(())
     })
     .build()
@@ -3019,15 +3004,14 @@ pub(crate) fn request(
   state_snapshot: Arc<StateSnapshot>,
   method: RequestMethod,
 ) -> Result<Value, AnyError> {
-  let performance = state_snapshot.performance.clone();
-  let request_params = {
+  let (performance, request_params) = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     let state = op_state.borrow_mut::<State>();
     state.state_snapshot = state_snapshot;
     state.last_id += 1;
     let id = state.last_id;
-    method.to_value(state, id)
+    (state.performance.clone(), method.to_value(state, id))
   };
   let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({});", request_params);
@@ -3090,7 +3074,7 @@ mod tests {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
-    let mut runtime = js_runtime();
+    let mut runtime = js_runtime(Default::default());
     start(&mut runtime, debug, &state_snapshot)
       .expect("could not start server");
     let ts_config = TsConfig::new(config);

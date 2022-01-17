@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::normalize_path;
 use std::env::current_dir;
@@ -43,7 +43,7 @@ impl fmt::Display for ModuleResolutionError {
         specifier,
         match maybe_referrer {
           Some(referrer) => format!(" from \"{}\"", referrer),
-          None => format!(""),
+          None => String::new(),
         }
       ),
     }

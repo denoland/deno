@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 use deno_core::url::Url;
@@ -131,4 +131,16 @@ fn node_compat_url() {
   assert!(out.is_empty());
   assert!(!err.is_empty());
   assert!(err.contains("file:///non_existent/node/global.ts"));
+}
+
+#[test]
+fn native_modules_as_global_vars() {
+  let (out, _err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--compat", "--unstable", "--quiet"],
+    Some(vec!["if(cluster && v8 && sys) { true } else { false }"]),
+    None,
+    false,
+  );
+  assert!(out.contains("true"));
 }

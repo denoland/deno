@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::client::Client;
 use super::language_server;
@@ -428,18 +428,10 @@ fn relative_specifier(
         }
       }
       if parts.is_empty() {
-        format!(
-          "./{}{}",
-          last_a,
-          specifier[Position::AfterPath..].to_string()
-        )
+        format!("./{}{}", last_a, &specifier[Position::AfterPath..])
       } else {
         parts.push(last_a);
-        format!(
-          "{}{}",
-          parts.join("/"),
-          specifier[Position::AfterPath..].to_string()
-        )
+        format!("{}{}", parts.join("/"), &specifier[Position::AfterPath..])
       }
     } else {
       specifier[Position::BeforePath..].into()
