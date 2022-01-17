@@ -4,6 +4,7 @@ use log::debug;
 use once_cell::sync::Lazy;
 
 pub static CLI_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
+  #[allow(clippy::uninit_vec)]
   #[cold]
   #[inline(never)]
   || {

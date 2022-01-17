@@ -60,7 +60,7 @@ where
 {
   let result = watch_future.await;
   if let Err(err) = result {
-    let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
+    let msg = format!("{}: {}", colors::red_bold("error"), err);
     eprintln!("{}", msg);
   }
 }

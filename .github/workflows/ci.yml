@@ -85,7 +85,7 @@ jobs:
       - name: Install Rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.57.0
+          rust-version: 1.58.0
 
       - name: Install clippy and rustfmt
         if: matrix.job == 'lint'

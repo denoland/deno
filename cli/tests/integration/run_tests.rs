@@ -1600,6 +1600,28 @@ itest!(jsx_import_source_error {
   exit_code: 1,
 });
 
+itest!(shebang_tsc {
+  args: "run --quiet shebang.ts",
+  output: "shebang.ts.out",
+});
+
+itest!(shebang_swc {
+  args: "run --quiet --no-check shebang.ts",
+  output: "shebang.ts.out",
+});
+
+itest!(shebang_with_json_imports_tsc {
+  args: "run --quiet import_assertions/json_with_shebang.ts",
+  output: "import_assertions/json_with_shebang.ts.out",
+  exit_code: 1,
+});
+
+itest!(shebang_with_json_imports_swc {
+  args: "run --quiet --no-check import_assertions/json_with_shebang.ts",
+  output: "import_assertions/json_with_shebang.ts.out",
+  exit_code: 1,
+});
+
 #[test]
 fn no_validate_asm() {
   let output = util::deno_cmd()
