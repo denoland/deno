@@ -37,7 +37,6 @@ fn incremental_change_wait(bench: &mut Bencher) {
   let (method, _maybe_diag): (String, Option<Value>) =
     client.read_notification().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
-  //let _expected_num_diagnostics = get_num_diagnostics(maybe_diag);
 
   let mut document_version: u64 = 0;
   bench.iter(|| {
@@ -59,27 +58,31 @@ fn incremental_change_wait(bench: &mut Bencher) {
           })
       ).unwrap();
 
-      const DIAGNOSTICS_MESSAGES_TO_IGNORE: usize = 1;
-      for _ in 0..DIAGNOSTICS_MESSAGES_TO_IGNORE {
-          wait_for_first_diagnostics_notification(document_version, &mut client);
-      }
-       wait_for_first_diagnostics_notification(document_version, &mut client);
+       wait_for_deno_lint_diagnostic(document_version, &mut client);
 
       document_version += 1;
     })
 }
 
-fn wait_for_first_diagnostics_notification(
+fn wait_for_deno_lint_diagnostic(
   document_version: u64,
   client: &mut LspClient,
-) -> Value {
+) {
   loop {
     let (method, maybe_diag): (String, Option<Value>) =
       client.read_notification().unwrap();
     if method == "textDocument/publishDiagnostics" {
       let d = maybe_diag.unwrap();
-      if document_version == get_diagnostic_version(&d) {
-        return d;
+      //println!("diag {:?}", d);
+      let msg = d.as_object().unwrap();
+      let version = msg.get("version").unwrap().as_u64().unwrap();
+      if document_version == version {
+        let diagnostics = msg.get("diagnostics").unwrap().as_array().unwrap();
+        let first = &diagnostics[0];
+        let source = first.get("source").unwrap().as_str().unwrap();
+        if source == "deno-lint" {
+          return;
+        }
       }
     } else {
       // handle_misc_message
@@ -87,18 +90,6 @@ fn wait_for_first_diagnostics_notification(
     }
   }
 }
-
-fn get_diagnostic_version(diag: &Value) -> u64 {
-  let msg = diag.as_object().unwrap();
-  msg.get("version").unwrap().as_u64().unwrap()
-}
-
-/*
-fn get_num_diagnostics(diag: &Value) -> usize {
-  let msg = diag.as_object().unwrap();
-  msg.get("diagnostics").unwrap().as_array().unwrap().len()
-}
-*/
 
 benchmark_group!(benches, incremental_change_wait);
 benchmark_main!(benches);
