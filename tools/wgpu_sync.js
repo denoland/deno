@@ -61,10 +61,22 @@ async function patchCargo() {
   await Deno.writeTextFile(webgpuCargo, patched);
 }
 
+async function patchSrcLib() {
+  const srcLib = join(ROOT_PATH, "ext", "webgpu", "src", "lib.rs");
+  const data = await Deno.readTextFile(srcLib);
+
+  // Patch ext/webgpu/src/lib.rs's contents
+  const patched = data
+    .replace(`prefix "deno:deno_webgpu",`, `prefix "deno:ext/webgpu",`);
+
+  await Deno.writeTextFile(srcLib, patched);
+}
+
 async function main() {
   await clearTargetDir();
   await checkoutUpstream();
   await patchCargo();
+  await patchSrcLib();
   await bash(join(ROOT_PATH, "tools", "format.js"));
 }
 
