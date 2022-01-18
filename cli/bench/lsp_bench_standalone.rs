@@ -40,28 +40,28 @@ fn incremental_change_wait(bench: &mut Bencher) {
 
   let mut document_version: u64 = 0;
   bench.iter(|| {
-      println!("document_version {}", document_version);
-      let text = format!("m{:05}", document_version);
-      client
-        .write_notification(
-          "textDocument/didChange",
-          json!({
-              "textDocument": {
-                  "version": document_version,
-                  "uri":"file:///testdata/express-router.js"
-              },
-              "contentChanges": [
-                {"text": text, "range":{"start":{"line":506,"character":39},"end":{"line":506,"character":45}}},
-                {"text": text, "range":{"start":{"line":507,"character":8},"end":{"line":507,"character":14}}},
-                {"text": text, "range":{"start":{"line":509,"character":10},"end":{"line":509,"character":16}}}
-              ]
-          })
-      ).unwrap();
+    // println!("document_version {}", document_version);
+    let text = format!("m{:05}", document_version);
+    client
+      .write_notification(
+        "textDocument/didChange",
+        json!({
+            "textDocument": {
+                "version": document_version,
+                "uri":"file:///testdata/express-router.js"
+            },
+            "contentChanges": [
+              {"text": text, "range":{"start":{"line":506,"character":39},"end":{"line":506,"character":45}}},
+              {"text": text, "range":{"start":{"line":507,"character":8},"end":{"line":507,"character":14}}},
+              {"text": text, "range":{"start":{"line":509,"character":10},"end":{"line":509,"character":16}}}
+            ]
+        })
+    ).unwrap();
 
-       wait_for_deno_lint_diagnostic(document_version, &mut client);
+     wait_for_deno_lint_diagnostic(document_version, &mut client);
 
-      document_version += 1;
-    })
+    document_version += 1;
+  })
 }
 
 fn wait_for_deno_lint_diagnostic(
