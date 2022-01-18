@@ -711,6 +711,7 @@ dependencies = [
  "clap_complete_fig",
  "data-url",
  "deno_ast",
+ "deno_bench_util",
  "deno_broadcast_channel",
  "deno_console",
  "deno_core",

@@ -15,6 +15,7 @@
   "excludes": [
     ".cargo_home",
     ".git",
+    "cli/bench/testdata/express-router.js",
     "cli/dts/lib.d.ts",
     "cli/dts/lib.dom*",
     "cli/dts/lib.es*",
