@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::benchmark_main;
 use deno_bench_util::bencher::Bencher;
@@ -40,7 +42,6 @@ fn incremental_change_wait(bench: &mut Bencher) {
 
   let mut document_version: u64 = 0;
   bench.iter(|| {
-    // println!("document_version {}", document_version);
     let text = format!("m{:05}", document_version);
     client
       .write_notification(
@@ -73,7 +74,6 @@ fn wait_for_deno_lint_diagnostic(
       client.read_notification().unwrap();
     if method == "textDocument/publishDiagnostics" {
       let d = maybe_diag.unwrap();
-      //println!("diag {:?}", d);
       let msg = d.as_object().unwrap();
       let version = msg.get("version").unwrap().as_u64().unwrap();
       if document_version == version {
@@ -85,8 +85,7 @@ fn wait_for_deno_lint_diagnostic(
         }
       }
     } else {
-      // handle_misc_message
-      todo!()
+      todo!() // handle_misc_message
     }
   }
 }
