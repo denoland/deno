@@ -26,6 +26,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op_sync;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -40,6 +41,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
+use log::error;
 use log::warn;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
@@ -187,48 +189,114 @@ impl AssetDocument {
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct Assets(HashMap<ModuleSpecifier, Option<AssetDocument>>);
+type AssetsMap = HashMap<ModuleSpecifier, Option<AssetDocument>>;
 
-impl Default for Assets {
+fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
+  let assets = tsc::STATIC_ASSETS
+    .iter()
+    .map(|(k, v)| {
+      let url_str = format!("asset:///{}", k);
+      let specifier = resolve_url(&url_str).unwrap();
+      let asset = AssetDocument::new(v);
+      (specifier, Some(asset))
+    })
+    .collect();
+  Arc::new(Mutex::new(assets))
+}
+
+/// Snapshot of Assets.
+#[derive(Debug, Clone)]
+pub struct AssetsSnapshot(Arc<Mutex<AssetsMap>>);
+
+impl Default for AssetsSnapshot {
   fn default() -> Self {
-    let assets = tsc::STATIC_ASSETS
-      .iter()
-      .map(|(k, v)| {
-        let url_str = format!("asset:///{}", k);
-        let specifier = resolve_url(&url_str).unwrap();
-        let asset = AssetDocument::new(v);
-        (specifier, Some(asset))
-      })
-      .collect();
-    Self(assets)
+    Self(new_assets_map())
   }
 }
 
-impl Assets {
+impl AssetsSnapshot {
   pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
-    self.0.contains_key(k)
+    self.0.lock().contains_key(k)
   }
 
-  pub fn get(&self, k: &ModuleSpecifier) -> Option<&Option<AssetDocument>> {
-    self.0.get(k)
-  }
-
-  pub fn insert(
-    &mut self,
-    k: ModuleSpecifier,
-    v: Option<AssetDocument>,
+  pub fn get_cached(
+    &self,
+    k: &ModuleSpecifier,
   ) -> Option<Option<AssetDocument>> {
-    self.0.insert(k, v)
+    self.0.lock().get(k).cloned()
+  }
+}
+
+/// Assets are never updated and so we can safely use this struct across
+/// multiple threads without needing to worry about race conditions.
+#[derive(Debug, Clone)]
+pub struct Assets {
+  ts_server: Arc<TsServer>,
+  assets: Arc<Mutex<AssetsMap>>,
+}
+
+impl Assets {
+  pub fn new(ts_server: Arc<TsServer>) -> Self {
+    Self {
+      ts_server,
+      assets: new_assets_map(),
+    }
+  }
+
+  pub fn snapshot(&self) -> AssetsSnapshot {
+    // it's ok to not make a complete copy for snapshotting purposes
+    // because assets are static
+    AssetsSnapshot(self.assets.clone())
+  }
+
+  pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
+    self.assets.lock().contains_key(k)
+  }
+
+  pub fn get_cached(
+    &self,
+    k: &ModuleSpecifier,
+  ) -> Option<Option<AssetDocument>> {
+    self.assets.lock().get(k).cloned()
+  }
+
+  pub(crate) async fn get(
+    &self,
+    specifier: &ModuleSpecifier,
+    // todo(dsherret): this shouldn't be a parameter, but instead retrieved via
+    // a constructor dependency
+    get_snapshot: impl Fn() -> LspResult<Arc<StateSnapshot>>,
+  ) -> LspResult<Option<AssetDocument>> {
+    // Race conditions are ok to happen here since the assets are static
+    if let Some(maybe_asset) = self.get_cached(specifier) {
+      Ok(maybe_asset)
+    } else {
+      let maybe_asset = get_asset(specifier, &self.ts_server, get_snapshot()?)
+        .await
+        .map_err(|err| {
+          error!("Error getting asset {}: {}", specifier, err);
+          LspError::internal_error()
+        })?;
+      // if another thread has inserted into the cache, return the asset
+      // that already exists in the cache so that we don't store duplicate
+      // assets in memory anywhere
+      let mut assets = self.assets.lock();
+      if let Some(maybe_asset) = assets.get(specifier) {
+        Ok(maybe_asset.clone())
+      } else {
+        assets.insert(specifier.clone(), maybe_asset.clone());
+        Ok(maybe_asset)
+      }
+    }
   }
 
   pub fn cache_navigation_tree(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     navigation_tree: Arc<NavigationTree>,
   ) -> Result<(), AnyError> {
-    let maybe_doc = self
-      .0
+    let mut assets = self.assets.lock();
+    let maybe_doc = assets
       .get_mut(specifier)
       .ok_or_else(|| anyhow!("Missing asset."))?;
     let doc = maybe_doc
@@ -242,7 +310,7 @@ impl Assets {
 /// Optionally returns an internal asset, first checking for any static assets
 /// in Rust, then checking any previously retrieved static assets from the
 /// isolate, and then finally, the tsc isolate itself.
-pub(crate) async fn get_asset(
+async fn get_asset(
   specifier: &ModuleSpecifier,
   ts_server: &TsServer,
   state_snapshot: Arc<StateSnapshot>,
@@ -1137,7 +1205,7 @@ pub struct FileTextChanges {
 impl FileTextChanges {
   pub(crate) async fn to_text_document_edit(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
     let specifier = normalize_specifier(&self.file_name)?;
     let asset_or_doc =
@@ -1158,7 +1226,7 @@ impl FileTextChanges {
 
   pub(crate) async fn to_text_document_change_ops(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
     let specifier = normalize_specifier(&self.file_name)?;
@@ -1394,7 +1462,7 @@ pub struct RefactorEditInfo {
 impl RefactorEditInfo {
   pub(crate) async fn to_workspace_edit(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
     let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
     for edit in self.edits.iter() {
@@ -2376,7 +2444,8 @@ fn op_get_length(
 ) -> Result<usize, AnyError> {
   let mark = state.performance.mark("op_get_length", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let r = if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier)
+  let r = if let Some(Some(asset)) =
+    state.state_snapshot.assets.get_cached(&specifier)
   {
     Ok(asset.length())
   } else {
@@ -2406,16 +2475,16 @@ fn op_get_text(
 ) -> Result<String, AnyError> {
   let mark = state.performance.mark("op_get_text", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let content =
-    if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
-      content.text_str()
-    } else {
-      cache_snapshot(state, &specifier, args.version.clone())?;
-      state
-        .snapshots
-        .get(&(specifier, args.version.into()))
-        .unwrap()
-    };
+  let maybe_asset = state.state_snapshot.assets.get_cached(&specifier);
+  let content = if let Some(Some(content)) = &maybe_asset {
+    content.text_str()
+  } else {
+    cache_snapshot(state, &specifier, args.version.clone())?;
+    state
+      .snapshots
+      .get(&(specifier, args.version.into()))
+      .unwrap()
+  };
   state.performance.measure(mark);
   Ok(text::slice(content, args.start..args.end).to_string())
 }
