@@ -398,6 +398,8 @@ impl Inner {
       maybe_lint_config: self.maybe_lint_config.clone(),
       maybe_fmt_config: self.maybe_fmt_config.clone(),
       module_registries: self.module_registries.clone(),
+      // it's ok to get an Arc to the url map because the url_map is a cache
+      // that does not change once the mapping for a specifier is set
       url_map: self.url_map.clone(),
     }))
   }
@@ -1147,7 +1149,7 @@ impl Inner {
   }
 
   async fn code_action(
-    &mut self,
+    &self,
     params: CodeActionParams,
   ) -> LspResult<Option<CodeActionResponse>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
@@ -1321,7 +1323,7 @@ impl Inner {
   }
 
   async fn code_action_resolve(
-    &mut self,
+    &self,
     params: CodeAction,
   ) -> LspResult<CodeAction> {
     if params.kind.is_none() || params.data.is_none() {
@@ -1460,7 +1462,7 @@ impl Inner {
   }
 
   async fn code_lens_resolve(
-    &mut self,
+    &self,
     code_lens: CodeLens,
   ) -> LspResult<CodeLens> {
     let mark = self.performance.mark("code_lens_resolve", Some(&code_lens));
@@ -1481,7 +1483,7 @@ impl Inner {
   }
 
   async fn document_highlight(
-    &mut self,
+    &self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
     let specifier = self
@@ -1526,7 +1528,7 @@ impl Inner {
   }
 
   async fn references(
-    &mut self,
+    &self,
     params: ReferenceParams,
   ) -> LspResult<Option<Vec<Location>>> {
     let specifier = self
@@ -1581,7 +1583,7 @@ impl Inner {
   }
 
   async fn goto_definition(
-    &mut self,
+    &self,
     params: GotoDefinitionParams,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
     let specifier = self
@@ -1620,7 +1622,7 @@ impl Inner {
   }
 
   async fn goto_type_definition(
-    &mut self,
+    &self,
     params: GotoTypeDefinitionParams,
   ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
     let specifier = self
@@ -1668,7 +1670,7 @@ impl Inner {
   }
 
   async fn completion(
-    &mut self,
+    &self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
     let specifier = self
@@ -1746,7 +1748,7 @@ impl Inner {
   }
 
   async fn completion_resolve(
-    &mut self,
+    &self,
     params: CompletionItem,
   ) -> LspResult<CompletionItem> {
     let mark = self.performance.mark("completion_resolve", Some(&params));
@@ -1793,7 +1795,7 @@ impl Inner {
   }
 
   async fn goto_implementation(
-    &mut self,
+    &self,
     params: GotoImplementationParams,
   ) -> LspResult<Option<GotoImplementationResponse>> {
     let specifier = self
@@ -1841,7 +1843,7 @@ impl Inner {
   }
 
   async fn folding_range(
-    &mut self,
+    &self,
     params: FoldingRangeParams,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
@@ -1885,7 +1887,7 @@ impl Inner {
   }
 
   async fn incoming_calls(
-    &mut self,
+    &self,
     params: CallHierarchyIncomingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
     let specifier = self.url_map.normalize_url(&params.item.uri);
@@ -1934,7 +1936,7 @@ impl Inner {
   }
 
   async fn outgoing_calls(
-    &mut self,
+    &self,
     params: CallHierarchyOutgoingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
     let specifier = self.url_map.normalize_url(&params.item.uri);
@@ -1984,7 +1986,7 @@ impl Inner {
   }
 
   async fn prepare_call_hierarchy(
-    &mut self,
+    &self,
     params: CallHierarchyPrepareParams,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
     let specifier = self
@@ -2058,7 +2060,7 @@ impl Inner {
   }
 
   async fn rename(
-    &mut self,
+    &self,
     params: RenameParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
     let specifier = self

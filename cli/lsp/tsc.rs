@@ -714,7 +714,7 @@ impl DocumentSpan {
   pub(crate) async fn to_link(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = normalize_specifier(&self.file_name).ok()?;
     let target_asset_or_doc = language_server
@@ -991,7 +991,7 @@ impl ImplementationLocation {
   pub(crate) fn to_location(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> lsp::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
       .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
@@ -1008,7 +1008,7 @@ impl ImplementationLocation {
   pub(crate) async fn to_link(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     self
       .document_span
@@ -1035,7 +1035,7 @@ impl RenameLocations {
   pub(crate) async fn into_workspace_edit(
     self,
     new_name: &str,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<lsp::WorkspaceEdit, AnyError> {
     let mut text_document_edit_map: HashMap<Url, lsp::TextDocumentEdit> =
       HashMap::new();
@@ -1126,7 +1126,7 @@ impl DefinitionInfoAndBoundSpan {
   pub(crate) async fn to_definition(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Option<lsp::GotoDefinitionResponse> {
     if let Some(definitions) = &self.definitions {
       let mut location_links = Vec::<lsp::LocationLink>::new();
@@ -1528,7 +1528,7 @@ impl ReferenceEntry {
   pub(crate) fn to_location(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> lsp::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
@@ -1560,7 +1560,7 @@ pub struct CallHierarchyItem {
 impl CallHierarchyItem {
   pub(crate) async fn try_resolve_call_hierarchy_item(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
     let target_specifier = normalize_specifier(&self.file).ok()?;
@@ -1579,7 +1579,7 @@ impl CallHierarchyItem {
   pub(crate) fn to_call_hierarchy_item(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> lsp::CallHierarchyItem {
     let target_specifier = normalize_specifier(&self.file)
@@ -1661,7 +1661,7 @@ pub struct CallHierarchyIncomingCall {
 impl CallHierarchyIncomingCall {
   pub(crate) async fn try_resolve_call_hierarchy_incoming_call(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
     let target_specifier = normalize_specifier(&self.from.file).ok()?;
@@ -1696,7 +1696,7 @@ impl CallHierarchyOutgoingCall {
   pub(crate) async fn try_resolve_call_hierarchy_outgoing_call(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
     let target_specifier = normalize_specifier(&self.to.file).ok()?;

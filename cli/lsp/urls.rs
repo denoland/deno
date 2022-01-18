@@ -6,11 +6,13 @@ use data_url::DataUrl;
 use deno_ast::MediaType;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Used in situations where a default URL needs to be used where otherwise a
 /// panic is undesired.
@@ -57,16 +59,13 @@ fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
   crate::checksum::gen(&[file_name_str.as_bytes()])
 }
 
-/// A bi-directional map of URLs sent to the LSP client and internal module
-/// specifiers.  We need to map internal specifiers into `deno:` schema URLs
-/// to allow the Deno language server to manage these as virtual documents.
-#[derive(Debug, Default, Clone)]
-pub struct LspUrlMap {
+#[derive(Debug, Default)]
+struct LspUrlMapInner {
   specifier_to_url: HashMap<ModuleSpecifier, Url>,
   url_to_specifier: HashMap<Url, ModuleSpecifier>,
 }
 
-impl LspUrlMap {
+impl LspUrlMapInner {
   fn put(&mut self, specifier: ModuleSpecifier, url: Url) {
     self.specifier_to_url.insert(specifier.clone(), url.clone());
     self.url_to_specifier.insert(url, specifier);
@@ -79,15 +78,24 @@ impl LspUrlMap {
   fn get_specifier(&self, url: &Url) -> Option<&ModuleSpecifier> {
     self.url_to_specifier.get(url)
   }
+}
 
+/// A bi-directional map of URLs sent to the LSP client and internal module
+/// specifiers.  We need to map internal specifiers into `deno:` schema URLs
+/// to allow the Deno language server to manage these as virtual documents.
+#[derive(Debug, Default, Clone)]
+pub struct LspUrlMap(Arc<Mutex<LspUrlMapInner>>);
+
+impl LspUrlMap {
   /// Normalize a specifier that is used internally within Deno (or tsc) to a
   /// URL that can be handled as a "virtual" document by an LSP client.
   pub fn normalize_specifier(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Url, AnyError> {
-    if let Some(url) = self.get_url(specifier) {
-      Ok(url.clone())
+    let mut inner = self.0.lock();
+    if let Some(url) = inner.get_url(specifier).cloned() {
+      Ok(url)
     } else {
       let url = if specifier.scheme() == "file" {
         specifier.clone()
@@ -123,7 +131,7 @@ impl LspUrlMap {
           format!("deno:/{}", path)
         };
         let url = Url::parse(&specifier_str)?;
-        self.put(specifier.clone(), url.clone());
+        inner.put(specifier.clone(), url.clone());
         url
       };
       Ok(url)
@@ -135,8 +143,8 @@ impl LspUrlMap {
   /// where the client encodes a file URL differently than Rust does by default
   /// causing issues with string matching of URLs.
   pub fn normalize_url(&self, url: &Url) -> ModuleSpecifier {
-    if let Some(specifier) = self.get_specifier(url) {
-      return specifier.clone();
+    if let Some(specifier) = self.0.lock().get_specifier(url).cloned() {
+      return specifier;
     }
     if url.scheme() == "file" {
       if let Ok(path) = url.to_file_path() {
@@ -164,7 +172,7 @@ mod tests {
 
   #[test]
   fn test_lsp_url_map() {
-    let mut map = LspUrlMap::default();
+    let map = LspUrlMap::default();
     let fixture = resolve_url("https://deno.land/x/pkg@1.0.0/mod.ts").unwrap();
     let actual_url = map
       .normalize_specifier(&fixture)
@@ -180,7 +188,7 @@ mod tests {
   #[test]
   fn test_lsp_url_map_complex_encoding() {
     // Test fix for #9741 - not properly encoding certain URLs
-    let mut map = LspUrlMap::default();
+    let map = LspUrlMap::default();
     let fixture = resolve_url("https://cdn.skypack.dev/-/postcss@v8.2.9-E4SktPp9c0AtxrJHp8iV/dist=es2020,mode=types/lib/postcss.d.ts").unwrap();
     let actual_url = map
       .normalize_specifier(&fixture)
@@ -194,7 +202,7 @@ mod tests {
 
   #[test]
   fn test_lsp_url_map_data() {
-    let mut map = LspUrlMap::default();
+    let map = LspUrlMap::default();
     let fixture = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
     let actual_url = map
       .normalize_specifier(&fixture)
