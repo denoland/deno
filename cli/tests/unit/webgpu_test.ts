@@ -39,7 +39,8 @@ Deno.test({
   const storageBuffer = device.createBuffer({
     label: "Storage Buffer",
     size: size,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST |
+      GPUBufferUsage.COPY_SRC,
     mappedAtCreation: true,
   });
 
