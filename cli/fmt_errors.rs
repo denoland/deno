@@ -81,7 +81,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
   if frame.is_promise_all {
     result += &italic_bold(&format!(
       "Promise.all (index {})",
-      frame.promise_index.unwrap_or_default().to_string()
+      frame.promise_index.unwrap_or_default()
     ))
     .to_string();
     return result;

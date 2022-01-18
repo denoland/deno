@@ -372,6 +372,7 @@ impl ErrWithV8Handle {
   }
 }
 
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl Send for ErrWithV8Handle {}
 unsafe impl Sync for ErrWithV8Handle {}
 

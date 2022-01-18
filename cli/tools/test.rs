@@ -267,11 +267,7 @@ impl PrettyTestReporter {
       print!("{}", "  ".repeat(description.level));
     }
 
-    println!(
-      "{} {}",
-      status,
-      colors::gray(human_elapsed(elapsed.into())).to_string()
-    );
+    println!("{} {}", status, colors::gray(human_elapsed(elapsed.into())));
 
     if let Some(error_text) = result.error() {
       for line in error_text.lines() {
@@ -357,11 +353,7 @@ impl TestReporter for PrettyTestReporter {
       print!(" ");
     }
 
-    println!(
-      "{} {}",
-      status,
-      colors::gray(human_elapsed(elapsed.into())).to_string()
-    );
+    println!("{} {}", status, colors::gray(human_elapsed(elapsed.into())));
   }
 
   fn report_step_wait(&mut self, description: &TestStepDescription) {
