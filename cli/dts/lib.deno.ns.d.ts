@@ -137,14 +137,15 @@ declare namespace Deno {
     name: string;
     ignore?: boolean;
     /** Check that the number of async completed ops after the test step is the same
-     * as number of dispatched ops. Defaults to true. */
+     * as number of dispatched ops. Defaults to the parent test or step's value. */
     sanitizeOps?: boolean;
     /** Ensure the test step does not "leak" resources - ie. the resource table
      * after the test has exactly the same contents as before the test. Defaults
-     * to true. */
+     * to the parent test or step's value. */
     sanitizeResources?: boolean;
     /** Ensure the test step does not prematurely cause the process to exit,
-     * for example via a call to `Deno.exit`. Defaults to true. */
+     * for example via a call to `Deno.exit`. Defaults to the parent test or
+     * step's value. */
     sanitizeExit?: boolean;
   }
 
