@@ -361,6 +361,28 @@ impl Flags {
 
     args
   }
+
+  /// Extract path arguments for config search paths.
+  pub fn config_path_args(&self) -> Vec<PathBuf> {
+    use DenoSubcommand::*;
+    if let Fmt(FmtFlags { files, .. }) = &self.subcommand {
+      files.clone()
+    } else if let Lint(LintFlags { files, .. }) = &self.subcommand {
+      files.clone()
+    } else if let Run(RunFlags { script }) = &self.subcommand {
+      if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
+        if let Ok(p) = module_specifier.to_file_path() {
+          vec![p]
+        } else {
+          vec![]
+        }
+      } else {
+        vec![]
+      }
+    } else {
+      vec![]
+    }
+  }
 }
 
 impl From<Flags> for PermissionsOptions {
@@ -4626,6 +4648,32 @@ mod tests {
         unstable: true,
         ..Flags::default()
       }
+    );
+  }
+
+  #[test]
+  fn test_config_path_args() {
+    let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
+    assert_eq!(
+      flags.config_path_args(),
+      vec![std::env::current_dir().unwrap().join("foo.js")]
+    );
+
+    let flags =
+      flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
+    assert_eq!(
+      flags.config_path_args(),
+      vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")]
+    );
+
+    let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
+    assert!(flags.config_path_args().is_empty());
+
+    let flags =
+      flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
+    assert_eq!(
+      flags.config_path_args(),
+      vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")]
     );
   }
 }

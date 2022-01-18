@@ -16,7 +16,7 @@ use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::FmtFlags;
 use crate::fs_util::specifier_to_file_path;
-use crate::fs_util::{collect_files, get_extension, is_supported_ext_fmt};
+use crate::fs_util::{collect_files, get_extension};
 use crate::text_encoding;
 use deno_ast::ParsedSource;
 use deno_core::anyhow::bail;
@@ -590,4 +590,56 @@ where
   } else {
     Ok(())
   }
+}
+
+/// This function is similar to is_supported_ext but adds additional extensions
+/// supported by `deno fmt`.
+fn is_supported_ext_fmt(path: &Path) -> bool {
+  if let Some(ext) = get_extension(path) {
+    matches!(
+      ext.as_str(),
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "json"
+        | "jsonc"
+        | "md"
+        | "mkd"
+        | "mkdn"
+        | "mdwn"
+        | "mdown"
+        | "markdown"
+    )
+  } else {
+    false
+  }
+}
+
+#[test]
+fn test_is_supported_ext_fmt() {
+  assert!(!is_supported_ext_fmt(Path::new("tests/subdir/redirects")));
+  assert!(is_supported_ext_fmt(Path::new("README.md")));
+  assert!(is_supported_ext_fmt(Path::new("readme.MD")));
+  assert!(is_supported_ext_fmt(Path::new("readme.mkd")));
+  assert!(is_supported_ext_fmt(Path::new("readme.mkdn")));
+  assert!(is_supported_ext_fmt(Path::new("readme.mdwn")));
+  assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
+  assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
+  assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
+  assert!(is_supported_ext_fmt(Path::new("testdata/001_hello.js")));
+  assert!(is_supported_ext_fmt(Path::new("testdata/002_hello.ts")));
+  assert!(is_supported_ext_fmt(Path::new("foo.jsx")));
+  assert!(is_supported_ext_fmt(Path::new("foo.tsx")));
+  assert!(is_supported_ext_fmt(Path::new("foo.TS")));
+  assert!(is_supported_ext_fmt(Path::new("foo.TSX")));
+  assert!(is_supported_ext_fmt(Path::new("foo.JS")));
+  assert!(is_supported_ext_fmt(Path::new("foo.JSX")));
+  assert!(is_supported_ext_fmt(Path::new("foo.mjs")));
+  assert!(!is_supported_ext_fmt(Path::new("foo.mjsx")));
+  assert!(is_supported_ext_fmt(Path::new("foo.jsonc")));
+  assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
+  assert!(is_supported_ext_fmt(Path::new("foo.json")));
+  assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
 }

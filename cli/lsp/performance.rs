@@ -72,11 +72,11 @@ impl From<PerformanceMark> for PerformanceMeasure {
 ///
 /// The structure will limit the size of measurements to the most recent 1000,
 /// and will roll off when that limit is reached.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Performance {
-  counts: Arc<Mutex<HashMap<String, u32>>>,
+  counts: Mutex<HashMap<String, u32>>,
   max_size: usize,
-  measures: Arc<Mutex<VecDeque<PerformanceMeasure>>>,
+  measures: Mutex<VecDeque<PerformanceMeasure>>,
 }
 
 impl Default for Performance {
