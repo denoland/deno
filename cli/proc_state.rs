@@ -207,12 +207,7 @@ impl ProcState {
       None
     };
 
-    let maybe_config_file =
-      if let Some(config_path) = flags.config_path.as_ref() {
-        Some(ConfigFile::read(config_path)?)
-      } else {
-        None
-      };
+    let maybe_config_file = crate::config_file::discover(&flags)?;
 
     let maybe_import_map: Option<Arc<ImportMap>> =
       match flags.import_map_path.as_ref() {
