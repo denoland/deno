@@ -136,9 +136,9 @@ dependencies = [
 
 [[package]]
 name = "ash"
-version = "0.33.3+1.2.191"
+version = "0.35.0+1.2.203"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc4f1d82f164f838ae413296d1131aa6fa79b917d25bebaa7033d25620c09219"
+checksum = "5a7638ce84f8c84d6fd6faa63aa267574d345181ba591c0eeb5550d4c30cd600"
 dependencies = [
  "libloading",
 ]
@@ -2316,8 +2316,7 @@ dependencies = [
 [[package]]
 name = "metal"
 version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0514f491f4cc03632ab399ee01e2c1c1b12d3e1cf2d667c1ff5f87d6dcd2084"
+source = "git+https://github.com/gfx-rs/metal-rs?rev=140c8f4#140c8f4e39001ae154f153ffc767da6c0c9d7f06"
 dependencies = [
  "bitflags",
  "block",
@@ -2367,9 +2366,8 @@ dependencies = [
 
 [[package]]
 name = "naga"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4419062f8aa39fb25938169486341945758679e260ddbc1f94bfd1f33924dc2"
+version = "0.8.0"
+source = "git+https://github.com/gfx-rs/naga?rev=a1840be#a1840beb1a96c9a49980fe3efa8e2f3dcd88abe6"
 dependencies = [
  "bit-set",
  "bitflags",
@@ -4894,7 +4892,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core"
 version = "0.12.0"
-source = "git+https://github.com/gfx-rs/wgpu?rev=c00e471274b6c21acda89b4b13d41742c0285d71#c00e471274b6c21acda89b4b13d41742c0285d71"
+source = "git+https://github.com/gfx-rs/wgpu?rev=58771175290bca7b9db546b3451d32fab2dc5d7b#58771175290bca7b9db546b3451d32fab2dc5d7b"
 dependencies = [
  "arrayvec 0.7.2",
  "bitflags",
@@ -4917,7 +4915,7 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "0.12.0"
-source = "git+https://github.com/gfx-rs/wgpu?rev=c00e471274b6c21acda89b4b13d41742c0285d71#c00e471274b6c21acda89b4b13d41742c0285d71"
+source = "git+https://github.com/gfx-rs/wgpu?rev=58771175290bca7b9db546b3451d32fab2dc5d7b#58771175290bca7b9db546b3451d32fab2dc5d7b"
 dependencies = [
  "arrayvec 0.7.2",
  "ash",
@@ -4954,7 +4952,7 @@ dependencies = [
 [[package]]
 name = "wgpu-types"
 version = "0.12.0"
-source = "git+https://github.com/gfx-rs/wgpu?rev=c00e471274b6c21acda89b4b13d41742c0285d71#c00e471274b6c21acda89b4b13d41742c0285d71"
+source = "git+https://github.com/gfx-rs/wgpu?rev=58771175290bca7b9db546b3451d32fab2dc5d7b#58771175290bca7b9db546b3451d32fab2dc5d7b"
 dependencies = [
  "bitflags",
  "bitflags_serde_shim",
