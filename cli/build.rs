@@ -82,6 +82,7 @@ fn create_compiler_snapshot(
   op_crate_libs.insert("deno.url", deno_url::get_declaration());
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
+  op_crate_libs.insert("deno.webgpu", deno_webgpu_get_declaration());
   op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
   op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
   op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
@@ -152,8 +153,6 @@ fn create_compiler_snapshot(
     "esnext.intl",
     "esnext.object",
     "esnext.string",
-    // WebGPU
-    "deno_webgpu",
   ];
 
   let path_dts = cwd.join("dts");
@@ -322,6 +321,10 @@ fn main() {
     deno_fetch::get_declaration().display()
   );
   println!(
+    "cargo:rustc-env=DENO_WEBGPU_LIB_PATH={}",
+    deno_webgpu_get_declaration().display()
+  );
+  println!(
     "cargo:rustc-env=DENO_WEBSOCKET_LIB_PATH={}",
     deno_websocket::get_declaration().display()
   );
@@ -364,6 +367,11 @@ fn main() {
     ));
     res.compile().unwrap();
   }
+}
+
+fn deno_webgpu_get_declaration() -> PathBuf {
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+  manifest_dir.join("dts").join("lib.deno_webgpu.d.ts")
 }
 
 fn get_js_files(d: &str) -> Vec<PathBuf> {
