@@ -52,6 +52,7 @@ use super::text;
 use super::tsc;
 use super::tsc::AssetDocument;
 use super::tsc::Assets;
+use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
 use crate::config_file::ConfigFile;
@@ -75,7 +76,7 @@ pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 
 #[derive(Debug, Default)]
 pub(crate) struct StateSnapshot {
-  pub assets: Assets,
+  pub assets: AssetsSnapshot,
   pub config: ConfigSnapshot,
   pub documents: Documents,
   pub maybe_lint_config: Option<LintConfig>,
@@ -151,9 +152,10 @@ impl Inner {
       performance.clone(),
       ts_server.clone(),
     );
+    let assets = Assets::new(ts_server.clone());
 
     Self {
-      assets: Default::default(),
+      assets,
       client,
       config,
       diagnostics_server,
@@ -177,7 +179,7 @@ impl Inner {
   /// Searches assets and open documents which might be performed asynchronously,
   /// hydrating in memory caches for subsequent requests.
   pub(crate) async fn get_asset_or_document(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
   ) -> LspResult<AssetOrDocument> {
     self
@@ -197,7 +199,7 @@ impl Inner {
   /// Searches assets and open documents which might be performed asynchronously,
   /// hydrating in memory caches for subsequent requests.
   pub(crate) async fn get_maybe_asset_or_document(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
   ) -> LspResult<Option<AssetOrDocument>> {
     let mark = self.performance.mark(
@@ -205,7 +207,11 @@ impl Inner {
       Some(json!({ "specifier": specifier })),
     );
     let result = if specifier.scheme() == "asset" {
-      self.get_asset(specifier).await?.map(AssetOrDocument::Asset)
+      self
+        .assets
+        .get(specifier, || self.snapshot())
+        .await?
+        .map(AssetOrDocument::Asset)
     } else {
       self.documents.get(specifier).map(AssetOrDocument::Document)
     };
@@ -241,7 +247,7 @@ impl Inner {
     if specifier.scheme() == "asset" {
       self
         .assets
-        .get(specifier)
+        .get_cached(specifier)
         .map(|maybe_asset| {
           maybe_asset
             .as_ref()
@@ -365,7 +371,7 @@ impl Inner {
   }
 
   fn merge_user_tsconfig(
-    &mut self,
+    &self,
     tsconfig: &mut TsConfig,
   ) -> Result<(), AnyError> {
     if let Some(config_file) = self.maybe_config_file.as_ref() {
@@ -383,7 +389,7 @@ impl Inner {
 
   pub(crate) fn snapshot(&self) -> LspResult<Arc<StateSnapshot>> {
     Ok(Arc::new(StateSnapshot {
-      assets: self.assets.clone(),
+      assets: self.assets.snapshot(),
       config: self.config.snapshot().map_err(|err| {
         error!("{}", err);
         LspError::internal_error()
@@ -594,25 +600,6 @@ impl Inner {
       .await?;
     self.performance.measure(mark);
     Ok(())
-  }
-
-  async fn get_asset(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> LspResult<Option<AssetDocument>> {
-    if let Some(maybe_asset) = self.assets.get(specifier) {
-      Ok(maybe_asset.clone())
-    } else {
-      let maybe_asset =
-        tsc::get_asset(specifier, &self.ts_server, self.snapshot()?)
-          .await
-          .map_err(|err| {
-            error!("Error getting asset {}: {}", specifier, err);
-            LspError::internal_error()
-          })?;
-      self.assets.insert(specifier.clone(), maybe_asset.clone());
-      Ok(maybe_asset)
-    }
   }
 }
 
@@ -1078,7 +1065,7 @@ impl Inner {
     }
   }
 
-  async fn hover(&mut self, params: HoverParams) -> LspResult<Option<Hover>> {
+  async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
