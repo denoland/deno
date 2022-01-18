@@ -189,8 +189,9 @@ impl AssetDocument {
   }
 }
 
-fn new_assets_map(
-) -> Arc<Mutex<HashMap<ModuleSpecifier, Option<AssetDocument>>>> {
+type AssetsMap = HashMap<ModuleSpecifier, Option<AssetDocument>>;
+
+fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
   let assets = tsc::STATIC_ASSETS
     .iter()
     .map(|(k, v)| {
@@ -205,9 +206,7 @@ fn new_assets_map(
 
 /// Snapshot of Assets.
 #[derive(Debug, Clone)]
-pub struct AssetsSnapshot(
-  Arc<Mutex<HashMap<ModuleSpecifier, Option<AssetDocument>>>>,
-);
+pub struct AssetsSnapshot(Arc<Mutex<AssetsMap>>);
 
 impl Default for AssetsSnapshot {
   fn default() -> Self {
@@ -233,7 +232,7 @@ impl AssetsSnapshot {
 #[derive(Debug, Clone)]
 pub struct Assets {
   ts_server: Arc<TsServer>,
-  assets: Arc<Mutex<HashMap<ModuleSpecifier, Option<AssetDocument>>>>,
+  assets: Arc<Mutex<AssetsMap>>,
 }
 
 impl Assets {
