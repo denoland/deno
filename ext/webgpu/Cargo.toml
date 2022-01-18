@@ -14,5 +14,5 @@ description = "WebGPU implementation for Deno"
 deno_core = { version = "0.114.0", path = "../../core" }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.10", features = ["full"] }
-wgpu-core = { git = "https://github.com/gfx-rs/wgpu", rev = "58771175290bca7b9db546b3451d32fab2dc5d7b", features = ["trace", "replay", "serde"] }
-wgpu-types = { git = "https://github.com/gfx-rs/wgpu", rev = "58771175290bca7b9db546b3451d32fab2dc5d7b", features = ["trace", "replay", "serde"] }
+wgpu-core = { git = "https://github.com/gfx-rs/wgpu", rev = "cdd480a89c9e3b681d9d174e65082d2bdbc903ef", features = ["trace", "replay", "serde"] }
+wgpu-types = { git = "https://github.com/gfx-rs/wgpu", rev = "cdd480a89c9e3b681d9d174e65082d2bdbc903ef", features = ["trace", "replay", "serde"] }

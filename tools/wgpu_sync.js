@@ -4,7 +4,7 @@
 import { join, ROOT_PATH } from "./util.js";
 
 // const COMMIT = "c00e471274b6c21acda89b4b13d41742c0285d71"; // Release 12
-const COMMIT = "58771175290bca7b9db546b3451d32fab2dc5d7b"; // tip
+const COMMIT = "cdd480a89c9e3b681d9d174e65082d2bdbc903ef"; // tip
 const REPO = "gfx-rs/wgpu";
 // const V_WGPU = "0.12.0";
 const V_DENO_CORE = "0.114.0";

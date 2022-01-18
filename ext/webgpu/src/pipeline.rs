@@ -217,10 +217,10 @@ impl TryFrom<GpuDepthStencilState> for wgpu_types::DepthStencilState {
     Ok(wgpu_types::DepthStencilState {
       format: state.format,
       depth_write_enabled: state.depth_write_enabled,
-      depth_compare: state.depth_compare.into(),
+      depth_compare: state.depth_compare,
       stencil: wgpu_types::StencilState {
-        front: state.stencil_front.into(),
-        back: state.stencil_back.into(),
+        front: state.stencil_front,
+        back: state.stencil_back,
         read_mask: state.stencil_read_mask,
         write_mask: state.stencil_write_mask,
       },
@@ -336,7 +336,7 @@ pub fn op_webgpu_create_render_pipeline(
     let mut targets = Vec::with_capacity(fragment.targets.len());
 
     for target in fragment.targets {
-      targets.push(target.try_into()?);
+      targets.push(target);
     }
 
     Some(wgpu_core::pipeline::FragmentState {
@@ -370,7 +370,7 @@ pub fn op_webgpu_create_render_pipeline(
     },
     primitive: args.primitive.into(),
     depth_stencil: args.depth_stencil.map(TryInto::try_into).transpose()?,
-    multisample: args.multisample.into(),
+    multisample: args.multisample,
     fragment,
     multiview: None,
   };

@@ -266,7 +266,7 @@ pub async fn op_webgpu_request_adapter(
 
   let descriptor = wgpu_core::instance::RequestAdapterOptions {
     power_preference: match args.power_preference {
-      Some(power_preference) => power_preference.into(),
+      Some(power_preference) => power_preference,
       None => PowerPreference::default(),
     },
     force_fallback_adapter: args.force_fallback_adapter,
