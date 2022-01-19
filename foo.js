@@ -1,8 +1,6 @@
-
 import { assertEquals } from "https://deno.land/std@0.121.0/testing/asserts.ts";
 //import * as pako from "https://deno.land/x/pako@v2.0.3/pako.js";
 import "./test_util/wpt/compression/third_party/pako/pako_inflate.min.js";
-
 
 // This test asserts that compressing '' doesn't affect the compressed data.
 // Example: compressing ['Hello', '', 'Hello'] results in 'HelloHello'
@@ -20,8 +18,9 @@ async function compressChunkList(chunkList, format) {
   let totalSize = 0;
   while (true) {
     const { value, done } = await reader.read();
-    if (done)
+    if (done) {
       break;
+    }
     out.push(value);
     totalSize += value.byteLength;
   }
@@ -36,18 +35,18 @@ async function compressChunkList(chunkList, format) {
 }
 
 const chunkLists = [
-  ['', 'Hello', 'Hello'],
-  ['Hello', '', 'Hello'],
-  ['Hello', 'Hello', '']
+  ["", "Hello", "Hello"],
+  ["Hello", "", "Hello"],
+  ["Hello", "Hello", ""],
 ];
-const expectedValue = new TextEncoder().encode('HelloHello');
+const expectedValue = new TextEncoder().encode("HelloHello");
 
 for (const chunkList of chunkLists) {
-  for (const algo of ['gzip', 'deflate']) {
+  for (const algo of ["gzip", "deflate"]) {
     const compressedData = await compressChunkList(chunkList, algo);
     // decompress with pako, and check that we got the same result as our original string
     const actual = pako.inflate(compressedData);
-    assertEquals(expectedValue, actual, 'value should match');
+    assertEquals(expectedValue, actual, "value should match");
   }
 
   /*

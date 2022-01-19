@@ -44,7 +44,6 @@
       });
       const rid = core.opSync("op_compression_compress_new", format);
 
-
       super({
         async transform(chunk, controller) {
           // console.log("chunk", chunk);
