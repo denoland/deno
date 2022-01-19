@@ -192,6 +192,28 @@ fn import_key_rsa_jwk(
   }
 }
 
+fn validate_mask_gen(
+  mask_gen_algorithm: &AlgorithmIdentifier,
+  hash_algorithm: &AlgorithmIdentifier,
+) -> Result<(), deno_core::anyhow::Error> {
+  if mask_gen_algorithm.oid != ID_MFG1 {
+    return Err(not_supported_error("unsupported mask gen algorithm"));
+  }
+
+  let parameters = mask_gen_algorithm
+    .parameters_any()
+    .map_err(|_| not_supported_error("unsupported parameters"))?;
+  let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters)
+    .map_err(|_| not_supported_error("unsupported parameters"))?;
+
+  // The hash function on which MGF1 is based.
+  mgf1_hash_identifier
+    .assert_algorithm_oid(hash_algorithm.oid)
+    .map_err(|_| not_supported_error("unsupported parameters"))?;
+
+  Ok(())
+}
+
 fn import_key_rsassa(
   key_data: KeyData,
   hash: ShaHash,
@@ -360,17 +382,7 @@ fn import_key_rsapss(
             return Err(not_supported_error("unsupported hash algorithm"));
           }
 
-          let parameters = params
-            .mask_gen_algorithm
-            .parameters_any()
-            .map_err(|_| not_supported_error("unsupported parameters"))?;
-          let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters)
-            .map_err(|_| not_supported_error("unsupported parameters"))?;
-          // The hash function on which MGF1 is based.
-          mgf1_hash_identifier
-            .assert_algorithm_oid(hash_alg.oid)
-            .map_err(|_| not_supported_error("unsupported parameters"))?;
-
+          validate_mask_gen(&params.mask_gen_algorithm, &hash_alg)?;
           hash
         }
         _ => return Err(data_error("unsupported algorithm")),
@@ -445,21 +457,7 @@ fn import_key_rsapss(
             _ => return Err(data_error("unsupported hash algorithm")),
           };
 
-          if params.mask_gen_algorithm.oid != ID_MFG1 {
-            return Err(not_supported_error("unsupported mask gen algorithm"));
-          }
-
-          let parameters = params
-            .mask_gen_algorithm
-            .parameters_any()
-            .map_err(|_| not_supported_error("unsupported parameters"))?;
-          let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters)
-            .map_err(|_| not_supported_error("unsupported parameters"))?;
-          // The hash function on which MGF1 is based.
-          mgf1_hash_identifier
-            .assert_algorithm_oid(hash_alg.oid)
-            .map_err(|_| not_supported_error("unsupported parameters"))?;
-
+          validate_mask_gen(&params.mask_gen_algorithm, &hash_alg)?;
           hash
         }
         _ => return Err(data_error("unsupported algorithm")),
@@ -545,21 +543,7 @@ fn import_key_rsaoaep(
             _ => return Err(data_error("unsupported hash algorithm")),
           };
 
-          if params.mask_gen_algorithm.oid != ID_MFG1 {
-            return Err(not_supported_error("unsupported hash algorithm"));
-          }
-
-          let parameters = params
-            .mask_gen_algorithm
-            .parameters_any()
-            .map_err(|_| not_supported_error("unsupported parameters"))?;
-          let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters)
-            .map_err(|_| not_supported_error("unsupported parameters"))?;
-          // The hash function on which MGF1 is based.
-          mgf1_hash_identifier
-            .assert_algorithm_oid(hash_alg.oid)
-            .map_err(|_| not_supported_error("unsupported parameters"))?;
-
+          validate_mask_gen(&params.mask_gen_algorithm, &hash_alg)?;
           hash
         }
         _ => return Err(data_error("unsupported algorithm")),
@@ -633,22 +617,7 @@ fn import_key_rsaoaep(
             ID_SHA512_OID => Some(ShaHash::Sha512),
             _ => return Err(data_error("unsupported hash algorithm")),
           };
-
-          if params.mask_gen_algorithm.oid != ID_MFG1 {
-            return Err(not_supported_error("unsupported mask gen algorithm"));
-          }
-
-          let parameters = params
-            .mask_gen_algorithm
-            .parameters_any()
-            .map_err(|_| not_supported_error("unsupported parameters"))?;
-          let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters)
-            .map_err(|_| not_supported_error("unsupported parameters"))?;
-          // The hash function on which MGF1 is based.
-          mgf1_hash_identifier
-            .assert_algorithm_oid(hash_alg.oid)
-            .map_err(|_| not_supported_error("unsupported parameters"))?;
-
+          validate_mask_gen(&params.mask_gen_algorithm, &hash_alg)?;
           hash
         }
         _ => return Err(data_error("unsupported algorithm")),
