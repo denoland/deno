@@ -341,7 +341,7 @@ fn is_preferred(
 /// for an LSP CodeAction.
 pub(crate) async fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
-  language_server: &mut language_server::Inner,
+  language_server: &language_server::Inner,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
@@ -607,7 +607,7 @@ impl CodeActionCollection {
     specifier: &ModuleSpecifier,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<(), AnyError> {
     if action.commands.is_some() {
       // In theory, tsc can return actions that require "commands" to be applied

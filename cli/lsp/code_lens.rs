@@ -239,7 +239,7 @@ impl Visit for DenoTestCollector {
 async fn resolve_implementation_code_lens(
   code_lens: lsp::CodeLens,
   data: CodeLensData,
-  language_server: &mut language_server::Inner,
+  language_server: &language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
   let asset_or_doc =
     language_server.get_cached_asset_or_document(&data.specifier)?;
@@ -308,7 +308,7 @@ async fn resolve_implementation_code_lens(
 async fn resolve_references_code_lens(
   code_lens: lsp::CodeLens,
   data: CodeLensData,
-  language_server: &mut language_server::Inner,
+  language_server: &language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
   let asset_or_document =
     language_server.get_cached_asset_or_document(&data.specifier)?;
@@ -378,7 +378,7 @@ async fn resolve_references_code_lens(
 
 pub(crate) async fn resolve_code_lens(
   code_lens: lsp::CodeLens,
-  language_server: &mut language_server::Inner,
+  language_server: &language_server::Inner,
 ) -> Result<lsp::CodeLens, AnyError> {
   let data: CodeLensData =
     serde_json::from_value(code_lens.data.clone().unwrap())?;
