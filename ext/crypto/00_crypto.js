@@ -133,6 +133,7 @@
     "decrypt": {
       "RSA-OAEP": "RsaOaepParams",
       "AES-CBC": "AesCbcParams",
+      "AES-GCM": "AesGcmParams",
       "AES-CTR": "AesCtrParams",
     },
     "get key length": {
@@ -631,6 +632,66 @@
           // 4.
           return cipherText.buffer;
         }
+        case "AES-GCM": {
+          normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
+
+          // 1.
+          if (normalizedAlgorithm.tagLength === undefined) {
+            normalizedAlgorithm.tagLength = 128;
+          } else if (
+            !ArrayPrototypeIncludes(
+              [32, 64, 96, 104, 112, 120, 128],
+              normalizedAlgorithm.tagLength,
+            )
+          ) {
+            throw new DOMException(
+              "Invalid tag length",
+              "OperationError",
+            );
+          }
+
+          // 2.
+          if (data.byteLength < normalizedAlgorithm.tagLength / 8) {
+            throw new DOMException(
+              "Tag length overflows ciphertext",
+              "OperationError",
+            );
+          }
+
+          // 3. We only support 96-bit nonce for now.
+          if (normalizedAlgorithm.iv.byteLength !== 12) {
+            throw new DOMException(
+              "Initialization vector length not supported",
+              "NotSupportedError",
+            );
+          }
+
+          // 4.
+          if (normalizedAlgorithm.additionalData !== undefined) {
+            if (normalizedAlgorithm.additionalData.byteLength > (2 ** 64) - 1) {
+              throw new DOMException(
+                "Additional data too large",
+                "OperationError",
+              );
+            }
+            normalizedAlgorithm.additionalData = copyBuffer(
+              normalizedAlgorithm.additionalData,
+            );
+          }
+
+          // 5-8.
+          const plaintext = await core.opAsync("op_crypto_decrypt", {
+            key: keyData,
+            algorithm: "AES-GCM",
+            length: key[_algorithm].length,
+            iv: normalizedAlgorithm.iv,
+            additionalData: normalizedAlgorithm.additionalData,
+            tagLength: normalizedAlgorithm.tagLength,
+          }, data);
+
+          // 9.
+          return plaintext.buffer;
+        }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
@@ -913,6 +974,10 @@
         case "RSA-PSS":
         case "RSA-OAEP": {
           return exportKeyRSA(format, key, innerKey);
+        }
+        case "ECDH":
+        case "ECDSA": {
+          return exportKeyEC(format, key, innerKey);
         }
         case "AES-CTR":
         case "AES-CBC":
@@ -3310,6 +3375,128 @@
         jwk.ext = key[_extractable];
 
         return jwk;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+  }
+
+  function exportKeyEC(format, key, innerKey) {
+    switch (format) {
+      case "pkcs8": {
+        // 1.
+        if (key[_type] !== "private") {
+          throw new DOMException(
+            "Key is not a private key",
+            "InvalidAccessError",
+          );
+        }
+
+        // 2.
+        const data = core.opSync("op_crypto_export_key", {
+          algorithm: key[_algorithm].name,
+          namedCurve: key[_algorithm].namedCurve,
+          format: "pkcs8",
+        }, innerKey);
+
+        return data.buffer;
+      }
+      case "spki": {
+        // 1.
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        // 2.
+        const data = core.opSync("op_crypto_export_key", {
+          algorithm: key[_algorithm].name,
+          namedCurve: key[_algorithm].namedCurve,
+          format: "spki",
+        }, innerKey);
+
+        return data.buffer;
+      }
+      case "jwk": {
+        if (key[_algorithm].name == "ECDSA") {
+          // 1-2.
+          const jwk = {
+            kty: "EC",
+          };
+
+          // 3.1
+          jwk.crv = key[_algorithm].namedCurve;
+
+          // Missing from spec
+          let algNamedCurve;
+
+          switch (key[_algorithm].namedCurve) {
+            case "P-256": {
+              algNamedCurve = "ES256";
+              break;
+            }
+            case "P-384": {
+              algNamedCurve = "ES384";
+              break;
+            }
+            case "P-521": {
+              algNamedCurve = "ES512";
+              break;
+            }
+            default:
+              throw new DOMException(
+                "Curve algorithm not supported",
+                "DataError",
+              );
+          }
+
+          jwk.alg = algNamedCurve;
+
+          // 3.2 - 3.4.
+          const data = core.opSync("op_crypto_export_key", {
+            format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
+            algorithm: key[_algorithm].name,
+            namedCurve: key[_algorithm].namedCurve,
+          }, innerKey);
+          ObjectAssign(jwk, data);
+
+          // 4.
+          jwk.key_ops = key.usages;
+
+          // 5.
+          jwk.ext = key[_extractable];
+
+          return jwk;
+        } else { // ECDH
+          // 1-2.
+          const jwk = {
+            kty: "EC",
+          };
+
+          // missing step from spec
+          jwk.alg = "ECDH";
+
+          // 3.1
+          jwk.crv = key[_algorithm].namedCurve;
+
+          // 3.2 - 3.4
+          const data = core.opSync("op_crypto_export_key", {
+            format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
+            algorithm: key[_algorithm].name,
+            namedCurve: key[_algorithm].namedCurve,
+          }, innerKey);
+          ObjectAssign(jwk, data);
+
+          // 4.
+          jwk.key_ops = key.usages;
+
+          // 5.
+          jwk.ext = key[_extractable];
+
+          return jwk;
+        }
       }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");

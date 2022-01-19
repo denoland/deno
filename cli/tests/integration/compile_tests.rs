@@ -130,7 +130,7 @@ fn standalone_error() {
     .unwrap();
   assert!(!output.status.success());
   assert_eq!(output.stdout, b"");
-  let expected_stderr = "error: Error: boom!\n    at boom (file://$deno$/bundle.js:2:11)\n    at foo (file://$deno$/bundle.js:5:5)\n    at file://$deno$/bundle.js:7:1\n";
+  let expected_stderr = "error: Error: boom!\n    at boom (file://$deno$/bundle.js:6:11)\n    at foo (file://$deno$/bundle.js:9:5)\n    at file://$deno$/bundle.js:11:1\n";
   let stderr = String::from_utf8(output.stderr).unwrap();
   assert_eq!(stderr, expected_stderr);
 }

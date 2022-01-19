@@ -157,7 +157,7 @@ impl DenoTestCollector {
 
 impl Visit for DenoTestCollector {
   fn visit_call_expr(&mut self, node: &ast::CallExpr) {
-    if let ast::ExprOrSuper::Expr(callee_expr) = &node.callee {
+    if let ast::Callee::Expr(callee_expr) = &node.callee {
       match callee_expr.as_ref() {
         ast::Expr::Ident(ident) => {
           if self.test_vars.contains(&ident.sym.to_string()) {
@@ -165,13 +165,11 @@ impl Visit for DenoTestCollector {
           }
         }
         ast::Expr::Member(member_expr) => {
-          if let ast::Expr::Ident(ns_prop_ident) = member_expr.prop.as_ref() {
+          if let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop {
             if ns_prop_ident.sym.to_string() == "test" {
-              if let ast::ExprOrSuper::Expr(obj_expr) = &member_expr.obj {
-                if let ast::Expr::Ident(ident) = obj_expr.as_ref() {
-                  if ident.sym.to_string() == "Deno" {
-                    self.check_call_expr(node, &ns_prop_ident.span);
-                  }
+              if let ast::Expr::Ident(ident) = member_expr.obj.as_ref() {
+                if ident.sym.to_string() == "Deno" {
+                  self.check_call_expr(node, &ns_prop_ident.span);
                 }
               }
             }
@@ -219,16 +217,12 @@ impl Visit for DenoTestCollector {
           }
           // Identify variable assignments where the init is `Deno.test`
           ast::Expr::Member(member_expr) => {
-            if let ast::ExprOrSuper::Expr(expr) = &member_expr.obj {
-              if let ast::Expr::Ident(obj_ident) = expr.as_ref() {
-                if obj_ident.sym.to_string() == "Deno" {
-                  if let ast::Expr::Ident(prop_ident) =
-                    &member_expr.prop.as_ref()
-                  {
-                    if prop_ident.sym.to_string() == "test" {
-                      if let ast::Pat::Ident(binding_ident) = &decl.name {
-                        self.test_vars.insert(binding_ident.id.sym.to_string());
-                      }
+            if let ast::Expr::Ident(obj_ident) = member_expr.obj.as_ref() {
+              if obj_ident.sym.to_string() == "Deno" {
+                if let ast::MemberProp::Ident(prop_ident) = &member_expr.prop {
+                  if prop_ident.sym.to_string() == "test" {
+                    if let ast::Pat::Ident(binding_ident) = &decl.name {
+                      self.test_vars.insert(binding_ident.id.sym.to_string());
                     }
                   }
                 }

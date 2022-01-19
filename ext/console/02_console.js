@@ -1650,7 +1650,7 @@
   }
 
   function inspectArgs(args, inspectOptions = {}) {
-    const noColor = globalThis.Deno?.noColor ?? true;
+    const noColor = colors.getNoColor();
     const rInspectOptions = { ...DEFAULT_INSPECT_OPTIONS, ...inspectOptions };
     const first = args[0];
     let a = 0;
@@ -1759,7 +1759,7 @@
   function getConsoleInspectOptions() {
     return {
       ...DEFAULT_INSPECT_OPTIONS,
-      colors: !(globalThis.Deno?.noColor ?? false),
+      colors: !colors.getNoColor(),
     };
   }
 

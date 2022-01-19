@@ -588,8 +588,8 @@ pub(crate) fn to_hover_text(
       "blob" => "_(a blob url)_".to_string(),
       _ => format!(
         "{}&#8203;{}",
-        specifier[..url::Position::AfterScheme].to_string(),
-        specifier[url::Position::AfterScheme..].to_string()
+        &specifier[..url::Position::AfterScheme],
+        &specifier[url::Position::AfterScheme..],
       )
       .replace('@', "&#8203;@"),
     },

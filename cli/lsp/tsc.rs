@@ -4,6 +4,7 @@ use super::code_lens;
 use super::config;
 use super::language_server;
 use super::language_server::StateSnapshot;
+use super::performance::Performance;
 use super::refactor::RefactorCodeActionData;
 use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::refactor::EXTRACT_CONSTANT;
@@ -25,6 +26,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op_sync;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -39,6 +41,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
+use log::error;
 use log::warn;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
@@ -89,10 +92,10 @@ type Request = (
 pub struct TsServer(mpsc::UnboundedSender<Request>);
 
 impl TsServer {
-  pub fn new() -> Self {
+  pub fn new(performance: Arc<Performance>) -> Self {
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime();
+      let mut ts_runtime = js_runtime(performance);
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -186,48 +189,114 @@ impl AssetDocument {
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct Assets(HashMap<ModuleSpecifier, Option<AssetDocument>>);
+type AssetsMap = HashMap<ModuleSpecifier, Option<AssetDocument>>;
 
-impl Default for Assets {
+fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
+  let assets = tsc::STATIC_ASSETS
+    .iter()
+    .map(|(k, v)| {
+      let url_str = format!("asset:///{}", k);
+      let specifier = resolve_url(&url_str).unwrap();
+      let asset = AssetDocument::new(v);
+      (specifier, Some(asset))
+    })
+    .collect();
+  Arc::new(Mutex::new(assets))
+}
+
+/// Snapshot of Assets.
+#[derive(Debug, Clone)]
+pub struct AssetsSnapshot(Arc<Mutex<AssetsMap>>);
+
+impl Default for AssetsSnapshot {
   fn default() -> Self {
-    let assets = tsc::STATIC_ASSETS
-      .iter()
-      .map(|(k, v)| {
-        let url_str = format!("asset:///{}", k);
-        let specifier = resolve_url(&url_str).unwrap();
-        let asset = AssetDocument::new(v);
-        (specifier, Some(asset))
-      })
-      .collect();
-    Self(assets)
+    Self(new_assets_map())
   }
 }
 
-impl Assets {
+impl AssetsSnapshot {
   pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
-    self.0.contains_key(k)
+    self.0.lock().contains_key(k)
   }
 
-  pub fn get(&self, k: &ModuleSpecifier) -> Option<&Option<AssetDocument>> {
-    self.0.get(k)
-  }
-
-  pub fn insert(
-    &mut self,
-    k: ModuleSpecifier,
-    v: Option<AssetDocument>,
+  pub fn get_cached(
+    &self,
+    k: &ModuleSpecifier,
   ) -> Option<Option<AssetDocument>> {
-    self.0.insert(k, v)
+    self.0.lock().get(k).cloned()
+  }
+}
+
+/// Assets are never updated and so we can safely use this struct across
+/// multiple threads without needing to worry about race conditions.
+#[derive(Debug, Clone)]
+pub struct Assets {
+  ts_server: Arc<TsServer>,
+  assets: Arc<Mutex<AssetsMap>>,
+}
+
+impl Assets {
+  pub fn new(ts_server: Arc<TsServer>) -> Self {
+    Self {
+      ts_server,
+      assets: new_assets_map(),
+    }
+  }
+
+  pub fn snapshot(&self) -> AssetsSnapshot {
+    // it's ok to not make a complete copy for snapshotting purposes
+    // because assets are static
+    AssetsSnapshot(self.assets.clone())
+  }
+
+  pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
+    self.assets.lock().contains_key(k)
+  }
+
+  pub fn get_cached(
+    &self,
+    k: &ModuleSpecifier,
+  ) -> Option<Option<AssetDocument>> {
+    self.assets.lock().get(k).cloned()
+  }
+
+  pub(crate) async fn get(
+    &self,
+    specifier: &ModuleSpecifier,
+    // todo(dsherret): this shouldn't be a parameter, but instead retrieved via
+    // a constructor dependency
+    get_snapshot: impl Fn() -> LspResult<Arc<StateSnapshot>>,
+  ) -> LspResult<Option<AssetDocument>> {
+    // Race conditions are ok to happen here since the assets are static
+    if let Some(maybe_asset) = self.get_cached(specifier) {
+      Ok(maybe_asset)
+    } else {
+      let maybe_asset = get_asset(specifier, &self.ts_server, get_snapshot()?)
+        .await
+        .map_err(|err| {
+          error!("Error getting asset {}: {}", specifier, err);
+          LspError::internal_error()
+        })?;
+      // if another thread has inserted into the cache, return the asset
+      // that already exists in the cache so that we don't store duplicate
+      // assets in memory anywhere
+      let mut assets = self.assets.lock();
+      if let Some(maybe_asset) = assets.get(specifier) {
+        Ok(maybe_asset.clone())
+      } else {
+        assets.insert(specifier.clone(), maybe_asset.clone());
+        Ok(maybe_asset)
+      }
+    }
   }
 
   pub fn cache_navigation_tree(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     navigation_tree: Arc<NavigationTree>,
   ) -> Result<(), AnyError> {
-    let maybe_doc = self
-      .0
+    let mut assets = self.assets.lock();
+    let maybe_doc = assets
       .get_mut(specifier)
       .ok_or_else(|| anyhow!("Missing asset."))?;
     let doc = maybe_doc
@@ -241,7 +310,7 @@ impl Assets {
 /// Optionally returns an internal asset, first checking for any static assets
 /// in Rust, then checking any previously retrieved static assets from the
 /// isolate, and then finally, the tsc isolate itself.
-pub(crate) async fn get_asset(
+async fn get_asset(
   specifier: &ModuleSpecifier,
   ts_server: &TsServer,
   state_snapshot: Arc<StateSnapshot>,
@@ -1136,7 +1205,7 @@ pub struct FileTextChanges {
 impl FileTextChanges {
   pub(crate) async fn to_text_document_edit(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
     let specifier = normalize_specifier(&self.file_name)?;
     let asset_or_doc =
@@ -1157,7 +1226,7 @@ impl FileTextChanges {
 
   pub(crate) async fn to_text_document_change_ops(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
     let specifier = normalize_specifier(&self.file_name)?;
@@ -1393,7 +1462,7 @@ pub struct RefactorEditInfo {
 impl RefactorEditInfo {
   pub(crate) async fn to_workspace_edit(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
     let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
     for edit in self.edits.iter() {
@@ -2182,6 +2251,7 @@ struct Response {
 
 struct State<'a> {
   last_id: usize,
+  performance: Arc<Performance>,
   response: Option<Response>,
   state_snapshot: Arc<StateSnapshot>,
   snapshots: HashMap<(ModuleSpecifier, Cow<'a, str>), String>,
@@ -2189,9 +2259,13 @@ struct State<'a> {
 }
 
 impl<'a> State<'a> {
-  fn new(state_snapshot: Arc<StateSnapshot>) -> Self {
+  fn new(
+    state_snapshot: Arc<StateSnapshot>,
+    performance: Arc<Performance>,
+  ) -> Self {
     Self {
       last_id: 1,
+      performance,
       response: None,
       state_snapshot,
       snapshots: HashMap::default(),
@@ -2285,13 +2359,10 @@ fn op_dispose(
   state: &mut State,
   args: SourceSnapshotArgs,
 ) -> Result<bool, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_dispose", Some(&args));
+  let mark = state.performance.mark("op_dispose", Some(&args));
   let specifier = state.normalize_specifier(&args.specifier)?;
   state.snapshots.remove(&(specifier, args.version.into()));
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   Ok(true)
 }
 
@@ -2302,16 +2373,13 @@ struct SpecifierArgs {
 }
 
 fn op_exists(state: &mut State, args: SpecifierArgs) -> Result<bool, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_exists", Some(&args));
+  let mark = state.performance.mark("op_exists", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let result = state
     .state_snapshot
     .documents
     .contains_specifier(&specifier);
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   Ok(result)
 }
 
@@ -2330,10 +2398,7 @@ fn op_get_change_range(
   state: &mut State,
   args: GetChangeRangeArgs,
 ) -> Result<Value, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_get_change_range", Some(&args));
+  let mark = state.performance.mark("op_get_change_range", Some(&args));
   let specifier = state.normalize_specifier(&args.specifier)?;
   cache_snapshot(state, &specifier, args.version.clone())?;
   let r = if let Some(current) = state
@@ -2369,7 +2434,7 @@ fn op_get_change_range(
     ))
   };
 
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   r
 }
 
@@ -2377,12 +2442,10 @@ fn op_get_length(
   state: &mut State,
   args: SourceSnapshotArgs,
 ) -> Result<usize, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_get_length", Some(&args));
+  let mark = state.performance.mark("op_get_length", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let r = if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier)
+  let r = if let Some(Some(asset)) =
+    state.state_snapshot.assets.get_cached(&specifier)
   {
     Ok(asset.length())
   } else {
@@ -2393,7 +2456,7 @@ fn op_get_length(
       .unwrap();
     Ok(content.encode_utf16().count())
   };
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   r
 }
 
@@ -2410,22 +2473,19 @@ fn op_get_text(
   state: &mut State,
   args: GetTextArgs,
 ) -> Result<String, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_get_text", Some(&args));
+  let mark = state.performance.mark("op_get_text", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let content =
-    if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
-      content.text_str()
-    } else {
-      cache_snapshot(state, &specifier, args.version.clone())?;
-      state
-        .snapshots
-        .get(&(specifier, args.version.into()))
-        .unwrap()
-    };
-  state.state_snapshot.performance.measure(mark);
+  let maybe_asset = state.state_snapshot.assets.get_cached(&specifier);
+  let content = if let Some(Some(content)) = &maybe_asset {
+    content.text_str()
+  } else {
+    cache_snapshot(state, &specifier, args.version.clone())?;
+    state
+      .snapshots
+      .get(&(specifier, args.version.into()))
+      .unwrap()
+  };
+  state.performance.measure(mark);
   Ok(text::slice(content, args.start..args.end).to_string())
 }
 
@@ -2433,13 +2493,10 @@ fn op_load(
   state: &mut State,
   args: SpecifierArgs,
 ) -> Result<Option<String>, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_load", Some(&args));
+  let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let document = state.state_snapshot.documents.get(&specifier);
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   Ok(document.map(|d| d.content().to_string()))
 }
 
@@ -2447,10 +2504,7 @@ fn op_resolve(
   state: &mut State,
   args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_resolve", Some(&args));
+  let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
 
   let result = if let Some(resolved) = state
@@ -2476,7 +2530,7 @@ fn op_resolve(
     ))
   };
 
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   result
 }
 
@@ -2510,10 +2564,7 @@ fn op_script_version(
   state: &mut State,
   args: ScriptVersionArgs,
 ) -> Result<Option<String>, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_script_version", Some(&args));
+  let mark = state.performance.mark("op_script_version", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let r = if specifier.scheme() == "asset" {
     if state.state_snapshot.assets.contains_key(&specifier) {
@@ -2530,22 +2581,22 @@ fn op_script_version(
     Ok(script_version)
   };
 
-  state.state_snapshot.performance.measure(mark);
+  state.performance.measure(mark);
   r
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
-fn js_runtime() -> JsRuntime {
+fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions: vec![init_extension()],
+    extensions: vec![init_extension(performance)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   })
 }
 
-fn init_extension() -> Extension {
+fn init_extension(performance: Arc<Performance>) -> Extension {
   Extension::builder()
     .ops(vec![
       ("op_dispose", op_lsp(op_dispose)),
@@ -2559,8 +2610,11 @@ fn init_extension() -> Extension {
       ("op_script_names", op_lsp(op_script_names)),
       ("op_script_version", op_lsp(op_script_version)),
     ])
-    .state(|state| {
-      state.put(State::new(Arc::new(StateSnapshot::default())));
+    .state(move |state| {
+      state.put(State::new(
+        Arc::new(StateSnapshot::default()),
+        performance.clone(),
+      ));
       Ok(())
     })
     .build()
@@ -3019,15 +3073,14 @@ pub(crate) fn request(
   state_snapshot: Arc<StateSnapshot>,
   method: RequestMethod,
 ) -> Result<Value, AnyError> {
-  let performance = state_snapshot.performance.clone();
-  let request_params = {
+  let (performance, request_params) = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
     let state = op_state.borrow_mut::<State>();
     state.state_snapshot = state_snapshot;
     state.last_id += 1;
     let id = state.last_id;
-    method.to_value(state, id)
+    (state.performance.clone(), method.to_value(state, id))
   };
   let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({});", request_params);
@@ -3090,7 +3143,7 @@ mod tests {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
-    let mut runtime = js_runtime();
+    let mut runtime = js_runtime(Default::default());
     start(&mut runtime, debug, &state_snapshot)
       .expect("could not start server");
     let ts_config = TsConfig::new(config);

@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-mod ast;
 mod auth_tokens;
 mod cache;
 mod checksum;
@@ -475,6 +474,7 @@ async fn info_command(
       maybe_resolver,
       maybe_locker,
       None,
+      None,
     )
     .await;
 
@@ -654,6 +654,7 @@ async fn create_graph_and_maybe_check(
       maybe_resolver,
       maybe_locker,
       None,
+      None,
     )
     .await,
   );
@@ -732,6 +733,7 @@ fn bundle_module_graph(
     emit::BundleOptions {
       bundle_type: emit::BundleType::Module,
       ts_config,
+      emit_ignore_directives: true,
     },
   )
 }
@@ -997,6 +999,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         &mut cache,
         maybe_resolver,
         maybe_locker,
+        None,
         None,
       )
       .await;
@@ -1373,7 +1376,11 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      eprintln!("{}: {:?}", colors::red_bold("error"), error);
+      eprintln!(
+        "{}: {}",
+        colors::red_bold("error"),
+        format!("{:?}", error).trim_start_matches("error: ")
+      );
       std::process::exit(1);
     }
   }
@@ -1401,11 +1408,10 @@ pub fn main() {
   let flags = match flags::flags_from_vec(args) {
     Ok(flags) => flags,
     Err(err @ clap::Error { .. })
-      if err.kind == clap::ErrorKind::HelpDisplayed
-        || err.kind == clap::ErrorKind::VersionDisplayed =>
+      if err.kind == clap::ErrorKind::DisplayHelp
+        || err.kind == clap::ErrorKind::DisplayVersion =>
     {
-      err.write_to(&mut std::io::stdout()).unwrap();
-      std::io::stdout().write_all(b"\n").unwrap();
+      err.print().unwrap();
       std::process::exit(0);
     }
     Err(err) => unwrap_or_exit(Err(AnyError::from(err))),

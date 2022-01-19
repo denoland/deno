@@ -53,6 +53,7 @@ jobs:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
       RUSTC_FORCE_INCREMENTAL: 1
+      RUSTFLAGS: -D warnings
 
     steps:
       - name: Configure git
@@ -84,7 +85,7 @@ jobs:
       - name: Install Rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.57.0
+          rust-version: 1.58.0
 
       - name: Install clippy and rustfmt
         if: matrix.job == 'lint'
@@ -145,11 +146,6 @@ jobs:
           project_id: denoland
           service_account_key: ${{ secrets.GCP_SA_KEY }}
           export_default_credentials: true
-
-      - name: Error on warning
-        # TODO(piscisaureus): enable this on Windows again.
-        if: "!matrix.use_sysroot && !startsWith(matrix.os, 'windows')"
-        run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
       - name: Configure canary build
         if: |

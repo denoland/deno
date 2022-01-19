@@ -1176,7 +1176,7 @@ const jwtECKeys = {
 
 type JWK = Record<string, string>;
 
-function _equalJwk(expected: JWK, got: JWK): boolean {
+function equalJwk(expected: JWK, got: JWK): boolean {
   const fields = Object.keys(expected);
 
   for (let i = 0; i < fields.length; i++) {
@@ -1215,11 +1215,11 @@ Deno.test(async function testImportExportEcDsaJwk() {
       true,
       ["sign"],
     );
-    /*const expPrivateKeyJWK = await subtle.exportKey(
+    const expPrivateKeyJWK = await subtle.exportKey(
       "jwk",
       privateKeyECDSA,
     );
-    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));*/
+    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));
 
     const publicKeyECDSA = await subtle.importKey(
       "jwk",
@@ -1234,12 +1234,12 @@ Deno.test(async function testImportExportEcDsaJwk() {
       ["verify"],
     );
 
-    /*const expPublicKeyJWK = await subtle.exportKey(
+    const expPublicKeyJWK = await subtle.exportKey(
       "jwk",
       publicKeyECDSA,
     );
 
-    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));*/
+    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
 
     const signatureECDSA = await subtle.sign(
       { name: "ECDSA", hash: "SHA-256" },
@@ -1279,11 +1279,11 @@ Deno.test(async function testImportEcDhJwk() {
       ["deriveBits"],
     );
 
-    /*    const expPrivateKeyJWK = await subtle.exportKey(
+    const expPrivateKeyJWK = await subtle.exportKey(
       "jwk",
       privateKeyECDH,
     );
-    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));*/
+    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));
 
     const publicKeyECDH = await subtle.importKey(
       "jwk",
@@ -1296,11 +1296,11 @@ Deno.test(async function testImportEcDhJwk() {
       true,
       [],
     );
-    /*    const expPublicKeyJWK = await subtle.exportKey(
+    const expPublicKeyJWK = await subtle.exportKey(
       "jwk",
       publicKeyECDH,
     );
-    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));*/
+    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
 
     // P384 deriveBits still implemented for P384
     if (size != 256) {
@@ -1366,12 +1366,19 @@ Deno.test(async function testImportEcSpkiPkcs8() {
       ["sign"],
     );
 
-    /*const expPrivateKeyPKCS8 = await subtle.exportKey(
+    const expPrivateKeyPKCS8 = await subtle.exportKey(
       "pkcs8",
       privateKeyECDSA,
     );
 
-    assertEquals(new Uint8Array(expPrivateKeyPKCS8), pkcs8);*/
+    assertEquals(new Uint8Array(expPrivateKeyPKCS8), pkcs8);
+
+    const expPrivateKeyJWK = await subtle.exportKey(
+      "jwk",
+      privateKeyECDSA,
+    );
+
+    assertEquals(expPrivateKeyJWK.crv, namedCurve);
 
     const publicKeyECDSA = await subtle.importKey(
       "spki",
@@ -1380,6 +1387,20 @@ Deno.test(async function testImportEcSpkiPkcs8() {
       true,
       ["verify"],
     );
+
+    const expPublicKeySPKI = await subtle.exportKey(
+      "spki",
+      publicKeyECDSA,
+    );
+
+    assertEquals(new Uint8Array(expPublicKeySPKI), spki);
+
+    const expPublicKeyJWK = await subtle.exportKey(
+      "jwk",
+      publicKeyECDSA,
+    );
+
+    assertEquals(expPublicKeyJWK.crv, namedCurve);
 
     for (
       const hash of [/*"SHA-1", */ "SHA-256", "SHA-384" /*"SHA-512"*/]
@@ -1405,13 +1426,6 @@ Deno.test(async function testImportEcSpkiPkcs8() {
       );
       assert(verifyECDSA);
     }
-
-    /*const expPublicKeySPKI = await subtle.exportKey(
-      "spki",
-      publicKeyECDSA,
-    );
-
-    assertEquals(new Uint8Array(expPublicKeySPKI), spki);*/
   }
 });
 
@@ -1441,6 +1455,15 @@ Deno.test(async function testAesGcmEncrypt() {
     // deno-fmt-ignore
     new Uint8Array([50,223,112,178,166,156,255,110,125,138,95,141,82,47,14,164,134,247,22]),
   );
+
+  const plainText = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv, additionalData: new Uint8Array() },
+    key,
+    cipherText,
+  );
+  assert(plainText instanceof ArrayBuffer);
+  assertEquals(plainText.byteLength, 3);
+  assertEquals(new Uint8Array(plainText), data);
 });
 
 async function roundTripSecretJwk(
