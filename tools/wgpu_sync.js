@@ -7,7 +7,6 @@ import { join, ROOT_PATH } from "./util.js";
 const COMMIT = "cdd480a89c9e3b681d9d174e65082d2bdbc903ef"; // tip
 const REPO = "gfx-rs/wgpu";
 // const V_WGPU = "0.12.0";
-const V_DENO_CORE = "0.114.0";
 const TARGET_DIR = join(ROOT_PATH, "ext", "webgpu");
 
 async function bash(subcmd, opts = {}) {
@@ -35,7 +34,15 @@ async function checkoutUpstream() {
   await bash(cmd);
 }
 
+async function denoCoreVersion() {
+  const coreCargo = join(ROOT_PATH, "core", "Cargo.toml");
+  const contents = await Deno.readTextFile(coreCargo);
+  return contents.match(/^version = "(\d+\.\d+\.\d+)"$/m)[1];
+}
+
 async function patchCargo() {
+  const vDenoCore = await denoCoreVersion();
+
   const webgpuCargo = join(ROOT_PATH, "ext", "webgpu", "Cargo.toml");
   const data = await Deno.readTextFile(webgpuCargo);
 
@@ -45,7 +52,7 @@ async function patchCargo() {
     .replace(`edition = "2018"`, `edition = "2021"`)
     .replace(
       /^deno_core \= .*$/gm,
-      `deno_core = { version = "${V_DENO_CORE}", path = "../../core" }`,
+      `deno_core = { version = "${vDenoCore}", path = "../../core" }`,
     )
     // .replace(/^wgpu-core \= .*$/gm, `wgpu-core = { version = "${V_WGPU}", features = ["trace", "replay", "serde"] }`)
     // .replace(/^wgpu-types \= .*$/gm, `wgpu-types = { version = "${V_WGPU}", features = ["trace", "replay", "serde"] }`)
