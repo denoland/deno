@@ -20,6 +20,16 @@
     ],
   );
 
+  const FLUSH_COMPRESS_NONE = 0;
+  const FLUSH_COMPRESS_SYNC = 1;
+  const FLUSH_COMPRESS_PARTIAL = 2;
+  const FLUSH_COMPRESS_FULL = 3;
+  const FLUSH_COMPRESS_FINISH = 4;
+
+  const STATUS_OK = 0;
+  const STATUS_BUF_ERROR = 1;
+  const STATUS_STREAM_END = 2;
+
   class CompressionStream extends TransformStream {
     constructor(format) {
       const prefix = "Failed to construct 'CompressionStream'";
@@ -28,35 +38,25 @@
         prefix,
         context: "Argument 1",
       });
-      const rid = core.opSync("op_compression_compressor_create", format);
+      const rid = core.opSync("op_compression_compress_new", format);
 
-      /** @type {Promise<void>} */
-      let readPromise;
 
       super({
-        start(controller) {
-          readPromise = (async () => {
-            while (true) {
-              const chunk = new Uint8Array(65536);
-              const read = await core.read(rid, chunk);
-              if (read === null || read === 0) {
-                break;
-              } else {
-                controller.enqueue(chunk.subarray(0, read));
-              }
-            }
-          })();
-        },
-        async transform(chunk) {
-          const data = webidl.converters.BufferSource(chunk);
-          let nwritten = 0;
-          while (nwritten < data.byteLength) {
-            nwritten += await core.write(rid, data.subarray(nwritten));
-          }
+        async transform(chunk, controller) {
+          const output = new Uint8Array(65536);
+          const r = core.opSync("op_compression_compress", rid, [
+            chunk,
+            output,
+            FLUSH_COMPRESS_FULL,
+          ]);
+          const totals = core.opSync(
+            "op_compression_compress_total_in_out",
+            rid,
+          );
+          console.log("totals", totals);
+          controller.enqueue(output.subarray(0, totals[1]));
         },
         async flush() {
-          await core.shutdown(rid);
-          await readPromise;
           core.close(rid);
         },
       });

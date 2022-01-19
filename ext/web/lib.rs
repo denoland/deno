@@ -112,6 +112,30 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
         "op_compression_decompressor_create",
         op_sync(compression::op_compression_decompressor_create),
       ),
+      (
+        "op_compression_compress_new",
+        op_sync(compression::op_compression_compress_new),
+      ),
+      (
+        "op_compression_compress",
+        op_sync(compression::op_compression_compress),
+      ),
+      (
+        "op_compression_compress_total_in_out",
+        op_sync(compression::op_compression_compress_total_in_out),
+      ),
+      (
+        "op_compression_decompress_new",
+        op_sync(compression::op_compression_decompress_new),
+      ),
+      (
+        "op_compression_decompress",
+        op_sync(compression::op_compression_decompress),
+      ),
+      (
+        "op_compression_decompress_total_in_out",
+        op_sync(compression::op_compression_decompress_total_in_out),
+      ),
     ])
     .state(move |state| {
       state.put(blob_store.clone());

@@ -1,3 +1,7 @@
+use async_compression::tokio::write::DeflateDecoder;
+use async_compression::tokio::write::DeflateEncoder;
+use async_compression::tokio::write::GzipDecoder;
+use async_compression::tokio::write::GzipEncoder;
 use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -6,18 +10,14 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::rc::Rc;
-
-use async_compression::tokio::write::DeflateDecoder;
-use async_compression::tokio::write::DeflateEncoder;
-use async_compression::tokio::write::GzipDecoder;
-use async_compression::tokio::write::GzipEncoder;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::io::DuplexStream;
 
 pub struct CompressResource {
-  data: flate2::Compress,
+  data: RefCell<flate2::Compress>,
 }
 
 impl Resource for CompressResource {
@@ -26,31 +26,118 @@ impl Resource for CompressResource {
   }
 }
 
+pub struct DecompressResource {
+  data: RefCell<flate2::Decompress>,
+}
+
+impl Resource for DecompressResource {
+  fn name(&self) -> Cow<str> {
+    "decompress".into()
+  }
+}
+
 pub fn op_compression_compress_new(
   state: &mut OpState,
   format: String,
   _: (),
 ) -> Result<ResourceId, AnyError> {
-  let rid = match format.as_str() {
-    "gzip" => state.resource_table.add(CompressResource {
-      data: flate2::Compress::new(flate2::Compression::fast(), true),
-    }),
-    "deflate" => {
-      todo!()
-    }
+  let level = flate2::Compression::fast();
+  let zlib_header = match format.as_str() {
+    "gzip" => true,
+    "deflate" => true,
     _ => unreachable!(),
   };
-  Ok(rid)
+  println!("zlib_header {}", zlib_header);
+  let data = RefCell::new(flate2::Compress::new(level, zlib_header));
+  Ok(state.resource_table.add(CompressResource { data }))
+}
+
+pub fn op_compression_decompress_new(
+  state: &mut OpState,
+  format: String,
+  _: (),
+) -> Result<ResourceId, AnyError> {
+  let zlib_header = match format.as_str() {
+    "gzip" => true,
+    "deflate" => false,
+    _ => unreachable!(),
+  };
+  let data = RefCell::new(flate2::Decompress::new(zlib_header));
+  Ok(state.resource_table.add(DecompressResource { data }))
+}
+
+pub fn op_compression_compress_total_in_out(
+  state: &mut OpState,
+  rid: ResourceId,
+  _: (),
+) -> Result<(u64, u64), AnyError> {
+  let resource = state.resource_table.get::<CompressResource>(rid)?;
+  let d = resource.data.borrow();
+  Ok((d.total_in(), d.total_out()))
+}
+
+pub fn op_compression_decompress_total_in_out(
+  state: &mut OpState,
+  rid: ResourceId,
+  _: (),
+) -> Result<(u64, u64), AnyError> {
+  let resource = state.resource_table.get::<DecompressResource>(rid)?;
+  let d = resource.data.borrow();
+  Ok((d.total_in(), d.total_out()))
 }
 
 pub fn op_compression_compress(
   state: &mut OpState,
   rid: ResourceId,
-  input_output: (ZeroCopyBuf, ZeroCopyBuf),
+  input_output_flush: (ZeroCopyBuf, ZeroCopyBuf, i32),
 ) -> Result<i32, AnyError> {
-  // translate rid to CompressResource
-  // run Compress::compress
-  // return result
+  let (input, mut output, flush) = input_output_flush;
+
+  let resource = state.resource_table.get::<CompressResource>(rid)?;
+  let mut data = resource.data.borrow_mut();
+
+  let flush = match flush {
+    0 => flate2::FlushCompress::None,
+    1 => flate2::FlushCompress::Sync,
+    2 => flate2::FlushCompress::Partial,
+    3 => flate2::FlushCompress::Full,
+    4 => flate2::FlushCompress::Finish,
+    _ => unreachable!(),
+  };
+
+  let r = data.compress(&input, &mut output, flush)?;
+
+  Ok(match r {
+    flate2::Status::Ok => 0,
+    flate2::Status::BufError => 1,
+    flate2::Status::StreamEnd => 2,
+  })
+}
+
+pub fn op_compression_decompress(
+  state: &mut OpState,
+  rid: ResourceId,
+  input_output_flush: (ZeroCopyBuf, ZeroCopyBuf, i32),
+) -> Result<i32, AnyError> {
+  let (input, mut output, flush) = input_output_flush;
+
+  let resource = state.resource_table.get::<DecompressResource>(rid)?;
+  let mut data = resource.data.borrow_mut();
+
+  let flush = match flush {
+    0 => flate2::FlushDecompress::None,
+    1 => flate2::FlushDecompress::Sync,
+    2 => flate2::FlushDecompress::Finish,
+    _ => unreachable!(),
+  };
+
+  let r = data.decompress(&input, &mut output, flush)?;
+
+  Ok(match r {
+    flate2::Status::Ok => 0,
+    flate2::Status::BufError => 1,
+    flate2::Status::StreamEnd => 2,
+  })
 }
 
 pub struct GzipCompressorResource {
