@@ -26,12 +26,20 @@
   const FLUSH_COMPRESS_FULL = 3;
   const FLUSH_COMPRESS_FINISH = 4;
 
+  const FLUSH_DECOMPRESS_NONE = 0;
+  const FLUSH_DECOMPRESS_SYNC = 1;
+  const FLUSH_DECOMPRESS_FINISH = 2;
+
   const STATUS_OK = 0;
   const STATUS_BUF_ERROR = 1;
   const STATUS_STREAM_END = 2;
 
   function compressTotalInOut(rid) {
     return core.opSync("op_compression_compress_total_in_out", rid);
+  }
+
+  function decompressTotalInOut(rid) {
+    return core.opSync("op_compression_decompress_total_in_out", rid);
   }
 
   class CompressionStream extends TransformStream {
@@ -43,6 +51,7 @@
         context: "Argument 1",
       });
       const rid = core.opSync("op_compression_compress_new", format);
+
 
       super({
         async transform(chunk, controller) {
@@ -82,35 +91,31 @@
         prefix,
         context: "Argument 1",
       });
-      const rid = core.opSync("op_compression_decompressor_create", format);
+      const rid = core.opSync("op_compression_decompress_new", format);
 
-      /** @type {Promise<void>} */
-      let readPromise;
 
       super({
-        start(controller) {
-          readPromise = (async () => {
-            while (true) {
-              const chunk = new Uint8Array(65536);
-              const read = await core.read(rid, chunk);
-              if (read === null || read === 0) {
-                break;
-              } else {
-                controller.enqueue(chunk.subarray(0, read));
-              }
-            }
-          })();
-        },
-        async transform(chunk) {
-          const data = webidl.converters.BufferSource(chunk);
-          let nwritten = 0;
-          while (nwritten < data.byteLength) {
-            nwritten += await core.write(rid, data.subarray(nwritten));
-          }
+        async transform(chunk, controller) {
+          console.log("chunk", chunk);
+          const output = new Uint8Array(65536);
+
+          const [beforeIn, beforeOut] = decompressTotalInOut(rid);
+
+          const r = core.opSync("op_compression_decompress", rid, [
+            chunk,
+            output,
+            FLUSH_DECOMPRESS_SYNC,
+          ]);
+
+          const [afterIn, afterOut] = decompressTotalInOut(rid);
+
+          const diffOut = afterOut - beforeOut;
+          const diffIn = afterIn - beforeIn;
+          // console.log(diffOut, diffIn);
+
+          controller.enqueue(output.subarray(0, diffOut));
         },
         async flush() {
-          await core.shutdown(rid);
-          await readPromise;
           core.close(rid);
         },
       });
