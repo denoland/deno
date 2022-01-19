@@ -72,6 +72,7 @@
     Pbkdf2Params: { hash: "HashAlgorithmIdentifier", salt: "BufferSource" },
     RsaOaepParams: { label: "BufferSource" },
     RsaHashedImportParams: { hash: "HashAlgorithmIdentifier" },
+    EcKeyImportParams: {},
   };
 
   const supportedAlgorithms = {
@@ -109,8 +110,8 @@
       "RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
       "RSA-PSS": "RsaHashedImportParams",
       "RSA-OAEP": "RsaHashedImportParams",
-      "ECDSA": "EcImportParams",
-      "ECDH": "EcImportParams",
+      "ECDSA": "EcKeyImportParams",
+      "ECDH": "EcKeyImportParams",
       "HMAC": "HmacImportParams",
       "HKDF": null,
       "PBKDF2": null,
@@ -2347,19 +2348,6 @@
     return key;
   }
 
-  const SUPPORTED_EC_KEY_USAGES = {
-    "ECDSA": {
-      public: ["verify"],
-      private: ["sign"],
-      jwtUse: "sig",
-    },
-    "ECDH": {
-      public: [],
-      private: ["deriveKey", "deriveBits"],
-      jwtUse: "enc",
-    },
-  };
-
   function importKeyEC(
     format,
     normalizedAlgorithm,
@@ -2367,7 +2355,7 @@
     extractable,
     keyUsages,
   ) {
-    const supportedUsages = SUPPORTED_EC_KEY_USAGES[normalizedAlgorithm.name];
+    const supportedUsages = SUPPORTED_KEY_USAGES[normalizedAlgorithm.name];
 
     switch (format) {
       case "raw": {
@@ -2388,7 +2376,11 @@
         if (
           ArrayPrototypeFind(
             keyUsages,
-            (u) => !ArrayPrototypeIncludes(supportedUsages.public, u),
+            (u) =>
+              !ArrayPrototypeIncludes(
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].public,
+                u,
+              ),
           ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
@@ -2425,7 +2417,11 @@
         if (
           ArrayPrototypeFind(
             keyUsages,
-            (u) => !ArrayPrototypeIncludes(supportedUsages.private, u),
+            (u) =>
+              !ArrayPrototypeIncludes(
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].private,
+                u,
+              ),
           ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
@@ -2461,7 +2457,11 @@
           if (
             ArrayPrototypeFind(
               keyUsages,
-              (u) => !ArrayPrototypeIncludes(supportedUsages.public, u),
+              (u) =>
+                !ArrayPrototypeIncludes(
+                  SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].public,
+                  u,
+                ),
             ) !== undefined
           ) {
             throw new DOMException("Invalid key usages", "SyntaxError");
@@ -2667,7 +2667,7 @@
     }
   }
 
-  const SUPPORTED_RSA_KEY_USAGES = {
+  const SUPPORTED_KEY_USAGES = {
     "RSASSA-PKCS1-v1_5": {
       public: ["verify"],
       private: ["sign"],
@@ -2681,6 +2681,16 @@
     "RSA-OAEP": {
       public: ["encrypt", "wrapKey"],
       private: ["decrypt", "unwrapKey"],
+      jwtUse: "enc",
+    },
+    "ECDSA": {
+      public: ["verify"],
+      private: ["sign"],
+      jwtUse: "sig",
+    },
+    "ECDH": {
+      public: [],
+      private: ["deriveKey", "deriveBits"],
       jwtUse: "enc",
     },
   };
@@ -2700,7 +2710,7 @@
             keyUsages,
             (u) =>
               !ArrayPrototypeIncludes(
-                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].private,
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].private,
                 u,
               ),
           ) !== undefined
@@ -2746,7 +2756,7 @@
             keyUsages,
             (u) =>
               !ArrayPrototypeIncludes(
-                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].public,
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].public,
                 u,
               ),
           ) !== undefined
@@ -2796,7 +2806,7 @@
               keyUsages,
               (u) =>
                 !ArrayPrototypeIncludes(
-                  SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].private,
+                  SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].private,
                   u,
                 ),
             ) !== undefined
@@ -2808,7 +2818,7 @@
             keyUsages,
             (u) =>
               !ArrayPrototypeIncludes(
-                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].public,
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].public,
                 u,
               ),
           ) !== undefined
@@ -2828,11 +2838,11 @@
         if (
           keyUsages.length > 0 && jwk.use !== undefined &&
           StringPrototypeToLowerCase(jwk.use) !==
-            SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].jwtUse
+            SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].jwtUse
         ) {
           throw new DOMException(
             `'use' property of JsonWebKey must be '${
-              SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].jwtUse
+              SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].jwtUse
             }'`,
             "DataError",
           );
