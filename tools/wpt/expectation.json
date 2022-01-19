@@ -1507,8 +1507,12 @@
         "toString.any.html": true,
         "toString.any.worker.html": true
       },
-      "interface.any.html": true,
-      "interface.any.worker.html": true,
+      "interface.any.html": [
+        "WebAssembly.Table.set: length"
+      ],
+      "interface.any.worker.html": [
+        "WebAssembly.Table.set: length"
+      ],
       "memory": {
         "buffer.any.html": true,
         "buffer.any.worker.html": true,
@@ -1560,8 +1564,12 @@
         "basic.tentative.any.worker.html": true,
         "constructor.tentative.any.html": true,
         "constructor.tentative.any.worker.html": true,
-        "getArg.tentative.any.html": true,
-        "getArg.tentative.any.worker.html": true,
+        "getArg.tentative.any.html": [
+          "Index out of bounds"
+        ],
+        "getArg.tentative.any.worker.html": [
+          "Index out of bounds"
+        ],
         "is.tentative.any.html": true,
         "is.tentative.any.worker.html": true,
         "toString.tentative.any.html": false,
