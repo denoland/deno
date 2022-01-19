@@ -14,6 +14,7 @@ use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::text;
 use super::text::LineIndex;
+use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::TsConfig;
@@ -265,13 +266,13 @@ impl Assets {
     specifier: &ModuleSpecifier,
     // todo(dsherret): this shouldn't be a parameter, but instead retrieved via
     // a constructor dependency
-    get_snapshot: impl Fn() -> LspResult<Arc<StateSnapshot>>,
+    get_snapshot: impl Fn() -> Arc<StateSnapshot>,
   ) -> LspResult<Option<AssetDocument>> {
     // Race conditions are ok to happen here since the assets are static
     if let Some(maybe_asset) = self.get_cached(specifier) {
       Ok(maybe_asset)
     } else {
-      let maybe_asset = get_asset(specifier, &self.ts_server, get_snapshot()?)
+      let maybe_asset = get_asset(specifier, &self.ts_server, get_snapshot())
         .await
         .map_err(|err| {
           error!("Error getting asset {}: {}", specifier, err);
@@ -1528,12 +1529,11 @@ impl ReferenceEntry {
   pub(crate) fn to_location(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &language_server::Inner,
+    url_map: &LspUrlMap,
   ) -> lsp::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
-    let uri = language_server
-      .url_map
+    let uri = url_map
       .normalize_specifier(&specifier)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     lsp::Location {
@@ -2628,7 +2628,6 @@ fn start(
   state_snapshot: &StateSnapshot,
 ) -> Result<(), AnyError> {
   let root_uri = state_snapshot
-    .config
     .root_uri
     .clone()
     .unwrap_or_else(|| Url::parse("cache:///").unwrap());

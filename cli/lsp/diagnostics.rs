@@ -2,6 +2,7 @@
 
 use super::analysis;
 use super::client::Client;
+use super::config::ConfigSnapshot;
 use super::documents;
 use super::documents::Documents;
 use super::language_server;
@@ -9,6 +10,7 @@ use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
 
+use crate::config_file::LintConfig;
 use crate::diagnostics;
 
 use deno_ast::MediaType;
@@ -193,11 +195,20 @@ impl DiagnosticsServer {
               dirty = false;
               debounce_timer.as_mut().reset(Instant::now() + NEVER);
 
-              let snapshot = language_server.lock().await.snapshot().unwrap();
+              let (snapshot, config, maybe_lint_config) = {
+                let language_server = language_server.lock().await;
+                (
+                  language_server.snapshot(),
+                  language_server.config.snapshot(),
+                  language_server.maybe_lint_config.clone(),
+                )
+              };
               update_diagnostics(
                 &client,
                 collection.clone(),
                 snapshot,
+                config,
+                maybe_lint_config,
                 &ts_server,
                 performance.clone(),
               ).await;
@@ -326,10 +337,11 @@ fn ts_json_to_diagnostics(
 async fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
   collection: Arc<Mutex<DiagnosticCollection>>,
+  config: &ConfigSnapshot,
+  maybe_lint_config: Option<LintConfig>,
 ) -> Result<DiagnosticVec, AnyError> {
   let documents = snapshot.documents.documents(true, true);
-  let workspace_settings = snapshot.config.settings.workspace.clone();
-  let maybe_lint_config = snapshot.maybe_lint_config.clone();
+  let workspace_settings = config.settings.workspace.clone();
 
   tokio::task::spawn(async move {
     let mut diagnostics_vec = Vec::new();
@@ -539,13 +551,14 @@ fn diagnose_dependency(
 /// dependencies on the local file system or in the DENO_DIR cache.
 async fn generate_deps_diagnostics(
   snapshot: Arc<language_server::StateSnapshot>,
+  config: Arc<ConfigSnapshot>,
   collection: Arc<Mutex<DiagnosticCollection>>,
 ) -> Result<DiagnosticVec, AnyError> {
   tokio::task::spawn(async move {
     let mut diagnostics_vec = Vec::new();
 
     for document in snapshot.documents.documents(true, true) {
-      if !snapshot.config.specifier_enabled(document.specifier()) {
+      if !config.specifier_enabled(document.specifier()) {
         continue;
       }
       let version = document.maybe_lsp_version();
@@ -590,11 +603,12 @@ async fn publish_diagnostics(
   client: &Client,
   collection: &mut DiagnosticCollection,
   snapshot: &language_server::StateSnapshot,
+  config: &ConfigSnapshot,
 ) {
   if let Some(changes) = collection.take_changes() {
     for specifier in changes {
       let mut diagnostics: Vec<lsp::Diagnostic> =
-        if snapshot.config.settings.workspace.lint {
+        if config.settings.workspace.lint {
           collection
             .get(&specifier, DiagnosticSource::DenoLint)
             .cloned()
@@ -602,7 +616,7 @@ async fn publish_diagnostics(
         } else {
           Vec::new()
         };
-      if snapshot.config.specifier_enabled(&specifier) {
+      if config.specifier_enabled(&specifier) {
         diagnostics.extend(
           collection
             .get(&specifier, DiagnosticSource::TypeScript)
@@ -629,6 +643,8 @@ async fn update_diagnostics(
   client: &Client,
   collection: Arc<Mutex<DiagnosticCollection>>,
   snapshot: Arc<language_server::StateSnapshot>,
+  config: Arc<ConfigSnapshot>,
+  maybe_lint_config: Option<LintConfig>,
   ts_server: &tsc::TsServer,
   performance: Arc<Performance>,
 ) {
@@ -637,18 +653,23 @@ async fn update_diagnostics(
   let lint = async {
     let mark = performance.mark("update_diagnostics_lint", None::<()>);
     let collection = collection.clone();
-    let diagnostics = generate_lint_diagnostics(&snapshot, collection.clone())
-      .await
-      .map_err(|err| {
-        error!("Error generating lint diagnostics: {}", err);
-      })
-      .unwrap_or_default();
+    let diagnostics = generate_lint_diagnostics(
+      &snapshot,
+      collection.clone(),
+      &config,
+      maybe_lint_config,
+    )
+    .await
+    .map_err(|err| {
+      error!("Error generating lint diagnostics: {}", err);
+    })
+    .unwrap_or_default();
 
     let mut collection = collection.lock().await;
     for diagnostic_record in diagnostics {
       collection.set(DiagnosticSource::DenoLint, diagnostic_record);
     }
-    publish_diagnostics(client, &mut collection, &snapshot).await;
+    publish_diagnostics(client, &mut collection, &snapshot, &config).await;
     performance.measure(mark);
   };
 
@@ -666,25 +687,28 @@ async fn update_diagnostics(
     for diagnostic_record in diagnostics {
       collection.set(DiagnosticSource::TypeScript, diagnostic_record);
     }
-    publish_diagnostics(client, &mut collection, &snapshot).await;
+    publish_diagnostics(client, &mut collection, &snapshot, &config).await;
     performance.measure(mark);
   };
 
   let deps = async {
     let mark = performance.mark("update_diagnostics_deps", None::<()>);
     let collection = collection.clone();
-    let diagnostics =
-      generate_deps_diagnostics(snapshot.clone(), collection.clone())
-        .await
-        .map_err(|err| {
-          error!("Error generating Deno diagnostics: {}", err);
-        })
-        .unwrap_or_default();
+    let diagnostics = generate_deps_diagnostics(
+      snapshot.clone(),
+      config.clone(),
+      collection.clone(),
+    )
+    .await
+    .map_err(|err| {
+      error!("Error generating Deno diagnostics: {}", err);
+    })
+    .unwrap_or_default();
     let mut collection = collection.lock().await;
     for diagnostic_record in diagnostics {
       collection.set(DiagnosticSource::Deno, diagnostic_record);
     }
-    publish_diagnostics(client, &mut collection, &snapshot).await;
+    publish_diagnostics(client, &mut collection, &snapshot, &config).await;
     performance.measure(mark);
   };
 
@@ -719,7 +743,14 @@ mod tests {
         Arc::new(source.to_string()),
       );
     }
-    let config = ConfigSnapshot {
+    StateSnapshot {
+      documents,
+      ..Default::default()
+    }
+  }
+
+  fn mock_config() -> ConfigSnapshot {
+    ConfigSnapshot {
       settings: Settings {
         workspace: WorkspaceSettings {
           enable: true,
@@ -729,27 +760,28 @@ mod tests {
         ..Default::default()
       },
       ..Default::default()
-    };
-    StateSnapshot {
-      config,
-      documents,
-      ..Default::default()
     }
   }
 
   fn setup(
     sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (StateSnapshot, Arc<Mutex<DiagnosticCollection>>, PathBuf) {
+  ) -> (
+    StateSnapshot,
+    Arc<Mutex<DiagnosticCollection>>,
+    PathBuf,
+    ConfigSnapshot,
+  ) {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
     let state_snapshot = mock_state_snapshot(sources, &location);
     let collection = Arc::new(Mutex::new(DiagnosticCollection::default()));
-    (state_snapshot, collection, location)
+    let config = mock_config();
+    (state_snapshot, collection, location, config)
   }
 
   #[tokio::test]
   async fn test_generate_lint_diagnostics() {
-    let (snapshot, collection, _) = setup(&[(
+    let (snapshot, collection, _, config) = setup(&[(
       "file:///a.ts",
       r#"import * as b from "./b.ts";
 
@@ -759,7 +791,8 @@ console.log(a);
       1,
       LanguageId::TypeScript,
     )]);
-    let result = generate_lint_diagnostics(&snapshot, collection).await;
+    let result =
+      generate_lint_diagnostics(&snapshot, collection, &config, None).await;
     assert!(result.is_ok());
     let diagnostics = result.unwrap();
     assert_eq!(diagnostics.len(), 1);

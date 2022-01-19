@@ -248,7 +248,7 @@ async fn resolve_implementation_code_lens(
     data.specifier.clone(),
     line_index.offset_tsc(code_lens.range.start)?,
   ));
-  let snapshot = language_server.snapshot()?;
+  let snapshot = language_server.snapshot();
   let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> =
     language_server.ts_server.request(snapshot, req).await?;
   if let Some(implementations) = maybe_implementations {
@@ -317,7 +317,7 @@ async fn resolve_references_code_lens(
     data.specifier.clone(),
     line_index.offset_tsc(code_lens.range.start)?,
   ));
-  let snapshot = language_server.snapshot()?;
+  let snapshot = language_server.snapshot();
   let maybe_references: Option<Vec<tsc::ReferenceEntry>> =
     language_server.ts_server.request(snapshot, req).await?;
   if let Some(references) = maybe_references {
@@ -332,7 +332,8 @@ async fn resolve_references_code_lens(
         .get_asset_or_document(&reference_specifier)
         .await?;
       locations.push(
-        reference.to_location(asset_or_doc.line_index(), language_server),
+        reference
+          .to_location(asset_or_doc.line_index(), &language_server.url_map),
       );
     }
     let command = if !locations.is_empty() {
