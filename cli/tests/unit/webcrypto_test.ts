@@ -1176,7 +1176,7 @@ const jwtECKeys = {
 
 type JWK = Record<string, string>;
 
-function _equalJwk(expected: JWK, got: JWK): boolean {
+function equalJwk(expected: JWK, got: JWK): boolean {
   const fields = Object.keys(expected);
 
   for (let i = 0; i < fields.length; i++) {
@@ -1218,11 +1218,11 @@ Deno.test(async function testImportExportEcDsaJwk() {
       true,
       ["sign"],
     );
-    /*const expPrivateKeyJWK = await subtle.exportKey(
+    const expPrivateKeyJWK = await subtle.exportKey(
       "jwk",
       privateKeyECDSA,
     );
-    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));*/
+    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));
 
     const publicKeyECDSA = await subtle.importKey(
       "jwk",
@@ -1237,12 +1237,12 @@ Deno.test(async function testImportExportEcDsaJwk() {
       ["verify"],
     );
 
-    /*const expPublicKeyJWK = await subtle.exportKey(
+    const expPublicKeyJWK = await subtle.exportKey(
       "jwk",
       publicKeyECDSA,
     );
 
-    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));*/
+    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
 
     const signatureECDSA = await subtle.sign(
       { name: "ECDSA", hash: "SHA-256" },
@@ -1285,11 +1285,11 @@ Deno.test(async function testImportEcDhJwk() {
       ["deriveBits"],
     );
 
-    /*    const expPrivateKeyJWK = await subtle.exportKey(
+    const expPrivateKeyJWK = await subtle.exportKey(
       "jwk",
       privateKeyECDH,
     );
-    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));*/
+    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));
 
     const publicKeyECDH = await subtle.importKey(
       "jwk",
@@ -1302,11 +1302,11 @@ Deno.test(async function testImportEcDhJwk() {
       true,
       [],
     );
-    /*    const expPublicKeyJWK = await subtle.exportKey(
+    const expPublicKeyJWK = await subtle.exportKey(
       "jwk",
       publicKeyECDH,
     );
-    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));*/
+    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
 
     const derivedKey = await subtle.deriveBits(
       {
@@ -1357,10 +1357,7 @@ Deno.test(async function testImportEcSpkiPkcs8() {
   for (
     const [_key, keyData] of Object.entries(ecTestKeys)
   ) {
-    const { size, namedCurve, spki, pkcs8 } = keyData;
-    if (size != 256) {
-      continue;
-    }
+    const { namedCurve, spki, pkcs8 } = keyData;
 
     const privateKeyECDSA = await subtle.importKey(
       "pkcs8",
@@ -1370,12 +1367,19 @@ Deno.test(async function testImportEcSpkiPkcs8() {
       ["sign"],
     );
 
-    /*const expPrivateKeyPKCS8 = await subtle.exportKey(
+    const expPrivateKeyPKCS8 = await subtle.exportKey(
       "pkcs8",
       privateKeyECDSA,
     );
 
-    assertEquals(new Uint8Array(expPrivateKeyPKCS8), pkcs8);*/
+    assertEquals(new Uint8Array(expPrivateKeyPKCS8), pkcs8);
+
+    const expPrivateKeyJWK = await subtle.exportKey(
+      "jwk",
+      privateKeyECDSA,
+    );
+
+    assertEquals(expPrivateKeyJWK.crv, namedCurve);
 
     const publicKeyECDSA = await subtle.importKey(
       "spki",
@@ -1385,8 +1389,22 @@ Deno.test(async function testImportEcSpkiPkcs8() {
       ["verify"],
     );
 
+    const expPublicKeySPKI = await subtle.exportKey(
+      "spki",
+      publicKeyECDSA,
+    );
+
+    assertEquals(new Uint8Array(expPublicKeySPKI), spki);
+
+    const expPublicKeyJWK = await subtle.exportKey(
+      "jwk",
+      publicKeyECDSA,
+    );
+
+    assertEquals(expPublicKeyJWK.crv, namedCurve);
+
     for (
-      const hash of [/*"SHA-1", */ "SHA-256" /*"SHA-384", "SHA-512"*/]
+      const hash of [/*"SHA-1", */ "SHA-256", "SHA-384" /*"SHA-512"*/]
     ) {
       const signatureECDSA = await subtle.sign(
         { name: "ECDSA", hash },
@@ -1402,19 +1420,6 @@ Deno.test(async function testImportEcSpkiPkcs8() {
       );
       assert(verifyECDSA);
     }
-
-    /*const expPublicKeySPKI = await subtle.exportKey(
-      "spki",
-      publicKeyECDSA,
-    );
-
-    assertEquals(new Uint8Array(expPublicKeySPKI), spki);
-
-    /*const expPrivateKeySPKI = await subtle.exportKey(
-      "spki",
-      privateKeyECDSA,
-    );
-    assertEquals(new Uint8Array(expPrivateKeySPKI), spki);*/
   }
 });
 
