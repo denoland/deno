@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::language_server;
 use super::tsc;
@@ -18,52 +18,58 @@ use deno_core::ModuleSpecifier;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-lazy_static::lazy_static! {
-  /// Diagnostic error codes which actually are the same, and so when grouping
-  /// fixes we treat them the same.
-  static ref FIX_ALL_ERROR_CODES: HashMap<&'static str, &'static str> =
-    (&[("2339", "2339"), ("2345", "2339"),])
+/// Diagnostic error codes which actually are the same, and so when grouping
+/// fixes we treat them the same.
+static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
+  Lazy::new(|| {
+    (&[("2339", "2339"), ("2345", "2339")])
       .iter()
       .cloned()
-      .collect();
+      .collect()
+  });
 
-  /// Fixes which help determine if there is a preferred fix when there are
-  /// multiple fixes available.
-  static ref PREFERRED_FIXES: HashMap<&'static str, (u32, bool)> = (&[
-    ("annotateWithTypeFromJSDoc", (1, false)),
-    ("constructorForDerivedNeedSuperCall", (1, false)),
-    ("extendsInterfaceBecomesImplements", (1, false)),
-    ("awaitInSyncFunction", (1, false)),
-    ("classIncorrectlyImplementsInterface", (3, false)),
-    ("classDoesntImplementInheritedAbstractMember", (3, false)),
-    ("unreachableCode", (1, false)),
-    ("unusedIdentifier", (1, false)),
-    ("forgottenThisPropertyAccess", (1, false)),
-    ("spelling", (2, false)),
-    ("addMissingAwait", (1, false)),
-    ("fixImport", (0, true)),
-  ])
-  .iter()
-  .cloned()
-  .collect();
+/// Fixes which help determine if there is a preferred fix when there are
+/// multiple fixes available.
+static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
+  Lazy::new(|| {
+    (&[
+      ("annotateWithTypeFromJSDoc", (1, false)),
+      ("constructorForDerivedNeedSuperCall", (1, false)),
+      ("extendsInterfaceBecomesImplements", (1, false)),
+      ("awaitInSyncFunction", (1, false)),
+      ("classIncorrectlyImplementsInterface", (3, false)),
+      ("classDoesntImplementInheritedAbstractMember", (3, false)),
+      ("unreachableCode", (1, false)),
+      ("unusedIdentifier", (1, false)),
+      ("forgottenThisPropertyAccess", (1, false)),
+      ("spelling", (2, false)),
+      ("addMissingAwait", (1, false)),
+      ("fixImport", (0, true)),
+    ])
+      .iter()
+      .cloned()
+      .collect()
+  });
 
-  static ref IMPORT_SPECIFIER_RE: Regex = Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap();
+static IMPORT_SPECIFIER_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap());
 
-  static ref DENO_TYPES_RE: Regex =
-    Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#)
-      .unwrap();
-  static ref TRIPLE_SLASH_REFERENCE_RE: Regex =
-    Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap();
-  static ref PATH_REFERENCE_RE: Regex =
-    Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap();
-  static ref TYPES_REFERENCE_RE: Regex =
-    Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap();
+static DENO_TYPES_RE: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r#"(?i)^\s*@deno-types\s*=\s*(?:["']([^"']+)["']|(\S+))"#).unwrap()
+});
 
-}
+static TRIPLE_SLASH_REFERENCE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"(?i)^/\s*<reference\s.*?/>").unwrap());
+
+static PATH_REFERENCE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)\spath\s*=\s*["']([^"']*)["']"#).unwrap());
+static TYPES_REFERENCE_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)\stypes\s*=\s*["']([^"']*)["']"#).unwrap());
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
 
@@ -384,31 +390,51 @@ pub struct CodeActionCollection {
 impl CodeActionCollection {
   pub(crate) fn add_deno_fix_action(
     &mut self,
+    specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) -> Result<(), AnyError> {
-    if let Some(data) = diagnostic.data.clone() {
-      let fix_data: DenoFixData = serde_json::from_value(data)?;
-      let title = if matches!(&diagnostic.code, Some(lsp::NumberOrString::String(code)) if code == "no-cache-data")
-      {
-        "Cache the data URL and its dependencies.".to_string()
-      } else {
-        format!("Cache \"{}\" and its dependencies.", fix_data.specifier)
-      };
-      let code_action = lsp::CodeAction {
-        title,
-        kind: Some(lsp::CodeActionKind::QUICKFIX),
-        diagnostics: Some(vec![diagnostic.clone()]),
-        edit: None,
-        command: Some(lsp::Command {
-          title: "".to_string(),
-          command: "deno.cache".to_string(),
-          arguments: Some(vec![json!([fix_data.specifier])]),
-        }),
-        is_preferred: None,
-        disabled: None,
-        data: None,
-      };
-      self.actions.push(CodeActionKind::Deno(code_action));
+    if let Some(lsp::NumberOrString::String(code)) = &diagnostic.code {
+      if code == "no-assert-type" {
+        let code_action = lsp::CodeAction {
+          title: "Insert import assertion.".to_string(),
+          kind: Some(lsp::CodeActionKind::QUICKFIX),
+          diagnostics: Some(vec![diagnostic.clone()]),
+          edit: Some(lsp::WorkspaceEdit {
+            changes: Some(HashMap::from([(
+              specifier.clone(),
+              vec![lsp::TextEdit {
+                new_text: " assert { type: \"json\" }".to_string(),
+                range: lsp::Range {
+                  start: diagnostic.range.end,
+                  end: diagnostic.range.end,
+                },
+              }],
+            )])),
+            ..Default::default()
+          }),
+          ..Default::default()
+        };
+        self.actions.push(CodeActionKind::Deno(code_action));
+      } else if let Some(data) = diagnostic.data.clone() {
+        let fix_data: DenoFixData = serde_json::from_value(data)?;
+        let title = if code == "no-cache-data" {
+          "Cache the data URL and its dependencies.".to_string()
+        } else {
+          format!("Cache \"{}\" and its dependencies.", fix_data.specifier)
+        };
+        let code_action = lsp::CodeAction {
+          title,
+          kind: Some(lsp::CodeActionKind::QUICKFIX),
+          diagnostics: Some(vec![diagnostic.clone()]),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![json!([fix_data.specifier])]),
+          }),
+          ..Default::default()
+        };
+        self.actions.push(CodeActionKind::Deno(code_action));
+      }
     }
     Ok(())
   }

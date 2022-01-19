@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::resolve_import;
@@ -31,7 +31,7 @@ impl Resolver for ImportMapResolver {
   ) -> Result<ModuleSpecifier, AnyError> {
     self
       .0
-      .resolve(specifier, referrer.as_str())
+      .resolve(specifier, referrer)
       .map_err(|err| err.into())
   }
 }

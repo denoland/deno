@@ -292,7 +292,9 @@ declare namespace WebAssembly {
 /** Sets a timer which executes a function once after the timer expires. Returns
  * an id which may be used to cancel the timeout.
  *
- *     setTimeout(() => { console.log('hello'); }, 500);
+ * ```ts
+ * setTimeout(() => { console.log('hello'); }, 500);
+ * ```
  */
 declare function setTimeout(
   /** callback function to execute when timer expires */
@@ -305,8 +307,10 @@ declare function setTimeout(
 
 /** Repeatedly calls a function , with a fixed time delay between each call.
  *
- *     // Outputs 'hello' to the console every 500ms
- *     setInterval(() => { console.log('hello'); }, 500);
+ * ```ts
+ * // Outputs 'hello' to the console every 500ms
+ * setInterval(() => { console.log('hello'); }, 500);
+ * ```
  */
 declare function setInterval(
   /** callback function to execute when timer expires */
@@ -320,17 +324,21 @@ declare function setInterval(
 /** Cancels a timed, repeating action which was previously started by a call
  * to `setInterval()`
  *
- *     const id = setInterval(() => {console.log('hello');}, 500);
- *     ...
- *     clearInterval(id);
+ * ```ts
+ * const id = setInterval(() => {console.log('hello');}, 500);
+ * // ...
+ * clearInterval(id);
+ * ```
  */
 declare function clearInterval(id?: number): void;
 
 /** Cancels a scheduled action initiated by `setTimeout()`
  *
- *     const id = setTimeout(() => {console.log('hello');}, 500);
- *     ...
- *     clearTimeout(id);
+ * ```ts
+ * const id = setTimeout(() => {console.log('hello');}, 500);
+ * // ...
+ * clearTimeout(id);
+ * ```
  */
 declare function clearTimeout(id?: number): void;
 
@@ -344,7 +352,9 @@ interface VoidFunction {
  * script's execution environment. This event loop may be either the main event
  * loop or the event loop driving a web worker.
  *
- *     queueMicrotask(() => { console.log('This event loop stack is complete'); });
+ * ```ts
+ * queueMicrotask(() => { console.log('This event loop stack is complete'); });
+ * ```
  */
 declare function queueMicrotask(func: VoidFunction): void;
 
@@ -353,7 +363,9 @@ declare function queueMicrotask(func: VoidFunction): void;
  * false if event is cancelable and at least one of the event handlers which
  * handled this event called Event.preventDefault(). Otherwise it returns true.
  *
- *     dispatchEvent(new Event('unload'));
+ * ```ts
+ * dispatchEvent(new Event('unload'));
+ * ```
  */
 declare function dispatchEvent(event: Event): boolean;
 

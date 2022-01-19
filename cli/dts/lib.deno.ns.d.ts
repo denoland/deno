@@ -113,8 +113,40 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
-  /** **UNSTABLE**: New option, yet to be vetted. */
   export interface TestContext {
+    /** Run a sub step of the parent test or step. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored the promise returns `false`.
+     */
+    step(t: TestStepDefinition): Promise<boolean>;
+
+    /** Run a sub step of the parent test or step. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored the promise returns `false`.
+     */
+    step(
+      name: string,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): Promise<boolean>;
+  }
+
+  export interface TestStepDefinition {
+    fn: (t: TestContext) => void | Promise<void>;
+    name: string;
+    ignore?: boolean;
+    /** Check that the number of async completed ops after the test step is the same
+     * as number of dispatched ops. Defaults to the parent test or step's value. */
+    sanitizeOps?: boolean;
+    /** Ensure the test step does not "leak" resources - ie. the resource table
+     * after the test has exactly the same contents as before the test. Defaults
+     * to the parent test or step's value. */
+    sanitizeResources?: boolean;
+    /** Ensure the test step does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to the parent test or
+     * step's value. */
+    sanitizeExit?: boolean;
   }
 
   export interface TestDefinition {
@@ -870,7 +902,7 @@ declare namespace Deno {
    *
    * Returns the number of bytes written.  This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather use
-   * Deno.writeAllSync() instead.
+   * `writeAllSync()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -2745,6 +2777,14 @@ declare namespace Deno {
 
   export interface UpgradeWebSocketOptions {
     protocol?: string;
+    /**
+     * If the client does not respond to this frame with a
+     * `pong` within the timeout specified, the connection is deemed
+     * unhealthy and is closed. The `close` and `error` event will be emitted.
+     *
+     * The default is 120 seconds. Set to 0 to disable timeouts.
+     */
+    idleTimeout?: number;
   }
 
   /**

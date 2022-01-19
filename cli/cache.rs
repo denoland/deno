@@ -1,6 +1,7 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::disk_cache::DiskCache;
+use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 
 use deno_core::error::AnyError;
@@ -148,7 +149,7 @@ impl Loader for FetchCacher {
     let file_fetcher = self.file_fetcher.clone();
 
     async move {
-      let load_result = file_fetcher
+      file_fetcher
         .fetch(&specifier, &mut permissions)
         .await
         .map_or_else(
@@ -157,6 +158,8 @@ impl Loader for FetchCacher {
               if err.kind() == std::io::ErrorKind::NotFound {
                 return Ok(None);
               }
+            } else if get_error_class_name(&err) == "NotFound" {
+              return Ok(None);
             }
             Err(err)
           },
@@ -167,9 +170,7 @@ impl Loader for FetchCacher {
               content: file.source,
             }))
           },
-        );
-
-      (specifier, load_result)
+        )
     }
     .boxed()
   }
@@ -292,7 +293,7 @@ impl Loader for MemoryCacher {
       maybe_headers: None,
       content: c.to_owned(),
     });
-    Box::pin(future::ready((specifier.clone(), Ok(response))))
+    Box::pin(future::ready(Ok(response)))
   }
 }
 

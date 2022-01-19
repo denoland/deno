@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
 use crate::error::attach_handle_to_error;
@@ -1259,12 +1259,15 @@ impl JsRuntime {
 
         if let Some(load_stream_result) = maybe_result {
           match load_stream_result {
-            Ok(info) => {
+            Ok((request, info)) => {
               // A module (not necessarily the one dynamically imported) has been
               // fetched. Create and register it, and if successful, poll for the
               // next recursive-load event related to this dynamic import.
-              let register_result =
-                load.register_and_recurse(&mut self.handle_scope(), &info);
+              let register_result = load.register_and_recurse(
+                &mut self.handle_scope(),
+                &request,
+                &info,
+              );
 
               match register_result {
                 Ok(()) => {
@@ -1417,7 +1420,7 @@ impl JsRuntime {
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
-      module_map_rc.borrow_mut().new_module(
+      module_map_rc.borrow_mut().new_es_module(
         &mut self.handle_scope(),
         // main module
         true,
@@ -1429,10 +1432,10 @@ impl JsRuntime {
     let mut load =
       ModuleMap::load_main(module_map_rc.clone(), specifier.as_str()).await?;
 
-    while let Some(info_result) = load.next().await {
-      let info = info_result?;
+    while let Some(load_result) = load.next().await {
+      let (request, info) = load_result?;
       let scope = &mut self.handle_scope();
-      load.register_and_recurse(scope, &info)?;
+      load.register_and_recurse(scope, &request, &info)?;
     }
 
     let root_id = load.root_module_id.expect("Root module should be loaded");
@@ -1454,7 +1457,7 @@ impl JsRuntime {
   ) -> Result<ModuleId, Error> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     if let Some(code) = code {
-      module_map_rc.borrow_mut().new_module(
+      module_map_rc.borrow_mut().new_es_module(
         &mut self.handle_scope(),
         // not main module
         false,
@@ -1466,10 +1469,10 @@ impl JsRuntime {
     let mut load =
       ModuleMap::load_side(module_map_rc.clone(), specifier.as_str()).await?;
 
-    while let Some(info_result) = load.next().await {
-      let info = info_result?;
+    while let Some(load_result) = load.next().await {
+      let (request, info) = load_result?;
       let scope = &mut self.handle_scope();
-      load.register_and_recurse(scope, &info)?;
+      load.register_and_recurse(scope, &request, &info)?;
     }
 
     let root_id = load.root_module_id.expect("Root module should be loaded");
@@ -1630,6 +1633,7 @@ pub mod tests {
   use crate::error::custom_error;
   use crate::modules::ModuleSource;
   use crate::modules::ModuleSourceFuture;
+  use crate::modules::ModuleType;
   use crate::op_async;
   use crate::op_sync;
   use crate::ZeroCopyBuf;
@@ -1647,6 +1651,7 @@ pub mod tests {
     futures::executor::block_on(lazy(move |cx| f(cx)));
   }
 
+  #[derive(Copy, Clone)]
   enum Mode {
     Async,
     AsyncZeroCopy(bool),
@@ -1657,7 +1662,7 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  fn dispatch(rc_op_state: Rc<RefCell<OpState>>, payload: OpPayload) -> Op {
+  fn op_test(rc_op_state: Rc<RefCell<OpState>>, payload: OpPayload) -> Op {
     let rc_op_state2 = rc_op_state.clone();
     let op_state_ = rc_op_state2.borrow();
     let test_state = op_state_.borrow::<TestState>();
@@ -1683,15 +1688,21 @@ pub mod tests {
 
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let mut runtime = JsRuntime::new(Default::default());
-    let op_state = runtime.op_state();
-    op_state.borrow_mut().put(TestState {
-      mode,
-      dispatch_count: dispatch_count.clone(),
+    let dispatch_count2 = dispatch_count.clone();
+    let ext = Extension::builder()
+      .ops(vec![("op_test", Box::new(op_test))])
+      .state(move |state| {
+        state.put(TestState {
+          mode,
+          dispatch_count: dispatch_count2.clone(),
+        });
+        Ok(())
+      })
+      .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
     });
-
-    runtime.register_op("op_test", dispatch);
-    runtime.sync_ops_cache();
 
     runtime
       .execute_script(
@@ -1900,8 +1911,6 @@ pub mod tests {
   #[test]
   fn terminate_execution() {
     let (mut isolate, _dispatch_count) = setup(Mode::Async);
-    // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
-    // should not require a mutable reference to `struct rusty_v8::Isolate`.
     let v8_isolate_handle = isolate.v8_isolate().thread_safe_handle();
 
     let terminator_thread = std::thread::spawn(move || {
@@ -1939,8 +1948,6 @@ pub mod tests {
     let v8_isolate_handle = {
       // isolate is dropped at the end of this block
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
-      // should not require a mutable reference to `struct rusty_v8::Isolate`.
       runtime.v8_isolate().thread_safe_handle()
     };
 
@@ -2025,12 +2032,14 @@ pub mod tests {
     }
 
     run_in_task(|cx| {
+      let ext = Extension::builder()
+        .ops(vec![("op_err", op_sync(op_err))])
+        .build();
       let mut runtime = JsRuntime::new(RuntimeOptions {
+        extensions: vec![ext],
         get_error_class_fn: Some(&get_error_class_name),
         ..Default::default()
       });
-      runtime.register_op("op_err", op_sync(op_err));
-      runtime.sync_ops_cache();
       runtime
         .execute_script(
           "error_builder_test.js",
@@ -2642,6 +2651,7 @@ assertEquals(1, notify_return_value);
             code: "console.log('hello world');".to_string(),
             module_url_specified: "file:///main.js".to_string(),
             module_url_found: "file:///main.js".to_string(),
+            module_type: ModuleType::JavaScript,
           })
         }
         .boxed_local()

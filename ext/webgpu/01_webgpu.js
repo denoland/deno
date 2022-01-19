@@ -3061,6 +3061,48 @@
     }
 
     /**
+     * @param {GPUBuffer} destination
+     * @param {GPUSize64} destinationOffset
+     * @param {GPUSize64} size
+     */
+    clearBuffer(destination, destinationOffset, size) {
+      webidl.assertBranded(this, GPUCommandEncoder);
+      const prefix = "Failed to execute 'clearBuffer' on 'GPUCommandEncoder'";
+      webidl.requiredArguments(arguments.length, 3, { prefix });
+      destination = webidl.converters.GPUBuffer(destination, {
+        prefix,
+        context: "Argument 1",
+      });
+      destinationOffset = webidl.converters.GPUSize64(destinationOffset, {
+        prefix,
+        context: "Argument 2",
+      });
+      size = webidl.converters.GPUSize64(size, {
+        prefix,
+        context: "Argument 3",
+      });
+      const device = assertDevice(this, { prefix, context: "this" });
+      const commandEncoderRid = assertResource(this, {
+        prefix,
+        context: "this",
+      });
+      const destinationRid = assertResource(destination, {
+        prefix,
+        context: "Argument 1",
+      });
+      const { err } = core.opSync(
+        "op_webgpu_command_encoder_clear_buffer",
+        {
+          commandEncoderRid,
+          destinationRid,
+          destinationOffset,
+          size,
+        },
+      );
+      device.pushError(err);
+    }
+
+    /**
      * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
@@ -3203,7 +3245,7 @@
         prefix,
         context: "Argument 3",
       });
-      destination = webidl.converters.GPUQuerySet(destination, {
+      destination = webidl.converters.GPUBuffer(destination, {
         prefix,
         context: "Argument 4",
       });
@@ -4527,15 +4569,10 @@
       webidl.illegalConstructor();
     }
 
-    get executionTime() {
-      throw new Error("Not yet implemented");
-    }
-
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
-          // TODO(crowlKats): executionTime
         })
       }`;
     }

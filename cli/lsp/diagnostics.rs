@@ -1,13 +1,17 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
+use super::client::Client;
 use super::documents;
 use super::documents::Documents;
 use super::language_server;
+use super::performance::Performance;
 use super::tsc;
+use super::tsc::TsServer;
 
 use crate::diagnostics;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
@@ -89,13 +93,30 @@ impl DiagnosticCollection {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct DiagnosticsServer {
   channel: Option<mpsc::UnboundedSender<()>>,
   collection: Arc<Mutex<DiagnosticCollection>>,
+  client: Client,
+  performance: Arc<Performance>,
+  ts_server: Arc<TsServer>,
 }
 
 impl DiagnosticsServer {
+  pub fn new(
+    client: Client,
+    performance: Arc<Performance>,
+    ts_server: Arc<TsServer>,
+  ) -> Self {
+    DiagnosticsServer {
+      channel: Default::default(),
+      collection: Default::default(),
+      client,
+      performance,
+      ts_server,
+    }
+  }
+
   pub(crate) async fn get(
     &self,
     specifier: &ModuleSpecifier,
@@ -125,12 +146,13 @@ impl DiagnosticsServer {
   pub(crate) fn start(
     &mut self,
     language_server: Arc<Mutex<language_server::Inner>>,
-    client: lspower::Client,
-    ts_server: Arc<tsc::TsServer>,
   ) {
     let (tx, mut rx) = mpsc::unbounded_channel::<()>();
     self.channel = Some(tx);
     let collection = self.collection.clone();
+    let client = self.client.clone();
+    let performance = self.performance.clone();
+    let ts_server = self.ts_server.clone();
 
     let _join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
@@ -176,7 +198,8 @@ impl DiagnosticsServer {
                 &client,
                 collection.clone(),
                 snapshot,
-                &ts_server
+                &ts_server,
+                performance.clone(),
               ).await;
             }
           }
@@ -438,6 +461,8 @@ fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   documents: &Documents,
   resolved: &deno_graph::Resolved,
+  is_dynamic: bool,
+  maybe_assert_type: Option<&str>,
 ) {
   match resolved {
     Some(Ok((specifier, range))) => {
@@ -451,6 +476,34 @@ fn diagnose_dependency(
             message,
             ..Default::default()
           })
+        }
+        if doc.media_type() == MediaType::Json {
+          match maybe_assert_type {
+            // The module has the correct assertion type, no diagnostic
+            Some("json") => (),
+            // The dynamic import statement is missing an assertion type, which
+            // we might not be able to statically detect, therefore we will
+            // not provide a potentially incorrect diagnostic.
+            None if is_dynamic => (),
+            // The module has an incorrect assertion type, diagnostic
+            Some(assert_type) => diagnostics.push(lsp::Diagnostic {
+              range: documents::to_lsp_range(range),
+              severity: Some(lsp::DiagnosticSeverity::ERROR),
+              code: Some(lsp::NumberOrString::String("invalid-assert-type".to_string())),
+              source: Some("deno".to_string()),
+              message: format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{}\".", assert_type),
+              ..Default::default()
+            }),
+            // The module is missing an assertion type, diagnostic
+            None => diagnostics.push(lsp::Diagnostic {
+              range: documents::to_lsp_range(range),
+              severity: Some(lsp::DiagnosticSeverity::ERROR),
+              code: Some(lsp::NumberOrString::String("no-assert-type".to_string())),
+              source: Some("deno".to_string()),
+              message: "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(),
+              ..Default::default()
+            }),
+          }
         }
       } else {
         let (code, message) = match specifier.scheme() {
@@ -507,11 +560,15 @@ async fn generate_deps_diagnostics(
             &mut diagnostics,
             &snapshot.documents,
             &dependency.maybe_code,
+            dependency.is_dynamic,
+            dependency.maybe_assert_type.as_deref(),
           );
           diagnose_dependency(
             &mut diagnostics,
             &snapshot.documents,
             &dependency.maybe_type,
+            dependency.is_dynamic,
+            dependency.maybe_assert_type.as_deref(),
           );
         }
         diagnostics_vec.push((
@@ -530,7 +587,7 @@ async fn generate_deps_diagnostics(
 
 /// Publishes diagnostics to the client.
 async fn publish_diagnostics(
-  client: &lspower::Client,
+  client: &Client,
   collection: &mut DiagnosticCollection,
   snapshot: &language_server::StateSnapshot,
 ) {
@@ -569,17 +626,16 @@ async fn publish_diagnostics(
 /// Updates diagnostics for any specifiers that don't have the correct version
 /// generated and publishes the diagnostics to the client.
 async fn update_diagnostics(
-  client: &lspower::Client,
+  client: &Client,
   collection: Arc<Mutex<DiagnosticCollection>>,
   snapshot: Arc<language_server::StateSnapshot>,
   ts_server: &tsc::TsServer,
+  performance: Arc<Performance>,
 ) {
-  let mark = snapshot.performance.mark("update_diagnostics", None::<()>);
+  let mark = performance.mark("update_diagnostics", None::<()>);
 
   let lint = async {
-    let mark = snapshot
-      .performance
-      .mark("update_diagnostics_lint", None::<()>);
+    let mark = performance.mark("update_diagnostics_lint", None::<()>);
     let collection = collection.clone();
     let diagnostics = generate_lint_diagnostics(&snapshot, collection.clone())
       .await
@@ -593,13 +649,11 @@ async fn update_diagnostics(
       collection.set(DiagnosticSource::DenoLint, diagnostic_record);
     }
     publish_diagnostics(client, &mut collection, &snapshot).await;
-    snapshot.performance.measure(mark);
+    performance.measure(mark);
   };
 
   let ts = async {
-    let mark = snapshot
-      .performance
-      .mark("update_diagnostics_ts", None::<()>);
+    let mark = performance.mark("update_diagnostics_ts", None::<()>);
     let collection = collection.clone();
     let diagnostics =
       generate_ts_diagnostics(snapshot.clone(), collection.clone(), ts_server)
@@ -613,13 +667,11 @@ async fn update_diagnostics(
       collection.set(DiagnosticSource::TypeScript, diagnostic_record);
     }
     publish_diagnostics(client, &mut collection, &snapshot).await;
-    snapshot.performance.measure(mark);
+    performance.measure(mark);
   };
 
   let deps = async {
-    let mark = snapshot
-      .performance
-      .mark("update_diagnostics_deps", None::<()>);
+    let mark = performance.mark("update_diagnostics_deps", None::<()>);
     let collection = collection.clone();
     let diagnostics =
       generate_deps_diagnostics(snapshot.clone(), collection.clone())
@@ -633,11 +685,11 @@ async fn update_diagnostics(
       collection.set(DiagnosticSource::Deno, diagnostic_record);
     }
     publish_diagnostics(client, &mut collection, &snapshot).await;
-    snapshot.performance.measure(mark);
+    performance.measure(mark);
   };
 
   tokio::join!(lint, ts, deps);
-  snapshot.performance.measure(mark);
+  performance.measure(mark);
 }
 
 #[cfg(test)]

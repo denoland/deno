@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -10,6 +10,16 @@
     StringPrototypeReplace,
     ArrayPrototypeJoin,
   } = window.__bootstrap.primordials;
+
+  let noColor = false;
+
+  function setNoColor(value) {
+    noColor = value;
+  }
+
+  function getNoColor() {
+    return noColor;
+  }
 
   function code(open, close) {
     return {
@@ -79,7 +89,7 @@
   }
 
   function maybeColor(fn) {
-    return !(globalThis.Deno?.noColor ?? false) ? fn : (s) => s;
+    return !noColor ? fn : (s) => s;
   }
 
   window.__bootstrap.colors = {
@@ -95,5 +105,7 @@
     magenta,
     stripColor,
     maybeColor,
+    setNoColor,
+    getNoColor,
   };
 })(this);

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::url;
 use std::process::Command;
@@ -163,7 +163,7 @@ itest!(_035_cached_only_flag {
 
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
-  args: "run --reload --config 038_checkjs.tsconfig.json 038_checkjs.js",
+  args: "run --reload --config checkjs.tsconfig.json 038_checkjs.js",
   exit_code: 1,
   output: "038_checkjs.js.out",
 });
@@ -1583,6 +1583,45 @@ itest!(worker_close_in_wasm_reactions {
   output: "worker_close_in_wasm_reactions.js.out",
 });
 
+itest!(reference_types_error {
+  args: "run --config checkjs.tsconfig.json reference_types_error.js",
+  output: "reference_types_error.js.out",
+  exit_code: 1,
+});
+
+itest!(reference_types_error_no_check {
+  args: "run --no-check reference_types_error.js",
+  output_str: Some(""),
+});
+
+itest!(jsx_import_source_error {
+  args: "run --config jsx/deno-jsx-error.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_error.out",
+  exit_code: 1,
+});
+
+itest!(shebang_tsc {
+  args: "run --quiet shebang.ts",
+  output: "shebang.ts.out",
+});
+
+itest!(shebang_swc {
+  args: "run --quiet --no-check shebang.ts",
+  output: "shebang.ts.out",
+});
+
+itest!(shebang_with_json_imports_tsc {
+  args: "run --quiet import_assertions/json_with_shebang.ts",
+  output: "import_assertions/json_with_shebang.ts.out",
+  exit_code: 1,
+});
+
+itest!(shebang_with_json_imports_swc {
+  args: "run --quiet --no-check import_assertions/json_with_shebang.ts",
+  output: "import_assertions/json_with_shebang.ts.out",
+  exit_code: 1,
+});
+
 #[test]
 fn no_validate_asm() {
   let output = util::deno_cmd()
@@ -2407,3 +2446,46 @@ fn issue12807() {
     .unwrap();
   assert!(status.success());
 }
+
+itest!(import_assertions_static_import {
+  args: "run --allow-read import_assertions/static_import.ts",
+  output: "import_assertions/static_import.out",
+});
+
+itest!(import_assertions_static_export {
+  args: "run --allow-read import_assertions/static_export.ts",
+  output: "import_assertions/static_export.out",
+});
+
+itest!(import_assertions_static_error {
+  args: "run --allow-read import_assertions/static_error.ts",
+  output: "import_assertions/static_error.out",
+  exit_code: 1,
+});
+
+itest!(import_assertions_dynamic_import {
+  args: "run --allow-read import_assertions/dynamic_import.ts",
+  output: "import_assertions/dynamic_import.out",
+});
+
+itest!(import_assertions_dynamic_error {
+  args: "run --allow-read import_assertions/dynamic_error.ts",
+  output: "import_assertions/dynamic_error.out",
+  exit_code: 1,
+});
+
+itest!(import_assertions_type_check {
+  args: "run --allow-read import_assertions/type_check.ts",
+  output: "import_assertions/type_check.out",
+  exit_code: 1,
+});
+
+itest!(delete_window {
+  args: "run delete_window.js",
+  output_str: Some("true\n"),
+});
+
+itest!(colors_without_global_this {
+  args: "run colors_without_globalThis.js",
+  output_str: Some("true\n"),
+});

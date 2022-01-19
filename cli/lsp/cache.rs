@@ -1,9 +1,10 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache::CacherLoader;
 use crate::cache::FetchCacher;
 use crate::config_file::ConfigFile;
 use crate::flags::Flags;
+use crate::graph_util::graph_valid;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -79,10 +80,11 @@ impl CacheServer {
             maybe_resolver,
             None,
             None,
+            None,
           )
           .await;
 
-          if tx.send(graph.valid().map_err(|err| err.into())).is_err() {
+          if tx.send(graph_valid(&graph, true, false)).is_err() {
             log::warn!("cannot send to client");
           }
         }

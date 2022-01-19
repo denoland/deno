@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
 use deno_core::url;
@@ -382,13 +382,14 @@ fn ts_reload() {
 
   // check the output of the the bundle program.
   let output_path = hello_ts.canonicalize().unwrap();
-  assert!(std::str::from_utf8(&output.stderr)
-    .unwrap()
-    .trim()
-    .contains(&format!(
-      "host.getSourceFile(\"{}\", Latest)",
-      url::Url::from_file_path(&output_path).unwrap().as_str()
-    )));
+  assert!(
+    dbg!(std::str::from_utf8(&output.stderr).unwrap().trim()).contains(
+      &format!(
+        "host.getSourceFile(\"{}\", Latest)",
+        url::Url::from_file_path(&output_path).unwrap().as_str()
+      )
+    )
+  );
 }
 
 #[test]
@@ -462,6 +463,18 @@ fn broken_stdout() {
   assert!(stderr.contains("Uncaught BrokenPipe"));
   assert!(!stderr.contains("panic"));
 }
+
+itest!(error_cause {
+  args: "run error_cause.ts",
+  output: "error_cause.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_cause_recursive {
+  args: "run error_cause_recursive.ts",
+  output: "error_cause_recursive.ts.out",
+  exit_code: 1,
+});
 
 itest_flaky!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
@@ -719,6 +732,39 @@ fn websocket_server_multi_field_connection_header() {
     deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
       .is_ok()
   );
+  assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn websocket_server_idletimeout() {
+  let script = util::testdata_path().join("websocket_server_idletimeout.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let mut child = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
+
+  let req = http::request::Builder::new()
+    .uri("ws://localhost:4502")
+    .body(())
+    .unwrap();
+  let (_ws, _request) =
+    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+      .unwrap();
+
   assert!(child.wait().unwrap().success());
 }
 
@@ -1042,6 +1088,34 @@ fn typecheck_declarations_unstable() {
 }
 
 #[test]
+fn typecheck_core() {
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let test_file = deno_dir.path().join("test_deno_core_types.ts");
+  std::fs::write(
+    &test_file,
+    format!(
+      "import \"{}\";",
+      deno_core::resolve_path(
+        util::root_path()
+          .join("core/lib.deno_core.d.ts")
+          .to_str()
+          .unwrap()
+      )
+      .unwrap()
+    ),
+  )
+  .unwrap();
+  let output = util::deno_cmd_with_deno_dir(deno_dir.path())
+    .arg("run")
+    .arg(test_file.to_str().unwrap())
+    .output()
+    .unwrap();
+  println!("stdout: {}", String::from_utf8(output.stdout).unwrap());
+  println!("stderr: {}", String::from_utf8(output.stderr).unwrap());
+  assert!(output.status.success());
+}
+
+#[test]
 fn js_unit_tests_lint() {
   let status = util::deno_cmd()
     .arg("lint")
@@ -1099,9 +1173,8 @@ fn basic_auth_tokens() {
   let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
   eprintln!("{}", stderr_str);
 
-  assert!(stderr_str.contains(
-    "Import 'http://127.0.0.1:4554/001_hello.js' failed, not found."
-  ));
+  assert!(stderr_str
+    .contains("Module not found \"http://127.0.0.1:4554/001_hello.js\"."));
 
   let output = util::deno_cmd()
     .current_dir(util::root_path())

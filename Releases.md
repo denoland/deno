@@ -6,6 +6,106 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.17.3 / 2022.01.12
+
+- fix: Get lib.deno_core.d.ts to parse correctly (#13238)
+- fix: expose "Deno.memoryUsage()" in worker context (#13293)
+- fix: install shim with `--allow-all` should not output each permission
+  individually (#13325)
+- fix(compile): fix output flag behaviour on compile command (#13299)
+- fix(coverage): don't type check (#13324)
+- fix(coverage): merge coverage ranges (#13334)
+- fix(ext/web): handle no arguments in atob (#13341)
+- fix(serde_v8): support #[serde(default)] (#13300)
+
+### 1.17.2 / 2022.01.05
+
+- fix(cli): include JSON modules in bundle (#13188)
+- fix(core): inspector works if no "Runtime.runIfWaitingForDebugger" message is
+  sent (#13191)
+- fix(coverage): use only string byte indexes and 0-indexed line numbers
+  (#13190)
+- fix(doc): Make private types which show up in the rustdocs public (#13230)
+- fix(ext/console): map basic css color keywords to ansi (#13175)
+- fix(ext/crypto) - exportKey JWK for AES/HMAC must use base64url (#13264)
+- fix(ext/crypto) include AES-CTR for deriveKey (#13174)
+- fix(ext/crypto): use forgiving base64 encoding for JWK (#13240)
+- fix(ext/ffi): throw errors instead of panic (#13283)
+- fix(lsp): add code lens for tests just using named functions (#13218)
+- fix(lsp): better handling of folders in registry completions (#13250)
+- fix(lsp): handle repeating patterns in registry correctly (#13275)
+- fix(lsp): properly generate data URLs for completion items (#13246)
+- fix(signals): prevent panic when listening to forbidden signals (#13273)
+- fix: support `mts`, `cjs` & `cts` files for `deno test` & `deno fmt` (#13274)
+- fix: upgrade swc_ecmascript to 0.103 (#13284)
+
+### 1.17.1 / 2021.12.22
+
+- feat(lsp, unstable): add code lens for debugging tests (#13138)
+- feat(lsp, unstable): supply accept header when fetching registry config
+  (#13159)
+- fix: inspector prompts (#13123)
+- fix(coverage): Split sources by char index (#13114)
+- fix(ext/ffi): use `c_char` instead of `i8` for reading strings (#13118)
+- fix(ext/websocket): WebSocketStream don't error with "sending after closing"
+  when closing (#13134)
+- fix(repl): support assertions on import & export declarations (#13121)
+
+### 1.17.0 / 2021.12.16
+
+- feat: add `--no-check=remote` flag (#12766)
+- feat: Add support for import assertions and JSON modules (#12866)
+- feat: REPL import specifier auto-completions (#13078)
+- feat: support abort reasons in Deno APIs and `WebSocketStream` (#13066)
+- feat: support compat mode in REPL (#12882)
+- feat(cli): update to TypeScript 4.5 (#12410)
+- feat(core): Add ability to "ref" and "unref" pending ops (#12889)
+- feat(core): intercept unhandled promise rejections (#12910)
+- feat(ext/crypto): implement unwrapKey (#12539)
+- feat(ext/crypto): support `importKey` in SPKI format (#12921)
+- feat(ext/crypto): support exporting RSA JWKs (#13081)
+- feat(ext/crypto): support importing ECSDA and ECDH (#13088)
+- feat(ext/crypto): support importing exporting AES JWK keys (#12444)
+- feat(ext/crypto): support importing RSA JWKs (#13071)
+- feat(ext/fetch): Support `WebAssembly.instantiateStreaming` for file fetches
+  (#12901)
+- feat(ext/fetch): support abort reasons in fetch (#13106)
+- feat(ext/ffi): implement UnsafePointer and UnsafePointerView (#12828)
+- feat(ext/net): ALPN support in `Deno.connectTls()` (#12786)
+- feat(ext/net): enable sending to broadcast address (#12860)
+- feat(ext/timers): add refTimer, unrefTimer API (#12953)
+- feat(ext/web): implement `AbortSignal.prototype.throwIfAborted()` (#13044)
+- feat(lsp): add type definition provider (#12789)
+- feat(lsp): add workspace symbol provider (#12787)
+- feat(lsp): improve registry completion suggestions (#13023)
+- feat(lsp): registry suggestion cache respects cache headers (#13010)
+- feat(repl): add --unsafe-ignore-certificate-errors flag (#13045)
+- feat(runtime): add op_set_exit_code (#12911)
+- feat(streams): support abort reasons in streams (#12991)
+- feat(test): Add more overloads for "Deno.test" (#12749)
+- feat(watch): clear screen on each restart (#12613)
+- feat(watch): support watching external files (#13087)
+- fix: support "other" event type in FSWatcher (#12836)
+- fix(cli): config file should resolve paths relative to the config file
+  (#12867)
+- fix(cli): don't add colors for non-tty outputs (#13031)
+- fix(cli): don't cache .tsbuildinfo unless emitting (#12830)
+- fix(cli): fix slow test, unbreak ci (#12897)
+- fix(cli): skip bundling for pre-bundled code in "compile" (#12687)
+- fix(ext/crypto): throw on key & op algo mismatch (#12838)
+- fix(ext/crypto): various cleanup in JWK imports (#13092)
+- fix(ext/net): make unix and tcp identical on close (#13075)
+- fix(ext/timers): fix flakiness of `httpConnAutoCloseDelayedOnUpgrade` test
+  (#13017)
+- fix(ext/web): set location undefined when `--location` is not specified
+  (#13046)
+- fix(lsp): handle import specifier not having a trailing quote (#13074)
+- fix(lsp): lsp should respect include/exclude files in format config (#12876)
+- fix(lsp): normalize urls in did_change_watched_files (#12873)
+- fix(lsp): provide diagnostics for import assertions (#13105)
+- fix(workers): Make `worker.terminate()` not immediately kill the isolate
+  (#12831)
+
 ### 1.16.4 / 2021.12.03
 
 - fix(core): Wake up the runtime if there are ticks scheduled (#12933)

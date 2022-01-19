@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::auth_tokens::AuthTokens;
 use crate::colors;
@@ -26,7 +26,6 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use log::debug;
-use log::info;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::env;
@@ -149,7 +148,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   })?;
   let bytes = fs::read(local.clone())?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
-  let source = strip_shebang(get_source_from_bytes(bytes, Some(charset))?);
+  let source = get_source_from_bytes(bytes, Some(charset))?;
   let media_type = MediaType::from(specifier);
 
   Ok(File {
@@ -174,10 +173,7 @@ pub fn get_source_from_data_url(
   let (bytes, _) = data_url
     .decode_to_vec()
     .map_err(|e| uri_error(format!("{:?}", e)))?;
-  Ok((
-    strip_shebang(get_source_from_bytes(bytes, charset)?),
-    format!("{}", mime),
-  ))
+  Ok((get_source_from_bytes(bytes, charset)?, format!("{}", mime)))
 }
 
 /// Given a vector of bytes and optionally a charset, decode the bytes to a
@@ -231,19 +227,6 @@ pub fn map_content_type(
   }
 }
 
-/// Remove shebangs from the start of source code strings
-fn strip_shebang(mut value: String) -> String {
-  if value.starts_with("#!") {
-    if let Some(mid) = value.find('\n') {
-      let (_, rest) = value.split_at(mid);
-      value = rest.to_string()
-    } else {
-      value.clear()
-    }
-  }
-  value
-}
-
 /// A structure for resolving, fetching and caching source files.
 #[derive(Debug, Clone)]
 pub struct FileFetcher {
@@ -254,6 +237,7 @@ pub struct FileFetcher {
   pub(crate) http_cache: HttpCache,
   http_client: reqwest::Client,
   blob_store: BlobStore,
+  download_log_level: log::Level,
 }
 
 impl FileFetcher {
@@ -280,7 +264,13 @@ impl FileFetcher {
         None,
       )?,
       blob_store,
+      download_log_level: log::Level::Info,
     })
+  }
+
+  /// Sets the log level to use when outputting the download message.
+  pub fn set_download_log_level(&mut self, level: log::Level) {
+    self.download_log_level = level;
   }
 
   /// Creates a `File` structure for a remote file.
@@ -300,7 +290,7 @@ impl FileFetcher {
     let maybe_content_type = headers.get("content-type").cloned();
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
-    let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
+    let source = get_source_from_bytes(bytes, maybe_charset)?;
     let maybe_types = match media_type {
       MediaType::JavaScript
       | MediaType::Cjs
@@ -322,7 +312,7 @@ impl FileFetcher {
   /// Fetch cached remote file.
   ///
   /// This is a recursive operation if source file has redirections.
-  fn fetch_cached(
+  pub(crate) fn fetch_cached(
     &self,
     specifier: &ModuleSpecifier,
     redirect_limit: i64,
@@ -370,7 +360,7 @@ impl FileFetcher {
 
     if self.cache_setting == CacheSetting::Only {
       return Err(custom_error(
-        "NotFound",
+        "NotCached",
         format!(
           "Specifier not found in cache: \"{}\", --cached-only is specified.",
           specifier
@@ -419,7 +409,7 @@ impl FileFetcher {
 
     if self.cache_setting == CacheSetting::Only {
       return Err(custom_error(
-        "NotFound",
+        "NotCached",
         format!(
           "Specifier not found in cache: \"{}\", --cached-only is specified.",
           specifier
@@ -444,7 +434,7 @@ impl FileFetcher {
 
     let (media_type, maybe_charset) =
       map_content_type(specifier, Some(content_type.clone()));
-    let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
+    let source = get_source_from_bytes(bytes, maybe_charset)?;
 
     let local =
       self
@@ -468,6 +458,7 @@ impl FileFetcher {
       maybe_headers: Some(headers),
     })
   }
+
   /// Asynchronously fetch remote source file specified by the URL following
   /// redirects.
   ///
@@ -478,6 +469,7 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
     permissions: &mut Permissions,
     redirect_limit: i64,
+    maybe_accept: Option<String>,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
     if redirect_limit < 0 {
@@ -503,7 +495,7 @@ impl FileFetcher {
 
     if self.cache_setting == CacheSetting::Only {
       return futures::future::err(custom_error(
-        "NotFound",
+        "NotCached",
         format!(
           "Specifier not found in cache: \"{}\", --cached-only is specified.",
           specifier
@@ -512,7 +504,12 @@ impl FileFetcher {
       .boxed();
     }
 
-    info!("{} {}", colors::green("Download"), specifier);
+    log::log!(
+      self.download_log_level,
+      "{} {}",
+      colors::green("Download"),
+      specifier
+    );
 
     let maybe_etag = match self.http_cache.get(specifier) {
       Ok((_, headers, _)) => headers.get("etag").cloned(),
@@ -528,6 +525,7 @@ impl FileFetcher {
       match fetch_once(FetchOnceArgs {
         client,
         url: specifier.clone(),
+        maybe_accept: maybe_accept.clone(),
         maybe_etag,
         maybe_auth_token,
       })
@@ -540,7 +538,12 @@ impl FileFetcher {
         FetchOnceResult::Redirect(redirect_url, headers) => {
           file_fetcher.http_cache.set(&specifier, headers, &[])?;
           file_fetcher
-            .fetch_remote(&redirect_url, &mut permissions, redirect_limit - 1)
+            .fetch_remote(
+              &redirect_url,
+              &mut permissions,
+              redirect_limit - 1,
+              maybe_accept,
+            )
             .await
         }
         FetchOnceResult::Code(bytes, headers) => {
@@ -563,6 +566,15 @@ impl FileFetcher {
     permissions: &mut Permissions,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
+    self.fetch_with_accept(specifier, permissions, None).await
+  }
+
+  pub async fn fetch_with_accept(
+    &self,
+    specifier: &ModuleSpecifier,
+    permissions: &mut Permissions,
+    maybe_accept: Option<&str>,
+  ) -> Result<File, AnyError> {
     let scheme = get_validated_scheme(specifier)?;
     permissions.check_specifier(specifier)?;
     if let Some(file) = self.cache.get(specifier) {
@@ -589,7 +601,14 @@ impl FileFetcher {
         format!("A remote specifier was requested: \"{}\", but --no-remote is specified.", specifier),
       ))
     } else {
-      let result = self.fetch_remote(specifier, permissions, 10).await;
+      let result = self
+        .fetch_remote(
+          specifier,
+          permissions,
+          10,
+          maybe_accept.map(String::from),
+        )
+        .await;
       if let Ok(file) = &result {
         self.cache.insert(specifier.clone(), file.clone());
       }
@@ -699,7 +718,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
-      .fetch_remote(specifier, &mut Permissions::allow_all(), 1)
+      .fetch_remote(specifier, &mut Permissions::allow_all(), 1, None)
       .await;
     assert!(result.is_ok());
     let (_, headers, _) = file_fetcher.http_cache.get(specifier).unwrap();
@@ -749,13 +768,6 @@ mod tests {
         assert_eq!(actual.unwrap(), expected);
       }
     }
-  }
-
-  #[test]
-  fn test_strip_shebang() {
-    let value =
-      "#!/usr/bin/env deno\n\nconsole.log(\"hello deno!\");\n".to_string();
-    assert_eq!(strip_shebang(value), "\n\nconsole.log(\"hello deno!\");\n");
   }
 
   #[test]
@@ -1364,12 +1376,12 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &mut Permissions::allow_all(), 2)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 2, None)
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &mut Permissions::allow_all(), 1)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 1, None)
       .await;
     assert!(result.is_err());
 
@@ -1482,7 +1494,7 @@ mod tests {
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert_eq!(get_custom_error_class(&err), Some("NotFound"));
+    assert_eq!(get_custom_error_class(&err), Some("NotCached"));
     assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/002_hello.ts\", --cached-only is specified.");
 
     let result = file_fetcher_02
