@@ -18,8 +18,10 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt;
 use std::path::Path;
+use std::path::PathBuf;
 
 pub(crate) type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
@@ -155,6 +157,61 @@ pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "version",
   "watch",
 ];
+
+/// Filenames that Deno will recognize when discovering config.
+const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
+
+pub fn discover(flags: &crate::Flags) -> Result<Option<ConfigFile>, AnyError> {
+  if let Some(config_path) = flags.config_path.as_ref() {
+    Ok(Some(ConfigFile::read(config_path)?))
+  } else {
+    let mut checked = HashSet::new();
+    for f in flags.config_path_args() {
+      if let Some(cf) = discover_from(&f, &mut checked)? {
+        return Ok(Some(cf));
+      }
+    }
+
+    // From CWD walk up to root looking for deno.json or deno.jsonc
+    let cwd = std::env::current_dir()?;
+    discover_from(&cwd, &mut checked)
+  }
+}
+
+pub fn discover_from(
+  start: &Path,
+  checked: &mut HashSet<PathBuf>,
+) -> Result<Option<ConfigFile>, AnyError> {
+  for ancestor in start.ancestors() {
+    if checked.insert(ancestor.to_path_buf()) {
+      for config_filename in CONFIG_FILE_NAMES {
+        let f = ancestor.join(config_filename);
+        match ConfigFile::read(f) {
+          Ok(cf) => {
+            return Ok(Some(cf));
+          }
+          Err(e) => {
+            if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
+              use std::io::ErrorKind::*;
+              match ioerr.kind() {
+                InvalidInput | PermissionDenied | NotFound => {
+                  // ok keep going
+                }
+                _ => {
+                  return Err(e); // Unknown error. Stop.
+                }
+              }
+            } else {
+              return Err(e); // Parse error or something else. Stop.
+            }
+          }
+        }
+      }
+    }
+  }
+  // No config file found.
+  Ok(None)
+}
 
 /// A function that works like JavaScript's `Object.assign()`.
 pub fn json_merge(a: &mut Value, b: &Value) {
@@ -822,5 +879,39 @@ mod tests {
       "target": "es5",
     }));
     assert_eq!(tsconfig1.as_bytes(), tsconfig2.as_bytes());
+  }
+
+  #[test]
+  fn discover_from_success() {
+    // testdata/fmt/deno.jsonc exists
+    let testdata = test_util::testdata_path();
+    let c_md = testdata.join("fmt/with_config/subdir/c.md");
+    let mut checked = HashSet::new();
+    let config_file = discover_from(&c_md, &mut checked).unwrap().unwrap();
+    assert!(checked.contains(c_md.parent().unwrap()));
+    assert!(!checked.contains(&testdata));
+    let fmt_config = config_file.to_fmt_config().unwrap().unwrap();
+    let expected_exclude = ModuleSpecifier::from_file_path(
+      testdata.join("fmt/with_config/subdir/b.ts"),
+    )
+    .unwrap();
+    assert_eq!(fmt_config.files.exclude, vec![expected_exclude]);
+
+    // Now add all ancestors of testdata to checked.
+    for a in testdata.ancestors() {
+      checked.insert(a.to_path_buf());
+    }
+
+    // If we call discover_from again starting at testdata, we ought to get None.
+    assert!(discover_from(&testdata, &mut checked).unwrap().is_none());
+  }
+
+  #[test]
+  fn discover_from_malformed() {
+    let testdata = test_util::testdata_path();
+    let d = testdata.join("malformed_config/");
+    let mut checked = HashSet::new();
+    let err = discover_from(&d, &mut checked).unwrap_err();
+    assert!(err.to_string().contains("Unable to parse config file"));
   }
 }
