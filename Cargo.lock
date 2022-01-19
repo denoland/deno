@@ -1224,9 +1224,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "835cf6371fc1474544f70dd28778789bd39474093997fb721c36082b0b4ee316"
+checksum = "df207f2c04b4b473e30890efdb425cf5b7c15504d2a932c7a6a31402a2ed25fe"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -2891,9 +2891,9 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acd16514d1af5f7a71f909a44ef253cdb712a376d7ebc8ae4a471a9be9743548"
+checksum = "34f197a544b0c9ab3ae46c359a7ec9cbbb5c7bf97054266fecb7ead794a181d6"
 dependencies = [
  "bitflags",
  "memchr",
