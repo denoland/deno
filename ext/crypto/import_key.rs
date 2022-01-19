@@ -7,6 +7,7 @@ use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::FromPrivateKey;
 use p256::pkcs8::ToPrivateKey;
 use rsa::pkcs1::UIntBytes;
+use rsa::pkcs8::AlgorithmIdentifier;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::Encodable;
@@ -359,11 +360,16 @@ fn import_key_rsapss(
             return Err(not_supported_error("unsupported hash algorithm"));
           }
 
-          // TODO(lucacasonato):
-          // If the parameters field of the maskGenAlgorithm field of params
-          // is not an instance of the HashAlgorithm ASN.1 type that is
-          // identical in content to the hashAlgorithm field of params,
-          // throw a NotSupportedError.
+          let parameters = params
+            .mask_gen_algorithm
+            .parameters_any()
+            .map_err(|_| not_supported_error("unsupported parameters"))?;
+          let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters)
+            .map_err(|_| not_supported_error("unsupported parameters"))?;
+          // The hash function on which MGF1 is based.
+          mgf1_hash_identifier
+            .assert_algorithm_oid(hash_alg.oid)
+            .map_err(|_| not_supported_error("unsupported parameters"))?;
 
           hash
         }
@@ -443,11 +449,16 @@ fn import_key_rsapss(
             return Err(not_supported_error("unsupported mask gen algorithm"));
           }
 
-          // TODO(lucacasonato):
-          // If the parameters field of the maskGenAlgorithm field of params
-          // is not an instance of the HashAlgorithm ASN.1 type that is
-          // identical in content to the hashAlgorithm field of params,
-          // throw a NotSupportedError.
+          let parameters = params
+            .mask_gen_algorithm
+            .parameters_any()
+            .map_err(|_| not_supported_error("unsupported parameters"))?;
+          let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters)
+            .map_err(|_| not_supported_error("unsupported parameters"))?;
+          // The hash function on which MGF1 is based.
+          mgf1_hash_identifier
+            .assert_algorithm_oid(hash_alg.oid)
+            .map_err(|_| not_supported_error("unsupported parameters"))?;
 
           hash
         }
@@ -538,11 +549,16 @@ fn import_key_rsaoaep(
             return Err(not_supported_error("unsupported hash algorithm"));
           }
 
-          // TODO(lucacasonato):
-          // If the parameters field of the maskGenAlgorithm field of params
-          // is not an instance of the HashAlgorithm ASN.1 type that is
-          // identical in content to the hashAlgorithm field of params,
-          // throw a NotSupportedError.
+          let parameters = params
+            .mask_gen_algorithm
+            .parameters_any()
+            .map_err(|_| not_supported_error("unsupported parameters"))?;
+          let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters)
+            .map_err(|_| not_supported_error("unsupported parameters"))?;
+          // The hash function on which MGF1 is based.
+          mgf1_hash_identifier
+            .assert_algorithm_oid(hash_alg.oid)
+            .map_err(|_| not_supported_error("unsupported parameters"))?;
 
           hash
         }
@@ -622,11 +638,16 @@ fn import_key_rsaoaep(
             return Err(not_supported_error("unsupported mask gen algorithm"));
           }
 
-          // TODO(lucacasonato):
-          // If the parameters field of the maskGenAlgorithm field of params
-          // is not an instance of the HashAlgorithm ASN.1 type that is
-          // identical in content to the hashAlgorithm field of params,
-          // throw a NotSupportedError.
+          let parameters = params
+            .mask_gen_algorithm
+            .parameters_any()
+            .map_err(|_| not_supported_error("unsupported parameters"))?;
+          let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters)
+            .map_err(|_| not_supported_error("unsupported parameters"))?;
+          // The hash function on which MGF1 is based.
+          mgf1_hash_identifier
+            .assert_algorithm_oid(hash_alg.oid)
+            .map_err(|_| not_supported_error("unsupported parameters"))?;
 
           hash
         }
