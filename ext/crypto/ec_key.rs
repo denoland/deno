@@ -28,8 +28,6 @@ pub struct ECPrivateKey<'a, C: elliptic_curve::Curve> {
   pub encoded_point: &'a [u8],
 }
 
-#[allow(dead_code)]
-///todo(@sean) - to be removed in #13154
 impl<'a, C> ECPrivateKey<'a, C>
 where
   C: elliptic_curve::Curve + AlgorithmParameters,

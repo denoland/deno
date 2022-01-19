@@ -1200,10 +1200,7 @@ Deno.test(async function testImportExportEcDsaJwk() {
   for (
     const [_key, keyData] of Object.entries(jwtECKeys)
   ) {
-    const { size, publicJWK, privateJWK, algo } = keyData;
-    if (size != 256) {
-      continue;
-    }
+    const { publicJWK, privateJWK, algo } = keyData;
 
     // 1. Test import EcDsa
     const privateKeyECDSA = await subtle.importKey(
@@ -1268,9 +1265,6 @@ Deno.test(async function testImportEcDhJwk() {
     const [_key, jwkData] of Object.entries(jwtECKeys)
   ) {
     const { size, publicJWK, privateJWK } = jwkData;
-    if (size != 256) {
-      continue;
-    }
 
     // 1. Test import EcDsa
     const privateKeyECDH = await subtle.importKey(
@@ -1307,6 +1301,11 @@ Deno.test(async function testImportEcDhJwk() {
       publicKeyECDH,
     );
     assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
+
+    // deriveBits still not implemented for P384
+    if (size != 256) {
+      continue;
+    }
 
     const derivedKey = await subtle.deriveBits(
       {
@@ -1406,6 +1405,13 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     for (
       const hash of [/*"SHA-1", */ "SHA-256", "SHA-384" /*"SHA-512"*/]
     ) {
+      if (
+        (hash == "SHA-256" && namedCurve != "P-256") ||
+        (hash == "SHA-384" && namedCurve != "P-384")
+      ) {
+        continue;
+      }
+
       const signatureECDSA = await subtle.sign(
         { name: "ECDSA", hash },
         privateKeyECDSA,
