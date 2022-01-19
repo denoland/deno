@@ -1302,7 +1302,7 @@ Deno.test(async function testImportEcDhJwk() {
     );
     assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
 
-    // P384 deriveBits still implemented for P384
+    // deriveBits still not implemented for P384
     if (size != 256) {
       continue;
     }
