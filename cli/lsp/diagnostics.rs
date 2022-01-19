@@ -189,13 +189,11 @@ impl DiagnosticsServer {
               let previous_handle = handle.take();
 
               handle = Some(tokio::spawn(async move {
-                // wait on the previous run to complete in order to prevent
-                // multiple threads queueing up a lot of tsc requests
                 if let Some(previous_handle) = previous_handle {
+                  // wait on the previous run to complete in order to prevent
+                  // multiple threads queueing up a lot of tsc requests
                   tokio::select! {
-                    _ = token.cancelled() => {
-                      return;
-                    }
+                    _ = token.cancelled() => { return; }
                     _ = previous_handle => {}
                   };
                 }
