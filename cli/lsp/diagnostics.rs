@@ -32,6 +32,7 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio::time::Duration;
 use tokio::time::Instant;
+use tokio_util::sync::CancellationToken;
 
 pub type DiagnosticRecord =
   (ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>);
@@ -160,40 +161,17 @@ impl DiagnosticsServer {
       let runtime = create_basic_runtime();
 
       runtime.block_on(async {
-        // Debounce timer delay. 150ms between keystrokes is about 45 WPM, so we
-        // want something that is longer than that, but not too long to
-        // introduce detectable UI delay; 200ms is a decent compromise.
-        const DELAY: Duration = Duration::from_millis(200);
-        // If the debounce timer isn't active, it will be set to expire "never",
-        // which is actually just 1 year in the future.
-        const NEVER: Duration = Duration::from_secs(365 * 24 * 60 * 60);
-
-        // A flag that is set whenever something has changed that requires the
-        // diagnostics collection to be updated.
-        let mut dirty = false;
-
-        let debounce_timer = sleep(NEVER);
-        tokio::pin!(debounce_timer);
+        let mut token = CancellationToken::new();
+        let mut handle: Option<tokio::task::JoinHandle<()>> = None;
 
         loop {
-          // "race" the next message off the rx queue or the debounce timer.
-          // The debounce timer gets reset every time a message comes off the
-          // queue. When the debounce timer expires, a snapshot of the most
-          // up-to-date state is used to produce diagnostics.
-          tokio::select! {
-            maybe_request = rx.recv() => {
-              match maybe_request {
-                // channel has closed
-                None => break,
-                Some(_) => {
-                  dirty = true;
-                  debounce_timer.as_mut().reset(Instant::now() + DELAY);
-                }
-              }
-            }
-            _ = debounce_timer.as_mut(), if dirty => {
-              dirty = false;
-              debounce_timer.as_mut().reset(Instant::now() + NEVER);
+          match rx.recv().await {
+            // channel has closed
+            None => break,
+            Some(()) => {
+              // cancel the previous run
+              token.cancel();
+              token = CancellationToken::new();
 
               let (snapshot, config, maybe_lint_config) = {
                 let language_server = language_server.lock().await;
@@ -203,15 +181,37 @@ impl DiagnosticsServer {
                   language_server.maybe_lint_config.clone(),
                 )
               };
-              update_diagnostics(
-                &client,
-                collection.clone(),
-                snapshot,
-                config,
-                maybe_lint_config,
-                &ts_server,
-                performance.clone(),
-              ).await;
+              let performance = performance.clone();
+              let ts_server = ts_server.clone();
+              let client = client.clone();
+              let token = token.clone();
+              let collection = collection.clone();
+              let previous_handle = handle.take();
+
+              handle = Some(tokio::spawn(async move {
+                // wait on the previous run to complete in order to prevent
+                // multiple threads queueing up a lot of tsc requests
+                if let Some(previous_handle) = previous_handle {
+                  tokio::select! {
+                    _ = token.cancelled() => {
+                      return;
+                    }
+                    _ = previous_handle => {}
+                  };
+                }
+
+                update_diagnostics(
+                  &client,
+                  collection.clone(),
+                  snapshot,
+                  config,
+                  maybe_lint_config,
+                  &ts_server,
+                  performance.clone(),
+                  token.clone(),
+                )
+                .await;
+              }));
             }
           }
         }
@@ -339,6 +339,7 @@ async fn generate_lint_diagnostics(
   collection: Arc<Mutex<DiagnosticCollection>>,
   config: &ConfigSnapshot,
   maybe_lint_config: Option<LintConfig>,
+  token: CancellationToken,
 ) -> Result<DiagnosticVec, AnyError> {
   let documents = snapshot.documents.documents(true, true);
   let workspace_settings = config.settings.workspace.clone();
@@ -347,6 +348,11 @@ async fn generate_lint_diagnostics(
     let mut diagnostics_vec = Vec::new();
     if workspace_settings.lint {
       for document in documents {
+        // exit early if cancelled
+        if token.is_cancelled() {
+          break;
+        }
+
         let version = document.maybe_lsp_version();
         let current_version = collection
           .lock()
@@ -553,11 +559,15 @@ async fn generate_deps_diagnostics(
   snapshot: Arc<language_server::StateSnapshot>,
   config: Arc<ConfigSnapshot>,
   collection: Arc<Mutex<DiagnosticCollection>>,
+  token: CancellationToken,
 ) -> Result<DiagnosticVec, AnyError> {
   tokio::task::spawn(async move {
     let mut diagnostics_vec = Vec::new();
 
     for document in snapshot.documents.documents(true, true) {
+      if token.is_cancelled() {
+        break;
+      }
       if !config.specifier_enabled(document.specifier()) {
         continue;
       }
@@ -639,6 +649,7 @@ async fn publish_diagnostics(
 
 /// Updates diagnostics for any specifiers that don't have the correct version
 /// generated and publishes the diagnostics to the client.
+#[allow(clippy::too_many_arguments)]
 async fn update_diagnostics(
   client: &Client,
   collection: Arc<Mutex<DiagnosticCollection>>,
@@ -647,7 +658,12 @@ async fn update_diagnostics(
   maybe_lint_config: Option<LintConfig>,
   ts_server: &tsc::TsServer,
   performance: Arc<Performance>,
+  token: CancellationToken,
 ) {
+  if token.is_cancelled() {
+    return;
+  }
+
   let mark = performance.mark("update_diagnostics", None::<()>);
 
   let lint = async {
@@ -658,6 +674,7 @@ async fn update_diagnostics(
       collection.clone(),
       &config,
       maybe_lint_config,
+      token.clone(),
     )
     .await
     .map_err(|err| {
@@ -665,15 +682,25 @@ async fn update_diagnostics(
     })
     .unwrap_or_default();
 
-    let mut collection = collection.lock().await;
-    for diagnostic_record in diagnostics {
-      collection.set(DiagnosticSource::DenoLint, diagnostic_record);
+    if !token.is_cancelled() {
+      let mut collection = collection.lock().await;
+      for diagnostic_record in diagnostics {
+        collection.set(DiagnosticSource::DenoLint, diagnostic_record);
+      }
+      publish_diagnostics(client, &mut collection, &snapshot, &config).await;
+      performance.measure(mark);
     }
-    publish_diagnostics(client, &mut collection, &snapshot, &config).await;
-    performance.measure(mark);
   };
 
   let ts = async {
+    // Debounce timer delay. 150ms between keystrokes is about 45 WPM, so we
+    // want something that is longer than that, but not too long to
+    // introduce detectable UI delay; 200ms is a decent compromise.
+    const DELAY: Duration = Duration::from_millis(200);
+    tokio::select! {
+      _ = token.cancelled() => { return; }
+      _ = tokio::time::sleep(DELAY) => {}
+    };
     let mark = performance.mark("update_diagnostics_ts", None::<()>);
     let collection = collection.clone();
     let diagnostics =
@@ -683,12 +710,15 @@ async fn update_diagnostics(
           error!("Error generating TypeScript diagnostics: {}", err);
         })
         .unwrap_or_default();
-    let mut collection = collection.lock().await;
-    for diagnostic_record in diagnostics {
-      collection.set(DiagnosticSource::TypeScript, diagnostic_record);
+
+    if !token.is_cancelled() {
+      let mut collection = collection.lock().await;
+      for diagnostic_record in diagnostics {
+        collection.set(DiagnosticSource::TypeScript, diagnostic_record);
+      }
+      publish_diagnostics(client, &mut collection, &snapshot, &config).await;
+      performance.measure(mark);
     }
-    publish_diagnostics(client, &mut collection, &snapshot, &config).await;
-    performance.measure(mark);
   };
 
   let deps = async {
@@ -698,22 +728,29 @@ async fn update_diagnostics(
       snapshot.clone(),
       config.clone(),
       collection.clone(),
+      token.clone(),
     )
     .await
     .map_err(|err| {
       error!("Error generating Deno diagnostics: {}", err);
     })
     .unwrap_or_default();
-    let mut collection = collection.lock().await;
-    for diagnostic_record in diagnostics {
-      collection.set(DiagnosticSource::Deno, diagnostic_record);
+
+    if !token.is_cancelled() {
+      let mut collection = collection.lock().await;
+      for diagnostic_record in diagnostics {
+        collection.set(DiagnosticSource::Deno, diagnostic_record);
+      }
+      publish_diagnostics(client, &mut collection, &snapshot, &config).await;
+      performance.measure(mark);
     }
-    publish_diagnostics(client, &mut collection, &snapshot, &config).await;
-    performance.measure(mark);
   };
 
   tokio::join!(lint, ts, deps);
-  performance.measure(mark);
+
+  if !token.is_cancelled() {
+    performance.measure(mark);
+  }
 }
 
 #[cfg(test)]
@@ -791,8 +828,14 @@ console.log(a);
       1,
       LanguageId::TypeScript,
     )]);
-    let result =
-      generate_lint_diagnostics(&snapshot, collection, &config, None).await;
+    let result = generate_lint_diagnostics(
+      &snapshot,
+      collection,
+      &config,
+      None,
+      Default::default(),
+    )
+    .await;
     assert!(result.is_ok());
     let diagnostics = result.unwrap();
     assert_eq!(diagnostics.len(), 1);

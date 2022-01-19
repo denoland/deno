@@ -774,6 +774,7 @@ dependencies = [
  "text-size",
  "text_lines",
  "tokio",
+ "tokio-util",
  "trust-dns-client",
  "trust-dns-server",
  "typed-arena",

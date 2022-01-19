@@ -91,6 +91,7 @@ tempfile = "=3.2.0"
 text-size = "=1.1.0"
 text_lines = "=0.4.1"
 tokio = { version = "=1.14", features = ["full"] }
+tokio-util = "=0.6.9"
 typed-arena = "2.0.1"
 uuid = { version = "=0.8.2", features = ["v4", "serde"] }
 walkdir = "=2.3.2"
