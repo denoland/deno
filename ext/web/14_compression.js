@@ -30,6 +30,10 @@
   const STATUS_BUF_ERROR = 1;
   const STATUS_STREAM_END = 2;
 
+  function compressTotalInOut(rid) {
+    return core.opSync("op_compression_compress_total_in_out", rid);
+  }
+
   class CompressionStream extends TransformStream {
     constructor(format) {
       const prefix = "Failed to construct 'CompressionStream'";
@@ -43,18 +47,24 @@
 
       super({
         async transform(chunk, controller) {
+          // console.log("chunk", chunk);
           const output = new Uint8Array(65536);
+
+          const [beforeIn, beforeOut] = compressTotalInOut(rid);
+
           const r = core.opSync("op_compression_compress", rid, [
             chunk,
             output,
-            FLUSH_COMPRESS_FULL,
+            FLUSH_COMPRESS_SYNC,
           ]);
-          const totals = core.opSync(
-            "op_compression_compress_total_in_out",
-            rid,
-          );
-          console.log("totals", totals);
-          controller.enqueue(output.subarray(0, totals[1]));
+
+          const [afterIn, afterOut] = compressTotalInOut(rid);
+
+          const diffOut = afterOut - beforeOut;
+          const diffIn = afterIn - beforeIn;
+          // console.log(diffOut, diffIn);
+
+          controller.enqueue(output.subarray(0, diffOut));
         },
         async flush() {
           core.close(rid);

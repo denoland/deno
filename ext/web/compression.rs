@@ -38,17 +38,11 @@ impl Resource for DecompressResource {
 
 pub fn op_compression_compress_new(
   state: &mut OpState,
-  format: String,
+  _format: String,
   _: (),
 ) -> Result<ResourceId, AnyError> {
   let level = flate2::Compression::fast();
-  let zlib_header = match format.as_str() {
-    "gzip" => true,
-    "deflate" => true,
-    _ => unreachable!(),
-  };
-  println!("zlib_header {}", zlib_header);
-  let data = RefCell::new(flate2::Compress::new(level, zlib_header));
+  let data = RefCell::new(flate2::Compress::new(level, true));
   Ok(state.resource_table.add(CompressResource { data }))
 }
 

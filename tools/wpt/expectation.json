@@ -4152,65 +4152,25 @@
     ]
   },
   "compression": {
-    "compression-including-empty-chunk.tentative.any.html": [
-      "the result of compressing [,Hello,Hello] with deflate should be 'HelloHello'",
-      "the result of compressing [Hello,,Hello] with deflate should be 'HelloHello'",
-      "the result of compressing [Hello,Hello,] with deflate should be 'HelloHello'"
-    ],
-    "compression-including-empty-chunk.tentative.any.worker.html": [
-      "the result of compressing [,Hello,Hello] with deflate should be 'HelloHello'",
-      "the result of compressing [Hello,,Hello] with deflate should be 'HelloHello'",
-      "the result of compressing [Hello,Hello,] with deflate should be 'HelloHello'"
-    ],
+    "compression-including-empty-chunk.tentative.any.html": true,
+    "compression-including-empty-chunk.tentative.any.worker.html": true,
     "compression-bad-chunks.tentative.any.html": true,
     "compression-bad-chunks.tentative.any.worker.html": true,
-    "compression-multiple-chunks.tentative.any.html": [
-      "compressing 2 chunks with deflate should work",
-      "compressing 3 chunks with deflate should work",
-      "compressing 4 chunks with deflate should work",
-      "compressing 5 chunks with deflate should work",
-      "compressing 6 chunks with deflate should work",
-      "compressing 7 chunks with deflate should work",
-      "compressing 8 chunks with deflate should work",
-      "compressing 9 chunks with deflate should work",
-      "compressing 10 chunks with deflate should work",
-      "compressing 11 chunks with deflate should work",
-      "compressing 12 chunks with deflate should work",
-      "compressing 13 chunks with deflate should work",
-      "compressing 14 chunks with deflate should work",
-      "compressing 15 chunks with deflate should work",
-      "compressing 16 chunks with deflate should work"
-    ],
-    "compression-multiple-chunks.tentative.any.worker.html": [
-      "compressing 2 chunks with deflate should work",
-      "compressing 3 chunks with deflate should work",
-      "compressing 4 chunks with deflate should work",
-      "compressing 5 chunks with deflate should work",
-      "compressing 6 chunks with deflate should work",
-      "compressing 7 chunks with deflate should work",
-      "compressing 8 chunks with deflate should work",
-      "compressing 9 chunks with deflate should work",
-      "compressing 10 chunks with deflate should work",
-      "compressing 11 chunks with deflate should work",
-      "compressing 12 chunks with deflate should work",
-      "compressing 13 chunks with deflate should work",
-      "compressing 14 chunks with deflate should work",
-      "compressing 15 chunks with deflate should work",
-      "compressing 16 chunks with deflate should work"
-    ],
+    "compression-multiple-chunks.tentative.any.html": true,
+    "compression-multiple-chunks.tentative.any.worker.html": true,
     "compression-output-length.tentative.any.html": true,
     "compression-output-length.tentative.any.worker.html": true,
     "compression-stream.tentative.any.html": [
-      "deflated empty data should be reinflated back to its origin",
-      "deflated small amount data should be reinflated back to its origin",
-      "deflated large amount data should be reinflated back to its origin"
+      "deflated large amount data should be reinflated back to its origin",
+      "gzipped large amount data should be reinflated back to its origin"
     ],
     "compression-stream.tentative.any.worker.html": [
-      "deflated empty data should be reinflated back to its origin",
-      "deflated small amount data should be reinflated back to its origin",
-      "deflated large amount data should be reinflated back to its origin"
+      "deflated large amount data should be reinflated back to its origin",
+      "gzipped large amount data should be reinflated back to its origin"
     ],
-    "compression-with-detach.tentative.window.html": true,
+    "compression-with-detach.tentative.window.html": [
+      "data should be correctly compressed even if input is detached partway"
+    ],
     "decompression-bad-chunks.tentative.any.html": false,
     "decompression-bad-chunks.tentative.any.worker.html": false,
     "decompression-buffersource.tentative.any.html": false,

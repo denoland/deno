@@ -1,6 +1,7 @@
 
 import { assertEquals } from "https://deno.land/std@0.121.0/testing/asserts.ts";
-import * as pako from "https://deno.land/x/pako@v2.0.3/pako.js";
+//import * as pako from "https://deno.land/x/pako@v2.0.3/pako.js";
+import "./test_util/wpt/compression/third_party/pako/pako_inflate.min.js";
 
 
 // This test asserts that compressing '' doesn't affect the compressed data.
@@ -42,13 +43,12 @@ const chunkLists = [
 const expectedValue = new TextEncoder().encode('HelloHello');
 
 for (const chunkList of chunkLists) {
-    const compressedData = await compressChunkList(chunkList, 'deflate');
-    console.log("compressedData", compressedData);
+  for (const algo of ['gzip', 'deflate']) {
+    const compressedData = await compressChunkList(chunkList, algo);
     // decompress with pako, and check that we got the same result as our original string
-    console.log("expectedValue", expectedValue);
     const actual = pako.inflate(compressedData);
-    console.log("actual", actual);
     assertEquals(expectedValue, actual, 'value should match');
+  }
 
   /*
     const compressedData = await compressChunkList(chunkList, 'gzip');
