@@ -685,11 +685,9 @@ console.log(a);
       1,
       LanguageId::TypeScript,
     )]);
-    let result =
+    let diagnostics =
       generate_lint_diagnostics(&snapshot, &config, None, Default::default())
         .await;
-    assert!(result.is_ok());
-    let diagnostics = result.unwrap();
     assert_eq!(diagnostics.len(), 1);
     let (_, _, diagnostics) = &diagnostics[0];
     assert_eq!(diagnostics.len(), 2);
