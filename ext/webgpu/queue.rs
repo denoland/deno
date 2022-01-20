@@ -108,7 +108,7 @@ pub struct QueueWriteTextureArgs {
   queue_rid: ResourceId,
   destination: super::command_encoder::GpuImageCopyTexture,
   data_layout: GpuImageDataLayout,
-  size: wgpu_types::Extent3d,
+  size: super::texture::GpuExtent3D,
 }
 
 pub fn op_webgpu_write_texture(
@@ -127,8 +127,8 @@ pub fn op_webgpu_write_texture(
   let destination = wgpu_core::command::ImageCopyTexture {
     texture: texture_resource.0,
     mip_level: args.destination.mip_level,
-    origin: args.destination.origin,
-    aspect: args.destination.aspect,
+    origin: args.destination.origin.into(),
+    aspect: args.destination.aspect.into(),
   };
   let data_layout = args.data_layout.into();
 
@@ -137,6 +137,6 @@ pub fn op_webgpu_write_texture(
     &destination,
     &*zero_copy,
     &data_layout,
-    &args.size
+    &args.size.into()
   ))
 }
