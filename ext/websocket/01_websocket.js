@@ -27,6 +27,7 @@
     ArrayPrototypeMap,
     ArrayPrototypeSome,
     PromisePrototypeThen,
+    PromisePrototypeCatch,
     SymbolFor,
   } = window.__bootstrap.primordials;
 
@@ -364,11 +365,26 @@
       } else if (this[_readyState] === OPEN) {
         this[_readyState] = CLOSING;
 
-        core.opAsync("op_ws_close", {
-          rid: this[_rid],
-          code,
-          reason,
-        });
+        PromisePrototypeCatch(
+          core.opAsync("op_ws_close", {
+            rid: this[_rid],
+            code,
+            reason,
+          }),
+          (err) => {
+            this[_readyState] = CLOSED;
+
+            const errorEv = new ErrorEvent("error", {
+              error: err,
+              message: ErrorPrototypeToString(err),
+            });
+            this.dispatchEvent(errorEv);
+
+            const closeEv = new CloseEvent("close");
+            this.dispatchEvent(closeEv);
+            core.tryClose(this[_rid]);
+          },
+        );
       }
     }
 
