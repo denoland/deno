@@ -2312,7 +2312,7 @@ declare namespace Deno {
    */
   export function addSignalListener(signal: string, handler: () => void): void;
 
-   /** Removes the given signal listener that has been registered with
+  /** Removes the given signal listener that has been registered with
    * Deno.addSignalListener.
    *
    * ```ts
