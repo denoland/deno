@@ -179,7 +179,6 @@ fn op_signal_bind(
   sig: String,
   _: (),
 ) -> Result<ResourceId, AnyError> {
-  super::check_unstable(state, "Deno.signal");
   let signo = signal_str_to_int(&sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
     return Err(type_error(format!(
@@ -201,8 +200,6 @@ async fn op_signal_poll(
   rid: ResourceId,
   _: (),
 ) -> Result<bool, AnyError> {
-  super::check_unstable2(&state, "Deno.signal");
-
   let resource = state
     .borrow_mut()
     .resource_table
@@ -222,7 +219,6 @@ pub fn op_signal_unbind(
   rid: ResourceId,
   _: (),
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.signal");
   state.resource_table.close(rid)?;
   Ok(())
 }

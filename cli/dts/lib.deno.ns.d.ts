@@ -2260,43 +2260,8 @@ declare namespace Deno {
      * p.close();
      * ```
      */
-    kill(signo: Signal): void;
+    kill(signo: string): void;
   }
-
-  export type Signal =
-    | "SIGABRT"
-    | "SIGALRM"
-    | "SIGBUS"
-    | "SIGCHLD"
-    | "SIGCONT"
-    | "SIGEMT"
-    | "SIGFPE"
-    | "SIGHUP"
-    | "SIGILL"
-    | "SIGINFO"
-    | "SIGINT"
-    | "SIGIO"
-    | "SIGKILL"
-    | "SIGPIPE"
-    | "SIGPROF"
-    | "SIGPWR"
-    | "SIGQUIT"
-    | "SIGSEGV"
-    | "SIGSTKFLT"
-    | "SIGSTOP"
-    | "SIGSYS"
-    | "SIGTERM"
-    | "SIGTRAP"
-    | "SIGTSTP"
-    | "SIGTTIN"
-    | "SIGTTOU"
-    | "SIGURG"
-    | "SIGUSR1"
-    | "SIGUSR2"
-    | "SIGVTALRM"
-    | "SIGWINCH"
-    | "SIGXCPU"
-    | "SIGXFSZ";
 
   export type ProcessStatus =
     | {
@@ -2837,7 +2802,7 @@ declare namespace Deno {
    *      Deno.kill(p.pid, "SIGINT");
    *
    * Requires `allow-run` permission. */
-  export function kill(pid: number, signo: Signal): void;
+  export function kill(pid: number, signo: string): void;
 
   /** The type of the resource record.
    * Only the listed types are supported currently. */
@@ -2923,4 +2888,34 @@ declare namespace Deno {
     recordType: RecordType,
     options?: ResolveDnsOptions,
   ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
+
+  /** Registers the given function as a listener of the given signal event.
+   *
+   * ```ts
+   * Deno.addSignalListener("SIGTERM", () => {
+   *   console.log("SIGTERM!")
+   * });
+   * ```
+   *
+   * NOTE: This functionality is not yet implemented on Windows.
+   */
+  export function addSignalListener(signal: string, handler: () => void): void;
+
+  /** Removes the given signal listener that has been registered with
+   * Deno.addSignalListener.
+   *
+   * ```ts
+   * const listener = () => {
+   *   console.log("SIGTERM!")
+   * };
+   * Deno.addSignalListener("SIGTERM", listener);
+   * Deno.removeSignalListener("SIGTERM", listener);
+   * ```
+   *
+   * NOTE: This functionality is not yet implemented on Windows.
+   */
+  export function removeSignalListener(
+    signal: string,
+    handler: () => void,
+  ): void;
 }
