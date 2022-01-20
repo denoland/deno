@@ -190,12 +190,16 @@ impl DiagnosticsServer {
 
               handle = Some(tokio::spawn(async move {
                 if let Some(previous_handle) = previous_handle {
-                  // wait on the previous run to complete in order to prevent
-                  // multiple threads queueing up a lot of tsc requests
-                  tokio::select! {
-                    _ = token.cancelled() => { return; }
-                    _ = previous_handle => {}
-                  };
+                  // Wait on the previous run to complete in order to prevent
+                  // multiple threads queueing up a lot of tsc requests.
+                  previous_handle.await;
+                }
+
+                // Exit if cancelled and do not race this on the previous_handle
+                // because we want a chain of events to wait for all the previous
+                // update_diagnostics to complete
+                if token.is_cancelled() {
+                  return;
                 }
 
                 update_diagnostics(
@@ -658,10 +662,6 @@ async fn update_diagnostics(
   performance: Arc<Performance>,
   token: CancellationToken,
 ) {
-  if token.is_cancelled() {
-    return;
-  }
-
   let mark = performance.mark("update_diagnostics", None::<()>);
 
   let lint = async {
