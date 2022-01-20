@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::convert::TryFrom;
 use std::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -15,22 +16,29 @@ pub enum MagicBuffer {
 }
 
 impl MagicBuffer {
-  pub fn new<'s>(
-    scope: &mut v8::HandleScope<'s>,
-    view: v8::Local<v8::ArrayBufferView>,
-  ) -> Self {
-    Self::try_new(scope, view).unwrap()
-  }
-
-  pub fn try_new<'s>(
-    scope: &mut v8::HandleScope<'s>,
-    view: v8::Local<v8::ArrayBufferView>,
-  ) -> Result<Self, v8::DataError> {
-    Ok(Self::FromV8(ZeroCopyBuf::try_new(scope, view)?))
-  }
-
   pub fn empty() -> Self {
     MagicBuffer::ToV8(Mutex::new(Some(vec![0_u8; 0].into_boxed_slice())))
+  }
+}
+
+impl<'s> TryFrom<v8::Local<'s, v8::ArrayBuffer>> for MagicBuffer {
+  type Error = v8::DataError;
+  fn try_from(buffer: v8::Local<v8::ArrayBuffer>) -> Result<Self, Self::Error> {
+    Ok(Self::FromV8(ZeroCopyBuf::try_from(buffer)?))
+  }
+}
+
+// TODO(@AaronO): consider streamlining this as "ScopedValue" ?
+type ScopedView<'a, 'b, 's> = (
+  &'s mut v8::HandleScope<'a>,
+  v8::Local<'b, v8::ArrayBufferView>,
+);
+impl<'a, 'b, 's> TryFrom<ScopedView<'a, 'b, 's>> for MagicBuffer {
+  type Error = v8::DataError;
+  fn try_from(
+    scoped_view: ScopedView<'a, 'b, 's>,
+  ) -> Result<Self, Self::Error> {
+    Ok(Self::FromV8(ZeroCopyBuf::try_from(scoped_view)?))
   }
 }
 

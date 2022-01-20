@@ -25,31 +25,46 @@ pub struct ZeroCopyBuf {
 unsafe impl Send for ZeroCopyBuf {}
 
 impl ZeroCopyBuf {
-  pub fn new<'s>(
-    scope: &mut v8::HandleScope<'s>,
-    view: v8::Local<v8::ArrayBufferView>,
-  ) -> Self {
-    Self::try_new(scope, view).unwrap()
-  }
-
-  pub fn try_new<'s>(
-    scope: &mut v8::HandleScope<'s>,
-    view: v8::Local<v8::ArrayBufferView>,
+  pub fn from_buffer(
+    buffer: v8::Local<v8::ArrayBuffer>,
+    byte_offset: usize,
+    byte_length: usize,
   ) -> Result<Self, v8::DataError> {
-    let backing_store = view.buffer(scope).unwrap().get_backing_store();
-    if backing_store.is_shared() {
-      return Err(v8::DataError::BadType {
+    let backing_store = buffer.get_backing_store();
+    match backing_store.is_shared() {
+      true => Err(v8::DataError::BadType {
         actual: "shared ArrayBufferView",
         expected: "non-shared ArrayBufferView",
-      });
+      }),
+      false => Ok(Self {
+        backing_store,
+        byte_offset,
+        byte_length,
+      }),
     }
-    let byte_offset = view.byte_offset();
-    let byte_length = view.byte_length();
-    Ok(Self {
-      backing_store,
-      byte_offset,
-      byte_length,
-    })
+  }
+}
+
+impl<'s> TryFrom<v8::Local<'s, v8::ArrayBuffer>> for ZeroCopyBuf {
+  type Error = v8::DataError;
+  fn try_from(buffer: v8::Local<v8::ArrayBuffer>) -> Result<Self, Self::Error> {
+    Self::from_buffer(buffer, 0, buffer.byte_length())
+  }
+}
+
+// TODO(@AaronO): consider streamlining this as "ScopedValue" ?
+type ScopedView<'a, 'b, 's> = (
+  &'s mut v8::HandleScope<'a>,
+  v8::Local<'b, v8::ArrayBufferView>,
+);
+impl<'a, 'b, 's> TryFrom<ScopedView<'a, 'b, 's>> for ZeroCopyBuf {
+  type Error = v8::DataError;
+  fn try_from(
+    scoped_view: ScopedView<'a, 'b, 's>,
+  ) -> Result<Self, Self::Error> {
+    let (scope, view) = scoped_view;
+    let buffer = view.buffer(scope).unwrap();
+    Self::from_buffer(buffer, view.byte_offset(), view.byte_length())
   }
 }
 
