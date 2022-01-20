@@ -165,7 +165,7 @@ impl LspClient {
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
-      .stderr(Stdio::inherit()) // todo: revert
+      .stderr(Stdio::null())
       .spawn()?;
 
     let stdout = child.stdout.take().unwrap();
