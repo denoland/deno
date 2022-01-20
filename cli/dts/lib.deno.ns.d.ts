@@ -2263,9 +2263,42 @@ declare namespace Deno {
     kill(signo: string): void;
   }
 
-  // TODO(kt3k): Remove this type when std updated the signal usage.
+  // TODO(kt3k): Remove this type later.
   /** @deprecated Use string type instead. */
-  export type Signal = string;
+  export type Signal =
+    | "SIGABRT"
+    | "SIGALRM"
+    | "SIGBUS"
+    | "SIGCHLD"
+    | "SIGCONT"
+    | "SIGEMT"
+    | "SIGFPE"
+    | "SIGHUP"
+    | "SIGILL"
+    | "SIGINFO"
+    | "SIGINT"
+    | "SIGIO"
+    | "SIGKILL"
+    | "SIGPIPE"
+    | "SIGPROF"
+    | "SIGPWR"
+    | "SIGQUIT"
+    | "SIGSEGV"
+    | "SIGSTKFLT"
+    | "SIGSTOP"
+    | "SIGSYS"
+    | "SIGTERM"
+    | "SIGTRAP"
+    | "SIGTSTP"
+    | "SIGTTIN"
+    | "SIGTTOU"
+    | "SIGURG"
+    | "SIGUSR1"
+    | "SIGUSR2"
+    | "SIGVTALRM"
+    | "SIGWINCH"
+    | "SIGXCPU"
+    | "SIGXFSZ";
 
   /** Registers the given function as a listener of the given signal event.
    *
