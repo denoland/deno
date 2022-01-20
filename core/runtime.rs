@@ -686,6 +686,42 @@ impl JsRuntime {
     scope.perform_microtask_checkpoint();
   }
 
+  pub fn poll_value(
+    &mut self,
+    global: &v8::Global<v8::Value>,
+    cx: &mut Context,
+  ) -> Poll<Result<v8::Global<v8::Value>, Error>> {
+    let state = self.poll_event_loop(cx, false);
+
+    let mut scope = self.handle_scope();
+    let local = v8::Local::<v8::Value>::new(&mut scope, global);
+
+    if let Ok(promise) = v8::Local::<v8::Promise>::try_from(local) {
+      match promise.state() {
+        v8::PromiseState::Pending => match state {
+          Poll::Ready(Ok(_)) => {
+            let msg = "Promise resolution is still pending but the event loop has already resolved.";
+            Poll::Ready(Err(generic_error(msg)))
+          }
+          Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+          Poll::Pending => Poll::Pending,
+        },
+        v8::PromiseState::Fulfilled => {
+          let value = promise.result(&mut scope);
+          let value_handle = v8::Global::new(&mut scope, value);
+          Poll::Ready(Ok(value_handle))
+        }
+        v8::PromiseState::Rejected => {
+          let exception = promise.result(&mut scope);
+          Poll::Ready(exception_to_err_result(&mut scope, exception, false))
+        }
+      }
+    } else {
+      let value_handle = v8::Global::new(&mut scope, local);
+      Poll::Ready(Ok(value_handle))
+    }
+  }
+
   /// Waits for the given value to resolve while polling the event loop.
   ///
   /// This future resolves when either the value is resolved or the event loop runs to
@@ -694,38 +730,7 @@ impl JsRuntime {
     &mut self,
     global: v8::Global<v8::Value>,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    poll_fn(|cx| {
-      let state = self.poll_event_loop(cx, false);
-
-      let mut scope = self.handle_scope();
-      let local = v8::Local::<v8::Value>::new(&mut scope, &global);
-
-      if let Ok(promise) = v8::Local::<v8::Promise>::try_from(local) {
-        match promise.state() {
-          v8::PromiseState::Pending => match state {
-            Poll::Ready(Ok(_)) => {
-              let msg = "Promise resolution is still pending but the event loop has already resolved.";
-              Poll::Ready(Err(generic_error(msg)))
-            },
-            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
-            Poll::Pending => Poll::Pending,
-          },
-          v8::PromiseState::Fulfilled => {
-            let value = promise.result(&mut scope);
-            let value_handle = v8::Global::new(&mut scope, value);
-            Poll::Ready(Ok(value_handle))
-          }
-          v8::PromiseState::Rejected => {
-            let exception = promise.result(&mut scope);
-            Poll::Ready(exception_to_err_result(&mut scope, exception, false))
-          }
-        }
-      } else {
-        let value_handle = v8::Global::new(&mut scope, local);
-        Poll::Ready(Ok(value_handle))
-      }
-    })
-    .await
+    poll_fn(|cx| self.poll_value(&global, cx)).await
   }
 
   /// Runs event loop to completion
