@@ -27,6 +27,7 @@
     ArrayPrototypeMap,
     ArrayPrototypeSome,
     PromisePrototypeThen,
+    SymbolFor,
   } = window.__bootstrap.primordials;
 
   webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
@@ -363,28 +364,16 @@
       } else if (this[_readyState] === OPEN) {
         this[_readyState] = CLOSING;
 
-        PromisePrototypeThen(
-          core.opAsync("op_ws_close", {
-            rid: this[_rid],
-            code,
-            reason,
-          }),
-          () => {
-            this[_readyState] = CLOSED;
-            const event = new CloseEvent("close", {
-              wasClean: true,
-              code: code ?? 1005,
-              reason,
-            });
-            this.dispatchEvent(event);
-            core.tryClose(this[_rid]);
-          },
-        );
+        core.opAsync("op_ws_close", {
+          rid: this[_rid],
+          code,
+          reason,
+        });
       }
     }
 
     async [_eventLoop]() {
-      while (this[_readyState] === OPEN) {
+      while (this[_readyState] !== CLOSED) {
         const { kind, value } = await core.opAsync(
           "op_ws_next_event",
           this[_rid],
@@ -490,6 +479,19 @@
           }, (this[_idleTimeoutDuration] / 2) * 1000);
         }, (this[_idleTimeoutDuration] / 2) * 1000);
       }
+    }
+
+    [SymbolFor("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({
+          url: this.url,
+          readyState: this.readyState,
+          extensions: this.extensions,
+          protocol: this.protocol,
+          binaryType: this.binaryType,
+          bufferedAmount: this.bufferedAmount,
+        })
+      }`;
     }
   }
 
