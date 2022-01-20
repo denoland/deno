@@ -40,7 +40,6 @@ https://github.com/denoland/deno_install
 - fix(ext/console): don't depend on globalThis present (#13387)
 - fix(ext/crypto): validate maskGenAlgorithm asn1 in importKey (#13421)
 - fix(ext/ffi): `pointer` type can accept `null` (#13335)
-- fix(ext/ffi): update copyright year to 2022 (#13440)
 - fix(fmt): markdown formatting should not remove backslashed backslash at start
   of paragraph (#13429)
 - fix(lsp): better handling of registry config errors (#13418)
