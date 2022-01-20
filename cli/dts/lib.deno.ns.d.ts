@@ -2260,11 +2260,9 @@ declare namespace Deno {
      * p.close();
      * ```
      */
-    kill(signo: string): void;
+    kill(signo: Signal): void;
   }
 
-  // TODO(kt3k): Remove this type later.
-  /** @deprecated Use string type instead. */
   export type Signal =
     | "SIGABRT"
     | "SIGALRM"
@@ -2310,7 +2308,7 @@ declare namespace Deno {
    *
    * NOTE: This functionality is not yet implemented on Windows.
    */
-  export function addSignalListener(signal: string, handler: () => void): void;
+  export function addSignalListener(signal: Signal, handler: () => void): void;
 
   /** Removes the given signal listener that has been registered with
    * Deno.addSignalListener.
@@ -2326,7 +2324,7 @@ declare namespace Deno {
    * NOTE: This functionality is not yet implemented on Windows.
    */
   export function removeSignalListener(
-    signal: string,
+    signal: Signal,
     handler: () => void,
   ): void;
 
@@ -2869,7 +2867,7 @@ declare namespace Deno {
    *      Deno.kill(p.pid, "SIGINT");
    *
    * Requires `allow-run` permission. */
-  export function kill(pid: number, signo: string): void;
+  export function kill(pid: number, signo: Signal): void;
 
   /** The type of the resource record.
    * Only the listed types are supported currently. */
