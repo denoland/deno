@@ -2263,6 +2263,40 @@ declare namespace Deno {
     kill(signo: string): void;
   }
 
+  // TODO(kt3k): Remove this type when std updated the signal usage.
+  /** @deprecated Use string type instead. */
+  export type Signal = string;
+
+  /** Registers the given function as a listener of the given signal event.
+   *
+   * ```ts
+   * Deno.addSignalListener("SIGTERM", () => {
+   *   console.log("SIGTERM!")
+   * });
+   * ```
+   *
+   * NOTE: This functionality is not yet implemented on Windows.
+   */
+  export function addSignalListener(signal: string, handler: () => void): void;
+
+   /** Removes the given signal listener that has been registered with
+   * Deno.addSignalListener.
+   *
+   * ```ts
+   * const listener = () => {
+   *   console.log("SIGTERM!")
+   * };
+   * Deno.addSignalListener("SIGTERM", listener);
+   * Deno.removeSignalListener("SIGTERM", listener);
+   * ```
+   *
+   * NOTE: This functionality is not yet implemented on Windows.
+   */
+  export function removeSignalListener(
+    signal: string,
+    handler: () => void,
+  ): void;
+
   export type ProcessStatus =
     | {
       success: true;
@@ -2888,34 +2922,4 @@ declare namespace Deno {
     recordType: RecordType,
     options?: ResolveDnsOptions,
   ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
-
-  /** Registers the given function as a listener of the given signal event.
-   *
-   * ```ts
-   * Deno.addSignalListener("SIGTERM", () => {
-   *   console.log("SIGTERM!")
-   * });
-   * ```
-   *
-   * NOTE: This functionality is not yet implemented on Windows.
-   */
-  export function addSignalListener(signal: string, handler: () => void): void;
-
-  /** Removes the given signal listener that has been registered with
-   * Deno.addSignalListener.
-   *
-   * ```ts
-   * const listener = () => {
-   *   console.log("SIGTERM!")
-   * };
-   * Deno.addSignalListener("SIGTERM", listener);
-   * Deno.removeSignalListener("SIGTERM", listener);
-   * ```
-   *
-   * NOTE: This functionality is not yet implemented on Windows.
-   */
-  export function removeSignalListener(
-    signal: string,
-    handler: () => void,
-  ): void;
 }

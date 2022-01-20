@@ -526,7 +526,6 @@ Deno.test({ permissions: { run: true, read: true } }, function killFailed() {
   assert(!p.stdout);
 
   assertThrows(() => {
-    // @ts-expect-error testing runtime error of bad signal
     Deno.kill(p.pid, "foobar");
   }, TypeError);
 
