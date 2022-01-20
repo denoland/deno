@@ -3480,6 +3480,8 @@ fn lsp_diagnostics_refresh_dependents() {
     .write_request::<_, _, Value>("shutdown", json!(null))
     .unwrap();
   client.write_notification("exit", json!(null)).unwrap();
+  // wait for the published diagnostics of both requests
+  std::thread::sleep(std::time::Duration::from_millis(250));
 
   let queue_len = client.queue_len();
   assert!(!client.queue_is_empty());
