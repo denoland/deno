@@ -434,8 +434,21 @@
           }
           case "closed":
           case "close": {
+            const prevState = this[_readyState];
             this[_readyState] = CLOSED;
             clearTimeout(this[_idleTimeoutTimeout]);
+
+            if (prevState === OPEN) {
+              try {
+                await core.opAsync("op_ws_close", {
+                  rid: this[_rid],
+                  code: value.code,
+                  reason: value.reason,
+                });
+              } catch (_e) {
+                // ignore failures
+              }
+            }
 
             const event = new CloseEvent("close", {
               wasClean: true,
