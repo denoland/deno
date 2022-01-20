@@ -85,6 +85,7 @@ declare namespace Deno {
     export class BadResource extends Error {}
     export class Http extends Error {}
     export class Busy extends Error {}
+    export class NotSupported extends Error {}
   }
 
   /** The current process id of the runtime. */
