@@ -52,7 +52,7 @@ pub fn op_compression_decompress_new(
   _: (),
 ) -> Result<ResourceId, AnyError> {
   let zlib_header = match format.as_str() {
-    "gzip" => false,
+    "gzip" => true,
     "deflate" => true,
     _ => unreachable!(),
   };

@@ -34,6 +34,11 @@
   const STATUS_BUF_ERROR = 1;
   const STATUS_STREAM_END = 2;
 
+  // TODO(ry) serde_v8 should probably support directly consuming ArrayBuffer.
+  function toTypedArray(b) {
+    return b instanceof ArrayBuffer ? new Uint8Array(b) : b;
+  }
+
   function compressTotalInOut(rid) {
     return core.opSync("op_compression_compress_total_in_out", rid);
   }
@@ -55,13 +60,13 @@
 
       super({
         async transform(chunk, controller) {
-          // console.log("chunk", chunk);
+          const input = toTypedArray(chunk);
           const output = new Uint8Array(65536);
 
           const [beforeIn, beforeOut] = compressTotalInOut(rid);
 
           const r = core.opSync("op_compression_compress", rid, [
-            chunk,
+            input,
             output,
             FLUSH_COMPRESS_SYNC,
           ]);
@@ -93,16 +98,15 @@
       });
       const rid = core.opSync("op_compression_decompress_new", format);
 
-
       super({
         async transform(chunk, controller) {
-          console.log("chunk", chunk);
+          const input = toTypedArray(chunk);
           const output = new Uint8Array(65536);
 
           const [beforeIn, beforeOut] = decompressTotalInOut(rid);
 
           const r = core.opSync("op_compression_decompress", rid, [
-            chunk,
+            input,
             output,
             FLUSH_DECOMPRESS_SYNC,
           ]);
