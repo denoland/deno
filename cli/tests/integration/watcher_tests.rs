@@ -1027,7 +1027,10 @@ fn test_watch_with_no_clear_screen() {
   // Change content of the file
   write(&file_to_watch, "export const bar = 0;").unwrap();
 
-  assert_contains!(stderr_lines.next().unwrap(), "Watcher File change detected! Restarting!");
+  assert_contains!(
+    stderr_lines.next().unwrap(),
+    "Watcher File change detected! Restarting!"
+  );
   assert_contains!(
     stderr_lines.next().unwrap(),
     "Process finished. Restarting on file change..."
