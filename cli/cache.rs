@@ -44,7 +44,6 @@ impl Loader for FetchCacher {
     if local.is_file() {
       Some(CacheInfo {
         local: Some(local),
-        // todo(dsherret): it might be nice to store the actual emitted text and source map in the graph itself
         emit: None,
         map: None,
       })

@@ -266,7 +266,7 @@ async fn op_emit(
         reload_exclusions: Default::default(),
       },
     )?;
-    let files = emit::to_file_map(graph.as_ref(), &*emit_cache);
+    let files = emit::to_file_map(graph.as_ref(), emit_result.emit_cache_data);
     (files, emit_result.diagnostics, emit_result.stats)
   } else if let Some(bundle) = &args.bundle {
     let (diagnostics, stats) = if check {
@@ -321,7 +321,7 @@ async fn op_emit(
         reload_exclusions: HashSet::default(),
       },
     )?;
-    let files = emit::to_file_map(graph.as_ref(), &*emit_cache);
+    let files = emit::to_file_map(graph.as_ref(), emit_result.emit_cache_data);
     (files, emit_result.diagnostics, emit_result.stats)
   };
 

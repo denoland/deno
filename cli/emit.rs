@@ -302,7 +302,7 @@ fn get_tsc_roots(
   }
 }
 
-/// A hashing function that takes the source code, version and optionally a
+/// A hashing function that takes the source code and optionally a
 /// user provided config and generates a string hash which can be stored to
 /// determine if the cached emit is valid or not.
 fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
@@ -352,10 +352,10 @@ pub(crate) struct CheckOptions {
 
 /// The result of a check or emit of a module graph. Note that the actual
 /// emitted sources are stored in the cache and are not returned in the result.
-#[derive(Debug, Default)]
 pub(crate) struct CheckEmitResult {
   pub diagnostics: Diagnostics,
   pub stats: Stats,
+  pub emit_cache_data: HashMap<ModuleSpecifier, EmitCacheData>,
 }
 
 /// Given a set of roots and graph data, type check the module graph and
@@ -376,14 +376,18 @@ pub(crate) fn check_and_maybe_emit(
     let graph_data = graph_data.read();
     graph_data.graph_segment(roots).unwrap()
   };
-  if valid_emit(
+  if let Some(emit_cache_data) = valid_emit(
     &segment_graph_data,
     emit_cache,
     &options.ts_config,
     options.reload,
     &options.reload_exclusions,
   ) {
-    return Ok(Default::default());
+    return Ok(CheckEmitResult {
+      diagnostics: Default::default(),
+      stats: Default::default(),
+      emit_cache_data,
+    });
   }
   let root_names = get_tsc_roots(roots, &segment_graph_data, check_js);
   if options.log_checks {
@@ -434,6 +438,7 @@ pub(crate) fn check_and_maybe_emit(
     response.diagnostics
   };
 
+  let mut emit_cache_data = HashMap::new();
   // sometimes we want to emit when there are diagnostics, and sometimes we
   // don't. tsc will always return an emit if there are diagnostics
   if (diagnostics.is_empty() || options.emit_with_diagnostics)
@@ -529,6 +534,8 @@ pub(crate) fn check_and_maybe_emit(
     for (specifier, data) in emit_data_items.into_iter() {
       if let Some(cache_data) = data.into_cache_data() {
         emit_cache.set_emit_data(&specifier, &cache_data)?;
+        // and store them for the result
+        emit_cache_data.insert(specifier, cache_data);
       }
     }
   }
@@ -536,6 +543,7 @@ pub(crate) fn check_and_maybe_emit(
   Ok(CheckEmitResult {
     diagnostics,
     stats: response.stats,
+    emit_cache_data,
   })
 }
 
@@ -825,6 +833,7 @@ pub(crate) fn emit(
   let config_bytes = options.ts_config.as_bytes();
   let include_js = options.ts_config.get_check_js();
   let emit_options = options.ts_config.into();
+  let mut emit_cache_data = HashMap::new();
 
   let mut emit_count = 0_u32;
   let mut file_count = 0_u32;
@@ -833,30 +842,37 @@ pub(crate) fn emit(
     if !is_emittable(&module.media_type, include_js) {
       continue;
     }
-    // todo(dsherret): the below code is racy as it's inserting items from
-    // the graph into the cache that will be read from later. We should keep
-    // all this data in memory.
     let needs_reload =
       options.reload && !options.reload_exclusions.contains(&module.specifier);
     let version = get_version(module.source.as_bytes(), &config_bytes);
-    let is_valid = emit_cache
-      .get_emit_data(&module.specifier)
-      .map_or(false, |d| d.source_hash == version);
+    let cached_emit_data = if needs_reload {
+      None
+    } else if let Some(emit_data) = emit_cache.get_emit_data(&module.specifier)
+    {
+      if emit_data.source_hash == version {
+        Some(emit_data)
+      } else {
+        None
+      }
+    } else {
+      None
+    };
 
-    if is_valid && !needs_reload {
-      continue;
-    }
-    let transpiled_source = module.parsed_source.transpile(&emit_options)?;
-    emit_count += 1;
-    emit_cache.set_emit_data(
-      &module.specifier,
-      &EmitCacheData {
+    let emit_data = if let Some(emit_data) = cached_emit_data {
+      emit_data
+    } else {
+      let transpiled_source = module.parsed_source.transpile(&emit_options)?;
+      emit_count += 1;
+      let emit_data = EmitCacheData {
         source_hash: version.clone(),
         text: transpiled_source.text,
         map: transpiled_source.source_map,
         declaration: None,
-      },
-    )?;
+      };
+      emit_cache.set_emit_data(&module.specifier, &emit_data)?;
+      emit_data
+    };
+    emit_cache_data.insert(module.specifier.clone(), emit_data);
   }
 
   let stats = Stats(vec![
@@ -868,22 +884,25 @@ pub(crate) fn emit(
   Ok(CheckEmitResult {
     diagnostics: Diagnostics::default(),
     stats,
+    emit_cache_data,
   })
 }
 
 /// Check a module graph to determine if the graph contains anything that
 /// is required to be emitted to be valid. It determines what modules in the
 /// graph are emittable and for those that are emittable, if there is currently
-/// a valid emit in the cache.
+/// a valid emit in the cache. If the emit is valid, it returns the cached
+/// emit data to use.
 fn valid_emit(
   graph_data: &GraphData,
   emit_cache: &dyn EmitCache,
   ts_config: &TsConfig,
   reload: bool,
   reload_exclusions: &HashSet<ModuleSpecifier>,
-) -> bool {
+) -> Option<HashMap<ModuleSpecifier, EmitCacheData>> {
   let config_bytes = ts_config.as_bytes();
   let emit_js = ts_config.get_check_js();
+  let mut emit_cache_data = HashMap::new();
   for (specifier, module_entry) in graph_data.entries() {
     if let ModuleEntry::Module {
       code, media_type, ..
@@ -903,19 +922,21 @@ fn valid_emit(
         _ => continue,
       }
       if reload && !reload_exclusions.contains(specifier) {
-        return false;
+        return None;
       }
       if let Some(cache_data) = emit_cache.get_emit_data(specifier) {
         if cache_data.source_hash != get_version(code.as_bytes(), &config_bytes)
         {
-          return false;
+          return None;
+        } else {
+          emit_cache_data.insert(specifier.clone(), cache_data);
         }
       } else {
-        return false;
+        return None;
       }
     }
   }
-  true
+  Some(emit_cache_data)
 }
 
 /// An adapter struct to make a deno_graph::ModuleGraphError display as expected
@@ -954,14 +975,12 @@ impl fmt::Display for GraphError {
 /// emit to be passed back to the caller.
 pub(crate) fn to_file_map(
   graph: &ModuleGraph,
-  emit_cache: &dyn EmitCache,
+  mut emitted_files: HashMap<ModuleSpecifier, EmitCacheData>,
 ) -> HashMap<String, String> {
   let mut files = HashMap::new();
   for (_, result) in graph.specifiers().into_iter() {
     if let Ok((specifier, media_type)) = result {
-      // todo(dsherret): no version check of the emit data here? How do we know we're
-      // using the same source that's in the graph?
-      if let Some(emit_data) = emit_cache.get_emit_data(&specifier) {
+      if let Some(emit_data) = emitted_files.remove(&specifier) {
         files.insert(format!("{}.js", specifier), emit_data.text);
         if let Some(map_text) = emit_data.map {
           files.insert(format!("{}.js.map", specifier), map_text);
