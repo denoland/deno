@@ -2815,10 +2815,7 @@ fn lsp_code_actions_deadlock() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  for _ in 0..3 {
-    let (method, _) = client.read_notification::<Value>().unwrap();
-    assert_eq!(method, "textDocument/publishDiagnostics");
-  }
+  read_diagnostics(&mut client);
   client
     .write_notification(
       "textDocument/didChange",
@@ -2926,12 +2923,8 @@ fn lsp_code_actions_deadlock() {
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
 
-  for _ in 0..3 {
-    let (method, _) = client.read_notification::<Value>().unwrap();
-    assert_eq!(method, "textDocument/publishDiagnostics");
-  }
+  read_diagnostics(&mut client);
 
-  assert!(client.queue_is_empty());
   shutdown(&mut client);
 }
 
