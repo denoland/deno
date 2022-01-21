@@ -18,7 +18,7 @@ use test_util::lsp::LspClient;
 use test_util::testdata_path;
 
 fn load_fixture(path: &str) -> Value {
-  load_fixture_as(&path)
+  load_fixture_as(path)
 }
 
 fn load_fixture_as<T>(path: &str) -> T
