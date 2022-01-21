@@ -1,7 +1,7 @@
 # Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 [package]
 name = "deno_core"
-version = "0.114.0"
+version = "0.116.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -23,9 +23,9 @@ parking_lot = "0.11.1"
 pin-project = "1.0.7"
 serde = { version = "1.0.129", features = ["derive"] }
 serde_json = { version = "1.0.66", features = ["preserve_order"] }
-serde_v8 = { version = "0.25.0", path = "../serde_v8" }
+serde_v8 = { version = "0.27.0", path = "../serde_v8" }
 url = { version = "2.2.2", features = ["serde"] }
-v8 = "0.37.0"
+v8 = "0.38.1"
 
 [[example]]
 name = "http_bench_json_ops"

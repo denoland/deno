@@ -55,12 +55,12 @@ where
   client
     .write_response(
       id,
-      json!({
+      json!([{
         "enable": true,
         "codeLens": {
           "test": true
         }
-      }),
+      }]),
     )
     .unwrap();
 
@@ -564,7 +564,7 @@ fn lsp_hover_disabled() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": false }))
+    .write_response(id, json!([{ "enable": false }]))
     .unwrap();
 
   let (maybe_res, maybe_err) = client
@@ -814,7 +814,7 @@ fn lsp_hover_closed_document() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(id, json!([{ "enable": true }]))
     .unwrap();
 
   client
@@ -833,7 +833,7 @@ fn lsp_hover_closed_document() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(id, json!([{ "enable": true }]))
     .unwrap();
 
   let (method, _) = client.read_notification::<Value>().unwrap();
@@ -1543,6 +1543,58 @@ fn lsp_format_exclude_with_config() {
 }
 
 #[test]
+fn lsp_format_exclude_default_config() {
+  let temp_dir = TempDir::new().unwrap();
+  let workspace_root = temp_dir.path().canonicalize().unwrap();
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let deno_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
+  fs::write(workspace_root.join("deno.jsonc"), deno_jsonc).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(workspace_root.clone()).unwrap());
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  let file_uri =
+    ModuleSpecifier::from_file_path(workspace_root.join("ignored.ts"))
+      .unwrap()
+      .to_string();
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": file_uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "function   myFunc(){}"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": file_uri
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_large_doc_changes() {
   let mut client = init("initialize_params.json");
   did_open(&mut client, load_fixture("did_open_params_large.json"));
@@ -2085,12 +2137,12 @@ fn lsp_code_lens_test_disabled() {
   client
     .write_response(
       id,
-      json!({
+      json!([{
         "enable": true,
         "codeLens": {
           "test": false
         }
-      }),
+      }]),
     )
     .unwrap();
 
@@ -2467,7 +2519,7 @@ fn lsp_code_actions_deno_cache() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(id, json!([{ "enable": true }]))
     .unwrap();
   let (method, _) = client.read_notification::<Value>().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
@@ -2641,7 +2693,7 @@ fn lsp_code_actions_deadlock() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(id, json!([{ "enable": true }]))
     .unwrap();
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
@@ -3301,7 +3353,7 @@ fn lsp_diagnostics_deno_types() {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(id, json!([{ "enable": true }]))
     .unwrap();
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
@@ -3354,34 +3406,20 @@ fn lsp_diagnostics_refresh_dependents() {
       },
     }),
   );
-  client
-    .write_notification(
-      "textDocument/didOpen",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file_02.ts",
-          "languageId": "typescript",
-          "version": 1,
-          "text": "import { a, b } from \"./file_01.ts\";\n\nconsole.log(a, b);\n"
-        }
-      }),
-    )
-    .unwrap();
-
-  let (id, method, _) = client.read_request::<Value>().unwrap();
-  assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(id, json!({ "enable": false }))
-    .unwrap();
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, maybe_params) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_02.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import { a, b } from \"./file_01.ts\";\n\nconsole.log(a, b);\n"
+      }
+    }),
+  );
   assert_eq!(
-    maybe_params,
-    Some(json!({
+    json!(diagnostics[2]),
+    json!({
       "uri": "file:///a/file_02.ts",
       "diagnostics": [
         {
@@ -3402,7 +3440,7 @@ fn lsp_diagnostics_refresh_dependents() {
         }
       ],
       "version": 1
-    }))
+    })
   );
   client
     .write_notification(

@@ -313,7 +313,13 @@ impl MainWorker {
     &mut self,
     script_name: &str,
   ) -> Result<(), AnyError> {
-    self.execute_script(script_name, "window.dispatchEvent(new Event('load'))")
+    self.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('load'))",
+    )
   }
 
   /// Dispatches "unload" event to the JavaScript runtime.
@@ -323,8 +329,13 @@ impl MainWorker {
     &mut self,
     script_name: &str,
   ) -> Result<(), AnyError> {
-    self
-      .execute_script(script_name, "window.dispatchEvent(new Event('unload'))")
+    self.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('unload'))",
+    )
   }
 }
 

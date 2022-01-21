@@ -29,7 +29,6 @@
     RegExpPrototypeTest,
     SymbolToStringTag,
   } = window.__bootstrap.primordials;
-  let testStepsEnabled = false;
 
   const opSanitizerDelayResolveQueue = [];
 
@@ -746,12 +745,6 @@ finishing test case.`;
        * @param fn {(t: TestContext) => void | Promise<void>}
        */
       async step(nameOrTestDefinition, fn) {
-        if (!testStepsEnabled) {
-          throw new Error(
-            "Test steps are unstable. The --unstable flag must be provided.",
-          );
-        }
-
         if (parentStep.finalized) {
           throw new Error(
             "Cannot run test step after parent scope has finished execution. " +
@@ -890,14 +883,9 @@ finishing test case.`;
     return value == null ? defaultValue : value;
   }
 
-  function enableTestSteps() {
-    testStepsEnabled = true;
-  }
-
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     runTests,
-    enableTestSteps,
   };
 
   window.__bootstrap.testing = {

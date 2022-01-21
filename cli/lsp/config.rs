@@ -194,7 +194,6 @@ impl WorkspaceSettings {
 #[derive(Debug, Clone, Default)]
 pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
-  pub root_uri: Option<Url>,
   pub settings: Settings,
   pub workspace_folders: Option<Vec<lsp::WorkspaceFolder>>,
 }
@@ -224,7 +223,6 @@ pub struct Settings {
 #[derive(Debug)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
-  pub root_uri: Option<Url>,
   settings: Arc<RwLock<Settings>>,
   tx: mpsc::Sender<ConfigRequest>,
   pub workspace_folders: Option<Vec<WorkspaceFolder>>,
@@ -326,7 +324,6 @@ impl Config {
 
     Self {
       client_capabilities: ClientCapabilities::default(),
-      root_uri: None,
       settings,
       tx,
       workspace_folders: None,
@@ -345,15 +342,10 @@ impl Config {
     Ok(())
   }
 
-  pub fn snapshot(&self) -> Result<ConfigSnapshot, AnyError> {
-    Ok(ConfigSnapshot {
+  pub fn snapshot(&self) -> Arc<ConfigSnapshot> {
+    Arc::new(ConfigSnapshot {
       client_capabilities: self.client_capabilities.clone(),
-      root_uri: self.root_uri.clone(),
-      settings: self
-        .settings
-        .try_read()
-        .ok_or_else(|| anyhow!("Error reading settings."))?
-        .clone(),
+      settings: self.settings.read().clone(),
       workspace_folders: self.workspace_folders.clone(),
     })
   }

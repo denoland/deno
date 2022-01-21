@@ -1,8 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::client::Client;
+use super::config::ConfigSnapshot;
+use super::documents::Documents;
 use super::language_server;
 use super::lsp_custom;
+use super::registries::ModuleRegistry;
 use super::tsc;
 
 use crate::fs_util::is_supported_ext;
@@ -37,18 +40,12 @@ pub struct CompletionItemData {
 /// a notification to the client.
 async fn check_auto_config_registry(
   url_str: &str,
-  snapshot: &language_server::StateSnapshot,
+  config: &ConfigSnapshot,
   client: Client,
+  module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
-  if snapshot
-    .config
-    .settings
-    .workspace
-    .suggest
-    .imports
-    .auto_discover
-  {
+  if config.settings.workspace.suggest.imports.auto_discover {
     if let Ok(specifier) = resolve_url(url_str) {
       let scheme = specifier.scheme();
       let path = &specifier[Position::BeforePath..];
@@ -57,26 +54,18 @@ async fn check_auto_config_registry(
         && url_str.ends_with(path)
       {
         // check to see if this origin is already explicitly set
-        let in_config = snapshot
-          .config
-          .settings
-          .workspace
-          .suggest
-          .imports
-          .hosts
-          .iter()
-          .any(|(h, _)| {
-            resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
-          });
+        let in_config =
+          config.settings.workspace.suggest.imports.hosts.iter().any(
+            |(h, _)| {
+              resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
+            },
+          );
         // if it isn't in the configuration, we will check to see if it supports
         // suggestions and send a notification to the client.
         if !in_config {
           let origin = specifier.origin().ascii_serialization();
-          let suggestions = snapshot
-            .module_registries
-            .check_origin(&origin)
-            .await
-            .is_ok();
+          let suggestions =
+            module_registries.check_origin(&origin).await.is_ok();
           // we are only sending registry state when enabled now, but changing
           // the custom notification would make older versions of the plugin
           // incompatible.
@@ -133,10 +122,12 @@ fn to_narrow_lsp_range(
 pub(crate) async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
-  state_snapshot: &language_server::StateSnapshot,
+  config: &ConfigSnapshot,
   client: Client,
+  module_registries: &ModuleRegistry,
+  documents: &Documents,
 ) -> Option<lsp::CompletionResponse> {
-  let document = state_snapshot.documents.get(specifier)?;
+  let document = documents.get(specifier)?;
   let (text, _, range) = document.get_maybe_dependency(position)?;
   let range = to_narrow_lsp_range(&document.text_info(), &range);
   // completions for local relative modules
@@ -147,25 +138,19 @@ pub(crate) async fn get_import_completions(
     }))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
-    check_auto_config_registry(&text, state_snapshot, client).await;
+    check_auto_config_registry(&text, config, client, module_registries).await;
     let offset = if position.character > range.start.character {
       (position.character - range.start.character) as usize
     } else {
       0
     };
-    let maybe_list = state_snapshot
-      .module_registries
+    let maybe_list = module_registries
       .get_completions(&text, offset, &range, |specifier| {
-        state_snapshot.documents.contains_specifier(specifier)
+        documents.contains_specifier(specifier)
       })
       .await;
     let list = maybe_list.unwrap_or_else(|| lsp::CompletionList {
-      items: get_workspace_completions(
-        specifier,
-        &text,
-        &range,
-        state_snapshot,
-      ),
+      items: get_workspace_completions(specifier, &text, &range, documents),
       is_incomplete: false,
     });
     Some(lsp::CompletionResponse::List(list))
@@ -182,9 +167,8 @@ pub(crate) async fn get_import_completions(
       })
       .collect();
     let mut is_incomplete = false;
-    if let Some(origin_items) = state_snapshot
-      .module_registries
-      .get_origin_completions(&text, &range)
+    if let Some(origin_items) =
+      module_registries.get_origin_completions(&text, &range)
     {
       is_incomplete = origin_items.is_incomplete;
       items.extend(origin_items.items);
@@ -302,10 +286,9 @@ fn get_workspace_completions(
   specifier: &ModuleSpecifier,
   current: &str,
   range: &lsp::Range,
-  state_snapshot: &language_server::StateSnapshot,
+  documents: &Documents,
 ) -> Vec<lsp::CompletionItem> {
-  let workspace_specifiers = state_snapshot
-    .documents
+  let workspace_specifiers = documents
     .documents(false, true)
     .into_iter()
     .map(|d| d.specifier().clone())
@@ -454,11 +437,11 @@ mod tests {
   use std::sync::Arc;
   use tempfile::TempDir;
 
-  fn mock_state_snapshot(
+  fn mock_documents(
     fixtures: &[(&str, &str, i32, LanguageId)],
     source_fixtures: &[(&str, &str)],
     location: &Path,
-  ) -> language_server::StateSnapshot {
+  ) -> Documents {
     let mut documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
@@ -482,19 +465,16 @@ mod tests {
         "source could not be setup"
       );
     }
-    language_server::StateSnapshot {
-      documents,
-      ..Default::default()
-    }
+    documents
   }
 
   fn setup(
     documents: &[(&str, &str, i32, LanguageId)],
     sources: &[(&str, &str)],
-  ) -> language_server::StateSnapshot {
+  ) -> Documents {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
-    mock_state_snapshot(documents, sources, &location)
+    mock_documents(documents, sources, &location)
   }
 
   #[test]
@@ -653,7 +633,7 @@ mod tests {
         character: 21,
       },
     };
-    let state_snapshot = setup(
+    let documents = setup(
       &[
         (
           "file:///a/b/c.ts",
@@ -665,8 +645,7 @@ mod tests {
       ],
       &[("https://deno.land/x/a/b/c.ts", "console.log(1);\n")],
     );
-    let actual =
-      get_workspace_completions(&specifier, "h", &range, &state_snapshot);
+    let actual = get_workspace_completions(&specifier, "h", &range, &documents);
     assert_eq!(
       actual,
       vec![lsp::CompletionItem {

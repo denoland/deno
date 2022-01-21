@@ -11,6 +11,7 @@ pub enum ValueType {
   Number,
   String,
   Array,
+  ArrayBuffer,
   ArrayBufferView,
   Object,
 }
@@ -25,6 +26,8 @@ impl ValueType {
       return Self::String;
     } else if v.is_array() {
       return Self::Array;
+    } else if v.is_array_buffer() {
+      return Self::ArrayBuffer;
     } else if v.is_array_buffer_view() {
       return Self::ArrayBufferView;
     } else if v.is_object() {

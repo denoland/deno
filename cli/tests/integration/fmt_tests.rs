@@ -177,13 +177,18 @@ itest!(fmt_stdin_check_not_formatted {
 });
 
 itest!(fmt_with_config {
-  args: "fmt --config fmt/deno.jsonc fmt/fmt_with_config/",
+  args: "fmt --config fmt/with_config/deno.jsonc fmt/with_config/subdir",
+  output: "fmt/fmt_with_config.out",
+});
+
+itest!(fmt_with_config_default {
+  args: "fmt fmt/with_config/subdir",
   output: "fmt/fmt_with_config.out",
 });
 
 // Check if CLI flags take precedence
 itest!(fmt_with_config_and_flags {
-  args: "fmt --config fmt/deno.jsonc --ignore=fmt/fmt_with_config/a.ts,fmt/fmt_with_config/b.ts",
+  args: "fmt --config fmt/with_config/deno.jsonc --ignore=fmt/with_config/subdir/a.ts,fmt/with_config/subdir/b.ts",
   output: "fmt/fmt_with_config_and_flags.out",
 });
 

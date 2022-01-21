@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::logging::lsp_log;
 use super::path_to_regex::parse;
 use super::path_to_regex::string_to_regex;
 use super::path_to_regex::Compiler;
@@ -544,8 +545,19 @@ impl ModuleRegistry {
     // we can't use entry().or_insert_with() because we can't use async closures
     if !self.origins.contains_key(&origin) {
       let specifier = origin_url.join(CONFIG_PATH)?;
-      let configs = self.fetch_config(&specifier).await?;
-      self.origins.insert(origin, configs);
+      match self.fetch_config(&specifier).await {
+        Ok(configs) => {
+          self.origins.insert(origin, configs);
+        }
+        Err(err) => {
+          lsp_log!(
+            "  Error fetching registry config for \"{}\": {}",
+            origin,
+            err.to_string()
+          );
+          self.origins.remove(&origin);
+        }
+      }
     }
 
     Ok(())
