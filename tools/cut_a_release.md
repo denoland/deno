@@ -33,8 +33,8 @@ Before starting the process write a message in company's #general channel:
 2. Open a PR on the `deno_std` repo that bumps the version in `version.ts` and
    updates `Releases.md`. You can use following command to generate a short list
    that needs to be updated: `git log --oneline <previous_tag>..` (replace
-   `<previous_tag>` with actual latest tag). Remove all commits that are not
-   `feat` or `fix`.
+   `<previous_tag>` with actual latest tag, eg. `git log --oneline 0.122.0..`).
+   Remove all commits that are not `feat` or `fix`.
 
 3. Before merging the PR, make sure that all tests pass when run using binary
    produced from bumping crates (point 3. from below).
@@ -42,7 +42,10 @@ Before starting the process write a message in company's #general channel:
 4. When merging the PR, ensure that the commit name is exactly the version name.
    Eg. `0.121.0`, not `0.121.0 (#1810)`.
 
-5. Create a tag with the version number (_without_ `v` prefix).
+5. Pull the latest `main` branch and make sure the commit from the merged PR is
+   there. Create a tag with the version number (_without_ `v` prefix), eg.
+   `deno tag 0.122.0 <commit_hash>`, then push the tag to the
+   `denoland/deno_std` repository, eg. `git push upstream 0.122.0`.
 
 6. Once CI passes, copy contents of `Releases.md` you added, and create a new
    release on GitHub (https://github.com/denoland/deno_std/releases).
@@ -93,7 +96,10 @@ verify on GitHub that everything looks correct.
 9. If you are doing a patch release, answer `y` to the _Increment patch?_
    prompt.
 
-10. Use the output of the above command to update `Releases.md`
+10. Use the output of the above command to update `Releases.md`. **If you are
+    cutting a minor release**: make sure that there are no duplicate entries in
+    previous releases; most often commits with `fix` prefix would have been
+    included in patch releases.
 
 11. Update link in `cli/compat/mod.rs` with the released version of `deno_std`
     and do a search through the tests to find std urls that need to be updated.
@@ -103,7 +109,7 @@ verify on GitHub that everything looks correct.
 
 13. Make sure CI pipeline passes.
 
-14. Publish `cli` crate to `crates.io`
+14. Publish `cli` crate to `crates.io`: `cd cli && cargo publish`
 
 15. Merge the PR.
 
