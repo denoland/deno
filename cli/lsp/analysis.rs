@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
@@ -171,14 +172,11 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 fn check_specifier(
   specifier: &str,
   referrer: &ModuleSpecifier,
-  snapshot: &language_server::StateSnapshot,
+  documents: &Documents,
 ) -> Option<String> {
   for ext in SUPPORTED_EXTENSIONS {
     let specifier_with_ext = format!("{}{}", specifier, ext);
-    if snapshot
-      .documents
-      .contains_import(&specifier_with_ext, referrer)
-    {
+    if documents.contains_import(&specifier_with_ext, referrer) {
       return Some(specifier_with_ext);
     }
   }
@@ -190,10 +188,9 @@ fn check_specifier(
 pub(crate) fn fix_ts_import_changes(
   referrer: &ModuleSpecifier,
   changes: &[tsc::FileTextChanges],
-  language_server: &language_server::Inner,
+  documents: &Documents,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
   let mut r = Vec::new();
-  let snapshot = language_server.snapshot()?;
   for change in changes {
     let mut text_changes = Vec::new();
     for text_change in &change.text_changes {
@@ -205,7 +202,7 @@ pub(crate) fn fix_ts_import_changes(
           .ok_or_else(|| anyhow!("Missing capture."))?
           .as_str();
         if let Some(new_specifier) =
-          check_specifier(specifier, referrer, &snapshot)
+          check_specifier(specifier, referrer, documents)
         {
           let new_text =
             text_change.new_text.replace(specifier, &new_specifier);
@@ -234,7 +231,7 @@ pub(crate) fn fix_ts_import_changes(
 fn fix_ts_import_action(
   referrer: &ModuleSpecifier,
   action: &tsc::CodeFixAction,
-  language_server: &language_server::Inner,
+  documents: &Documents,
 ) -> Result<tsc::CodeFixAction, AnyError> {
   if action.fix_name == "import" {
     let change = action
@@ -251,9 +248,8 @@ fn fix_ts_import_action(
         .get(1)
         .ok_or_else(|| anyhow!("Missing capture."))?
         .as_str();
-      let snapshot = language_server.snapshot()?;
       if let Some(new_specifier) =
-        check_specifier(specifier, referrer, &snapshot)
+        check_specifier(specifier, referrer, documents)
       {
         let description = action.description.replace(specifier, &new_specifier);
         let changes = action
@@ -341,7 +337,7 @@ fn is_preferred(
 /// for an LSP CodeAction.
 pub(crate) async fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
-  language_server: &mut language_server::Inner,
+  language_server: &language_server::Inner,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
@@ -607,7 +603,7 @@ impl CodeActionCollection {
     specifier: &ModuleSpecifier,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<(), AnyError> {
     if action.commands.is_some() {
       // In theory, tsc can return actions that require "commands" to be applied
@@ -622,7 +618,8 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
-    let action = fix_ts_import_action(specifier, action, language_server)?;
+    let action =
+      fix_ts_import_action(specifier, action, &language_server.documents)?;
     let edit = ts_changes_to_edit(&action.changes, language_server).await?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),

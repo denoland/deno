@@ -72,6 +72,7 @@
     Pbkdf2Params: { hash: "HashAlgorithmIdentifier", salt: "BufferSource" },
     RsaOaepParams: { label: "BufferSource" },
     RsaHashedImportParams: { hash: "HashAlgorithmIdentifier" },
+    EcKeyImportParams: {},
   };
 
   const supportedAlgorithms = {
@@ -109,8 +110,8 @@
       "RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
       "RSA-PSS": "RsaHashedImportParams",
       "RSA-OAEP": "RsaHashedImportParams",
-      "ECDSA": "EcImportParams",
-      "ECDH": "EcImportParams",
+      "ECDSA": "EcKeyImportParams",
+      "ECDH": "EcKeyImportParams",
       "HMAC": "HmacImportParams",
       "HKDF": null,
       "PBKDF2": null,
@@ -974,6 +975,10 @@
         case "RSA-PSS":
         case "RSA-OAEP": {
           return exportKeyRSA(format, key, innerKey);
+        }
+        case "ECDH":
+        case "ECDSA": {
+          return exportKeyEC(format, key, innerKey);
         }
         case "AES-CTR":
         case "AES-CBC":
@@ -2343,19 +2348,6 @@
     return key;
   }
 
-  const SUPPORTED_EC_KEY_USAGES = {
-    "ECDSA": {
-      public: ["verify"],
-      private: ["sign"],
-      jwtUse: "sig",
-    },
-    "ECDH": {
-      public: [],
-      private: ["deriveKey", "deriveBits"],
-      jwtUse: "enc",
-    },
-  };
-
   function importKeyEC(
     format,
     normalizedAlgorithm,
@@ -2363,7 +2355,7 @@
     extractable,
     keyUsages,
   ) {
-    const supportedUsages = SUPPORTED_EC_KEY_USAGES[normalizedAlgorithm.name];
+    const supportedUsages = SUPPORTED_KEY_USAGES[normalizedAlgorithm.name];
 
     switch (format) {
       case "raw": {
@@ -2384,7 +2376,11 @@
         if (
           ArrayPrototypeFind(
             keyUsages,
-            (u) => !ArrayPrototypeIncludes(supportedUsages.public, u),
+            (u) =>
+              !ArrayPrototypeIncludes(
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].public,
+                u,
+              ),
           ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
@@ -2421,7 +2417,11 @@
         if (
           ArrayPrototypeFind(
             keyUsages,
-            (u) => !ArrayPrototypeIncludes(supportedUsages.private, u),
+            (u) =>
+              !ArrayPrototypeIncludes(
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].private,
+                u,
+              ),
           ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
@@ -2457,7 +2457,11 @@
           if (
             ArrayPrototypeFind(
               keyUsages,
-              (u) => !ArrayPrototypeIncludes(supportedUsages.public, u),
+              (u) =>
+                !ArrayPrototypeIncludes(
+                  SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].public,
+                  u,
+                ),
             ) !== undefined
           ) {
             throw new DOMException("Invalid key usages", "SyntaxError");
@@ -2663,7 +2667,7 @@
     }
   }
 
-  const SUPPORTED_RSA_KEY_USAGES = {
+  const SUPPORTED_KEY_USAGES = {
     "RSASSA-PKCS1-v1_5": {
       public: ["verify"],
       private: ["sign"],
@@ -2677,6 +2681,16 @@
     "RSA-OAEP": {
       public: ["encrypt", "wrapKey"],
       private: ["decrypt", "unwrapKey"],
+      jwtUse: "enc",
+    },
+    "ECDSA": {
+      public: ["verify"],
+      private: ["sign"],
+      jwtUse: "sig",
+    },
+    "ECDH": {
+      public: [],
+      private: ["deriveKey", "deriveBits"],
       jwtUse: "enc",
     },
   };
@@ -2696,7 +2710,7 @@
             keyUsages,
             (u) =>
               !ArrayPrototypeIncludes(
-                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].private,
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].private,
                 u,
               ),
           ) !== undefined
@@ -2742,7 +2756,7 @@
             keyUsages,
             (u) =>
               !ArrayPrototypeIncludes(
-                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].public,
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].public,
                 u,
               ),
           ) !== undefined
@@ -2792,7 +2806,7 @@
               keyUsages,
               (u) =>
                 !ArrayPrototypeIncludes(
-                  SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].private,
+                  SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].private,
                   u,
                 ),
             ) !== undefined
@@ -2804,7 +2818,7 @@
             keyUsages,
             (u) =>
               !ArrayPrototypeIncludes(
-                SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].public,
+                SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].public,
                 u,
               ),
           ) !== undefined
@@ -2824,11 +2838,11 @@
         if (
           keyUsages.length > 0 && jwk.use !== undefined &&
           StringPrototypeToLowerCase(jwk.use) !==
-            SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].jwtUse
+            SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].jwtUse
         ) {
           throw new DOMException(
             `'use' property of JsonWebKey must be '${
-              SUPPORTED_RSA_KEY_USAGES[normalizedAlgorithm.name].jwtUse
+              SUPPORTED_KEY_USAGES[normalizedAlgorithm.name].jwtUse
             }'`,
             "DataError",
           );
@@ -3371,6 +3385,128 @@
         jwk.ext = key[_extractable];
 
         return jwk;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+  }
+
+  function exportKeyEC(format, key, innerKey) {
+    switch (format) {
+      case "pkcs8": {
+        // 1.
+        if (key[_type] !== "private") {
+          throw new DOMException(
+            "Key is not a private key",
+            "InvalidAccessError",
+          );
+        }
+
+        // 2.
+        const data = core.opSync("op_crypto_export_key", {
+          algorithm: key[_algorithm].name,
+          namedCurve: key[_algorithm].namedCurve,
+          format: "pkcs8",
+        }, innerKey);
+
+        return data.buffer;
+      }
+      case "spki": {
+        // 1.
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        // 2.
+        const data = core.opSync("op_crypto_export_key", {
+          algorithm: key[_algorithm].name,
+          namedCurve: key[_algorithm].namedCurve,
+          format: "spki",
+        }, innerKey);
+
+        return data.buffer;
+      }
+      case "jwk": {
+        if (key[_algorithm].name == "ECDSA") {
+          // 1-2.
+          const jwk = {
+            kty: "EC",
+          };
+
+          // 3.1
+          jwk.crv = key[_algorithm].namedCurve;
+
+          // Missing from spec
+          let algNamedCurve;
+
+          switch (key[_algorithm].namedCurve) {
+            case "P-256": {
+              algNamedCurve = "ES256";
+              break;
+            }
+            case "P-384": {
+              algNamedCurve = "ES384";
+              break;
+            }
+            case "P-521": {
+              algNamedCurve = "ES512";
+              break;
+            }
+            default:
+              throw new DOMException(
+                "Curve algorithm not supported",
+                "DataError",
+              );
+          }
+
+          jwk.alg = algNamedCurve;
+
+          // 3.2 - 3.4.
+          const data = core.opSync("op_crypto_export_key", {
+            format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
+            algorithm: key[_algorithm].name,
+            namedCurve: key[_algorithm].namedCurve,
+          }, innerKey);
+          ObjectAssign(jwk, data);
+
+          // 4.
+          jwk.key_ops = key.usages;
+
+          // 5.
+          jwk.ext = key[_extractable];
+
+          return jwk;
+        } else { // ECDH
+          // 1-2.
+          const jwk = {
+            kty: "EC",
+          };
+
+          // missing step from spec
+          jwk.alg = "ECDH";
+
+          // 3.1
+          jwk.crv = key[_algorithm].namedCurve;
+
+          // 3.2 - 3.4
+          const data = core.opSync("op_crypto_export_key", {
+            format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
+            algorithm: key[_algorithm].name,
+            namedCurve: key[_algorithm].namedCurve,
+          }, innerKey);
+          ObjectAssign(jwk, data);
+
+          // 4.
+          jwk.key_ops = key.usages;
+
+          // 5.
+          jwk.ext = key[_extractable];
+
+          return jwk;
+        }
       }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");
