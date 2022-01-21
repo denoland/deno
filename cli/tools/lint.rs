@@ -8,7 +8,7 @@
 //! the same functions as ops available in JS runtime.
 use crate::config_file::LintConfig;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::LintFlags;
+use crate::flags::{Flags, LintFlags};
 use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext, specifier_to_file_path};
 use crate::tools::fmt::run_parallelized;
@@ -51,7 +51,7 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 pub async fn lint(
   maybe_lint_config: Option<LintConfig>,
   lint_flags: LintFlags,
-  watch: bool,
+  flags: Flags,
 ) -> Result<(), AnyError> {
   let LintFlags {
     maybe_rules_tags,
@@ -166,13 +166,19 @@ pub async fn lint(
 
     Ok(())
   };
-  if watch {
+  if flags.watch.is_some() {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
       return Err(generic_error(
         "Lint watch on standard input is not supported.",
       ));
     }
-    file_watcher::watch_func(resolver, operation, "Lint").await?;
+    file_watcher::watch_func(
+      resolver,
+      operation,
+      "Lint",
+      !flags.no_clear_screen,
+    )
+    .await?;
   } else {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
       let reporter_lock =

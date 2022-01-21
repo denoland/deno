@@ -1279,7 +1279,8 @@ pub async fn run_tests_with_watch(
     }
   };
 
-  file_watcher::watch_func(resolver, operation, "Test").await?;
+  file_watcher::watch_func(resolver, operation, "Test", !flags.no_clear_screen)
+    .await?;
 
   Ok(())
 }

@@ -91,12 +91,6 @@ where
         paths_to_watch,
         result,
       } => {
-        // Clear screen first
-        eprint!("{}", CLEAR_SCREEN);
-        info!(
-          "{} File change detected! Restarting!",
-          colors::intense_blue("Watcher"),
-        );
         return (paths_to_watch, result);
       }
     }
@@ -115,10 +109,13 @@ where
 /// have the logic for it like bundling the code.
 ///
 /// - `job_name` is just used for printing watcher status to terminal.
+///
+/// - `clear_screen` is used for determine whether to clear the terminal screen
 pub async fn watch_func<R, O, T, F1, F2>(
   mut resolver: R,
   mut operation: O,
   job_name: &str,
+  clear_screen: bool,
 ) -> Result<(), AnyError>
 where
   R: FnMut(Option<Vec<PathBuf>>) -> F1,
@@ -132,6 +129,16 @@ where
   // continue watching files using these data.
   let mut paths_to_watch;
   let mut resolution_result;
+
+  let print_after_restart = || {
+    if clear_screen {
+      eprint!("{}", CLEAR_SCREEN);
+    }
+    info!(
+      "{} File change detected! Restarting!",
+      colors::intense_blue("Watcher"),
+    );
+  };
 
   match resolver(None).await {
     ResolutionResult::Ignore => {
@@ -149,6 +156,8 @@ where
       let (paths, result) = next_restart(&mut resolver, &mut receiver).await;
       paths_to_watch = paths;
       resolution_result = result;
+
+      print_after_restart();
     }
     ResolutionResult::Restart {
       paths_to_watch: paths,
@@ -159,8 +168,10 @@ where
     }
   };
 
-  // Clear screen first
-  eprint!("{}", CLEAR_SCREEN);
+  if clear_screen {
+    eprint!("{}", CLEAR_SCREEN);
+  }
+
   info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
 
   loop {
@@ -175,6 +186,8 @@ where
               paths_to_watch = paths;
             }
             resolution_result = result;
+
+            print_after_restart();
             continue;
           },
           _ = fut => {},
@@ -201,6 +214,8 @@ where
       paths_to_watch = paths;
     }
     resolution_result = result;
+
+    print_after_restart();
 
     drop(watcher);
   }

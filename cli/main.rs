@@ -536,8 +536,7 @@ async fn lint_command(
     None
   };
 
-  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch.is_some())
-    .await?;
+  tools::lint::lint(maybe_lint_config, lint_flags, flags).await?;
   Ok(0)
 }
 
@@ -853,7 +852,13 @@ async fn bundle_command(
   };
 
   if flags.watch.is_some() {
-    file_watcher::watch_func(resolver, operation, "Bundle").await?;
+    file_watcher::watch_func(
+      resolver,
+      operation,
+      "Bundle",
+      !flags.no_clear_screen,
+    )
+    .await?;
   } else {
     let module_graph =
       if let ResolutionResult::Restart { result, .. } = resolver(None).await {
@@ -894,8 +899,7 @@ async fn format_command(
     return Ok(0);
   }
 
-  tools::fmt::format(fmt_flags, flags.watch.is_some(), maybe_fmt_config)
-    .await?;
+  tools::fmt::format(flags, fmt_flags, maybe_fmt_config).await?;
   Ok(0)
 }
 
@@ -1118,7 +1122,13 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     }
   };
 
-  file_watcher::watch_func(resolver, operation, "Process").await?;
+  file_watcher::watch_func(
+    resolver,
+    operation,
+    "Process",
+    !flags.no_clear_screen,
+  )
+  .await?;
   Ok(0)
 }
 
