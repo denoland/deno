@@ -56,7 +56,8 @@ fn op_apply_source_map(
       args.line_number.into(),
       args.column_number.into(),
       &mut mappings_map,
-      ps,
+      &ps,
+      &ps.file_fetcher,
     );
 
   Ok(AppliedSourceMap {

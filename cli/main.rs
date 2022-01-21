@@ -8,8 +8,8 @@ mod config_file;
 mod deno_dir;
 mod diagnostics;
 mod diff;
-mod disk_cache;
 mod emit;
+mod emit_cache;
 mod errors;
 mod file_fetcher;
 mod file_watcher;
@@ -36,6 +36,7 @@ mod unix_util;
 mod version;
 mod windows_util;
 
+use crate::emit_cache::SqliteEmitCache;
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::BundleFlags;
@@ -101,11 +102,13 @@ use std::sync::Arc;
 
 fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
   Arc::new(move |args| {
-    let global_state_ = ps.clone();
-    let js_error_create_fn = Rc::new(move |core_js_error| {
-      let source_mapped_error =
-        apply_source_map(&core_js_error, global_state_.clone());
-      PrettyJsError::create(source_mapped_error)
+    let js_error_create_fn = Rc::new({
+      let ps = ps.clone();
+      move |core_js_error| {
+        let source_mapped_error =
+          apply_source_map(&core_js_error, &ps, &ps.file_fetcher);
+        PrettyJsError::create(source_mapped_error)
+      }
     });
 
     let maybe_inspector_server = ps.maybe_inspector_server.clone();
@@ -174,12 +177,13 @@ pub fn create_main_worker(
 ) -> MainWorker {
   let module_loader = CliModuleLoader::new(ps.clone());
 
-  let global_state_ = ps.clone();
-
-  let js_error_create_fn = Rc::new(move |core_js_error| {
-    let source_mapped_error =
-      apply_source_map(&core_js_error, global_state_.clone());
-    PrettyJsError::create(source_mapped_error)
+  let js_error_create_fn = Rc::new({
+    let ps = ps.clone();
+    move |core_js_error| {
+      let source_mapped_error =
+        apply_source_map(&core_js_error, &ps, &ps.file_fetcher);
+      PrettyJsError::create(source_mapped_error)
+    }
   });
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
@@ -284,7 +288,7 @@ fn print_cache_info(
 ) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
-  let typescript_cache = &state.dir.gen_cache.location;
+  let typescript_cache = &state.dir.emit_cache_db_file_path();
   let registry_cache =
     &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
   let mut origin_dir = state.dir.root.join("location_data");
@@ -443,7 +447,6 @@ async fn info_command(
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
     let mut cache = cache::FetchCacher::new(
-      ps.dir.gen_cache.clone(),
       ps.file_fetcher.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
@@ -617,7 +620,6 @@ async fn create_graph_and_maybe_check(
   debug: bool,
 ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
   let mut cache = cache::FetchCacher::new(
-    ps.dir.gen_cache.clone(),
     ps.file_fetcher.clone(),
     Permissions::allow_all(),
     Permissions::allow_all(),
@@ -686,10 +688,11 @@ async fn create_graph_and_maybe_check(
     }
     let maybe_config_specifier =
       ps.maybe_config_file.as_ref().map(|cf| cf.specifier.clone());
+    let emit_cache = SqliteEmitCache::new(&ps.dir.emit_cache_db_file_path())?;
     let check_result = emit::check_and_maybe_emit(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
-      &mut cache,
+      &emit_cache,
       emit::CheckOptions {
         check: ps.flags.check.clone(),
         debug,
@@ -964,7 +967,6 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       let main_module = resolve_url_or_path(&script1)?;
       let ps = ProcState::build(flags).await?;
       let mut cache = cache::FetchCacher::new(
-        ps.dir.gen_cache.clone(),
         ps.file_fetcher.clone(),
         Permissions::allow_all(),
         Permissions::allow_all(),

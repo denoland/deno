@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::disk_cache::DiskCache;
 use std::path::PathBuf;
 
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
@@ -9,8 +8,6 @@ use std::path::PathBuf;
 pub struct DenoDir {
   /// Example: /Users/rld/.deno/
   pub root: PathBuf,
-  /// Used by TsCompiler to cache compiler output.
-  pub gen_cache: DiskCache,
 }
 
 impl DenoDir {
@@ -33,15 +30,19 @@ impl DenoDir {
       panic!("Could not set the Deno root directory")
     };
     assert!(root.is_absolute());
-    let gen_path = root.join("gen");
+    std::fs::create_dir_all(&root).map_err(|e| {
+      std::io::Error::new(e.kind(), format!(
+        "Could not create deno dir compiler cache location: {:?}\nCheck the permission of the directory.",
+        root
+      ))
+    })?;
+    Ok(Self { root })
+  }
 
-    let deno_dir = Self {
-      root,
-      gen_cache: DiskCache::new(&gen_path),
-    };
-    deno_dir.gen_cache.ensure_dir_exists(&gen_path)?;
-
-    Ok(deno_dir)
+  /// File path to the emit cache database file.
+  pub fn emit_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire emit cache
+    self.root.join("emit_cache_v1")
   }
 }
 

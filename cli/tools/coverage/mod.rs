@@ -1,7 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache::Cacher;
 use crate::colors;
+use crate::emit_cache::EmitCache;
+use crate::emit_cache::SqliteEmitCache;
 use crate::flags::CoverageFlags;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
@@ -578,6 +579,7 @@ pub async fn cover_files(
   };
 
   let mut reporter = create_reporter(reporter_kind);
+  let emit_cache = SqliteEmitCache::new(&ps.dir.emit_cache_db_file_path())?;
 
   for script_coverage in script_coverages {
     let module_specifier =
@@ -612,9 +614,7 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        match ps
-          .dir
-          .gen_cache
+        match emit_cache
           .get_emit_data(&file.specifier) {
           Some(emit_data) => emit_data.text,
           None => {

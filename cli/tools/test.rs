@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache;
-use crate::cache::CacherLoader;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
@@ -1067,7 +1066,6 @@ pub async fn run_tests_with_watch(
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let mut cache = cache::FetchCacher::new(
-      ps.dir.gen_cache.clone(),
       ps.file_fetcher.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
@@ -1132,7 +1130,7 @@ pub async fn run_tests_with_watch(
         test_modules.clone(),
         false,
         maybe_imports,
-        cache.as_mut_loader(),
+        &mut cache,
         maybe_resolver,
         maybe_locker,
         None,

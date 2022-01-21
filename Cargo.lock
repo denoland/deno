@@ -753,6 +753,7 @@ dependencies = [
  "rand 0.8.4",
  "regex",
  "ring",
+ "rusqlite",
  "rustyline",
  "rustyline-derive",
  "semver-parser 0.10.2",

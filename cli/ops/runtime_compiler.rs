@@ -4,6 +4,9 @@ use crate::cache;
 use crate::config_file::IgnoredCompilerOptions;
 use crate::diagnostics::Diagnostics;
 use crate::emit;
+use crate::emit_cache::EmitCache;
+use crate::emit_cache::MemoryEmitCache;
+use crate::emit_cache::SqliteEmitCache;
 use crate::errors::get_error_class_name;
 use crate::flags;
 use crate::graph_util::graph_valid;
@@ -156,17 +159,24 @@ async fn op_emit(
     state.borrow::<Permissions>().clone()
   };
 
-  let mut cache: Box<dyn cache::CacherLoader> =
-    if let Some(sources) = &args.sources {
-      Box::new(cache::MemoryCacher::new(sources.clone()))
-    } else {
+  let (mut loader, emit_cache): (
+    Box<dyn deno_graph::source::Loader>,
+    Box<dyn EmitCache>,
+  ) = if let Some(sources) = &args.sources {
+    (
+      Box::new(cache::MemoryCacher::new(sources.clone())),
+      Box::new(MemoryEmitCache::default()),
+    )
+  } else {
+    (
       Box::new(cache::FetchCacher::new(
-        ps.dir.gen_cache.clone(),
         ps.file_fetcher.clone(),
         runtime_permissions.clone(),
         runtime_permissions.clone(),
-      ))
-    };
+      )),
+      Box::new(SqliteEmitCache::new(&ps.dir.emit_cache_db_file_path())?),
+    )
+  };
   let maybe_import_map_resolver = if let Some(import_map_str) =
     args.import_map_path
   {
@@ -215,7 +225,7 @@ async fn op_emit(
       roots,
       true,
       maybe_imports,
-      cache.as_mut_loader(),
+      &mut *loader,
       maybe_resolver,
       None,
       None,
@@ -243,7 +253,7 @@ async fn op_emit(
     let emit_result = emit::check_and_maybe_emit(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
-      cache.as_mut_cacher(),
+      &*emit_cache,
       emit::CheckOptions {
         check: flags::CheckFlag::All,
         debug,
@@ -256,7 +266,7 @@ async fn op_emit(
         reload_exclusions: Default::default(),
       },
     )?;
-    let files = emit::to_file_map(graph.as_ref(), cache.as_mut_cacher());
+    let files = emit::to_file_map(graph.as_ref(), &*emit_cache);
     (files, emit_result.diagnostics, emit_result.stats)
   } else if let Some(bundle) = &args.bundle {
     let (diagnostics, stats) = if check {
@@ -266,7 +276,7 @@ async fn op_emit(
       let emit_result = emit::check_and_maybe_emit(
         &graph.roots,
         Arc::new(RwLock::new(graph.as_ref().into())),
-        cache.as_mut_cacher(),
+        &*emit_cache,
         emit::CheckOptions {
           check: flags::CheckFlag::All,
           debug,
@@ -303,7 +313,7 @@ async fn op_emit(
     }
     let emit_result = emit::emit(
       graph.as_ref(),
-      cache.as_mut_cacher(),
+      &*emit_cache,
       emit::EmitOptions {
         ts_config,
         reload: ps.flags.reload || args.sources.is_some(),
@@ -311,7 +321,7 @@ async fn op_emit(
         reload_exclusions: HashSet::default(),
       },
     )?;
-    let files = emit::to_file_map(graph.as_ref(), cache.as_mut_cacher());
+    let files = emit::to_file_map(graph.as_ref(), &*emit_cache);
     (files, emit_result.diagnostics, emit_result.stats)
   };
 

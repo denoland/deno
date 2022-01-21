@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache::CacherLoader;
 use crate::cache::FetchCacher;
 use crate::config_file::ConfigFile;
 use crate::flags::Flags;
@@ -65,7 +64,6 @@ impl CacheServer {
           .flatten()
           .flatten();
         let mut cache = FetchCacher::new(
-          ps.dir.gen_cache.clone(),
           ps.file_fetcher.clone(),
           Permissions::allow_all(),
           Permissions::allow_all(),
@@ -76,7 +74,7 @@ impl CacheServer {
             roots,
             false,
             maybe_imports.clone(),
-            cache.as_mut_loader(),
+            &mut cache,
             maybe_resolver,
             None,
             None,

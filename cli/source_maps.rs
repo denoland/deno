@@ -7,9 +7,12 @@ use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::str;
 
-pub trait SourceMapGetter: Sync + Send + Clone {
+pub trait SourceMapGetter {
   /// Returns the raw source map file.
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>>;
+}
+
+pub trait SourceGetter {
   fn get_source_line(
     &self,
     file_name: &str,
@@ -24,9 +27,10 @@ pub type CachedMaps = HashMap<String, Option<SourceMap>>;
 /// Apply a source map to a `deno_core::JsError`, returning a `JsError` where
 /// file names and line/column numbers point to the location in the original
 /// source, rather than the transpiled source code.
-pub fn apply_source_map<G: SourceMapGetter>(
+pub fn apply_source_map(
   js_error: &JsError,
-  getter: G,
+  map_getter: &impl SourceMapGetter,
+  source_getter: &impl SourceGetter,
 ) -> JsError {
   // Note that js_error.frames has already been source mapped in
   // prepareStackTrace().
@@ -39,7 +43,8 @@ pub fn apply_source_map<G: SourceMapGetter>(
       // start_column is 0-based, we need 1-based here.
       js_error.start_column.map(|n| n + 1),
       &mut mappings_map,
-      getter.clone(),
+      map_getter,
+      source_getter,
     );
   let start_column = start_column.map(|n| n - 1);
   // It is better to just move end_column to be the same distance away from
@@ -71,18 +76,17 @@ pub fn apply_source_map<G: SourceMapGetter>(
           start_column = frame.column_number.map(|n| n - 1);
           end_column = frame.column_number;
           // Lookup expects 0-based line and column numbers, but ours are 1-based.
-          source_line =
-            getter.get_source_line(file_name, (line_number_ - 1) as usize);
+          source_line = source_getter
+            .get_source_line(file_name, (line_number_ - 1) as usize);
           break;
         }
       }
     }
   }
 
-  let cause = js_error
-    .cause
-    .clone()
-    .map(|cause| Box::new(apply_source_map(&*cause, getter)));
+  let cause = js_error.cause.clone().map(|cause| {
+    Box::new(apply_source_map(&*cause, map_getter, source_getter))
+  });
 
   JsError {
     message: js_error.message.clone(),
@@ -97,17 +101,25 @@ pub fn apply_source_map<G: SourceMapGetter>(
   }
 }
 
-fn get_maybe_orig_position<G: SourceMapGetter>(
+fn get_maybe_orig_position(
   file_name: Option<String>,
   line_number: Option<i64>,
   column_number: Option<i64>,
   mappings_map: &mut CachedMaps,
-  getter: G,
+  map_getter: &impl SourceMapGetter,
+  source_getter: &impl SourceGetter,
 ) -> (Option<String>, Option<i64>, Option<i64>, Option<String>) {
   match (file_name, line_number, column_number) {
     (Some(file_name_v), Some(line_v), Some(column_v)) => {
       let (file_name, line_number, column_number, source_line) =
-        get_orig_position(file_name_v, line_v, column_v, mappings_map, getter);
+        get_orig_position(
+          file_name_v,
+          line_v,
+          column_v,
+          mappings_map,
+          map_getter,
+          source_getter,
+        );
       (
         Some(file_name),
         Some(line_number),
@@ -119,19 +131,20 @@ fn get_maybe_orig_position<G: SourceMapGetter>(
   }
 }
 
-pub fn get_orig_position<G: SourceMapGetter>(
+pub fn get_orig_position(
   file_name: String,
   line_number: i64,
   column_number: i64,
   mappings_map: &mut CachedMaps,
-  getter: G,
+  map_getter: &impl SourceMapGetter,
+  source_getter: &impl SourceGetter,
 ) -> (String, i64, i64, Option<String>) {
   // Lookup expects 0-based line and column numbers, but ours are 1-based.
   let line_number = line_number - 1;
   let column_number = column_number - 1;
 
   let default_pos = (file_name.clone(), line_number, column_number, None);
-  let maybe_source_map = get_mappings(&file_name, mappings_map, getter.clone());
+  let maybe_source_map = get_mappings(&file_name, mappings_map, map_getter);
   let (file_name, line_number, column_number, source_line) =
     match maybe_source_map {
       None => default_pos,
@@ -170,28 +183,29 @@ pub fn get_orig_position<G: SourceMapGetter>(
         }
       }
     };
-  let source_line = source_line
-    .or_else(|| getter.get_source_line(&file_name, line_number as usize));
+  let source_line = source_line.or_else(|| {
+    source_getter.get_source_line(&file_name, line_number as usize)
+  });
   (file_name, line_number + 1, column_number + 1, source_line)
 }
 
-fn get_mappings<'a, G: SourceMapGetter>(
+fn get_mappings<'a>(
   file_name: &str,
   mappings_map: &'a mut CachedMaps,
-  getter: G,
+  map_getter: &impl SourceMapGetter,
 ) -> &'a Option<SourceMap> {
   mappings_map
     .entry(file_name.to_string())
-    .or_insert_with(|| parse_map_string(file_name, getter))
+    .or_insert_with(|| parse_map_string(file_name, map_getter))
 }
 
 // TODO(kitsonk) parsed source maps should probably be cached in state in
 // the module meta data.
-fn parse_map_string<G: SourceMapGetter>(
+fn parse_map_string(
   file_name: &str,
-  getter: G,
+  map_getter: &impl SourceMapGetter,
 ) -> Option<SourceMap> {
-  getter
+  map_getter
     .get_source_map(file_name)
     .and_then(|raw_source_map| SourceMap::from_slice(&raw_source_map).ok())
 }
@@ -200,7 +214,6 @@ fn parse_map_string<G: SourceMapGetter>(
 mod tests {
   use super::*;
 
-  #[derive(Clone)]
   struct MockSourceMapGetter {}
 
   impl SourceMapGetter for MockSourceMapGetter {
@@ -216,7 +229,11 @@ mod tests {
       };
       Some(s.as_bytes().to_owned())
     }
+  }
 
+  struct MockSourceGetter {}
+
+  impl SourceGetter for MockSourceGetter {
     fn get_source_line(
       &self,
       file_name: &str,
@@ -253,8 +270,9 @@ mod tests {
       frames: vec![],
       stack: None,
     };
-    let getter = MockSourceMapGetter {};
-    let actual = apply_source_map(&e, getter);
+    let map_getter = MockSourceMapGetter {};
+    let source_getter = MockSourceGetter {};
+    let actual = apply_source_map(&e, &map_getter, &source_getter);
     assert_eq!(actual.source_line, Some("console.log('foo');".to_string()));
   }
 }

@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache;
-use crate::cache::Cacher;
 use crate::colors;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
@@ -9,6 +8,8 @@ use crate::config_file::ConfigFile;
 use crate::config_file::MaybeImportsResult;
 use crate::deno_dir;
 use crate::emit;
+use crate::emit_cache::EmitCache;
+use crate::emit_cache::SqliteEmitCache;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
@@ -346,7 +347,6 @@ impl ProcState {
       }
     }
     let mut cache = cache::FetchCacher::new(
-      self.dir.gen_cache.clone(),
       self.file_fetcher.clone(),
       root_permissions.clone(),
       dynamic_permissions.clone(),
@@ -442,6 +442,7 @@ impl ProcState {
     if let Some(ignored_options) = maybe_ignored_options {
       log::warn!("{}", ignored_options);
     }
+    let emit_cache = SqliteEmitCache::new(&self.dir.emit_cache_db_file_path())?;
 
     if self.flags.check == flags::CheckFlag::None {
       let options = emit::EmitOptions {
@@ -449,7 +450,7 @@ impl ProcState {
         reload: self.flags.reload,
         reload_exclusions,
       };
-      let emit_result = emit::emit(&graph, &mut cache, options)?;
+      let emit_result = emit::emit(&graph, &emit_cache, options)?;
       log::debug!("{}", emit_result.stats);
     } else {
       let maybe_config_specifier = self
@@ -469,7 +470,7 @@ impl ProcState {
       let emit_result = emit::check_and_maybe_emit(
         &roots,
         self.graph_data.clone(),
-        &mut cache,
+        &emit_cache,
         options,
       )?;
       if !emit_result.diagnostics.is_empty() {
@@ -570,20 +571,22 @@ impl ProcState {
           | MediaType::Cjs
           | MediaType::Mjs
           | MediaType::Json => code.as_ref().clone(),
-          MediaType::Dts => "".to_string(),
-          _ => {
-            match self
-              .dir
-              .gen_cache
-              .get_emit_data(&found_url)
-              .map(|data| data.text)
-            {
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => "".to_string(),
+          MediaType::TypeScript
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Jsx
+          | MediaType::Tsx => {
+            match self.get_emit(&found_url).map(|(text, _)| text) {
               Some(text) => text,
               None => {
                 // the user might have deleted the cache file
                 bail!("Unexpected missing emit: {}\n\nTry reloading with the --reload CLI flag.", found_url)
               }
             }
+          }
+          MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
+            panic!("Unexpected media type {} for {}", media_type, found_url)
           }
         };
         Ok(ModuleSource {
@@ -605,9 +608,10 @@ impl ProcState {
 
   // TODO(@kitsonk) this should be refactored to get it from the module graph
   fn get_emit(&self, url: &Url) -> Option<(String, Option<String>)> {
-    self
-      .dir
-      .gen_cache
+    // todo(this PR): cache this
+    let emit_cache =
+      SqliteEmitCache::new(&self.dir.emit_cache_db_file_path()).ok()?;
+    emit_cache
       .get_emit_data(url)
       .map(|emit_data| (emit_data.text, emit_data.map))
   }
@@ -631,30 +635,6 @@ impl SourceMapGetter for ProcState {
       } else {
         None
       }
-    } else {
-      None
-    }
-  }
-
-  fn get_source_line(
-    &self,
-    file_name: &str,
-    line_number: usize,
-  ) -> Option<String> {
-    if let Ok(specifier) = resolve_url(file_name) {
-      self.file_fetcher.get_source(&specifier).map(|out| {
-        // Do NOT use .lines(): it skips the terminating empty line.
-        // (due to internally using .split_terminator() instead of .split())
-        let lines: Vec<&str> = out.source.split('\n').collect();
-        if line_number >= lines.len() {
-          format!(
-            "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
-            crate::colors::yellow("Warning"), line_number + 1,
-          )
-        } else {
-          lines[line_number].to_string()
-        }
-      })
     } else {
       None
     }

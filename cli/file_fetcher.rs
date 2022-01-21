@@ -7,6 +7,7 @@ use crate::http_util::fetch_once;
 use crate::http_util::CacheSemantics;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
+use crate::source_maps::SourceGetter;
 use crate::text_encoding;
 use crate::version::get_user_agent;
 
@@ -19,6 +20,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::resolve_url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::reqwest;
@@ -650,6 +652,32 @@ impl FileFetcher {
   /// Insert a temporary module into the in memory cache for the file fetcher.
   pub fn insert_cached(&self, file: File) -> Option<File> {
     self.cache.insert(file.specifier.clone(), file)
+  }
+}
+
+impl SourceGetter for FileFetcher {
+  fn get_source_line(
+    &self,
+    file_name: &str,
+    line_number: usize,
+  ) -> Option<String> {
+    if let Ok(specifier) = resolve_url(file_name) {
+      self.get_source(&specifier).map(|out| {
+        // Do NOT use .lines(): it skips the terminating empty line.
+        // (due to internally using .split_terminator() instead of .split())
+        let lines: Vec<&str> = out.source.split('\n').collect();
+        if line_number >= lines.len() {
+          format!(
+            "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
+            crate::colors::yellow("Warning"), line_number + 1,
+          )
+        } else {
+          lines[line_number].to_string()
+        }
+      })
+    } else {
+      None
+    }
   }
 }
 

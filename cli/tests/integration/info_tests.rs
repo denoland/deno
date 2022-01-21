@@ -1,40 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
-use tempfile::TempDir;
-use test_util as util;
-
-#[test]
-fn info_with_compiled_source() {
-  let _g = util::http_server();
-  let module_path = "http://127.0.0.1:4545/048_media_types_jsx.ts";
-  let t = TempDir::new().expect("tempdir fail");
-
-  let mut deno = util::deno_cmd()
-    .env("DENO_DIR", t.path())
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg(&module_path)
-    .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
-  assert!(status.success());
-
-  let output = util::deno_cmd()
-    .env("DENO_DIR", t.path())
-    .env("NO_COLOR", "1")
-    .current_dir(util::testdata_path())
-    .arg("info")
-    .arg(&module_path)
-    .output()
-    .expect("failed to spawn script");
-
-  let str_output = std::str::from_utf8(&output.stdout).unwrap().trim();
-  eprintln!("{}", str_output);
-  // check the output of the test.ts program.
-  assert!(str_output.contains("emit: "));
-  assert_eq!(output.stderr, b"");
-}
 
 itest!(_022_info_flag_script {
   args: "info http://127.0.0.1:4545/019_media_types.ts",
@@ -52,7 +18,7 @@ itest!(_041_info_flag {
   output: "041_info_flag.out",
 });
 
-itest!(_042_info_flag_location {
+itest!(_041_info_flag_location {
   args: "info --location https://deno.land",
   output: "041_info_flag_location.out",
 });
