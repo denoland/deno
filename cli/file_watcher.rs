@@ -97,6 +97,13 @@ where
   }
 }
 
+pub struct PrintConfig {
+  /// printing watcher status to terminal.
+  pub job_name: String,
+  /// determine whether to clear the terminal screen
+  pub clear_screen: bool,
+}
+
 /// Creates a file watcher, which will call `resolver` with every file change.
 ///
 /// - `resolver` is used for resolving file paths to be watched at every restarting
@@ -107,15 +114,10 @@ where
 /// - `operation` is the actual operation we want to run every time the watcher detects file
 /// changes. For example, in the case where we would like to bundle, then `operation` would
 /// have the logic for it like bundling the code.
-///
-/// - `job_name` is just used for printing watcher status to terminal.
-///
-/// - `clear_screen` is used to determine whether to clear the terminal screen
 pub async fn watch_func<R, O, T, F1, F2>(
   mut resolver: R,
   mut operation: O,
-  job_name: &str,
-  clear_screen: bool,
+  print_config: PrintConfig,
 ) -> Result<(), AnyError>
 where
   R: FnMut(Option<Vec<PathBuf>>) -> F1,
@@ -124,6 +126,11 @@ where
   F2: Future<Output = Result<(), AnyError>>,
 {
   let (sender, mut receiver) = DebouncedReceiver::new_with_sender();
+
+  let PrintConfig {
+    job_name,
+    clear_screen,
+  } = print_config;
 
   // Store previous data. If module resolution fails at some point, the watcher will try to
   // continue watching files using these data.

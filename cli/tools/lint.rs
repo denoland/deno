@@ -11,6 +11,7 @@ use crate::file_watcher::ResolutionResult;
 use crate::flags::{Flags, LintFlags};
 use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext, specifier_to_file_path};
+use crate::proc_state::ProcState;
 use crate::tools::fmt::run_parallelized;
 use crate::{colors, file_watcher};
 use deno_ast::MediaType;
@@ -48,11 +49,7 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   }
 }
 
-pub async fn lint(
-  maybe_lint_config: Option<LintConfig>,
-  lint_flags: LintFlags,
-  flags: Flags,
-) -> Result<(), AnyError> {
+pub async fn lint(lint_flags: LintFlags, flags: Flags) -> Result<(), AnyError> {
   let LintFlags {
     maybe_rules_tags,
     maybe_rules_include,
@@ -68,6 +65,13 @@ pub async fn lint(
   // and `--ignore` CLI flag, only the flag value is taken into account.
   let mut include_files = args.clone();
   let mut exclude_files = ignore.clone();
+
+  let ps = ProcState::build(flags.clone()).await?;
+  let maybe_lint_config = if let Some(config_file) = &ps.maybe_config_file {
+    config_file.to_lint_config()?
+  } else {
+    None
+  };
 
   if let Some(lint_config) = maybe_lint_config.as_ref() {
     if include_files.is_empty() {
@@ -175,8 +179,10 @@ pub async fn lint(
     file_watcher::watch_func(
       resolver,
       operation,
-      "Lint",
-      !flags.no_clear_screen,
+      file_watcher::PrintConfig {
+        job_name: "Lint".to_string(),
+        clear_screen: !flags.no_clear_screen,
+      },
     )
     .await?;
   } else {

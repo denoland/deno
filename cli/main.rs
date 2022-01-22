@@ -529,14 +529,7 @@ async fn lint_command(
     return Ok(0);
   }
 
-  let ps = ProcState::build(flags.clone()).await?;
-  let maybe_lint_config = if let Some(config_file) = &ps.maybe_config_file {
-    config_file.to_lint_config()?
-  } else {
-    None
-  };
-
-  tools::lint::lint(maybe_lint_config, lint_flags, flags).await?;
+  tools::lint::lint(lint_flags, flags).await?;
   Ok(0)
 }
 
@@ -855,8 +848,10 @@ async fn bundle_command(
     file_watcher::watch_func(
       resolver,
       operation,
-      "Bundle",
-      !flags.no_clear_screen,
+      file_watcher::PrintConfig {
+        job_name: "Bundle".to_string(),
+        clear_screen: !flags.no_clear_screen,
+      },
     )
     .await?;
   } else {
@@ -1125,8 +1120,10 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   file_watcher::watch_func(
     resolver,
     operation,
-    "Process",
-    !flags.no_clear_screen,
+    file_watcher::PrintConfig {
+      job_name: "Process".to_string(),
+      clear_screen: !flags.no_clear_screen,
+    },
   )
   .await?;
   Ok(0)

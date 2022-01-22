@@ -1279,8 +1279,15 @@ pub async fn run_tests_with_watch(
     }
   };
 
-  file_watcher::watch_func(resolver, operation, "Test", !flags.no_clear_screen)
-    .await?;
+  file_watcher::watch_func(
+    resolver,
+    operation,
+    file_watcher::PrintConfig {
+      job_name: "Test".to_string(),
+      clear_screen: !flags.no_clear_screen,
+    },
+  )
+  .await?;
 
   Ok(())
 }

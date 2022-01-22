@@ -140,8 +140,10 @@ pub async fn format(
     file_watcher::watch_func(
       resolver,
       operation,
-      "Fmt",
-      !flags.no_clear_screen,
+      file_watcher::PrintConfig {
+        job_name: "Fmt".to_string(),
+        clear_screen: !flags.no_clear_screen,
+      },
     )
     .await?;
   } else {
