@@ -444,8 +444,7 @@ impl Inner {
         workspace_settings.certificate_stores.clone(),
         workspace_settings.tls_certificate.clone(),
         workspace_settings
-          .unsafely_ignore_certificate_errors
-          .clone(),
+          .unsafely_ignore_certificate_errors,
       )?;
       self.module_registries_location = module_registries_location;
       self.documents.set_location(dir.root.join(CACHE_PATH));
