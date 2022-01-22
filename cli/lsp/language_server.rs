@@ -139,8 +139,14 @@ impl Inner {
     let dir = deno_dir::DenoDir::new(maybe_custom_root)
       .expect("could not access DENO_DIR");
     let module_registries_location = dir.root.join(REGISTRIES_PATH);
-    let module_registries =
-      registries::ModuleRegistry::new(&module_registries_location);
+    let module_registries = registries::ModuleRegistry::new(
+      &module_registries_location,
+      None,
+      None,
+      None,
+      None,
+    )
+    .expect("could not create module registries");
     let location = dir.root.join(CACHE_PATH);
     let documents = Documents::new(&location);
     let performance = Arc::new(Performance::default());
@@ -425,11 +431,22 @@ impl Inner {
       let maybe_custom_root = maybe_cache_path
         .clone()
         .or_else(|| env::var("DENO_DIR").map(String::into).ok());
-      let dir = deno_dir::DenoDir::new(maybe_custom_root)
-        .expect("could not access DENO_DIR");
+      let dir = deno_dir::DenoDir::new(maybe_custom_root)?;
       let module_registries_location = dir.root.join(REGISTRIES_PATH);
-      self.module_registries =
-        registries::ModuleRegistry::new(&module_registries_location);
+      let workspace_settings = self.config.get_workspace_settings();
+      let maybe_root_path = self
+        .root_uri
+        .as_ref()
+        .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
+      self.module_registries = registries::ModuleRegistry::new(
+        &module_registries_location,
+        maybe_root_path,
+        workspace_settings.certificate_stores.clone(),
+        workspace_settings.tls_certificate.clone(),
+        workspace_settings
+          .unsafely_ignore_certificate_errors
+          .clone(),
+      )?;
       self.module_registries_location = module_registries_location;
       self.documents.set_location(dir.root.join(CACHE_PATH));
       self.maybe_cache_path = maybe_cache_path;
@@ -496,14 +513,21 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_registries", None::<()>);
-    for (registry, enabled) in self
-      .config
-      .get_workspace_settings()
-      .suggest
-      .imports
-      .hosts
-      .iter()
-    {
+    let workspace_settings = self.config.get_workspace_settings();
+    let maybe_root_path = self
+      .root_uri
+      .as_ref()
+      .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
+    self.module_registries = registries::ModuleRegistry::new(
+      &self.module_registries_location,
+      maybe_root_path,
+      workspace_settings.certificate_stores.clone(),
+      workspace_settings.tls_certificate.clone(),
+      workspace_settings
+        .unsafely_ignore_certificate_errors
+        .clone(),
+    )?;
+    for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
       if *enabled {
         lsp_log!("Enabling import suggestions for: {}", registry);
         self.module_registries.enable(registry).await?;
@@ -2583,6 +2607,9 @@ impl Inner {
           self.maybe_cache_path.clone(),
           self.maybe_import_map.clone(),
           self.maybe_config_file.clone(),
+          None,
+          None,
+          None,
         )
         .await,
       );
@@ -2616,8 +2643,6 @@ impl Inner {
         error!("Unable to remove registries cache: {}", err);
         LspError::internal_error()
       })?;
-    self.module_registries =
-      registries::ModuleRegistry::new(&self.module_registries_location);
     self.update_registries().await.map_err(|err| {
       error!("Unable to update registries: {}", err);
       LspError::internal_error()
