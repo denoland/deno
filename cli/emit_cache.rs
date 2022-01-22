@@ -89,7 +89,7 @@ impl EmitCache for MemoryEmitCache {
 
 pub struct SqliteEmitCache {
   conn: Connection,
-  /// these stored here for mutating for testing purposes
+  /// these are stored here for mutating during testing
   emit_data_version: usize,
   ts_build_info_version: usize,
 }
@@ -101,8 +101,36 @@ impl SqliteEmitCache {
   }
 
   pub(super) fn from_connection(conn: Connection) -> Result<Self, AnyError> {
-    conn.execute(
-      "CREATE TABLE IF NOT EXISTS emitdata (
+    run_pragma(&conn)?;
+    create_tables(&conn)?;
+
+    Ok(Self {
+      conn,
+      emit_data_version: EMIT_DATA_VERSION,
+      ts_build_info_version: TS_BUILD_INFO_VERSION,
+    })
+  }
+}
+
+fn run_pragma(conn: &Connection) -> Result<(), AnyError> {
+  // Enable write-ahead-logging and tweak some other stuff
+  let initial_pragmas = "
+    -- enable write-ahead-logging mode
+    PRAGMA journal_mode=WAL;
+    PRAGMA synchronous=NORMAL;
+    PRAGMA temp_store=memory;
+    PRAGMA page_size=4096;
+    PRAGMA mmap_size=6000000;
+    PRAGMA optimize;
+  ";
+
+  conn.execute_batch(initial_pragmas)?;
+  Ok(())
+}
+
+fn create_tables(conn: &Connection) -> Result<(), AnyError> {
+  conn.execute(
+    "CREATE TABLE IF NOT EXISTS emitdata (
         specifier TEXT PRIMARY KEY,
         version INTEGER NOT NULL,
         source_hash TEXT NOT NULL,
@@ -110,22 +138,17 @@ impl SqliteEmitCache {
         source_map TEXT,
         declaration TEXT
       )",
-      [],
-    )?;
-    conn.execute(
-      "CREATE TABLE IF NOT EXISTS tsbuildinfo (
+    [],
+  )?;
+  conn.execute(
+    "CREATE TABLE IF NOT EXISTS tsbuildinfo (
         specifier TEXT PRIMARY KEY,
         version INTEGER NOT NULL,
         text TEXT NOT NULL
       )",
-      [],
-    )?;
-    Ok(Self {
-      conn,
-      emit_data_version: EMIT_DATA_VERSION,
-      ts_build_info_version: TS_BUILD_INFO_VERSION,
-    })
-  }
+    [],
+  )?;
+  Ok(())
 }
 
 impl EmitCache for SqliteEmitCache {
