@@ -1680,8 +1680,9 @@ Only local files from entry point module graph are watched.",
 
 fn no_clear_screen_arg<'a>() -> Arg<'a> {
   Arg::new("no-clear-screen")
+    .requires("unstable")
     .long("no-clear-screen")
-    .help("Do not clear terminal screen when under watch mode")
+    .help("UNSTABLE: Do not clear terminal screen when under watch mode")
 }
 
 fn no_check_arg<'a>() -> Arg<'a> {
@@ -2612,6 +2613,7 @@ mod tests {
       "run",
       "--watch",
       "--no-clear-screen",
+      "--unstable",
       "script.ts"
     ]);
 
@@ -2624,6 +2626,7 @@ mod tests {
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
+        unstable: true,
         ..Flags::default()
       }
     );
@@ -2862,8 +2865,13 @@ mod tests {
       }
     );
 
-    let r =
-      flags_from_vec(svec!["deno", "fmt", "--watch", "--no-clear-screen"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "fmt",
+      "--watch",
+      "--no-clear-screen",
+      "--unstable"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2880,6 +2888,7 @@ mod tests {
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
+        unstable: true,
         ..Flags::default()
       }
     );
@@ -3044,6 +3053,7 @@ mod tests {
       "lint",
       "--watch",
       "--no-clear-screen",
+      "--unstable",
       "script_1.ts",
       "script_2.ts"
     ]);
@@ -3064,6 +3074,7 @@ mod tests {
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
+        unstable: true,
         ..Flags::default()
       }
     );
@@ -3745,6 +3756,7 @@ mod tests {
       "bundle",
       "--watch",
       "--no-clear-screen",
+      "--unstable",
       "source.ts"
     ]);
     assert_eq!(
@@ -3756,6 +3768,7 @@ mod tests {
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
+        unstable: true,
         ..Flags::default()
       }
     )
@@ -4523,8 +4536,13 @@ mod tests {
 
   #[test]
   fn test_watch_with_no_clear_screen() {
-    let r =
-      flags_from_vec(svec!["deno", "test", "--watch", "--no-clear-screen"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "test",
+      "--watch",
+      "--no-clear-screen",
+      "--unstable"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4541,6 +4559,7 @@ mod tests {
         }),
         watch: Some(vec![]),
         no_clear_screen: true,
+        unstable: true,
         ..Flags::default()
       }
     );

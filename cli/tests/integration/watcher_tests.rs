@@ -999,11 +999,12 @@ fn test_watch_module_graph_error_referrer() {
 }
 
 #[test]
-fn test_watch_with_no_clear_screen() {
+fn watch_with_no_clear_screen_flag() {
   let t = TempDir::new().unwrap();
   let file_to_watch = t.path().join("file_to_watch.js");
   write(&file_to_watch, "export const foo = 0;").unwrap();
 
+  // choose deno run subcommand to test --no-clear-screen flag
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
@@ -1018,7 +1019,11 @@ fn test_watch_with_no_clear_screen() {
     .unwrap();
   let (_, mut stderr_lines) = child_lines(&mut child);
 
-  assert_contains!(stderr_lines.next().unwrap(), "Process started");
+  let next_line = stderr_lines.next().unwrap();
+
+  // no clear screen
+  assert!(!&next_line.contains(CLEAR_SCREEN));
+  assert_contains!(&next_line, "Process started");
   assert_contains!(
     stderr_lines.next().unwrap(),
     "Process finished. Restarting on file change..."
@@ -1027,10 +1032,12 @@ fn test_watch_with_no_clear_screen() {
   // Change content of the file
   write(&file_to_watch, "export const bar = 0;").unwrap();
 
-  assert_contains!(
-    stderr_lines.next().unwrap(),
-    "Watcher File change detected! Restarting!"
-  );
+  let next_line = stderr_lines.next().unwrap();
+
+  // no clear screen
+  assert!(!&next_line.contains(CLEAR_SCREEN));
+
+  assert_contains!(&next_line, "Watcher File change detected! Restarting!");
   assert_contains!(
     stderr_lines.next().unwrap(),
     "Process finished. Restarting on file change..."

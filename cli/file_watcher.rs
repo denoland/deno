@@ -110,7 +110,7 @@ where
 ///
 /// - `job_name` is just used for printing watcher status to terminal.
 ///
-/// - `clear_screen` is used for determine whether to clear the terminal screen
+/// - `clear_screen` is used to determine whether to clear the terminal screen
 pub async fn watch_func<R, O, T, F1, F2>(
   mut resolver: R,
   mut operation: O,
