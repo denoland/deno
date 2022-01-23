@@ -105,6 +105,18 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
         op_async(op_message_port_recv_message),
       ),
       (
+        "op_compression_new",
+        op_sync(compression::op_compression_new),
+      ),
+      (
+        "op_compression_write",
+        op_sync(compression::op_compression_write),
+      ),
+      (
+        "op_compression_finish",
+        op_sync(compression::op_compression_finish),
+      ),
+      (
         "op_compression_compressor_create",
         op_sync(compression::op_compression_compressor_create),
       ),

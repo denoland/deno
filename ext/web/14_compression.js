@@ -34,11 +34,6 @@
   const STATUS_BUF_ERROR = 1;
   const STATUS_STREAM_END = 2;
 
-  // TODO(ry) serde_v8 should probably support directly consuming ArrayBuffer.
-  function toTypedArray(b) {
-    return b instanceof ArrayBuffer ? new Uint8Array(b) : b;
-  }
-
   function compressTotalInOut(rid) {
     return core.opSync("op_compression_compress_total_in_out", rid);
   }
@@ -55,32 +50,21 @@
         prefix,
         context: "Argument 1",
       });
-      const rid = core.opSync("op_compression_compress_new", format);
 
+      const rid = core.opSync("op_compression_new", format, false);
 
       super({
         async transform(chunk, controller) {
-          const input = toTypedArray(chunk);
-          const output = new Uint8Array(65536);
-
-          const [beforeIn, beforeOut] = compressTotalInOut(rid);
-
-          const r = core.opSync("op_compression_compress", rid, [
-            input,
-            output,
-            FLUSH_COMPRESS_SYNC,
-          ]);
-
-          const [afterIn, afterOut] = compressTotalInOut(rid);
-
-          const diffOut = afterOut - beforeOut;
-          const diffIn = afterIn - beforeIn;
-          // console.log(diffOut, diffIn);
-
-          controller.enqueue(output.subarray(0, diffOut));
+          const output = core.opSync(
+            "op_compression_write",
+            rid,
+            chunk,
+          );
+          maybeEnqueue(controller, output);
         },
-        async flush() {
-          core.close(rid);
+        async flush(controller) {
+          const output = core.opSync("op_compression_finish", rid);
+          maybeEnqueue(controller, output);
         },
       });
     }
@@ -96,33 +80,29 @@
         prefix,
         context: "Argument 1",
       });
-      const rid = core.opSync("op_compression_decompress_new", format);
+
+      const rid = core.opSync("op_compression_new", format, true);
 
       super({
-        async transform(chunk, controller) {
-          const input = toTypedArray(chunk);
-          const output = new Uint8Array(65536);
-
-          const [beforeIn, beforeOut] = decompressTotalInOut(rid);
-
-          const r = core.opSync("op_compression_decompress", rid, [
-            input,
-            output,
-            FLUSH_DECOMPRESS_SYNC,
-          ]);
-
-          const [afterIn, afterOut] = decompressTotalInOut(rid);
-
-          const diffOut = afterOut - beforeOut;
-          const diffIn = afterIn - beforeIn;
-          // console.log(diffOut, diffIn);
-
-          controller.enqueue(output.subarray(0, diffOut));
+        transform(chunk, controller) {
+          const output = core.opSync(
+            "op_compression_write",
+            rid,
+            chunk,
+          );
+          maybeEnqueue(controller, output);
         },
-        async flush() {
-          core.close(rid);
+        flush(controller) {
+          const output = core.opSync("op_compression_finish", rid);
+          maybeEnqueue(controller, output);
         },
       });
+    }
+  }
+
+  function maybeEnqueue(controller, output) {
+    if (output && output.byteLength > 0) {
+      controller.enqueue(output);
     }
   }
 
