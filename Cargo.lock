@@ -1070,7 +1070,6 @@ dependencies = [
 name = "deno_web"
 version = "0.65.0"
 dependencies = [
- "async-compression",
  "async-trait",
  "base64 0.13.0",
  "deno_core",
