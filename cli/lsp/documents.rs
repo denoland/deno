@@ -724,9 +724,9 @@ impl FileSystemDocuments {
     &mut self,
     cache: &HttpCache,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
-    specifier: ModuleSpecifier,
+    specifier: &ModuleSpecifier,
   ) -> Option<Document> {
-    let path = get_document_path(cache, &specifier)?;
+    let path = get_document_path(cache, specifier)?;
     let fs_version = calculate_fs_version(&path)?;
     let bytes = fs::read(path).ok()?;
     let doc = if specifier.scheme() == "file" {
@@ -741,11 +741,11 @@ impl FileSystemDocuments {
         maybe_resolver,
       )
     } else {
-      let cache_filename = cache.get_cache_filename(&specifier)?;
+      let cache_filename = cache.get_cache_filename(specifier)?;
       let metadata = http_cache::Metadata::read(&cache_filename).ok()?;
       let maybe_content_type = metadata.headers.get("content-type").cloned();
       let maybe_headers = Some(&metadata.headers);
-      let (_, maybe_charset) = map_content_type(&specifier, maybe_content_type);
+      let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
       let content = Arc::new(get_source_from_bytes(bytes, maybe_charset).ok()?);
       Document::new(
         specifier.clone(),
@@ -756,7 +756,7 @@ impl FileSystemDocuments {
       )
     };
     self.dirty = true;
-    self.docs.insert(specifier, doc)
+    self.docs.insert(specifier.clone(), doc)
   }
 }
 
@@ -949,6 +949,22 @@ impl Documents {
     }
   }
 
+  /// Used by the tsc op_exists to shortcut trying to load a document to provide
+  /// information to CLI without allocating a document.
+  pub(crate) fn exists(&self, specifier: &ModuleSpecifier) -> bool {
+    let specifier = self.specifier_resolver.resolve(specifier);
+    if let Some(specifier) = specifier {
+      if self.open_docs.contains_key(&specifier) {
+        return true;
+      }
+      if let Some(path) = get_document_path(&self.cache, &specifier) {
+        return path.is_file();
+      }
+    }
+
+    false
+  }
+
   /// Return a document for the specifier.
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
     let specifier = self.specifier_resolver.resolve(specifier)?;
@@ -969,7 +985,7 @@ impl Documents {
         file_system_docs.refresh_document(
           &self.cache,
           self.get_maybe_resolver(),
-          specifier.clone(),
+          &specifier,
         );
       }
       file_system_docs.docs.get(&specifier).cloned()
