@@ -20,28 +20,6 @@
     ],
   );
 
-  const FLUSH_COMPRESS_NONE = 0;
-  const FLUSH_COMPRESS_SYNC = 1;
-  const FLUSH_COMPRESS_PARTIAL = 2;
-  const FLUSH_COMPRESS_FULL = 3;
-  const FLUSH_COMPRESS_FINISH = 4;
-
-  const FLUSH_DECOMPRESS_NONE = 0;
-  const FLUSH_DECOMPRESS_SYNC = 1;
-  const FLUSH_DECOMPRESS_FINISH = 2;
-
-  const STATUS_OK = 0;
-  const STATUS_BUF_ERROR = 1;
-  const STATUS_STREAM_END = 2;
-
-  function compressTotalInOut(rid) {
-    return core.opSync("op_compression_compress_total_in_out", rid);
-  }
-
-  function decompressTotalInOut(rid) {
-    return core.opSync("op_compression_decompress_total_in_out", rid);
-  }
-
   class CompressionStream extends TransformStream {
     constructor(format) {
       const prefix = "Failed to construct 'CompressionStream'";
@@ -54,7 +32,7 @@
       const rid = core.opSync("op_compression_new", format, false);
 
       super({
-        async transform(chunk, controller) {
+        transform(chunk, controller) {
           const output = core.opSync(
             "op_compression_write",
             rid,
@@ -62,7 +40,7 @@
           );
           maybeEnqueue(controller, output);
         },
-        async flush(controller) {
+        flush(controller) {
           const output = core.opSync("op_compression_finish", rid);
           maybeEnqueue(controller, output);
         },
