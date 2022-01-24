@@ -4844,4 +4844,14 @@ mod tests {
       vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")]
     );
   }
+
+  #[test]
+  fn test_no_clear_watch_flag_without_watch_flag() {
+    let r = flags_from_vec(svec!["deno", "run", "--no-clear-screen", "foo.js"]);
+    assert!(r.is_err());
+    let error_message = r.unwrap_err().to_string();
+    assert!(&error_message
+      .contains("error: The following required arguments were not provided:"));
+    assert!(&error_message.contains("--watch=<FILES>..."));
+  }
 }

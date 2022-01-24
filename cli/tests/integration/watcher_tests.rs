@@ -1045,32 +1045,3 @@ fn watch_with_no_clear_screen_flag() {
 
   check_alive_then_kill(child);
 }
-
-#[test]
-fn test_no_clear_screen_flag_without_watch_flag() {
-  let t = TempDir::new().unwrap();
-  let file = t.path().join("file.js");
-  write(&file, "export const foo = 0;").unwrap();
-
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--no-clear-screen")
-    .arg("--unstable")
-    .arg(&file)
-    .env("NO_COLOR", "1")
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-
-  let stderr = String::from_utf8_lossy(&output.stderr);
-  assert_contains!(
-    &stderr,
-    "error: The following required arguments were not provided:"
-  );
-  assert_contains!(&stderr, "--watch=<FILES>...");
-
-  assert!(!output.status.success());
-}
