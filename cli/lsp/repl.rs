@@ -277,11 +277,14 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
   WorkspaceSettings {
     enable: true,
     config: None,
+    certificate_stores: None,
     cache: None,
     import_map: None,
     code_lens: Default::default(),
     internal_debug: false,
     lint: false,
+    tls_certificate: None,
+    unsafely_ignore_certificate_errors: None,
     unstable: false,
     suggest: CompletionSettings {
       complete_function_calls: false,
