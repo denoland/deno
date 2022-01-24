@@ -609,6 +609,7 @@ impl ProcState {
   // TODO(@kitsonk) this should be refactored to get it from the module graph
   fn get_emit(&self, url: &Url) -> Option<(String, Option<String>)> {
     // todo(this PR): cache this
+    // todo(this PR): this doesn't verify this is for this source
     let emit_cache =
       SqliteEmitCache::new(&self.dir.emit_cache_db_file_path()).ok()?;
     emit_cache

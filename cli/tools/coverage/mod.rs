@@ -614,6 +614,7 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
+        // todo(THIS PR): this needs to verify against the source
         match emit_cache
           .get_emit_data(&file.specifier) {
           Some(emit_data) => emit_data.text,
