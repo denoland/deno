@@ -3637,7 +3637,7 @@ fn lsp_diagnostics_refresh_dependents() {
     })
   );
 
-  // todo(dsherret): I'm not sure exactly what this is testing here
+  // fix the code causing the diagnostic
   session
     .client
     .write_notification(
@@ -3666,8 +3666,9 @@ fn lsp_diagnostics_refresh_dependents() {
     )
     .unwrap();
   let diagnostics = session.read_diagnostics();
+  assert_eq!(diagnostics.all().len(), 0); // no diagnostics now
+
   session.shutdown_and_exit();
-  assert_eq!(diagnostics.0.len(), 9);
   assert_eq!(session.client.queue_len(), 0);
 }
 
@@ -3720,7 +3721,7 @@ fn lsp_performance() {
     .unwrap();
   assert!(maybe_err.is_none());
   if let Some(res) = maybe_res {
-    assert!(res.averages.len() >= 5);
+    assert!(res.averages.len() == 5);
   } else {
     panic!("unexpected result");
   }
