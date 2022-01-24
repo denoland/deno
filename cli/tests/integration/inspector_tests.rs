@@ -987,7 +987,7 @@ async fn inspector_memory() {
   let result = &json_msg["result"];
   assert!(
     result["usedSize"].as_i64().unwrap()
-      < result["totalSize"].as_i64().unwrap()
+      <= result["totalSize"].as_i64().unwrap()
   );
 
   socket_tx.send(
