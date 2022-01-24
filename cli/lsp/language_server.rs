@@ -36,7 +36,6 @@ use super::config::Config;
 use super::config::ConfigSnapshot;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
-use super::diagnostics::DiagnosticSource;
 use super::diagnostics::DiagnosticsServer;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
@@ -1198,7 +1197,7 @@ impl Inner {
       let mut code_actions = CodeActionCollection::default();
       let file_diagnostics = self
         .diagnostics_server
-        .get(&specifier, DiagnosticSource::TypeScript)
+        .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version())
         .await;
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
