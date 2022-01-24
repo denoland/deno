@@ -4032,10 +4032,10 @@
     ]
   },
   "compression": {
-    "compression-including-empty-chunk.tentative.any.html": true,
-    "compression-including-empty-chunk.tentative.any.worker.html": true,
     "compression-bad-chunks.tentative.any.html": true,
     "compression-bad-chunks.tentative.any.worker.html": true,
+    "compression-including-empty-chunk.tentative.any.html": true,
+    "compression-including-empty-chunk.tentative.any.worker.html": true,
     "compression-multiple-chunks.tentative.any.html": true,
     "compression-multiple-chunks.tentative.any.worker.html": true,
     "compression-output-length.tentative.any.html": true,
@@ -4049,26 +4049,18 @@
     "decompression-buffersource.tentative.any.worker.html": true,
     "decompression-constructor-error.tentative.any.html": true,
     "decompression-constructor-error.tentative.any.worker.html": true,
-    "decompression-correct-input.tentative.any.html": false,
+    "decompression-correct-input.tentative.any.html": true,
+    "decompression-correct-input.tentative.any.worker.html": true,
     "decompression-corrupt-input.tentative.any.html": true,
     "decompression-corrupt-input.tentative.any.worker.html": true,
     "decompression-empty-input.tentative.any.html": true,
     "decompression-empty-input.tentative.any.worker.html": true,
     "decompression-split-chunk.tentative.any.html": true,
     "decompression-split-chunk.tentative.any.worker.html": true,
-    "decompression-uint8array-output.tentative.any.html": false,
+    "decompression-uint8array-output.tentative.any.html": true,
+    "decompression-uint8array-output.tentative.any.worker.html": true,
     "decompression-with-detach.tentative.window.html": true,
-    "idlharness.https.any.html": [
-      "CompressionStream interface: existence and properties of interface object",
-      "CompressionStream interface: existence and properties of interface prototype object",
-      "DecompressionStream interface: existence and properties of interface object",
-      "DecompressionStream interface: existence and properties of interface prototype object"
-    ],
-    "idlharness.https.any.worker.html": [
-      "CompressionStream interface: existence and properties of interface object",
-      "CompressionStream interface: existence and properties of interface prototype object",
-      "DecompressionStream interface: existence and properties of interface object",
-      "DecompressionStream interface: existence and properties of interface prototype object"
-    ]
+    "idlharness.https.any.html": true,
+    "idlharness.https.any.worker.html": true
   }
 }

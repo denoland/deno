@@ -12,27 +12,30 @@
   const webidl = window.__bootstrap.webidl;
   const { TransformStream } = window.__bootstrap.streams;
 
-  webidl.converters.compressionFormat = webidl.createEnumConverter(
-    "compressionFormat",
+  webidl.converters.CompressionFormat = webidl.createEnumConverter(
+    "CompressionFormat",
     [
       "deflate",
       "gzip",
     ],
   );
 
-  class CompressionStream extends TransformStream {
+  class CompressionStream {
+    #transform;
+
     constructor(format) {
       const prefix = "Failed to construct 'CompressionStream'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      format = webidl.converters.compressionFormat(format, {
+      format = webidl.converters.CompressionFormat(format, {
         prefix,
         context: "Argument 1",
       });
 
       const rid = core.opSync("op_compression_new", format, false);
 
-      super({
+      this.#transform = new TransformStream({
         transform(chunk, controller) {
+          // TODO(lucacasonato): convert chunk to BufferSource
           const output = core.opSync(
             "op_compression_write",
             rid,
@@ -45,24 +48,39 @@
           maybeEnqueue(controller, output);
         },
       });
+
+      this[webidl.brand] = webidl.brand;
+    }
+
+    get readable() {
+      webidl.assertBranded(this, CompressionStream);
+      return this.#transform.readable;
+    }
+
+    get writable() {
+      webidl.assertBranded(this, CompressionStream);
+      return this.#transform.writable;
     }
   }
 
   webidl.configurePrototype(CompressionStream);
 
-  class DecompressionStream extends TransformStream {
+  class DecompressionStream {
+    #transform;
+
     constructor(format) {
       const prefix = "Failed to construct 'DecompressionStream'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      format = webidl.converters.compressionFormat(format, {
+      format = webidl.converters.CompressionFormat(format, {
         prefix,
         context: "Argument 1",
       });
 
       const rid = core.opSync("op_compression_new", format, true);
 
-      super({
+      this.#transform = new TransformStream({
         transform(chunk, controller) {
+          // TODO(lucacasonato): convert chunk to BufferSource
           const output = core.opSync(
             "op_compression_write",
             rid,
@@ -75,6 +93,18 @@
           maybeEnqueue(controller, output);
         },
       });
+
+      this[webidl.brand] = webidl.brand;
+    }
+
+    get readable() {
+      webidl.assertBranded(this, DecompressionStream);
+      return this.#transform.readable;
+    }
+
+    get writable() {
+      webidl.assertBranded(this, DecompressionStream);
+      return this.#transform.writable;
     }
   }
 
