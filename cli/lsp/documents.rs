@@ -780,12 +780,7 @@ fn get_document_path(
   if specifier.scheme() == "file" {
     specifier_to_file_path(specifier).ok()
   } else {
-    let path = cache.get_cache_filename(specifier)?;
-    if path.is_file() {
-      Some(path)
-    } else {
-      None
-    }
+    cache.get_cache_filename(specifier)
   }
 }
 
@@ -929,7 +924,16 @@ impl Documents {
 
   /// Return `true` if the specifier can be resolved to a document.
   pub fn contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
-    self.get(specifier).is_some()
+    let specifier = self.specifier_resolver.resolve(specifier);
+    if let Some(specifier) = specifier {
+      if self.open_docs.contains_key(&specifier) {
+        return true;
+      }
+      if let Some(path) = get_document_path(&self.cache, &specifier) {
+        return path.is_file();
+      }
+    }
+    false
   }
 
   /// Return an array of specifiers, if any, that are dependent upon the
@@ -947,22 +951,6 @@ impl Documents {
     } else {
       vec![]
     }
-  }
-
-  /// Used by the tsc op_exists to shortcut trying to load a document to provide
-  /// information to CLI without allocating a document.
-  pub(crate) fn exists(&self, specifier: &ModuleSpecifier) -> bool {
-    let specifier = self.specifier_resolver.resolve(specifier);
-    if let Some(specifier) = specifier {
-      if self.open_docs.contains_key(&specifier) {
-        return true;
-      }
-      if let Some(path) = get_document_path(&self.cache, &specifier) {
-        return path.is_file();
-      }
-    }
-
-    false
   }
 
   /// Return a document for the specifier.
