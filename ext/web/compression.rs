@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::Resource;
