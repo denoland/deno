@@ -48,7 +48,8 @@ use super::lsp_custom;
 use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
-use super::registries;
+use super::registries::ModuleRegistry;
+use super::registries::ModuleRegistryOptions;
 use super::text;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -96,7 +97,7 @@ pub(crate) struct Inner {
   /// on disk or "open" within the client.
   pub(crate) documents: Documents,
   /// Handles module registries, which allow discovery of modules
-  module_registries: registries::ModuleRegistry,
+  module_registries: ModuleRegistry,
   /// The path to the module registries cache
   module_registries_location: PathBuf,
   /// An optional path to the DENO_DIR which has been specified in the client
@@ -139,12 +140,9 @@ impl Inner {
     let dir = deno_dir::DenoDir::new(maybe_custom_root)
       .expect("could not access DENO_DIR");
     let module_registries_location = dir.root.join(REGISTRIES_PATH);
-    let module_registries = registries::ModuleRegistry::new(
+    let module_registries = ModuleRegistry::new(
       &module_registries_location,
-      None,
-      None,
-      None,
-      None,
+      ModuleRegistryOptions::default(),
     )
     .expect("could not create module registries");
     let location = dir.root.join(CACHE_PATH);
@@ -438,12 +436,15 @@ impl Inner {
         .root_uri
         .as_ref()
         .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
-      self.module_registries = registries::ModuleRegistry::new(
+      self.module_registries = ModuleRegistry::new(
         &module_registries_location,
-        maybe_root_path,
-        workspace_settings.certificate_stores.clone(),
-        workspace_settings.tls_certificate.clone(),
-        workspace_settings.unsafely_ignore_certificate_errors,
+        ModuleRegistryOptions {
+          maybe_root_path,
+          maybe_ca_stores: workspace_settings.certificate_stores.clone(),
+          maybe_ca_file: workspace_settings.tls_certificate.clone(),
+          unsafely_ignore_certificate_errors: workspace_settings
+            .unsafely_ignore_certificate_errors,
+        },
       )?;
       self.module_registries_location = module_registries_location;
       self.documents.set_location(dir.root.join(CACHE_PATH));
@@ -516,14 +517,16 @@ impl Inner {
       .root_uri
       .as_ref()
       .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
-    self.module_registries = registries::ModuleRegistry::new(
+    self.module_registries = ModuleRegistry::new(
       &self.module_registries_location,
-      maybe_root_path,
-      workspace_settings.certificate_stores.clone(),
-      workspace_settings.tls_certificate.clone(),
-      workspace_settings
-        .unsafely_ignore_certificate_errors
-        .clone(),
+      ModuleRegistryOptions {
+        maybe_root_path,
+        maybe_ca_stores: workspace_settings.certificate_stores.clone(),
+        maybe_ca_file: workspace_settings.tls_certificate.clone(),
+        unsafely_ignore_certificate_errors: workspace_settings
+          .unsafely_ignore_certificate_errors
+          .clone(),
+      },
     )?;
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
       if *enabled {
