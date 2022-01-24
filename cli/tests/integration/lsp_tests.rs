@@ -158,26 +158,30 @@ struct CollectedDiagnostics(Vec<lsp::PublishDiagnosticsParams>);
 impl CollectedDiagnostics {
   /// Gets the diagnostics that the editor will see after all the publishes.
   pub fn viewed(&self) -> Vec<lsp::Diagnostic> {
+    self
+      .viewed_messages()
+      .into_iter()
+      .flat_map(|m| m.diagnostics)
+      .collect()
+  }
+
+  /// Gets the messages that the editor will see after all the publishes.
+  pub fn viewed_messages(&self) -> Vec<lsp::PublishDiagnosticsParams> {
     // go over the publishes in reverse order in order to get
-    // the final diagnostics that will be shown in the editor
-    let mut diagnostics = Vec::new();
+    // the final messages that will be shown in the editor
+    let mut messages = Vec::new();
     let mut had_specifier = HashSet::new();
     for message in self.0.iter().rev() {
       if had_specifier.insert(message.uri.clone()) {
-        diagnostics = message
-          .diagnostics
-          .iter()
-          .cloned()
-          .chain(diagnostics.into_iter())
-          .collect();
+        messages.insert(0, message.clone());
       }
     }
-    diagnostics
+    messages
   }
 
   pub fn with_source(&self, source: &str) -> lsp::PublishDiagnosticsParams {
     self
-      .0
+      .viewed_messages()
       .iter()
       .find(|p| {
         p.diagnostics
@@ -195,7 +199,7 @@ impl CollectedDiagnostics {
   ) -> lsp::PublishDiagnosticsParams {
     let specifier = ModuleSpecifier::parse(specifier).unwrap();
     self
-      .0
+      .viewed_messages()
       .iter()
       .find(|p| {
         p.uri == specifier
@@ -2634,29 +2638,22 @@ fn lsp_code_actions() {
 
 #[test]
 fn lsp_code_actions_deno_cache() {
-  let mut client = init("initialize_params.json");
-  client
-    .write_notification("textDocument/didOpen", json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import * as a from \"https://deno.land/x/a/mod.ts\";\n\nconsole.log(a);\n"
-      }
-    }))
-    .unwrap();
-  let (id, method, _) = client.read_request::<Value>().unwrap();
-  assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(id, json!([{ "enable": true }]))
-    .unwrap();
-  let diagnostics = read_diagnostics(&mut client);
+  let mut session = TestSession::from_file("initialize_params.json");
+  let diagnostics = session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from \"https://deno.land/x/a/mod.ts\";\n\nconsole.log(a);\n"
+    }
+  }));
   assert_eq!(
     diagnostics.with_source("deno"),
     load_fixture_as("diagnostics_deno_deps.json")
   );
 
-  let (maybe_res, maybe_err) = client
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request(
       "textDocument/codeAction",
       load_fixture("code_action_params_cache.json"),
@@ -2667,7 +2664,7 @@ fn lsp_code_actions_deno_cache() {
     maybe_res,
     Some(load_fixture("code_action_response_cache.json"))
   );
-  shutdown(&mut client);
+  session.shutdown_and_exit();
 }
 
 #[test]
