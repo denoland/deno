@@ -100,8 +100,12 @@ struct TestSession {
 
 impl TestSession {
   pub fn from_file(init_path: &str) -> Self {
+    Self::from_client(init(init_path))
+  }
+
+  pub fn from_client(client: LspClient) -> Self {
     Self {
-      client: init(init_path),
+      client,
       open_file_count: 0,
     }
   }
@@ -3334,24 +3338,23 @@ fn lsp_tls_cert() {
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
-
   client.write_notification("initialized", json!({})).unwrap();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file_01.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export const a = \"a\";\n",
-      }
-    }),
-  );
+  let mut session = TestSession::from_client(client);
+
+  session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file_01.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export const a = \"a\";\n",
+    }
+  }));
   let diagnostics =
-    did_open(&mut client, load_fixture("did_open_params_tls_cert.json"));
-  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  assert_eq!(diagnostics.count(), 14);
-  let (maybe_res, maybe_err) = client
+    session.did_open(load_fixture("did_open_params_tls_cert.json"));
+  let diagnostics = diagnostics.all();
+  assert_eq!(diagnostics.len(), 7);
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request::<_, _, Value>(
       "deno/cache",
       json!({
@@ -3364,7 +3367,8 @@ fn lsp_tls_cert() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = client
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request(
       "textDocument/hover",
       json!({
@@ -3398,7 +3402,8 @@ fn lsp_tls_cert() {
       }
     }))
   );
-  let (maybe_res, maybe_err) = client
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request::<_, _, Value>(
       "textDocument/hover",
       json!({
@@ -3432,7 +3437,7 @@ fn lsp_tls_cert() {
       }
     }))
   );
-  shutdown(&mut client);
+  session.shutdown_and_exit();
 }
 
 #[test]
@@ -3721,7 +3726,7 @@ fn lsp_performance() {
     .unwrap();
   assert!(maybe_err.is_none());
   if let Some(res) = maybe_res {
-    assert!(res.averages.len() == 5);
+    assert_eq!(res.averages.len(), 13);
   } else {
     panic!("unexpected result");
   }
