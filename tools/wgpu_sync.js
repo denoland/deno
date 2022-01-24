@@ -42,6 +42,14 @@ async function denoCoreVersion() {
   return contents.match(/^version = "(\d+\.\d+\.\d+)"$/m)[1];
 }
 
+async function denoWebgpuVersion() {
+  const coreCargo = join(ROOT_PATH, "runtime", "Cargo.toml");
+  const contents = await Deno.readTextFile(coreCargo);
+  return contents.match(
+    /^deno_webgpu = { version = "(\d+\.\d+\.\d+)", path = "..\/ext\/webgpu" }$/m,
+  )[1];
+}
+
 async function patchFile(path, patcher) {
   const data = await Deno.readTextFile(path);
   const patched = patcher(data);
@@ -50,11 +58,12 @@ async function patchFile(path, patcher) {
 
 async function patchCargo() {
   const vDenoCore = await denoCoreVersion();
+  const vDenoWebgpu = await denoWebgpuVersion();
   await patchFile(
     join(TARGET_DIR, "Cargo.toml"),
     (data) =>
       data
-        .replace(`version = "0.17.0"`, `version = "0.33.0"`)
+        .replace(/^version = .*/m, `version = "${vDenoWebgpu}"`)
         .replace(`edition = "2018"`, `edition = "2021"`)
         .replace(
           /^deno_core \= .*$/gm,
