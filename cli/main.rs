@@ -529,7 +529,7 @@ async fn lint_command(
     return Ok(0);
   }
 
-  tools::lint::lint(lint_flags, flags).await?;
+  tools::lint::lint(flags, lint_flags).await?;
   Ok(0)
 }
 

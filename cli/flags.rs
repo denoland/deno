@@ -1781,8 +1781,6 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   watch_arg_parse(flags, matches, false);
 
-  no_clear_screen_arg_parse(flags, matches);
-
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     source_file,
     out_file,
@@ -1925,7 +1923,6 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
   watch_arg_parse(flags, matches, false);
-  no_clear_screen_arg_parse(flags, matches);
 
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
@@ -2049,7 +2046,6 @@ fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
   watch_arg_parse(flags, matches, false);
-  no_clear_screen_arg_parse(flags, matches);
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -2110,7 +2106,6 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 
   watch_arg_parse(flags, matches, true);
-  no_clear_screen_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
 }
 
@@ -2185,7 +2180,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   flags.coverage_dir = matches.value_of("coverage").map(String::from);
   watch_arg_parse(flags, matches, false);
-  no_clear_screen_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
@@ -2471,9 +2465,7 @@ fn watch_arg_parse(
   } else if matches.is_present("watch") {
     flags.watch = Some(vec![]);
   }
-}
 
-fn no_clear_screen_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   if matches.is_present("no-clear-screen") {
     flags.no_clear_screen = true;
   }

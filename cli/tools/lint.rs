@@ -49,7 +49,7 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   }
 }
 
-pub async fn lint(lint_flags: LintFlags, flags: Flags) -> Result<(), AnyError> {
+pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   let LintFlags {
     maybe_rules_tags,
     maybe_rules_include,
