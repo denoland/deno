@@ -1865,6 +1865,51 @@ pub mod tests {
   }
 
   #[tokio::test]
+  async fn test_poll_value() {
+    run_in_task(|cx| {
+      let mut runtime = JsRuntime::new(Default::default());
+      let value_global = runtime
+        .execute_script("a.js", "Promise.resolve(1 + 2)")
+        .unwrap();
+      let v = runtime.poll_value(&value_global, cx);
+      {
+        let scope = &mut runtime.handle_scope();
+        assert!(
+          matches!(v, Poll::Ready(Ok(v)) if v.open(scope).integer_value(scope).unwrap() == 3)
+        );
+      }
+
+      let value_global = runtime
+        .execute_script(
+          "a.js",
+          "Promise.resolve(new Promise(resolve => resolve(2 + 2)))",
+        )
+        .unwrap();
+      let v = runtime.poll_value(&value_global, cx);
+      {
+        let scope = &mut runtime.handle_scope();
+        assert!(
+          matches!(v, Poll::Ready(Ok(v)) if v.open(scope).integer_value(scope).unwrap() == 4)
+        );
+      }
+
+      let value_global = runtime
+        .execute_script("a.js", "Promise.reject(new Error('fail'))")
+        .unwrap();
+      let v = runtime.poll_value(&value_global, cx);
+      assert!(
+        matches!(v, Poll::Ready(Err(e)) if e.downcast_ref::<JsError>().unwrap().message == "Uncaught Error: fail")
+      );
+
+      let value_global = runtime
+        .execute_script("a.js", "new Promise(resolve => {})")
+        .unwrap();
+      let v = runtime.poll_value(&value_global, cx);
+      matches!(v, Poll::Ready(Err(e)) if e.to_string() == "Promise resolution is still pending but the event loop has already resolved.");
+    });
+  }
+
+  #[tokio::test]
   async fn test_resolve_value() {
     let mut runtime = JsRuntime::new(Default::default());
     let value_global = runtime
