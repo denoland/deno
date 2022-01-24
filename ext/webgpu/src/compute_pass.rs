@@ -125,10 +125,10 @@ pub fn op_webgpu_compute_pass_begin_pipeline_statistics_query(
     .get::<super::WebGpuQuerySet>(args.query_set)?;
 
   wgpu_core::command::compute_ffi::wgpu_compute_pass_begin_pipeline_statistics_query(
-    &mut compute_pass_resource.0.borrow_mut(),
-    query_set_resource.0,
-    args.query_index,
-  );
+        &mut compute_pass_resource.0.borrow_mut(),
+        query_set_resource.0,
+        args.query_index,
+    );
 
   Ok(WebGpuResult::empty())
 }
@@ -149,8 +149,8 @@ pub fn op_webgpu_compute_pass_end_pipeline_statistics_query(
     .get::<WebGpuComputePass>(args.compute_pass_rid)?;
 
   wgpu_core::command::compute_ffi::wgpu_compute_pass_end_pipeline_statistics_query(
-    &mut compute_pass_resource.0.borrow_mut(),
-  );
+        &mut compute_pass_resource.0.borrow_mut(),
+    );
 
   Ok(WebGpuResult::empty())
 }

@@ -9,8 +9,6 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-use crate::pipeline::GpuIndexFormat;
-
 use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuRenderPass(
@@ -88,18 +86,9 @@ pub fn op_webgpu_render_pass_set_scissor_rect(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GpuColor {
-  pub r: f64,
-  pub g: f64,
-  pub b: f64,
-  pub a: f64,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RenderPassSetBlendConstantArgs {
   render_pass_rid: ResourceId,
-  color: GpuColor,
+  color: wgpu_types::Color,
 }
 
 pub fn op_webgpu_render_pass_set_blend_constant(
@@ -113,12 +102,7 @@ pub fn op_webgpu_render_pass_set_blend_constant(
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_blend_constant(
     &mut render_pass_resource.0.borrow_mut(),
-    &wgpu_types::Color {
-      r: args.color.r,
-      g: args.color.g,
-      b: args.color.b,
-      a: args.color.a,
-    },
+    &args.color,
   );
 
   Ok(WebGpuResult::empty())
@@ -169,10 +153,10 @@ pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
     .get::<super::WebGpuQuerySet>(args.query_set)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_begin_pipeline_statistics_query(
-    &mut render_pass_resource.0.borrow_mut(),
-    query_set_resource.0,
-    args.query_index,
-  );
+        &mut render_pass_resource.0.borrow_mut(),
+        query_set_resource.0,
+        args.query_index,
+    );
 
   Ok(WebGpuResult::empty())
 }
@@ -193,8 +177,8 @@ pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
     .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_end_pipeline_statistics_query(
-    &mut render_pass_resource.0.borrow_mut(),
-  );
+        &mut render_pass_resource.0.borrow_mut(),
+    );
 
   Ok(WebGpuResult::empty())
 }
@@ -466,7 +450,7 @@ pub fn op_webgpu_render_pass_set_pipeline(
 pub struct RenderPassSetIndexBufferArgs {
   render_pass_rid: ResourceId,
   buffer: u32,
-  index_format: GpuIndexFormat,
+  index_format: wgpu_types::IndexFormat,
   offset: u64,
   size: Option<u64>,
 }
@@ -494,7 +478,7 @@ pub fn op_webgpu_render_pass_set_index_buffer(
 
   render_pass_resource.0.borrow_mut().set_index_buffer(
     buffer_resource.0,
-    args.index_format.into(),
+    args.index_format,
     args.offset,
     size,
   );
