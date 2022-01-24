@@ -13,8 +13,6 @@ use std::cell::RefCell;
 use std::io::Write;
 use std::rc::Rc;
 
-/// V3
-
 #[derive(Debug)]
 struct CompressionResource(RefCell<Inner>);
 
@@ -63,21 +61,22 @@ pub fn op_compression_write(
   let out: Vec<u8> = match &mut *inner {
     Inner::DeflateDecoder(d) => {
       d.write_all(&input)?;
-      d.get_mut().drain(..).collect()
+      d.get_mut().drain(..)
     }
     Inner::DeflateEncoder(d) => {
       d.write_all(&input)?;
-      d.get_mut().drain(..).collect()
+      d.get_mut().drain(..)
     }
     Inner::GzDecoder(d) => {
       d.write_all(&input)?;
-      d.get_mut().drain(..).collect()
+      d.get_mut().drain(..)
     }
     Inner::GzEncoder(d) => {
       d.write_all(&input)?;
-      d.get_mut().drain(..).collect()
+      d.get_mut().drain(..)
     }
-  };
+  }
+  .collect();
   Ok(out.into())
 }
 
