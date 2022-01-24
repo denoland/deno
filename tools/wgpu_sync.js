@@ -6,7 +6,7 @@ import { join, ROOT_PATH } from "./util.js";
 // const COMMIT = "c00e471274b6c21acda89b4b13d41742c0285d71"; // Release 12
 const COMMIT = "c4aa3eaed020a640fec06b48f0a5ea93490d41bb"; // tip of PR (needs merge)
 const REPO = "kvark/wgpu";
-// const V_WGPU = "0.12.0";
+const V_WGPU = "0.12";
 const TARGET_DIR = join(ROOT_PATH, "ext", "webgpu");
 
 async function bash(subcmd, opts = {}) {
@@ -56,16 +56,22 @@ async function patchCargo() {
       /^deno_core \= .*$/gm,
       `deno_core = { version = "${vDenoCore}", path = "../../core" }`,
     )
-    // .replace(/^wgpu-core \= .*$/gm, `wgpu-core = { version = "${V_WGPU}", features = ["trace", "replay", "serde"] }`)
-    // .replace(/^wgpu-types \= .*$/gm, `wgpu-types = { version = "${V_WGPU}", features = ["trace", "replay", "serde"] }`)
     .replace(
       /^wgpu-core \= .*$/gm,
-      `wgpu-core = { git = "https://github.com/${REPO}", rev = "${COMMIT}", features = ["trace", "replay", "serde"] }`,
+      `wgpu-core = { version = "${V_WGPU}", features = ["trace", "replay", "serde"] }`,
     )
     .replace(
       /^wgpu-types \= .*$/gm,
-      `wgpu-types = { git = "https://github.com/${REPO}", rev = "${COMMIT}", features = ["trace", "replay", "serde"] }`,
+      `wgpu-types = { version = "${V_WGPU}", features = ["trace", "replay", "serde"] }`,
     );
+  // .replace(
+  //   /^wgpu-core \= .*$/gm,
+  //   `wgpu-core = { git = "https://github.com/${REPO}", rev = "${COMMIT}", features = ["trace", "replay", "serde"] }`,
+  // )
+  // .replace(
+  //   /^wgpu-types \= .*$/gm,
+  //   `wgpu-types = { git = "https://github.com/${REPO}", rev = "${COMMIT}", features = ["trace", "replay", "serde"] }`,
+  // );
 
   await Deno.writeTextFile(webgpuCargo, patched);
 }

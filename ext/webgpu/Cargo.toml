@@ -14,5 +14,5 @@ description = "WebGPU implementation for Deno"
 deno_core = { version = "0.116.0", path = "../../core" }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.10", features = ["full"] }
-wgpu-core = { git = "https://github.com/kvark/wgpu", rev = "c4aa3eaed020a640fec06b48f0a5ea93490d41bb", features = ["trace", "replay", "serde"] }
-wgpu-types = { git = "https://github.com/kvark/wgpu", rev = "c4aa3eaed020a640fec06b48f0a5ea93490d41bb", features = ["trace", "replay", "serde"] }
+wgpu-core = { version = "0.12", features = ["trace", "replay", "serde"] }
+wgpu-types = { version = "0.12", features = ["trace", "replay", "serde"] }
