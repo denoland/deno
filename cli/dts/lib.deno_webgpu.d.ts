@@ -92,12 +92,15 @@ declare interface GPUDeviceDescriptor extends GPUObjectDescriptorBase {
 }
 
 declare type GPUFeatureName =
-  | "depth-clamping"
+  | "depth-clip-control"
   | "depth24unorm-stencil8"
   | "depth32float-stencil8"
   | "pipeline-statistics-query"
   | "texture-compression-bc"
+  | "texture-compression-etc2"
+  | "texture-compression-astc"
   | "timestamp-query"
+  | "indirect-first-instance"
   // extended from spec
   | "mappable-primary-buffers"
   | "sampled-texture-binding-array"
@@ -108,9 +111,6 @@ declare type GPUFeatureName =
   | "multi-draw-indirect-count"
   | "push-constants"
   | "address-mode-clamp-to-border"
-  | "non-fill-polygon-mode"
-  | "texture-compression-etc2"
-  | "texture-compression-astc-ldr"
   | "texture-adapter-specific-format-features"
   | "shader-float64"
   | "vertex-attribute-64bit";
@@ -314,6 +314,44 @@ declare type GPUTextureFormat =
   | "bc6h-rgb-float"
   | "bc7-rgba-unorm"
   | "bc7-rgba-unorm-srgb"
+  | "etc2-rgb8unorm"
+  | "etc2-rgb8unorm-srgb"
+  | "etc2-rgb8a1unorm"
+  | "etc2-rgb8a1unorm-srgb"
+  | "etc2-rgba8unorm"
+  | "etc2-rgba8unorm-srgb"
+  | "eac-r11unorm"
+  | "eac-r11snorm"
+  | "eac-rg11unorm"
+  | "eac-rg11snorm"
+  | "astc-4x4-unorm"
+  | "astc-4x4-unorm-srgb"
+  | "astc-5x4-unorm"
+  | "astc-5x4-unorm-srgb"
+  | "astc-5x5-unorm"
+  | "astc-5x5-unorm-srgb"
+  | "astc-6x5-unorm"
+  | "astc-6x5-unorm-srgb"
+  | "astc-6x6-unorm"
+  | "astc-6x6-unorm-srgb"
+  | "astc-8x5-unorm"
+  | "astc-8x5-unorm-srgb"
+  | "astc-8x6-unorm"
+  | "astc-8x6-unorm-srgb"
+  | "astc-8x8-unorm"
+  | "astc-8x8-unorm-srgb"
+  | "astc-10x5-unorm"
+  | "astc-10x5-unorm-srgb"
+  | "astc-10x6-unorm"
+  | "astc-10x6-unorm-srgb"
+  | "astc-10x8-unorm"
+  | "astc-10x8-unorm-srgb"
+  | "astc-10x10-unorm"
+  | "astc-10x10-unorm-srgb"
+  | "astc-12x10-unorm"
+  | "astc-12x10-unorm-srgb"
+  | "astc-12x12-unorm"
+  | "astc-12x12-unorm-srgb"
   | "depth24unorm-stencil8"
   | "depth32float-stencil8";
 
@@ -519,7 +557,7 @@ declare interface GPUPrimitiveState {
   stripIndexFormat?: GPUIndexFormat;
   frontFace?: GPUFrontFace;
   cullMode?: GPUCullMode;
-  clampDepth?: boolean;
+  unclippedDepth?: boolean;
 }
 
 declare type GPUFrontFace = "ccw" | "cw";
@@ -558,9 +596,9 @@ declare class GPUColorWrite {
 }
 
 declare interface GPUBlendComponent {
+  operation: GPUBlendOperation;
   srcFactor: GPUBlendFactor;
   dstFactor: GPUBlendFactor;
-  operation: GPUBlendOperation;
 }
 
 declare type GPUBlendFactor =
@@ -673,8 +711,6 @@ declare interface GPUVertexAttribute {
 
 declare class GPUCommandBuffer implements GPUObjectBase {
   label: string | null;
-
-  readonly executionTime: Promise<number>;
 }
 
 declare interface GPUCommandBufferDescriptor extends GPUObjectDescriptorBase {}
@@ -713,6 +749,12 @@ declare class GPUCommandEncoder implements GPUObjectBase {
     copySize: GPUExtent3D,
   ): undefined;
 
+  clearBuffer(
+    destination: GPUBuffer,
+    destinationOffset: number,
+    size: number,
+  ): undefined;
+
   pushDebugGroup(groupLabel: string): undefined;
   popDebugGroup(): undefined;
   insertDebugMarker(markerLabel: string): undefined;
@@ -730,9 +772,7 @@ declare class GPUCommandEncoder implements GPUObjectBase {
   finish(descriptor?: GPUCommandBufferDescriptor): GPUCommandBuffer;
 }
 
-declare interface GPUCommandEncoderDescriptor extends GPUObjectDescriptorBase {
-  measureExecutionTime?: boolean;
-}
+declare interface GPUCommandEncoderDescriptor extends GPUObjectDescriptorBase {}
 
 declare interface GPUImageDataLayout {
   offset?: number;
