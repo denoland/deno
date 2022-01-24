@@ -12,6 +12,7 @@ use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
 
 use crate::deno_dir;
+use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::http_cache::HttpCache;
@@ -37,6 +38,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
+use std::path::PathBuf;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
 const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
@@ -406,11 +408,19 @@ enum VariableItems {
   List(VariableItemsList),
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct ModuleRegistryOptions {
+  pub maybe_root_path: Option<PathBuf>,
+  pub maybe_ca_stores: Option<Vec<String>>,
+  pub maybe_ca_file: Option<String>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+}
+
 /// A structure which holds the information about currently configured module
 /// registries and can provide completion information for URLs that match
 /// one of the enabled registries.
 #[derive(Debug, Clone)]
-pub struct ModuleRegistry {
+pub(crate) struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
   file_fetcher: FileFetcher,
 }
@@ -422,29 +432,35 @@ impl Default for ModuleRegistry {
     // custom root.
     let dir = deno_dir::DenoDir::new(None).unwrap();
     let location = dir.root.join("registries");
-    Self::new(&location)
+    Self::new(&location, ModuleRegistryOptions::default()).unwrap()
   }
 }
 
 impl ModuleRegistry {
-  pub fn new(location: &Path) -> Self {
+  pub fn new(
+    location: &Path,
+    options: ModuleRegistryOptions,
+  ) -> Result<Self, AnyError> {
     let http_cache = HttpCache::new(location);
+    let root_cert_store = Some(get_root_cert_store(
+      options.maybe_root_path,
+      options.maybe_ca_stores,
+      options.maybe_ca_file,
+    )?);
     let mut file_fetcher = FileFetcher::new(
       http_cache,
       CacheSetting::RespectHeaders,
       true,
-      None,
+      root_cert_store,
       BlobStore::default(),
-      None,
-    )
-    .context("Error creating file fetcher in module registry.")
-    .unwrap();
+      options.unsafely_ignore_certificate_errors,
+    )?;
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
-    Self {
+    Ok(Self {
       origins: HashMap::new(),
       file_fetcher,
-    }
+    })
   }
 
   fn complete_literal(
@@ -1200,7 +1216,8 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new().expect("could not create tmp");
     let location = temp_dir.path().join("registries");
-    let mut module_registry = ModuleRegistry::new(&location);
+    let mut module_registry =
+      ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1260,7 +1277,8 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new().expect("could not create tmp");
     let location = temp_dir.path().join("registries");
-    let mut module_registry = ModuleRegistry::new(&location);
+    let mut module_registry =
+      ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1482,7 +1500,8 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new().expect("could not create tmp");
     let location = temp_dir.path().join("registries");
-    let mut module_registry = ModuleRegistry::new(&location);
+    let mut module_registry =
+      ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
@@ -1551,7 +1570,8 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new().expect("could not create tmp");
     let location = temp_dir.path().join("registries");
-    let mut module_registry = ModuleRegistry::new(&location);
+    let mut module_registry =
+      ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
@@ -1601,7 +1621,8 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new().expect("could not create tmp");
     let location = temp_dir.path().join("registries");
-    let module_registry = ModuleRegistry::new(&location);
+    let module_registry =
+      ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
     let result = module_registry.check_origin("http://localhost:4545").await;
     assert!(result.is_ok());
   }
@@ -1611,7 +1632,8 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new().expect("could not create tmp");
     let location = temp_dir.path().join("registries");
-    let module_registry = ModuleRegistry::new(&location);
+    let module_registry =
+      ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
     let result = module_registry.check_origin("https://deno.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();

@@ -82,10 +82,7 @@ jobs:
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
 
-      - name: Install Rust
-        uses: hecrj/setup-rust-action@v1
-        with:
-          rust-version: 1.58.0
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Install clippy and rustfmt
         if: matrix.job == 'lint'
