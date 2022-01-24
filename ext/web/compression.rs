@@ -63,18 +63,22 @@ pub fn op_compression_write(
   let out: Vec<u8> = match &mut *inner {
     Inner::DeflateDecoder(d) => {
       d.write_all(&input)?;
+      d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateEncoder(d) => {
       d.write_all(&input)?;
+      d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::GzDecoder(d) => {
       d.write_all(&input)?;
+      d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::GzEncoder(d) => {
       d.write_all(&input)?;
+      d.flush()?;
       d.get_mut().drain(..)
     }
   }
