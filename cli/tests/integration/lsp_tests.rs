@@ -10,6 +10,7 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use lspower::lsp;
 use pretty_assertions::assert_eq;
+use std::collections::HashSet;
 use std::fs;
 use tempfile::TempDir;
 use test_util::deno_exe_path;
@@ -155,12 +156,23 @@ impl TestSession {
 struct CollectedDiagnostics(Vec<lsp::PublishDiagnosticsParams>);
 
 impl CollectedDiagnostics {
-  pub fn all(&self) -> Vec<lsp::Diagnostic> {
-    self
-      .0
-      .iter()
-      .flat_map(|p| p.diagnostics.clone().into_iter())
-      .collect()
+  /// Gets the diagnostics that the editor will see after all the publishes.
+  pub fn viewed(&self) -> Vec<lsp::Diagnostic> {
+    // go over the publishes in reverse order in order to get
+    // the final diagnostics that will be shown in the editor
+    let mut diagnostics = Vec::new();
+    let mut had_specifier = HashSet::new();
+    for message in self.0.iter().rev() {
+      if had_specifier.insert(message.uri.clone()) {
+        diagnostics = message
+          .diagnostics
+          .iter()
+          .cloned()
+          .chain(diagnostics.into_iter())
+          .collect();
+      }
+    }
+    diagnostics
   }
 
   pub fn with_source(&self, source: &str) -> lsp::PublishDiagnosticsParams {
@@ -3215,26 +3227,22 @@ fn lsp_cache_location() {
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
-
   client.write_notification("initialized", json!({})).unwrap();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file_01.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export const a = \"a\";\n",
-      }
-    }),
-  );
-  let diagnostics = did_open(
-    &mut client,
-    load_fixture("did_open_params_import_hover.json"),
-  );
-  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  assert_eq!(diagnostics.count(), 7);
-  let (maybe_res, maybe_err) = client
+  let mut session = TestSession::from_client(client);
+
+  session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file_01.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export const a = \"a\";\n",
+    }
+  }));
+  let diagnostics =
+    session.did_open(load_fixture("did_open_params_import_hover.json"));
+  assert_eq!(diagnostics.viewed().len(), 7);
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request::<_, _, Value>(
       "deno/cache",
       json!({
@@ -3247,7 +3255,8 @@ fn lsp_cache_location() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = client
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request(
       "textDocument/hover",
       json!({
@@ -3281,7 +3290,8 @@ fn lsp_cache_location() {
       }
     }))
   );
-  let (maybe_res, maybe_err) = client
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request::<_, _, Value>(
       "textDocument/hover",
       json!({
@@ -3318,7 +3328,7 @@ fn lsp_cache_location() {
   let cache_path = temp_dir.path().join(".cache");
   assert!(cache_path.is_dir());
   assert!(cache_path.join("gen").is_dir());
-  shutdown(&mut client);
+  session.shutdown_and_exit();
 }
 
 /// Sets the TLS root certificate on startup, which allows the LSP to connect to
@@ -3351,7 +3361,7 @@ fn lsp_tls_cert() {
   }));
   let diagnostics =
     session.did_open(load_fixture("did_open_params_tls_cert.json"));
-  let diagnostics = diagnostics.all();
+  let diagnostics = diagnostics.viewed();
   assert_eq!(diagnostics.len(), 7);
   let (maybe_res, maybe_err) = session
     .client
@@ -3585,7 +3595,7 @@ fn lsp_diagnostics_deno_types() {
   assert!(maybe_res.is_some());
   assert!(maybe_err.is_none());
   let diagnostics = read_diagnostics(&mut client);
-  assert_eq!(diagnostics.all().len(), 5);
+  assert_eq!(diagnostics.viewed().len(), 5);
   shutdown(&mut client);
 }
 
@@ -3671,7 +3681,7 @@ fn lsp_diagnostics_refresh_dependents() {
     )
     .unwrap();
   let diagnostics = session.read_diagnostics();
-  assert_eq!(diagnostics.all().len(), 0); // no diagnostics now
+  assert_eq!(diagnostics.viewed().len(), 0); // no diagnostics now
 
   session.shutdown_and_exit();
   assert_eq!(session.client.queue_len(), 0);
@@ -4405,18 +4415,16 @@ fn lsp_lint_with_config() {
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
+  let mut session = TestSession::from_client(client);
 
-  let diagnostics = did_open(&mut client, load_fixture("did_open_lint.json"));
-  let diagnostics = diagnostics
-    .into_iter()
-    .flat_map(|x| x.diagnostics)
-    .collect::<Vec<_>>();
+  let diagnostics = session.did_open(load_fixture("did_open_lint.json"));
+  let diagnostics = diagnostics.viewed();
   assert_eq!(diagnostics.len(), 1);
   assert_eq!(
     diagnostics[0].code,
     Some(lsp::NumberOrString::String("ban-untagged-todo".to_string()))
   );
-  shutdown(&mut client);
+  session.shutdown_and_exit();
 }
 
 #[test]

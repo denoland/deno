@@ -40,6 +40,54 @@ pub type DiagnosticVec = Vec<DiagnosticRecord>;
 type DiagnosticMap =
   HashMap<ModuleSpecifier, (Option<i32>, Vec<lsp::Diagnostic>)>;
 type TsDiagnosticsMap = HashMap<String, Vec<diagnostics::Diagnostic>>;
+type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp::Diagnostic>>;
+
+#[derive(Clone)]
+struct DiagnosticsPublisher {
+  client: Client,
+  all_diagnostics:
+    Arc<Mutex<HashMap<ModuleSpecifier, DiagnosticsByVersionMap>>>,
+}
+
+impl DiagnosticsPublisher {
+  pub fn new(client: Client) -> Self {
+    Self {
+      client,
+      all_diagnostics: Default::default(),
+    }
+  }
+
+  pub async fn publish(
+    &self,
+    diagnostics: DiagnosticVec,
+    token: &CancellationToken,
+  ) {
+    let mut all_diagnostics = self.all_diagnostics.lock().await;
+    for (specifier, version, diagnostics) in diagnostics {
+      if token.is_cancelled() {
+        return;
+      }
+
+      // the versions of all the published diagnostics should be the same, but just
+      // in case they're not keep track of that
+      let diagnostics_by_version =
+        all_diagnostics.entry(specifier.clone()).or_default();
+      let mut version_diagnostics =
+        diagnostics_by_version.entry(version).or_default();
+      version_diagnostics.extend(diagnostics);
+
+      self
+        .client
+        .publish_diagnostics(specifier, version_diagnostics.clone(), version)
+        .await;
+    }
+  }
+
+  pub async fn clear(&self) {
+    let mut all_diagnostics = self.all_diagnostics.lock().await;
+    all_diagnostics.clear();
+  }
+}
 
 #[derive(Debug)]
 pub(crate) struct DiagnosticsServer {
@@ -113,6 +161,7 @@ impl DiagnosticsServer {
         let mut ts_handle: Option<tokio::task::JoinHandle<()>> = None;
         let mut lint_handle: Option<tokio::task::JoinHandle<()>> = None;
         let mut deps_handle: Option<tokio::task::JoinHandle<()>> = None;
+        let diagnostics_publisher = DiagnosticsPublisher::new(client.clone());
 
         loop {
           match rx.recv().await {
@@ -122,6 +171,7 @@ impl DiagnosticsServer {
               // cancel the previous run
               token.cancel();
               token = CancellationToken::new();
+              diagnostics_publisher.clear().await;
 
               let (snapshot, config, maybe_lint_config) = {
                 let language_server = language_server.lock().await;
@@ -135,8 +185,8 @@ impl DiagnosticsServer {
               let previous_ts_handle = ts_handle.take();
               ts_handle = Some(tokio::spawn({
                 let performance = performance.clone();
+                let diagnostics_publisher = diagnostics_publisher.clone();
                 let ts_server = ts_server.clone();
-                let client = client.clone();
                 let token = token.clone();
                 let stored_ts_diagnostics = stored_ts_diagnostics.clone();
                 let snapshot = snapshot.clone();
@@ -184,12 +234,11 @@ impl DiagnosticsServer {
                         .collect();
                     }
 
-                    for (specifier, version, diagnostics) in diagnostics {
-                      client
-                        .publish_diagnostics(specifier, diagnostics, version)
-                        .await;
+                    diagnostics_publisher.publish(diagnostics, &token).await;
+
+                    if !token.is_cancelled() {
+                      performance.measure(mark);
                     }
-                    performance.measure(mark);
                   }
                 }
               }));
@@ -197,7 +246,7 @@ impl DiagnosticsServer {
               let previous_deps_handle = deps_handle.take();
               deps_handle = Some(tokio::spawn({
                 let performance = performance.clone();
-                let client = client.clone();
+                let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
@@ -214,12 +263,9 @@ impl DiagnosticsServer {
                   )
                   .await;
 
+                  diagnostics_publisher.publish(diagnostics, &token).await;
+
                   if !token.is_cancelled() {
-                    for (specifier, version, diagnostics) in diagnostics {
-                      client
-                        .publish_diagnostics(specifier, diagnostics, version)
-                        .await;
-                    }
                     performance.measure(mark);
                   }
                 }
@@ -228,7 +274,7 @@ impl DiagnosticsServer {
               let previous_lint_handle = lint_handle.take();
               lint_handle = Some(tokio::spawn({
                 let performance = performance.clone();
-                let client = client.clone();
+                let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
@@ -246,12 +292,9 @@ impl DiagnosticsServer {
                   )
                   .await;
 
+                  diagnostics_publisher.publish(diagnostics, &token).await;
+
                   if !token.is_cancelled() {
-                    for (specifier, version, diagnostics) in diagnostics {
-                      client
-                        .publish_diagnostics(specifier, diagnostics, version)
-                        .await;
-                    }
                     performance.measure(mark);
                   }
                 }
