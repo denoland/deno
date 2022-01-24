@@ -96,6 +96,7 @@ pub(crate) static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
       ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
       ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
       ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
+      ("lib.es2022.full.d.ts", inc!("lib.es2022.full.d.ts")),
       ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
       ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
       ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),

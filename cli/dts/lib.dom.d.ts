@@ -227,7 +227,7 @@ interface ComputedEffectTiming extends EffectTiming {
     currentIteration?: number | null;
     endTime?: CSSNumberish;
     localTime?: CSSNumberish | null;
-    progress?: CSSNumberish | null;
+    progress?: number | null;
     startTime?: CSSNumberish;
 }
 
@@ -284,8 +284,8 @@ interface CredentialRequestOptions {
 }
 
 interface CryptoKeyPair {
-    privateKey?: CryptoKey;
-    publicKey?: CryptoKey;
+    privateKey: CryptoKey;
+    publicKey: CryptoKey;
 }
 
 interface CustomEventInit<T = any> extends EventInit {
@@ -485,6 +485,18 @@ interface FilePropertyBag extends BlobPropertyBag {
 interface FileSystemFlags {
     create?: boolean;
     exclusive?: boolean;
+}
+
+interface FileSystemGetDirectoryOptions {
+    create?: boolean;
+}
+
+interface FileSystemGetFileOptions {
+    create?: boolean;
+}
+
+interface FileSystemRemoveOptions {
+    recursive?: boolean;
 }
 
 interface FocusEventInit extends UIEventInit {
@@ -940,7 +952,7 @@ interface NotificationOptions {
     requireInteraction?: boolean;
     silent?: boolean;
     tag?: string;
-    timestamp?: DOMTimeStamp;
+    timestamp?: EpochTimeStamp;
     vibrate?: VibratePattern;
 }
 
@@ -1172,7 +1184,7 @@ interface PublicKeyCredentialUserEntity extends PublicKeyCredentialEntity {
 
 interface PushSubscriptionJSON {
     endpoint?: string;
-    expirationTime?: DOMTimeStamp | null;
+    expirationTime?: EpochTimeStamp | null;
     keys?: Record<string, string>;
 }
 
@@ -1199,7 +1211,7 @@ interface RTCAnswerOptions extends RTCOfferAnswerOptions {
 }
 
 interface RTCCertificateExpiration {
-    expires?: DOMTimeStamp;
+    expires?: number;
 }
 
 interface RTCConfiguration {
@@ -1648,7 +1660,7 @@ interface StreamPipeOptions {
 }
 
 interface StructuredSerializeOptions {
-    transfer?: any[];
+    transfer?: Transferable[];
 }
 
 interface SubmitEventInit extends EventInit {
@@ -1824,42 +1836,42 @@ interface ANGLE_instanced_arrays {
 }
 
 interface ARIAMixin {
-    ariaAtomic: string;
-    ariaAutoComplete: string;
-    ariaBusy: string;
-    ariaChecked: string;
-    ariaColCount: string;
-    ariaColIndex: string;
-    ariaColSpan: string;
-    ariaCurrent: string;
-    ariaDisabled: string;
-    ariaExpanded: string;
-    ariaHasPopup: string;
-    ariaHidden: string;
-    ariaKeyShortcuts: string;
-    ariaLabel: string;
-    ariaLevel: string;
-    ariaLive: string;
-    ariaModal: string;
-    ariaMultiLine: string;
-    ariaMultiSelectable: string;
-    ariaOrientation: string;
-    ariaPlaceholder: string;
-    ariaPosInSet: string;
-    ariaPressed: string;
-    ariaReadOnly: string;
-    ariaRequired: string;
-    ariaRoleDescription: string;
-    ariaRowCount: string;
-    ariaRowIndex: string;
-    ariaRowSpan: string;
-    ariaSelected: string;
-    ariaSetSize: string;
-    ariaSort: string;
-    ariaValueMax: string;
-    ariaValueMin: string;
-    ariaValueNow: string;
-    ariaValueText: string;
+    ariaAtomic: string | null;
+    ariaAutoComplete: string | null;
+    ariaBusy: string | null;
+    ariaChecked: string | null;
+    ariaColCount: string | null;
+    ariaColIndex: string | null;
+    ariaColSpan: string | null;
+    ariaCurrent: string | null;
+    ariaDisabled: string | null;
+    ariaExpanded: string | null;
+    ariaHasPopup: string | null;
+    ariaHidden: string | null;
+    ariaKeyShortcuts: string | null;
+    ariaLabel: string | null;
+    ariaLevel: string | null;
+    ariaLive: string | null;
+    ariaModal: string | null;
+    ariaMultiLine: string | null;
+    ariaMultiSelectable: string | null;
+    ariaOrientation: string | null;
+    ariaPlaceholder: string | null;
+    ariaPosInSet: string | null;
+    ariaPressed: string | null;
+    ariaReadOnly: string | null;
+    ariaRequired: string | null;
+    ariaRoleDescription: string | null;
+    ariaRowCount: string | null;
+    ariaRowIndex: string | null;
+    ariaRowSpan: string | null;
+    ariaSelected: string | null;
+    ariaSetSize: string | null;
+    ariaSort: string | null;
+    ariaValueMax: string | null;
+    ariaValueMin: string | null;
+    ariaValueNow: string | null;
+    ariaValueText: string | null;
 }
 
 /** A controller object that allows you to abort one or more DOM requests as and when desired. */
@@ -1867,7 +1879,7 @@ interface AbortController {
     /** Returns the AbortSignal object associated with this object. */
     readonly signal: AbortSignal;
     /** Invoking this method will set this object's AbortSignal's aborted flag and signal to any observers that the associated activity is to be aborted. */
-    abort(): void;
+    abort(reason?: any): void;
 }
 
 declare var AbortController: {
@@ -3253,7 +3265,7 @@ declare var CacheStorage: {
 
 interface CanvasCompositing {
     globalAlpha: number;
-    globalCompositeOperation: string;
+    globalCompositeOperation: GlobalCompositeOperation;
 }
 
 interface CanvasDrawImage {
@@ -3279,6 +3291,7 @@ interface CanvasDrawPath {
 interface CanvasFillStrokeStyles {
     fillStyle: string | CanvasGradient | CanvasPattern;
     strokeStyle: string | CanvasGradient | CanvasPattern;
+    createConicGradient(startAngle: number, x: number, y: number): CanvasGradient;
     createLinearGradient(x0: number, y0: number, x1: number, y1: number): CanvasGradient;
     createPattern(image: CanvasImageSource, repetition: string | null): CanvasPattern | null;
     createRadialGradient(x0: number, y0: number, r0: number, x1: number, y1: number, r1: number): CanvasGradient;
@@ -3602,6 +3615,8 @@ interface Crypto {
     /** Available only in secure contexts. */
     readonly subtle: SubtleCrypto;
     getRandomValues<T extends ArrayBufferView | null>(array: T): T;
+    /** Available only in secure contexts. */
+    randomUUID(): string;
 }
 
 declare var Crypto: {
@@ -4308,7 +4323,7 @@ interface Document extends Node, DocumentAndElementEventHandlers, DocumentOrShad
     readonly timeline: DocumentTimeline;
     /** Contains the title of the document. */
     title: string;
-    readonly visibilityState: VisibilityState;
+    readonly visibilityState: DocumentVisibilityState;
     /**
      * Sets or gets the color of the links that the user has visited.
      * @deprecated
@@ -4948,8 +4963,10 @@ interface EventSource extends EventTarget {
     readonly CONNECTING: number;
     readonly OPEN: number;
     addEventListener<K extends keyof EventSourceEventMap>(type: K, listener: (this: EventSource, ev: EventSourceEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+    addEventListener(type: string, listener: (this: EventSource, event: MessageEvent) => any, options?: boolean | AddEventListenerOptions): void;
     addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
     removeEventListener<K extends keyof EventSourceEventMap>(type: K, listener: (this: EventSource, ev: EventSourceEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+    removeEventListener(type: string, listener: (this: EventSource, event: MessageEvent) => any, options?: boolean | EventListenerOptions): void;
     removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
 }
 
@@ -5091,6 +5108,19 @@ declare var FileSystemDirectoryEntry: {
     new(): FileSystemDirectoryEntry;
 };
 
+/** Available only in secure contexts. */
+interface FileSystemDirectoryHandle extends FileSystemHandle {
+    getDirectoryHandle(name: string, options?: FileSystemGetDirectoryOptions): Promise<FileSystemDirectoryHandle>;
+    getFileHandle(name: string, options?: FileSystemGetFileOptions): Promise<FileSystemFileHandle>;
+    removeEntry(name: string, options?: FileSystemRemoveOptions): Promise<void>;
+    resolve(possibleDescendant: FileSystemHandle): Promise<string[] | null>;
+}
+
+declare var FileSystemDirectoryHandle: {
+    prototype: FileSystemDirectoryHandle;
+    new(): FileSystemDirectoryHandle;
+};
+
 interface FileSystemDirectoryReader {
     readEntries(successCallback: FileSystemEntriesCallback, errorCallback?: ErrorCallback): void;
 }
@@ -5121,6 +5151,28 @@ interface FileSystemFileEntry extends FileSystemEntry {
 declare var FileSystemFileEntry: {
     prototype: FileSystemFileEntry;
     new(): FileSystemFileEntry;
+};
+
+/** Available only in secure contexts. */
+interface FileSystemFileHandle extends FileSystemHandle {
+    getFile(): Promise<File>;
+}
+
+declare var FileSystemFileHandle: {
+    prototype: FileSystemFileHandle;
+    new(): FileSystemFileHandle;
+};
+
+/** Available only in secure contexts. */
+interface FileSystemHandle {
+    readonly kind: FileSystemHandleKind;
+    readonly name: string;
+    isSameEntry(other: FileSystemHandle): Promise<boolean>;
+}
+
+declare var FileSystemHandle: {
+    prototype: FileSystemHandle;
+    new(): FileSystemHandle;
 };
 
 /** Focus-related events like focus, blur, focusin, or focusout. */
@@ -5325,7 +5377,7 @@ declare var GeolocationCoordinates: {
 /** Available only in secure contexts. */
 interface GeolocationPosition {
     readonly coords: GeolocationCoordinates;
-    readonly timestamp: DOMTimeStamp;
+    readonly timestamp: EpochTimeStamp;
 }
 
 declare var GeolocationPosition: {
@@ -6640,7 +6692,8 @@ interface HTMLImageElement extends HTMLElement {
     hspace: number;
     /** Sets or retrieves whether the image is a server-side image map. */
     isMap: boolean;
-    loading: string;
+    /** Sets or retrieves the policy for loading image elements that are outside the viewport. */
+    loading: "eager" | "lazy";
     /**
      * Sets or retrieves a Uniform Resource Identifier (URI) to a long description of the object.
      * @deprecated
@@ -7098,6 +7151,7 @@ interface HTMLMetaElement extends HTMLElement {
     content: string;
     /** Gets or sets information used to bind the value of a content attribute of a meta element to an HTTP response header. */
     httpEquiv: string;
+    media: string;
     /** Sets or retrieves the value specified in the content attribute of the meta object. */
     name: string;
     /**
@@ -7617,6 +7671,7 @@ declare var HTMLSlotElement: {
 
 /** Provides special properties (beyond the regular HTMLElement object interface it also has available to it by inheritance) for manipulating <source> elements. */
 interface HTMLSourceElement extends HTMLElement {
+    height: number;
     /** Gets or sets the intended media type of the media source. */
     media: string;
     sizes: string;
@@ -7625,6 +7680,7 @@ interface HTMLSourceElement extends HTMLElement {
     srcset: string;
     /** Gets or sets the MIME type of a media resource. */
     type: string;
+    width: number;
     addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLSourceElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
     addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
     removeEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLSourceElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
@@ -8580,6 +8636,7 @@ interface IDBTransactionEventMap {
 interface IDBTransaction extends EventTarget {
     /** Returns the transaction's connection. */
     readonly db: IDBDatabase;
+    readonly durability: IDBTransactionDurability;
     /** If the transaction was aborted, returns the error (a DOMException) providing the reason. */
     readonly error: DOMException | null;
     /** Returns the mode the transaction was created with ("readonly" or "readwrite"), or "versionchange" for an upgrade transaction. */
@@ -8681,6 +8738,14 @@ declare var ImageData: {
 interface InnerHTML {
     innerHTML: string;
 }
+
+interface InputDeviceInfo extends MediaDeviceInfo {
+}
+
+declare var InputDeviceInfo: {
+    prototype: InputDeviceInfo;
+    new(): InputDeviceInfo;
+};
 
 interface InputEvent extends UIEvent {
     readonly data: string | null;
@@ -10583,7 +10648,7 @@ declare var PublicKeyCredential: {
  */
 interface PushManager {
     getSubscription(): Promise<PushSubscription | null>;
-    permissionState(options?: PushSubscriptionOptionsInit): Promise<PushPermissionState>;
+    permissionState(options?: PushSubscriptionOptionsInit): Promise<PermissionState>;
     subscribe(options?: PushSubscriptionOptionsInit): Promise<PushSubscription>;
 }
 
@@ -10621,7 +10686,7 @@ declare var PushSubscriptionOptions: {
 };
 
 interface RTCCertificate {
-    readonly expires: DOMTimeStamp;
+    readonly expires: EpochTimeStamp;
     getFingerprints(): RTCDtlsFingerprint[];
 }
 
@@ -13073,11 +13138,20 @@ declare var ServiceWorkerRegistration: {
     new(): ServiceWorkerRegistration;
 };
 
+interface ShadowRootEventMap {
+    "slotchange": Event;
+}
+
 interface ShadowRoot extends DocumentFragment, DocumentOrShadowRoot, InnerHTML {
     readonly delegatesFocus: boolean;
     readonly host: Element;
     readonly mode: ShadowRootMode;
+    onslotchange: ((this: ShadowRoot, ev: Event) => any) | null;
     /** Throws a "NotSupportedError" DOMException if context object is a shadow root. */
+    addEventListener<K extends keyof ShadowRootEventMap>(type: K, listener: (this: ShadowRoot, ev: ShadowRootEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
+    removeEventListener<K extends keyof ShadowRootEventMap>(type: K, listener: (this: ShadowRoot, ev: ShadowRootEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+    removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
 }
 
 declare var ShadowRoot: {
@@ -13370,6 +13444,7 @@ declare var StorageEvent: {
 /** Available only in secure contexts. */
 interface StorageManager {
     estimate(): Promise<StorageEstimate>;
+    getDirectory(): Promise<FileSystemDirectoryHandle>;
     persist(): Promise<boolean>;
     persisted(): Promise<boolean>;
 }
@@ -14129,6 +14204,13 @@ interface WEBGL_draw_buffers {
 interface WEBGL_lose_context {
     loseContext(): void;
     restoreContext(): void;
+}
+
+interface WEBGL_multi_draw {
+    multiDrawArraysInstancedWEBGL(mode: GLenum, firstsList: Int32Array | GLint[], firstsOffset: GLuint, countsList: Int32Array | GLsizei[], countsOffset: GLuint, instanceCountsList: Int32Array | GLsizei[], instanceCountsOffset: GLuint, drawcount: GLsizei): void;
+    multiDrawArraysWEBGL(mode: GLenum, firstsList: Int32Array | GLint[], firstsOffset: GLuint, countsList: Int32Array | GLsizei[], countsOffset: GLuint, drawcount: GLsizei): void;
+    multiDrawElementsInstancedWEBGL(mode: GLenum, countsList: Int32Array | GLint[], countsOffset: GLuint, type: GLenum, offsetsList: Int32Array | GLsizei[], offsetsOffset: GLuint, instanceCountsList: Int32Array | GLsizei[], instanceCountsOffset: GLuint, drawcount: GLsizei): void;
+    multiDrawElementsWEBGL(mode: GLenum, countsList: Int32Array | GLint[], countsOffset: GLuint, type: GLenum, offsetsList: Int32Array | GLsizei[], offsetsOffset: GLuint, drawcount: GLsizei): void;
 }
 
 /** A WaveShaperNode always has exactly one input and one output. */
@@ -16296,12 +16378,13 @@ interface WindowOrWorkerGlobalScope {
     readonly performance: Performance;
     atob(data: string): string;
     btoa(data: string): string;
-    clearInterval(handle?: number): void;
-    clearTimeout(handle?: number): void;
+    clearInterval(id?: number): void;
+    clearTimeout(id?: number): void;
     createImageBitmap(image: ImageBitmapSource, options?: ImageBitmapOptions): Promise<ImageBitmap>;
     createImageBitmap(image: ImageBitmapSource, sx: number, sy: number, sw: number, sh: number, options?: ImageBitmapOptions): Promise<ImageBitmap>;
     fetch(input: RequestInfo, init?: RequestInit): Promise<Response>;
     queueMicrotask(callback: VoidFunction): void;
+    reportError(e: any): void;
     setInterval(handler: TimerHandler, timeout?: number, ...arguments: any[]): number;
     setTimeout(handler: TimerHandler, timeout?: number, ...arguments: any[]): number;
 }
@@ -16790,7 +16873,7 @@ declare namespace WebAssembly {
 
     type ImportExportKind = "function" | "global" | "memory" | "table";
     type TableKind = "anyfunc" | "externref";
-    type ValueType = "anyfunc" | "externref" | "f32" | "f64" | "i32" | "i64";
+    type ValueType = "anyfunc" | "externref" | "f32" | "f64" | "i32" | "i64" | "v128";
     type ExportValue = Function | Global | Memory | Table;
     type Exports = Record<string, ExportValue>;
     type ImportValue = ExportValue | number;
@@ -17570,12 +17653,13 @@ declare var origin: string;
 declare var performance: Performance;
 declare function atob(data: string): string;
 declare function btoa(data: string): string;
-declare function clearInterval(handle?: number): void;
-declare function clearTimeout(handle?: number): void;
+declare function clearInterval(id?: number): void;
+declare function clearTimeout(id?: number): void;
 declare function createImageBitmap(image: ImageBitmapSource, options?: ImageBitmapOptions): Promise<ImageBitmap>;
 declare function createImageBitmap(image: ImageBitmapSource, sx: number, sy: number, sw: number, sh: number, options?: ImageBitmapOptions): Promise<ImageBitmap>;
 declare function fetch(input: RequestInfo, init?: RequestInit): Promise<Response>;
 declare function queueMicrotask(callback: VoidFunction): void;
+declare function reportError(e: any): void;
 declare function setInterval(handler: TimerHandler, timeout?: number, ...arguments: any[]): number;
 declare function setTimeout(handler: TimerHandler, timeout?: number, ...arguments: any[]): number;
 declare var sessionStorage: Storage;
@@ -17600,7 +17684,7 @@ type ConstrainDOMString = string | string[] | ConstrainDOMStringParameters;
 type ConstrainDouble = number | ConstrainDoubleRange;
 type ConstrainULong = number | ConstrainULongRange;
 type DOMHighResTimeStamp = number;
-type DOMTimeStamp = number;
+type EpochTimeStamp = number;
 type EventListenerOrEventListenerObject = EventListener | EventListenerObject;
 type Float32List = Float32Array | GLfloat[];
 type FormDataEntryValue = File | string;
@@ -17684,17 +17768,21 @@ type DirectionSetting = "" | "lr" | "rl";
 type DisplayCaptureSurfaceType = "application" | "browser" | "monitor" | "window";
 type DistanceModelType = "exponential" | "inverse" | "linear";
 type DocumentReadyState = "complete" | "interactive" | "loading";
+type DocumentVisibilityState = "hidden" | "visible";
 type EndOfStreamError = "decode" | "network";
 type EndingType = "native" | "transparent";
+type FileSystemHandleKind = "directory" | "file";
 type FillMode = "auto" | "backwards" | "both" | "forwards" | "none";
 type FontFaceLoadStatus = "error" | "loaded" | "loading" | "unloaded";
 type FontFaceSetLoadStatus = "loaded" | "loading";
 type FullscreenNavigationUI = "auto" | "hide" | "show";
 type GamepadHapticActuatorType = "vibration";
 type GamepadMappingType = "" | "standard" | "xr-standard";
+type GlobalCompositeOperation = "color" | "color-burn" | "color-dodge" | "copy" | "darken" | "destination-atop" | "destination-in" | "destination-out" | "destination-over" | "difference" | "exclusion" | "hard-light" | "hue" | "lighten" | "lighter" | "luminosity" | "multiply" | "overlay" | "saturation" | "screen" | "soft-light" | "source-atop" | "source-in" | "source-out" | "source-over" | "xor";
 type HdrMetadataType = "smpteSt2086" | "smpteSt2094-10" | "smpteSt2094-40";
 type IDBCursorDirection = "next" | "nextunique" | "prev" | "prevunique";
 type IDBRequestReadyState = "done" | "pending";
+type IDBTransactionDurability = "default" | "relaxed" | "strict";
 type IDBTransactionMode = "readonly" | "readwrite" | "versionchange";
 type ImageOrientation = "flipY" | "none";
 type ImageSmoothingQuality = "high" | "low" | "medium";
@@ -17732,7 +17820,6 @@ type PremultiplyAlpha = "default" | "none" | "premultiply";
 type PresentationStyle = "attachment" | "inline" | "unspecified";
 type PublicKeyCredentialType = "public-key";
 type PushEncryptionKeyName = "auth" | "p256dh";
-type PushPermissionState = "denied" | "granted" | "prompt";
 type RTCBundlePolicy = "balanced" | "max-bundle" | "max-compat";
 type RTCDataChannelState = "closed" | "closing" | "connecting" | "open";
 type RTCDegradationPreference = "balanced" | "maintain-framerate" | "maintain-resolution";
@@ -17785,7 +17872,6 @@ type TouchType = "direct" | "stylus";
 type TransferFunction = "hlg" | "pq" | "srgb";
 type UserVerificationRequirement = "discouraged" | "preferred" | "required";
 type VideoFacingModeEnum = "environment" | "left" | "right" | "user";
-type VisibilityState = "hidden" | "visible";
 type WebGLPowerPreference = "default" | "high-performance" | "low-power";
 type WorkerType = "classic" | "module";
 type XMLHttpRequestResponseType = "" | "arraybuffer" | "blob" | "document" | "json" | "text";
