@@ -154,6 +154,10 @@ pub struct WorkspaceSettings {
   /// cache/DENO_DIR for the language server.
   pub cache: Option<String>,
 
+  /// Override the default stores used to validate certificates. This overrides
+  /// the environment variable `DENO_TLS_CA_STORE` if present.
+  pub certificate_stores: Option<Vec<String>>,
+
   /// An option that points to a path string of the config file to apply to
   /// code within the workspace.
   pub config: Option<String>,
@@ -178,6 +182,15 @@ pub struct WorkspaceSettings {
   /// APIs for the workspace.
   #[serde(default)]
   pub suggest: CompletionSettings,
+
+  /// An option which sets the cert file to use when attempting to fetch remote
+  /// resources. This overrides `DENO_CERT` if present.
+  pub tls_certificate: Option<String>,
+
+  /// An option, if set, will unsafely ignore certificate errors when fetching
+  /// remote resources.
+  #[serde(default)]
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
 
   #[serde(default)]
   pub unstable: bool,
@@ -485,6 +498,7 @@ mod tests {
       WorkspaceSettings {
         enable: false,
         cache: None,
+        certificate_stores: None,
         config: None,
         import_map: None,
         code_lens: CodeLensSettings {
@@ -505,6 +519,8 @@ mod tests {
             hosts: HashMap::new(),
           }
         },
+        tls_certificate: None,
+        unsafely_ignore_certificate_errors: None,
         unstable: false,
       }
     );

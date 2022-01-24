@@ -3216,6 +3216,124 @@ fn lsp_cache_location() {
   shutdown(&mut client);
 }
 
+/// Sets the TLS root certificate on startup, which allows the LSP to connect to
+/// the custom signed test server and be able to retrieve the registry config
+/// and cache files.
+#[test]
+fn lsp_tls_cert() {
+  let _g = http_server();
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params_tls_cert.json"))
+      .unwrap();
+
+  params.root_uri = Some(Url::from_file_path(testdata_path()).unwrap());
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const a = \"a\";\n",
+      }
+    }),
+  );
+  let diagnostics =
+    did_open(&mut client, load_fixture("did_open_params_tls_cert.json"));
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 14);
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [],
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 0,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: https&#8203;://localhost:5545/xTypeScriptTypes.js\n"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 19
+        },
+        "end":{
+          "line": 0,
+          "character": 63
+        }
+      }
+    }))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 7,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://localhost:4545/x/a/mod.ts\n\n\n---\n\n**a**\n\nmod.ts"
+      },
+      "range": {
+        "start": {
+          "line": 7,
+          "character": 19
+        },
+        "end": {
+          "line": 7,
+          "character": 53
+        }
+      }
+    }))
+  );
+  shutdown(&mut client);
+}
+
 #[test]
 fn lsp_diagnostics_warn() {
   let _g = http_server();

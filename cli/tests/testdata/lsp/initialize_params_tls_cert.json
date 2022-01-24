@@ -23,10 +23,13 @@
       "names": true,
       "paths": true,
       "imports": {
-        "hosts": {}
+        "hosts": {
+          "https://localhost:5545": true,
+          "http://localhost:4545": true
+        }
       }
     },
-    "tlsCertificate": null,
+    "tlsCertificate": "tls/RootCA.pem",
     "unsafelyIgnoreCertificateErrors": null,
     "unstable": false
   },

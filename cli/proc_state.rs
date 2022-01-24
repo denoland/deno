@@ -8,6 +8,7 @@ use crate::config_file::ConfigFile;
 use crate::config_file::MaybeImportsResult;
 use crate::deno_dir;
 use crate::emit;
+use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
@@ -42,11 +43,7 @@ use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
 use deno_graph::MediaType;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
-use deno_runtime::deno_tls::rustls_pemfile;
-use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
@@ -54,8 +51,6 @@ use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
 use std::env;
-use std::fs::File;
-use std::io::BufReader;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -101,67 +96,11 @@ impl ProcState {
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
 
-    let mut root_cert_store = RootCertStore::empty();
-    let ca_stores: Vec<String> = flags
-      .ca_stores
-      .clone()
-      .or_else(|| {
-        let env_ca_store = env::var("DENO_TLS_CA_STORE").ok()?;
-        Some(
-          env_ca_store
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect(),
-        )
-      })
-      .unwrap_or_else(|| vec!["mozilla".to_string()]);
-
-    for store in ca_stores.iter() {
-      match store.as_str() {
-        "mozilla" => {
-          root_cert_store.add_server_trust_anchors(
-            webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
-              rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-                ta.subject,
-                ta.spki,
-                ta.name_constraints,
-              )
-            }),
-          );
-        }
-        "system" => {
-          let roots =
-            load_native_certs().expect("could not load platform certs");
-          for root in roots {
-            root_cert_store
-              .add(&rustls::Certificate(root.0))
-              .expect("Failed to add platform cert to root cert store");
-          }
-        }
-        _ => {
-          return Err(anyhow!("Unknown certificate store \"{}\" specified (allowed: \"system,mozilla\")", store));
-        }
-      }
-    }
-
-    let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
-    if let Some(ca_file) = ca_file {
-      let certfile = File::open(&ca_file)?;
-      let mut reader = BufReader::new(certfile);
-
-      match rustls_pemfile::certs(&mut reader) {
-        Ok(certs) => {
-          root_cert_store.add_parsable_certificates(&certs);
-        }
-        Err(e) => {
-          return Err(anyhow!(
-            "Unable to add pem file to certificate store: {}",
-            e
-          ));
-        }
-      }
-    }
+    let root_cert_store = get_root_cert_store(
+      None,
+      flags.ca_stores.clone(),
+      flags.ca_file.clone(),
+    )?;
 
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
