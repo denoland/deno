@@ -33,6 +33,9 @@ impl CacheServer {
     maybe_cache_path: Option<PathBuf>,
     maybe_import_map: Option<Arc<ImportMap>>,
     maybe_config_file: Option<ConfigFile>,
+    maybe_ca_stores: Option<Vec<String>>,
+    maybe_ca_file: Option<String>,
+    unsafely_ignore_certificate_errors: Option<Vec<String>>,
   ) -> Self {
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
@@ -40,6 +43,9 @@ impl CacheServer {
       runtime.block_on(async {
         let ps = ProcState::build(Flags {
           cache_path: maybe_cache_path,
+          ca_stores: maybe_ca_stores,
+          ca_file: maybe_ca_file,
+          unsafely_ignore_certificate_errors,
           ..Default::default()
         })
         .await

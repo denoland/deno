@@ -1,11 +1,12 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
-use std::convert::{TryFrom, TryInto};
+
+use crate::texture::{GpuTextureFormat, GpuTextureViewDimension};
 
 use super::error::WebGpuResult;
 
@@ -58,14 +59,41 @@ impl From<GpuBufferBindingType> for wgpu_types::BufferBindingType {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuSamplerBindingLayout {
-  r#type: wgpu_types::SamplerBindingType,
+  r#type: GpuSamplerBindingType,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum GpuSamplerBindingType {
+  Filtering,
+  NonFiltering,
+  Comparison,
+}
+
+impl From<GpuSamplerBindingType> for wgpu_types::BindingType {
+  fn from(binding_type: GpuSamplerBindingType) -> Self {
+    match binding_type {
+      GpuSamplerBindingType::Filtering => wgpu_types::BindingType::Sampler {
+        filtering: true,
+        comparison: false,
+      },
+      GpuSamplerBindingType::NonFiltering => wgpu_types::BindingType::Sampler {
+        filtering: false,
+        comparison: false,
+      },
+      GpuSamplerBindingType::Comparison => wgpu_types::BindingType::Sampler {
+        filtering: true,
+        comparison: true,
+      },
+    }
+  }
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuTextureBindingLayout {
   sample_type: GpuTextureSampleType,
-  view_dimension: wgpu_types::TextureViewDimension,
+  view_dimension: GpuTextureViewDimension,
   multisampled: bool,
 }
 
@@ -99,8 +127,8 @@ impl From<GpuTextureSampleType> for wgpu_types::TextureSampleType {
 #[serde(rename_all = "camelCase")]
 struct GpuStorageTextureBindingLayout {
   access: GpuStorageTextureAccess,
-  format: wgpu_types::TextureFormat,
-  view_dimension: wgpu_types::TextureViewDimension,
+  format: GpuTextureFormat,
+  view_dimension: GpuTextureViewDimension,
 }
 
 #[derive(Deserialize)]
@@ -149,19 +177,17 @@ impl TryFrom<GpuBindingType> for wgpu_types::BindingType {
         has_dynamic_offset: buffer.has_dynamic_offset,
         min_binding_size: std::num::NonZeroU64::new(buffer.min_binding_size),
       },
-      GpuBindingType::Sampler(sampler) => {
-        wgpu_types::BindingType::Sampler(sampler.r#type)
-      }
+      GpuBindingType::Sampler(sampler) => sampler.r#type.into(),
       GpuBindingType::Texture(texture) => wgpu_types::BindingType::Texture {
         sample_type: texture.sample_type.into(),
-        view_dimension: texture.view_dimension,
+        view_dimension: texture.view_dimension.into(),
         multisampled: texture.multisampled,
       },
       GpuBindingType::StorageTexture(storage_texture) => {
         wgpu_types::BindingType::StorageTexture {
           access: storage_texture.access.into(),
-          format: storage_texture.format,
-          view_dimension: storage_texture.view_dimension,
+          format: storage_texture.format.try_into()?,
+          view_dimension: storage_texture.view_dimension.into(),
         }
       }
     };

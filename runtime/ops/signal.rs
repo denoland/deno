@@ -97,7 +97,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   match s {
     "SIGHUP" => Ok(1),

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -85,6 +85,7 @@ declare namespace Deno {
     export class BadResource extends Error {}
     export class Http extends Error {}
     export class Busy extends Error {}
+    export class NotSupported extends Error {}
   }
 
   /** The current process id of the runtime. */

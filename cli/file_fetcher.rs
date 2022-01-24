@@ -12,6 +12,7 @@ use crate::version::get_user_agent;
 
 use data_url::DataUrl;
 use deno_ast::MediaType;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::uri_error;
@@ -22,7 +23,11 @@ use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::rustls_native_certs::load_native_certs;
+use deno_runtime::deno_tls::rustls_pemfile;
+use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use log::debug;
@@ -31,6 +36,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::future::Future;
+use std::io::BufReader;
 use std::io::Read;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -159,6 +165,80 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
     specifier: specifier.clone(),
     maybe_headers: None,
   })
+}
+
+/// Create and populate a root cert store based on the passed options and
+/// environment.
+pub(crate) fn get_root_cert_store(
+  maybe_root_path: Option<PathBuf>,
+  maybe_ca_stores: Option<Vec<String>>,
+  maybe_ca_file: Option<String>,
+) -> Result<RootCertStore, AnyError> {
+  let mut root_cert_store = RootCertStore::empty();
+  let ca_stores: Vec<String> = maybe_ca_stores
+    .or_else(|| {
+      let env_ca_store = env::var("DENO_TLS_CA_STORE").ok()?;
+      Some(
+        env_ca_store
+          .split(',')
+          .map(|s| s.trim().to_string())
+          .filter(|s| !s.is_empty())
+          .collect(),
+      )
+    })
+    .unwrap_or_else(|| vec!["mozilla".to_string()]);
+
+  for store in ca_stores.iter() {
+    match store.as_str() {
+      "mozilla" => {
+        root_cert_store.add_server_trust_anchors(
+          webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+            rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+              ta.subject,
+              ta.spki,
+              ta.name_constraints,
+            )
+          }),
+        );
+      }
+      "system" => {
+        let roots = load_native_certs().expect("could not load platform certs");
+        for root in roots {
+          root_cert_store
+            .add(&rustls::Certificate(root.0))
+            .expect("Failed to add platform cert to root cert store");
+        }
+      }
+      _ => {
+        return Err(anyhow!("Unknown certificate store \"{}\" specified (allowed: \"system,mozilla\")", store));
+      }
+    }
+  }
+
+  let ca_file = maybe_ca_file.or_else(|| env::var("DENO_CERT").ok());
+  if let Some(ca_file) = ca_file {
+    let ca_file = if let Some(root) = &maybe_root_path {
+      root.join(&ca_file)
+    } else {
+      PathBuf::from(ca_file)
+    };
+    let certfile = fs::File::open(&ca_file)?;
+    let mut reader = BufReader::new(certfile);
+
+    match rustls_pemfile::certs(&mut reader) {
+      Ok(certs) => {
+        root_cert_store.add_parsable_certificates(&certs);
+      }
+      Err(e) => {
+        return Err(anyhow!(
+          "Unable to add pem file to certificate store: {}",
+          e
+        ));
+      }
+    }
+  }
+
+  Ok(root_cert_store)
 }
 
 /// Returns the decoded body and content-type of a provided

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -102,6 +102,36 @@ declare namespace Deno {
     /** Unused swap memory */
     swapFree: number;
   }
+
+  /** The information of the network interface */
+  export interface NetworkInterfaceInfo {
+    /** The network interface name */
+    name: string;
+    /** The IP protocol version */
+    family: "IPv4" | "IPv6";
+    /** The IP address */
+    address: string;
+    /** The netmask */
+    netmask: string;
+    /** The IPv6 scope id or null */
+    scopeid: number | null;
+    /** The CIDR range */
+    cidr: string;
+    /** The MAC address */
+    mac: string;
+  }
+
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns an array of the network interface informations.
+   *
+   * ```ts
+   * console.log(Deno.networkInterfaces());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   */
+  export function networkInterfaces(): NetworkInterfaceInfo[];
 
   /** All possible types for interfacing with foreign functions */
   export type NativeType =

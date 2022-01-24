@@ -33,14 +33,13 @@ Deno.test({
 
   const stagingBuffer = device.createBuffer({
     size: size,
-    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    usage: 1 | 8,
   });
 
   const storageBuffer = device.createBuffer({
     label: "Storage Buffer",
     size: size,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST |
-      GPUBufferUsage.COPY_SRC,
+    usage: 0x80 | 8 | 4,
     mappedAtCreation: true,
   });
 

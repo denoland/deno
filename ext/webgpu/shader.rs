@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
@@ -40,7 +40,6 @@ pub fn op_webgpu_create_shader_module(
 
   let descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
     label: args.label.map(Cow::from),
-    shader_bound_checks: wgpu_types::ShaderBoundChecks::default(),
   };
 
   gfx_put!(device => instance.device_create_shader_module(
