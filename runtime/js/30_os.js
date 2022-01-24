@@ -24,6 +24,10 @@
     return core.opSync("op_system_memory_info");
   }
 
+  function networkInterfaces() {
+    return core.opSync("op_network_interfaces");
+  }
+
   // This is an internal only method used by the test harness to override the
   // behavior of exit when the exit sanitizer is enabled.
   let exitHandler = null;
@@ -89,5 +93,6 @@
     systemMemoryInfo,
     hostname,
     loadavg,
+    networkInterfaces,
   };
 })(this);
