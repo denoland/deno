@@ -17,7 +17,6 @@
     DateNow,
     Error,
     Function,
-    JSONStringify,
     Promise,
     TypeError,
     StringPrototypeStartsWith,
@@ -28,9 +27,6 @@
     Number,
     RegExpPrototypeTest,
     Set,
-    SetPrototypeHas,
-    SetPrototypeAdd,
-    SetPrototypeDelete,
     SymbolToStringTag,
   } = window.__bootstrap.primordials;
 
@@ -127,23 +123,6 @@ finishing test case.`;
         message,
       );
     };
-  }
-
-  /**
-   * @param {Set<number>} setA
-   * @param {Set<number>} setB
-   * @returns {Set<number>}
-   */
-  function symmetricDifference(setA, setB) {
-    const difference = new Set(setA);
-    for (const elem of setB) {
-      if (SetPrototypeHas(difference, elem)) {
-        SetPrototypeDelete(difference, elem);
-      } else {
-        SetPrototypeAdd(difference, elem);
-      }
-    }
-    return difference;
   }
 
   function prettyResourceNames(name) {
