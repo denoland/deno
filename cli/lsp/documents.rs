@@ -719,7 +719,8 @@ struct FileSystemDocuments {
 }
 
 impl FileSystemDocuments {
-  /// Adds or updates a document by reading the document from the file system.
+  /// Adds or updates a document by reading the document from the file system
+  /// returning the document.
   fn refresh_document(
     &mut self,
     cache: &HttpCache,
@@ -756,7 +757,8 @@ impl FileSystemDocuments {
       )
     };
     self.dirty = true;
-    self.docs.insert(specifier.clone(), doc)
+    self.docs.insert(specifier.clone(), doc.clone());
+    Some(doc)
   }
 }
 
@@ -916,14 +918,15 @@ impl Documents {
       deno_core::resolve_import(specifier, referrer.as_str()).ok()
     };
     if let Some(import_specifier) = maybe_specifier {
-      self.contains_specifier(&import_specifier)
+      self.exists(&import_specifier)
     } else {
       false
     }
   }
 
   /// Return `true` if the specifier can be resolved to a document.
-  pub fn contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
+  pub fn exists(&self, specifier: &ModuleSpecifier) -> bool {
+    // keep this fast because it's used by op_exists, which is a hot path in tsc
     let specifier = self.specifier_resolver.resolve(specifier);
     if let Some(specifier) = specifier {
       if self.open_docs.contains_key(&specifier) {
@@ -963,20 +966,17 @@ impl Documents {
       let fs_version = get_document_path(&self.cache, &specifier)
         .map(|path| calculate_fs_version(&path))
         .flatten();
-      if file_system_docs
-        .docs
-        .get(&specifier)
-        .map(|d| d.fs_version().to_string())
-        != fs_version
-      {
+      let file_system_doc = file_system_docs.docs.get(&specifier);
+      if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
         // attempt to update the file on the file system
         file_system_docs.refresh_document(
           &self.cache,
           self.get_maybe_resolver(),
           &specifier,
-        );
+        )
+      } else {
+        file_system_doc.cloned()
       }
-      file_system_docs.docs.get(&specifier).cloned()
     }
   }
 

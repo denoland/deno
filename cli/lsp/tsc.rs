@@ -2379,10 +2379,7 @@ fn op_exists(state: &mut State, args: SpecifierArgs) -> Result<bool, AnyError> {
   // challenges, opening a single document in the editor causes some 3k worth
   // of op_exists requests... :omg:
   let specifier = state.normalize_specifier(args.specifier)?;
-  let result = state
-    .state_snapshot
-    .documents
-    .contains_specifier(&specifier);
+  let result = state.state_snapshot.documents.exists(&specifier);
   Ok(result)
 }
 
