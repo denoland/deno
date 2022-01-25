@@ -206,6 +206,8 @@ finishing test case.`;
         return ["The stdout pipe", "opened", "closed"];
       case "stderr":
         return ["The stderr pipe", "opened", "closed"];
+      case "compression":
+        return ["A CompressionStream", "created", "closed"];
       default:
         return [`A "${name}" resource`, "created", "cleaned up"];
     }
@@ -271,6 +273,8 @@ finishing test case.`;
         return "Close the stdout pipe by calling `Deno.stdout.close()`.";
       case "stderr":
         return "Close the stderr pipe by calling `Deno.stderr.close()`.";
+      case "compression":
+        return "Close the compression stream by calling `await stream.writable.close()`.";
       default:
         return "Close the resource before the end of the test.";
     }
