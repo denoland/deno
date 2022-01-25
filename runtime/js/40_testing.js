@@ -17,17 +17,18 @@
     DateNow,
     Error,
     Function,
-    JSONStringify,
+    Number,
+    ObjectKeys,
     Promise,
-    TypeError,
-    StringPrototypeStartsWith,
+    RegExp,
+    RegExpPrototypeTest,
+    Set,
     StringPrototypeEndsWith,
     StringPrototypeIncludes,
     StringPrototypeSlice,
-    RegExp,
-    Number,
-    RegExpPrototypeTest,
+    StringPrototypeStartsWith,
     SymbolToStringTag,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   const opSanitizerDelayResolveQueue = [];
@@ -125,6 +126,140 @@ finishing test case.`;
     };
   }
 
+  function prettyResourceNames(name) {
+    switch (name) {
+      case "fsFile":
+        return ["A file", "opened", "closed"];
+      case "fetchRequest":
+        return ["A fetch request", "started", "finished"];
+      case "fetchRequestBody":
+        return ["A fetch request body", "created", "closed"];
+      case "fetchResponseBody":
+        return ["A fetch response body", "created", "consumed"];
+      case "httpClient":
+        return ["An HTTP client", "created", "closed"];
+      case "dynamicLibrary":
+        return ["A dynamic library", "loaded", "unloaded"];
+      case "httpConn":
+        return ["An inbound HTTP connection", "accepted", "closed"];
+      case "httpStream":
+        return ["An inbound HTTP request", "accepted", "closed"];
+      case "tcpStream":
+        return ["A TCP connection", "opened/accepted", "closed"];
+      case "unixStream":
+        return ["A Unix connection", "opened/accepted", "closed"];
+      case "tlsStream":
+        return ["A TLS connection", "opened/accepted", "closed"];
+      case "tlsListener":
+        return ["A TLS listener", "opened", "closed"];
+      case "unixListener":
+        return ["A Unix listener", "opened", "closed"];
+      case "unixDatagram":
+        return ["A Unix datagram", "opened", "closed"];
+      case "tcpListener":
+        return ["A TCP listener", "opened", "closed"];
+      case "udpSocket":
+        return ["A UDP socket", "opened", "closed"];
+      case "timer":
+        return ["A timer", "started", "fired/cleared"];
+      case "textDecoder":
+        return ["A text decoder", "created", "finsihed"];
+      case "messagePort":
+        return ["A message port", "created", "closed"];
+      case "webSocketStream":
+        return ["A WebSocket", "opened", "closed"];
+      case "fsEvents":
+        return ["A file system watcher", "created", "closed"];
+      case "childStdin":
+        return ["A child process stdin", "opened", "closed"];
+      case "childStdout":
+        return ["A child process stdout", "opened", "closed"];
+      case "childStderr":
+        return ["A child process stderr", "opened", "closed"];
+      case "child":
+        return ["A child process", "started", "closed"];
+      case "signal":
+        return ["A signal listener", "created", "fired/cleared"];
+      case "stdin":
+        return ["The stdin pipe", "opened", "closed"];
+      case "stdout":
+        return ["The stdout pipe", "opened", "closed"];
+      case "stderr":
+        return ["The stderr pipe", "opened", "closed"];
+      case "compression":
+        return ["A CompressionStream", "created", "closed"];
+      default:
+        return [`A "${name}" resource`, "created", "cleaned up"];
+    }
+  }
+
+  function resourceCloseHint(name) {
+    switch (name) {
+      case "fsFile":
+        return "Close the file handle by calling `file.close()`.";
+      case "fetchRequest":
+        return "Await the promise returned from `fetch()` or abort the fetch with an abort signal.";
+      case "fetchRequestBody":
+        return "Terminate the request body `ReadableStream` by closing or erroring it.";
+      case "fetchResponseBody":
+        return "Consume or close the response body `ReadableStream`, e.g `await resp.text()` or `await resp.body.cancel()`.";
+      case "httpClient":
+        return "Close the HTTP client by calling `httpClient.close()`.";
+      case "dynamicLibrary":
+        return "Unload the dynamic library by calling `dynamicLibrary.close()`.";
+      case "httpConn":
+        return "Close the inbound HTTP connection by calling `httpConn.close()`.";
+      case "httpStream":
+        return "Close the inbound HTTP request by responding with `e.respondWith().` or closing the HTTP connection.";
+      case "tcpStream":
+        return "Close the TCP connection by calling `tcpConn.close()`.";
+      case "unixStream":
+        return "Close the Unix socket connection by calling `unixConn.close()`.";
+      case "tlsStream":
+        return "Close the TLS connection by calling `tlsConn.close()`.";
+      case "tlsListener":
+        return "Close the TLS listener by calling `tlsListener.close()`.";
+      case "unixListener":
+        return "Close the Unix socket listener by calling `unixListener.close()`.";
+      case "unixDatagram":
+        return "Close the Unix datagram socket by calling `unixDatagram.close()`.";
+      case "tcpListener":
+        return "Close the TCP listener by calling `tcpListener.close()`.";
+      case "udpSocket":
+        return "Close the UDP socket by calling `udpSocket.close()`.";
+      case "timer":
+        return "Clear the timer by calling `clearInterval` or `clearTimeout`.";
+      case "textDecoder":
+        return "Close the text decoder by calling `textDecoder.decode('')` or `await textDecoderStream.readable.cancel()`.";
+      case "messagePort":
+        return "Close the message port by calling `messagePort.close()`.";
+      case "webSocketStream":
+        return "Close the WebSocket by calling `webSocket.close()`.";
+      case "fsEvents":
+        return "Close the file system watcher by calling `watcher.close()`.";
+      case "childStdin":
+        return "Close the child process stdin by calling `proc.stdin.close()`.";
+      case "childStdout":
+        return "Close the child process stdout by calling `proc.stdout.close()`.";
+      case "childStderr":
+        return "Close the child process stderr by calling `proc.stderr.close()`.";
+      case "child":
+        return "Close the child process by calling `proc.kill()` or `proc.close()`.";
+      case "signal":
+        return "Clear the signal listener by calling `Deno.removeSignalListener`.";
+      case "stdin":
+        return "Close the stdin pipe by calling `Deno.stdin.close()`.";
+      case "stdout":
+        return "Close the stdout pipe by calling `Deno.stdout.close()`.";
+      case "stderr":
+        return "Close the stderr pipe by calling `Deno.stderr.close()`.";
+      case "compression":
+        return "Close the compression stream by calling `await stream.writable.close()`.";
+      default:
+        return "Close the resource before the end of the test.";
+    }
+  }
+
   // Wrap test function in additional assertion that makes sure
   // the test case does not "leak" resources - ie. resource table after
   // the test has exactly the same contents as before the test.
@@ -142,15 +277,35 @@ finishing test case.`;
 
       const post = core.resources();
 
-      const preStr = JSONStringify(pre, null, 2);
-      const postStr = JSONStringify(post, null, 2);
-      const msg = `Test case is leaking resources.
-Before: ${preStr}
-After: ${postStr}
+      const allResources = new Set([...ObjectKeys(pre), ...ObjectKeys(post)]);
 
-Make sure to close all open resource handles returned from Deno APIs before
-finishing test case.`;
-      assert(preStr === postStr, msg);
+      const details = [];
+      for (const resource of allResources) {
+        const preResource = pre[resource];
+        const postResource = post[resource];
+        if (preResource === postResource) continue;
+
+        if (preResource === undefined) {
+          const [name, action1, action2] = prettyResourceNames(postResource);
+          const hint = resourceCloseHint(postResource);
+          const detail =
+            `${name} (rid ${resource}) was ${action1} during the test, but not ${action2} during the test. ${hint}`;
+          details.push(detail);
+        } else {
+          const [name, action1, action2] = prettyResourceNames(preResource);
+          const detail =
+            `${name} (rid ${resource}) was ${action1} before the test started, but was ${action2} during the test. Do not close resources in a test that were not created during that test.`;
+          details.push(detail);
+        }
+      }
+
+      const message = `Test case is leaking ${details.length} resource${
+        details.length === 1 ? "" : "s"
+      }:
+
+ - ${details.join("\n - ")}
+`;
+      assert(details.length === 0, message);
     };
   }
 
