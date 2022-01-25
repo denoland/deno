@@ -2453,7 +2453,13 @@ impl lspower::LanguageServer for LanguageServer {
       });
     }
 
-    // get the configuration from the client outside of the lock
+    // Get the configuration from the client outside of the lock
+    // in order to prevent potential deadlocking scenarios where
+    // the server holds a lock and calls into the client, which
+    // calls into the server which deadlocks acquiring the lock.
+    // There is a gap here between when the configuration is
+    // received and acquiring the lock, but most likely there
+    // won't be any racing here.
     let client_workspace_config = if has_workspace_capability {
       let config_response = client.workspace_configuration().await;
       match config_response {
