@@ -3,15 +3,19 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use lspower::lsp;
+use lspower::lsp::ConfigurationItem;
 
-use crate::lsp::config::SETTINGS_SECTION;
 use crate::lsp::repl::get_repl_workspace_settings;
 
+use super::config::SpecifierSettings;
+use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
 
 #[derive(Clone)]
@@ -48,11 +52,39 @@ impl Client {
     self.0.send_registry_state_notification(params).await;
   }
 
-  pub async fn configuration(
+  pub async fn specifier_configurations(
     &self,
-    items: Vec<lsp::ConfigurationItem>,
-  ) -> Result<Vec<serde_json::Value>, AnyError> {
-    self.0.configuration(items).await
+    specifiers: Vec<lsp::Url>,
+  ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
+    self.0.specifier_configurations(specifiers).await
+  }
+
+  pub async fn specifier_configuration(
+    &self,
+    specifier: &lsp::Url,
+  ) -> Result<SpecifierSettings, AnyError> {
+    let values = self
+      .0
+      .specifier_configurations(vec![specifier.clone()])
+      .await?;
+    if let Some(value) = values.into_iter().next() {
+      value.map_err(|err| {
+        anyhow!(
+          "Error converting specifier settings ({}): {}",
+          specifier,
+          err
+        )
+      })
+    } else {
+      bail!(
+        "Expected the client to return a configuration item for specifier: {}",
+        specifier
+      );
+    }
+  }
+
+  pub async fn workspace_configuration(&self) -> Result<Value, AnyError> {
+    self.0.workspace_configuration().await
   }
 
   pub async fn show_message(
@@ -87,10 +119,11 @@ trait ClientTrait: Send + Sync {
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
   ) -> AsyncReturn<()>;
-  fn configuration(
+  fn specifier_configurations(
     &self,
-    items: Vec<lsp::ConfigurationItem>,
-  ) -> AsyncReturn<Result<Vec<serde_json::Value>, AnyError>>;
+    uris: Vec<lsp::Url>,
+  ) -> AsyncReturn<Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>>;
+  fn workspace_configuration(&self) -> AsyncReturn<Result<Value, AnyError>>;
   fn show_message(
     &self,
     message_type: lsp::MessageType,
@@ -132,16 +165,56 @@ impl ClientTrait for LspowerClient {
     })
   }
 
-  fn configuration(
+  fn specifier_configurations(
     &self,
-    items: Vec<lsp::ConfigurationItem>,
-  ) -> AsyncReturn<Result<Vec<serde_json::Value>, AnyError>> {
+    uris: Vec<lsp::Url>,
+  ) -> AsyncReturn<Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>>
+  {
     let client = self.0.clone();
     Box::pin(async move {
-      client
-        .configuration(items)
-        .await
-        .map_err(|err| anyhow!("{}", err))
+      let config_response = client
+        .configuration(
+          uris
+            .into_iter()
+            .map(|uri| ConfigurationItem {
+              scope_uri: Some(uri),
+              section: Some(SETTINGS_SECTION.to_string()),
+            })
+            .collect(),
+        )
+        .await?;
+
+      Ok(
+        config_response
+          .into_iter()
+          .map(|value| {
+            serde_json::from_value::<SpecifierSettings>(value).map_err(|err| {
+              anyhow!("Error converting specifier settings: {}", err)
+            })
+          })
+          .collect(),
+      )
+    })
+  }
+
+  fn workspace_configuration(&self) -> AsyncReturn<Result<Value, AnyError>> {
+    let client = self.0.clone();
+    Box::pin(async move {
+      let config_response = client
+        .configuration(vec![ConfigurationItem {
+          scope_uri: None,
+          section: Some(SETTINGS_SECTION.to_string()),
+        }])
+        .await;
+      match config_response {
+        Ok(value_vec) => match value_vec.get(0).cloned() {
+          Some(value) => Ok(value),
+          None => bail!("Missing response workspace configuration."),
+        },
+        Err(err) => {
+          bail!("Error getting workspace configuration: {}", err)
+        }
+      }
     })
   }
 
@@ -188,27 +261,28 @@ impl ClientTrait for ReplClient {
     Box::pin(future::ready(()))
   }
 
-  fn configuration(
+  fn specifier_configurations(
     &self,
-    items: Vec<lsp::ConfigurationItem>,
-  ) -> AsyncReturn<Result<Vec<serde_json::Value>, AnyError>> {
-    let is_global_config_request = items.len() == 1
-      && items[0].scope_uri.is_none()
-      && items[0].section.as_deref() == Some(SETTINGS_SECTION);
-    let response = if is_global_config_request {
-      vec![serde_json::to_value(get_repl_workspace_settings()).unwrap()]
-    } else {
-      // all specifiers are enabled for the REPL
-      items
-        .into_iter()
-        .map(|_| {
-          json!({
-            "enable": true,
-          })
+    uris: Vec<lsp::Url>,
+  ) -> AsyncReturn<Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>>
+  {
+    // all specifiers are enabled for the REPL
+    let settings = uris
+      .into_iter()
+      .map(|_| {
+        Ok(SpecifierSettings {
+          enable: true,
+          ..Default::default()
         })
-        .collect()
-    };
-    Box::pin(future::ready(Ok(response)))
+      })
+      .collect();
+    Box::pin(future::ready(Ok(settings)))
+  }
+
+  fn workspace_configuration(&self) -> AsyncReturn<Result<Value, AnyError>> {
+    Box::pin(future::ready(Ok(
+      serde_json::to_value(get_repl_workspace_settings()).unwrap(),
+    )))
   }
 
   fn show_message(
