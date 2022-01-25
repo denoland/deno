@@ -116,10 +116,6 @@ interface HmacImportParams extends Algorithm {
   length?: number;
 }
 
-interface RsaHashedImportParams extends Algorithm {
-  hash: HashAlgorithmIdentifier;
-}
-
 interface EcKeyAlgorithm extends KeyAlgorithm {
   namedCurve: NamedCurve;
 }

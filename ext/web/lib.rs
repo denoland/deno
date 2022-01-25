@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 mod blob;
+mod compression;
 mod message_port;
 
 use deno_core::error::range_error;
@@ -66,6 +67,7 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
       "11_blob_url.js",
       "12_location.js",
       "13_message_port.js",
+      "14_compression.js",
     ))
     .ops(vec![
       ("op_base64_decode", op_sync(op_base64_decode)),
@@ -101,6 +103,18 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
       (
         "op_message_port_recv_message",
         op_async(op_message_port_recv_message),
+      ),
+      (
+        "op_compression_new",
+        op_sync(compression::op_compression_new),
+      ),
+      (
+        "op_compression_write",
+        op_sync(compression::op_compression_write),
+      ),
+      (
+        "op_compression_finish",
+        op_sync(compression::op_compression_finish),
       ),
     ])
     .state(move |state| {

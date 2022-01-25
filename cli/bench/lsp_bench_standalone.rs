@@ -78,10 +78,11 @@ fn wait_for_deno_lint_diagnostic(
       let version = msg.get("version").unwrap().as_u64().unwrap();
       if document_version == version {
         let diagnostics = msg.get("diagnostics").unwrap().as_array().unwrap();
-        let first = &diagnostics[0];
-        let source = first.get("source").unwrap().as_str().unwrap();
-        if source == "deno-lint" {
-          return;
+        for diagnostic in diagnostics {
+          let source = diagnostic.get("source").unwrap().as_str().unwrap();
+          if source == "deno-lint" {
+            return;
+          }
         }
       }
     } else {
