@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::CancelHandle;
 use crate::CancelableResponseFuture;
@@ -10,6 +10,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::url::Url;
 use deno_core::CancelFuture;
+use deno_core::OpState;
 use reqwest::StatusCode;
 use std::rc::Rc;
 use tokio_util::io::ReaderStream;
@@ -21,7 +22,8 @@ pub struct FsFetchHandler;
 
 impl FetchHandler for FsFetchHandler {
   fn fetch_file(
-    &mut self,
+    &self,
+    _state: &mut OpState,
     url: Url,
   ) -> (
     CancelableResponseFuture,

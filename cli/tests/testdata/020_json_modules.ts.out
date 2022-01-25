@@ -1,5 +1,4 @@
 [WILDCARD]
-error: An unsupported media type was attempted to be imported as a module.
+error: Expected a JavaScript or TypeScript module, but identified a Json module. Consider importing Json modules with an import assertion with the type of "json".
   Specifier: [WILDCARD]/subdir/config.json
-  MediaType: Json
 [WILDCARD]

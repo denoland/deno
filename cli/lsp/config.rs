@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -18,6 +18,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 use tokio::sync::mpsc;
+
+use super::client::Client;
 
 pub const SETTINGS_SECTION: &str = "deno";
 
@@ -152,6 +154,10 @@ pub struct WorkspaceSettings {
   /// cache/DENO_DIR for the language server.
   pub cache: Option<String>,
 
+  /// Override the default stores used to validate certificates. This overrides
+  /// the environment variable `DENO_TLS_CA_STORE` if present.
+  pub certificate_stores: Option<Vec<String>>,
+
   /// An option that points to a path string of the config file to apply to
   /// code within the workspace.
   pub config: Option<String>,
@@ -177,6 +183,15 @@ pub struct WorkspaceSettings {
   #[serde(default)]
   pub suggest: CompletionSettings,
 
+  /// An option which sets the cert file to use when attempting to fetch remote
+  /// resources. This overrides `DENO_CERT` if present.
+  pub tls_certificate: Option<String>,
+
+  /// An option, if set, will unsafely ignore certificate errors when fetching
+  /// remote resources.
+  #[serde(default)]
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+
   #[serde(default)]
   pub unstable: bool,
 }
@@ -192,7 +207,6 @@ impl WorkspaceSettings {
 #[derive(Debug, Clone, Default)]
 pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
-  pub root_uri: Option<Url>,
   pub settings: Settings,
   pub workspace_folders: Option<Vec<lsp::WorkspaceFolder>>,
 }
@@ -222,14 +236,13 @@ pub struct Settings {
 #[derive(Debug)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
-  pub root_uri: Option<Url>,
   settings: Arc<RwLock<Settings>>,
   tx: mpsc::Sender<ConfigRequest>,
   pub workspace_folders: Option<Vec<WorkspaceFolder>>,
 }
 
 impl Config {
-  pub fn new(client: lspower::Client) -> Self {
+  pub fn new(client: Client) -> Self {
     let (tx, mut rx) = mpsc::channel::<ConfigRequest>(100);
     let settings = Arc::new(RwLock::new(Settings::default()));
     let settings_ref = settings.clone();
@@ -284,31 +297,37 @@ impl Config {
               if settings_ref.read().specifiers.contains_key(&specifier) {
                 continue;
               }
-              if let Ok(value) = client
+              match client
                 .configuration(vec![lsp::ConfigurationItem {
                   scope_uri: Some(uri.clone()),
                   section: Some(SETTINGS_SECTION.to_string()),
                 }])
                 .await
               {
-                match serde_json::from_value::<SpecifierSettings>(
-                  value[0].clone(),
-                ) {
-                  Ok(specifier_settings) => {
-                    settings_ref
-                      .write()
-                      .specifiers
-                      .insert(specifier, (uri, specifier_settings));
+                Ok(values) => {
+                  if let Some(value) = values.first() {
+                    match serde_json::from_value::<SpecifierSettings>(value.clone()) {
+                      Ok(specifier_settings) => {
+                        settings_ref
+                          .write()
+                          .specifiers
+                          .insert(specifier, (uri, specifier_settings));
+                      }
+                      Err(err) => {
+                        error!("Error converting specifier settings ({}): {}", specifier, err);
+                      }
+                    }
+                  } else {
+                    error!("Expected the client to return a configuration item for specifier: {}", specifier);
                   }
-                  Err(err) => {
-                    error!("Error converting specifier settings: {}", err);
-                  }
+                },
+                Err(err) => {
+                  error!(
+                    "Error retrieving settings for specifier ({}): {}",
+                    specifier,
+                    err,
+                  );
                 }
-              } else {
-                error!(
-                  "Error retrieving settings for specifier: {}",
-                  specifier
-                );
               }
             }
           }
@@ -318,7 +337,6 @@ impl Config {
 
     Self {
       client_capabilities: ClientCapabilities::default(),
-      root_uri: None,
       settings,
       tx,
       workspace_folders: None,
@@ -337,15 +355,10 @@ impl Config {
     Ok(())
   }
 
-  pub fn snapshot(&self) -> Result<ConfigSnapshot, AnyError> {
-    Ok(ConfigSnapshot {
+  pub fn snapshot(&self) -> Arc<ConfigSnapshot> {
+    Arc::new(ConfigSnapshot {
       client_capabilities: self.client_capabilities.clone(),
-      root_uri: self.root_uri.clone(),
-      settings: self
-        .settings
-        .try_read()
-        .ok_or_else(|| anyhow!("Error reading settings."))?
-        .clone(),
+      settings: self.settings.read().clone(),
       workspace_folders: self.workspace_folders.clone(),
     })
   }
@@ -453,9 +466,9 @@ mod tests {
   }
 
   fn setup() -> Config {
-    let mut maybe_client: Option<lspower::Client> = None;
+    let mut maybe_client: Option<Client> = None;
     let (_service, _) = lspower::LspService::new(|client| {
-      maybe_client = Some(client);
+      maybe_client = Some(Client::from_lspower(client));
       MockLanguageServer::default()
     });
     Config::new(maybe_client.unwrap())
@@ -485,6 +498,7 @@ mod tests {
       WorkspaceSettings {
         enable: false,
         cache: None,
+        certificate_stores: None,
         config: None,
         import_map: None,
         code_lens: CodeLensSettings {
@@ -505,6 +519,8 @@ mod tests {
             hosts: HashMap::new(),
           }
         },
+        tls_certificate: None,
+        unsafely_ignore_certificate_errors: None,
         unstable: false,
       }
     );

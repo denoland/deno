@@ -1,12 +1,6 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast::transpile;
-use crate::ast::ImportsNotUsedAsValues;
-use crate::colors;
 use crate::proc_state::ProcState;
-use deno_ast::swc::parser::error::SyntaxError;
-use deno_ast::swc::parser::token::Token;
-use deno_ast::swc::parser::token::Word;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -16,28 +10,23 @@ use deno_core::serde_json::value::RawValue;
 use deno_core::LocalInspectorSession;
 use deno_core::LossyString;
 use deno_runtime::worker::MainWorker;
-use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
-use rustyline::highlight::Highlighter;
-use rustyline::validate::ValidationContext;
-use rustyline::validate::ValidationResult;
-use rustyline::validate::Validator;
-use rustyline::CompletionType;
-use rustyline::Config;
-use rustyline::Context;
-use rustyline::Editor;
-use rustyline_derive::{Helper, Hinter};
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 mod channel;
+mod editor;
+mod session;
 
 use channel::rustyline_channel;
+use channel::RustylineSyncMessage;
 use channel::RustylineSyncMessageHandler;
 use channel::RustylineSyncMessageSender;
+use channel::RustylineSyncResponse;
+use editor::EditorHelper;
+use editor::ReplEditor;
+use session::EvaluationOutput;
+use session::ReplSession;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -773,11 +762,24 @@ async fn read_line_and_poll(
         return result.unwrap();
       }
       result = message_handler.recv() => {
-        if let Some((method, params)) = result {
-          let result = repl_session
-            .post_message_with_event_loop(&method, params)
-            .await;
-          message_handler.send(result).unwrap();
+        match result {
+          Some(RustylineSyncMessage::PostMessage {
+            method,
+            params
+          }) => {
+            let result = repl_session
+              .post_message_with_event_loop(&method, params)
+              .await;
+            message_handler.send(RustylineSyncResponse::PostMessage(result)).unwrap();
+          },
+          Some(RustylineSyncMessage::LspCompletions {
+            line_text,
+            position,
+          }) => {
+            let result = repl_session.language_server.completions(&line_text, position).await;
+            message_handler.send(RustylineSyncResponse::LspCompletions(result)).unwrap();
+          }
+          None => {}, // channel closed
         }
 
         poll_worker = true;
@@ -793,7 +795,7 @@ pub async fn run(
   ps: &ProcState,
   worker: MainWorker,
   maybe_eval: Option<String>,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
   let mut rustyline_channel = rustyline_channel();
 
@@ -853,5 +855,5 @@ pub async fn run(
 
   editor.save_history()?;
 
-  Ok(())
+  Ok(repl_session.worker.get_exit_code())
 }

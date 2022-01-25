@@ -1,9 +1,9 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertStringIncludes,
-  assertThrowsAsync,
 } from "../../../test_util/std/testing/asserts.ts";
 
 Deno.test({
@@ -268,7 +268,7 @@ Deno.test({
       Object.keys(files).sort(),
       ["deno:///bundle.js", "deno:///bundle.js.map"].sort(),
     );
-    assert(files["deno:///bundle.js"].includes(`const bar1 = "bar"`));
+    assert(files["deno:///bundle.js"].includes(`const bar = "bar"`));
   },
 });
 
@@ -307,12 +307,12 @@ Deno.test({
     );
     assertEquals(diagnostics.length, 0);
     assert(!ignoredOptions);
-    assertEquals(stats.length, 12);
+    assertEquals(stats.length, 0);
     assertEquals(
       Object.keys(files).sort(),
       ["deno:///bundle.js.map", "deno:///bundle.js"].sort(),
     );
-    assert(files["deno:///bundle.js"].includes(`const bar1 = "bar"`));
+    assert(files["deno:///bundle.js"].includes(`const bar = "bar"`));
   },
 });
 
@@ -418,10 +418,21 @@ Deno.test({
         "/b.ts": `export const b = "b";`,
       },
     });
+    const ignoreDirecives = [
+      "// deno-fmt-ignore-file",
+      "// deno-lint-ignore-file",
+      "// This code was bundled using `deno bundle` and it's not recommended to edit it manually",
+      "",
+      "",
+    ].join("\n");
     assert(diagnostics);
     assertEquals(diagnostics.length, 0);
     assertEquals(Object.keys(files).length, 2);
-    assert(files["deno:///bundle.js"].startsWith("(function() {\n"));
+    assert(
+      files["deno:///bundle.js"].startsWith(
+        ignoreDirecives + "(function() {\n",
+      ),
+    );
     assert(files["deno:///bundle.js"].endsWith("})();\n"));
     assert(files["deno:///bundle.js.map"]);
   },
@@ -430,7 +441,7 @@ Deno.test({
 Deno.test({
   name: `Deno.emit() - throws descriptive error when unable to load import map`,
   async fn() {
-    await assertThrowsAsync(
+    await assertRejects(
       async () => {
         await Deno.emit("/a.ts", {
           bundle: "classic",
@@ -514,7 +525,7 @@ Deno.test({
         code: 900001,
         start: null,
         end: null,
-        messageText: 'Cannot load module "file:///b.ts".',
+        messageText: 'Module not found "file:///b.ts".',
         messageChain: null,
         source: null,
         sourceLine: null,
@@ -524,7 +535,7 @@ Deno.test({
     ]);
     assert(
       Deno.formatDiagnostics(diagnostics).includes(
-        'Cannot load module "file:///b.ts".',
+        'Module not found "file:///b.ts".',
       ),
     );
   },
@@ -566,7 +577,7 @@ Deno.test({
       {
         sources: {
           "file:///a.tsx": `/** @jsxImportSource https://example.com/jsx */
-          
+
           export function App() {
             return (
               <div><></></div>

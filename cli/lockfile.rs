@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -11,6 +11,8 @@ use std::io::Result;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+
+use crate::tools::fmt::format_json;
 
 #[derive(Debug, Clone)]
 pub struct Lockfile {
@@ -42,13 +44,15 @@ impl Lockfile {
     }
     let j = json!(&self.map);
     let s = serde_json::to_string_pretty(&j).unwrap();
+
+    let format_s = format_json(&s, &Default::default()).unwrap_or(s);
     let mut f = std::fs::OpenOptions::new()
       .write(true)
       .create(true)
       .truncate(true)
       .open(&self.filename)?;
     use std::io::Write;
-    f.write_all(s.as_bytes())?;
+    f.write_all(format_s.as_bytes())?;
     debug!("lockfile write {}", self.filename.display());
     Ok(())
   }

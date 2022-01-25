@@ -1,8 +1,9 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 mod in_memory_broadcast_channel;
 
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
+pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;

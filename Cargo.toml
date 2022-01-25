@@ -1,4 +1,4 @@
-# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 [workspace]
 resolver = "2"
@@ -29,7 +29,7 @@ exclude = ["test_util/std/hash/_wasm"]
 
 # use serde_json lucacasonato/json.git@5ec8141acf127d9dcbc01b2b63c6426d158ee1af
 [patch.crates-io]
-serde_json = { git = "https://github.com/lucacasonato/json.git", rev = "5ec8141acf127d9dcbc01b2b63c6426d158ee1af" }
+serde_json = { git = "https://github.com/lucacasonato/json", branch = "support_lone_surrogates_in_raw_value" }
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]
@@ -92,6 +92,12 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.tokio]
 opt-level = 3
+[profile.bench.package.zstd]
+opt-level = 3
+[profile.bench.package.lzzzz]
+opt-level = 3
+[profile.bench.package.zstd-sys]
+opt-level = 3
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release.package.rand]
@@ -133,4 +139,10 @@ opt-level = 3
 [profile.release.package.hyper]
 opt-level = 3
 [profile.release.package.tokio]
+opt-level = 3
+[profile.release.package.zstd]
+opt-level = 3
+[profile.release.package.lzzzz]
+opt-level = 3
+[profile.release.package.zstd-sys]
 opt-level = 3

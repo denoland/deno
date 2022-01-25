@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -85,6 +85,7 @@ declare namespace Deno {
     export class BadResource extends Error {}
     export class Http extends Error {}
     export class Busy extends Error {}
+    export class NotSupported extends Error {}
   }
 
   /** The current process id of the runtime. */
@@ -113,8 +114,40 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
-  /** **UNSTABLE**: New option, yet to be vetted. */
   export interface TestContext {
+    /** Run a sub step of the parent test or step. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored the promise returns `false`.
+     */
+    step(t: TestStepDefinition): Promise<boolean>;
+
+    /** Run a sub step of the parent test or step. Returns a promise
+     * that resolves to a boolean signifying if the step completed successfully.
+     * The returned promise never rejects unless the arguments are invalid.
+     * If the test was ignored the promise returns `false`.
+     */
+    step(
+      name: string,
+      fn: (t: TestContext) => void | Promise<void>,
+    ): Promise<boolean>;
+  }
+
+  export interface TestStepDefinition {
+    fn: (t: TestContext) => void | Promise<void>;
+    name: string;
+    ignore?: boolean;
+    /** Check that the number of async completed ops after the test step is the same
+     * as number of dispatched ops. Defaults to the parent test or step's value. */
+    sanitizeOps?: boolean;
+    /** Ensure the test step does not "leak" resources - ie. the resource table
+     * after the test has exactly the same contents as before the test. Defaults
+     * to the parent test or step's value. */
+    sanitizeResources?: boolean;
+    /** Ensure the test step does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to the parent test or
+     * step's value. */
+    sanitizeExit?: boolean;
   }
 
   export interface TestDefinition {
@@ -654,9 +687,6 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use `copy` from https://deno.land/std/streams/conversion.ts
-   * instead. `Deno.copy` will be removed in Deno 2.0.
-   *
    * Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
    * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
@@ -667,6 +697,9 @@ declare namespace Deno {
    * const destination = await Deno.create("my_file_2.txt");
    * const bytesCopied2 = await Deno.copy(source, destination);
    * ```
+   *
+   * @deprecated Use `copy` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.copy` will be removed in Deno 2.0.
    *
    * @param src The source to copy from
    * @param dst The destination to copy to
@@ -681,10 +714,6 @@ declare namespace Deno {
   ): Promise<number>;
 
   /**
-   * @deprecated Use `iterateReader` from
-   * https://deno.land/std/streams/conversion.ts instead. `Deno.iter` will be
-   * removed in Deno 2.0.
-   *
    * Turns a Reader, `r`, into an async iterator.
    *
    * ```ts
@@ -713,6 +742,10 @@ declare namespace Deno {
    * a view on that buffer on each iteration. It is therefore caller's
    * responsibility to copy contents of the buffer if needed; otherwise the
    * next iteration will overwrite contents of previously returned chunk.
+   *
+   * @deprecated Use `iterateReader` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iter` will be
+   * removed in Deno 2.0.
    */
   export function iter(
     r: Reader,
@@ -722,10 +755,6 @@ declare namespace Deno {
   ): AsyncIterableIterator<Uint8Array>;
 
   /**
-   * @deprecated Use `iterateReaderSync` from
-   * https://deno.land/std/streams/conversion.ts instead. `Deno.iterSync` will
-   * be removed in Deno 2.0.
-   *
    * Turns a ReaderSync, `r`, into an iterator.
    *
    * ```ts
@@ -754,6 +783,10 @@ declare namespace Deno {
    * a view on that buffer on each iteration. It is therefore caller's
    * responsibility to copy contents of the buffer if needed; otherwise the
    * next iteration will overwrite contents of previously returned chunk.
+   *
+   * @deprecated Use `iterateReaderSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.iterSync` will
+   * be removed in Deno 2.0.
    */
   export function iterSync(
     r: ReaderSync,
@@ -870,7 +903,7 @@ declare namespace Deno {
    *
    * Returns the number of bytes written.  This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather use
-   * Deno.writeAllSync() instead.
+   * `writeAllSync()` from https://deno.land/std/streams/conversion.ts instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -1210,9 +1243,6 @@ declare namespace Deno {
   }
 
   /**
-   * @deprecated Use `readAll` from https://deno.land/std/streams/conversion.ts
-   * instead. `Deno.readAll` will be removed in Deno 2.0.
-   *
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
@@ -1231,14 +1261,13 @@ declare namespace Deno {
    * const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
    * const bufferContent = await Deno.readAll(reader);
    * ```
+   *
+   * @deprecated Use `readAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.readAll` will be removed in Deno 2.0.
    */
   export function readAll(r: Reader): Promise<Uint8Array>;
 
   /**
-   * @deprecated Use `readAllSync` from
-   * https://deno.land/std/streams/conversion.ts instead. `Deno.readAllSync`
-   * will be removed in Deno 2.0.
-   *
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
@@ -1257,13 +1286,14 @@ declare namespace Deno {
    * const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
    * const bufferContent = Deno.readAllSync(reader);
    * ```
+   *
+   * @deprecated Use `readAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.readAllSync`
+   * will be removed in Deno 2.0.
    */
   export function readAllSync(r: ReaderSync): Uint8Array;
 
   /**
-   * @deprecated Use `writeAll` from https://deno.land/std/streams/conversion.ts
-   * instead. `Deno.writeAll` will be removed in Deno 2.0.
-   *
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
    * ```ts
@@ -1287,14 +1317,13 @@ declare namespace Deno {
    * await Deno.writeAll(writer, contentBytes);
    * console.log(writer.bytes().length);  // 11
    * ```
+   *
+   * @deprecated Use `writeAll` from https://deno.land/std/streams/conversion.ts
+   * instead. `Deno.writeAll` will be removed in Deno 2.0.
    */
   export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
 
   /**
-   * @deprecated Use `writeAllSync` from
-   * https://deno.land/std/streams/conversion.ts instead. `Deno.writeAllSync`
-   * will be removed in Deno 2.0.
-   *
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
@@ -1319,6 +1348,10 @@ declare namespace Deno {
    * Deno.writeAllSync(writer, contentBytes);
    * console.log(writer.bytes().length);  // 11
    * ```
+   *
+   * @deprecated Use `writeAllSync` from
+   * https://deno.land/std/streams/conversion.ts instead. `Deno.writeAllSync`
+   * will be removed in Deno 2.0.
    */
   export function writeAllSync(w: WriterSync, arr: Uint8Array): void;
 
@@ -2126,9 +2159,10 @@ declare namespace Deno {
     readonly rid: number;
     /** Stops watching the file system and closes the watcher resource. */
     close(): void;
-    /** @deprecated
+    /**
      * Stops watching the file system and closes the watcher resource.
-     * Will be removed at 2.0.
+     *
+     * @deprecated Will be removed at 2.0.
      */
     return?(value?: any): Promise<IteratorResult<FsEvent>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
@@ -2564,11 +2598,12 @@ declare namespace Deno {
   export const args: string[];
 
   /**
-   * @deprecated A symbol which can be used as a key for a custom method which will be
+   * A symbol which can be used as a key for a custom method which will be
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console.
    *
-   * This symbol is deprecated since 1.9. Use `Symbol.for("Deno.customInspect")` instead.
+   * @deprecated This symbol is deprecated since 1.9. Use
+   * `Symbol.for("Deno.customInspect")` instead.
    */
   export const customInspect: unique symbol;
 
@@ -2743,6 +2778,14 @@ declare namespace Deno {
 
   export interface UpgradeWebSocketOptions {
     protocol?: string;
+    /**
+     * If the client does not respond to this frame with a
+     * `pong` within the timeout specified, the connection is deemed
+     * unhealthy and is closed. The `close` and `error` event will be emitted.
+     *
+     * The default is 120 seconds. Set to 0 to disable timeouts.
+     */
+    idleTimeout?: number;
   }
 
   /**

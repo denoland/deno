@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 // @ts-check
@@ -84,6 +84,13 @@
     get reason() {
       webidl.assertBranded(this, AbortSignal);
       return this[abortReason];
+    }
+
+    throwIfAborted() {
+      webidl.assertBranded(this, AbortSignal);
+      if (this[abortReason] !== undefined) {
+        throw this[abortReason];
+      }
     }
   }
   defineEventHandler(AbortSignal.prototype, "abort");

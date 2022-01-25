@@ -4,6 +4,7 @@ import {
   assertRejects,
   assertThrows,
   pathToAbsoluteFileUrl,
+  unreachable,
 } from "./test_util.ts";
 
 Deno.test({ permissions: { read: true } }, function readTextFileSyncSuccess() {
@@ -88,11 +89,52 @@ Deno.test(
   async function readTextFileWithAbortSignal() {
     const ac = new AbortController();
     queueMicrotask(() => ac.abort());
-    await assertRejects(async () => {
+    await assertRejects(
+      async () => {
+        await Deno.readFile("cli/tests/testdata/fixture.json", {
+          signal: ac.signal,
+        });
+      },
+      (error: Error) => {
+        assert(error instanceof DOMException);
+        assertEquals(error.name, "AbortError");
+      },
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readTextFileWithAbortSignalReason() {
+    const ac = new AbortController();
+    const abortReason = new Error();
+    queueMicrotask(() => ac.abort(abortReason));
+    await assertRejects(
+      async () => {
+        await Deno.readFile("cli/tests/testdata/fixture.json", {
+          signal: ac.signal,
+        });
+      },
+      (error: Error) => {
+        assertEquals(error, abortReason);
+      },
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readTextFileWithAbortSignalPrimitiveReason() {
+    const ac = new AbortController();
+    queueMicrotask(() => ac.abort("Some string"));
+    try {
       await Deno.readFile("cli/tests/testdata/fixture.json", {
         signal: ac.signal,
       });
-    });
+      unreachable();
+    } catch (e) {
+      assertEquals(e, "Some string");
+    }
   },
 );
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::text::LineIndex;
 use super::tsc;
@@ -22,7 +22,9 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
+use deno_graph::Module;
 use lspower::lsp;
+use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -34,20 +36,39 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-lazy_static::lazy_static! {
-  static ref JS_HEADERS: HashMap<String, String> = ([
-    ("content-type".to_string(), "application/javascript".to_string())
-  ]).iter().cloned().collect();
-  static ref JSX_HEADERS: HashMap<String, String> = ([
-    ("content-type".to_string(), "text/jsx".to_string())
-  ]).iter().cloned().collect();
-  static ref TS_HEADERS: HashMap<String, String> = ([
-    ("content-type".to_string(), "application/typescript".to_string())
-  ]).iter().cloned().collect();
-  static ref TSX_HEADERS: HashMap<String, String> = ([
-    ("content-type".to_string(), "text/tsx".to_string())
-  ]).iter().cloned().collect();
-}
+static JS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
+  ([(
+    "content-type".to_string(),
+    "application/javascript".to_string(),
+  )])
+  .iter()
+  .cloned()
+  .collect()
+});
+
+static JSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
+  ([("content-type".to_string(), "text/jsx".to_string())])
+    .iter()
+    .cloned()
+    .collect()
+});
+
+static TS_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
+  ([(
+    "content-type".to_string(),
+    "application/typescript".to_string(),
+  )])
+  .iter()
+  .cloned()
+  .collect()
+});
+
+static TSX_HEADERS: Lazy<HashMap<String, String>> = Lazy::new(|| {
+  ([("content-type".to_string(), "text/tsx".to_string())])
+    .iter()
+    .cloned()
+    .collect()
+});
 
 /// The default parser from `deno_graph` does not include the configuration
 /// options we require here, and so implementing an empty struct that provides
@@ -253,7 +274,7 @@ struct DocumentInner {
   maybe_language_id: Option<LanguageId>,
   maybe_lsp_version: Option<i32>,
   maybe_module:
-    Option<Result<deno_graph::Module, deno_graph::ModuleGraphError>>,
+    Option<Result<deno_graph::EsModule, deno_graph::ModuleGraphError>>,
   maybe_navigation_tree: Option<Arc<tsc::NavigationTree>>,
   maybe_warning: Option<String>,
   specifier: ModuleSpecifier,
@@ -278,13 +299,16 @@ impl Document {
     // we only ever do `Document::new` on on disk resources that are supposed to
     // be diagnosable, unlike `Document::open`, so it is safe to unconditionally
     // parse the module.
-    let maybe_module = Some(deno_graph::parse_module(
+    let maybe_module = match deno_graph::parse_module(
       &specifier,
       maybe_headers,
       content.clone(),
       maybe_resolver,
       Some(&parser),
-    ));
+    ) {
+      Ok(m) => m.to_maybe_es_module().map(Ok),
+      Err(err) => Some(Err(err)),
+    };
     let dependencies = if let Some(Ok(module)) = &maybe_module {
       Arc::new(module.dependencies.clone())
     } else {
@@ -316,13 +340,16 @@ impl Document {
     let maybe_headers = language_id.as_headers();
     let parser = SourceParser::default();
     let maybe_module = if language_id.is_diagnosable() {
-      Some(deno_graph::parse_module(
+      match deno_graph::parse_module(
         &specifier,
         maybe_headers,
         content.clone(),
         maybe_resolver,
         Some(&parser),
-      ))
+      ) {
+        Ok(m) => m.to_maybe_es_module().map(Ok),
+        Err(err) => Some(Err(err)),
+      }
     } else {
       None
     };
@@ -384,13 +411,16 @@ impl Document {
         .map(|li| li.as_headers())
         .flatten();
       let parser = SourceParser::default();
-      Some(deno_graph::parse_module(
+      match deno_graph::parse_module(
         &self.0.specifier,
         maybe_headers,
         content.clone(),
         maybe_resolver,
         Some(&parser),
-      ))
+      ) {
+        Ok(m) => m.to_maybe_es_module().map(Ok),
+        Err(err) => Some(Err(err)),
+      }
     } else {
       None
     };
@@ -455,12 +485,17 @@ impl Document {
   pub fn is_diagnosable(&self) -> bool {
     matches!(
       self.media_type(),
-      // todo(#12410): Update with new media types for TS 4.5
       MediaType::JavaScript
         | MediaType::Jsx
+        | MediaType::Mjs
+        | MediaType::Cjs
         | MediaType::TypeScript
         | MediaType::Tsx
+        | MediaType::Mts
+        | MediaType::Cts
         | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
     )
   }
 
@@ -490,7 +525,7 @@ impl Document {
 
   fn maybe_module(
     &self,
-  ) -> Option<&Result<deno_graph::Module, deno_graph::ModuleGraphError>> {
+  ) -> Option<&Result<deno_graph::EsModule, deno_graph::ModuleGraphError>> {
     self.0.maybe_module.as_ref()
   }
 
@@ -553,9 +588,10 @@ pub(crate) fn to_hover_text(
       "blob" => "_(a blob url)_".to_string(),
       _ => format!(
         "{}&#8203;{}",
-        specifier[..url::Position::AfterScheme].to_string(),
-        specifier[url::Position::AfterScheme..].to_string()
-      ),
+        &specifier[..url::Position::AfterScheme],
+        &specifier[url::Position::AfterScheme..],
+      )
+      .replace('@', "&#8203;@"),
     },
     Err(_) => "_[errored]_".to_string(),
   }
@@ -688,9 +724,9 @@ impl FileSystemDocuments {
     &mut self,
     cache: &HttpCache,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
-    specifier: ModuleSpecifier,
+    specifier: &ModuleSpecifier,
   ) -> Option<Document> {
-    let path = get_document_path(cache, &specifier)?;
+    let path = get_document_path(cache, specifier)?;
     let fs_version = calculate_fs_version(&path)?;
     let bytes = fs::read(path).ok()?;
     let doc = if specifier.scheme() == "file" {
@@ -705,11 +741,11 @@ impl FileSystemDocuments {
         maybe_resolver,
       )
     } else {
-      let cache_filename = cache.get_cache_filename(&specifier)?;
+      let cache_filename = cache.get_cache_filename(specifier)?;
       let metadata = http_cache::Metadata::read(&cache_filename).ok()?;
       let maybe_content_type = metadata.headers.get("content-type").cloned();
       let maybe_headers = Some(&metadata.headers);
-      let (_, maybe_charset) = map_content_type(&specifier, maybe_content_type);
+      let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
       let content = Arc::new(get_source_from_bytes(bytes, maybe_charset).ok()?);
       Document::new(
         specifier.clone(),
@@ -720,7 +756,7 @@ impl FileSystemDocuments {
       )
     };
     self.dirty = true;
-    self.docs.insert(specifier, doc)
+    self.docs.insert(specifier.clone(), doc)
   }
 }
 
@@ -913,6 +949,22 @@ impl Documents {
     }
   }
 
+  /// Used by the tsc op_exists to shortcut trying to load a document to provide
+  /// information to CLI without allocating a document.
+  pub(crate) fn exists(&self, specifier: &ModuleSpecifier) -> bool {
+    let specifier = self.specifier_resolver.resolve(specifier);
+    if let Some(specifier) = specifier {
+      if self.open_docs.contains_key(&specifier) {
+        return true;
+      }
+      if let Some(path) = get_document_path(&self.cache, &specifier) {
+        return path.is_file();
+      }
+    }
+
+    false
+  }
+
   /// Return a document for the specifier.
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
     let specifier = self.specifier_resolver.resolve(specifier)?;
@@ -933,7 +985,7 @@ impl Documents {
         file_system_docs.refresh_document(
           &self.cache,
           self.get_maybe_resolver(),
-          specifier.clone(),
+          &specifier,
         );
       }
       file_system_docs.docs.get(&specifier).cloned()

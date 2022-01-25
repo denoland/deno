@@ -1,6 +1,5 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-mod ast;
 mod auth_tokens;
 mod cache;
 mod checksum;
@@ -18,6 +17,7 @@ mod flags;
 mod flags_allow_net;
 mod fmt_errors;
 mod fs_util;
+mod graph_util;
 mod http_cache;
 mod http_util;
 mod lockfile;
@@ -40,6 +40,7 @@ use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::BundleFlags;
 use crate::flags::CacheFlags;
+use crate::flags::CheckFlag;
 use crate::flags::CompileFlags;
 use crate::flags::CompletionsFlags;
 use crate::flags::CoverageFlags;
@@ -57,6 +58,8 @@ use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
+use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::graph_valid;
 use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
@@ -69,11 +72,12 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
+use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
-use deno_core::JsRuntime;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
@@ -112,6 +116,8 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
     );
     let create_web_worker_cb = create_web_worker_callback(ps.clone());
 
+    let extensions = ops::cli_exts(ps.clone(), args.use_deno_namespace);
+
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
         args: ps.flags.argv.clone(),
@@ -128,7 +134,7 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.flags.unstable,
       },
-      extensions: vec![],
+      extensions,
       unsafely_ignore_certificate_errors: ps
         .flags
         .unsafely_ignore_certificate_errors
@@ -147,40 +153,16 @@ fn create_web_worker_callback(ps: ProcState) -> Arc<CreateWebWorkerCb> {
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
+      maybe_exit_code: args.maybe_exit_code,
     };
-    let bootstrap_options = options.bootstrap.clone();
 
-    // TODO(@AaronO): switch to bootstrap_from_options() once ops below are an extension
-    // since it uses sync_ops_cache() which currently depends on the Deno namespace
-    // which can be nuked when bootstrapping workers (use_deno_namespace: false)
-    let (mut worker, external_handle) = WebWorker::from_options(
+    WebWorker::bootstrap_from_options(
       args.name,
       args.permissions,
       args.main_module,
       args.worker_id,
       options,
-    );
-
-    // TODO(@AaronO): move to a JsRuntime Extension passed into options
-    // This block registers additional ops and state that
-    // are only available in the CLI
-    {
-      let js_runtime = &mut worker.js_runtime;
-      js_runtime
-        .op_state()
-        .borrow_mut()
-        .put::<ProcState>(ps.clone());
-      // Applies source maps - works in conjuction with `js_error_create_fn`
-      // above
-      ops::errors::init(js_runtime);
-      if args.use_deno_namespace {
-        ops::runtime_compiler::init(js_runtime);
-      }
-      js_runtime.sync_ops_cache();
-    }
-    worker.bootstrap(&bootstrap_options);
-
-    (worker, external_handle)
+    )
   })
 }
 
@@ -188,7 +170,7 @@ pub fn create_main_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
   permissions: Permissions,
-  maybe_op_init: Option<&dyn Fn(&mut JsRuntime)>,
+  mut custom_extensions: Vec<Extension>,
 ) -> MainWorker {
   let module_loader = CliModuleLoader::new(ps.clone());
 
@@ -231,6 +213,9 @@ pub fn create_main_worker(
       .join(checksum::gen(&[key.as_bytes()]))
   });
 
+  let mut extensions = ops::cli_exts(ps.clone(), true);
+  extensions.append(&mut custom_extensions);
+
   let options = WorkerOptions {
     bootstrap: BootstrapOptions {
       apply_source_maps: true,
@@ -244,7 +229,7 @@ pub fn create_main_worker(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: ps.flags.unstable,
     },
-    extensions: vec![],
+    extensions,
     unsafely_ignore_certificate_errors: ps
       .flags
       .unsafely_ignore_certificate_errors
@@ -265,31 +250,7 @@ pub fn create_main_worker(
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
   };
 
-  let mut worker =
-    MainWorker::bootstrap_from_options(main_module, permissions, options);
-
-  // TODO(@AaronO): move to a JsRuntime Extension passed into options
-  // This block registers additional ops and state that
-  // are only available in the CLI
-  {
-    let js_runtime = &mut worker.js_runtime;
-    js_runtime
-      .op_state()
-      .borrow_mut()
-      .put::<ProcState>(ps.clone());
-    // Applies source maps - works in conjuction with `js_error_create_fn`
-    // above
-    ops::errors::init(js_runtime);
-    ops::runtime_compiler::init(js_runtime);
-
-    if let Some(op_init) = maybe_op_init {
-      op_init(js_runtime);
-    }
-
-    js_runtime.sync_ops_cache();
-  }
-
-  worker
+  MainWorker::bootstrap_from_options(main_module, permissions, options)
 }
 
 pub fn write_to_stdout_ignore_sigpipe(
@@ -404,7 +365,7 @@ pub fn get_types(unstable: bool) -> String {
 async fn compile_command(
   flags: Flags,
   compile_flags: CompileFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
   let run_flags = tools::standalone::compile_to_runtime_flags(
@@ -416,7 +377,14 @@ async fn compile_command(
   let ps = ProcState::build(flags.clone()).await?;
   let deno_dir = &ps.dir;
 
-  let output = compile_flags.output.or_else(|| {
+  let output = compile_flags.output.and_then(|output| {
+    if fs_util::path_has_trailing_slash(&output) {
+      let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
+      Some(output.join(infer_file_name))
+    } else {
+      Some(output)
+    }
+  }).or_else(|| {
     infer_name_from_url(&module_specifier).map(PathBuf::from)
   }).ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
@@ -464,13 +432,13 @@ async fn compile_command(
   )
   .await?;
 
-  Ok(())
+  Ok(0)
 }
 
 async fn info_command(
   flags: Flags,
   info_flags: InfoFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
@@ -506,25 +474,26 @@ async fn info_command(
       maybe_resolver,
       maybe_locker,
       None,
+      None,
     )
     .await;
 
     if info_flags.json {
-      write_json_to_stdout(&json!(graph))
+      write_json_to_stdout(&json!(graph))?;
     } else {
-      write_to_stdout_ignore_sigpipe(graph.to_string().as_bytes())
-        .map_err(|err| err.into())
+      write_to_stdout_ignore_sigpipe(graph.to_string().as_bytes())?;
     }
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&ps, info_flags.json, ps.flags.location.as_ref())
+    print_cache_info(&ps, info_flags.json, ps.flags.location.as_ref())?;
   }
+  Ok(0)
 }
 
 async fn install_command(
   flags: Flags,
   install_flags: InstallFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let mut preload_flags = flags.clone();
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
@@ -532,37 +501,32 @@ async fn install_command(
   let ps = ProcState::build(preload_flags).await?;
   let main_module = resolve_url_or_path(&install_flags.module_url)?;
   let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, None);
+    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module, true).await?;
-  tools::installer::install(
-    flags,
-    &install_flags.module_url,
-    install_flags.args,
-    install_flags.name,
-    install_flags.root,
-    install_flags.force,
-  )
+  tools::installer::install(flags, install_flags)?;
+  Ok(0)
 }
 
 async fn uninstall_command(
   uninstall_flags: UninstallFlags,
-) -> Result<(), AnyError> {
-  tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)
+) -> Result<i32, AnyError> {
+  tools::installer::uninstall(uninstall_flags.name, uninstall_flags.root)?;
+  Ok(0)
 }
 
-async fn lsp_command() -> Result<(), AnyError> {
-  lsp::start().await
+async fn lsp_command() -> Result<i32, AnyError> {
+  lsp::start().await?;
+  Ok(0)
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn lint_command(
   flags: Flags,
   lint_flags: LintFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   if lint_flags.rules {
     tools::lint::print_rules_list(lint_flags.json);
-    return Ok(());
+    return Ok(0);
   }
 
   let ps = ProcState::build(flags.clone()).await?;
@@ -572,13 +536,15 @@ async fn lint_command(
     None
   };
 
-  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch).await
+  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch.is_some())
+    .await?;
+  Ok(0)
 }
 
 async fn cache_command(
   flags: Flags,
   cache_flags: CacheFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let lib = if flags.unstable {
     emit::TypeLib::UnstableDenoWindow
   } else {
@@ -599,13 +565,13 @@ async fn cache_command(
     .await?;
   }
 
-  Ok(())
+  Ok(0)
 }
 
 async fn eval_command(
   flags: Flags,
   eval_flags: EvalFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   // deno_graph works off of extensions for local files to determine the media
   // type, and so our "fake" specifier needs to have the proper extension.
   let main_module =
@@ -613,7 +579,7 @@ async fn eval_command(
   let permissions = Permissions::from_options(&flags.clone().into());
   let ps = ProcState::build(flags.clone()).await?;
   let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, None);
+    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
   // Create a dummy source file.
   let source_code = if eval_flags.print {
     format!("console.log({})", eval_flags.code)
@@ -639,16 +605,10 @@ async fn eval_command(
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
   }
   worker.execute_main_module(&main_module).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
   worker.run_event_loop(false).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
-  Ok(())
+  worker.dispatch_unload_event(&located_script_name!())?;
+  Ok(0)
 }
 
 async fn create_graph_and_maybe_check(
@@ -694,19 +654,20 @@ async fn create_graph_and_maybe_check(
       maybe_resolver,
       maybe_locker,
       None,
+      None,
     )
     .await,
   );
 
-  // Ensure that all non-dynamic, non-type only imports are properly loaded and
-  // if not, error with the first issue encountered.
-  graph.valid().map_err(emit::GraphError::from)?;
-  // If there was a locker, validate the integrity of all the modules in the
-  // locker.
-  emit::lock(graph.as_ref());
+  let check_js = ps
+    .maybe_config_file
+    .as_ref()
+    .map(|cf| cf.get_check_js())
+    .unwrap_or(false);
+  graph_valid(&graph, ps.flags.check != CheckFlag::None, check_js)?;
+  graph_lock_or_exit(&graph);
 
-  if !ps.flags.no_check {
-    graph.valid_types_only().map_err(emit::GraphError::from)?;
+  if ps.flags.check != CheckFlag::None {
     let lib = if ps.flags.unstable {
       emit::TypeLib::UnstableDenoWindow
     } else {
@@ -720,21 +681,24 @@ async fn create_graph_and_maybe_check(
       ps.maybe_config_file.as_ref(),
       None,
     )?;
-    log::info!("{} {}", colors::green("Check"), graph.roots[0]);
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
     let maybe_config_specifier =
       ps.maybe_config_file.as_ref().map(|cf| cf.specifier.clone());
     let check_result = emit::check_and_maybe_emit(
-      graph.clone(),
+      &graph.roots,
+      Arc::new(RwLock::new(graph.as_ref().into())),
       &mut cache,
       emit::CheckOptions {
+        check: ps.flags.check.clone(),
         debug,
         emit_with_diagnostics: false,
         maybe_config_specifier,
         ts_config,
+        log_checks: true,
         reload: ps.flags.reload,
+        reload_exclusions: Default::default(),
       },
     )?;
     debug!("{}", check_result.stats);
@@ -758,7 +722,7 @@ fn bundle_module_graph(
     ps.maybe_config_file.as_ref(),
     None,
   )?;
-  if flags.no_check {
+  if flags.check == CheckFlag::None {
     if let Some(ignored_options) = maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
@@ -769,6 +733,7 @@ fn bundle_module_graph(
     emit::BundleOptions {
       bundle_type: emit::BundleType::Module,
       ts_config,
+      emit_ignore_directives: true,
     },
   )
 }
@@ -798,7 +763,7 @@ fn human_size(size: f64) -> String {
 async fn bundle_command(
   flags: Flags,
   bundle_flags: BundleFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
   let resolver = |_| {
@@ -887,7 +852,7 @@ async fn bundle_command(
     }
   };
 
-  if flags.watch {
+  if flags.watch.is_some() {
     file_watcher::watch_func(resolver, operation, "Bundle").await?;
   } else {
     let module_graph =
@@ -899,27 +864,21 @@ async fn bundle_command(
     operation(module_graph).await?;
   }
 
-  Ok(())
+  Ok(0)
 }
 
 async fn doc_command(
   flags: Flags,
   doc_flags: DocFlags,
-) -> Result<(), AnyError> {
-  tools::doc::print_docs(
-    flags,
-    doc_flags.source_file,
-    doc_flags.json,
-    doc_flags.filter,
-    doc_flags.private,
-  )
-  .await
+) -> Result<i32, AnyError> {
+  tools::doc::print_docs(flags, doc_flags).await?;
+  Ok(0)
 }
 
 async fn format_command(
   flags: Flags,
   fmt_flags: FmtFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
   let maybe_fmt_config = if let Some(config_file) = &ps.maybe_config_file {
     config_file.to_fmt_config()?
@@ -928,37 +887,44 @@ async fn format_command(
   };
 
   if fmt_flags.files.len() == 1 && fmt_flags.files[0].to_string_lossy() == "-" {
-    return tools::fmt::format_stdin(
+    tools::fmt::format_stdin(
       fmt_flags,
       maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
-    );
+    )?;
+    return Ok(0);
   }
 
-  tools::fmt::format(fmt_flags, flags.watch, maybe_fmt_config).await?;
-  Ok(())
+  tools::fmt::format(fmt_flags, flags.watch.is_some(), maybe_fmt_config)
+    .await?;
+  Ok(0)
 }
 
-async fn run_repl(flags: Flags, repl_flags: ReplFlags) -> Result<(), AnyError> {
+async fn repl_command(
+  flags: Flags,
+  repl_flags: ReplFlags,
+) -> Result<i32, AnyError> {
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
   let ps = ProcState::build(flags.clone()).await?;
   let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, None);
+    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
   if flags.compat {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
     compat::add_global_require(&mut worker.js_runtime, main_module.as_str())?;
+    worker.run_event_loop(false).await?;
+    compat::setup_builtin_modules(&mut worker.js_runtime)?;
   }
   worker.run_event_loop(false).await?;
 
   tools::repl::run(&ps, worker, repl_flags.eval).await
 }
 
-async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
+async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let main_module = resolve_url_or_path("./$deno$stdin.ts").unwrap();
   let mut worker =
-    create_main_worker(&ps.clone(), main_module.clone(), permissions, None);
+    create_main_worker(&ps.clone(), main_module.clone(), permissions, vec![]);
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -980,23 +946,20 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
   }
   worker.execute_main_module(&main_module).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
   worker.run_event_loop(false).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
-  Ok(())
+  worker.dispatch_unload_event(&located_script_name!())?;
+  Ok(worker.get_exit_code())
 }
 
-async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
+// TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
+// code properly.
+async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   let resolver = |_| {
     let script1 = script.clone();
     let script2 = script.clone();
     let flags = flags.clone();
+    let watch_flag = flags.watch.clone();
     async move {
       let main_module = resolve_url_or_path(&script1)?;
       let ps = ProcState::build(flags).await?;
@@ -1037,9 +1000,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         maybe_resolver,
         maybe_locker,
         None,
+        None,
       )
       .await;
-      graph.valid()?;
+      let check_js = ps
+        .maybe_config_file
+        .as_ref()
+        .map(|cf| cf.get_check_js())
+        .unwrap_or(false);
+      graph_valid(&graph, ps.flags.check != flags::CheckFlag::None, check_js)?;
 
       // Find all local files in graph
       let mut paths_to_watch: Vec<PathBuf> = graph
@@ -1052,6 +1021,11 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
             .flatten()
         })
         .collect();
+
+      // Add the extra files listed in the watch flag
+      if let Some(watch_paths) = watch_flag {
+        paths_to_watch.extend(watch_paths);
+      }
 
       if let Some(import_map) = ps.flags.import_map_path.as_ref() {
         paths_to_watch
@@ -1100,10 +1074,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
       }
       self.worker.execute_main_module(main_module).await?;
-      self.worker.execute_script(
-        &located_script_name!(),
-        "window.dispatchEvent(new Event('load'))",
-      )?;
+      self.worker.dispatch_load_event(&located_script_name!())?;
       self.pending_unload = true;
 
       let result = self.worker.run_event_loop(false).await;
@@ -1113,10 +1084,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         return Err(err);
       }
 
-      self.worker.execute_script(
-        &located_script_name!(),
-        "window.dispatchEvent(new Event('unload'))",
-      )?;
+      self.worker.dispatch_unload_event(&located_script_name!())?;
 
       Ok(())
     }
@@ -1127,10 +1095,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       if self.pending_unload {
         self
           .worker
-          .execute_script(
-            &located_script_name!(),
-            "window.dispatchEvent(new Event('unload'))",
-          )
+          .dispatch_unload_event(&located_script_name!())
           .unwrap();
       }
     }
@@ -1143,7 +1108,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
       let mut executor = FileWatcherModuleExecutor::new(
-        create_main_worker(&ps, main_module.clone(), permissions, None),
+        create_main_worker(&ps, main_module.clone(), permissions, vec![]),
         flags.compat,
       );
 
@@ -1153,19 +1118,20 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     }
   };
 
-  file_watcher::watch_func(resolver, operation, "Process").await
+  file_watcher::watch_func(resolver, operation, "Process").await?;
+  Ok(0)
 }
 
 async fn run_command(
   flags: Flags,
   run_flags: RunFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   // Read script content from stdin
   if run_flags.script == "-" {
     return run_from_stdin(flags).await;
   }
 
-  if flags.watch {
+  if flags.watch.is_some() {
     return run_with_watch(flags, run_flags.script).await;
   }
 
@@ -1178,7 +1144,7 @@ async fn run_command(
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
-    create_main_worker(&ps, main_module.clone(), permissions, None);
+    create_main_worker(&ps, main_module.clone(), permissions, vec![]);
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = ps.coverage_dir {
@@ -1220,6 +1186,7 @@ async fn run_command(
       compat::load_cjs_module(
         &mut worker.js_runtime,
         &main_module.to_file_path().unwrap().display().to_string(),
+        true,
       )?;
     }
   } else {
@@ -1227,49 +1194,36 @@ async fn run_command(
     worker.execute_main_module(&main_module).await?;
   }
 
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
   worker
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
       .with_event_loop(coverage_collector.stop_collecting().boxed_local())
       .await?;
   }
-  Ok(())
+  Ok(worker.get_exit_code())
 }
 
 async fn coverage_command(
   flags: Flags,
   coverage_flags: CoverageFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   if coverage_flags.files.is_empty() {
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  tools::coverage::cover_files(
-    flags.clone(),
-    coverage_flags.files,
-    coverage_flags.ignore,
-    coverage_flags.include,
-    coverage_flags.exclude,
-    coverage_flags.lcov,
-  )
-  .await
+  tools::coverage::cover_files(flags, coverage_flags).await?;
+  Ok(0)
 }
 
 async fn test_command(
   flags: Flags,
   test_flags: TestFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
     std::fs::create_dir_all(&coverage_dir)?;
     env::set_var(
@@ -1278,38 +1232,35 @@ async fn test_command(
     );
   }
 
-  if flags.watch {
-    tools::test::run_tests_with_watch(
-      flags,
-      test_flags.include,
-      test_flags.ignore,
-      test_flags.doc,
-      test_flags.no_run,
-      test_flags.fail_fast,
-      test_flags.filter,
-      test_flags.shuffle,
-      test_flags.concurrent_jobs,
-    )
-    .await?;
-
-    return Ok(());
+  if flags.watch.is_some() {
+    tools::test::run_tests_with_watch(flags, test_flags).await?;
+  } else {
+    tools::test::run_tests(flags, test_flags).await?;
   }
 
-  tools::test::run_tests(
-    flags,
-    test_flags.include,
-    test_flags.ignore,
-    test_flags.doc,
-    test_flags.no_run,
-    test_flags.fail_fast,
-    test_flags.allow_none,
-    test_flags.filter,
-    test_flags.shuffle,
-    test_flags.concurrent_jobs,
-  )
-  .await?;
+  Ok(0)
+}
 
-  Ok(())
+async fn completions_command(
+  _flags: Flags,
+  completions_flags: CompletionsFlags,
+) -> Result<i32, AnyError> {
+  write_to_stdout_ignore_sigpipe(&completions_flags.buf)?;
+  Ok(0)
+}
+
+async fn types_command(flags: Flags) -> Result<i32, AnyError> {
+  let types = get_types(flags.unstable);
+  write_to_stdout_ignore_sigpipe(types.as_bytes())?;
+  Ok(0)
+}
+
+async fn upgrade_command(
+  _flags: Flags,
+  upgrade_flags: UpgradeFlags,
+) -> Result<i32, AnyError> {
+  tools::upgrade::upgrade(upgrade_flags).await?;
+  Ok(0)
 }
 
 fn init_v8_flags(v8_flags: &[String]) {
@@ -1338,7 +1289,7 @@ fn init_v8_flags(v8_flags: &[String]) {
 
 fn get_subcommand(
   flags: Flags,
-) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+) -> Pin<Box<dyn Future<Output = Result<i32, AnyError>>>> {
   match flags.clone().subcommand {
     DenoSubcommand::Bundle(bundle_flags) => {
       bundle_command(flags, bundle_flags).boxed_local()
@@ -1375,7 +1326,7 @@ fn get_subcommand(
       lint_command(flags, lint_flags).boxed_local()
     }
     DenoSubcommand::Repl(repl_flags) => {
-      run_repl(flags, repl_flags).boxed_local()
+      repl_command(flags, repl_flags).boxed_local()
     }
     DenoSubcommand::Run(run_flags) => {
       run_command(flags, run_flags).boxed_local()
@@ -1383,43 +1334,39 @@ fn get_subcommand(
     DenoSubcommand::Test(test_flags) => {
       test_command(flags, test_flags).boxed_local()
     }
-    DenoSubcommand::Completions(CompletionsFlags { buf }) => {
-      if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
-        eprintln!("{}", e);
-        std::process::exit(1);
-      }
-      std::process::exit(0);
+    DenoSubcommand::Completions(completions_flags) => {
+      completions_command(flags, completions_flags).boxed_local()
     }
-    DenoSubcommand::Types => {
-      let types = get_types(flags.unstable);
-      if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
-        eprintln!("{}", e);
-        std::process::exit(1);
-      }
-      std::process::exit(0);
-    }
+    DenoSubcommand::Types => types_command(flags).boxed_local(),
     DenoSubcommand::Upgrade(upgrade_flags) => {
-      let UpgradeFlags {
-        force,
-        dry_run,
-        canary,
-        version,
-        output,
-        ca_file,
-      } = upgrade_flags;
-      tools::upgrade::upgrade_command(
-        dry_run, force, canary, version, output, ca_file,
-      )
-      .boxed_local()
+      upgrade_command(flags, upgrade_flags).boxed_local()
     }
   }
 }
 
-fn setup_exit_process_panic_hook() {
-  // tokio does not exit the process when a task panics, so we
-  // define a custom panic hook to implement this behaviour
+fn setup_panic_hook() {
+  // This function does two things inside of the panic hook:
+  // - Tokio does not exit the process when a task panics, so we define a custom
+  //   panic hook to implement this behaviour.
+  // - We print a message to stderr to indicate that this is a bug in Deno, and
+  //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
+    eprintln!("\n============================================================");
+    eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
+    eprintln!("at https://github.com/denoland/deno/issues/new.");
+    eprintln!("If you can reliably reproduce this panic, include the");
+    eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
+    eprintln!("var set and include the backtrace in your report.");
+    eprintln!();
+    eprintln!(
+      "Platform: {} {}",
+      std::env::consts::OS,
+      std::env::consts::ARCH
+    );
+    eprintln!("Version: {}", version::deno());
+    eprintln!("Args: {:?}", std::env::args().collect::<Vec<_>>());
+    eprintln!();
     orig_hook(panic_info);
     std::process::exit(1);
   }));
@@ -1429,14 +1376,18 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      eprintln!("{}: {:?}", colors::red_bold("error"), error);
+      eprintln!(
+        "{}: {}",
+        colors::red_bold("error"),
+        format!("{:?}", error).trim_start_matches("error: ")
+      );
       std::process::exit(1);
     }
   }
 }
 
 pub fn main() {
-  setup_exit_process_panic_hook();
+  setup_panic_hook();
 
   unix_util::raise_fd_limit();
   windows_util::ensure_stdio_open();
@@ -1451,19 +1402,16 @@ pub fn main() {
     Ok(None) => Ok(()),
     Err(err) => Err(err),
   };
-  if let Err(err) = standalone_res {
-    eprintln!("{}: {}", colors::red_bold("error"), err.to_string());
-    std::process::exit(1);
-  }
+  // TODO(bartlomieju): doesn't handle exit code set by the runtime properly
+  unwrap_or_exit(standalone_res);
 
   let flags = match flags::flags_from_vec(args) {
     Ok(flags) => flags,
     Err(err @ clap::Error { .. })
-      if err.kind == clap::ErrorKind::HelpDisplayed
-        || err.kind == clap::ErrorKind::VersionDisplayed =>
+      if err.kind == clap::ErrorKind::DisplayHelp
+        || err.kind == clap::ErrorKind::DisplayVersion =>
     {
-      err.write_to(&mut std::io::stdout()).unwrap();
-      std::io::stdout().write_all(b"\n").unwrap();
+      err.print().unwrap();
       std::process::exit(0);
     }
     Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
@@ -1474,5 +1422,7 @@ pub fn main() {
 
   logger::init(flags.log_level);
 
-  unwrap_or_exit(run_basic(get_subcommand(flags)));
+  let exit_code = unwrap_or_exit(run_basic(get_subcommand(flags)));
+
+  std::process::exit(exit_code);
 }

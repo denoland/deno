@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -147,7 +147,8 @@ Deno.test(
     listener.close();
     await assertRejects(
       () => p,
-      Deno.errors.Interrupted,
+      Deno.errors.BadResource,
+      "Listener has been closed",
     );
   },
 );
@@ -185,7 +186,7 @@ Deno.test(
     const listener = Deno.listen({ transport: "unix", path: filePath });
     let acceptErrCount = 0;
     const checkErr = (e: Error) => {
-      if (e instanceof Deno.errors.Interrupted) { // "operation canceled"
+      if (e.message === "Listener has been closed") {
         assertEquals(acceptErrCount, 1);
       } else if (e instanceof Deno.errors.Busy) { // "Listener already in use"
         acceptErrCount++;
@@ -294,6 +295,44 @@ Deno.test(
 
     assertEquals(byteLength, 3);
 
+    const [recvd, remote] = await bob.receive();
+    assert(remote.transport === "udp");
+    assertEquals(remote.port, 3500);
+    assertEquals(recvd.length, 3);
+    assertEquals(1, recvd[0]);
+    assertEquals(2, recvd[1]);
+    assertEquals(3, recvd[2]);
+    alice.close();
+    bob.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function netUdpSendReceiveBroadcast() {
+    // Must bind sender to an address that can send to the broadcast address on MacOS.
+    // Macos will give us error 49 when sending the broadcast packet if we omit hostname here.
+    const alice = Deno.listenDatagram({
+      port: 3500,
+      transport: "udp",
+      hostname: "0.0.0.0",
+    });
+
+    const bob = Deno.listenDatagram({
+      port: 4501,
+      transport: "udp",
+      hostname: "0.0.0.0",
+    });
+    assert(bob.addr.transport === "udp");
+    assertEquals(bob.addr.port, 4501);
+    assertEquals(bob.addr.hostname, "0.0.0.0");
+
+    const broadcastAddr = { ...bob.addr, hostname: "255.255.255.255" };
+
+    const sent = new Uint8Array([1, 2, 3]);
+    const byteLength = await alice.send(sent, broadcastAddr);
+
+    assertEquals(byteLength, 3);
     const [recvd, remote] = await bob.receive();
     assert(remote.transport === "udp");
     assertEquals(remote.port, 3500);

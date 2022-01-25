@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -34,7 +34,10 @@ fn main() {
 
     let v = exec(scope, "({a: 1, b: 3, c: 'ignored'})");
     let mop: MathOp = serde_v8::from_v8(scope, v).unwrap();
-    println!("mop = {:?}", mop);
+    println!(
+      "mop = {{ a: {}, b: {}, operator: {:?} }}",
+      mop.a, mop.b, mop.operator
+    );
 
     let v = exec(scope, "[1,2,3,4,5]");
     let arr: Vec<u64> = serde_v8::from_v8(scope, v).unwrap();

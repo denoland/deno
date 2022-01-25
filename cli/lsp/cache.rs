@@ -1,9 +1,10 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache::CacherLoader;
 use crate::cache::FetchCacher;
 use crate::config_file::ConfigFile;
 use crate::flags::Flags;
+use crate::graph_util::graph_valid;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -32,6 +33,9 @@ impl CacheServer {
     maybe_cache_path: Option<PathBuf>,
     maybe_import_map: Option<Arc<ImportMap>>,
     maybe_config_file: Option<ConfigFile>,
+    maybe_ca_stores: Option<Vec<String>>,
+    maybe_ca_file: Option<String>,
+    unsafely_ignore_certificate_errors: Option<Vec<String>>,
   ) -> Self {
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
@@ -39,6 +43,9 @@ impl CacheServer {
       runtime.block_on(async {
         let ps = ProcState::build(Flags {
           cache_path: maybe_cache_path,
+          ca_stores: maybe_ca_stores,
+          ca_file: maybe_ca_file,
+          unsafely_ignore_certificate_errors,
           ..Default::default()
         })
         .await
@@ -79,10 +86,11 @@ impl CacheServer {
             maybe_resolver,
             None,
             None,
+            None,
           )
           .await;
 
-          if tx.send(graph.valid().map_err(|err| err.into())).is_err() {
+          if tx.send(graph_valid(&graph, true, false)).is_err() {
             log::warn!("cannot send to client");
           }
         }

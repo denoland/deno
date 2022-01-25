@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -11,6 +11,8 @@ use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
+
+use crate::lsp::ReplCompletionItem;
 
 /// Rustyline uses synchronous methods in its interfaces, but we need to call
 /// async methods. To get around this, we communicate with async code by using
@@ -32,8 +34,21 @@ pub fn rustyline_channel(
   )
 }
 
-pub type RustylineSyncMessage = (&'static str, Option<Value>);
-pub type RustylineSyncResponse = Result<Box<RawValue>, AnyError>;
+pub enum RustylineSyncMessage {
+  PostMessage {
+    method: &'static str,
+    params: Option<Value>,
+  },
+  LspCompletions {
+    line_text: &'static str,
+    position: usize,
+  },
+}
+
+pub enum RustylineSyncResponse {
+  PostMessage(Result<Box<RawValue>, AnyError>),
+  LspCompletions(Vec<ReplCompletionItem>),
+}
 
 pub struct RustylineSyncMessageSender {
   message_tx: Sender<RustylineSyncMessage>,
@@ -46,10 +61,38 @@ impl RustylineSyncMessageSender {
     method: &'static str,
     params: Option<Value>,
   ) -> Result<Box<RawValue>, AnyError> {
-    if let Err(err) = self.message_tx.blocking_send((method, params)) {
+    if let Err(err) = self
+      .message_tx
+      .blocking_send(RustylineSyncMessage::PostMessage { method, params })
+    {
       Err(anyhow!("{}", err))
     } else {
-      self.response_rx.borrow_mut().blocking_recv().unwrap()
+      match self.response_rx.borrow_mut().blocking_recv().unwrap() {
+        RustylineSyncResponse::PostMessage(result) => result,
+        RustylineSyncResponse::LspCompletions(_) => unreachable!(),
+      }
+    }
+  }
+
+  pub fn lsp_completions(
+    &self,
+    line_text: &str,
+    position: usize,
+  ) -> Vec<ReplCompletionItem> {
+    if self
+      .message_tx
+      .blocking_send(RustylineSyncMessage::LspCompletions {
+        line_text: line_text.to_string(),
+        position,
+      })
+      .is_err()
+    {
+      Vec::new()
+    } else {
+      match self.response_rx.borrow_mut().blocking_recv().unwrap() {
+        RustylineSyncResponse::LspCompletions(result) => result,
+        RustylineSyncResponse::PostMessage(_) => unreachable!(),
+      }
     }
   }
 }

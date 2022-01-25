@@ -1,6 +1,7 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::invalid_hostname;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
@@ -11,6 +12,7 @@ use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::url;
 use deno_core::AsyncRefCell;
+use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::Extension;
@@ -20,25 +22,30 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
-use deno_tls::webpki::DNSNameRef;
-
-use http::{Method, Request, Uri};
+use http::header::HeaderName;
+use http::HeaderValue;
+use http::Method;
+use http::Request;
+use http::Uri;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::convert::TryFrom;
 use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
+use tokio_rustls::rustls::ServerName;
 use tokio_rustls::TlsConnector;
 use tokio_tungstenite::client_async;
-use tokio_tungstenite::tungstenite::{
-  handshake::client::Response, protocol::frame::coding::CloseCode,
-  protocol::CloseFrame, protocol::Role, Message,
-};
+use tokio_tungstenite::tungstenite::handshake::client::Response;
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::WebSocketStream;
 
@@ -212,6 +219,7 @@ pub struct CreateArgs {
   url: String,
   protocols: String,
   cancel_handle: Option<ResourceId>,
+  headers: Option<Vec<(ByteString, ByteString)>>,
 }
 
 #[derive(Serialize)]
@@ -239,6 +247,16 @@ where
       );
   }
 
+  let cancel_resource = if let Some(cancel_rid) = args.cancel_handle {
+    let r = state
+      .borrow_mut()
+      .resource_table
+      .get::<WsCancelResource>(cancel_rid)?;
+    Some(r)
+  } else {
+    None
+  };
+
   let unsafely_ignore_certificate_errors = state
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
@@ -252,6 +270,30 @@ where
 
   if !args.protocols.is_empty() {
     request = request.header("Sec-WebSocket-Protocol", args.protocols);
+  }
+
+  if let Some(headers) = args.headers {
+    for (key, value) in headers {
+      let name = HeaderName::from_bytes(&key)
+        .map_err(|err| type_error(err.to_string()))?;
+      let v = HeaderValue::from_bytes(&value)
+        .map_err(|err| type_error(err.to_string()))?;
+
+      let is_disallowed_header = matches!(
+        name,
+        http::header::HOST
+          | http::header::SEC_WEBSOCKET_ACCEPT
+          | http::header::SEC_WEBSOCKET_EXTENSIONS
+          | http::header::SEC_WEBSOCKET_KEY
+          | http::header::SEC_WEBSOCKET_PROTOCOL
+          | http::header::SEC_WEBSOCKET_VERSION
+          | http::header::UPGRADE
+          | http::header::CONNECTION
+      );
+      if !is_disallowed_header {
+        request = request.header(name, v);
+      }
+    }
   }
 
   let request = request.body(())?;
@@ -271,9 +313,10 @@ where
         root_cert_store,
         vec![],
         unsafely_ignore_certificate_errors,
+        None,
       )?;
       let tls_connector = TlsConnector::from(Arc::new(tls_config));
-      let dnsname = DNSNameRef::try_from_ascii_str(domain)
+      let dnsname = ServerName::try_from(domain.as_str())
         .map_err(|_| invalid_hostname(domain))?;
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
       MaybeTlsStream::Rustls(tls_socket)
@@ -283,22 +326,15 @@ where
 
   let client = client_async(request, socket);
   let (stream, response): (WsStream, Response) =
-    if let Some(cancel_rid) = args.cancel_handle {
-      let r = state
-        .borrow_mut()
-        .resource_table
-        .get::<WsCancelResource>(cancel_rid)?;
-      client
-        .or_cancel(r.0.to_owned())
-        .await
-        .map_err(|_| DomExceptionAbortError::new("connection was aborted"))?
+    if let Some(cancel_resource) = cancel_resource {
+      client.or_cancel(cancel_resource.0.to_owned()).await?
     } else {
       client.await
     }
     .map_err(|err| {
       DomExceptionNetworkError::new(&format!(
         "failed to connect to WebSocket: {}",
-        err.to_string()
+        err
       ))
     })?;
 
@@ -340,6 +376,7 @@ pub enum SendValue {
   Text(String),
   Binary(ZeroCopyBuf),
   Pong,
+  Ping,
 }
 
 pub async fn op_ws_send(
@@ -351,6 +388,7 @@ pub async fn op_ws_send(
     SendValue::Text(text) => Message::Text(text),
     SendValue::Binary(buf) => Message::Binary(buf.to_vec()),
     SendValue::Pong => Message::Pong(vec![]),
+    SendValue::Ping => Message::Ping(vec![]),
   };
 
   let resource = state
@@ -497,30 +535,4 @@ impl std::error::Error for DomExceptionNetworkError {}
 pub fn get_network_error_class_name(e: &AnyError) -> Option<&'static str> {
   e.downcast_ref::<DomExceptionNetworkError>()
     .map(|_| "DOMExceptionNetworkError")
-}
-
-#[derive(Debug)]
-pub struct DomExceptionAbortError {
-  pub msg: String,
-}
-
-impl DomExceptionAbortError {
-  pub fn new(msg: &str) -> Self {
-    DomExceptionAbortError {
-      msg: msg.to_string(),
-    }
-  }
-}
-
-impl fmt::Display for DomExceptionAbortError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.pad(&self.msg)
-  }
-}
-
-impl std::error::Error for DomExceptionAbortError {}
-
-pub fn get_abort_error_class_name(e: &AnyError) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionAbortError>()
-    .map(|_| "DOMExceptionAbortError")
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -6,7 +6,7 @@
 /// <reference lib="esnext" />
 
 declare namespace Deno {
-  declare namespace core {
+  namespace core {
     /** Call an op in Rust, and synchronously receive the result. */
     function opSync(
       opName: string,
@@ -104,16 +104,42 @@ declare namespace Deno {
     ): void;
 
     /** Check if there's a scheduled "next tick". */
-    function hasNextTickScheduled(): bool;
+    function hasNextTickScheduled(): boolean;
 
     /** Set a value telling the runtime if there are "next ticks" scheduled */
-    function setHasNextTickScheduled(value: bool): void;
+    function setHasNextTickScheduled(value: boolean): void;
 
     /**
      * Set a callback that will be called after resolving ops and "next ticks".
      */
     function setMacrotaskCallback(
-      cb: () => bool,
+      cb: () => boolean,
     ): void;
+
+    /**
+     * Set a callback that will be called when a promise without a .catch
+     * handler is rejected. Returns the old handler or undefined.
+     */
+    function setPromiseRejectCallback(
+      cb: PromiseRejectCallback,
+    ): undefined | PromiseRejectCallback;
+
+    export type PromiseRejectCallback = (
+      type: number,
+      promise: Promise<unknown>,
+      reason: any,
+    ) => void;
+
+    /**
+     * Set a callback that will be called when an exception isn't caught
+     * by any try/catch handlers. Currently only invoked when the callback
+     * to setPromiseRejectCallback() throws an exception but that is expected
+     * to change in the future. Returns the old handler or undefined.
+     */
+    function setUncaughtExceptionCallback(
+      cb: UncaughtExceptionCallback,
+    ): undefined | UncaughtExceptionCallback;
+
+    export type UncaughtExceptionCallback = (err: any) => void;
   }
 }

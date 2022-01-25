@@ -1,12 +1,19 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::client::Client;
+use super::config::ConfigSnapshot;
+use super::documents::Documents;
 use super::language_server;
 use super::lsp_custom;
+use super::registries::ModuleRegistry;
 use super::tsc;
 
 use crate::fs_util::is_supported_ext;
 use crate::fs_util::specifier_to_file_path;
 
+use deno_ast::swc::common::BytePos;
+use deno_ast::LineAndColumnIndex;
+use deno_ast::SourceTextInfo;
 use deno_core::normalize_path;
 use deno_core::resolve_path;
 use deno_core::resolve_url;
@@ -24,6 +31,8 @@ const LOCAL_PATHS: &[&str] = &[CURRENT_PATH, PARENT_PATH];
 #[serde(rename_all = "camelCase")]
 pub struct CompletionItemData {
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub documentation: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub tsc: Option<tsc::CompletionItemData>,
 }
 
@@ -31,18 +40,12 @@ pub struct CompletionItemData {
 /// a notification to the client.
 async fn check_auto_config_registry(
   url_str: &str,
-  snapshot: &language_server::StateSnapshot,
-  client: lspower::Client,
+  config: &ConfigSnapshot,
+  client: Client,
+  module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
-  if snapshot
-    .config
-    .settings
-    .workspace
-    .suggest
-    .imports
-    .auto_discover
-  {
+  if config.settings.workspace.suggest.imports.auto_discover {
     if let Ok(specifier) = resolve_url(url_str) {
       let scheme = specifier.scheme();
       let path = &specifier[Position::BeforePath..];
@@ -51,33 +54,25 @@ async fn check_auto_config_registry(
         && url_str.ends_with(path)
       {
         // check to see if this origin is already explicitly set
-        let in_config = snapshot
-          .config
-          .settings
-          .workspace
-          .suggest
-          .imports
-          .hosts
-          .iter()
-          .any(|(h, _)| {
-            resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
-          });
+        let in_config =
+          config.settings.workspace.suggest.imports.hosts.iter().any(
+            |(h, _)| {
+              resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
+            },
+          );
         // if it isn't in the configuration, we will check to see if it supports
         // suggestions and send a notification to the client.
         if !in_config {
           let origin = specifier.origin().ascii_serialization();
-          let suggestions = snapshot
-            .module_registries
-            .check_origin(&origin)
-            .await
-            .is_ok();
+          let suggestions =
+            module_registries.check_origin(&origin).await.is_ok();
           // we are only sending registry state when enabled now, but changing
           // the custom notification would make older versions of the plugin
           // incompatible.
           // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
           if suggestions {
             client
-              .send_custom_notification::<lsp_custom::RegistryStateNotification>(
+              .send_registry_state_notification(
                 lsp_custom::RegistryStateNotificationParams {
                   origin,
                   suggestions,
@@ -91,17 +86,32 @@ async fn check_auto_config_registry(
   }
 }
 
-/// Ranges from the graph for specifiers include the leading and trailing quote,
+/// Ranges from the graph for specifiers include the leading and maybe trailing quote,
 /// which we want to ignore when replacing text.
-fn to_narrow_lsp_range(range: &deno_graph::Range) -> lsp::Range {
+fn to_narrow_lsp_range(
+  text_info: &SourceTextInfo,
+  range: &deno_graph::Range,
+) -> lsp::Range {
+  let end_byte_index = text_info.byte_index(LineAndColumnIndex {
+    line_index: range.end.line,
+    column_index: range.end.character,
+  });
+  let text_bytes = text_info.text_str().as_bytes();
+  let has_trailing_quote =
+    matches!(text_bytes[end_byte_index.0 as usize - 1], (b'"' | b'\''));
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
+      // skip the leading quote
       character: (range.start.character + 1) as u32,
     },
     end: lsp::Position {
       line: range.end.line as u32,
-      character: (range.end.character - 1) as u32,
+      character: if has_trailing_quote {
+        range.end.character - 1 // do not include it
+      } else {
+        range.end.character
+      } as u32,
     },
   }
 }
@@ -112,12 +122,14 @@ fn to_narrow_lsp_range(range: &deno_graph::Range) -> lsp::Range {
 pub(crate) async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
-  state_snapshot: &language_server::StateSnapshot,
-  client: lspower::Client,
+  config: &ConfigSnapshot,
+  client: Client,
+  module_registries: &ModuleRegistry,
+  documents: &Documents,
 ) -> Option<lsp::CompletionResponse> {
-  let document = state_snapshot.documents.get(specifier)?;
+  let document = documents.get(specifier)?;
   let (text, _, range) = document.get_maybe_dependency(position)?;
-  let range = to_narrow_lsp_range(&range);
+  let range = to_narrow_lsp_range(&document.text_info(), &range);
   // completions for local relative modules
   if text.starts_with("./") || text.starts_with("../") {
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
@@ -126,25 +138,22 @@ pub(crate) async fn get_import_completions(
     }))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
-    check_auto_config_registry(&text, state_snapshot, client).await;
+    check_auto_config_registry(&text, config, client, module_registries).await;
     let offset = if position.character > range.start.character {
       (position.character - range.start.character) as usize
     } else {
       0
     };
-    let maybe_items = state_snapshot
-      .module_registries
+    let maybe_list = module_registries
       .get_completions(&text, offset, &range, |specifier| {
-        state_snapshot.documents.contains_specifier(specifier)
+        documents.contains_specifier(specifier)
       })
       .await;
-    let items = maybe_items.unwrap_or_else(|| {
-      get_workspace_completions(specifier, &text, &range, state_snapshot)
-    });
-    Some(lsp::CompletionResponse::List(lsp::CompletionList {
+    let list = maybe_list.unwrap_or_else(|| lsp::CompletionList {
+      items: get_workspace_completions(specifier, &text, &range, documents),
       is_incomplete: false,
-      items,
-    }))
+    });
+    Some(lsp::CompletionResponse::List(list))
   } else {
     let mut items: Vec<lsp::CompletionItem> = LOCAL_PATHS
       .iter()
@@ -157,14 +166,15 @@ pub(crate) async fn get_import_completions(
         ..Default::default()
       })
       .collect();
-    if let Some(origin_items) = state_snapshot
-      .module_registries
-      .get_origin_completions(&text, &range)
+    let mut is_incomplete = false;
+    if let Some(origin_items) =
+      module_registries.get_origin_completions(&text, &range)
     {
-      items.extend(origin_items);
+      is_incomplete = origin_items.is_incomplete;
+      items.extend(origin_items.items);
     }
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
-      is_incomplete: false,
+      is_incomplete,
       items,
     }))
     // TODO(@kitsonk) add bare specifiers from import map
@@ -276,10 +286,9 @@ fn get_workspace_completions(
   specifier: &ModuleSpecifier,
   current: &str,
   range: &lsp::Range,
-  state_snapshot: &language_server::StateSnapshot,
+  documents: &Documents,
 ) -> Vec<lsp::CompletionItem> {
-  let workspace_specifiers = state_snapshot
-    .documents
+  let workspace_specifiers = documents
     .documents(false, true)
     .into_iter()
     .map(|d| d.specifier().clone())
@@ -402,18 +411,10 @@ fn relative_specifier(
         }
       }
       if parts.is_empty() {
-        format!(
-          "./{}{}",
-          last_a,
-          specifier[Position::AfterPath..].to_string()
-        )
+        format!("./{}{}", last_a, &specifier[Position::AfterPath..])
       } else {
         parts.push(last_a);
-        format!(
-          "{}{}",
-          parts.join("/"),
-          specifier[Position::AfterPath..].to_string()
-        )
+        format!("{}{}", parts.join("/"), &specifier[Position::AfterPath..])
       }
     } else {
       specifier[Position::BeforePath..].into()
@@ -430,16 +431,17 @@ mod tests {
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use deno_core::resolve_url;
+  use deno_graph::Range;
   use std::collections::HashMap;
   use std::path::Path;
   use std::sync::Arc;
   use tempfile::TempDir;
 
-  fn mock_state_snapshot(
+  fn mock_documents(
     fixtures: &[(&str, &str, i32, LanguageId)],
     source_fixtures: &[(&str, &str)],
     location: &Path,
-  ) -> language_server::StateSnapshot {
+  ) -> Documents {
     let mut documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
@@ -463,19 +465,16 @@ mod tests {
         "source could not be setup"
       );
     }
-    language_server::StateSnapshot {
-      documents,
-      ..Default::default()
-    }
+    documents
   }
 
   fn setup(
     documents: &[(&str, &str, i32, LanguageId)],
     sources: &[(&str, &str)],
-  ) -> language_server::StateSnapshot {
+  ) -> Documents {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
-    mock_state_snapshot(documents, sources, &location)
+    mock_documents(documents, sources, &location)
   }
 
   #[test]
@@ -634,7 +633,7 @@ mod tests {
         character: 21,
       },
     };
-    let state_snapshot = setup(
+    let documents = setup(
       &[
         (
           "file:///a/b/c.ts",
@@ -646,8 +645,7 @@ mod tests {
       ],
       &[("https://deno.land/x/a/b/c.ts", "console.log(1);\n")],
     );
-    let actual =
-      get_workspace_completions(&specifier, "h", &range, &state_snapshot);
+    let actual = get_workspace_completions(&specifier, "h", &range, &documents);
     assert_eq!(
       actual,
       vec![lsp::CompletionItem {
@@ -670,6 +668,54 @@ mod tests {
         })),
         ..Default::default()
       }]
+    );
+  }
+
+  #[test]
+  fn test_to_narrow_lsp_range() {
+    let text_info = SourceTextInfo::from_string(r#""te""#.to_string());
+    let range = to_narrow_lsp_range(
+      &text_info,
+      &Range {
+        specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
+        start: deno_graph::Position {
+          line: 0,
+          character: 0,
+        },
+        end: deno_graph::Position {
+          line: 0,
+          character: text_info.text_str().chars().count(),
+        },
+      },
+    );
+    assert_eq!(range.start.character, 1);
+    assert_eq!(
+      range.end.character,
+      (text_info.text_str().chars().count() - 1) as u32
+    );
+  }
+
+  #[test]
+  fn test_to_narrow_lsp_range_no_trailing_quote() {
+    let text_info = SourceTextInfo::from_string(r#""te"#.to_string());
+    let range = to_narrow_lsp_range(
+      &text_info,
+      &Range {
+        specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
+        start: deno_graph::Position {
+          line: 0,
+          character: 0,
+        },
+        end: deno_graph::Position {
+          line: 0,
+          character: text_info.text_str().chars().count(),
+        },
+      },
+    );
+    assert_eq!(range.start.character, 1);
+    assert_eq!(
+      range.end.character,
+      text_info.text_str().chars().count() as u32
     );
   }
 }

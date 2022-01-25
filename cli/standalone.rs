@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
@@ -21,13 +21,14 @@ use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_runtime::deno_tls::create_default_root_cert_store;
+use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
-use deno_tls::create_default_root_cert_store;
 use log::Level;
 use std::env::current_exe;
 use std::fs::File;
@@ -163,6 +164,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
       Ok(deno_core::ModuleSource {
         code,
+        module_type: deno_core::ModuleType::JavaScript,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
       })
@@ -221,9 +223,16 @@ pub async fn run(
 
   if let Some(cert) = metadata.ca_data {
     let reader = &mut BufReader::new(Cursor::new(cert));
-    // This function does not return specific errors, if it fails give a generic message.
-    if let Err(_err) = root_cert_store.add_pem_file(reader) {
-      return Err(anyhow!("Unable to add pem file to certificate store"));
+    match rustls_pemfile::certs(reader) {
+      Ok(certs) => {
+        root_cert_store.add_parsable_certificates(&certs);
+      }
+      Err(e) => {
+        return Err(anyhow!(
+          "Unable to add pem file to certificate store: {}",
+          e
+        ));
+      }
     }
   }
 
@@ -240,7 +249,7 @@ pub async fn run(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: metadata.unstable,
     },
-    extensions: vec![],
+    extensions: ops::cli_exts(ps.clone(), true),
     user_agent: version::get_user_agent(),
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
@@ -263,27 +272,10 @@ pub async fn run(
     permissions,
     options,
   );
-  // TODO(@AaronO): move to a JsRuntime Extension passed into options
-  {
-    let js_runtime = &mut worker.js_runtime;
-    js_runtime
-      .op_state()
-      .borrow_mut()
-      .put::<ProcState>(ps.clone());
-    ops::errors::init(js_runtime);
-    ops::runtime_compiler::init(js_runtime);
-    js_runtime.sync_ops_cache();
-  }
   worker.execute_main_module(&main_module).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
   worker.run_event_loop(true).await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
   std::process::exit(0);
 }
 
