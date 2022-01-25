@@ -17,17 +17,18 @@
     DateNow,
     Error,
     Function,
+    Number,
+    ObjectKeys,
     Promise,
-    TypeError,
-    StringPrototypeStartsWith,
+    RegExp,
+    RegExpPrototypeTest,
+    Set,
     StringPrototypeEndsWith,
     StringPrototypeIncludes,
     StringPrototypeSlice,
-    RegExp,
-    Number,
-    RegExpPrototypeTest,
-    Set,
+    StringPrototypeStartsWith,
     SymbolToStringTag,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   const opSanitizerDelayResolveQueue = [];
@@ -276,7 +277,7 @@ finishing test case.`;
 
       const post = core.resources();
 
-      const allResources = new Set([...Object.keys(pre), ...Object.keys(post)]);
+      const allResources = new Set([...ObjectKeys(pre), ...ObjectKeys(post)]);
 
       const details = [];
       for (const resource of allResources) {
