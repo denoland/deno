@@ -843,10 +843,6 @@ impl Inner {
     client_workspace_config: Option<Value>,
     params: DidChangeConfigurationParams,
   ) {
-    let mark = self
-      .performance
-      .mark("did_change_configuration", Some(&params));
-
     let maybe_config =
       if self.config.client_capabilities.workspace_configuration {
         client_workspace_config
@@ -888,8 +884,6 @@ impl Inner {
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
     );
-
-    self.performance.measure(mark);
   }
 
   async fn did_change_watched_files(
@@ -2356,8 +2350,6 @@ impl lspower::LanguageServer for LanguageServer {
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
-    use super::config;
-
     let (client, uri, specifier, had_specifier_settings) = {
       let mut inner = self.0.lock().await;
       let client = inner.client.clone();
@@ -2369,45 +2361,27 @@ impl lspower::LanguageServer for LanguageServer {
       (client, uri, specifier, has_specifier_settings)
     };
 
-    // retrieve the specifier's setttings outside the mutex
+    // retrieve the specifier settings outside the lock if
+    // they haven't been asked for yet on its own time
     if !had_specifier_settings {
-      let response = client
-        .configuration(vec![ConfigurationItem {
-          scope_uri: Some(uri.clone()),
-          section: Some(SETTINGS_SECTION.to_string()),
-        }])
-        .await;
-      match response {
-        Ok(values) => {
-          if let Some(value) = values.first() {
-            match serde_json::from_value::<config::SpecifierSettings>(
-              value.clone(),
-            ) {
-              Ok(specifier_settings) => {
-                // now update the config
-                let mut inner = self.0.lock().await;
-                inner
-                  .config
-                  .set_specifier_settings(specifier, (uri, specifier_settings));
-              }
-              Err(err) => {
-                error!(
-                  "Error converting specifier settings ({}): {}",
-                  specifier, err
-                );
-              }
-            }
-          } else {
-            error!("Expected the client to return a configuration item for specifier: {}", specifier);
+      let language_server = self.clone();
+      tokio::spawn(async move {
+        let response = client.specifier_configuration(&uri).await;
+        match response {
+          Ok(specifier_settings) => {
+            // now update the config
+            let mut inner = language_server.0.lock().await;
+            inner.config.set_specifier_settings(
+              specifier,
+              uri,
+              specifier_settings,
+            );
+          }
+          Err(err) => {
+            error!("{}", err);
           }
         }
-        Err(err) => {
-          error!(
-            "Error retrieving settings for specifier ({}): {}",
-            specifier, err,
-          );
-        }
-      }
+      });
     }
   }
 
@@ -2428,77 +2402,64 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: DidChangeConfigurationParams,
   ) {
-    use super::config;
-
-    // todo(this PR): cleanup... this was just a straight move over
-    let (has_workspace_capability, client, specifier_items) = {
+    let (has_workspace_capability, client, specifiers, mark) = {
       let inner = self.0.lock().await;
-      let specifier_items =
+      let mark = inner
+        .performance
+        .mark("did_change_configuration", Some(&params));
+
+      let specifiers =
         if inner.config.client_capabilities.workspace_configuration {
-          let (specifier_uri_map, items): (
-            Vec<(ModuleSpecifier, ModuleSpecifier)>,
-            Vec<ConfigurationItem>,
-          ) = {
-            let settings = &inner.config.settings;
-            (
-              settings
-                .specifiers
-                .iter()
-                .map(|(s, (u, _))| (s.clone(), u.clone()))
-                .collect(),
-              settings
-                .specifiers
-                .iter()
-                .map(|(_, (uri, _))| ConfigurationItem {
-                  scope_uri: Some(uri.clone()),
-                  section: Some(SETTINGS_SECTION.to_string()),
-                })
-                .collect(),
-            )
-          };
-          Some((specifier_uri_map, items))
+          Some(inner.config.get_specifiers_with_client_uris())
         } else {
           None
         };
       (
         inner.config.client_capabilities.workspace_configuration,
         inner.client.clone(),
-        specifier_items,
+        specifiers,
+        mark,
       )
     };
 
-    if let Some((specifier_uri_map, items)) = specifier_items {
-      if let Ok(configs) = client.configuration(items).await {
-        // todo(this PR): reduce number of times we lock on self.0 (just lazy here at end of day)
-        let mut inner = self.0.lock().await;
-        for (i, value) in configs.into_iter().enumerate() {
-          match serde_json::from_value::<config::SpecifierSettings>(value) {
-            Ok(specifier_settings) => {
-              let (specifier, uri) = specifier_uri_map[i].clone();
-              inner
-                .config
-                .set_specifier_settings(specifier, (uri, specifier_settings));
-            }
-            Err(err) => {
-              error!("Error converting specifier settings: {}", err);
+    // start retreiving all the specifiers' settings outside the lock on its own time
+    if let Some(specifiers) = specifiers {
+      let language_server = self.clone();
+      let client = client.clone();
+      tokio::spawn(async move {
+        if let Ok(configs) = client
+          .specifier_configurations(
+            specifiers.iter().map(|(s)| s.client_uri.clone()).collect(),
+          )
+          .await
+        {
+          let mut inner = language_server.0.lock().await;
+          for (i, value) in configs.into_iter().enumerate() {
+            match value {
+              Ok(specifier_settings) => {
+                let entry = specifiers[i].clone();
+                inner.config.set_specifier_settings(
+                  entry.specifier,
+                  entry.client_uri,
+                  specifier_settings,
+                );
+              }
+              Err(err) => {
+                error!("{}", err);
+              }
             }
           }
         }
-      }
+      });
     }
 
-    // call the client outside the mutex to get the configuration
+    // get the configuration from the client outside of the lock
     let client_workspace_config = if has_workspace_capability {
-      let config_response = client
-        .configuration(vec![ConfigurationItem {
-          scope_uri: None,
-          section: Some(SETTINGS_SECTION.to_string()),
-        }])
-        .await;
+      let config_response = client.workspace_configuration().await;
       match config_response {
-        Ok(value_vec) => value_vec.get(0).cloned(),
+        Ok(value) => Some(value),
         Err(err) => {
-          error!("Error getting workspace configuration: {}", err);
+          error!("{}", err);
           None
         }
       }
@@ -2506,12 +2467,12 @@ impl lspower::LanguageServer for LanguageServer {
       None
     };
 
-    self
-      .0
-      .lock()
-      .await
+    // now update the inner state
+    let mut inner = self.0.lock().await;
+    inner
       .did_change_configuration(client_workspace_config, params)
-      .await
+      .await;
+    inner.performance.measure(mark);
   }
 
   async fn did_change_watched_files(

@@ -226,6 +226,12 @@ enum ConfigRequest {
   Specifier(ModuleSpecifier, ModuleSpecifier),
 }
 
+#[derive(Debug, Clone)]
+pub struct SpecifierWithClientUri {
+  pub specifier: ModuleSpecifier,
+  pub client_uri: ModuleSpecifier,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Settings {
   pub specifiers:
@@ -236,8 +242,7 @@ pub struct Settings {
 #[derive(Debug)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
-  // todo(this PR): revert this pub and clean up
-  pub settings: Settings,
+  settings: Settings,
   pub workspace_folders: Option<Vec<WorkspaceFolder>>,
 }
 
@@ -330,12 +335,28 @@ impl Config {
     }
   }
 
+  pub fn get_specifiers_with_client_uris(&self) -> Vec<SpecifierWithClientUri> {
+    self
+      .settings
+      .specifiers
+      .iter()
+      .map(|(s, (u, _))| SpecifierWithClientUri {
+        specifier: s.clone(),
+        client_uri: u.clone(),
+      })
+      .collect::<Vec<_>>()
+  }
+
   pub fn set_specifier_settings(
     &mut self,
     specifier: ModuleSpecifier,
-    settings: (ModuleSpecifier, SpecifierSettings),
+    client_uri: ModuleSpecifier,
+    settings: SpecifierSettings,
   ) {
-    self.settings.specifiers.insert(specifier, settings);
+    self
+      .settings
+      .specifiers
+      .insert(specifier, (client_uri, settings));
   }
 }
 
