@@ -3,7 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { BadResource, Interrupted } = core;
+  const { BadResourcePrototype, InterruptedPrototype } = core;
   const {
     ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
@@ -126,8 +126,8 @@
         conn = await this.accept();
       } catch (error) {
         if (
-          ObjectPrototypeIsPrototypeOf(BadResource.prototype, error) ||
-          ObjectPrototypeIsPrototypeOf(Interrupted.prototype, error)
+          ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) ||
+          ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)
         ) {
           return { value: undefined, done: true };
         }
@@ -196,8 +196,8 @@
           yield await this.receive();
         } catch (err) {
           if (
-            ObjectPrototypeIsPrototypeOf(BadResource.prototype, err) ||
-            ObjectPrototypeIsPrototypeOf(Interrupted.prototype, err)
+            ObjectPrototypeIsPrototypeOf(BadResourcePrototype, err) ||
+            ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)
           ) {
             break;
           }

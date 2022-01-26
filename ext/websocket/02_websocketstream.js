@@ -299,7 +299,7 @@
             }
           },
           (err) => {
-            if (ObjectPrototypeIsPrototypeOf(core.Interrupted.prototype, err)) {
+            if (ObjectPrototypeIsPrototypeOf(core.InterruptedPrototype, err)) {
               // The signal was aborted.
               err = options.signal.reason;
             } else {

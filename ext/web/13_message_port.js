@@ -10,7 +10,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { Interrupted } = core;
+  const { InterruptedPrototype } = core;
   const webidl = window.__bootstrap.webidl;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { defineEventHandler } = window.__bootstrap.event;
@@ -145,7 +145,7 @@
               this[_id],
             );
           } catch (err) {
-            if (ObjectPrototypeIsPrototypeOf(Interrupted.prototype, err)) break;
+            if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)) break;
             throw err;
           }
           if (data === null) break;

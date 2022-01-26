@@ -15,7 +15,7 @@
     fromInnerResponse,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
-  const { BadResource, Interrupted } = core;
+  const { BadResourcePrototype, InterruptedPrototype } = core;
   const { ReadableStream, ReadableStreamPrototype } =
     window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
@@ -85,8 +85,8 @@
         // those with it.
         this[connErrorSymbol] = error;
         if (
-          ObjectPrototypeIsPrototypeOf(BadResource.prototype, error) ||
-          ObjectPrototypeIsPrototypeOf(Interrupted.prototype, error) ||
+          ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) ||
+          ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error) ||
           StringPrototypeIncludes(error.message, "connection closed")
         ) {
           return null;
@@ -229,7 +229,7 @@
         } catch (error) {
           const connError = httpConn[connErrorSymbol];
           if (
-            ObjectPrototypeIsPrototypeOf(BadResource, error) &&
+            ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
             connError != null
           ) {
             // deno-lint-ignore no-ex-assign
@@ -264,7 +264,7 @@
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
-                ObjectPrototypeIsPrototypeOf(BadResource.prototype, error) &&
+                ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
                 connError != null
               ) {
                 // deno-lint-ignore no-ex-assign

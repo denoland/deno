@@ -3,7 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { errors } = window.__bootstrap.errors;
+  const { BadResourcePrototype, InterruptedPrototype } = core;
   const {
     ArrayIsArray,
     ObjectPrototypeIsPrototypeOf,
@@ -29,10 +29,10 @@
           ? { value, done: false }
           : { value: undefined, done: true };
       } catch (error) {
-        if (ObjectPrototypeIsPrototypeOf(errors.BadResource.prototype, error)) {
+        if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
           return { value: undefined, done: true };
         } else if (
-          ObjectPrototypeIsPrototypeOf(errors.Interrupted.prototype, error)
+          ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)
         ) {
           return { value: undefined, done: true };
         }
