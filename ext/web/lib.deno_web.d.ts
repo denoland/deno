@@ -520,7 +520,7 @@ interface ReadableByteStreamController<
   readonly byobRequest: ReadableStreamBYOBRequest<V> | null;
   readonly desiredSize: number | null;
   close(): void;
-  enqueue(chunk: ArrayBufferView): void;
+  enqueue(chunk: V): void;
   error(error?: any): void;
 }
 
