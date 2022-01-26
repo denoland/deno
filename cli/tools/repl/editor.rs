@@ -1,11 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::inspector_structures;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
 use deno_core::error::AnyError;
-use deno_core::inspector_structures;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use rustyline::completion::Completer;
@@ -38,14 +38,13 @@ impl EditorHelper {
     let evaluate_response = self
       .sync_sender
       .post_message(
-        inspector_structures::Methods::RuntimeGlobalLexicalScopeNames(
-          inspector_structures::runtime::GlobalLexicalScopeNamesArgs {
-            execution_context_id: Some(self.context_id),
-          },
-        ),
+        "Runtime.globalLexicalScopeNames",
+        Some(inspector_structures::GlobalLexicalScopeNamesArgs {
+          execution_context_id: Some(self.context_id),
+        }),
       )
       .unwrap();
-    let evaluate_response: inspector_structures::runtime::GlobalLexicalScopeNamesResponse = serde_json::from_value(evaluate_response).unwrap();
+    let evaluate_response: inspector_structures::GlobalLexicalScopeNamesResponse = serde_json::from_value(evaluate_response).unwrap();
     evaluate_response.names
   }
 
@@ -88,17 +87,18 @@ impl EditorHelper {
 
     let get_properties_response = self
       .sync_sender
-      .post_message(inspector_structures::Methods::RuntimeGetProperties(
-        inspector_structures::runtime::GetPropertiesArgs {
+      .post_message(
+        "Runtime.getProperties",
+        Some(inspector_structures::GetPropertiesArgs {
           object_id,
           own_properties: None,
           accessor_properties_only: None,
           generate_preview: None,
           non_indexed_properties_only: None,
-        },
-      ))
+        }),
+      )
       .ok()?;
-    let get_properties_response: inspector_structures::runtime::GetPropertiesResponse =
+    let get_properties_response: inspector_structures::GetPropertiesResponse =
       serde_json::from_value(get_properties_response).ok()?;
     Some(
       get_properties_response
@@ -112,11 +112,12 @@ impl EditorHelper {
   fn evaluate_expression(
     &self,
     expr: &str,
-  ) -> Option<inspector_structures::runtime::EvaluateResponse> {
+  ) -> Option<inspector_structures::EvaluateResponse> {
     let evaluate_response = self
       .sync_sender
-      .post_message(inspector_structures::Methods::RuntimeEvaluate(
-        inspector_structures::runtime::EvaluateArgs {
+      .post_message(
+        "Runtime.evaluate",
+        Some(inspector_structures::EvaluateArgs {
           expression: expr.to_string(),
           object_group: None,
           include_command_line_api: None,
@@ -132,10 +133,10 @@ impl EditorHelper {
           repl_mode: None,
           allow_unsafe_eval_blocked_by_csp: None,
           unique_context_id: None,
-        },
-      ))
+        }),
+      )
       .ok()?;
-    let evaluate_response: inspector_structures::runtime::EvaluateResponse =
+    let evaluate_response: inspector_structures::EvaluateResponse =
       serde_json::from_value(evaluate_response).ok()?;
 
     if evaluate_response.exception_details.is_some() {

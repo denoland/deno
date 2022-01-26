@@ -1,12 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::inspector_structures;
 use crate::lsp::ReplLanguageServer;
 use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::inspector_structures;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
@@ -59,7 +59,7 @@ impl std::fmt::Display for EvaluationOutput {
 
 struct TsEvaluateResponse {
   ts_code: String,
-  value: inspector_structures::runtime::EvaluateResponse,
+  value: inspector_structures::EvaluateResponse,
 }
 
 pub struct ReplSession {
@@ -75,9 +75,7 @@ impl ReplSession {
     let mut session = worker.create_inspector_session().await;
 
     worker
-      .with_event_loop(
-        session.post_message("Runtime.enable", None).boxed_local(),
-      )
+      .with_event_loop(session.post_message("Runtime.enable", ()).boxed_local())
       .await?;
 
     // Enabling the runtime domain will always send trigger one executionContextCreated for each
@@ -125,22 +123,14 @@ impl ReplSession {
     Ok(closed)
   }
 
-  pub async fn post_message_with_event_loop(
+  pub async fn post_message_with_event_loop<T: serde::Serialize>(
     &mut self,
-    method: inspector_structures::Methods,
+    method: &str,
+    params: T,
   ) -> Result<Value, AnyError> {
-    let message = serde_json::to_value(method)?;
-    let message = message.as_object().unwrap();
-    let method = message.get("method").unwrap();
-    let params = message.get("params").cloned();
     self
       .worker
-      .with_event_loop(
-        self
-          .session
-          .post_message(method.as_str().unwrap(), params)
-          .boxed_local(),
-      )
+      .with_event_loop(self.session.post_message(method, params).boxed_local())
       .await
   }
 
@@ -164,7 +154,7 @@ impl ReplSession {
 
     match self.evaluate_line_with_object_wrapping(line).await {
       Ok(evaluate_response) => {
-        let inspector_structures::runtime::EvaluateResponse {
+        let inspector_structures::EvaluateResponse {
           result,
           exception_details,
         } = evaluate_response.value;
@@ -244,10 +234,11 @@ impl ReplSession {
 
   async fn set_last_thrown_error(
     &mut self,
-    error: &inspector_structures::runtime::RemoteObject,
+    error: &inspector_structures::RemoteObject,
   ) -> Result<(), AnyError> {
     self.post_message_with_event_loop(
-      inspector_structures::Methods::RuntimeCallFunctionOn(inspector_structures::runtime::CallFunctionOnArgs {
+      "Runtime.callFunctionOn",
+      Some(inspector_structures::CallFunctionOnArgs {
         function_declaration: "function (object) { Deno[Deno.internal].lastThrownError = object; }".to_string(),
         object_id: None,
         arguments: Some(vec![error.into()]),
@@ -266,40 +257,46 @@ impl ReplSession {
 
   async fn set_last_eval_result(
     &mut self,
-    evaluate_result: &inspector_structures::runtime::RemoteObject,
+    evaluate_result: &inspector_structures::RemoteObject,
   ) -> Result<(), AnyError> {
-    let evaluate_result = inspector_structures::runtime::CallArgument {
+    let evaluate_result = inspector_structures::CallArgument {
       value: evaluate_result.value.clone(),
       unserializable_value: evaluate_result.unserializable_value.clone(),
       object_id: evaluate_result.object_id.clone(),
     };
-    self.post_message_with_event_loop(
-      inspector_structures::Methods::RuntimeCallFunctionOn(inspector_structures::runtime::CallFunctionOnArgs {
-        function_declaration: "function (object) { Deno[Deno.internal].lastEvalResult = object; }".to_string(),
-        object_id: None,
-        arguments: Some(vec![evaluate_result.into()]),
-        silent: None,
-        return_by_value: None,
-        generate_preview: None,
-        user_gesture: None,
-        await_promise: None,
-        execution_context_id: Some(self.context_id),
-        object_group: None,
-        throw_on_side_effect: None
-      }),
-    ).await?;
+    self
+      .post_message_with_event_loop(
+        "Runtime.callFunctionOn",
+        Some(inspector_structures::CallFunctionOnArgs {
+          function_declaration:
+            "function (object) { Deno[Deno.internal].lastEvalResult = object; }"
+              .to_string(),
+          object_id: None,
+          arguments: Some(vec![evaluate_result.into()]),
+          silent: None,
+          return_by_value: None,
+          generate_preview: None,
+          user_gesture: None,
+          await_promise: None,
+          execution_context_id: Some(self.context_id),
+          object_group: None,
+          throw_on_side_effect: None,
+        }),
+      )
+      .await?;
     Ok(())
   }
 
   pub async fn get_eval_value(
     &mut self,
-    evaluate_result: &inspector_structures::runtime::RemoteObject,
+    evaluate_result: &inspector_structures::RemoteObject,
   ) -> Result<String, AnyError> {
     // TODO(caspervonb) we should investigate using previews here but to keep things
     // consistent with the previous implementation we just get the preview result from
     // Deno.inspectArgs.
     let inspect_response = self.post_message_with_event_loop(
-      inspector_structures::Methods::RuntimeCallFunctionOn(inspector_structures::runtime::CallFunctionOnArgs {
+      "Runtime.callFunctionOn",
+      Some(inspector_structures::CallFunctionOnArgs {
         function_declaration: r#"function (object) {
           try {
             return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
@@ -320,7 +317,7 @@ impl ReplSession {
       }),
     ).await?;
 
-    let response: inspector_structures::runtime::CallFunctionOnResponse =
+    let response: inspector_structures::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
     let value = response.result.value.unwrap();
     let s = value.as_str().unwrap();
@@ -375,28 +372,27 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<inspector_structures::runtime::EvaluateResponse, AnyError> {
+  ) -> Result<inspector_structures::EvaluateResponse, AnyError> {
     self
       .post_message_with_event_loop(
-        inspector_structures::Methods::RuntimeEvaluate(
-          inspector_structures::runtime::EvaluateArgs {
-            expression: expression.to_string(),
-            object_group: None,
-            include_command_line_api: None,
-            silent: None,
-            context_id: Some(self.context_id),
-            return_by_value: None,
-            generate_preview: None,
-            user_gesture: None,
-            await_promise: None,
-            throw_on_side_effect: None,
-            timeout: None,
-            disable_breaks: None,
-            repl_mode: Some(true),
-            allow_unsafe_eval_blocked_by_csp: None,
-            unique_context_id: None,
-          },
-        ),
+        "Runtime.evaluate",
+        Some(inspector_structures::EvaluateArgs {
+          expression: expression.to_string(),
+          object_group: None,
+          include_command_line_api: None,
+          silent: None,
+          context_id: Some(self.context_id),
+          return_by_value: None,
+          generate_preview: None,
+          user_gesture: None,
+          await_promise: None,
+          throw_on_side_effect: None,
+          timeout: None,
+          disable_breaks: None,
+          repl_mode: Some(true),
+          allow_unsafe_eval_blocked_by_csp: None,
+          unique_context_id: None,
+        }),
       )
       .await
       .and_then(|res| serde_json::from_value(res).map_err(|e| e.into()))

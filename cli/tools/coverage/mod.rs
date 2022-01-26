@@ -43,22 +43,22 @@ impl CoverageCollector {
   }
 
   async fn enable_debugger(&mut self) -> Result<(), AnyError> {
-    self.session.post_message("Debugger.enable", None).await?;
+    self.session.post_message("Debugger.enable", ()).await?;
     Ok(())
   }
 
   async fn enable_profiler(&mut self) -> Result<(), AnyError> {
-    self.session.post_message("Profiler.enable", None).await?;
+    self.session.post_message("Profiler.enable", ()).await?;
     Ok(())
   }
 
   async fn disable_debugger(&mut self) -> Result<(), AnyError> {
-    self.session.post_message("Debugger.disable", None).await?;
+    self.session.post_message("Debugger.disable", ()).await?;
     Ok(())
   }
 
   async fn disable_profiler(&mut self) -> Result<(), AnyError> {
-    self.session.post_message("Profiler.disable", None).await?;
+    self.session.post_message("Profiler.disable", ()).await?;
     Ok(())
   }
 
@@ -66,10 +66,9 @@ impl CoverageCollector {
     &mut self,
     parameters: StartPreciseCoverageParameters,
   ) -> Result<StartPreciseCoverageReturnObject, AnyError> {
-    let parameters_value = serde_json::to_value(parameters)?;
     let return_value = self
       .session
-      .post_message("Profiler.startPreciseCoverage", Some(parameters_value))
+      .post_message("Profiler.startPreciseCoverage", parameters)
       .await?;
 
     let return_object = serde_json::from_value(return_value)?;
@@ -82,7 +81,7 @@ impl CoverageCollector {
   ) -> Result<TakePreciseCoverageReturnObject, AnyError> {
     let return_value = self
       .session
-      .post_message("Profiler.takePreciseCoverage", None)
+      .post_message("Profiler.takePreciseCoverage", ())
       .await?;
 
     let return_object = serde_json::from_value(return_value)?;
@@ -592,8 +591,8 @@ pub async fn cover_files(
         })?
     };
     let file = maybe_file.ok_or_else(|| {
-      anyhow!("Failed to fetch \"{}\" from cache. 
-          Before generating coverage report, run `deno test --coverage` to ensure consistent state.", 
+      anyhow!("Failed to fetch \"{}\" from cache.
+          Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
           module_specifier
         )
     })?;

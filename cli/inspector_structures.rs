@@ -1,6 +1,7 @@
+use deno_core::serde_json;
+use deno_core::serde_json::Value;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

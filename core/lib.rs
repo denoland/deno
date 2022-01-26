@@ -8,7 +8,6 @@ mod extensions;
 mod flags;
 mod gotham_state;
 mod inspector;
-pub mod inspector_structures;
 mod module_specifier;
 mod modules;
 mod normalize_path;

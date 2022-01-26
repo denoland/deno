@@ -2,7 +2,7 @@
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::inspector_structures;
+use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use std::cell::RefCell;
 use tokio::sync::mpsc::channel;
@@ -35,7 +35,7 @@ pub fn rustyline_channel(
 }
 
 pub enum RustylineSyncMessage {
-  PostMessage(inspector_structures::Methods),
+  PostMessage { method: String, params: Value },
   LspCompletions { line_text: String, position: usize },
 }
 
@@ -50,13 +50,18 @@ pub struct RustylineSyncMessageSender {
 }
 
 impl RustylineSyncMessageSender {
-  pub fn post_message(
+  pub fn post_message<T: serde::Serialize>(
     &self,
-    method: inspector_structures::Methods,
+    method: &str,
+    params: T,
   ) -> Result<Value, AnyError> {
-    if let Err(err) = self
-      .message_tx
-      .blocking_send(RustylineSyncMessage::PostMessage(method))
+    if let Err(err) =
+      self
+        .message_tx
+        .blocking_send(RustylineSyncMessage::PostMessage {
+          method: method.to_string(),
+          params: serde_json::to_value(params)?,
+        })
     {
       Err(anyhow!("{}", err))
     } else {

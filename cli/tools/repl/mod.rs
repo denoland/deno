@@ -33,9 +33,9 @@ async fn read_line_and_poll(
       }
       result = message_handler.recv() => {
         match result {
-          Some(RustylineSyncMessage::PostMessage(method)) => {
+          Some(RustylineSyncMessage::PostMessage { method, params }) => {
             let result = repl_session
-              .post_message_with_event_loop(method)
+              .post_message_with_event_loop(&method, params)
               .await;
             message_handler.send(RustylineSyncResponse::PostMessage(result)).unwrap();
           },
