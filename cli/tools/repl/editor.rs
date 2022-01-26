@@ -5,9 +5,9 @@ use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
 use deno_core::error::AnyError;
+use deno_core::inspector_structures;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
+use deno_core::serde_json;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -37,22 +37,14 @@ impl EditorHelper {
   pub fn get_global_lexical_scope_names(&self) -> Vec<String> {
     let evaluate_response = self
       .sync_sender
-      .post_message(
-        "Runtime.globalLexicalScopeNames",
-        Some(json!({
-          "executionContextId": self.context_id,
-        })),
-      )
+      .post_message(inspector_structures::Methods::GlobalLexicalScopeNames(
+        inspector_structures::GlobalLexicalScopeNamesArgs {
+          execution_context_id: Some(self.context_id),
+        },
+      ))
       .unwrap();
-
-    evaluate_response
-      .get("names")
-      .unwrap()
-      .as_array()
-      .unwrap()
-      .iter()
-      .map(|n| n.as_str().unwrap().to_string())
-      .collect()
+    let evaluate_response: inspector_structures::GlobalLexicalScopeNamesResponse = serde_json::from_value(evaluate_response).unwrap();
+    evaluate_response.names
   }
 
   pub fn get_expression_property_names(&self, expr: &str) -> Vec<String> {
@@ -81,11 +73,8 @@ impl EditorHelper {
 
   fn get_expression_type(&self, expr: &str) -> Option<String> {
     self
-      .evaluate_expression(expr)?
-      .get("result")?
-      .get("type")?
-      .as_str()
-      .map(|s| s.to_string())
+      .evaluate_expression(expr)
+      .map(|res| res.result.kind.to_string())
   }
 
   fn get_object_expr_properties(
@@ -93,44 +82,61 @@ impl EditorHelper {
     object_expr: &str,
   ) -> Option<Vec<String>> {
     let evaluate_result = self.evaluate_expression(object_expr)?;
-    let object_id = evaluate_result.get("result")?.get("objectId")?;
+    let object_id = evaluate_result.result.object_id?;
 
     let get_properties_response = self
       .sync_sender
-      .post_message(
-        "Runtime.getProperties",
-        Some(json!({
-          "objectId": object_id,
-        })),
-      )
+      .post_message(inspector_structures::Methods::GetProperties(
+        inspector_structures::GetPropertiesArgs {
+          object_id,
+          own_properties: None,
+          accessor_properties_only: None,
+          generate_preview: None,
+          non_indexed_properties_only: None,
+        },
+      ))
       .ok()?;
-
+    let get_properties_response: inspector_structures::GetPropertiesResponse =
+      serde_json::from_value(get_properties_response).ok()?;
     Some(
       get_properties_response
-        .get("result")?
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
+        .result
+        .into_iter()
+        .map(|prop| prop.name)
         .collect(),
     )
   }
 
-  fn evaluate_expression(&self, expr: &str) -> Option<Value> {
+  fn evaluate_expression(
+    &self,
+    expr: &str,
+  ) -> Option<inspector_structures::EvaluateResponse> {
     let evaluate_response = self
       .sync_sender
-      .post_message(
-        "Runtime.evaluate",
-        Some(json!({
-          "contextId": self.context_id,
-          "expression": expr,
-          "throwOnSideEffect": true,
-          "timeout": 200,
-        })),
-      )
+      .post_message(inspector_structures::Methods::Evaluate(
+        inspector_structures::EvaluateArgs {
+          expression: expr.to_string(),
+          object_group: None,
+          include_command_line_api: None,
+          silent: None,
+          context_id: Some(self.context_id),
+          return_by_value: None,
+          generate_preview: None,
+          user_gesture: None,
+          await_promise: None,
+          throw_on_side_effect: Some(true),
+          timeout: Some(200),
+          disable_breaks: None,
+          repl_mode: None,
+          allow_unsafe_eval_blocked_by_csp: None,
+          unique_context_id: None,
+        },
+      ))
       .ok()?;
+    let evaluate_response: inspector_structures::EvaluateResponse =
+      serde_json::from_value(evaluate_response).ok()?;
 
-    if evaluate_response.get("exceptionDetails").is_some() {
+    if evaluate_response.exception_details.is_some() {
       None
     } else {
       Some(evaluate_response)
