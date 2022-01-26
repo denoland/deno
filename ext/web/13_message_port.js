@@ -24,6 +24,7 @@
     ObjectSetPrototypeOf,
     Symbol,
     SymbolFor,
+    SymbolIterator,
     TypeError,
     WeakSet,
     WeakSetPrototypeAdd,
@@ -104,7 +105,7 @@
       if (
         webidl.type(transferOrOptions) === "Object" &&
         transferOrOptions !== undefined &&
-        transferOrOptions[Symbol.iterator] !== undefined
+        transferOrOptions[SymbolIterator] !== undefined
       ) {
         const transfer = webidl.converters["sequence<object>"](
           transferOrOptions,

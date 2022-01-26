@@ -9,6 +9,7 @@
     Uint8Array,
     BigInt,
     Number,
+    ObjectPrototypeIsPrototypeOf,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -152,12 +153,12 @@
 
       if (type === "pointer") {
         if (
-          arg?.buffer instanceof ArrayBuffer &&
+          ObjectPrototypeIsPrototypeOf(ArrayBuffer, arg?.buffer) &&
           arg.byteLength !== undefined
         ) {
           parameters.push(buffers.length);
           buffers.push(arg);
-        } else if (arg instanceof UnsafePointer) {
+        } else if (ObjectPrototypeIsPrototypeOf(UnsafePointer, arg)) {
           parameters.push(packU64(arg.value));
           buffers.push(undefined);
         } else if (arg === null) {

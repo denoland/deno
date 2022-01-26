@@ -32,6 +32,7 @@
     ArrayPrototypeSplice,
     ArrayPrototypeFilter,
     ArrayPrototypeIncludes,
+    ObjectPrototypeIsPrototypeOf,
     Promise,
     PromisePrototypeThen,
     PromisePrototypeCatch,
@@ -172,8 +173,13 @@
     let reqBody = null;
 
     if (req.body !== null) {
-      if (req.body.streamOrStatic instanceof ReadableStream) {
-        if (req.body.length === null || req.body.source instanceof Blob) {
+      if (
+        ObjectPrototypeIsPrototypeOf(ReadableStream, req.body.streamOrStatic)
+      ) {
+        if (
+          req.body.length === null ||
+          ObjectPrototypeIsPrototypeOf(Blob, req.body.source)
+        ) {
           reqBody = req.body.stream;
         } else {
           const reader = req.body.stream.getReader();
@@ -203,7 +209,7 @@
       clientRid: req.clientRid,
       hasBody: reqBody !== null,
       bodyLength: req.body?.length,
-    }, reqBody instanceof Uint8Array ? reqBody : null);
+    }, ObjectPrototypeIsPrototypeOf(Uint8Array, reqBody) ? reqBody : null);
 
     function onAbort() {
       if (cancelHandleRid !== null) {
@@ -216,7 +222,10 @@
     terminator[abortSignal.add](onAbort);
 
     if (requestBodyRid !== null) {
-      if (reqBody === null || !(reqBody instanceof ReadableStream)) {
+      if (
+        reqBody === null ||
+        !ObjectPrototypeIsPrototypeOf(ReadableStream, reqBody)
+      ) {
         throw new TypeError("Unreachable");
       }
       const reader = reqBody.getReader();
@@ -231,7 +240,7 @@
             },
           );
           if (done) break;
-          if (!(value instanceof Uint8Array)) {
+          if (!ObjectPrototypeIsPrototypeOf(Uint8Array, value)) {
             await reader.cancel("value not a Uint8Array");
             break;
           }

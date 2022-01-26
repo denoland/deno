@@ -25,6 +25,7 @@
     MapPrototypeGet,
     MapPrototypeSet,
     MathRandom,
+    ObjectPrototypeIsPrototypeOf,
     Symbol,
     StringFromCharCode,
     StringPrototypeTrim,
@@ -48,10 +49,13 @@
    * @returns {FormDataEntry}
    */
   function createEntry(name, value, filename) {
-    if (value instanceof Blob && !(value instanceof File)) {
+    if (
+      ObjectPrototypeIsPrototypeOf(Blob, value) &&
+      !ObjectPrototypeIsPrototypeOf(File, value)
+    ) {
       value = new File([value], "blob", { type: value.type });
     }
-    if (value instanceof File && filename !== undefined) {
+    if (ObjectPrototypeIsPrototypeOf(File, value) && filename !== undefined) {
       value = new File([value], filename, {
         type: value.type,
         lastModified: value.lastModified,
@@ -97,7 +101,7 @@
         prefix,
         context: "Argument 1",
       });
-      if (valueOrBlobValue instanceof Blob) {
+      if (ObjectPrototypeIsPrototypeOf(Blobl, valueOrBlobValue)) {
         valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
           prefix,
           context: "Argument 2",
@@ -219,7 +223,7 @@
         prefix,
         context: "Argument 1",
       });
-      if (valueOrBlobValue instanceof Blob) {
+      if (ObjectPrototypeIsPrototypeOf(Blob, valueOrBlobValue)) {
         valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
           prefix,
           context: "Argument 2",

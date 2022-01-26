@@ -27,6 +27,7 @@
     JSONParse,
     JSONStringify,
     ObjectAssign,
+    ObjectPrototypeIsPrototypeOf,
     StringPrototypeToLowerCase,
     StringPrototypeToUpperCase,
     Symbol,
@@ -863,13 +864,19 @@
 
       // 2.
       if (format !== "jwk") {
-        if (ArrayBufferIsView(keyData) || keyData instanceof ArrayBuffer) {
+        if (
+          ArrayBufferIsView(keyData) ||
+          ObjectPrototypeIsPrototypeOf(ArrayBuffer, keyData)
+        ) {
           keyData = copyBuffer(keyData);
         } else {
           throw new TypeError("keyData is a JsonWebKey");
         }
       } else {
-        if (ArrayBufferIsView(keyData) || keyData instanceof ArrayBuffer) {
+        if (
+          ArrayBufferIsView(keyData) ||
+          ObjectPrototypeIsPrototypeOf(ArrayBuffer, keyData)
+        ) {
           throw new TypeError("keyData is not a JsonWebKey");
         }
       }
@@ -1580,12 +1587,12 @@
         usages,
       );
 
-      if (result instanceof CryptoKey) {
+      if (ObjectPrototypeIsPrototypeOf(CryptoKey, result)) {
         const type = result[_type];
         if ((type === "secret" || type === "private") && usages.length === 0) {
           throw new DOMException("Invalid key usages", "SyntaxError");
         }
-      } else if (result.privateKey instanceof CryptoKey) {
+      } else if (ObjectPrototypeIsPrototypeOf(CryptoKey, result.privateKey)) {
         if (result.privateKey[_usages].length === 0) {
           throw new DOMException("Invalid key usages", "SyntaxError");
         }
@@ -3835,15 +3842,15 @@
       });
       if (
         !(
-          arrayBufferView instanceof Int8Array ||
-          arrayBufferView instanceof Uint8Array ||
-          arrayBufferView instanceof Uint8ClampedArray ||
-          arrayBufferView instanceof Int16Array ||
-          arrayBufferView instanceof Uint16Array ||
-          arrayBufferView instanceof Int32Array ||
-          arrayBufferView instanceof Uint32Array ||
-          arrayBufferView instanceof BigInt64Array ||
-          arrayBufferView instanceof BigUint64Array
+          ObjectPrototypeIsPrototypeOf(Int8Array, arrayBufferView) ||
+          ObjectPrototypeIsPrototypeOf(Uint8Array, arrayBufferView) ||
+          ObjectPrototypeIsPrototypeOf(Uint8ClampedArray, arrayBufferView) ||
+          ObjectPrototypeIsPrototypeOf(Int16Array, arrayBufferView) ||
+          ObjectPrototypeIsPrototypeOf(Uint16Array, arrayBufferView) ||
+          ObjectPrototypeIsPrototypeOf(Int32Array, arrayBufferView) ||
+          ObjectPrototypeIsPrototypeOf(Uint32Array, arrayBufferView) ||
+          ObjectPrototypeIsPrototypeOf(BigInt64Array, arrayBufferView) ||
+          ObjectPrototypeIsPrototypeOf(BigUint64Array, arrayBufferView)
         )
       ) {
         throw new DOMException(

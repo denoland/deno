@@ -28,12 +28,13 @@
     StringPrototypeEndsWith,
     StringPrototypeToLowerCase,
     Symbol,
+    SymbolIterator,
   } = window.__bootstrap.primordials;
 
   webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
     // Union for (sequence<DOMString> or DOMString)
     if (webidl.type(V) === "Object" && V !== null) {
-      if (V[Symbol.iterator] !== undefined) {
+      if (V[SymbolIterator] !== undefined) {
         return webidl.converters["sequence<DOMString>"](V, opts);
       }
     }

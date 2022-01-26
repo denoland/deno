@@ -33,6 +33,7 @@
     MapPrototypeHas,
     MapPrototypeGet,
     MapPrototypeSet,
+    ObjectPrototypeIsPrototypeOf,
     RangeError,
     RegExp,
     RegExpPrototypeTest,
@@ -375,7 +376,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Response,
+        evaluate: ObjectPrototypeIsPrototypeOf(Response, this),
         keys: [
           "body",
           "bodyUsed",

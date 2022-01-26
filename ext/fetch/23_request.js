@@ -36,6 +36,7 @@
     MapPrototypeGet,
     MapPrototypeSet,
     ObjectKeys,
+    ObjectPrototypeIsPrototypeOf,
     RegExpPrototypeTest,
     Symbol,
     SymbolFor,
@@ -241,7 +242,9 @@
         const parsedURL = new URL(input, baseURL);
         request = newInnerRequest("GET", parsedURL.href, [], null, true);
       } else { // 6.
-        if (!(input instanceof Request)) throw new TypeError("Unreachable");
+        if (!ObjectPrototypeIsPrototypeOf(Request, input)) {
+          throw new TypeError("Unreachable");
+        }
         request = input[_request];
         signal = input[_signal];
       }
@@ -268,7 +271,10 @@
 
       // NOTE: non standard extension. This handles Deno.HttpClient parameter
       if (init.client !== undefined) {
-        if (init.client !== null && !(init.client instanceof HttpClient)) {
+        if (
+          init.client !== null &&
+          !ObjectPrototypeIsPrototypeOf(HttpClient, init.client)
+        ) {
           throw webidl.makeException(
             TypeError,
             "`client` must be a Deno.HttpClient",
@@ -312,7 +318,7 @@
 
       // 33.
       let inputBody = null;
-      if (input instanceof Request) {
+      if (ObjectPrototypeIsPrototypeOf(Request, input)) {
         inputBody = input[_body];
       }
 
@@ -398,7 +404,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Request,
+        evaluate: ObjectPrototypeIsPrototypeOf(Request, this),
         keys: [
           "bodyUsed",
           "headers",
@@ -421,7 +427,7 @@
   webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
     // Union for (Request or USVString)
     if (typeof V == "object") {
-      if (V instanceof Request) {
+      if (ObjectPrototypeIsPrototypeOf(Request, V)) {
         return webidl.converters["Request"](V, opts);
       }
     }
