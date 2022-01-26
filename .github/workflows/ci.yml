@@ -25,6 +25,9 @@ jobs:
           - os: windows-2019
             job: test
             profile: release
+          - os: centos-latest
+            job: test
+            profile: release
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: test
             profile: release
