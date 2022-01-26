@@ -20,7 +20,7 @@ mod fs_util;
 mod graph_util;
 mod http_cache;
 mod http_util;
-mod inspector_structures;
+mod cdp;
 mod lockfile;
 mod logger;
 mod lsp;

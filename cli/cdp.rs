@@ -1,8 +1,12 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+/// https://chromedevtools.github.io/devtools-protocol/tot/
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use serde::Deserialize;
 use serde::Serialize;
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-awaitPromise
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AwaitPromiseArgs {
@@ -13,6 +17,7 @@ pub struct AwaitPromiseArgs {
   pub generate_preview: Option<bool>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-awaitPromise
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AwaitPromiseResponse {
@@ -20,6 +25,7 @@ pub struct AwaitPromiseResponse {
   pub exception_details: Option<ExceptionDetails>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-callFunctionOn
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CallFunctionOnArgs {
@@ -46,6 +52,7 @@ pub struct CallFunctionOnArgs {
   pub throw_on_side_effect: Option<bool>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-callFunctionOn
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CallFunctionOnResponse {
@@ -53,6 +60,7 @@ pub struct CallFunctionOnResponse {
   pub exception_details: Option<ExceptionDetails>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-compileScript
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompileScriptArgs {
@@ -63,6 +71,7 @@ pub struct CompileScriptArgs {
   pub execution_context_id: Option<ExecutionContextId>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-compileScript
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompileScriptResponse {
@@ -70,6 +79,7 @@ pub struct CompileScriptResponse {
   pub exception_details: Option<ExceptionDetails>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-evaluate
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EvaluateArgs {
@@ -108,6 +118,7 @@ pub struct EvaluateArgs {
   pub unique_context_id: Option<String>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-evaluate
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EvaluateResponse {
@@ -115,6 +126,7 @@ pub struct EvaluateResponse {
   pub exception_details: Option<ExceptionDetails>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-getProperties
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetPropertiesArgs {
@@ -129,6 +141,7 @@ pub struct GetPropertiesArgs {
   pub non_indexed_properties_only: Option<bool>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-getProperties
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetPropertiesResponse {
@@ -138,6 +151,7 @@ pub struct GetPropertiesResponse {
   pub exception_details: Option<ExceptionDetails>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-globalLexicalScopeNames
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalLexicalScopeNamesArgs {
@@ -145,12 +159,14 @@ pub struct GlobalLexicalScopeNamesArgs {
   pub execution_context_id: Option<ExecutionContextId>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-globalLexicalScopeNames
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalLexicalScopeNamesResponse {
   pub names: Vec<String>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-queryObjects
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryObjectsArgs {
@@ -159,24 +175,28 @@ pub struct QueryObjectsArgs {
   pub object_group: Option<String>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-queryObjects
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryObjectsResponse {
   pub objects: RemoteObject,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-releaseObject
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseObjectArgs {
   pub object_id: RemoteObjectId,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-releaseObjectGroup
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseObjectGroupArgs {
   pub object_group: String,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-runScript
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunScriptArgs {
@@ -200,6 +220,7 @@ pub struct RunScriptArgs {
   pub await_promise: Option<bool>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-runScript
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunScriptResponse {
@@ -207,6 +228,7 @@ pub struct RunScriptResponse {
   pub exception_details: Option<ExceptionDetails>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-setAsyncCallStackDepth
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetAsyncCallStackDepthArgs {
@@ -215,6 +237,7 @@ pub struct SetAsyncCallStackDepthArgs {
 
 // types
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-RemoteObject
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RemoteObjectType {
@@ -234,6 +257,7 @@ impl std::fmt::Display for RemoteObjectType {
   }
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-RemoteObject
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RemoteObjectSubType {
@@ -258,6 +282,7 @@ pub enum RemoteObjectSubType {
   Wasmvalue,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-RemoteObject
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteObject {
@@ -273,6 +298,7 @@ pub struct RemoteObject {
   pub custom_preview: Option<CustomPreview>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ObjectPreview
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectPreview {
@@ -285,6 +311,7 @@ pub struct ObjectPreview {
   pub entries: Option<Vec<EntryPreview>>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-PropertyPreview
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PropertyPreview {
@@ -296,6 +323,7 @@ pub struct PropertyPreview {
   pub subtype: Option<RemoteObjectSubType>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-PropertyPreview
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PropertyPreviewType {
@@ -310,6 +338,7 @@ pub enum PropertyPreviewType {
   Bigint,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-EntryPreview
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntryPreview {
@@ -317,6 +346,7 @@ pub struct EntryPreview {
   pub value: ObjectPreview,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-CustomPreview
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomPreview {
@@ -324,6 +354,7 @@ pub struct CustomPreview {
   pub body_getter_id: RemoteObjectId,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ExceptionDetails
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExceptionDetails {
@@ -339,6 +370,7 @@ pub struct ExceptionDetails {
   pub exception_meta_data: Option<serde_json::Map<String, Value>>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-StackTrace
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StackTrace {
@@ -348,6 +380,7 @@ pub struct StackTrace {
   pub parent_id: Option<StackTraceId>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-CallFrame
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CallFrame {
@@ -358,6 +391,7 @@ pub struct CallFrame {
   pub column_number: u64,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-StackTraceId
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StackTraceId {
@@ -365,6 +399,7 @@ pub struct StackTraceId {
   pub debugger_id: Option<UniqueDebuggerId>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-CallArgument
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CallArgument {
@@ -386,6 +421,7 @@ impl From<&RemoteObject> for CallArgument {
   }
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-InternalPropertyDescriptor
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PropertyDescriptor {
@@ -401,6 +437,7 @@ pub struct PropertyDescriptor {
   pub symbol: Option<RemoteObject>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-InternalPropertyDescriptor
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InternalPropertyDescriptor {
@@ -408,6 +445,7 @@ pub struct InternalPropertyDescriptor {
   pub value: Option<RemoteObject>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-PrivatePropertyDescriptor
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrivatePropertyDescriptor {
@@ -417,9 +455,20 @@ pub struct PrivatePropertyDescriptor {
   pub set: Option<RemoteObject>,
 }
 
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-RemoteObjectId
 pub type RemoteObjectId = String;
+
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ExecutionContextId
 pub type ExecutionContextId = u64;
+
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ScriptId
 pub type ScriptId = String;
+
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-TimeDelta
 pub type TimeDelta = u64;
+
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-UnserializableValue
 pub type UnserializableValue = String;
+
+/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-UniqueDebuggerId
 pub type UniqueDebuggerId = String;

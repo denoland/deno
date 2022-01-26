@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::inspector_structures;
+use crate::cdp;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
@@ -39,12 +39,12 @@ impl EditorHelper {
       .sync_sender
       .post_message(
         "Runtime.globalLexicalScopeNames",
-        Some(inspector_structures::GlobalLexicalScopeNamesArgs {
+        Some(cdp::GlobalLexicalScopeNamesArgs {
           execution_context_id: Some(self.context_id),
         }),
       )
       .unwrap();
-    let evaluate_response: inspector_structures::GlobalLexicalScopeNamesResponse = serde_json::from_value(evaluate_response).unwrap();
+    let evaluate_response: cdp::GlobalLexicalScopeNamesResponse = serde_json::from_value(evaluate_response).unwrap();
     evaluate_response.names
   }
 
@@ -89,7 +89,7 @@ impl EditorHelper {
       .sync_sender
       .post_message(
         "Runtime.getProperties",
-        Some(inspector_structures::GetPropertiesArgs {
+        Some(cdp::GetPropertiesArgs {
           object_id,
           own_properties: None,
           accessor_properties_only: None,
@@ -98,7 +98,7 @@ impl EditorHelper {
         }),
       )
       .ok()?;
-    let get_properties_response: inspector_structures::GetPropertiesResponse =
+    let get_properties_response: cdp::GetPropertiesResponse =
       serde_json::from_value(get_properties_response).ok()?;
     Some(
       get_properties_response
@@ -112,12 +112,12 @@ impl EditorHelper {
   fn evaluate_expression(
     &self,
     expr: &str,
-  ) -> Option<inspector_structures::EvaluateResponse> {
+  ) -> Option<cdp::EvaluateResponse> {
     let evaluate_response = self
       .sync_sender
       .post_message(
         "Runtime.evaluate",
-        Some(inspector_structures::EvaluateArgs {
+        Some(cdp::EvaluateArgs {
           expression: expr.to_string(),
           object_group: None,
           include_command_line_api: None,
@@ -136,7 +136,7 @@ impl EditorHelper {
         }),
       )
       .ok()?;
-    let evaluate_response: inspector_structures::EvaluateResponse =
+    let evaluate_response: cdp::EvaluateResponse =
       serde_json::from_value(evaluate_response).ok()?;
 
     if evaluate_response.exception_details.is_some() {

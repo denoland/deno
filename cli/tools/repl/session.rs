@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::inspector_structures;
+use crate::cdp;
 use crate::lsp::ReplLanguageServer;
 use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
@@ -59,7 +59,7 @@ impl std::fmt::Display for EvaluationOutput {
 
 struct TsEvaluateResponse {
   ts_code: String,
-  value: inspector_structures::EvaluateResponse,
+  value: cdp::EvaluateResponse,
 }
 
 pub struct ReplSession {
@@ -154,7 +154,7 @@ impl ReplSession {
 
     match self.evaluate_line_with_object_wrapping(line).await {
       Ok(evaluate_response) => {
-        let inspector_structures::EvaluateResponse {
+        let cdp::EvaluateResponse {
           result,
           exception_details,
         } = evaluate_response.value;
@@ -234,11 +234,11 @@ impl ReplSession {
 
   async fn set_last_thrown_error(
     &mut self,
-    error: &inspector_structures::RemoteObject,
+    error: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
     self.post_message_with_event_loop(
       "Runtime.callFunctionOn",
-      Some(inspector_structures::CallFunctionOnArgs {
+      Some(cdp::CallFunctionOnArgs {
         function_declaration: "function (object) { Deno[Deno.internal].lastThrownError = object; }".to_string(),
         object_id: None,
         arguments: Some(vec![error.into()]),
@@ -257,12 +257,12 @@ impl ReplSession {
 
   async fn set_last_eval_result(
     &mut self,
-    evaluate_result: &inspector_structures::RemoteObject,
+    evaluate_result: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
     self
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
-        Some(inspector_structures::CallFunctionOnArgs {
+        Some(cdp::CallFunctionOnArgs {
           function_declaration:
             "function (object) { Deno[Deno.internal].lastEvalResult = object; }"
               .to_string(),
@@ -284,14 +284,14 @@ impl ReplSession {
 
   pub async fn get_eval_value(
     &mut self,
-    evaluate_result: &inspector_structures::RemoteObject,
+    evaluate_result: &cdp::RemoteObject,
   ) -> Result<String, AnyError> {
     // TODO(caspervonb) we should investigate using previews here but to keep things
     // consistent with the previous implementation we just get the preview result from
     // Deno.inspectArgs.
     let inspect_response = self.post_message_with_event_loop(
       "Runtime.callFunctionOn",
-      Some(inspector_structures::CallFunctionOnArgs {
+      Some(cdp::CallFunctionOnArgs {
         function_declaration: r#"function (object) {
           try {
             return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
@@ -312,7 +312,7 @@ impl ReplSession {
       }),
     ).await?;
 
-    let response: inspector_structures::CallFunctionOnResponse =
+    let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
     let value = response.result.value.unwrap();
     let s = value.as_str().unwrap();
@@ -367,11 +367,11 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<inspector_structures::EvaluateResponse, AnyError> {
+  ) -> Result<cdp::EvaluateResponse, AnyError> {
     self
       .post_message_with_event_loop(
         "Runtime.evaluate",
-        Some(inspector_structures::EvaluateArgs {
+        Some(cdp::EvaluateArgs {
           expression: expression.to_string(),
           object_group: None,
           include_command_line_api: None,
