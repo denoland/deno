@@ -5,8 +5,9 @@
   const webidl = window.__bootstrap.webidl;
   const { InnerBody } = window.__bootstrap.fetchBody;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
+  const { BlobPrototype } = window.__bootstrap.file;
   const {
-    Response,
+    ResponsePrototype,
     fromInnerRequest,
     toInnerResponse,
     newInnerRequest,
@@ -15,7 +16,8 @@
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
   const { BadResource, Interrupted } = core;
-  const { ReadableStream } = window.__bootstrap.streams;
+  const { ReadableStream, ReadableStreamPrototype } =
+    window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
   const {
     WebSocket,
@@ -164,7 +166,7 @@
           resp = await resp;
         }
 
-        if (!(ObjectPrototypeIsPrototypeOf(Response.prototype, resp))) {
+        if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, resp))) {
           throw new TypeError(
             "First argument to respondWith must be a Response or a promise resolving to a Response.",
           );
@@ -183,14 +185,14 @@
           }
           if (
             ObjectPrototypeIsPrototypeOf(
-              ReadableStream.prototype,
+              ReadableStreamPrototype,
               innerResp.body.streamOrStatic,
             )
           ) {
             if (
               innerResp.body.length === null ||
               ObjectPrototypeIsPrototypeOf(
-                Blob.prototype,
+                BlobPrototype,
                 innerResp.body.source,
               )
             ) {
@@ -235,7 +237,7 @@
           }
           if (
             respBody !== null &&
-            ObjectPrototypeIsPrototypeOf(ReadableStream.prototype, respBody)
+            ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, respBody)
           ) {
             await respBody.cancel(error);
           }
@@ -245,7 +247,7 @@
         if (isStreamingResponseBody) {
           if (
             respBody === null ||
-            !ObjectPrototypeIsPrototypeOf(ReadableStream.prototype, respBody)
+            !ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, respBody)
           ) {
             throw new TypeError("Unreachable");
           }

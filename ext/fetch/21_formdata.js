@@ -13,7 +13,8 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = globalThis.__bootstrap.webidl;
-  const { Blob, File } = globalThis.__bootstrap.file;
+  const { Blob, BlobPrototype, File, FilePrototype } =
+    globalThis.__bootstrap.file;
   const {
     ArrayPrototypeMap,
     ArrayPrototypePush,
@@ -50,13 +51,13 @@
    */
   function createEntry(name, value, filename) {
     if (
-      ObjectPrototypeIsPrototypeOf(Blob.prototype, value) &&
-      !ObjectPrototypeIsPrototypeOf(File.prototype, value)
+      ObjectPrototypeIsPrototypeOf(BlobPrototype, value) &&
+      !ObjectPrototypeIsPrototypeOf(FilePrototype, value)
     ) {
       value = new File([value], "blob", { type: value.type });
     }
     if (
-      ObjectPrototypeIsPrototypeOf(File.prototype, value) &&
+      ObjectPrototypeIsPrototypeOf(FilePrototype, value) &&
       filename !== undefined
     ) {
       value = new File([value], filename, {
@@ -104,7 +105,7 @@
         prefix,
         context: "Argument 1",
       });
-      if (ObjectPrototypeIsPrototypeOf(Blob.prototype, valueOrBlobValue)) {
+      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, valueOrBlobValue)) {
         valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
           prefix,
           context: "Argument 2",
@@ -226,7 +227,7 @@
         prefix,
         context: "Argument 1",
       });
-      if (ObjectPrototypeIsPrototypeOf(Blob.prototype, valueOrBlobValue)) {
+      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, valueOrBlobValue)) {
         valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
           prefix,
           context: "Argument 2",
@@ -503,6 +504,7 @@
 
   globalThis.__bootstrap.formData = {
     FormData,
+    FormDataPrototype,
     formDataToBlob,
     parseFormData,
     formDataFromEntries,

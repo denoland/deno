@@ -16,11 +16,21 @@
   const core = window.Deno.core;
   const webidl = globalThis.__bootstrap.webidl;
   const { parseUrlEncoded } = globalThis.__bootstrap.url;
-  const { parseFormData, formDataFromEntries, formDataToBlob } =
-    globalThis.__bootstrap.formData;
+  const { URLSearchParamsPrototype } = globalThis.__bootstrap.url;
+  const {
+    parseFormData,
+    formDataFromEntries,
+    formDataToBlob,
+    FormDataPrototype,
+  } = globalThis.__bootstrap.formData;
   const mimesniff = globalThis.__bootstrap.mimesniff;
-  const { isReadableStreamDisturbed, errorReadableStream, createProxy } =
-    globalThis.__bootstrap.streams;
+  const { BlobPrototype } = globalThis.__bootstrap.file;
+  const {
+    isReadableStreamDisturbed,
+    errorReadableStream,
+    createProxy,
+    ReadableStreamPrototype,
+  } = globalThis.__bootstrap.streams;
   const {
     ArrayBufferPrototype,
     ArrayBufferIsView,
@@ -70,7 +80,7 @@
     get stream() {
       if (
         !ObjectPrototypeIsPrototypeOf(
-          ReadableStream.prototype,
+          ReadableStreamPrototype,
           this.streamOrStatic,
         )
       ) {
@@ -97,7 +107,7 @@
     unusable() {
       if (
         ObjectPrototypeIsPrototypeOf(
-          ReadableStream.prototype,
+          ReadableStreamPrototype,
           this.streamOrStatic,
         )
       ) {
@@ -113,7 +123,7 @@
     consumed() {
       if (
         ObjectPrototypeIsPrototypeOf(
-          ReadableStream.prototype,
+          ReadableStreamPrototype,
           this.streamOrStatic,
         )
       ) {
@@ -130,7 +140,7 @@
       if (this.unusable()) throw new TypeError("Body already consumed.");
       if (
         ObjectPrototypeIsPrototypeOf(
-          ReadableStream.prototype,
+          ReadableStreamPrototype,
           this.streamOrStatic,
         )
       ) {
@@ -160,7 +170,7 @@
     cancel(error) {
       if (
         ObjectPrototypeIsPrototypeOf(
-          ReadableStream.prototype,
+          ReadableStreamPrototype,
           this.streamOrStatic,
         )
       ) {
@@ -173,7 +183,7 @@
     error(error) {
       if (
         ObjectPrototypeIsPrototypeOf(
-          ReadableStream.prototype,
+          ReadableStreamPrototype,
           this.streamOrStatic,
         )
       ) {
@@ -202,7 +212,7 @@
       let proxyStreamOrStatic;
       if (
         ObjectPrototypeIsPrototypeOf(
-          ReadableStream.prototype,
+          ReadableStreamPrototype,
           this.streamOrStatic,
         )
       ) {
@@ -378,7 +388,7 @@
     let source = null;
     let length = null;
     let contentType = null;
-    if (ObjectPrototypeIsPrototypeOf(Blob.prototype, object)) {
+    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, object)) {
       stream = object.stream();
       source = object;
       length = object.size;
@@ -402,14 +412,14 @@
         : new Uint8Array(object);
       const copy = TypedArrayPrototypeSlice(u8, 0, u8.byteLength);
       source = copy;
-    } else if (ObjectPrototypeIsPrototypeOf(FormData.prototype, object)) {
+    } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, object)) {
       const res = formDataToBlob(object);
       stream = res.stream();
       source = res;
       length = res.size;
       contentType = res.type;
     } else if (
-      ObjectPrototypeIsPrototypeOf(URLSearchParams.prototype, object)
+      ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, object)
     ) {
       // TODO(@satyarohith): not sure what primordial here.
       source = object.toString();
@@ -417,7 +427,7 @@
     } else if (typeof object === "string") {
       source = object;
       contentType = "text/plain;charset=UTF-8";
-    } else if (ObjectPrototypeIsPrototypeOf(ReadableStream.prototype, object)) {
+    } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
       stream = object;
       if (object.locked || isReadableStreamDisturbed(object)) {
         throw new TypeError("ReadableStream is locked or disturbed");
@@ -441,14 +451,14 @@
 
   webidl.converters["BodyInit_DOMString"] = (V, opts) => {
     // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
-    if (ObjectPrototypeIsPrototypeOf(ReadableStream.prototype, V)) {
+    if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, V)) {
       // TODO(lucacasonato): ReadableStream is not branded
       return V;
-    } else if (ObjectPrototypeIsPrototypeOf(Blob.prototype, V)) {
+    } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
       return webidl.converters["Blob"](V, opts);
-    } else if (ObjectPrototypeIsPrototypeOf(FormData.prototype, V)) {
+    } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, V)) {
       return webidl.converters["FormData"](V, opts);
-    } else if (ObjectPrototypeIsPrototypeOf(URLSearchParams.prototype, V)) {
+    } else if (ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, V)) {
       // TODO(lucacasonato): URLSearchParams is not branded
       return V;
     }

@@ -26,7 +26,7 @@
     fillHeaders,
     getDecodeSplitHeader,
   } = window.__bootstrap.headers;
-  const { HttpClient } = window.__bootstrap.fetch;
+  const { HttpClientPrototype } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
   const {
     ArrayPrototypeMap,
@@ -273,7 +273,7 @@
       if (init.client !== undefined) {
         if (
           init.client !== null &&
-          !ObjectPrototypeIsPrototypeOf(HttpClient.prototype, init.client)
+          !ObjectPrototypeIsPrototypeOf(HttpClientPrototype, init.client)
         ) {
           throw webidl.makeException(
             TypeError,

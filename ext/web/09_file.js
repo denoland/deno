@@ -122,7 +122,7 @@
         );
         size += element.byteLength;
         ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
-      } else if (ObjectPrototypeIsPrototypeOf(Blob.prototype, element)) {
+      } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, element)) {
         ArrayPrototypePush(processedParts, element);
         size += element.size;
       } else if (typeof element === "string") {
@@ -158,7 +158,7 @@
    */
   function getParts(blob, bag = []) {
     for (const part of blob[_parts]) {
-      if (ObjectPrototypeIsPrototypeOf(Blob.prototype, part)) {
+      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, part)) {
         getParts(part, bag);
       } else {
         ArrayPrototypePush(bag, part._id);
@@ -362,7 +362,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(Blob.prototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(BlobPrototype, this),
         keys: [
           "size",
           "type",
@@ -381,7 +381,7 @@
   webidl.converters["BlobPart"] = (V, opts) => {
     // Union for ((ArrayBuffer or ArrayBufferView) or Blob or USVString)
     if (typeof V == "object") {
-      if (ObjectPrototypeIsPrototypeOf(Blob.prototype, V)) {
+      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
         return webidl.converters["Blob"](V, opts);
       }
       if (
@@ -602,6 +602,8 @@
     blobFromObjectUrl,
     getParts,
     Blob,
+    BlobPrototype,
     File,
+    FilePrototype,
   };
 })(this);

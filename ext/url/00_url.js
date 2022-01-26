@@ -624,7 +624,9 @@
 
   window.__bootstrap.url = {
     URL,
+    URLPrototype,
     URLSearchParams,
+    URLSearchParamsPrototype,
     parseUrlEncoded,
   };
 })(this);

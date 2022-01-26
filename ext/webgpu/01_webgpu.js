@@ -159,6 +159,7 @@
       super("device out of memory");
     }
   }
+  const GPUOutOfMemoryErrorPrototype = GPUOutOfMemoryError.prototype;
 
   class GPUValidationError extends Error {
     name = "GPUValidationError";
@@ -739,7 +740,7 @@
       );
       const oomScope = oomStack[oomStack.length - 1];
       const oomFilteredPromise = PromisePrototypeCatch(operation, (err) => {
-        if (ObjectPrototypeIsPrototypeOf(GPUOutOfMemoryError.prototype, err)) {
+        if (ObjectPrototypeIsPrototypeOf(GPUOutOfMemoryErrorPrototype, err)) {
           return PromiseReject(err);
         }
         return PromiseResolve();
@@ -1032,7 +1033,7 @@
       const entries = ArrayPrototypeMap(descriptor.entries, (entry, i) => {
         const context = `entry ${i + 1}`;
         const resource = entry.resource;
-        if (ObjectPrototypeIsPrototypeOf(GPUSampler.prototype, resource)) {
+        if (ObjectPrototypeIsPrototypeOf(GPUSamplerPrototype, resource)) {
           const rid = assertResource(resource, {
             prefix,
             context,
@@ -1048,7 +1049,7 @@
             resource: rid,
           };
         } else if (
-          ObjectPrototypeIsPrototypeOf(GPUTextureView.prototype, resource)
+          ObjectPrototypeIsPrototypeOf(GPUTextureViewPrototype, resource)
         ) {
           const rid = assertResource(resource, {
             prefix,
@@ -2152,7 +2153,7 @@
     }
   }
   GPUObjectBaseMixin("GPUTextureView", GPUTextureView);
-
+  const GPUTextureViewPrototype = GPUTextureView.prototype;
   /**
    * @param {string | null} label
    * @param {InnerGPUDevice} device
@@ -2195,7 +2196,7 @@
     }
   }
   GPUObjectBaseMixin("GPUSampler", GPUSampler);
-
+  const GPUSamplerPrototype = GPUSampler.prototype;
   /**
    * @param {string | null} label
    * @param {InnerGPUDevice} device

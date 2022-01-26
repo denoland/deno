@@ -142,6 +142,7 @@
       return this.value;
     }
   }
+  const UnsafePointerPrototype = UnsafePointer.prototype;
 
   function prepareArgs(types, args) {
     const parameters = [];
@@ -158,7 +159,7 @@
         ) {
           parameters.push(buffers.length);
           buffers.push(arg);
-        } else if (ObjectPrototypeIsPrototypeOf(UnsafePointer.prototype, arg)) {
+        } else if (ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, arg)) {
           parameters.push(packU64(arg.value));
           buffers.push(undefined);
         } else if (arg === null) {

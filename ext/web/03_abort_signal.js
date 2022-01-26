@@ -144,6 +144,7 @@
   window.AbortSignal = AbortSignal;
   window.AbortController = AbortController;
   window.__bootstrap.abortSignal = {
+    AbortSignalPrototype,
     add,
     signalAbort,
     remove,

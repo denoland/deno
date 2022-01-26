@@ -9,7 +9,7 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  const { add, remove, signalAbort, newSignal } =
+  const { add, remove, signalAbort, newSignal, AbortSignalPrototype } =
     window.__bootstrap.abortSignal;
   const {
     ArrayBuffer,
@@ -1991,7 +1991,7 @@
     );
     assert(
       signal === undefined ||
-        ObjectPrototypeIsPrototypeOf(AbortSignal.prototype, signal),
+        ObjectPrototypeIsPrototypeOf(AbortSignalPrototype, signal),
     );
     assert(!isReadableStreamLocked(source));
     assert(!isWritableStreamLocked(dest));
@@ -2338,7 +2338,7 @@
     assert(typeof cloneForBranch2 === "boolean");
     if (
       ObjectPrototypeIsPrototypeOf(
-        ReadableByteStreamController.prototype,
+        ReadableByteStreamControllerPrototype,
         stream[_controller],
       )
     ) {
@@ -2507,7 +2507,7 @@
     assert(isReadableStream(stream));
     assert(
       ObjectPrototypeIsPrototypeOf(
-        ReadableByteStreamController.prototype,
+        ReadableByteStreamControllerPrototype,
         stream[_controller],
       ),
     );
@@ -3020,7 +3020,7 @@
     }
     if (
       !(ObjectPrototypeIsPrototypeOf(
-        ReadableByteStreamController.prototype,
+        ReadableByteStreamControllerPrototype,
         stream[_controller],
       ))
     ) {
@@ -3056,7 +3056,7 @@
     transformAlgorithm,
     flushAlgorithm,
   ) {
-    assert(ObjectPrototypeIsPrototypeOf(TransformStream.prototype, stream));
+    assert(ObjectPrototypeIsPrototypeOf(TransformStreamPrototype, stream));
     assert(stream[_controller] === undefined);
     controller[_stream] = stream;
     stream[_controller] = controller;
@@ -4940,7 +4940,7 @@
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(
-          ReadableByteStreamController.prototype,
+          ReadableByteStreamControllerPrototype,
           this,
         ),
         keys: ["desiredSize"],
@@ -5853,6 +5853,7 @@
     ByteLengthQueuingStrategy,
     CountQueuingStrategy,
     ReadableStream,
+    ReadableStreamPrototype,
     ReadableStreamDefaultReader,
     TransformStream,
     WritableStream,

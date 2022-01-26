@@ -75,7 +75,7 @@
    */
   function createMessagePort(id) {
     const port = core.createHostObject();
-    ObjectSetPrototypeOf(port, MessagePort.prototype);
+    ObjectSetPrototypeOf(port, MessagePortPrototype);
     port[webidl.brand] = webidl.brand;
     setEventTargetData(port);
     port[_id] = id;
@@ -98,7 +98,7 @@
      * @param {object[] | StructuredSerializeOptions} transferOrOptions
      */
     postMessage(message, transferOrOptions = {}) {
-      webidl.assertBranded(this, MessagePort.prototype);
+      webidl.assertBranded(this, MessagePortPrototype);
       const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       message = webidl.converters.any(message);
@@ -132,7 +132,7 @@
     }
 
     start() {
-      webidl.assertBranded(this, MessagePort.prototype);
+      webidl.assertBranded(this, MessagePortPrototype);
       if (this[_enabled]) return;
       (async () => {
         this[_enabled] = true;
@@ -270,7 +270,7 @@
       serializedData = core.serialize(data, {
         hostObjects: ArrayPrototypeFilter(
           transferables,
-          (a) => ObjectPrototypeIsPrototypeOf(MessagePort.prototype, a),
+          (a) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, a),
         ),
         transferedArrayBuffers,
       });
@@ -283,7 +283,7 @@
 
     let arrayBufferI = 0;
     for (const transferable of transferables) {
-      if (ObjectPrototypeIsPrototypeOf(MessagePort.prototype, transferable)) {
+      if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, transferable)) {
         webidl.assertBranded(transferable, MessagePortPrototype);
         const id = transferable[_id];
         if (id === null) {
@@ -345,6 +345,7 @@
   window.__bootstrap.messagePort = {
     MessageChannel,
     MessagePort,
+    MessagePortPrototype,
     deserializeJsMessageData,
     serializeJsMessageData,
     structuredClone,

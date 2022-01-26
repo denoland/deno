@@ -127,7 +127,7 @@
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      if (ObjectPrototypeIsPrototypeOf(DOMException.prototype, this)) {
+      if (ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this)) {
         return `DOMException: ${this.#message}`;
       } else {
         return inspect(consoleInternal.createFilteredInspectProxy({
@@ -146,6 +146,7 @@
   ObjectSetPrototypeOf(DOMException.prototype, ErrorPrototype);
 
   webidl.configurePrototype(DOMException);
+  const DOMExceptionPrototype = DOMException.prototype;
 
   for (
     const [key, value] of ObjectEntries({

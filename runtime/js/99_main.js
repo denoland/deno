@@ -144,7 +144,7 @@ delete Object.prototype.__proto__;
         cancelable: false,
         data: message,
         ports: transferables.filter((t) =>
-          ObjectPrototypeIsPrototypeOf(MessagePort.prototype, t)
+          ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t)
         ),
       });
 

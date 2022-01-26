@@ -1590,13 +1590,13 @@
         usages,
       );
 
-      if (ObjectPrototypeIsPrototypeOf(CryptoKey.prototype, result)) {
+      if (ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, result)) {
         const type = result[_type];
         if ((type === "secret" || type === "private") && usages.length === 0) {
           throw new DOMException("Invalid key usages", "SyntaxError");
         }
       } else if (
-        ObjectPrototypeIsPrototypeOf(CryptoKey.prototype, result.privateKey)
+        ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, result.privateKey)
       ) {
         if (result.privateKey[_usages].length === 0) {
           throw new DOMException("Invalid key usages", "SyntaxError");

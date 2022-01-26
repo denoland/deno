@@ -10,7 +10,7 @@
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
   const { DOMException } = window.__bootstrap.domException;
   const { defineEventHandler } = window.__bootstrap.event;
-  const { Blob } = globalThis.__bootstrap.file;
+  const { Blob, BlobPrototype } = globalThis.__bootstrap.file;
   const {
     ArrayBufferPrototype,
     ArrayBufferIsView,
@@ -43,7 +43,7 @@
 
   webidl.converters["WebSocketSend"] = (V, opts) => {
     // Union for (Blob or ArrayBufferView or ArrayBuffer or USVString)
-    if (ObjectPrototypeIsPrototypeOf(Blob.prototype, V)) {
+    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
       return webidl.converters["Blob"](V, opts);
     }
     if (typeof V === "object") {
@@ -300,7 +300,7 @@
         );
       };
 
-      if (ObjectPrototypeIsPrototypeOf(Blob.prototype, data)) {
+      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
         PromisePrototypeThen(
           data.slice().arrayBuffer(),
           (ab) => sendTypedArray(new DataView(ab)),

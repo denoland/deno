@@ -15,7 +15,9 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { byteLowerCase } = window.__bootstrap.infra;
-  const { errorReadableStream } = window.__bootstrap.streams;
+  const { BlobPrototype } = window.__bootstrap.file;
+  const { errorReadableStream, ReadableStreamPrototype } =
+    window.__bootstrap.streams;
   const { InnerBody, extractBody } = window.__bootstrap.fetchBody;
   const {
     toInnerRequest,
@@ -176,13 +178,13 @@
     if (req.body !== null) {
       if (
         ObjectPrototypeIsPrototypeOf(
-          ReadableStream.prototype,
+          ReadableStreamPrototype,
           req.body.streamOrStatic,
         )
       ) {
         if (
           req.body.length === null ||
-          ObjectPrototypeIsPrototypeOf(Blob.prototype, req.body.source)
+          ObjectPrototypeIsPrototypeOf(BlobPrototype, req.body.source)
         ) {
           reqBody = req.body.stream;
         } else {
@@ -233,7 +235,7 @@
     if (requestBodyRid !== null) {
       if (
         reqBody === null ||
-        !ObjectPrototypeIsPrototypeOf(ReadableStream.prototype, reqBody)
+        !ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, reqBody)
       ) {
         throw new TypeError("Unreachable");
       }
