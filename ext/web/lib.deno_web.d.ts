@@ -445,10 +445,10 @@ interface ReadableStreamBYOBReader {
   releaseLock(): void;
 }
 
-interface ReadableStreamBYOBRequest {
-  readonly view: ArrayBufferView | null;
+interface ReadableStreamBYOBRequest<V extends ArrayBufferView> {
+  readonly view: V | null;
   respond(bytesWritten: number): void;
-  respondWithNewView(view: ArrayBufferView): void;
+  respondWithNewView(view: V): void;
 }
 
 declare var ReadableStreamDefaultReader: {
@@ -467,15 +467,15 @@ declare var ReadableStreamReader: {
   new (): ReadableStreamReader;
 };
 
-interface ReadableByteStreamControllerCallback {
-  (controller: ReadableByteStreamController): void | PromiseLike<void>;
+interface ReadableByteStreamControllerCallback<V extends ArrayBufferView> {
+  (controller: ReadableByteStreamController<V>): void | PromiseLike<void>;
 }
 
-interface UnderlyingByteSource {
+interface UnderlyingByteSource<V extends ArrayBufferView> {
   autoAllocateChunkSize?: number;
   cancel?: ReadableStreamErrorCallback;
-  pull?: ReadableByteStreamControllerCallback;
-  start?: ReadableByteStreamControllerCallback;
+  pull?: ReadableByteStreamControllerCallback<V>;
+  start?: ReadableByteStreamControllerCallback<V>;
   type: "bytes";
 }
 
@@ -514,8 +514,10 @@ declare var ReadableStreamDefaultController: {
   new (): ReadableStreamDefaultController;
 };
 
-interface ReadableByteStreamController {
-  readonly byobRequest: ReadableStreamBYOBRequest | null;
+interface ReadableByteStreamController<
+  V extends ArrayBufferView = ArrayBufferView,
+> {
+  readonly byobRequest: ReadableStreamBYOBRequest<V> | null;
   readonly desiredSize: number | null;
   close(): void;
   enqueue(chunk: ArrayBufferView): void;
@@ -524,7 +526,7 @@ interface ReadableByteStreamController {
 
 declare var ReadableByteStreamController: {
   prototype: ReadableByteStreamController;
-  new (): ReadableByteStreamController;
+  new <V extends ArrayBufferView>(): ReadableByteStreamController<V>;
 };
 
 interface PipeOptions {
@@ -589,10 +591,10 @@ interface ReadableStream<R = any> {
 
 declare var ReadableStream: {
   prototype: ReadableStream;
-  new (
-    underlyingSource: UnderlyingByteSource,
+  new <R extends ArrayBufferView = ArrayBufferView>(
+    underlyingSource: UnderlyingByteSource<R>,
     strategy?: { highWaterMark?: number; size?: undefined },
-  ): ReadableStream<Uint8Array>;
+  ): ReadableStream<R>;
   new <R = any>(
     underlyingSource?: UnderlyingSource<R>,
     strategy?: QueuingStrategy<R>,
