@@ -53,7 +53,6 @@ jobs:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
       RUSTC_FORCE_INCREMENTAL: 1
-      RUSTFLAGS: -D warnings
 
     steps:
       - name: Configure git
@@ -143,6 +142,11 @@ jobs:
           project_id: denoland
           service_account_key: ${{ secrets.GCP_SA_KEY }}
           export_default_credentials: true
+
+      - name: Error on warning
+        # TODO(piscisaureus): enable this on Windows again.
+        if: "!matrix.use_sysroot && !startsWith(matrix.os, 'windows')"
+        run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
       - name: Configure canary build
         if: |
