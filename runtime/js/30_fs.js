@@ -277,7 +277,7 @@
   }
 
   function toUnixTimeFromEpoch(value) {
-    if (value instanceof Date) {
+    if (ObjectPrototypeIsPrototypeOf(Date, value)) {
       const time = value.valueOf();
       const seconds = MathTrunc(time / 1e3);
       const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;

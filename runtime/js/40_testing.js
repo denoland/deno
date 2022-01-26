@@ -375,7 +375,7 @@ finishing test case.`;
   }
 
   function formatError(error) {
-    if (error instanceof AggregateError) {
+    if (ObjectPrototypeIsPrototypeOf(AggregateError, error)) {
       const message = error
         .errors
         .map((error) =>
@@ -829,7 +829,7 @@ finishing test case.`;
         /** @returns {TestStepDefinition} */
         function getDefinition() {
           if (typeof nameOrTestDefinition === "string") {
-            if (!(fn instanceof Function)) {
+            if (!(ObjectPrototypeIsPrototypeOf(Function, fn))) {
               throw new TypeError("Expected function for second argument.");
             }
             return {
