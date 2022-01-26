@@ -7,7 +7,9 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct AwaitPromiseArgs {
   pub promise_object_id: RemoteObjectId,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub return_by_value: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub generate_preview: Option<bool>,
 }
 
@@ -22,15 +24,25 @@ pub struct AwaitPromiseResponse {
 #[serde(rename_all = "camelCase")]
 pub struct CallFunctionOnArgs {
   pub function_declaration: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub object_id: Option<RemoteObjectId>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub arguments: Option<Vec<CallArgument>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub silent: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub return_by_value: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub generate_preview: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub user_gesture: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub await_promise: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub execution_context_id: Option<ExecutionContextId>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub object_group: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub throw_on_side_effect: Option<bool>,
 }
 
@@ -47,6 +59,7 @@ pub struct CompileScriptArgs {
   pub expression: String,
   #[serde(rename = "sourceURL")]
   pub source_url: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub execution_context_id: Option<ExecutionContextId>,
 }
 
@@ -61,21 +74,37 @@ pub struct CompileScriptResponse {
 #[serde(rename_all = "camelCase")]
 pub struct EvaluateArgs {
   pub expression: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub object_group: Option<String>,
-  #[serde(rename = "includeCommandLineAPI")]
+  #[serde(
+    rename = "includeCommandLineAPI",
+    skip_serializing_if = "Option::is_none"
+  )]
   pub include_command_line_api: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub silent: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub context_id: Option<ExecutionContextId>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub return_by_value: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub generate_preview: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub user_gesture: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub await_promise: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub throw_on_side_effect: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub timeout: Option<TimeDelta>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub disable_breaks: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub repl_mode: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   #[serde(rename = "allowUnsafeEvalBlockedByCSP")]
   pub allow_unsafe_eval_blocked_by_csp: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub unique_context_id: Option<String>,
 }
 
@@ -90,9 +119,13 @@ pub struct EvaluateResponse {
 #[serde(rename_all = "camelCase")]
 pub struct GetPropertiesArgs {
   pub object_id: RemoteObjectId,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub own_properties: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub accessor_properties_only: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub generate_preview: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub non_indexed_properties_only: Option<bool>,
 }
 
@@ -108,6 +141,7 @@ pub struct GetPropertiesResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalLexicalScopeNamesArgs {
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub execution_context_id: Option<ExecutionContextId>,
 }
 
@@ -121,6 +155,7 @@ pub struct GlobalLexicalScopeNamesResponse {
 #[serde(rename_all = "camelCase")]
 pub struct QueryObjectsArgs {
   pub prototype_object_id: RemoteObjectId,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub object_group: Option<String>,
 }
 
@@ -146,13 +181,22 @@ pub struct ReleaseObjectGroupArgs {
 #[serde(rename_all = "camelCase")]
 pub struct RunScriptArgs {
   pub script_id: ScriptId,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub execution_context_id: Option<ExecutionContextId>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub object_group: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub silent: Option<bool>,
-  #[serde(rename = "includeCommandLineAPI")]
+  #[serde(
+    rename = "includeCommandLineAPI",
+    skip_serializing_if = "Option::is_none"
+  )]
   pub include_command_line_api: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub return_by_value: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub generate_preview: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub await_promise: Option<bool>,
 }
 
@@ -324,8 +368,11 @@ pub struct StackTraceId {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CallArgument {
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub value: Option<Value>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub unserializable_value: Option<UnserializableValue>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub object_id: Option<RemoteObjectId>,
 }
 
