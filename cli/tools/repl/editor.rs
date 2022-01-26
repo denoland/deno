@@ -37,13 +37,13 @@ impl EditorHelper {
   pub fn get_global_lexical_scope_names(&self) -> Vec<String> {
     let evaluate_response = self
       .sync_sender
-      .post_message(inspector_structures::Methods::GlobalLexicalScopeNames(
-        inspector_structures::GlobalLexicalScopeNamesArgs {
+      .post_message(inspector_structures::Methods::RuntimeGlobalLexicalScopeNames(
+        inspector_structures::runtime::GlobalLexicalScopeNamesArgs {
           execution_context_id: Some(self.context_id),
         },
       ))
       .unwrap();
-    let evaluate_response: inspector_structures::GlobalLexicalScopeNamesResponse = serde_json::from_value(evaluate_response).unwrap();
+    let evaluate_response: inspector_structures::runtime::GlobalLexicalScopeNamesResponse = serde_json::from_value(evaluate_response).unwrap();
     evaluate_response.names
   }
 
@@ -86,8 +86,8 @@ impl EditorHelper {
 
     let get_properties_response = self
       .sync_sender
-      .post_message(inspector_structures::Methods::GetProperties(
-        inspector_structures::GetPropertiesArgs {
+      .post_message(inspector_structures::Methods::RuntimeGetProperties(
+        inspector_structures::runtime::GetPropertiesArgs {
           object_id,
           own_properties: None,
           accessor_properties_only: None,
@@ -96,7 +96,7 @@ impl EditorHelper {
         },
       ))
       .ok()?;
-    let get_properties_response: inspector_structures::GetPropertiesResponse =
+    let get_properties_response: inspector_structures::runtime::GetPropertiesResponse =
       serde_json::from_value(get_properties_response).ok()?;
     Some(
       get_properties_response
@@ -110,11 +110,11 @@ impl EditorHelper {
   fn evaluate_expression(
     &self,
     expr: &str,
-  ) -> Option<inspector_structures::EvaluateResponse> {
+  ) -> Option<inspector_structures::runtime::EvaluateResponse> {
     let evaluate_response = self
       .sync_sender
-      .post_message(inspector_structures::Methods::Evaluate(
-        inspector_structures::EvaluateArgs {
+      .post_message(inspector_structures::Methods::RuntimeEvaluate(
+        inspector_structures::runtime::EvaluateArgs {
           expression: expr.to_string(),
           object_group: None,
           include_command_line_api: None,
@@ -133,7 +133,7 @@ impl EditorHelper {
         },
       ))
       .ok()?;
-    let evaluate_response: inspector_structures::EvaluateResponse =
+    let evaluate_response: inspector_structures::runtime::EvaluateResponse =
       serde_json::from_value(evaluate_response).ok()?;
 
     if evaluate_response.exception_details.is_some() {

@@ -4,27 +4,6 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "method", content = "params")]
-pub enum Methods {
-  AwaitPromise(AwaitPromiseArgs),
-  CallFunctionOn(CallFunctionOnArgs),
-  CompileScript(CompileScriptArgs),
-  Disable,
-  DiscardConsoleEntries,
-  Enable,
-  Evaluate(EvaluateArgs),
-  GetProperties(GetPropertiesArgs),
-  GlobalLexicalScopeNames(GlobalLexicalScopeNamesArgs),
-  QueryObjects(QueryObjectsArgs),
-  ReleaseObject(ReleaseObjectArgs),
-  ReleaseObjectGroup(ReleaseObjectGroupArgs),
-  RunIfWaitingForDebugger,
-  RunScript(RunScriptArgs),
-  SetAsyncCallStackDepth(SetAsyncCallStackDepthArgs),
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AwaitPromiseArgs {
   pub promise_object_id: RemoteObjectId,
   pub return_by_value: Option<bool>,

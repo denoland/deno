@@ -59,7 +59,7 @@ impl std::fmt::Display for EvaluationOutput {
 
 struct TsEvaluateResponse {
   ts_code: String,
-  value: inspector_structures::EvaluateResponse,
+  value: inspector_structures::runtime::EvaluateResponse,
 }
 
 pub struct ReplSession {
@@ -164,7 +164,7 @@ impl ReplSession {
 
     match self.evaluate_line_with_object_wrapping(line).await {
       Ok(evaluate_response) => {
-        let inspector_structures::EvaluateResponse {
+        let inspector_structures::runtime::EvaluateResponse {
           result,
           exception_details,
         } = evaluate_response.value;
@@ -244,10 +244,10 @@ impl ReplSession {
 
   async fn set_last_thrown_error(
     &mut self,
-    error: &inspector_structures::RemoteObject,
+    error: &inspector_structures::runtime::RemoteObject,
   ) -> Result<(), AnyError> {
     self.post_message_with_event_loop(
-      inspector_structures::Methods::CallFunctionOn(inspector_structures::CallFunctionOnArgs {
+      inspector_structures::Methods::RuntimeCallFunctionOn(inspector_structures::runtime::CallFunctionOnArgs {
         function_declaration: "function (object) { Deno[Deno.internal].lastThrownError = object; }".to_string(),
         object_id: None,
         arguments: Some(vec![error.into()]),
@@ -266,15 +266,15 @@ impl ReplSession {
 
   async fn set_last_eval_result(
     &mut self,
-    evaluate_result: &inspector_structures::RemoteObject,
+    evaluate_result: &inspector_structures::runtime::RemoteObject,
   ) -> Result<(), AnyError> {
-    let evaluate_result = inspector_structures::CallArgument {
+    let evaluate_result = inspector_structures::runtime::CallArgument {
       value: evaluate_result.value.clone(),
       unserializable_value: evaluate_result.unserializable_value.clone(),
       object_id: evaluate_result.object_id.clone(),
     };
     self.post_message_with_event_loop(
-      inspector_structures::Methods::CallFunctionOn(inspector_structures::CallFunctionOnArgs {
+      inspector_structures::Methods::RuntimeCallFunctionOn(inspector_structures::runtime::CallFunctionOnArgs {
         function_declaration: "function (object) { Deno[Deno.internal].lastEvalResult = object; }".to_string(),
         object_id: None,
         arguments: Some(vec![evaluate_result.into()]),
@@ -293,13 +293,13 @@ impl ReplSession {
 
   pub async fn get_eval_value(
     &mut self,
-    evaluate_result: &inspector_structures::RemoteObject,
+    evaluate_result: &inspector_structures::runtime::RemoteObject,
   ) -> Result<String, AnyError> {
     // TODO(caspervonb) we should investigate using previews here but to keep things
     // consistent with the previous implementation we just get the preview result from
     // Deno.inspectArgs.
     let inspect_response = self.post_message_with_event_loop(
-      inspector_structures::Methods::CallFunctionOn(inspector_structures::CallFunctionOnArgs {
+      inspector_structures::Methods::RuntimeCallFunctionOn(inspector_structures::runtime::CallFunctionOnArgs {
         function_declaration: r#"function (object) {
           try {
             return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
@@ -320,7 +320,7 @@ impl ReplSession {
       }),
     ).await?;
 
-    let response: inspector_structures::CallFunctionOnResponse =
+    let response: inspector_structures::runtime::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
     let value = response.result.value.unwrap();
     let s = value.as_str().unwrap();
@@ -375,10 +375,10 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<inspector_structures::EvaluateResponse, AnyError> {
+  ) -> Result<inspector_structures::runtime::EvaluateResponse, AnyError> {
     self
-      .post_message_with_event_loop(inspector_structures::Methods::Evaluate(
-        inspector_structures::EvaluateArgs {
+      .post_message_with_event_loop(inspector_structures::Methods::RuntimeEvaluate(
+        inspector_structures::runtime::EvaluateArgs {
           expression: expression.to_string(),
           object_group: None,
           include_command_line_api: None,
