@@ -31,6 +31,7 @@
     ObjectDefineProperties,
     ObjectDefineProperty,
     ObjectGetPrototypeOf,
+    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     Promise,
     PromiseAll,
@@ -134,7 +135,7 @@
 
   /** @param {any} e */
   function rethrowAssertionErrorRejection(e) {
-    if (e && e instanceof AssertionError) {
+    if (e && ObjectPrototypeIsPrototypeOf(AssertionError, e)) {
       queueMicrotask(() => {
         console.error(`Internal Error: ${e.stack}`);
       });
@@ -214,7 +215,10 @@
    */
   function canTransferArrayBuffer(O) {
     assert(typeof O === "object");
-    assert(O instanceof ArrayBuffer || O instanceof SharedArrayBuffer);
+    assert(
+      ObjectPrototypeIsPrototypeOf(ArrayBuffer, O) ||
+        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer, O),
+    );
     if (isDetachedBuffer(O)) {
       return false;
     }
@@ -1364,15 +1368,15 @@
     let ctor = DataView;
 
     if (
-      view instanceof Int8Array ||
-      view instanceof Uint8Array ||
-      view instanceof Uint8ClampedArray ||
-      view instanceof Int16Array ||
-      view instanceof Uint16Array ||
-      view instanceof Int32Array ||
-      view instanceof Uint32Array ||
-      view instanceof BigInt64Array ||
-      view instanceof BigUint64Array
+      ObjectPrototypeIsPrototypeOf(Int8Array, view) ||
+      ObjectPrototypeIsPrototypeOf(Uint8Array, view) ||
+      ObjectPrototypeIsPrototypeOf(Uint8ClampedArray, view) ||
+      ObjectPrototypeIsPrototypeOf(Int16Array, view) ||
+      ObjectPrototypeIsPrototypeOf(Uint16Array, view) ||
+      ObjectPrototypeIsPrototypeOf(Int32Array, view) ||
+      ObjectPrototypeIsPrototypeOf(Uint32Array, view) ||
+      ObjectPrototypeIsPrototypeOf(BigInt64Array, view) ||
+      ObjectPrototypeIsPrototypeOf(BigUint64Array, view)
     ) {
       elementSize = view.constructor.BYTES_PER_ELEMENT;
       ctor = view.constructor;
@@ -1983,7 +1987,9 @@
       typeof preventClose === "boolean" && typeof preventAbort === "boolean" &&
         typeof preventCancel === "boolean",
     );
-    assert(signal === undefined || signal instanceof AbortSignal);
+    assert(
+      signal === undefined || ObjectPrototypeIsPrototypeOf(AbortSignal, signal),
+    );
     assert(!isReadableStreamLocked(source));
     assert(!isWritableStreamLocked(dest));
     // We use acquireReadableStreamDefaultReader even in case of ReadableByteStreamController
@@ -2327,7 +2333,12 @@
   function readableStreamTee(stream, cloneForBranch2) {
     assert(isReadableStream(stream));
     assert(typeof cloneForBranch2 === "boolean");
-    if (stream[_controller] instanceof ReadableByteStreamController) {
+    if (
+      ObjectPrototypeIsPrototypeOf(
+        ReadableByteStreamController,
+        stream[_controller],
+      )
+    ) {
       return readableByteStreamTee(stream);
     } else {
       return readableStreamDefaultTee(stream, cloneForBranch2);
@@ -2491,7 +2502,12 @@
    */
   function readableByteStreamTee(stream) {
     assert(isReadableStream(stream));
-    assert(stream[_controller] instanceof ReadableByteStreamController);
+    assert(
+      ObjectPrototypeIsPrototypeOf(
+        ReadableByteStreamController,
+        stream[_controller],
+      ),
+    );
     let reader = acquireReadableStreamDefaultReader(stream);
     let reading = false;
     let readAgainForBranch1 = false;
@@ -2999,7 +3015,12 @@
     if (isReadableStreamLocked(stream)) {
       throw new TypeError("ReadableStream is locked.");
     }
-    if (!(stream[_controller] instanceof ReadableByteStreamController)) {
+    if (
+      !(ObjectPrototypeIsPrototypeOf(
+        ReadableByteStreamController,
+        stream[_controller],
+      ))
+    ) {
       throw new TypeError("Cannot use a BYOB reader with a non-byte stream");
     }
     readableStreamReaderGenericInitialize(reader, stream);
@@ -3032,7 +3053,7 @@
     transformAlgorithm,
     flushAlgorithm,
   ) {
-    assert(stream instanceof TransformStream);
+    assert(ObjectPrototypeIsPrototypeOf(TransformStream, stream));
     assert(stream[_controller] === undefined);
     controller[_stream] = stream;
     stream[_controller] = controller;
@@ -4188,7 +4209,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof ByteLengthQueuingStrategy,
+        evaluate: ObjectPrototypeIsPrototypeOf(ByteLengthQueuingStrategy, this),
         keys: [
           "highWaterMark",
           "size",
@@ -4240,7 +4261,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof CountQueuingStrategy,
+        evaluate: ObjectPrototypeIsPrototypeOf(CountQueuingStrategy, this),
         keys: [
           "highWaterMark",
           "size",
@@ -4900,7 +4921,10 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof ReadableByteStreamController,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableByteStreamController,
+          this,
+        ),
         keys: ["desiredSize"],
       }));
     }
@@ -5042,7 +5066,10 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof ReadableStreamDefaultController,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ReadableStreamDefaultController,
+          this,
+        ),
         keys: ["desiredSize"],
       }));
     }
@@ -5260,7 +5287,10 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof TransformStreamDefaultController,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          TransformStreamDefaultController,
+          this,
+        ),
         keys: ["desiredSize"],
       }));
     }
@@ -5531,7 +5561,10 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof WritableStreamDefaultWriter,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          WritableStreamDefaultWriter,
+          this,
+        ),
         keys: [
           "closed",
           "desiredSize",
@@ -5594,7 +5627,10 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof WritableStreamDefaultController,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          WritableStreamDefaultController,
+          this,
+        ),
         keys: [],
       }));
     }

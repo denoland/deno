@@ -5,6 +5,7 @@
   const core = window.Deno.core;
   const { BadResource, Interrupted } = core;
   const {
+    ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
     SymbolAsyncIterator,
     Uint8Array,
@@ -124,7 +125,10 @@
       try {
         conn = await this.accept();
       } catch (error) {
-        if (error instanceof BadResource || error instanceof Interrupted) {
+        if (
+          ObjectPrototypeIsPrototypeOf(BadResource, error) ||
+          ObjectPrototypeIsPrototypeOf(Interrupted, error)
+        ) {
           return { value: undefined, done: true };
         }
         throw error;
@@ -191,7 +195,10 @@
         try {
           yield await this.receive();
         } catch (err) {
-          if (err instanceof BadResource || err instanceof Interrupted) {
+          if (
+            ObjectPrototypeIsPrototypeOf(BadResource, err) ||
+            ObjectPrototypeIsPrototypeOf(Interrupted, err)
+          ) {
             break;
           }
           throw err;

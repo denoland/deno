@@ -9,6 +9,7 @@
     ArrayPrototypeReverse,
     ArrayPrototypeSlice,
     ObjectKeys,
+    ObjectPrototypeIsPrototypeOf,
     Symbol,
     SymbolFor,
     TypeError,
@@ -177,7 +178,7 @@
     [customInspect](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof PerformanceEntry,
+        evaluate: ObjectPrototypeIsPrototypeOf(PerformanceEntry, this),
         keys: [
           "name",
           "entryType",
@@ -244,7 +245,7 @@
     [customInspect](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof PerformanceMark,
+        evaluate: ObjectPrototypeIsPrototypeOf(PerformanceMark, this),
         keys: [
           "name",
           "entryType",
@@ -300,7 +301,7 @@
     [customInspect](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof PerformanceMeasure,
+        evaluate: ObjectPrototypeIsPrototypeOf(PerformanceMeasure, this),
         keys: [
           "name",
           "entryType",
@@ -543,7 +544,7 @@
     [customInspect](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Performance,
+        evaluate: ObjectPrototypeIsPrototypeOf(Performance, this),
         keys: [],
       }));
     }

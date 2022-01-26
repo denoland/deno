@@ -20,6 +20,7 @@
     ArrayPrototypeFilter,
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
+    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     Symbol,
     SymbolFor,
@@ -142,7 +143,7 @@
               this[_id],
             );
           } catch (err) {
-            if (err instanceof Interrupted) break;
+            if (ObjectPrototypeIsPrototypeOf(Interrupted, err)) break;
             throw err;
           }
           if (data === null) break;
@@ -160,7 +161,7 @@
             data: message,
             ports: ArrayPrototypeFilter(
               transferables,
-              (t) => t instanceof MessagePort,
+              (t) => ObjectPrototypeIsPrototypeOf(MessagePort, t),
             ),
           });
           this.dispatchEvent(event);
@@ -245,7 +246,7 @@
   function serializeJsMessageData(data, transferables) {
     const transferedArrayBuffers = ArrayPrototypeFilter(
       transferables,
-      (a) => a instanceof ArrayBuffer,
+      (a) => ObjectPrototypeIsPrototypeOf(ArrayBuffer, a),
     );
 
     for (const arrayBuffer of transferedArrayBuffers) {
@@ -266,7 +267,7 @@
       serializedData = core.serialize(data, {
         hostObjects: ArrayPrototypeFilter(
           transferables,
-          (a) => a instanceof MessagePort,
+          (a) => ObjectPrototypeIsPrototypeOf(MessagePort, a),
         ),
         transferedArrayBuffers,
       });
@@ -279,7 +280,7 @@
 
     let arrayBufferI = 0;
     for (const transferable of transferables) {
-      if (transferable instanceof MessagePort) {
+      if (ObjectPrototypeIsPrototypeOf(MessagePort, transferable)) {
         webidl.assertBranded(transferable, MessagePort);
         const id = transferable[_id];
         if (id === null) {
@@ -293,7 +294,7 @@
           kind: "messagePort",
           data: id,
         });
-      } else if (transferable instanceof ArrayBuffer) {
+      } else if (ObjectPrototypeIsPrototypeOf(ArrayBuffer, transferable)) {
         ArrayPrototypePush(serializedTransferables, {
           kind: "arrayBuffer",
           data: transferedArrayBuffers[arrayBufferI],

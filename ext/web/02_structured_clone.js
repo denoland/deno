@@ -15,6 +15,7 @@
     ArrayBuffer,
     ArrayBufferIsView,
     DataView,
+    ObjectPrototypeIsPrototypeOf,
     TypedArrayPrototypeSlice,
     TypeError,
     WeakMap,
@@ -42,7 +43,7 @@
   function structuredClone(value) {
     // Performance optimization for buffers, otherwise
     // `serialize/deserialize` will allocate new buffer.
-    if (value instanceof ArrayBuffer) {
+    if (ObjectPrototypeIsPrototypeOf(ArrayBuffer, value)) {
       const cloned = cloneArrayBuffer(
         value,
         0,
@@ -59,7 +60,7 @@
       // only DataView has a length in bytes and TypedArrays use a length in
       // terms of elements, so we adjust for that.
       let length;
-      if (value instanceof DataView) {
+      if (ObjectPrototypeIsPrototypeOf(DataView, view)) {
         length = value.byteLength;
       } else {
         length = value.length;
@@ -74,7 +75,7 @@
     try {
       return core.deserialize(core.serialize(value));
     } catch (e) {
-      if (e instanceof TypeError) {
+      if (ObjectPrototypeIsPrototypeOf(TypeError, e)) {
         throw new DOMException("Uncloneable value", "DataCloneError");
       }
       throw e;

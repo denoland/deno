@@ -25,6 +25,7 @@
     MathMax,
     ObjectDefineProperty,
     ObjectFreeze,
+    ObjectPrototypeIsPrototypeOf,
     Promise,
     PromiseAll,
     PromisePrototypeCatch,
@@ -705,7 +706,9 @@
       const validationFilteredPromise = PromisePrototypeCatch(
         operation,
         (err) => {
-          if (err instanceof GPUValidationError) return PromiseReject(err);
+          if (ObjectPrototypeIsPrototypeOf(GPUValidationError, err)) {
+            return PromiseReject(err);
+          }
           return PromiseResolve();
         },
       );
@@ -728,7 +731,9 @@
       );
       const oomScope = oomStack[oomStack.length - 1];
       const oomFilteredPromise = PromisePrototypeCatch(operation, (err) => {
-        if (err instanceof GPUOutOfMemoryError) return PromiseReject(err);
+        if (ObjectPrototypeIsPrototypeOf(GPUOutOfMemoryError, err)) {
+          return PromiseReject(err);
+        }
         return PromiseResolve();
       });
       if (oomScope) {
@@ -1019,7 +1024,7 @@
       const entries = ArrayPrototypeMap(descriptor.entries, (entry, i) => {
         const context = `entry ${i + 1}`;
         const resource = entry.resource;
-        if (resource instanceof GPUSampler) {
+        if (ObjectPrototypeIsPrototypeOf(GPUSampler, resource)) {
           const rid = assertResource(resource, {
             prefix,
             context,
@@ -1034,7 +1039,7 @@
             kind: "GPUSampler",
             resource: rid,
           };
-        } else if (resource instanceof GPUTextureView) {
+        } else if (ObjectPrototypeIsPrototypeOf(GPUTextureView, resource)) {
           const rid = assertResource(resource, {
             prefix,
             context,
@@ -3712,7 +3717,7 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      if (!(dynamicOffsetsData instanceof Uint32Array)) {
+      if (!(ObjectPrototypeIsPrototypeOf(Uint32Array, dynamicOffsetsData))) {
         dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
         dynamicOffsetsDataStart = 0;
         dynamicOffsetsDataLength = dynamicOffsetsData.length;
@@ -4438,7 +4443,7 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      if (!(dynamicOffsetsData instanceof Uint32Array)) {
+      if (!(ObjectPrototypeIsPrototypeOf(Uint32Array, dynamicOffsetsData))) {
         dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
         dynamicOffsetsDataStart = 0;
         dynamicOffsetsDataLength = dynamicOffsetsData.length;
@@ -4672,7 +4677,7 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      if (!(dynamicOffsetsData instanceof Uint32Array)) {
+      if (!(ObjectPrototypeIsPrototypeOf(Uint32Array, dynamicOffsetsData))) {
         dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
         dynamicOffsetsDataStart = 0;
         dynamicOffsetsDataLength = dynamicOffsetsData.length;

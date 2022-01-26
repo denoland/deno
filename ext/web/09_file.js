@@ -23,6 +23,7 @@
     DatePrototypeGetTime,
     MathMax,
     MathMin,
+    ObjectPrototypeIsPrototypeOf,
     RegExpPrototypeTest,
     StringPrototypeCharAt,
     StringPrototypeToLowerCase,
@@ -109,7 +110,7 @@
     const processedParts = [];
     let size = 0;
     for (const element of parts) {
-      if (element instanceof ArrayBuffer) {
+      if (ObjectPrototypeIsPrototypeOf(ArrayBuffer, element)) {
         const chunk = new Uint8Array(ArrayBufferPrototypeSlice(element, 0));
         ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
         size += element.byteLength;
@@ -121,7 +122,7 @@
         );
         size += element.byteLength;
         ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
-      } else if (element instanceof Blob) {
+      } else if (ObjectPrototypeIsPrototypeOf(Blob, element)) {
         ArrayPrototypePush(processedParts, element);
         size += element.size;
       } else if (typeof element === "string") {
@@ -157,7 +158,7 @@
    */
   function getParts(blob, bag = []) {
     for (const part of blob[_parts]) {
-      if (part instanceof Blob) {
+      if (ObjectPrototypeIsPrototypeOf(Blob, part)) {
         getParts(part, bag);
       } else {
         ArrayPrototypePush(bag, part._id);
@@ -361,7 +362,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Blob,
+        evaluate: ObjectPrototypeIsPrototypeOf(Blob, this),
         keys: [
           "size",
           "type",
@@ -376,10 +377,13 @@
   webidl.converters["BlobPart"] = (V, opts) => {
     // Union for ((ArrayBuffer or ArrayBufferView) or Blob or USVString)
     if (typeof V == "object") {
-      if (V instanceof Blob) {
+      if (ObjectPrototypeIsPrototypeOf(Blob, V)) {
         return webidl.converters["Blob"](V, opts);
       }
-      if (V instanceof ArrayBuffer || V instanceof SharedArrayBuffer) {
+      if (
+        ObjectPrototypeIsPrototypeOf(ArrayBuffer, V) ||
+        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer, V)
+      ) {
         return webidl.converters["ArrayBuffer"](V, opts);
       }
       if (ArrayBufferIsView(V)) {

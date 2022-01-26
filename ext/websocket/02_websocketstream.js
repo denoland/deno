@@ -11,18 +11,19 @@
   const { add, remove } = window.__bootstrap.abortSignal;
 
   const {
+    ArrayPrototypeJoin,
+    ArrayPrototypeMap,
+    Error,
+    ObjectPrototypeIsPrototypeOf,
+    PromisePrototypeCatch,
+    PromisePrototypeThen,
+    Set,
     StringPrototypeEndsWith,
     StringPrototypeToLowerCase,
     Symbol,
     SymbolFor,
-    Set,
-    ArrayPrototypeMap,
-    ArrayPrototypeJoin,
-    PromisePrototypeThen,
-    PromisePrototypeCatch,
-    Uint8Array,
     TypeError,
-    Error,
+    Uint8Array,
   } = window.__bootstrap.primordials;
 
   webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
@@ -195,7 +196,7 @@
                       kind: "text",
                       value: chunk,
                     });
-                  } else if (chunk instanceof Uint8Array) {
+                  } else if (ObjectPrototypeIsPrototypeOf(Uint8Array, chunk)) {
                     await core.opAsync("op_ws_send", this[_rid], {
                       kind: "binary",
                       value: chunk,
@@ -296,7 +297,7 @@
             }
           },
           (err) => {
-            if (err instanceof core.Interrupted) {
+            if (ObjectPrototypeIsPrototypeOf(core.Interrupted, err)) {
               // The signal was aborted.
               err = options.signal.reason;
             } else {

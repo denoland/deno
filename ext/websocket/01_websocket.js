@@ -15,18 +15,19 @@
     ArrayBuffer,
     ArrayBufferIsView,
     ArrayPrototypeJoin,
-    DataView,
-    ErrorPrototypeToString,
-    Set,
-    Symbol,
-    String,
-    StringPrototypeToLowerCase,
-    StringPrototypeEndsWith,
-    RegExpPrototypeTest,
-    ObjectDefineProperties,
     ArrayPrototypeMap,
     ArrayPrototypeSome,
+    DataView,
+    ErrorPrototypeToString,
+    ObjectDefineProperties,
+    ObjectPrototypeIsPrototypeOf,
     PromisePrototypeThen,
+    RegExpPrototypeTest,
+    Set,
+    String,
+    StringPrototypeEndsWith,
+    StringPrototypeToLowerCase,
+    Symbol,
   } = window.__bootstrap.primordials;
 
   webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
@@ -41,12 +42,15 @@
 
   webidl.converters["WebSocketSend"] = (V, opts) => {
     // Union for (Blob or ArrayBufferView or ArrayBuffer or USVString)
-    if (V instanceof Blob) {
+    if (ObjectPrototypeIsPrototypeOf(Blob, V)) {
       return webidl.converters["Blob"](V, opts);
     }
     if (typeof V === "object") {
       // TODO(littledivy): use primordial for SharedArrayBuffer
-      if (V instanceof ArrayBuffer || V instanceof SharedArrayBuffer) {
+      if (
+        ObjectPrototypeIsPrototypeOf(ArrayBuffer, V) ||
+        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer, V)
+      ) {
         return webidl.converters["ArrayBuffer"](V, opts);
       }
       if (ArrayBufferIsView(V)) {
@@ -295,14 +299,14 @@
         );
       };
 
-      if (data instanceof Blob) {
+      if (ObjectPrototypeIsPrototypeOf(Blobl, data)) {
         PromisePrototypeThen(
           data.slice().arrayBuffer(),
           (ab) => sendTypedArray(new DataView(ab)),
         );
       } else if (ArrayBufferIsView(data)) {
         sendTypedArray(data);
-      } else if (data instanceof ArrayBuffer) {
+      } else if (ObjectPrototypeIsPrototypeOf(ArrayBuffer, data)) {
         sendTypedArray(new DataView(data));
       } else {
         const string = String(data);

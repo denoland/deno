@@ -16,6 +16,7 @@
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayBufferIsView,
+    ObjectPrototypeIsPrototypeOf,
     PromiseReject,
     PromiseResolve,
     StringPrototypeCharCodeAt,
@@ -119,7 +120,7 @@
           // If the buffer is detached, just create a new empty Uint8Array.
           input = new Uint8Array();
         }
-        if (input.buffer instanceof SharedArrayBuffer) {
+        if (ObjectPrototypeIsPrototypeOf(SharedArrayBuffer, input.buffer)) {
           // We clone the data into a non-shared ArrayBuffer so we can pass it
           // to Rust.
           // `input` is now a Uint8Array, and calling the TypedArray constructor

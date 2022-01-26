@@ -32,6 +32,7 @@
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
     ArrayPrototypeSome,
+    ObjectPrototypeIsPrototypeOf,
     Promise,
     Set,
     SetPrototypeAdd,
@@ -81,8 +82,8 @@
         // those with it.
         this[connErrorSymbol] = error;
         if (
-          error instanceof BadResource ||
-          error instanceof Interrupted ||
+          ObjectPrototypeIsPrototypeOf(BadResource, error) ||
+          ObjectPrototypeIsPrototypeOf(Interrupted, error) ||
           StringPrototypeIncludes(error.message, "connection closed")
         ) {
           return null;
@@ -158,11 +159,11 @@
   function createRespondWith(httpConn, streamRid) {
     return async function respondWith(resp) {
       try {
-        if (resp instanceof Promise) {
+        if (ObjectPrototypeIsPrototypeOf(Promise, resp)) {
           resp = await resp;
         }
 
-        if (!(resp instanceof Response)) {
+        if (!(ObjectPrototypeIsPrototypeOf(Response, resp))) {
           throw new TypeError(
             "First argument to respondWith must be a Response or a promise resolving to a Response.",
           );
@@ -179,10 +180,15 @@
           if (innerResp.body.unusable()) {
             throw new TypeError("Body is unusable.");
           }
-          if (innerResp.body.streamOrStatic instanceof ReadableStream) {
+          if (
+            ObjectPrototypeIsPrototypeOf(
+              ReadableStream,
+              innerResp.body.streamOrStatic,
+            )
+          ) {
             if (
               innerResp.body.length === null ||
-              innerResp.body.source instanceof Blob
+              ObjectPrototypeIsPrototypeOf(Blobl, innerResp.body.source)
             ) {
               respBody = innerResp.body.stream;
             } else {
@@ -204,7 +210,8 @@
           respBody = new Uint8Array(0);
         }
         const isStreamingResponseBody = !(
-          typeof respBody === "string" || respBody instanceof Uint8Array
+          typeof respBody === "string" ||
+          ObjectPrototypeIsPrototypeOf(Uint8Array, respBody)
         );
 
         try {
@@ -215,25 +222,34 @@
           );
         } catch (error) {
           const connError = httpConn[connErrorSymbol];
-          if (error instanceof BadResource && connError != null) {
+          if (
+            ObjectPrototypeIsPrototypeOf(BadResource, error) &&
+            connError != null
+          ) {
             // deno-lint-ignore no-ex-assign
             error = new connError.constructor(connError.message);
           }
-          if (respBody !== null && respBody instanceof ReadableStream) {
+          if (
+            respBody !== null &&
+            ObjectPrototypeIsPrototypeOf(ReadableStream, respBody)
+          ) {
             await respBody.cancel(error);
           }
           throw error;
         }
 
         if (isStreamingResponseBody) {
-          if (respBody === null || !(respBody instanceof ReadableStream)) {
+          if (
+            respBody === null ||
+            !ObjectPrototypeIsPrototypeOf(ReadableStream, respBody)
+          ) {
             throw new TypeError("Unreachable");
           }
           const reader = respBody.getReader();
           while (true) {
             const { value, done } = await reader.read();
             if (done) break;
-            if (!(value instanceof Uint8Array)) {
+            if (!ObjectPrototypeIsPrototypeOf(Uint8Array, value)) {
               await reader.cancel(new TypeError("Value not a Uint8Array"));
               break;
             }
@@ -241,7 +257,10 @@
               await core.opAsync("op_http_write", streamRid, value);
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
-              if (error instanceof BadResource && connError != null) {
+              if (
+                ObjectPrototypeIsPrototypeOf(BadResource, error) &&
+                connError != null
+              ) {
                 // deno-lint-ignore no-ex-assign
                 error = new connError.constructor(connError.message);
               }

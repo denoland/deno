@@ -143,7 +143,9 @@ delete Object.prototype.__proto__;
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transferables.filter((t) => ObjectPrototypeIsPrototypeOf(MessagePort, t)),
+        ports: transferables.filter((t) =>
+          ObjectPrototypeIsPrototypeOf(MessagePort, t)
+        ),
       });
 
       try {

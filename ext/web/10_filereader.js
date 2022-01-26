@@ -28,6 +28,7 @@
     MapPrototypeGet,
     MapPrototypeSet,
     ObjectDefineProperty,
+    ObjectPrototypeIsPrototypeOf,
     queueMicrotask,
     StringFromCodePoint,
     Symbol,
@@ -116,7 +117,10 @@
 
             // 4. If chunkPromise is fulfilled with an object whose done property is false
             // and whose value property is a Uint8Array object, run these steps:
-            if (!chunk.done && chunk.value instanceof Uint8Array) {
+            if (
+              !chunk.done &&
+              ObjectPrototypeIsPrototypeOf(Uint8Array, chunk.value)
+            ) {
               ArrayPrototypePush(chunks, chunk.value);
 
               // TODO(bartlomieju): (only) If roughly 50ms have passed since last progress

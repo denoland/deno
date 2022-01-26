@@ -16,6 +16,7 @@
     ErrorPrototype,
     ObjectDefineProperty,
     ObjectEntries,
+    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     SymbolFor,
   } = window.__bootstrap.primordials;
@@ -126,7 +127,7 @@
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      if (this instanceof DOMException) {
+      if (ObjectPrototypeIsPrototypeOf(DOMException, this)) {
         return `DOMException: ${this.#message}`;
       } else {
         return inspect(consoleInternal.createFilteredInspectProxy({

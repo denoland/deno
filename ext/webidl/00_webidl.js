@@ -50,6 +50,7 @@
     ObjectGetOwnPropertyDescriptors,
     ObjectGetPrototypeOf,
     ObjectPrototypeHasOwnProperty,
+    ObjectPrototypeIsPrototypeOf,
     ObjectIs,
     PromisePrototypeThen,
     PromiseReject,
@@ -434,11 +435,11 @@
   }
 
   function isNonSharedArrayBuffer(V) {
-    return V instanceof ArrayBuffer;
+    return ObjectPrototypeIsPrototypeOf(ArrayBuffer, V);
   }
 
   function isSharedArrayBuffer(V) {
-    return V instanceof SharedArrayBuffer;
+    return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer, V);
   }
 
   converters.ArrayBuffer = (V, opts = {}) => {
@@ -457,7 +458,7 @@
   };
 
   converters.DataView = (V, opts = {}) => {
-    if (!(V instanceof DataView)) {
+    if (!(ObjectPrototypeIsPrototypeOf(DataView, V))) {
       throw makeException(TypeError, "is not a DataView", opts);
     }
 
@@ -862,7 +863,7 @@
 
   function createInterfaceConverter(name, prototype) {
     return (V, opts) => {
-      if (!(V instanceof prototype) || V[brand] !== brand) {
+      if (!(ObjectPrototypeIsPrototypeOf(prototype, V)) || V[brand] !== brand) {
         throw makeException(TypeError, `is not of type ${name}.`, opts);
       }
       return V;
@@ -877,7 +878,9 @@
   }
 
   function assertBranded(self, prototype) {
-    if (!(self instanceof prototype) || self[brand] !== brand) {
+    if (
+      !(ObjectPrototypeIsPrototypeOf(prototype, self)) || self[brand] !== brand
+    ) {
       throw new TypeError("Illegal invocation");
     }
   }
