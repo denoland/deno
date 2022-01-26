@@ -34,7 +34,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use deno_graph::Module;
+use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use log::Level;
@@ -724,7 +724,7 @@ async fn check_specifiers(
   if !inline_files.is_empty() {
     let specifiers = inline_files
       .iter()
-      .map(|file| file.specifier.clone())
+      .map(|file| (file.specifier.clone(), ModuleKind::Esm))
       .collect();
 
     for file in inline_files {
@@ -746,7 +746,7 @@ async fn check_specifiers(
     .iter()
     .filter_map(|(specifier, mode)| {
       if *mode != TestMode::Documentation {
-        Some(specifier.clone())
+        Some((specifier.clone(), ModuleKind::Esm))
       } else {
         None
       }
@@ -994,6 +994,13 @@ async fn fetch_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
+fn contains_specifier(
+  v: &[(ModuleSpecifier, ModuleKind)],
+  specifier: &ModuleSpecifier,
+) -> bool {
+  v.iter().any(|(s, _)| s == specifier)
+}
+
 pub async fn run_tests(
   flags: Flags,
   test_flags: TestFlags,
@@ -1113,7 +1120,7 @@ pub async fn run_tests_with_watch(
       } else {
         test_modules
           .iter()
-          .filter_map(|url| deno_core::resolve_url(url.as_str()).ok())
+          .map(|url| (url.clone(), ModuleKind::Esm))
           .collect()
       };
       let maybe_imports = if let Some(result) = maybe_imports {
@@ -1129,7 +1136,10 @@ pub async fn run_tests_with_watch(
           .map(|im| im.as_resolver())
       };
       let graph = deno_graph::create_graph(
-        test_modules.clone(),
+        test_modules
+          .iter()
+          .map(|s| (s.clone(), ModuleKind::Esm))
+          .collect(),
         false,
         maybe_imports,
         cache.as_mut_loader(),
@@ -1151,7 +1161,7 @@ pub async fn run_tests_with_watch(
           output: &mut HashSet<&'a ModuleSpecifier>,
           no_check: bool,
         ) {
-          if let Some(Module::Es(module)) = maybe_module {
+          if let Some(module) = maybe_module {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {
@@ -1197,7 +1207,7 @@ pub async fn run_tests_with_watch(
             deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
           }) {
             if modules.contains(&&path) {
-              modules_to_reload.push(specifier);
+              modules_to_reload.push((specifier, ModuleKind::Esm));
               break;
             }
           }
@@ -1228,7 +1238,7 @@ pub async fn run_tests_with_watch(
     })
   };
 
-  let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
+  let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
     let filter = test_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
@@ -1245,7 +1255,9 @@ pub async fn run_tests_with_watch(
       )
       .await?
       .iter()
-      .filter(|(specifier, _)| modules_to_reload.contains(specifier))
+      .filter(|(specifier, _)| {
+        contains_specifier(&modules_to_reload, specifier)
+      })
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 

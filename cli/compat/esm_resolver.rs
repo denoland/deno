@@ -9,6 +9,7 @@ use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolveResponse;
 use deno_graph::source::Resolver;
 use regex::Regex;
 use std::path::PathBuf;
@@ -31,24 +32,29 @@ impl Resolver for NodeEsmResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> ResolveResponse {
     // First try to resolve using import map, ignoring any errors
     if !specifier.starts_with("node:") {
       if let Some(import_map_resolver) = &self.maybe_import_map_resolver {
-        if let Ok(specifier) = import_map_resolver.resolve(specifier, referrer)
-        {
-          return Ok(specifier);
+        let response = import_map_resolver.resolve(specifier, referrer);
+        if !matches!(response, ResolveResponse::Err(_)) {
+          return response;
         }
       }
     }
 
+    let current_dir = match std::env::current_dir() {
+      Ok(path) => path,
+      Err(err) => return ResolveResponse::Err(err.into()),
+    };
     let node_resolution =
-      node_resolve(specifier, referrer.as_str(), &std::env::current_dir()?);
+      node_resolve(specifier, referrer.as_str(), &current_dir);
 
     match node_resolution {
       Ok(specifier) => {
         // If node resolution succeeded, return the specifier
-        Ok(specifier)
+        // TODO(@bartlomieju) this needs to be refactored for Esm and CommonJs.
+        ResolveResponse::Specifier(specifier)
       }
       Err(err) => {
         // If node resolution failed, check if it's because of unsupported
@@ -57,11 +63,13 @@ impl Resolver for NodeEsmResolver {
           .to_string()
           .starts_with("[ERR_UNSUPPORTED_ESM_URL_SCHEME]")
         {
-          return deno_core::resolve_import(specifier, referrer.as_str())
-            .map_err(|err| err.into());
+          return match deno_core::resolve_import(specifier, referrer.as_str()) {
+            Ok(specifier) => ResolveResponse::Esm(specifier),
+            Err(err) => ResolveResponse::Err(err.into()),
+          };
         }
 
-        Err(err)
+        ResolveResponse::Err(err)
       }
     }
   }
@@ -76,6 +84,7 @@ fn node_resolve(
   referrer: &str,
   cwd: &std::path::Path,
 ) -> Result<ModuleSpecifier, AnyError> {
+  // TODO(@bartlomieju): This should return a `ResolveResponse`
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
   if let Some(resolved) = crate::compat::try_resolve_builtin_module(specifier) {

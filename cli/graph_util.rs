@@ -11,8 +11,10 @@ use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
+use deno_graph::ModuleKind;
 use deno_graph::Range;
 use deno_graph::ResolutionError;
+use deno_graph::Resolved;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -62,7 +64,7 @@ impl GraphData {
         continue;
       }
       match result {
-        Ok((_, media_type)) => {
+        Ok((_, _, media_type)) => {
           let module = graph.get(&specifier).unwrap();
           let (code, dependencies, maybe_types) = match module {
             Module::Es(es_module) => (
@@ -142,7 +144,7 @@ impl GraphData {
   /// Return `None` if any modules are not known.
   pub(crate) fn walk<'a>(
     &'a self,
-    roots: &[ModuleSpecifier],
+    roots: &[(ModuleSpecifier, ModuleKind)],
     follow_dynamic: bool,
     follow_type_only: bool,
     check_js: bool,
@@ -196,10 +198,10 @@ impl GraphData {
               }
               #[allow(clippy::manual_flatten)]
               for resolved in resolutions {
-                if let Some(Ok((dep_specifier, _))) = resolved {
-                  if !seen.contains(dep_specifier) {
-                    seen.insert(dep_specifier);
-                    visiting.push_front(dep_specifier);
+                if let Resolved::Ok { specifier, .. } = resolved {
+                  if !seen.contains(specifier) {
+                    seen.insert(specifier);
+                    visiting.push_front(specifier);
                   }
                 }
               }
@@ -230,7 +232,7 @@ impl GraphData {
   /// `roots`. Returns `None` if any roots are not known.
   pub(crate) fn graph_segment(
     &self,
-    roots: &[ModuleSpecifier],
+    roots: &[(ModuleSpecifier, ModuleKind)],
   ) -> Option<Self> {
     let mut modules = HashMap::new();
     let mut referrer_map = HashMap::new();
@@ -257,7 +259,7 @@ impl GraphData {
   /// not known.
   pub(crate) fn check(
     &self,
-    roots: &[ModuleSpecifier],
+    roots: &[(ModuleSpecifier, ModuleKind)],
     follow_type_only: bool,
     check_js: bool,
   ) -> Option<Result<(), AnyError>> {
@@ -302,7 +304,7 @@ impl GraphData {
               }
               #[allow(clippy::manual_flatten)]
               for resolved in resolutions {
-                if let Some(Err(error)) = resolved {
+                if let Resolved::Err(error) = resolved {
                   let range = error.range();
                   if !range.specifier.as_str().contains("$deno") {
                     return Some(Err(custom_error(
@@ -354,7 +356,7 @@ impl GraphData {
   /// Assumes that all of those modules are known.
   pub(crate) fn set_type_checked(
     &mut self,
-    roots: &[ModuleSpecifier],
+    roots: &[(ModuleSpecifier, ModuleKind)],
     lib: &TypeLib,
   ) {
     let specifiers: Vec<ModuleSpecifier> =
@@ -374,10 +376,10 @@ impl GraphData {
   /// Check if `roots` are all marked as type checked under `lib`.
   pub(crate) fn is_type_checked(
     &self,
-    roots: &[ModuleSpecifier],
+    roots: &[(ModuleSpecifier, ModuleKind)],
     lib: &TypeLib,
   ) -> bool {
-    roots.iter().all(|r| {
+    roots.iter().all(|(r, _)| {
       let found = self.follow_redirect(r);
       match self.modules.get(&found) {
         Some(ModuleEntry::Module { checked_libs, .. }) => {

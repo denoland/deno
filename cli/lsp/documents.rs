@@ -22,6 +22,7 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolveResponse;
 use deno_graph::Module;
 use lspower::lsp;
 use once_cell::sync::Lazy;
@@ -274,7 +275,7 @@ struct DocumentInner {
   maybe_language_id: Option<LanguageId>,
   maybe_lsp_version: Option<i32>,
   maybe_module:
-    Option<Result<deno_graph::EsModule, deno_graph::ModuleGraphError>>,
+    Option<Result<deno_graph::Module, deno_graph::ModuleGraphError>>,
   maybe_navigation_tree: Option<Arc<tsc::NavigationTree>>,
   maybe_warning: Option<String>,
   specifier: ModuleSpecifier,
@@ -525,7 +526,7 @@ impl Document {
 
   fn maybe_module(
     &self,
-  ) -> Option<&Result<deno_graph::EsModule, deno_graph::ModuleGraphError>> {
+  ) -> Option<&Result<deno_graph::Module, deno_graph::ModuleGraphError>> {
     self.0.maybe_module.as_ref()
   }
 
@@ -913,7 +914,10 @@ impl Documents {
   ) -> bool {
     let maybe_resolver = self.get_maybe_resolver();
     let maybe_specifier = if let Some(resolver) = maybe_resolver {
-      resolver.resolve(specifier, referrer).ok()
+      matches!(
+        resolver.resolve(specifier, referrer),
+        ResolveResponse::Ok { .. }
+      )
     } else {
       deno_core::resolve_import(specifier, referrer.as_str()).ok()
     };
