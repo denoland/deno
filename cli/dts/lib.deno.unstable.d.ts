@@ -133,6 +133,18 @@ declare namespace Deno {
    */
   export function networkInterfaces(): NetworkInterfaceInfo[];
 
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns the user id of the process on POSIX platforms. Returns null on windows.
+   *
+   * ```ts
+   * console.log(Deno.getuid());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   */
+  export function getuid(): number | null;
+
   /** All possible types for interfacing with foreign functions */
   export type NativeType =
     | "void"

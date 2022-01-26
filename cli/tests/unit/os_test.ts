@@ -202,3 +202,13 @@ Deno.test({ permissions: { env: true } }, function systemMemoryInfo() {
   assert(info.swapTotal >= 0);
   assert(info.swapFree >= 0);
 });
+
+Deno.test({ permissions: { env: true } }, function getuid() {
+  if (Deno.build.os === "windows") {
+    assertEquals(Deno.getuid(), null);
+  } else {
+    const uid = Deno.getuid();
+    assert(typeof uid === "number");
+    assert(uid > 0);
+  }
+});
