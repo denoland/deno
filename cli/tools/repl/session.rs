@@ -259,11 +259,6 @@ impl ReplSession {
     &mut self,
     evaluate_result: &inspector_structures::RemoteObject,
   ) -> Result<(), AnyError> {
-    let evaluate_result = inspector_structures::CallArgument {
-      value: evaluate_result.value.clone(),
-      unserializable_value: evaluate_result.unserializable_value.clone(),
-      object_id: evaluate_result.object_id.clone(),
-    };
     self
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
