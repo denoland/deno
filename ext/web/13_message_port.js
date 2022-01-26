@@ -163,7 +163,7 @@
             data: message,
             ports: ArrayPrototypeFilter(
               transferables,
-              (t) => ObjectPrototypeIsPrototypeOf(MessagePort.prototype, t),
+              (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
             ),
           });
           this.dispatchEvent(event);
