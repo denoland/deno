@@ -127,7 +127,7 @@
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      if (ObjectPrototypeIsPrototypeOf(DOMException, this)) {
+      if (ObjectPrototypeIsPrototypeOf(DOMException.prototype, this)) {
         return `DOMException: ${this.#message}`;
       } else {
         return inspect(consoleInternal.createFilteredInspectProxy({

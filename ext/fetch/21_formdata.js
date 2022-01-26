@@ -50,12 +50,15 @@
    */
   function createEntry(name, value, filename) {
     if (
-      ObjectPrototypeIsPrototypeOf(Blob, value) &&
-      !ObjectPrototypeIsPrototypeOf(File, value)
+      ObjectPrototypeIsPrototypeOf(Blob.prototype, value) &&
+      !ObjectPrototypeIsPrototypeOf(File.prototype, value)
     ) {
       value = new File([value], "blob", { type: value.type });
     }
-    if (ObjectPrototypeIsPrototypeOf(File, value) && filename !== undefined) {
+    if (
+      ObjectPrototypeIsPrototypeOf(File.prototype, value) &&
+      filename !== undefined
+    ) {
       value = new File([value], filename, {
         type: value.type,
         lastModified: value.lastModified,
@@ -93,7 +96,7 @@
      * @returns {void}
      */
     append(name, valueOrBlobValue, filename) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormData.prototype);
       const prefix = "Failed to execute 'append' on 'FormData'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
 
@@ -101,7 +104,7 @@
         prefix,
         context: "Argument 1",
       });
-      if (ObjectPrototypeIsPrototypeOf(Blobl, valueOrBlobValue)) {
+      if (ObjectPrototypeIsPrototypeOf(Blob.prototype, valueOrBlobValue)) {
         valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
           prefix,
           context: "Argument 2",
@@ -129,7 +132,7 @@
      * @returns {void}
      */
     delete(name) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormData.prototype);
       const prefix = "Failed to execute 'name' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -152,7 +155,7 @@
      * @returns {FormDataEntryValue | null}
      */
     get(name) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormData.prototype);
       const prefix = "Failed to execute 'get' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -172,7 +175,7 @@
      * @returns {FormDataEntryValue[]}
      */
     getAll(name) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormData.prototype);
       const prefix = "Failed to execute 'getAll' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -193,7 +196,7 @@
      * @returns {boolean}
      */
     has(name) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormData.prototype);
       const prefix = "Failed to execute 'has' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -215,7 +218,7 @@
      * @returns {void}
      */
     set(name, valueOrBlobValue, filename) {
-      webidl.assertBranded(this, FormData);
+      webidl.assertBranded(this, FormData.prototype);
       const prefix = "Failed to execute 'set' on 'FormData'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
 
@@ -223,7 +226,7 @@
         prefix,
         context: "Argument 1",
       });
-      if (ObjectPrototypeIsPrototypeOf(Blob, valueOrBlobValue)) {
+      if (ObjectPrototypeIsPrototypeOf(Blob.prototype, valueOrBlobValue)) {
         valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
           prefix,
           context: "Argument 2",
@@ -495,7 +498,7 @@
   }
 
   webidl.converters["FormData"] = webidl
-    .createInterfaceConverter("FormData", FormData);
+    .createInterfaceConverter("FormData", FormData.prototype);
 
   globalThis.__bootstrap.formData = {
     FormData,

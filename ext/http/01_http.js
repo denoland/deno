@@ -33,7 +33,7 @@
     ArrayPrototypePush,
     ArrayPrototypeSome,
     ObjectPrototypeIsPrototypeOf,
-    Promise,
+    PromisePrototype,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
@@ -47,6 +47,7 @@
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
+    Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
   const connErrorSymbol = Symbol("connError");
@@ -82,8 +83,8 @@
         // those with it.
         this[connErrorSymbol] = error;
         if (
-          ObjectPrototypeIsPrototypeOf(BadResource, error) ||
-          ObjectPrototypeIsPrototypeOf(Interrupted, error) ||
+          ObjectPrototypeIsPrototypeOf(BadResource.prototype, error) ||
+          ObjectPrototypeIsPrototypeOf(Interrupted.prototype, error) ||
           StringPrototypeIncludes(error.message, "connection closed")
         ) {
           return null;
@@ -159,11 +160,11 @@
   function createRespondWith(httpConn, streamRid) {
     return async function respondWith(resp) {
       try {
-        if (ObjectPrototypeIsPrototypeOf(Promise, resp)) {
+        if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
           resp = await resp;
         }
 
-        if (!(ObjectPrototypeIsPrototypeOf(Response, resp))) {
+        if (!(ObjectPrototypeIsPrototypeOf(Response.prototype, resp))) {
           throw new TypeError(
             "First argument to respondWith must be a Response or a promise resolving to a Response.",
           );
@@ -182,13 +183,16 @@
           }
           if (
             ObjectPrototypeIsPrototypeOf(
-              ReadableStream,
+              ReadableStream.prototype,
               innerResp.body.streamOrStatic,
             )
           ) {
             if (
               innerResp.body.length === null ||
-              ObjectPrototypeIsPrototypeOf(Blobl, innerResp.body.source)
+              ObjectPrototypeIsPrototypeOf(
+                Blob.prototype,
+                innerResp.body.source,
+              )
             ) {
               respBody = innerResp.body.stream;
             } else {
@@ -211,7 +215,7 @@
         }
         const isStreamingResponseBody = !(
           typeof respBody === "string" ||
-          ObjectPrototypeIsPrototypeOf(Uint8Array, respBody)
+          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
         );
 
         try {
@@ -231,7 +235,7 @@
           }
           if (
             respBody !== null &&
-            ObjectPrototypeIsPrototypeOf(ReadableStream, respBody)
+            ObjectPrototypeIsPrototypeOf(ReadableStream.prototype, respBody)
           ) {
             await respBody.cancel(error);
           }
@@ -241,7 +245,7 @@
         if (isStreamingResponseBody) {
           if (
             respBody === null ||
-            !ObjectPrototypeIsPrototypeOf(ReadableStream, respBody)
+            !ObjectPrototypeIsPrototypeOf(ReadableStream.prototype, respBody)
           ) {
             throw new TypeError("Unreachable");
           }
@@ -249,7 +253,7 @@
           while (true) {
             const { value, done } = await reader.read();
             if (done) break;
-            if (!ObjectPrototypeIsPrototypeOf(Uint8Array, value)) {
+            if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
               await reader.cancel(new TypeError("Value not a Uint8Array"));
               break;
             }
@@ -258,7 +262,7 @@
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
-                ObjectPrototypeIsPrototypeOf(BadResource, error) &&
+                ObjectPrototypeIsPrototypeOf(BadResource.prototype, error) &&
                 connError != null
               ) {
                 // deno-lint-ignore no-ex-assign

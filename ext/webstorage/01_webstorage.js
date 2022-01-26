@@ -25,12 +25,12 @@
     }
 
     get length() {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, Storage.prototype);
       return core.opSync("op_webstorage_length", this[_persistent]);
     }
 
     key(index) {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, Storage.prototype);
       const prefix = "Failed to execute 'key' on 'Storage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       index = webidl.converters["unsigned long"](index, {
@@ -42,7 +42,7 @@
     }
 
     setItem(key, value) {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, Storage.prototype);
       const prefix = "Failed to execute 'setItem' on 'Storage'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       key = webidl.converters.DOMString(key, {
@@ -61,7 +61,7 @@
     }
 
     getItem(key) {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, Storage.prototype);
       const prefix = "Failed to execute 'getItem' on 'Storage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       key = webidl.converters.DOMString(key, {
@@ -73,7 +73,7 @@
     }
 
     removeItem(key) {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, Storage.prototype);
       const prefix = "Failed to execute 'removeItem' on 'Storage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       key = webidl.converters.DOMString(key, {
@@ -85,7 +85,7 @@
     }
 
     clear() {
-      webidl.assertBranded(this, Storage);
+      webidl.assertBranded(this, Storage.prototype);
       core.opSync("op_webstorage_clear", this[_persistent]);
     }
   }

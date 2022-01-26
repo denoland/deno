@@ -5,6 +5,7 @@
   const core = window.Deno.core;
   const {
     Date,
+    DatePrototype,
     MathTrunc,
     ObjectPrototypeIsPrototypeOf,
     SymbolAsyncIterator,
@@ -278,7 +279,7 @@
   }
 
   function toUnixTimeFromEpoch(value) {
-    if (ObjectPrototypeIsPrototypeOf(Date, value)) {
+    if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
       const time = value.valueOf();
       const seconds = MathTrunc(time / 1e3);
       const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;

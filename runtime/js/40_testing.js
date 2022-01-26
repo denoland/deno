@@ -9,14 +9,14 @@
   const { serializePermissions } = window.__bootstrap.permissions;
   const { assert } = window.__bootstrap.util;
   const {
-    AggregateError,
+    AggregateErrorPrototype,
     ArrayPrototypeFilter,
     ArrayPrototypePush,
     ArrayPrototypeShift,
     ArrayPrototypeSome,
     DateNow,
     Error,
-    Function,
+    FunctionPrototype,
     ObjectPrototypeIsPrototypeOf,
     Number,
     ObjectKeys,
@@ -531,7 +531,7 @@ finishing test case.`;
   }
 
   function formatError(error) {
-    if (ObjectPrototypeIsPrototypeOf(AggregateError, error)) {
+    if (ObjectPrototypeIsPrototypeOf(AggregateErrorPrototype, error)) {
       const message = error
         .errors
         .map((error) =>
@@ -985,7 +985,7 @@ finishing test case.`;
         /** @returns {TestStepDefinition} */
         function getDefinition() {
           if (typeof nameOrTestDefinition === "string") {
-            if (!(ObjectPrototypeIsPrototypeOf(Function, fn))) {
+            if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, fn))) {
               throw new TypeError("Expected function for second argument.");
             }
             return {

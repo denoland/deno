@@ -16,7 +16,7 @@
   const { defineEventHandler } = window.__bootstrap.event;
   const { DOMException } = window.__bootstrap.domException;
   const {
-    ArrayBuffer,
+    ArrayBufferPrototype,
     ArrayPrototypeFilter,
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
@@ -47,12 +47,12 @@
     }
 
     get port1() {
-      webidl.assertBranded(this, MessageChannel);
+      webidl.assertBranded(this, MessageChannel.prototype);
       return this.#port1;
     }
 
     get port2() {
-      webidl.assertBranded(this, MessageChannel);
+      webidl.assertBranded(this, MessageChannel.prototype);
       return this.#port2;
     }
 
@@ -97,7 +97,7 @@
      * @param {object[] | StructuredSerializeOptions} transferOrOptions
      */
     postMessage(message, transferOrOptions = {}) {
-      webidl.assertBranded(this, MessagePort);
+      webidl.assertBranded(this, MessagePort.prototype);
       const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       message = webidl.converters.any(message);
@@ -131,7 +131,7 @@
     }
 
     start() {
-      webidl.assertBranded(this, MessagePort);
+      webidl.assertBranded(this, MessagePort.prototype);
       if (this[_enabled]) return;
       (async () => {
         this[_enabled] = true;
@@ -144,7 +144,7 @@
               this[_id],
             );
           } catch (err) {
-            if (ObjectPrototypeIsPrototypeOf(Interrupted, err)) break;
+            if (ObjectPrototypeIsPrototypeOf(Interrupted.prototype, err)) break;
             throw err;
           }
           if (data === null) break;
@@ -162,7 +162,7 @@
             data: message,
             ports: ArrayPrototypeFilter(
               transferables,
-              (t) => ObjectPrototypeIsPrototypeOf(MessagePort, t),
+              (t) => ObjectPrototypeIsPrototypeOf(MessagePort.prototype, t),
             ),
           });
           this.dispatchEvent(event);
@@ -172,7 +172,7 @@
     }
 
     close() {
-      webidl.assertBranded(this, MessagePort);
+      webidl.assertBranded(this, MessagePort.prototype);
       if (this[_id] !== null) {
         core.close(this[_id]);
         this[_id] = null;
@@ -247,7 +247,7 @@
   function serializeJsMessageData(data, transferables) {
     const transferedArrayBuffers = ArrayPrototypeFilter(
       transferables,
-      (a) => ObjectPrototypeIsPrototypeOf(ArrayBuffer, a),
+      (a) => ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, a),
     );
 
     for (const arrayBuffer of transferedArrayBuffers) {
@@ -268,7 +268,7 @@
       serializedData = core.serialize(data, {
         hostObjects: ArrayPrototypeFilter(
           transferables,
-          (a) => ObjectPrototypeIsPrototypeOf(MessagePort, a),
+          (a) => ObjectPrototypeIsPrototypeOf(MessagePort.prototype, a),
         ),
         transferedArrayBuffers,
       });
@@ -281,8 +281,8 @@
 
     let arrayBufferI = 0;
     for (const transferable of transferables) {
-      if (ObjectPrototypeIsPrototypeOf(MessagePort, transferable)) {
-        webidl.assertBranded(transferable, MessagePort);
+      if (ObjectPrototypeIsPrototypeOf(MessagePort.prototype, transferable)) {
+        webidl.assertBranded(transferable, MessagePort.prototype);
         const id = transferable[_id];
         if (id === null) {
           throw new DOMException(
@@ -295,7 +295,9 @@
           kind: "messagePort",
           data: id,
         });
-      } else if (ObjectPrototypeIsPrototypeOf(ArrayBuffer, transferable)) {
+      } else if (
+        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, transferable)
+      ) {
         ArrayPrototypePush(serializedTransferables, {
           kind: "arrayBuffer",
           data: transferedArrayBuffers[arrayBufferI],

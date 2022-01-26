@@ -10,12 +10,13 @@
   const {
     ArrayBufferIsView,
     isNaN,
-    DataView,
-    Date,
+    DataViewPrototype,
+    DatePrototype,
     DateNow,
     DatePrototypeGetTime,
     DatePrototypeToISOString,
     Boolean,
+    BooleanPrototype,
     BooleanPrototypeToString,
     ObjectKeys,
     ObjectCreate,
@@ -29,8 +30,9 @@
     ObjectPrototypeHasOwnProperty,
     ObjectPrototypeIsPrototypeOf,
     ObjectPrototypePropertyIsEnumerable,
-    Promise,
+    PromisePrototype,
     String,
+    StringPrototype,
     StringPrototypeRepeat,
     StringPrototypeReplace,
     StringPrototypeReplaceAll,
@@ -48,11 +50,13 @@
     TypeError,
     NumberParseInt,
     RegExp,
+    RegExpPrototype,
     RegExpPrototypeTest,
     RegExpPrototypeToString,
-    Set,
+    SetPrototype,
     SetPrototypeEntries,
     Symbol,
+    SymbolPrototype,
     SymbolPrototypeToString,
     SymbolPrototypeValueOf,
     SymbolToStringTag,
@@ -74,6 +78,7 @@
     ArrayPrototypeFind,
     FunctionPrototypeBind,
     Map,
+    MapPrototype,
     MapPrototypeHas,
     MapPrototypeGet,
     MapPrototypeSet,
@@ -81,6 +86,7 @@
     MapPrototypeEntries,
     MapPrototypeForEach,
     Error,
+    ErrorPrototype,
     ErrorCaptureStackTrace,
     MathAbs,
     MathMax,
@@ -89,16 +95,17 @@
     MathRound,
     MathFloor,
     Number,
+    NumberPrototype,
     NumberPrototypeToString,
     NumberPrototypeValueOf,
-    BigInt,
+    BigIntPrototype,
     BigIntPrototypeToString,
     Proxy,
     ReflectGet,
     ReflectGetOwnPropertyDescriptor,
     ReflectGetPrototypeOf,
-    WeakMap,
-    WeakSet,
+    WeakMapPrototype,
+    WeakSetPrototype,
   } = window.__bootstrap.primordials;
 
   function isInvalidDate(x) {
@@ -127,7 +134,8 @@
   // Forked from Node's lib/internal/cli_table.js
 
   function isTypedArray(x) {
-    return ArrayBufferIsView(x) && !ObjectPrototypeIsPrototypeOf(DataView, x);
+    return ArrayBufferIsView(x) &&
+      !ObjectPrototypeIsPrototypeOf(DataViewPrototype, x);
   }
 
   const tableChars = {
@@ -889,7 +897,8 @@
 
     let err = value;
     while (
-      ObjectPrototypeIsPrototypeOf(Error, err.cause) && err.cause !== value &&
+      ObjectPrototypeIsPrototypeOf(ErrorPrototype, err.cause) &&
+      err.cause !== value &&
       !ArrayPrototypeIncludes(causes, err.cause) // circular check
     ) {
       ArrayPrototypePush(causes, err.cause);
@@ -1161,33 +1170,33 @@
       // namespace is always enabled.
       return String(value[privateCustomInspect](inspect));
     }
-    if (ObjectPrototypeIsPrototypeOf(Error, value)) {
+    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
       return inspectError(value);
     } else if (ArrayIsArray(value)) {
       return inspectArray(value, level, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(Number, value)) {
+    } else if (ObjectPrototypeIsPrototypeOf(NumberPrototype, value)) {
       return inspectNumberObject(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(BigInt, value)) {
+    } else if (ObjectPrototypeIsPrototypeOf(BigIntPrototype, value)) {
       return inspectBigIntObject(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(Boolean, value)) {
+    } else if (ObjectPrototypeIsPrototypeOf(BooleanPrototype, value)) {
       return inspectBooleanObject(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(String, value)) {
+    } else if (ObjectPrototypeIsPrototypeOf(StringPrototype, value)) {
       return inspectStringObject(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(Symbol, value)) {
+    } else if (ObjectPrototypeIsPrototypeOf(SymbolPrototype, value)) {
       return inspectSymbolObject(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(Promise, value)) {
+    } else if (ObjectPrototypeIsPrototypeOf(PromisePrototype, value)) {
       return inspectPromise(value, level, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(RegExp, value)) {
+    } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) {
       return inspectRegExp(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(Date, value)) {
+    } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
       return inspectDate(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(Set, value)) {
+    } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
       return inspectSet(value, level, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(Map, value)) {
+    } else if (ObjectPrototypeIsPrototypeOf(MapPrototype, value)) {
       return inspectMap(value, level, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(WeakSet, value)) {
+    } else if (ObjectPrototypeIsPrototypeOf(WeakSetPrototype, value)) {
       return inspectWeakSet(inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(WeakMap, value)) {
+    } else if (ObjectPrototypeIsPrototypeOf(WeakMapPrototype, value)) {
       return inspectWeakMap(inspectOptions);
     } else if (isTypedArray(value)) {
       return inspectTypedArray(
@@ -1912,8 +1921,8 @@
       const toTable = (header, body) => this.log(cliTable(header, body));
 
       let resultData;
-      const isSet = ObjectPrototypeIsPrototypeOf(Set, data);
-      const isMap = ObjectPrototypeIsPrototypeOf(Map, data);
+      const isSet = ObjectPrototypeIsPrototypeOf(SetPrototype, data);
+      const isMap = ObjectPrototypeIsPrototypeOf(MapPrototype, data);
       const valuesKey = "Values";
       const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
 

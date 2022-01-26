@@ -128,22 +128,22 @@
     [_duration] = 0;
 
     get name() {
-      webidl.assertBranded(this, PerformanceEntry);
+      webidl.assertBranded(this, PerformanceEntry.prototype);
       return this[_name];
     }
 
     get entryType() {
-      webidl.assertBranded(this, PerformanceEntry);
+      webidl.assertBranded(this, PerformanceEntry.prototype);
       return this[_entryType];
     }
 
     get startTime() {
-      webidl.assertBranded(this, PerformanceEntry);
+      webidl.assertBranded(this, PerformanceEntry.prototype);
       return this[_startTime];
     }
 
     get duration() {
-      webidl.assertBranded(this, PerformanceEntry);
+      webidl.assertBranded(this, PerformanceEntry.prototype);
       return this[_duration];
     }
 
@@ -166,7 +166,7 @@
     }
 
     toJSON() {
-      webidl.assertBranded(this, PerformanceEntry);
+      webidl.assertBranded(this, PerformanceEntry.prototype);
       return {
         name: this[_name],
         entryType: this[_entryType],
@@ -178,7 +178,10 @@
     [customInspect](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(PerformanceEntry, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          PerformanceEntry.prototype,
+          this,
+        ),
         keys: [
           "name",
           "entryType",
@@ -195,12 +198,12 @@
     [_detail] = null;
 
     get detail() {
-      webidl.assertBranded(this, PerformanceMark);
+      webidl.assertBranded(this, PerformanceMark.prototype);
       return this[_detail];
     }
 
     get entryType() {
-      webidl.assertBranded(this, PerformanceMark);
+      webidl.assertBranded(this, PerformanceMark.prototype);
       return "mark";
     }
 
@@ -232,7 +235,7 @@
     }
 
     toJSON() {
-      webidl.assertBranded(this, PerformanceMark);
+      webidl.assertBranded(this, PerformanceMark.prototype);
       return {
         name: this.name,
         entryType: this.entryType,
@@ -245,7 +248,7 @@
     [customInspect](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(PerformanceMark, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(PerformanceMark.prototype, this),
         keys: [
           "name",
           "entryType",
@@ -262,12 +265,12 @@
     [_detail] = null;
 
     get detail() {
-      webidl.assertBranded(this, PerformanceMeasure);
+      webidl.assertBranded(this, PerformanceMeasure.prototype);
       return this[_detail];
     }
 
     get entryType() {
-      webidl.assertBranded(this, PerformanceMeasure);
+      webidl.assertBranded(this, PerformanceMeasure.prototype);
       return "measure";
     }
 
@@ -288,7 +291,7 @@
     }
 
     toJSON() {
-      webidl.assertBranded(this, PerformanceMeasure);
+      webidl.assertBranded(this, PerformanceMeasure.prototype);
       return {
         name: this.name,
         entryType: this.entryType,
@@ -301,7 +304,10 @@
     [customInspect](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(PerformanceMeasure, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          PerformanceMeasure.prototype,
+          this,
+        ),
         keys: [
           "name",
           "entryType",
@@ -320,7 +326,7 @@
     }
 
     clearMarks(markName = undefined) {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, Performance.prototype);
       if (markName !== undefined) {
         markName = webidl.converters.DOMString(markName, {
           prefix: "Failed to execute 'clearMarks' on 'Performance'",
@@ -340,7 +346,7 @@
     }
 
     clearMeasures(measureName = undefined) {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, Performance.prototype);
       if (measureName !== undefined) {
         measureName = webidl.converters.DOMString(measureName, {
           prefix: "Failed to execute 'clearMeasures' on 'Performance'",
@@ -361,7 +367,7 @@
     }
 
     getEntries() {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, Performance.prototype);
       return filterByNameType();
     }
 
@@ -369,7 +375,7 @@
       name,
       type = undefined,
     ) {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, Performance.prototype);
       const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -389,7 +395,7 @@
     }
 
     getEntriesByType(type) {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, Performance.prototype);
       const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -405,7 +411,7 @@
       markName,
       markOptions = {},
     ) {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, Performance.prototype);
       const prefix = "Failed to execute 'mark' on 'Performance'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -433,7 +439,7 @@
       startOrMeasureOptions = {},
       endMark = undefined,
     ) {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, Performance.prototype);
       const prefix = "Failed to execute 'measure' on 'Performance'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -532,19 +538,19 @@
     }
 
     now() {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, Performance.prototype);
       return now();
     }
 
     toJSON() {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, Performance.prototype);
       return {};
     }
 
     [customInspect](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(Performance, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(Performance.prototype, this),
         keys: [],
       }));
     }

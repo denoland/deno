@@ -144,7 +144,7 @@ delete Object.prototype.__proto__;
         cancelable: false,
         data: message,
         ports: transferables.filter((t) =>
-          ObjectPrototypeIsPrototypeOf(MessagePort, t)
+          ObjectPrototypeIsPrototypeOf(MessagePort.prototype, t)
         ),
       });
 
@@ -314,7 +314,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, Navigator);
+        webidl.assertBranded(this, Navigator.prototype);
         return webgpu.gpu;
       },
     },
@@ -322,7 +322,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, Navigator);
+        webidl.assertBranded(this, Navigator.prototype);
         return numCpus;
       },
     },
@@ -345,7 +345,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, WorkerNavigator);
+        webidl.assertBranded(this, WorkerNavigator.prototype);
         return webgpu.gpu;
       },
     },
@@ -353,7 +353,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, WorkerNavigator);
+        webidl.assertBranded(this, WorkerNavigator.prototype);
         return numCpus;
       },
     },

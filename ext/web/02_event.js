@@ -175,7 +175,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(Event, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(Event.prototype, this),
         keys: EVENT_PROPS,
       }));
     }
@@ -1059,7 +1059,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(ErrorEvent, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, this),
         keys: [
           ...EVENT_PROPS,
           "message",
@@ -1120,7 +1120,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(CloseEvent, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(CloseEvent.prototype, this),
         keys: [
           ...EVENT_PROPS,
           "wasClean",
@@ -1152,7 +1152,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(MessageEvent, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(MessageEvent.prototype, this),
         keys: [
           ...EVENT_PROPS,
           "data",
@@ -1185,7 +1185,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(CustomEvent, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(CustomEvent.prototype, this),
         keys: [
           ...EVENT_PROPS,
           "detail",
@@ -1215,7 +1215,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(ProgressEvent, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(ProgressEvent.prototype, this),
         keys: [
           ...EVENT_PROPS,
           "lengthComputable",
@@ -1239,7 +1239,8 @@
 
       if (
         isSpecialErrorEventHandler &&
-        ObjectPrototypeIsPrototypeOf(ErrorEvent, evt) && evt.type === "error"
+        ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, evt) &&
+        evt.type === "error"
       ) {
         const ret = FunctionPrototypeCall(
           wrappedHandler.handler,

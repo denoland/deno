@@ -53,12 +53,12 @@
     }
 
     get readable() {
-      webidl.assertBranded(this, CompressionStream);
+      webidl.assertBranded(this, CompressionStream.prototype);
       return this.#transform.readable;
     }
 
     get writable() {
-      webidl.assertBranded(this, CompressionStream);
+      webidl.assertBranded(this, CompressionStream.prototype);
       return this.#transform.writable;
     }
   }
@@ -98,12 +98,12 @@
     }
 
     get readable() {
-      webidl.assertBranded(this, DecompressionStream);
+      webidl.assertBranded(this, DecompressionStream.prototype);
       return this.#transform.readable;
     }
 
     get writable() {
-      webidl.assertBranded(this, DecompressionStream);
+      webidl.assertBranded(this, DecompressionStream.prototype);
       return this.#transform.writable;
     }
   }

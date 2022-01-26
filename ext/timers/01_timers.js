@@ -288,7 +288,7 @@
         }
       },
       (err) => {
-        if (ObjectPrototypeIsPrototypeOf(core.Interrupted, err)) {
+        if (ObjectPrototypeIsPrototypeOf(core.Interrupted.prototype, err)) {
           // The timer was cancelled.
           removeFromScheduledTimers(timerObject);
         } else {

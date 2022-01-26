@@ -298,7 +298,7 @@
      * @returns {"basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect"}
      */
     get type() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, Response.prototype);
       return this[_response].type;
     }
 
@@ -306,7 +306,7 @@
      * @returns {string}
      */
     get url() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, Response.prototype);
       const url = this[_response].url();
       if (url === null) return "";
       const newUrl = new URL(url);
@@ -318,7 +318,7 @@
      * @returns {boolean}
      */
     get redirected() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, Response.prototype);
       return this[_response].urlList.length > 1;
     }
 
@@ -326,7 +326,7 @@
      * @returns {number}
      */
     get status() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, Response.prototype);
       return this[_response].status;
     }
 
@@ -334,7 +334,7 @@
      * @returns {boolean}
      */
     get ok() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, Response.prototype);
       const status = this[_response].status;
       return status >= 200 && status <= 299;
     }
@@ -343,7 +343,7 @@
      * @returns {string}
      */
     get statusText() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, Response.prototype);
       return this[_response].statusMessage;
     }
 
@@ -351,7 +351,7 @@
      * @returns {Headers}
      */
     get headers() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, Response.prototype);
       return this[_headers];
     }
 
@@ -359,7 +359,7 @@
      * @returns {Response}
      */
     clone() {
-      webidl.assertBranded(this, Response);
+      webidl.assertBranded(this, Response.prototype);
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
@@ -376,7 +376,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(Response, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(Response.prototype, this),
         keys: [
           "body",
           "bodyUsed",
@@ -397,7 +397,7 @@
 
   webidl.converters["Response"] = webidl.createInterfaceConverter(
     "Response",
-    Response,
+    Response.prototype,
   );
   webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
     "ResponseInit",

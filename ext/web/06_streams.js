@@ -13,17 +13,18 @@
     window.__bootstrap.abortSignal;
   const {
     ArrayBuffer,
+    ArrayBufferPrototype,
     ArrayBufferIsView,
     ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeShift,
-    BigInt64Array,
-    BigUint64Array,
+    BigInt64ArrayPrototype,
+    BigUint64ArrayPrototype,
     DataView,
     Error,
-    Int8Array,
-    Int16Array,
-    Int32Array,
+    Int8ArrayPrototype,
+    Int16ArrayPrototype,
+    Int32ArrayPrototype,
     NumberIsInteger,
     NumberIsNaN,
     MathMin,
@@ -47,9 +48,10 @@
     SymbolFor,
     TypeError,
     Uint8Array,
-    Uint16Array,
-    Uint32Array,
-    Uint8ClampedArray,
+    Uint8ArrayPrototype,
+    Uint16ArrayPrototype,
+    Uint32ArrayPrototype,
+    Uint8ClampedArrayPrototype,
     WeakMap,
     WeakMapPrototypeGet,
     WeakMapPrototypeHas,
@@ -135,7 +137,7 @@
 
   /** @param {any} e */
   function rethrowAssertionErrorRejection(e) {
-    if (e && ObjectPrototypeIsPrototypeOf(AssertionError, e)) {
+    if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
       queueMicrotask(() => {
         console.error(`Internal Error: ${e.stack}`);
       });
@@ -216,8 +218,8 @@
   function canTransferArrayBuffer(O) {
     assert(typeof O === "object");
     assert(
-      ObjectPrototypeIsPrototypeOf(ArrayBuffer, O) ||
-        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer, O),
+      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, O) ||
+        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, O),
     );
     if (isDetachedBuffer(O)) {
       return false;
@@ -1368,15 +1370,15 @@
     let ctor = DataView;
 
     if (
-      ObjectPrototypeIsPrototypeOf(Int8Array, view) ||
-      ObjectPrototypeIsPrototypeOf(Uint8Array, view) ||
-      ObjectPrototypeIsPrototypeOf(Uint8ClampedArray, view) ||
-      ObjectPrototypeIsPrototypeOf(Int16Array, view) ||
-      ObjectPrototypeIsPrototypeOf(Uint16Array, view) ||
-      ObjectPrototypeIsPrototypeOf(Int32Array, view) ||
-      ObjectPrototypeIsPrototypeOf(Uint32Array, view) ||
-      ObjectPrototypeIsPrototypeOf(BigInt64Array, view) ||
-      ObjectPrototypeIsPrototypeOf(BigUint64Array, view)
+      ObjectPrototypeIsPrototypeOf(Int8ArrayPrototype, view) ||
+      ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, view) ||
+      ObjectPrototypeIsPrototypeOf(Uint8ClampedArrayPrototype, view) ||
+      ObjectPrototypeIsPrototypeOf(Int16ArrayPrototype, view) ||
+      ObjectPrototypeIsPrototypeOf(Uint16ArrayPrototype, view) ||
+      ObjectPrototypeIsPrototypeOf(Int32ArrayPrototype, view) ||
+      ObjectPrototypeIsPrototypeOf(Uint32ArrayPrototype, view) ||
+      ObjectPrototypeIsPrototypeOf(BigInt64ArrayPrototype, view) ||
+      ObjectPrototypeIsPrototypeOf(BigUint64ArrayPrototype, view)
     ) {
       elementSize = view.constructor.BYTES_PER_ELEMENT;
       ctor = view.constructor;
@@ -1988,7 +1990,8 @@
         typeof preventCancel === "boolean",
     );
     assert(
-      signal === undefined || ObjectPrototypeIsPrototypeOf(AbortSignal, signal),
+      signal === undefined ||
+        ObjectPrototypeIsPrototypeOf(AbortSignal.prototype, signal),
     );
     assert(!isReadableStreamLocked(source));
     assert(!isWritableStreamLocked(dest));
@@ -2335,7 +2338,7 @@
     assert(typeof cloneForBranch2 === "boolean");
     if (
       ObjectPrototypeIsPrototypeOf(
-        ReadableByteStreamController,
+        ReadableByteStreamController.prototype,
         stream[_controller],
       )
     ) {
@@ -2504,7 +2507,7 @@
     assert(isReadableStream(stream));
     assert(
       ObjectPrototypeIsPrototypeOf(
-        ReadableByteStreamController,
+        ReadableByteStreamController.prototype,
         stream[_controller],
       ),
     );
@@ -3017,7 +3020,7 @@
     }
     if (
       !(ObjectPrototypeIsPrototypeOf(
-        ReadableByteStreamController,
+        ReadableByteStreamController.prototype,
         stream[_controller],
       ))
     ) {
@@ -3053,7 +3056,7 @@
     transformAlgorithm,
     flushAlgorithm,
   ) {
-    assert(ObjectPrototypeIsPrototypeOf(TransformStream, stream));
+    assert(ObjectPrototypeIsPrototypeOf(TransformStream.prototype, stream));
     assert(stream[_controller] === undefined);
     controller[_stream] = stream;
     stream[_controller] = controller;
@@ -4195,13 +4198,13 @@
 
     /** @returns {number} */
     get highWaterMark() {
-      webidl.assertBranded(this, ByteLengthQueuingStrategy);
+      webidl.assertBranded(this, ByteLengthQueuingStrategy.prototype);
       return this[_highWaterMark];
     }
 
     /** @returns {(chunk: ArrayBufferView) => number} */
     get size() {
-      webidl.assertBranded(this, ByteLengthQueuingStrategy);
+      webidl.assertBranded(this, ByteLengthQueuingStrategy.prototype);
       initializeByteLengthSizeFunction(this[_globalObject]);
       return WeakMapPrototypeGet(byteSizeFunctionWeakMap, this[_globalObject]);
     }
@@ -4209,7 +4212,10 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(ByteLengthQueuingStrategy, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          ByteLengthQueuingStrategy.prototype,
+          this,
+        ),
         keys: [
           "highWaterMark",
           "size",
@@ -4247,13 +4253,13 @@
 
     /** @returns {number} */
     get highWaterMark() {
-      webidl.assertBranded(this, CountQueuingStrategy);
+      webidl.assertBranded(this, CountQueuingStrategy.prototype);
       return this[_highWaterMark];
     }
 
     /** @returns {(chunk: any) => 1} */
     get size() {
-      webidl.assertBranded(this, CountQueuingStrategy);
+      webidl.assertBranded(this, CountQueuingStrategy.prototype);
       initializeCountSizeFunction(this[_globalObject]);
       return WeakMapPrototypeGet(countSizeFunctionWeakMap, this[_globalObject]);
     }
@@ -4261,7 +4267,10 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(CountQueuingStrategy, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          CountQueuingStrategy.prototype,
+          this,
+        ),
         keys: [
           "highWaterMark",
           "size",
@@ -4354,7 +4363,7 @@
 
     /** @returns {boolean} */
     get locked() {
-      webidl.assertBranded(this, ReadableStream);
+      webidl.assertBranded(this, ReadableStream.prototype);
       return isReadableStreamLocked(this);
     }
 
@@ -4364,7 +4373,7 @@
      */
     cancel(reason = undefined) {
       try {
-        webidl.assertBranded(this, ReadableStream);
+        webidl.assertBranded(this, ReadableStream.prototype);
         if (reason !== undefined) {
           reason = webidl.converters.any(reason);
         }
@@ -4384,7 +4393,7 @@
      * @returns {ReadableStreamDefaultReader<R> | ReadableStreamBYOBReader}
      */
     getReader(options = {}) {
-      webidl.assertBranded(this, ReadableStream);
+      webidl.assertBranded(this, ReadableStream.prototype);
       const prefix = "Failed to execute 'getReader' on 'ReadableStream'";
       options = webidl.converters.ReadableStreamGetReaderOptions(options, {
         prefix,
@@ -4405,7 +4414,7 @@
      * @returns {ReadableStream<T>}
      */
     pipeThrough(transform, options = {}) {
-      webidl.assertBranded(this, ReadableStream);
+      webidl.assertBranded(this, ReadableStream.prototype);
       const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       transform = webidl.converters.ReadableWritablePair(transform, {
@@ -4443,7 +4452,7 @@
      */
     pipeTo(destination, options = {}) {
       try {
-        webidl.assertBranded(this, ReadableStream);
+        webidl.assertBranded(this, ReadableStream.prototype);
         const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
         webidl.requiredArguments(arguments.length, 1, { prefix });
         destination = webidl.converters.WritableStream(destination, {
@@ -4480,7 +4489,7 @@
 
     /** @returns {[ReadableStream<R>, ReadableStream<R>]} */
     tee() {
-      webidl.assertBranded(this, ReadableStream);
+      webidl.assertBranded(this, ReadableStream.prototype);
       return readableStreamTee(this, false);
     }
 
@@ -4490,7 +4499,7 @@
      * @returns {AsyncIterableIterator<R>}
      */
     values(options = {}) {
-      webidl.assertBranded(this, ReadableStream);
+      webidl.assertBranded(this, ReadableStream.prototype);
       const prefix = "Failed to execute 'values' on 'ReadableStream'";
       options = webidl.converters.ReadableStreamIteratorOptions(options, {
         prefix,
@@ -4548,7 +4557,7 @@
     /** @returns {Promise<ReadableStreamReadResult<R>>} */
     read() {
       try {
-        webidl.assertBranded(this, ReadableStreamDefaultReader);
+        webidl.assertBranded(this, ReadableStreamDefaultReader.prototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -4577,7 +4586,7 @@
 
     /** @returns {void} */
     releaseLock() {
-      webidl.assertBranded(this, ReadableStreamDefaultReader);
+      webidl.assertBranded(this, ReadableStreamDefaultReader.prototype);
       if (this[_stream] === undefined) {
         return;
       }
@@ -4586,7 +4595,7 @@
 
     get closed() {
       try {
-        webidl.assertBranded(this, ReadableStreamDefaultReader);
+        webidl.assertBranded(this, ReadableStreamDefaultReader.prototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -4599,7 +4608,7 @@
      */
     cancel(reason = undefined) {
       try {
-        webidl.assertBranded(this, ReadableStreamDefaultReader);
+        webidl.assertBranded(this, ReadableStreamDefaultReader.prototype);
         if (reason !== undefined) {
           reason = webidl.converters.any(reason);
         }
@@ -4649,7 +4658,7 @@
      */
     read(view) {
       try {
-        webidl.assertBranded(this, ReadableStreamBYOBReader);
+        webidl.assertBranded(this, ReadableStreamBYOBReader.prototype);
         const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
         view = webidl.converters.ArrayBufferView(view, {
           prefix,
@@ -4699,7 +4708,7 @@
 
     /** @returns {void} */
     releaseLock() {
-      webidl.assertBranded(this, ReadableStreamBYOBReader);
+      webidl.assertBranded(this, ReadableStreamBYOBReader.prototype);
       if (this[_stream] === undefined) {
         return;
       }
@@ -4708,7 +4717,7 @@
 
     get closed() {
       try {
-        webidl.assertBranded(this, ReadableStreamBYOBReader);
+        webidl.assertBranded(this, ReadableStreamBYOBReader.prototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -4721,7 +4730,7 @@
      */
     cancel(reason = undefined) {
       try {
-        webidl.assertBranded(this, ReadableStreamBYOBReader);
+        webidl.assertBranded(this, ReadableStreamBYOBReader.prototype);
         if (reason !== undefined) {
           reason = webidl.converters.any(reason);
         }
@@ -4752,7 +4761,7 @@
 
     /** @returns {ArrayBufferView | null} */
     get view() {
-      webidl.assertBranded(this, ReadableStreamBYOBRequest);
+      webidl.assertBranded(this, ReadableStreamBYOBRequest.prototype);
       return this[_view];
     }
 
@@ -4761,7 +4770,7 @@
     }
 
     respond(bytesWritten) {
-      webidl.assertBranded(this, ReadableStreamBYOBRequest);
+      webidl.assertBranded(this, ReadableStreamBYOBRequest.prototype);
       const prefix =
         "Failed to execute 'respond' on 'ReadableStreamBYOBRequest'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -4785,7 +4794,7 @@
     }
 
     respondWithNewView(view) {
-      webidl.assertBranded(this, ReadableStreamBYOBRequest);
+      webidl.assertBranded(this, ReadableStreamBYOBRequest.prototype);
       const prefix =
         "Failed to execute 'respondWithNewView' on 'ReadableStreamBYOBRequest'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -4842,19 +4851,19 @@
 
     /** @returns {ReadableStreamBYOBRequest | null} */
     get byobRequest() {
-      webidl.assertBranded(this, ReadableByteStreamController);
+      webidl.assertBranded(this, ReadableByteStreamController.prototype);
       return readableByteStreamControllerGetBYOBRequest(this);
     }
 
     /** @returns {number | null} */
     get desiredSize() {
-      webidl.assertBranded(this, ReadableByteStreamController);
+      webidl.assertBranded(this, ReadableByteStreamController.prototype);
       return readableByteStreamControllerGetDesiredSize(this);
     }
 
     /** @returns {void} */
     close() {
-      webidl.assertBranded(this, ReadableByteStreamController);
+      webidl.assertBranded(this, ReadableByteStreamController.prototype);
       if (this[_closeRequested] === true) {
         throw new TypeError("Closed already requested.");
       }
@@ -4871,7 +4880,7 @@
      * @returns {void}
      */
     enqueue(chunk) {
-      webidl.assertBranded(this, ReadableByteStreamController);
+      webidl.assertBranded(this, ReadableByteStreamController.prototype);
       const prefix =
         "Failed to execute 'enqueue' on 'ReadableByteStreamController'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -4911,7 +4920,7 @@
      * @returns {void}
      */
     error(e = undefined) {
-      webidl.assertBranded(this, ReadableByteStreamController);
+      webidl.assertBranded(this, ReadableByteStreamController.prototype);
       if (e !== undefined) {
         e = webidl.converters.any(e);
       }
@@ -4922,7 +4931,7 @@
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(
-          ReadableByteStreamController,
+          ReadableByteStreamController.prototype,
           this,
         ),
         keys: ["desiredSize"],
@@ -5023,13 +5032,13 @@
 
     /** @returns {number | null} */
     get desiredSize() {
-      webidl.assertBranded(this, ReadableStreamDefaultController);
+      webidl.assertBranded(this, ReadableStreamDefaultController.prototype);
       return readableStreamDefaultControllerGetDesiredSize(this);
     }
 
     /** @returns {void} */
     close() {
-      webidl.assertBranded(this, ReadableStreamDefaultController);
+      webidl.assertBranded(this, ReadableStreamDefaultController.prototype);
       if (readableStreamDefaultControllerCanCloseOrEnqueue(this) === false) {
         throw new TypeError("The stream controller cannot close or enqueue.");
       }
@@ -5041,7 +5050,7 @@
      * @returns {void}
      */
     enqueue(chunk = undefined) {
-      webidl.assertBranded(this, ReadableStreamDefaultController);
+      webidl.assertBranded(this, ReadableStreamDefaultController.prototype);
       if (chunk !== undefined) {
         chunk = webidl.converters.any(chunk);
       }
@@ -5056,7 +5065,7 @@
      * @returns {void}
      */
     error(e = undefined) {
-      webidl.assertBranded(this, ReadableStreamDefaultController);
+      webidl.assertBranded(this, ReadableStreamDefaultController.prototype);
       if (e !== undefined) {
         e = webidl.converters.any(e);
       }
@@ -5067,7 +5076,7 @@
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(
-          ReadableStreamDefaultController,
+          ReadableStreamDefaultController.prototype,
           this,
         ),
         keys: ["desiredSize"],
@@ -5213,13 +5222,13 @@
 
     /** @returns {ReadableStream<O>} */
     get readable() {
-      webidl.assertBranded(this, TransformStream);
+      webidl.assertBranded(this, TransformStream.prototype);
       return this[_readable];
     }
 
     /** @returns {WritableStream<I>} */
     get writable() {
-      webidl.assertBranded(this, TransformStream);
+      webidl.assertBranded(this, TransformStream.prototype);
       return this[_writable];
     }
 
@@ -5247,7 +5256,7 @@
 
     /** @returns {number | null} */
     get desiredSize() {
-      webidl.assertBranded(this, TransformStreamDefaultController);
+      webidl.assertBranded(this, TransformStreamDefaultController.prototype);
       const readableController = this[_stream][_readable][_controller];
       return readableStreamDefaultControllerGetDesiredSize(
         /** @type {ReadableStreamDefaultController<O>} */ readableController,
@@ -5259,7 +5268,7 @@
      * @returns {void}
      */
     enqueue(chunk = undefined) {
-      webidl.assertBranded(this, TransformStreamDefaultController);
+      webidl.assertBranded(this, TransformStreamDefaultController.prototype);
       if (chunk !== undefined) {
         chunk = webidl.converters.any(chunk);
       }
@@ -5271,7 +5280,7 @@
      * @returns {void}
      */
     error(reason = undefined) {
-      webidl.assertBranded(this, TransformStreamDefaultController);
+      webidl.assertBranded(this, TransformStreamDefaultController.prototype);
       if (reason !== undefined) {
         reason = webidl.converters.any(reason);
       }
@@ -5280,7 +5289,7 @@
 
     /** @returns {void} */
     terminate() {
-      webidl.assertBranded(this, TransformStreamDefaultController);
+      webidl.assertBranded(this, TransformStreamDefaultController.prototype);
       transformStreamDefaultControllerTerminate(this);
     }
 
@@ -5288,7 +5297,7 @@
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(
-          TransformStreamDefaultController,
+          TransformStreamDefaultController.prototype,
           this,
         ),
         keys: ["desiredSize"],
@@ -5366,7 +5375,7 @@
 
     /** @returns {boolean} */
     get locked() {
-      webidl.assertBranded(this, WritableStream);
+      webidl.assertBranded(this, WritableStream.prototype);
       return isWritableStreamLocked(this);
     }
 
@@ -5376,7 +5385,7 @@
      */
     abort(reason = undefined) {
       try {
-        webidl.assertBranded(this, WritableStream);
+        webidl.assertBranded(this, WritableStream.prototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -5396,7 +5405,7 @@
     /** @returns {Promise<void>} */
     close() {
       try {
-        webidl.assertBranded(this, WritableStream);
+        webidl.assertBranded(this, WritableStream.prototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -5417,7 +5426,7 @@
 
     /** @returns {WritableStreamDefaultWriter<W>} */
     getWriter() {
-      webidl.assertBranded(this, WritableStream);
+      webidl.assertBranded(this, WritableStream.prototype);
       return acquireWritableStreamDefaultWriter(this);
     }
 
@@ -5456,7 +5465,7 @@
     /** @returns {Promise<void>} */
     get closed() {
       try {
-        webidl.assertBranded(this, WritableStreamDefaultWriter);
+        webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -5465,7 +5474,7 @@
 
     /** @returns {number} */
     get desiredSize() {
-      webidl.assertBranded(this, WritableStreamDefaultWriter);
+      webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
       if (this[_stream] === undefined) {
         throw new TypeError(
           "A writable stream is not associated with the writer.",
@@ -5477,7 +5486,7 @@
     /** @returns {Promise<void>} */
     get ready() {
       try {
-        webidl.assertBranded(this, WritableStreamDefaultWriter);
+        webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -5490,7 +5499,7 @@
      */
     abort(reason = undefined) {
       try {
-        webidl.assertBranded(this, WritableStreamDefaultWriter);
+        webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -5508,7 +5517,7 @@
     /** @returns {Promise<void>} */
     close() {
       try {
-        webidl.assertBranded(this, WritableStreamDefaultWriter);
+        webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -5528,7 +5537,7 @@
 
     /** @returns {void} */
     releaseLock() {
-      webidl.assertBranded(this, WritableStreamDefaultWriter);
+      webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
       const stream = this[_stream];
       if (stream === undefined) {
         return;
@@ -5543,7 +5552,7 @@
      */
     write(chunk = undefined) {
       try {
-        webidl.assertBranded(this, WritableStreamDefaultWriter);
+        webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
         if (chunk !== undefined) {
           chunk = webidl.converters.any(chunk);
         }
@@ -5562,7 +5571,7 @@
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(
-          WritableStreamDefaultWriter,
+          WritableStreamDefaultWriter.prototype,
           this,
         ),
         keys: [
@@ -5600,7 +5609,7 @@
     [_signal];
 
     get signal() {
-      webidl.assertBranded(this, WritableStreamDefaultController);
+      webidl.assertBranded(this, WritableStreamDefaultController.prototype);
       return this[_signal];
     }
 
@@ -5613,7 +5622,7 @@
      * @returns {void}
      */
     error(e = undefined) {
-      webidl.assertBranded(this, WritableStreamDefaultController);
+      webidl.assertBranded(this, WritableStreamDefaultController.prototype);
       if (e !== undefined) {
         e = webidl.converters.any(e);
       }
@@ -5628,7 +5637,7 @@
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(
-          WritableStreamDefaultController,
+          WritableStreamDefaultController.prototype,
           this,
         ),
         keys: [],
@@ -5660,9 +5669,9 @@
   }
 
   webidl.converters.ReadableStream = webidl
-    .createInterfaceConverter("ReadableStream", ReadableStream);
+    .createInterfaceConverter("ReadableStream", ReadableStream.prototype);
   webidl.converters.WritableStream = webidl
-    .createInterfaceConverter("WritableStream", WritableStream);
+    .createInterfaceConverter("WritableStream", WritableStream.prototype);
 
   webidl.converters.ReadableStreamType = webidl.createEnumConverter(
     "ReadableStreamType",

@@ -5,7 +5,7 @@
   const core = window.Deno.core;
   const __bootstrap = window.__bootstrap;
   const {
-    ArrayBuffer,
+    ArrayBufferPrototype,
     Uint8Array,
     BigInt,
     Number,
@@ -153,12 +153,12 @@
 
       if (type === "pointer") {
         if (
-          ObjectPrototypeIsPrototypeOf(ArrayBuffer, arg?.buffer) &&
+          ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, arg?.buffer) &&
           arg.byteLength !== undefined
         ) {
           parameters.push(buffers.length);
           buffers.push(arg);
-        } else if (ObjectPrototypeIsPrototypeOf(UnsafePointer, arg)) {
+        } else if (ObjectPrototypeIsPrototypeOf(UnsafePointer.prototype, arg)) {
           parameters.push(packU64(arg.value));
           buffers.push(undefined);
         } else if (arg === null) {

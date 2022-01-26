@@ -35,6 +35,7 @@
     TypedArrayPrototypeSet,
     TypeError,
     Uint8Array,
+    Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
   const state = Symbol("[[state]]");
@@ -119,7 +120,7 @@
             // and whose value property is a Uint8Array object, run these steps:
             if (
               !chunk.done &&
-              ObjectPrototypeIsPrototypeOf(Uint8Array, chunk.value)
+              ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk.value)
             ) {
               ArrayPrototypePush(chunks, chunk.value);
 
@@ -264,7 +265,7 @@
     }
 
     #getEventHandlerFor(name) {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReader.prototype);
 
       const maybeMap = this[handlerSymbol];
       if (!maybeMap) return null;
@@ -273,7 +274,7 @@
     }
 
     #setEventHandlerFor(name, value) {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReader.prototype);
 
       if (!this[handlerSymbol]) {
         this[handlerSymbol] = new Map();
@@ -296,7 +297,7 @@
 
     /** @returns {number} */
     get readyState() {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReader.prototype);
       switch (this[state]) {
         case "empty":
           return FileReader.EMPTY;
@@ -310,17 +311,17 @@
     }
 
     get result() {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReader.prototype);
       return this[result];
     }
 
     get error() {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReader.prototype);
       return this[error];
     }
 
     abort() {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReader.prototype);
       // If context object's state is "empty" or if context object's state is "done" set context object's result to null and terminate this algorithm.
       if (
         this[state] === "empty" ||
@@ -353,7 +354,7 @@
 
     /** @param {Blob} blob */
     readAsArrayBuffer(blob) {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReader.prototype);
       const prefix = "Failed to execute 'readAsArrayBuffer' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       this.#readOperation(blob, { kind: "ArrayBuffer" });
@@ -361,7 +362,7 @@
 
     /** @param {Blob} blob */
     readAsBinaryString(blob) {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReader.prototype);
       const prefix = "Failed to execute 'readAsBinaryString' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // alias for readAsArrayBuffer
@@ -370,7 +371,7 @@
 
     /** @param {Blob} blob */
     readAsDataURL(blob) {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReader.prototype);
       const prefix = "Failed to execute 'readAsDataURL' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // alias for readAsArrayBuffer
@@ -382,7 +383,7 @@
      * @param {string} [encoding]
      */
     readAsText(blob, encoding = undefined) {
-      webidl.assertBranded(this, FileReader);
+      webidl.assertBranded(this, FileReader.prototype);
       const prefix = "Failed to execute 'readAsText' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       if (encoding !== undefined) {

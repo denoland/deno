@@ -242,7 +242,7 @@
         const parsedURL = new URL(input, baseURL);
         request = newInnerRequest("GET", parsedURL.href, [], null, true);
       } else { // 6.
-        if (!ObjectPrototypeIsPrototypeOf(Request, input)) {
+        if (!ObjectPrototypeIsPrototypeOf(Request.prototype, input)) {
           throw new TypeError("Unreachable");
         }
         request = input[_request];
@@ -273,7 +273,7 @@
       if (init.client !== undefined) {
         if (
           init.client !== null &&
-          !ObjectPrototypeIsPrototypeOf(HttpClient, init.client)
+          !ObjectPrototypeIsPrototypeOf(HttpClient.prototype, init.client)
         ) {
           throw webidl.makeException(
             TypeError,
@@ -318,7 +318,7 @@
 
       // 33.
       let inputBody = null;
-      if (ObjectPrototypeIsPrototypeOf(Request, input)) {
+      if (ObjectPrototypeIsPrototypeOf(Request.prototype, input)) {
         inputBody = input[_body];
       }
 
@@ -362,32 +362,32 @@
     }
 
     get method() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, Request.prototype);
       return this[_request].method;
     }
 
     get url() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, Request.prototype);
       return this[_request].url();
     }
 
     get headers() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, Request.prototype);
       return this[_headers];
     }
 
     get redirect() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, Request.prototype);
       return this[_request].redirectMode;
     }
 
     get signal() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, Request.prototype);
       return this[_signal];
     }
 
     clone() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, Request.prototype);
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
@@ -404,7 +404,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(Request, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(Request.prototype, this),
         keys: [
           "bodyUsed",
           "headers",
@@ -422,12 +422,12 @@
 
   webidl.converters["Request"] = webidl.createInterfaceConverter(
     "Request",
-    Request,
+    Request.prototype,
   );
   webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
     // Union for (Request or USVString)
     if (typeof V == "object") {
-      if (ObjectPrototypeIsPrototypeOf(Request, V)) {
+      if (ObjectPrototypeIsPrototypeOf(Request.prototype, V)) {
         return webidl.converters["Request"](V, opts);
       }
     }

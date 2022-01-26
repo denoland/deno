@@ -201,7 +201,7 @@
           cancelable: false,
           data: message,
           ports: transferables.filter((t) =>
-            ObjectPrototypeIsPrototypeOf(MessagePort, t)
+            ObjectPrototypeIsPrototypeOf(MessagePort.prototype, t)
           ),
         });
         this.dispatchEvent(event);

@@ -126,8 +126,8 @@
         conn = await this.accept();
       } catch (error) {
         if (
-          ObjectPrototypeIsPrototypeOf(BadResource, error) ||
-          ObjectPrototypeIsPrototypeOf(Interrupted, error)
+          ObjectPrototypeIsPrototypeOf(BadResource.prototype, error) ||
+          ObjectPrototypeIsPrototypeOf(Interrupted.prototype, error)
         ) {
           return { value: undefined, done: true };
         }
@@ -196,8 +196,8 @@
           yield await this.receive();
         } catch (err) {
           if (
-            ObjectPrototypeIsPrototypeOf(BadResource, err) ||
-            ObjectPrototypeIsPrototypeOf(Interrupted, err)
+            ObjectPrototypeIsPrototypeOf(BadResource.prototype, err) ||
+            ObjectPrototypeIsPrototypeOf(Interrupted.prototype, err)
           ) {
             break;
           }

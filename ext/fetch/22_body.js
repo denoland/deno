@@ -22,7 +22,7 @@
   const { isReadableStreamDisturbed, errorReadableStream, createProxy } =
     globalThis.__bootstrap.streams;
   const {
-    ArrayBuffer,
+    ArrayBufferPrototype,
     ArrayBufferIsView,
     ArrayPrototypePush,
     ArrayPrototypeMap,
@@ -34,6 +34,7 @@
     TypedArrayPrototypeSlice,
     TypeError,
     Uint8Array,
+    Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
   /**
@@ -67,7 +68,12 @@
     }
 
     get stream() {
-      if (!ObjectPrototypeIsPrototypeOf(ReadableStream, this.streamOrStatic)) {
+      if (
+        !ObjectPrototypeIsPrototypeOf(
+          ReadableStream.prototype,
+          this.streamOrStatic,
+        )
+      ) {
         const { body, consumed } = this.streamOrStatic;
         if (consumed) {
           this.streamOrStatic = new ReadableStream();
@@ -89,7 +95,12 @@
      * @returns {boolean}
      */
     unusable() {
-      if (ObjectPrototypeIsPrototypeOf(ReadableStream, this.streamOrStatic)) {
+      if (
+        ObjectPrototypeIsPrototypeOf(
+          ReadableStream.prototype,
+          this.streamOrStatic,
+        )
+      ) {
         return this.streamOrStatic.locked ||
           isReadableStreamDisturbed(this.streamOrStatic);
       }
@@ -100,7 +111,12 @@
      * @returns {boolean}
      */
     consumed() {
-      if (ObjectPrototypeIsPrototypeOf(ReadableStream, this.streamOrStatic)) {
+      if (
+        ObjectPrototypeIsPrototypeOf(
+          ReadableStream.prototype,
+          this.streamOrStatic,
+        )
+      ) {
         return isReadableStreamDisturbed(this.streamOrStatic);
       }
       return this.streamOrStatic.consumed;
@@ -112,7 +128,12 @@
      */
     async consume() {
       if (this.unusable()) throw new TypeError("Body already consumed.");
-      if (ObjectPrototypeIsPrototypeOf(ReadableStream, this.streamOrStatic)) {
+      if (
+        ObjectPrototypeIsPrototypeOf(
+          ReadableStream.prototype,
+          this.streamOrStatic,
+        )
+      ) {
         const reader = this.stream.getReader();
         /** @type {Uint8Array[]} */
         const chunks = [];
@@ -137,7 +158,12 @@
     }
 
     cancel(error) {
-      if (ObjectPrototypeIsPrototypeOf(ReadableStream, this.streamOrStatic)) {
+      if (
+        ObjectPrototypeIsPrototypeOf(
+          ReadableStream.prototype,
+          this.streamOrStatic,
+        )
+      ) {
         this.streamOrStatic.cancel(error);
       } else {
         this.streamOrStatic.consumed = true;
@@ -145,7 +171,12 @@
     }
 
     error(error) {
-      if (ObjectPrototypeIsPrototypeOf(ReadableStream, this.streamOrStatic)) {
+      if (
+        ObjectPrototypeIsPrototypeOf(
+          ReadableStream.prototype,
+          this.streamOrStatic,
+        )
+      ) {
         errorReadableStream(this.streamOrStatic, error);
       } else {
         this.streamOrStatic.consumed = true;
@@ -169,7 +200,12 @@
      */
     createProxy() {
       let proxyStreamOrStatic;
-      if (ObjectPrototypeIsPrototypeOf(ReadableStream, this.streamOrStatic)) {
+      if (
+        ObjectPrototypeIsPrototypeOf(
+          ReadableStream.prototype,
+          this.streamOrStatic,
+        )
+      ) {
         proxyStreamOrStatic = createProxy(this.streamOrStatic);
       } else {
         proxyStreamOrStatic = { ...this.streamOrStatic };
@@ -183,12 +219,12 @@
   }
 
   /**
-   * @param {any} prototype
+   * @param {any} class_
    * @param {symbol} bodySymbol
    * @param {symbol} mimeTypeSymbol
    * @returns {void}
    */
-  function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
+  function mixinBody(class_, bodySymbol, mimeTypeSymbol) {
     function consumeBody(object) {
       if (object[bodySymbol] !== null) {
         return object[bodySymbol].consume();
@@ -203,7 +239,7 @@
          * @returns {ReadableStream<Uint8Array> | null}
          */
         get() {
-          webidl.assertBranded(this, prototype);
+          webidl.assertBranded(this, class_.prototype);
           if (this[bodySymbol] === null) {
             return null;
           } else {
@@ -218,7 +254,7 @@
          * @returns {boolean}
          */
         get() {
-          webidl.assertBranded(this, prototype);
+          webidl.assertBranded(this, class_.prototype);
           if (this[bodySymbol] !== null) {
             return this[bodySymbol].consumed();
           }
@@ -230,7 +266,7 @@
       arrayBuffer: {
         /** @returns {Promise<ArrayBuffer>} */
         value: async function arrayBuffer() {
-          webidl.assertBranded(this, prototype);
+          webidl.assertBranded(this, class_.prototype);
           const body = await consumeBody(this);
           return packageData(body, "ArrayBuffer");
         },
@@ -241,7 +277,7 @@
       blob: {
         /** @returns {Promise<Blob>} */
         value: async function blob() {
-          webidl.assertBranded(this, prototype);
+          webidl.assertBranded(this, class_.prototype);
           const body = await consumeBody(this);
           return packageData(body, "Blob", this[mimeTypeSymbol]);
         },
@@ -252,7 +288,7 @@
       formData: {
         /** @returns {Promise<FormData>} */
         value: async function formData() {
-          webidl.assertBranded(this, prototype);
+          webidl.assertBranded(this, class_.prototype);
           const body = await consumeBody(this);
           return packageData(body, "FormData", this[mimeTypeSymbol]);
         },
@@ -263,7 +299,7 @@
       json: {
         /** @returns {Promise<any>} */
         value: async function json() {
-          webidl.assertBranded(this, prototype);
+          webidl.assertBranded(this, class_.prototype);
           const body = await consumeBody(this);
           return packageData(body, "JSON");
         },
@@ -274,7 +310,7 @@
       text: {
         /** @returns {Promise<string>} */
         value: async function text() {
-          webidl.assertBranded(this, prototype);
+          webidl.assertBranded(this, class_.prototype);
           const body = await consumeBody(this);
           return packageData(body, "text");
         },
@@ -283,7 +319,7 @@
         enumerable: true,
       },
     };
-    return ObjectDefineProperties(prototype.prototype, mixin);
+    return ObjectDefineProperties(class_.prototype, mixin);
   }
 
   /**
@@ -342,20 +378,20 @@
     let source = null;
     let length = null;
     let contentType = null;
-    if (ObjectPrototypeIsPrototypeOf(Blob, object)) {
+    if (ObjectPrototypeIsPrototypeOf(Blob.prototype, object)) {
       stream = object.stream();
       source = object;
       length = object.size;
       if (object.type.length !== 0) {
         contentType = object.type;
       }
-    } else if (ObjectPrototypeIsPrototypeOf(Uint8Array, object)) {
+    } else if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, object)) {
       // Fast(er) path for common case of Uint8Array
       const copy = TypedArrayPrototypeSlice(object, 0, object.byteLength);
       source = copy;
     } else if (
       ArrayBufferIsView(object) ||
-      ObjectPrototypeIsPrototypeOf(ArrayBuffer, object)
+      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, object)
     ) {
       const u8 = ArrayBufferIsView(object)
         ? new Uint8Array(
@@ -366,26 +402,28 @@
         : new Uint8Array(object);
       const copy = TypedArrayPrototypeSlice(u8, 0, u8.byteLength);
       source = copy;
-    } else if (ObjectPrototypeIsPrototypeOf(FormData, object)) {
+    } else if (ObjectPrototypeIsPrototypeOf(FormData.prototype, object)) {
       const res = formDataToBlob(object);
       stream = res.stream();
       source = res;
       length = res.size;
       contentType = res.type;
-    } else if (ObjectPrototypeIsPrototypeOf(URLSearchParams, object)) {
+    } else if (
+      ObjectPrototypeIsPrototypeOf(URLSearchParams.prototype, object)
+    ) {
       // TODO(@satyarohith): not sure what primordial here.
       source = object.toString();
       contentType = "application/x-www-form-urlencoded;charset=UTF-8";
     } else if (typeof object === "string") {
       source = object;
       contentType = "text/plain;charset=UTF-8";
-    } else if (ObjectPrototypeIsPrototypeOf(ReadableStream, object)) {
+    } else if (ObjectPrototypeIsPrototypeOf(ReadableStream.prototype, object)) {
       stream = object;
       if (object.locked || isReadableStreamDisturbed(object)) {
         throw new TypeError("ReadableStream is locked or disturbed");
       }
     }
-    if (ObjectPrototypeIsPrototypeOf(Uint8Array, source)) {
+    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, source)) {
       stream = { body: source, consumed: false };
       length = source.byteLength;
     } else if (typeof source === "string") {
@@ -403,21 +441,21 @@
 
   webidl.converters["BodyInit_DOMString"] = (V, opts) => {
     // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
-    if (ObjectPrototypeIsPrototypeOf(ReadableStream, V)) {
+    if (ObjectPrototypeIsPrototypeOf(ReadableStream.prototype, V)) {
       // TODO(lucacasonato): ReadableStream is not branded
       return V;
-    } else if (ObjectPrototypeIsPrototypeOf(Blob, V)) {
+    } else if (ObjectPrototypeIsPrototypeOf(Blob.prototype, V)) {
       return webidl.converters["Blob"](V, opts);
-    } else if (ObjectPrototypeIsPrototypeOf(FormData, V)) {
+    } else if (ObjectPrototypeIsPrototypeOf(FormData.prototype, V)) {
       return webidl.converters["FormData"](V, opts);
-    } else if (ObjectPrototypeIsPrototypeOf(URLSearchParams, V)) {
+    } else if (ObjectPrototypeIsPrototypeOf(URLSearchParams.prototype, V)) {
       // TODO(lucacasonato): URLSearchParams is not branded
       return V;
     }
     if (typeof V === "object") {
       if (
-        ObjectPrototypeIsPrototypeOf(ArrayBuffer, V) ||
-        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer, V)
+        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
+        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
       ) {
         return webidl.converters["ArrayBuffer"](V, opts);
       }

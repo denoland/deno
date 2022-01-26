@@ -263,7 +263,7 @@
      * @param {string} value
      */
     append(name, value) {
-      webidl.assertBranded(this, Headers);
+      webidl.assertBranded(this, Headers.prototype);
       const prefix = "Failed to execute 'append' on 'Headers'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       name = webidl.converters["ByteString"](name, {
@@ -354,7 +354,7 @@
      * @param {string} value
      */
     set(name, value) {
-      webidl.assertBranded(this, Headers);
+      webidl.assertBranded(this, Headers.prototype);
       const prefix = "Failed to execute 'set' on 'Headers'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       name = webidl.converters["ByteString"](name, {
@@ -428,7 +428,7 @@
   };
   webidl.converters["Headers"] = webidl.createInterfaceConverter(
     "Headers",
-    Headers,
+    Headers.prototype,
   );
 
   /**

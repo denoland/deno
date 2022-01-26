@@ -94,7 +94,7 @@
   }
 
   function pathFromURL(pathOrUrl) {
-    if (ObjectPrototypeIsPrototypeOf(URL, pathOrUrl)) {
+    if (ObjectPrototypeIsPrototypeOf(URL.prototype, pathOrUrl)) {
       if (pathOrUrl.protocol != "file:") {
         throw new TypeError("Must be a file URL.");
       }

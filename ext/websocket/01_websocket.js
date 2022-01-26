@@ -12,7 +12,7 @@
   const { defineEventHandler } = window.__bootstrap.event;
   const { Blob } = globalThis.__bootstrap.file;
   const {
-    ArrayBuffer,
+    ArrayBufferPrototype,
     ArrayBufferIsView,
     ArrayPrototypeJoin,
     ArrayPrototypeMap,
@@ -43,14 +43,14 @@
 
   webidl.converters["WebSocketSend"] = (V, opts) => {
     // Union for (Blob or ArrayBufferView or ArrayBuffer or USVString)
-    if (ObjectPrototypeIsPrototypeOf(Blob, V)) {
+    if (ObjectPrototypeIsPrototypeOf(Blob.prototype, V)) {
       return webidl.converters["Blob"](V, opts);
     }
     if (typeof V === "object") {
       // TODO(littledivy): use primordial for SharedArrayBuffer
       if (
-        ObjectPrototypeIsPrototypeOf(ArrayBuffer, V) ||
-        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer, V)
+        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
+        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
       ) {
         return webidl.converters["ArrayBuffer"](V, opts);
       }
@@ -84,52 +84,52 @@
 
     [_readyState] = CONNECTING;
     get readyState() {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       return this[_readyState];
     }
 
     get CONNECTING() {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       return CONNECTING;
     }
     get OPEN() {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       return OPEN;
     }
     get CLOSING() {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       return CLOSING;
     }
     get CLOSED() {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       return CLOSED;
     }
 
     [_extensions] = "";
     get extensions() {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       return this[_extensions];
     }
 
     [_protocol] = "";
     get protocol() {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       return this[_protocol];
     }
 
     [_url] = "";
     get url() {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       return this[_url];
     }
 
     [_binaryType] = "blob";
     get binaryType() {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       return this[_binaryType];
     }
     set binaryType(value) {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       value = webidl.converters.DOMString(value, {
         prefix: "Failed to set 'binaryType' on 'WebSocket'",
       });
@@ -140,7 +140,7 @@
 
     [_bufferedAmount] = 0;
     get bufferedAmount() {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       return this[_bufferedAmount];
     }
 
@@ -272,7 +272,7 @@
     }
 
     send(data) {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       const prefix = "Failed to execute 'send' on 'WebSocket'";
 
       webidl.requiredArguments(arguments.length, 1, {
@@ -300,14 +300,14 @@
         );
       };
 
-      if (ObjectPrototypeIsPrototypeOf(Blobl, data)) {
+      if (ObjectPrototypeIsPrototypeOf(Blob.prototype, data)) {
         PromisePrototypeThen(
           data.slice().arrayBuffer(),
           (ab) => sendTypedArray(new DataView(ab)),
         );
       } else if (ArrayBufferIsView(data)) {
         sendTypedArray(data);
-      } else if (ObjectPrototypeIsPrototypeOf(ArrayBuffer, data)) {
+      } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
         sendTypedArray(new DataView(data));
       } else {
         const string = String(data);
@@ -326,7 +326,7 @@
     }
 
     close(code = undefined, reason = undefined) {
-      webidl.assertBranded(this, WebSocket);
+      webidl.assertBranded(this, WebSocket.prototype);
       const prefix = "Failed to execute 'close' on 'WebSocket'";
 
       if (code !== undefined) {

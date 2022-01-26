@@ -42,6 +42,7 @@
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
+    Uint8ArrayPrototype,
     WeakMap,
     WeakMapPrototypeDelete,
     WeakMapPrototypeGet,
@@ -174,11 +175,14 @@
 
     if (req.body !== null) {
       if (
-        ObjectPrototypeIsPrototypeOf(ReadableStream, req.body.streamOrStatic)
+        ObjectPrototypeIsPrototypeOf(
+          ReadableStream.prototype,
+          req.body.streamOrStatic,
+        )
       ) {
         if (
           req.body.length === null ||
-          ObjectPrototypeIsPrototypeOf(Blob, req.body.source)
+          ObjectPrototypeIsPrototypeOf(Blob.prototype, req.body.source)
         ) {
           reqBody = req.body.stream;
         } else {
@@ -202,14 +206,19 @@
       }
     }
 
-    const { requestRid, requestBodyRid, cancelHandleRid } = opFetch({
-      method: req.method,
-      url: req.currentUrl(),
-      headers: req.headerList,
-      clientRid: req.clientRid,
-      hasBody: reqBody !== null,
-      bodyLength: req.body?.length,
-    }, ObjectPrototypeIsPrototypeOf(Uint8Array, reqBody) ? reqBody : null);
+    const { requestRid, requestBodyRid, cancelHandleRid } = opFetch(
+      {
+        method: req.method,
+        url: req.currentUrl(),
+        headers: req.headerList,
+        clientRid: req.clientRid,
+        hasBody: reqBody !== null,
+        bodyLength: req.body?.length,
+      },
+      ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, reqBody)
+        ? reqBody
+        : null,
+    );
 
     function onAbort() {
       if (cancelHandleRid !== null) {
@@ -224,7 +233,7 @@
     if (requestBodyRid !== null) {
       if (
         reqBody === null ||
-        !ObjectPrototypeIsPrototypeOf(ReadableStream, reqBody)
+        !ObjectPrototypeIsPrototypeOf(ReadableStream.prototype, reqBody)
       ) {
         throw new TypeError("Unreachable");
       }
@@ -240,7 +249,7 @@
             },
           );
           if (done) break;
-          if (!ObjectPrototypeIsPrototypeOf(Uint8Array, value)) {
+          if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
             await reader.cancel("value not a Uint8Array");
             break;
           }

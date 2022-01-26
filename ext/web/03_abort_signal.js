@@ -77,17 +77,17 @@
     }
 
     get aborted() {
-      webidl.assertBranded(this, AbortSignal);
+      webidl.assertBranded(this, AbortSignal.prototype);
       return this[abortReason] !== undefined;
     }
 
     get reason() {
-      webidl.assertBranded(this, AbortSignal);
+      webidl.assertBranded(this, AbortSignal.prototype);
       return this[abortReason];
     }
 
     throwIfAborted() {
-      webidl.assertBranded(this, AbortSignal);
+      webidl.assertBranded(this, AbortSignal.prototype);
       if (this[abortReason] !== undefined) {
         throw this[abortReason];
       }
@@ -105,12 +105,12 @@
     }
 
     get signal() {
-      webidl.assertBranded(this, AbortController);
+      webidl.assertBranded(this, AbortController.prototype);
       return this[signal];
     }
 
     abort(reason) {
-      webidl.assertBranded(this, AbortController);
+      webidl.assertBranded(this, AbortController.prototype);
       this[signal][signalAbort](reason);
     }
   }
@@ -119,7 +119,7 @@
 
   webidl.converters["AbortSignal"] = webidl.createInterfaceConverter(
     "AbortSignal",
-    AbortSignal,
+    AbortSignal.prototype,
   );
 
   function newSignal() {

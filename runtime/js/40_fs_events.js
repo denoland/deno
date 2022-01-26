@@ -29,9 +29,11 @@
           ? { value, done: false }
           : { value: undefined, done: true };
       } catch (error) {
-        if (ObjectPrototypeIsPrototypeOf(errors.BadResource, error)) {
+        if (ObjectPrototypeIsPrototypeOf(errors.BadResource.prototype, error)) {
           return { value: undefined, done: true };
-        } else if (ObjectPrototypeIsPrototypeOf(errors.Interrupted, error)) {
+        } else if (
+          ObjectPrototypeIsPrototypeOf(errors.Interrupted.prototype, error)
+        ) {
           return { value: undefined, done: true };
         }
         throw error;
