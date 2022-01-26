@@ -314,7 +314,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, Navigator.prototype);
+        webidl.assertBranded(this, NavigatorPrototype);
         return webgpu.gpu;
       },
     },
@@ -322,11 +322,12 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, Navigator.prototype);
+        webidl.assertBranded(this, NavigatorPrototype);
         return numCpus;
       },
     },
   });
+  const NavigatorPrototype = Navigator.prototype;
 
   class WorkerNavigator {
     constructor() {
@@ -345,7 +346,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, WorkerNavigator.prototype);
+        webidl.assertBranded(this, WorkerNavigatorPrototype);
         return webgpu.gpu;
       },
     },
@@ -353,11 +354,12 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, WorkerNavigator.prototype);
+        webidl.assertBranded(this, WorkerNavigatorPrototype);
         return numCpus;
       },
     },
   });
+  const WorkerNavigatorPrototype = WorkerNavigator.prototype;
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {

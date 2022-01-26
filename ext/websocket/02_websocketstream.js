@@ -71,7 +71,7 @@
 
     [_url];
     get url() {
-      webidl.assertBranded(this, WebSocketStream.prototype);
+      webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_url];
     }
 
@@ -314,19 +314,19 @@
 
     [_connection] = new Deferred();
     get connection() {
-      webidl.assertBranded(this, WebSocketStream.prototype);
+      webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_connection].promise;
     }
 
     [_earlyClose] = false;
     [_closed] = new Deferred();
     get closed() {
-      webidl.assertBranded(this, WebSocketStream.prototype);
+      webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_closed].promise;
     }
 
     close(closeInfo) {
-      webidl.assertBranded(this, WebSocketStream.prototype);
+      webidl.assertBranded(this, WebSocketStreamPrototype);
       closeInfo = webidl.converters.WebSocketCloseInfo(closeInfo, {
         prefix: "Failed to execute 'close' on 'WebSocketStream'",
         context: "Argument 1",
@@ -383,6 +383,8 @@
       }`;
     }
   }
+
+  const WebSocketStreamPrototype = WebSocketStream.prototype;
 
   window.__bootstrap.webSocket.WebSocketStream = WebSocketStream;
 })(this);

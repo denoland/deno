@@ -242,7 +242,7 @@
         const parsedURL = new URL(input, baseURL);
         request = newInnerRequest("GET", parsedURL.href, [], null, true);
       } else { // 6.
-        if (!ObjectPrototypeIsPrototypeOf(Request.prototype, input)) {
+        if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
           throw new TypeError("Unreachable");
         }
         request = input[_request];
@@ -318,7 +318,7 @@
 
       // 33.
       let inputBody = null;
-      if (ObjectPrototypeIsPrototypeOf(Request.prototype, input)) {
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
         inputBody = input[_body];
       }
 
@@ -362,32 +362,32 @@
     }
 
     get method() {
-      webidl.assertBranded(this, Request.prototype);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_request].method;
     }
 
     get url() {
-      webidl.assertBranded(this, Request.prototype);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_request].url();
     }
 
     get headers() {
-      webidl.assertBranded(this, Request.prototype);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_headers];
     }
 
     get redirect() {
-      webidl.assertBranded(this, Request.prototype);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_request].redirectMode;
     }
 
     get signal() {
-      webidl.assertBranded(this, Request.prototype);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_signal];
     }
 
     clone() {
-      webidl.assertBranded(this, Request.prototype);
+      webidl.assertBranded(this, RequestPrototype);
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
@@ -404,7 +404,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(Request.prototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
         keys: [
           "bodyUsed",
           "headers",
@@ -419,15 +419,16 @@
   mixinBody(Request, _body, _mimeType);
 
   webidl.configurePrototype(Request);
+  const RequestPrototype = Request.prototype;
 
   webidl.converters["Request"] = webidl.createInterfaceConverter(
     "Request",
-    Request.prototype,
+    RequestPrototype,
   );
   webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
     // Union for (Request or USVString)
     if (typeof V == "object") {
-      if (ObjectPrototypeIsPrototypeOf(Request.prototype, V)) {
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, V)) {
         return webidl.converters["Request"](V, opts);
       }
     }

@@ -289,26 +289,26 @@
 
     /** @returns {string} */
     get type() {
-      webidl.assertBranded(this, CryptoKey.prototype);
+      webidl.assertBranded(this, CryptoKeyPrototype);
       return this[_type];
     }
 
     /** @returns {boolean} */
     get extractable() {
-      webidl.assertBranded(this, CryptoKey.prototype);
+      webidl.assertBranded(this, CryptoKeyPrototype);
       return this[_extractable];
     }
 
     /** @returns {string[]} */
     get usages() {
-      webidl.assertBranded(this, CryptoKey.prototype);
+      webidl.assertBranded(this, CryptoKeyPrototype);
       // TODO(lucacasonato): return a SameObject copy
       return this[_usages];
     }
 
     /** @returns {object} */
     get algorithm() {
-      webidl.assertBranded(this, CryptoKey.prototype);
+      webidl.assertBranded(this, CryptoKeyPrototype);
       // TODO(lucacasonato): return a SameObject copy
       return this[_algorithm];
     }
@@ -326,6 +326,7 @@
   }
 
   webidl.configurePrototype(CryptoKey);
+  const CryptoKeyPrototype = CryptoKey.prototype;
 
   /**
    * @param {string} type
@@ -432,7 +433,7 @@
      * @returns {Promise<Uint8Array>}
      */
     async digest(algorithm, data) {
-      webidl.assertBranded(this, SubtleCrypto.prototype);
+      webidl.assertBranded(this, SubtleCryptoPrototype);
       const prefix = "Failed to execute 'digest' on 'SubtleCrypto'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
@@ -464,7 +465,7 @@
      * @returns {Promise<any>}
      */
     async encrypt(algorithm, key, data) {
-      webidl.assertBranded(this, SubtleCrypto.prototype);
+      webidl.assertBranded(this, SubtleCryptoPrototype);
       const prefix = "Failed to execute 'encrypt' on 'SubtleCrypto'";
       webidl.requiredArguments(arguments.length, 3, { prefix });
       algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
@@ -512,7 +513,7 @@
      * @returns {Promise<any>}
      */
     async decrypt(algorithm, key, data) {
-      webidl.assertBranded(this, SubtleCrypto.prototype);
+      webidl.assertBranded(this, SubtleCryptoPrototype);
       const prefix = "Failed to execute 'decrypt' on 'SubtleCrypto'";
       webidl.requiredArguments(arguments.length, 3, { prefix });
       algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
@@ -708,7 +709,7 @@
      * @returns {Promise<any>}
      */
     async sign(algorithm, key, data) {
-      webidl.assertBranded(this, SubtleCrypto.prototype);
+      webidl.assertBranded(this, SubtleCryptoPrototype);
       const prefix = "Failed to execute 'sign' on 'SubtleCrypto'";
       webidl.requiredArguments(arguments.length, 3, { prefix });
       algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
@@ -840,7 +841,7 @@
      */
     // deno-lint-ignore require-await
     async importKey(format, keyData, algorithm, extractable, keyUsages) {
-      webidl.assertBranded(this, SubtleCrypto.prototype);
+      webidl.assertBranded(this, SubtleCryptoPrototype);
       const prefix = "Failed to execute 'importKey' on 'SubtleCrypto'";
       webidl.requiredArguments(arguments.length, 4, { prefix });
       format = webidl.converters.KeyFormat(format, {
@@ -958,7 +959,7 @@
      */
     // deno-lint-ignore require-await
     async exportKey(format, key) {
-      webidl.assertBranded(this, SubtleCrypto.prototype);
+      webidl.assertBranded(this, SubtleCryptoPrototype);
       const prefix = "Failed to execute 'exportKey' on 'SubtleCrypto'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       format = webidl.converters.KeyFormat(format, {
@@ -1008,7 +1009,7 @@
      * @returns {Promise<ArrayBuffer>}
      */
     async deriveBits(algorithm, baseKey, length) {
-      webidl.assertBranded(this, SubtleCrypto.prototype);
+      webidl.assertBranded(this, SubtleCryptoPrototype);
       const prefix = "Failed to execute 'deriveBits' on 'SubtleCrypto'";
       webidl.requiredArguments(arguments.length, 3, { prefix });
       algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
@@ -1056,7 +1057,7 @@
       extractable,
       keyUsages,
     ) {
-      webidl.assertBranded(this, SubtleCrypto.prototype);
+      webidl.assertBranded(this, SubtleCryptoPrototype);
       const prefix = "Failed to execute 'deriveKey' on 'SubtleCrypto'";
       webidl.requiredArguments(arguments.length, 5, { prefix });
       algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
@@ -1151,7 +1152,7 @@
      * @returns {Promise<boolean>}
      */
     async verify(algorithm, key, signature, data) {
-      webidl.assertBranded(this, SubtleCrypto.prototype);
+      webidl.assertBranded(this, SubtleCryptoPrototype);
       const prefix = "Failed to execute 'verify' on 'SubtleCrypto'";
       webidl.requiredArguments(arguments.length, 4, { prefix });
       algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
@@ -1272,7 +1273,7 @@
      * @returns {Promise<any>}
      */
     async wrapKey(format, key, wrappingKey, wrapAlgorithm) {
-      webidl.assertBranded(this, SubtleCrypto.prototype);
+      webidl.assertBranded(this, SubtleCryptoPrototype);
       const prefix = "Failed to execute 'wrapKey' on 'SubtleCrypto'";
       webidl.requiredArguments(arguments.length, 4, { prefix });
       format = webidl.converters.KeyFormat(format, {
@@ -1405,7 +1406,7 @@
       extractable,
       keyUsages,
     ) {
-      webidl.assertBranded(this, SubtleCrypto.prototype);
+      webidl.assertBranded(this, SubtleCryptoPrototype);
       const prefix = "Failed to execute 'unwrapKey' on 'SubtleCrypto'";
       webidl.requiredArguments(arguments.length, 7, { prefix });
       format = webidl.converters.KeyFormat(format, {
@@ -1563,7 +1564,7 @@
      * @returns {Promise<any>}
      */
     async generateKey(algorithm, extractable, keyUsages) {
-      webidl.assertBranded(this, SubtleCrypto.prototype);
+      webidl.assertBranded(this, SubtleCryptoPrototype);
       const prefix = "Failed to execute 'generateKey' on 'SubtleCrypto'";
       webidl.requiredArguments(arguments.length, 3, { prefix });
       algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
@@ -1605,6 +1606,7 @@
       return result;
     }
   }
+  const SubtleCryptoPrototype = SubtleCrypto.prototype;
 
   async function generateKey(normalizedAlgorithm, extractable, usages) {
     const algorithmName = normalizedAlgorithm.name;
@@ -3837,7 +3839,7 @@
     }
 
     getRandomValues(arrayBufferView) {
-      webidl.assertBranded(this, Crypto.prototype);
+      webidl.assertBranded(this, CryptoPrototype);
       const prefix = "Failed to execute 'getRandomValues' on 'Crypto'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       arrayBufferView = webidl.converters.ArrayBufferView(arrayBufferView, {
@@ -3878,12 +3880,12 @@
     }
 
     randomUUID() {
-      webidl.assertBranded(this, Crypto.prototype);
+      webidl.assertBranded(this, CryptoPrototype);
       return core.opSync("op_crypto_random_uuid");
     }
 
     get subtle() {
-      webidl.assertBranded(this, Crypto.prototype);
+      webidl.assertBranded(this, CryptoPrototype);
       return subtle;
     }
 
@@ -3893,6 +3895,7 @@
   }
 
   webidl.configurePrototype(Crypto);
+  const CryptoPrototype = Crypto.prototype;
 
   window.__bootstrap.crypto = {
     SubtleCrypto,

@@ -185,7 +185,7 @@
      * @param {GPURequestAdapterOptions} options
      */
     async requestAdapter(options = {}) {
-      webidl.assertBranded(this, GPU.prototype);
+      webidl.assertBranded(this, GPUPrototype);
       options = webidl.converters.GPURequestAdapterOptions(options, {
         prefix: "Failed to execute 'requestAdapter' on 'GPU'",
         context: "Argument 1",
@@ -207,6 +207,7 @@
       return `${this.constructor.name} ${inspect({})}`;
     }
   }
+  const GPUPrototype = GPU.prototype;
 
   const _name = Symbol("[[name]]");
   const _adapter = Symbol("[[adapter]]");
@@ -245,17 +246,17 @@
 
     /** @returns {string} */
     get name() {
-      webidl.assertBranded(this, GPUAdapter.prototype);
+      webidl.assertBranded(this, GPUAdapterPrototype);
       return this[_name];
     }
     /** @returns {GPUSupportedFeatures} */
     get features() {
-      webidl.assertBranded(this, GPUAdapter.prototype);
+      webidl.assertBranded(this, GPUAdapterPrototype);
       return this[_adapter].features;
     }
     /** @returns {GPUSupportedLimits} */
     get limits() {
-      webidl.assertBranded(this, GPUAdapter.prototype);
+      webidl.assertBranded(this, GPUAdapterPrototype);
       return this[_adapter].limits;
     }
     /** @returns {boolean} */
@@ -272,7 +273,7 @@
      * @returns {Promise<GPUDevice>}
      */
     async requestDevice(descriptor = {}) {
-      webidl.assertBranded(this, GPUAdapter.prototype);
+      webidl.assertBranded(this, GPUAdapterPrototype);
       const prefix = "Failed to execute 'requestDevice' on 'GPUAdapter'";
       descriptor = webidl.converters.GPUDeviceDescriptor(descriptor, {
         prefix,
@@ -322,6 +323,7 @@
       }`;
     }
   }
+  const GPUAdapterPrototype = GPUAdapter.prototype;
 
   const _limits = Symbol("[[limits]]");
 
@@ -370,107 +372,107 @@
     }
 
     get maxTextureDimension1D() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxTextureDimension1D;
     }
     get maxTextureDimension2D() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxTextureDimension2D;
     }
     get maxTextureDimension3D() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxTextureDimension3D;
     }
     get maxTextureArrayLayers() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxTextureArrayLayers;
     }
     get maxBindGroups() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxBindGroups;
     }
     get maxDynamicUniformBuffersPerPipelineLayout() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxDynamicUniformBuffersPerPipelineLayout;
     }
     get maxDynamicStorageBuffersPerPipelineLayout() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxDynamicStorageBuffersPerPipelineLayout;
     }
     get maxSampledTexturesPerShaderStage() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxSampledTexturesPerShaderStage;
     }
     get maxSamplersPerShaderStage() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxSamplersPerShaderStage;
     }
     get maxStorageBuffersPerShaderStage() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxStorageBuffersPerShaderStage;
     }
     get maxStorageTexturesPerShaderStage() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxStorageTexturesPerShaderStage;
     }
     get maxUniformBuffersPerShaderStage() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxUniformBuffersPerShaderStage;
     }
     get maxUniformBufferBindingSize() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxUniformBufferBindingSize;
     }
     get maxStorageBufferBindingSize() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxStorageBufferBindingSize;
     }
     get minUniformBufferOffsetAlignment() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].minUniformBufferOffsetAlignment;
     }
     get minStorageBufferOffsetAlignment() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].minStorageBufferOffsetAlignment;
     }
     get maxVertexBuffers() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxVertexBuffers;
     }
     get maxVertexAttributes() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxVertexAttributes;
     }
     get maxVertexBufferArrayStride() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxVertexBufferArrayStride;
     }
     get maxInterStageShaderComponents() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxInterStageShaderComponents;
     }
     get maxComputeWorkgroupStorageSize() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxComputeWorkgroupStorageSize;
     }
     get maxComputeInvocationsPerWorkgroup() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxComputeInvocationsPerWorkgroup;
     }
     get maxComputeWorkgroupSizeX() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxComputeWorkgroupSizeX;
     }
     get maxComputeWorkgroupSizeY() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxComputeWorkgroupSizeY;
     }
     get maxComputeWorkgroupSizeZ() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxComputeWorkgroupSizeZ;
     }
     get maxComputeWorkgroupsPerDimension() {
-      webidl.assertBranded(this, GPUSupportedLimits.prototype);
+      webidl.assertBranded(this, GPUSupportedLimitsPrototype);
       return this[_limits].maxComputeWorkgroupsPerDimension;
     }
 
@@ -478,6 +480,7 @@
       return `${this.constructor.name} ${inspect(this[_limits])}`;
     }
   }
+  const GPUSupportedLimitsPrototype = GPUSupportedLimits.prototype;
 
   const _features = Symbol("[[features]]");
 
@@ -498,42 +501,42 @@
 
     /** @return {IterableIterator<[string, string]>} */
     entries() {
-      webidl.assertBranded(this, GPUSupportedFeatures.prototype);
+      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
       return SetPrototypeEntries(this[_features]);
     }
 
     /** @return {void} */
     forEach(callbackfn, thisArg) {
-      webidl.assertBranded(this, GPUSupportedFeatures.prototype);
+      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
       SetPrototypeForEach(this[_features], callbackfn, thisArg);
     }
 
     /** @return {boolean} */
     has(value) {
-      webidl.assertBranded(this, GPUSupportedFeatures.prototype);
+      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
       return SetPrototypeHas(this[_features], value);
     }
 
     /** @return {IterableIterator<string>} */
     keys() {
-      webidl.assertBranded(this, GPUSupportedFeatures.prototype);
+      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
       return SetPrototypeKeys(this[_features]);
     }
 
     /** @return {IterableIterator<string>} */
     values() {
-      webidl.assertBranded(this, GPUSupportedFeatures.prototype);
+      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
       return SetPrototypeValues(this[_features]);
     }
 
     /** @return {number} */
     get size() {
-      webidl.assertBranded(this, GPUSupportedFeatures.prototype);
+      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
       return this[_features].size;
     }
 
     [SymbolIterator]() {
-      webidl.assertBranded(this, GPUSupportedFeatures.prototype);
+      webidl.assertBranded(this, GPUSupportedFeaturesPrototype);
       return this[_features][SymbolIterator]();
     }
 
@@ -541,6 +544,8 @@
       return `${this.constructor.name} ${inspect([...this.values()])}`;
     }
   }
+
+  const GPUSupportedFeaturesPrototype = GPUSupportedFeatures.prototype;
 
   const _reason = Symbol("[[reason]]");
   const _message = Symbol("[[message]]");
@@ -569,11 +574,11 @@
     }
 
     get reason() {
-      webidl.assertBranded(this, GPUDeviceLostInfo.prototype);
+      webidl.assertBranded(this, GPUDeviceLostInfoPrototype);
       return this[_reason];
     }
     get message() {
-      webidl.assertBranded(this, GPUDeviceLostInfo.prototype);
+      webidl.assertBranded(this, GPUDeviceLostInfoPrototype);
       return this[_message];
     }
 
@@ -583,6 +588,8 @@
       }`;
     }
   }
+
+  const GPUDeviceLostInfoPrototype = GPUDeviceLostInfo.prototype;
 
   const _label = Symbol("[[label]]");
 
@@ -790,15 +797,15 @@
     }
 
     get features() {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       return this[_device].features;
     }
     get limits() {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       return this[_device].limits;
     }
     get queue() {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       return this[_queue];
     }
 
@@ -808,7 +815,7 @@
     }
 
     destroy() {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       this[_cleanup]();
     }
 
@@ -817,7 +824,7 @@
      * @returns {GPUBuffer}
      */
     createBuffer(descriptor) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'createBuffer' on 'GPUDevice'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       descriptor = webidl.converters.GPUBufferDescriptor(descriptor, {
@@ -864,7 +871,7 @@
      * @returns {GPUTexture}
      */
     createTexture(descriptor) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'createTexture' on 'GPUDevice'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       descriptor = webidl.converters.GPUTextureDescriptor(descriptor, {
@@ -893,7 +900,7 @@
      * @returns {GPUSampler}
      */
     createSampler(descriptor = {}) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'createSampler' on 'GPUDevice'";
       descriptor = webidl.converters.GPUSamplerDescriptor(descriptor, {
         prefix,
@@ -920,7 +927,7 @@
      * @returns {GPUBindGroupLayout}
      */
     createBindGroupLayout(descriptor) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'createBindGroupLayout' on 'GPUDevice'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       descriptor = webidl.converters.GPUBindGroupLayoutDescriptor(descriptor, {
@@ -963,7 +970,7 @@
      * @returns {GPUPipelineLayout}
      */
     createPipelineLayout(descriptor) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'createPipelineLayout' on 'GPUDevice'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       descriptor = webidl.converters.GPUPipelineLayoutDescriptor(descriptor, {
@@ -1005,7 +1012,7 @@
      * @returns {GPUBindGroup}
      */
     createBindGroup(descriptor) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'createBindGroup' on 'GPUDevice'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       descriptor = webidl.converters.GPUBindGroupDescriptor(descriptor, {
@@ -1099,7 +1106,7 @@
      * @param {GPUShaderModuleDescriptor} descriptor
      */
     createShaderModule(descriptor) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'createShaderModule' on 'GPUDevice'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       descriptor = webidl.converters.GPUShaderModuleDescriptor(descriptor, {
@@ -1132,7 +1139,7 @@
      * @returns {GPUComputePipeline}
      */
     createComputePipeline(descriptor) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'createComputePipeline' on 'GPUDevice'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       descriptor = webidl.converters.GPUComputePipelineDescriptor(descriptor, {
@@ -1189,7 +1196,7 @@
      * @returns {GPURenderPipeline}
      */
     createRenderPipeline(descriptor) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'createRenderPipeline' on 'GPUDevice'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       descriptor = webidl.converters.GPURenderPipelineDescriptor(descriptor, {
@@ -1274,7 +1281,7 @@
      * @returns {GPUCommandEncoder}
      */
     createCommandEncoder(descriptor = {}) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'createCommandEncoder' on 'GPUDevice'";
       descriptor = webidl.converters.GPUCommandEncoderDescriptor(descriptor, {
         prefix,
@@ -1301,7 +1308,7 @@
      * @returns {GPURenderBundleEncoder}
      */
     createRenderBundleEncoder(descriptor) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix =
         "Failed to execute 'createRenderBundleEncoder' on 'GPUDevice'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -1336,7 +1343,7 @@
      * @returns {GPUQuerySet}
      */
     createQuerySet(descriptor) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'createQuerySet' on 'GPUDevice'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       descriptor = webidl.converters.GPUQuerySetDescriptor(
@@ -1364,7 +1371,7 @@
     }
 
     get lost() {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const device = this[_device];
       if (!device) {
         return PromiseResolve(true);
@@ -1379,7 +1386,7 @@
      * @param {GPUErrorFilter} filter
      */
     pushErrorScope(filter) {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'pushErrorScope' on 'GPUDevice'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       filter = webidl.converters.GPUErrorFilter(filter, {
@@ -1395,7 +1402,7 @@
      */
     // deno-lint-ignore require-await
     async popErrorScope() {
-      webidl.assertBranded(this, GPUDevice.prototype);
+      webidl.assertBranded(this, GPUDevicePrototype);
       const prefix = "Failed to execute 'popErrorScope' on 'GPUDevice'";
       const device = assertDevice(this, { prefix, context: "this" });
       if (device.isLost) {
@@ -1428,6 +1435,7 @@
     }
   }
   GPUObjectBaseMixin("GPUDevice", GPUDevice);
+  const GPUDevicePrototype = GPUDevice.prototype;
 
   /**
    * @param {string | null} label
@@ -2420,7 +2428,7 @@
      * @returns {GPUBindGroupLayout}
      */
     getBindGroupLayout(index) {
-      webidl.assertBranded(this, GPUComputePipeline.prototype);
+      webidl.assertBranded(this, GPUComputePipelinePrototype);
       const prefix =
         "Failed to execute 'getBindGroupLayout' on 'GPUComputePipeline'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -2457,6 +2465,7 @@
     }
   }
   GPUObjectBaseMixin("GPUComputePipeline", GPUComputePipeline);
+  const GPUComputePipelinePrototype = GPUComputePipeline.prototype;
 
   /**
    * @param {string | null} label
@@ -2495,7 +2504,7 @@
      * @param {number} index
      */
     getBindGroupLayout(index) {
-      webidl.assertBranded(this, GPURenderPipeline.prototype);
+      webidl.assertBranded(this, GPURenderPipelinePrototype);
       const prefix =
         "Failed to execute 'getBindGroupLayout' on 'GPURenderPipeline'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -2532,6 +2541,7 @@
     }
   }
   GPUObjectBaseMixin("GPURenderPipeline", GPURenderPipeline);
+  const GPURenderPipelinePrototype = GPURenderPipeline.prototype;
 
   class GPUColorWrite {
     constructor() {
@@ -2605,7 +2615,7 @@
      * @return {GPURenderPassEncoder}
      */
     beginRenderPass(descriptor) {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix =
         "Failed to execute 'beginRenderPass' on 'GPUCommandEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -2755,7 +2765,7 @@
      * @param {GPUComputePassDescriptor} descriptor
      */
     beginComputePass(descriptor = {}) {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix =
         "Failed to execute 'beginComputePass' on 'GPUCommandEncoder'";
       descriptor = webidl.converters.GPUComputePassDescriptor(descriptor, {
@@ -2800,7 +2810,7 @@
       destinationOffset,
       size,
     ) {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix =
         "Failed to execute 'copyBufferToBuffer' on 'GPUCommandEncoder'";
       webidl.requiredArguments(arguments.length, 5, { prefix });
@@ -2868,7 +2878,7 @@
      * @param {GPUExtent3D} copySize
      */
     copyBufferToTexture(source, destination, copySize) {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix =
         "Failed to execute 'copyBufferToTexture' on 'GPUCommandEncoder'";
       webidl.requiredArguments(arguments.length, 3, { prefix });
@@ -2936,7 +2946,7 @@
      * @param {GPUExtent3D} copySize
      */
     copyTextureToBuffer(source, destination, copySize) {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix =
         "Failed to execute 'copyTextureToBuffer' on 'GPUCommandEncoder'";
       webidl.requiredArguments(arguments.length, 3, { prefix });
@@ -3003,7 +3013,7 @@
      * @param {GPUExtent3D} copySize
      */
     copyTextureToTexture(source, destination, copySize) {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix =
         "Failed to execute 'copyTextureToTexture' on 'GPUCommandEncoder'";
       webidl.requiredArguments(arguments.length, 3, { prefix });
@@ -3074,7 +3084,7 @@
      * @param {GPUSize64} size
      */
     clearBuffer(destination, destinationOffset, size) {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix = "Failed to execute 'clearBuffer' on 'GPUCommandEncoder'";
       webidl.requiredArguments(arguments.length, 3, { prefix });
       destination = webidl.converters.GPUBuffer(destination, {
@@ -3114,7 +3124,7 @@
      * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix =
         "Failed to execute 'pushDebugGroup' on 'GPUCommandEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -3138,7 +3148,7 @@
     }
 
     popDebugGroup() {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix = "Failed to execute 'popDebugGroup' on 'GPUCommandEncoder'";
       const device = assertDevice(this, { prefix, context: "this" });
       const commandEncoderRid = assertResource(this, {
@@ -3158,7 +3168,7 @@
      * @param {string} markerLabel
      */
     insertDebugMarker(markerLabel) {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix =
         "Failed to execute 'insertDebugMarker' on 'GPUCommandEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -3186,7 +3196,7 @@
      * @param {number} queryIndex
      */
     writeTimestamp(querySet, queryIndex) {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix =
         "Failed to execute 'writeTimestamp' on 'GPUCommandEncoder'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
@@ -3237,7 +3247,7 @@
       destination,
       destinationOffset,
     ) {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix =
         "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder'";
       webidl.requiredArguments(arguments.length, 5, { prefix });
@@ -3303,7 +3313,7 @@
      * @returns {GPUCommandBuffer}
      */
     finish(descriptor = {}) {
-      webidl.assertBranded(this, GPUCommandEncoder.prototype);
+      webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix = "Failed to execute 'finish' on 'GPUCommandEncoder'";
       descriptor = webidl.converters.GPUCommandBufferDescriptor(descriptor, {
         prefix,
@@ -3340,6 +3350,7 @@
     }
   }
   GPUObjectBaseMixin("GPUCommandEncoder", GPUCommandEncoder);
+  const GPUCommandEncoderPrototype = GPUCommandEncoder.prototype;
 
   const _encoder = Symbol("[[encoder]]");
 
@@ -3386,7 +3397,7 @@
      * @param {number} maxDepth
      */
     setViewport(x, y, width, height, minDepth, maxDepth) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'setViewport' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 6, { prefix });
@@ -3432,7 +3443,7 @@
      * @param {number} height
      */
     setScissorRect(x, y, width, height) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'setScissorRect' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 4, { prefix });
@@ -3474,7 +3485,7 @@
      * @param {GPUColor} color
      */
     setBlendConstant(color) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'setBlendConstant' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -3501,7 +3512,7 @@
      * @param {number} reference
      */
     setStencilReference(reference) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'setStencilReference' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -3537,7 +3548,7 @@
      * @param {number} queryIndex
      */
     beginPipelineStatisticsQuery(querySet, queryIndex) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'beginPipelineStatisticsQuery' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
@@ -3575,7 +3586,7 @@
     }
 
     endPipelineStatisticsQuery() {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'endPipelineStatisticsQuery' on 'GPURenderPassEncoder'";
       assertDevice(this[_encoder], {
@@ -3597,7 +3608,7 @@
      * @param {number} queryIndex
      */
     writeTimestamp(querySet, queryIndex) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'writeTimestamp' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
@@ -3638,7 +3649,7 @@
      * @param {GPURenderBundle[]} bundles
      */
     executeBundles(bundles) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'executeBundles' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -3672,7 +3683,7 @@
     }
 
     endPass() {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix = "Failed to execute 'endPass' on 'GPURenderPassEncoder'";
       const device = assertDevice(this[_encoder], {
         prefix,
@@ -3699,7 +3710,7 @@
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
     ) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'setBindGroup' on 'GPURenderPassEncoder'";
       const device = assertDevice(this[_encoder], {
@@ -3744,7 +3755,7 @@
      * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'pushDebugGroup' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -3768,7 +3779,7 @@
     }
 
     popDebugGroup() {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'popDebugGroup' on 'GPURenderPassEncoder'";
       assertDevice(this[_encoder], {
@@ -3789,7 +3800,7 @@
      * @param {string} markerLabel
      */
     insertDebugMarker(markerLabel) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'insertDebugMarker' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -3816,7 +3827,7 @@
      * @param {GPURenderPipeline} pipeline
      */
     setPipeline(pipeline) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'setPipeline' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -3855,7 +3866,7 @@
      * @param {number} size
      */
     setIndexBuffer(buffer, indexFormat, offset = 0, size) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'setIndexBuffer' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
@@ -3911,7 +3922,7 @@
      * @param {number} size
      */
     setVertexBuffer(slot, buffer, offset = 0, size) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'setVertexBuffer' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
@@ -3967,7 +3978,7 @@
      * @param {number} firstInstance
      */
     draw(vertexCount, instanceCount = 1, firstVertex = 0, firstInstance = 0) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix = "Failed to execute 'draw' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       vertexCount = webidl.converters.GPUSize32(vertexCount, {
@@ -4018,7 +4029,7 @@
       baseVertex = 0,
       firstInstance = 0,
     ) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'drawIndexed' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -4066,7 +4077,7 @@
      * @param {number} indirectOffset
      */
     drawIndirect(indirectBuffer, indirectOffset) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
@@ -4108,7 +4119,7 @@
      * @param {number} indirectOffset
      */
     drawIndexedIndirect(indirectBuffer, indirectOffset) {
-      webidl.assertBranded(this, GPURenderPassEncoder.prototype);
+      webidl.assertBranded(this, GPURenderPassEncoderPrototype);
       const prefix =
         "Failed to execute 'drawIndirect' on 'GPURenderPassEncoder'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
@@ -4154,6 +4165,7 @@
     }
   }
   GPUObjectBaseMixin("GPURenderPassEncoder", GPURenderPassEncoder);
+  const GPURenderPassEncoderPrototype = GPURenderPassEncoder.prototype;
 
   /**
    * @param {string | null} label
@@ -4194,7 +4206,7 @@
      * @param {GPUComputePipeline} pipeline
      */
     setPipeline(pipeline) {
-      webidl.assertBranded(this, GPUComputePassEncoder.prototype);
+      webidl.assertBranded(this, GPUComputePassEncoderPrototype);
       const prefix =
         "Failed to execute 'setPipeline' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -4232,7 +4244,7 @@
      * @param {number} z
      */
     dispatch(x, y = 1, z = 1) {
-      webidl.assertBranded(this, GPUComputePassEncoder.prototype);
+      webidl.assertBranded(this, GPUComputePassEncoderPrototype);
       const prefix = "Failed to execute 'dispatch' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       x = webidl.converters.GPUSize32(x, { prefix, context: "Argument 1" });
@@ -4260,7 +4272,7 @@
      * @param {number} indirectOffset
      */
     dispatchIndirect(indirectBuffer, indirectOffset) {
-      webidl.assertBranded(this, GPUComputePassEncoder.prototype);
+      webidl.assertBranded(this, GPUComputePassEncoderPrototype);
       const prefix =
         "Failed to execute 'dispatchIndirect' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
@@ -4302,7 +4314,7 @@
      * @param {number} queryIndex
      */
     beginPipelineStatisticsQuery(querySet, queryIndex) {
-      webidl.assertBranded(this, GPUComputePassEncoder.prototype);
+      webidl.assertBranded(this, GPUComputePassEncoderPrototype);
       const prefix =
         "Failed to execute 'beginPipelineStatisticsQuery' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
@@ -4343,7 +4355,7 @@
     }
 
     endPipelineStatisticsQuery() {
-      webidl.assertBranded(this, GPUComputePassEncoder.prototype);
+      webidl.assertBranded(this, GPUComputePassEncoderPrototype);
       const prefix =
         "Failed to execute 'endPipelineStatisticsQuery' on 'GPUComputePassEncoder'";
       assertDevice(this[_encoder], {
@@ -4365,7 +4377,7 @@
      * @param {number} queryIndex
      */
     writeTimestamp(querySet, queryIndex) {
-      webidl.assertBranded(this, GPUComputePassEncoder.prototype);
+      webidl.assertBranded(this, GPUComputePassEncoderPrototype);
       const prefix =
         "Failed to execute 'writeTimestamp' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
@@ -4403,7 +4415,7 @@
     }
 
     endPass() {
-      webidl.assertBranded(this, GPUComputePassEncoder.prototype);
+      webidl.assertBranded(this, GPUComputePassEncoderPrototype);
       const prefix = "Failed to execute 'endPass' on 'GPUComputePassEncoder'";
       const device = assertDevice(this[_encoder], {
         prefix,
@@ -4430,7 +4442,7 @@
       dynamicOffsetsDataStart,
       dynamicOffsetsDataLength,
     ) {
-      webidl.assertBranded(this, GPUComputePassEncoder.prototype);
+      webidl.assertBranded(this, GPUComputePassEncoderPrototype);
       const prefix =
         "Failed to execute 'setBindGroup' on 'GPUComputePassEncoder'";
       const device = assertDevice(this[_encoder], {
@@ -4475,7 +4487,7 @@
      * @param {string} groupLabel
      */
     pushDebugGroup(groupLabel) {
-      webidl.assertBranded(this, GPUComputePassEncoder.prototype);
+      webidl.assertBranded(this, GPUComputePassEncoderPrototype);
       const prefix =
         "Failed to execute 'pushDebugGroup' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -4499,7 +4511,7 @@
     }
 
     popDebugGroup() {
-      webidl.assertBranded(this, GPUComputePassEncoder.prototype);
+      webidl.assertBranded(this, GPUComputePassEncoderPrototype);
       const prefix =
         "Failed to execute 'popDebugGroup' on 'GPUComputePassEncoder'";
       assertDevice(this[_encoder], {
@@ -4520,7 +4532,7 @@
      * @param {string} markerLabel
      */
     insertDebugMarker(markerLabel) {
-      webidl.assertBranded(this, GPUComputePassEncoder.prototype);
+      webidl.assertBranded(this, GPUComputePassEncoderPrototype);
       const prefix =
         "Failed to execute 'insertDebugMarker' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -4552,6 +4564,7 @@
     }
   }
   GPUObjectBaseMixin("GPUComputePassEncoder", GPUComputePassEncoder);
+  const GPUComputePassEncoderPrototype = GPUComputePassEncoder.prototype;
 
   /**
    * @param {string | null} label
@@ -5131,7 +5144,7 @@
     }
 
     destroy() {
-      webidl.assertBranded(this, GPUQuerySet.prototype);
+      webidl.assertBranded(this, GPUQuerySetPrototype);
       this[_cleanup]();
     }
 
@@ -5144,6 +5157,7 @@
     }
   }
   GPUObjectBaseMixin("GPUQuerySet", GPUQuerySet);
+  const GPUQuerySetPrototype = GPUQuerySet.prototype;
 
   window.__bootstrap.webgpu = {
     gpu: webidl.createBranded(GPU),

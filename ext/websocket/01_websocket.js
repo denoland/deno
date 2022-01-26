@@ -84,52 +84,52 @@
 
     [_readyState] = CONNECTING;
     get readyState() {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       return this[_readyState];
     }
 
     get CONNECTING() {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       return CONNECTING;
     }
     get OPEN() {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       return OPEN;
     }
     get CLOSING() {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       return CLOSING;
     }
     get CLOSED() {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       return CLOSED;
     }
 
     [_extensions] = "";
     get extensions() {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       return this[_extensions];
     }
 
     [_protocol] = "";
     get protocol() {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       return this[_protocol];
     }
 
     [_url] = "";
     get url() {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       return this[_url];
     }
 
     [_binaryType] = "blob";
     get binaryType() {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       return this[_binaryType];
     }
     set binaryType(value) {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       value = webidl.converters.DOMString(value, {
         prefix: "Failed to set 'binaryType' on 'WebSocket'",
       });
@@ -140,7 +140,7 @@
 
     [_bufferedAmount] = 0;
     get bufferedAmount() {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       return this[_bufferedAmount];
     }
 
@@ -272,7 +272,7 @@
     }
 
     send(data) {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       const prefix = "Failed to execute 'send' on 'WebSocket'";
 
       webidl.requiredArguments(arguments.length, 1, {
@@ -326,7 +326,7 @@
     }
 
     close(code = undefined, reason = undefined) {
-      webidl.assertBranded(this, WebSocket.prototype);
+      webidl.assertBranded(this, WebSocketPrototype);
       const prefix = "Failed to execute 'close' on 'WebSocket'";
 
       if (code !== undefined) {
@@ -519,6 +519,7 @@
   defineEventHandler(WebSocket.prototype, "open");
 
   webidl.configurePrototype(WebSocket);
+  const WebSocketPrototype = WebSocket.prototype;
 
   window.__bootstrap.webSocket = {
     WebSocket,

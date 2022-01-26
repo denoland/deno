@@ -96,7 +96,7 @@
      * @returns {void}
      */
     append(name, valueOrBlobValue, filename) {
-      webidl.assertBranded(this, FormData.prototype);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'append' on 'FormData'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
 
@@ -132,7 +132,7 @@
      * @returns {void}
      */
     delete(name) {
-      webidl.assertBranded(this, FormData.prototype);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'name' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -155,7 +155,7 @@
      * @returns {FormDataEntryValue | null}
      */
     get(name) {
-      webidl.assertBranded(this, FormData.prototype);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'get' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -175,7 +175,7 @@
      * @returns {FormDataEntryValue[]}
      */
     getAll(name) {
-      webidl.assertBranded(this, FormData.prototype);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'getAll' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -196,7 +196,7 @@
      * @returns {boolean}
      */
     has(name) {
-      webidl.assertBranded(this, FormData.prototype);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'has' on 'FormData'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -218,7 +218,7 @@
      * @returns {void}
      */
     set(name, valueOrBlobValue, filename) {
-      webidl.assertBranded(this, FormData.prototype);
+      webidl.assertBranded(this, FormDataPrototype);
       const prefix = "Failed to execute 'set' on 'FormData'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
 
@@ -268,6 +268,7 @@
   webidl.mixinPairIterable("FormData", FormData, entryList, "name", "value");
 
   webidl.configurePrototype(FormData);
+  const FormDataPrototype = FormData.prototype;
 
   const escape = (str, isFilename) =>
     StringPrototypeReplace(
@@ -498,7 +499,7 @@
   }
 
   webidl.converters["FormData"] = webidl
-    .createInterfaceConverter("FormData", FormData.prototype);
+    .createInterfaceConverter("FormData", FormDataPrototype);
 
   globalThis.__bootstrap.formData = {
     FormData,

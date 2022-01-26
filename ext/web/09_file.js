@@ -205,13 +205,13 @@
 
     /** @returns {number} */
     get size() {
-      webidl.assertBranded(this, Blob.prototype);
+      webidl.assertBranded(this, BlobPrototype);
       return this[_size];
     }
 
     /** @returns {string} */
     get type() {
-      webidl.assertBranded(this, Blob.prototype);
+      webidl.assertBranded(this, BlobPrototype);
       return this[_type];
     }
 
@@ -222,7 +222,7 @@
      * @returns {Blob}
      */
     slice(start = undefined, end = undefined, contentType = undefined) {
-      webidl.assertBranded(this, Blob.prototype);
+      webidl.assertBranded(this, BlobPrototype);
       const prefix = "Failed to execute 'slice' on 'Blob'";
       if (start !== undefined) {
         start = webidl.converters["long long"](start, {
@@ -317,7 +317,7 @@
      * @returns {ReadableStream<Uint8Array>}
      */
     stream() {
-      webidl.assertBranded(this, Blob.prototype);
+      webidl.assertBranded(this, BlobPrototype);
       const partIterator = toIterator(this[_parts]);
       const stream = new ReadableStream({
         type: "bytes",
@@ -339,7 +339,7 @@
      * @returns {Promise<string>}
      */
     async text() {
-      webidl.assertBranded(this, Blob.prototype);
+      webidl.assertBranded(this, BlobPrototype);
       const buffer = await this.arrayBuffer();
       return core.decode(new Uint8Array(buffer));
     }
@@ -348,7 +348,7 @@
      * @returns {Promise<ArrayBuffer>}
      */
     async arrayBuffer() {
-      webidl.assertBranded(this, Blob.prototype);
+      webidl.assertBranded(this, BlobPrototype);
       const stream = this.stream();
       const bytes = new Uint8Array(this.size);
       let offset = 0;
@@ -372,6 +372,7 @@
   }
 
   webidl.configurePrototype(Blob);
+  const BlobPrototype = Blob.prototype;
 
   webidl.converters["Blob"] = webidl.createInterfaceConverter(
     "Blob",
@@ -465,18 +466,19 @@
 
     /** @returns {string} */
     get name() {
-      webidl.assertBranded(this, File.prototype);
+      webidl.assertBranded(this, FilePrototype);
       return this[_Name];
     }
 
     /** @returns {number} */
     get lastModified() {
-      webidl.assertBranded(this, File.prototype);
+      webidl.assertBranded(this, FilePrototype);
       return this[_LastModified];
     }
   }
 
   webidl.configurePrototype(File);
+  const FilePrototype = File.prototype;
 
   webidl.converters["FilePropertyBag"] = webidl.createDictionaryConverter(
     "FilePropertyBag",

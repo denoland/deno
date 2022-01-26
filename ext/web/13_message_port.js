@@ -47,12 +47,12 @@
     }
 
     get port1() {
-      webidl.assertBranded(this, MessageChannel.prototype);
+      webidl.assertBranded(this, MessageChannelPrototype);
       return this.#port1;
     }
 
     get port2() {
-      webidl.assertBranded(this, MessageChannel.prototype);
+      webidl.assertBranded(this, MessageChannelPrototype);
       return this.#port2;
     }
 
@@ -64,6 +64,7 @@
   }
 
   webidl.configurePrototype(MessageChannel);
+  const MessageChannelPrototype = MessageChannel.prototype;
 
   const _id = Symbol("id");
   const _enabled = Symbol("enabled");
@@ -172,7 +173,7 @@
     }
 
     close() {
-      webidl.assertBranded(this, MessagePort.prototype);
+      webidl.assertBranded(this, MessagePortPrototype);
       if (this[_id] !== null) {
         core.close(this[_id]);
         this[_id] = null;
@@ -186,6 +187,7 @@
   defineEventHandler(MessagePort.prototype, "messageerror");
 
   webidl.configurePrototype(MessagePort);
+  const MessagePortPrototype = MessagePort.prototype;
 
   /**
    * @returns {[number, number]}
@@ -282,7 +284,7 @@
     let arrayBufferI = 0;
     for (const transferable of transferables) {
       if (ObjectPrototypeIsPrototypeOf(MessagePort.prototype, transferable)) {
-        webidl.assertBranded(transferable, MessagePort.prototype);
+        webidl.assertBranded(transferable, MessagePortPrototype);
         const id = transferable[_id];
         if (id === null) {
           throw new DOMException(

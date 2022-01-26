@@ -4198,13 +4198,13 @@
 
     /** @returns {number} */
     get highWaterMark() {
-      webidl.assertBranded(this, ByteLengthQueuingStrategy.prototype);
+      webidl.assertBranded(this, ByteLengthQueuingStrategyPrototype);
       return this[_highWaterMark];
     }
 
     /** @returns {(chunk: ArrayBufferView) => number} */
     get size() {
-      webidl.assertBranded(this, ByteLengthQueuingStrategy.prototype);
+      webidl.assertBranded(this, ByteLengthQueuingStrategyPrototype);
       initializeByteLengthSizeFunction(this[_globalObject]);
       return WeakMapPrototypeGet(byteSizeFunctionWeakMap, this[_globalObject]);
     }
@@ -4213,7 +4213,7 @@
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(
-          ByteLengthQueuingStrategy.prototype,
+          ByteLengthQueuingStrategyPrototype,
           this,
         ),
         keys: [
@@ -4225,6 +4225,8 @@
   }
 
   webidl.configurePrototype(ByteLengthQueuingStrategy);
+  const ByteLengthQueuingStrategyPrototype =
+    ByteLengthQueuingStrategy.prototype;
 
   /** @type {WeakMap<typeof globalThis, (chunk: ArrayBufferView) => number>} */
   const byteSizeFunctionWeakMap = new WeakMap();
@@ -4253,13 +4255,13 @@
 
     /** @returns {number} */
     get highWaterMark() {
-      webidl.assertBranded(this, CountQueuingStrategy.prototype);
+      webidl.assertBranded(this, CountQueuingStrategyPrototype);
       return this[_highWaterMark];
     }
 
     /** @returns {(chunk: any) => 1} */
     get size() {
-      webidl.assertBranded(this, CountQueuingStrategy.prototype);
+      webidl.assertBranded(this, CountQueuingStrategyPrototype);
       initializeCountSizeFunction(this[_globalObject]);
       return WeakMapPrototypeGet(countSizeFunctionWeakMap, this[_globalObject]);
     }
@@ -4268,7 +4270,7 @@
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(
-          CountQueuingStrategy.prototype,
+          CountQueuingStrategyPrototype,
           this,
         ),
         keys: [
@@ -4280,6 +4282,7 @@
   }
 
   webidl.configurePrototype(CountQueuingStrategy);
+  const CountQueuingStrategyPrototype = CountQueuingStrategy.prototype;
 
   /** @type {WeakMap<typeof globalThis, () => 1>} */
   const countSizeFunctionWeakMap = new WeakMap();
@@ -4363,7 +4366,7 @@
 
     /** @returns {boolean} */
     get locked() {
-      webidl.assertBranded(this, ReadableStream.prototype);
+      webidl.assertBranded(this, ReadableStreamPrototype);
       return isReadableStreamLocked(this);
     }
 
@@ -4373,7 +4376,7 @@
      */
     cancel(reason = undefined) {
       try {
-        webidl.assertBranded(this, ReadableStream.prototype);
+        webidl.assertBranded(this, ReadableStreamPrototype);
         if (reason !== undefined) {
           reason = webidl.converters.any(reason);
         }
@@ -4393,7 +4396,7 @@
      * @returns {ReadableStreamDefaultReader<R> | ReadableStreamBYOBReader}
      */
     getReader(options = {}) {
-      webidl.assertBranded(this, ReadableStream.prototype);
+      webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'getReader' on 'ReadableStream'";
       options = webidl.converters.ReadableStreamGetReaderOptions(options, {
         prefix,
@@ -4414,7 +4417,7 @@
      * @returns {ReadableStream<T>}
      */
     pipeThrough(transform, options = {}) {
-      webidl.assertBranded(this, ReadableStream.prototype);
+      webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       transform = webidl.converters.ReadableWritablePair(transform, {
@@ -4452,7 +4455,7 @@
      */
     pipeTo(destination, options = {}) {
       try {
-        webidl.assertBranded(this, ReadableStream.prototype);
+        webidl.assertBranded(this, ReadableStreamPrototype);
         const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
         webidl.requiredArguments(arguments.length, 1, { prefix });
         destination = webidl.converters.WritableStream(destination, {
@@ -4489,7 +4492,7 @@
 
     /** @returns {[ReadableStream<R>, ReadableStream<R>]} */
     tee() {
-      webidl.assertBranded(this, ReadableStream.prototype);
+      webidl.assertBranded(this, ReadableStreamPrototype);
       return readableStreamTee(this, false);
     }
 
@@ -4499,7 +4502,7 @@
      * @returns {AsyncIterableIterator<R>}
      */
     values(options = {}) {
-      webidl.assertBranded(this, ReadableStream.prototype);
+      webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'values' on 'ReadableStream'";
       options = webidl.converters.ReadableStreamIteratorOptions(options, {
         prefix,
@@ -4528,6 +4531,7 @@
   });
 
   webidl.configurePrototype(ReadableStream);
+  const ReadableStreamPrototype = ReadableStream.prototype;
 
   function errorReadableStream(stream, e) {
     readableStreamDefaultControllerError(stream[_controller], e);
@@ -4557,7 +4561,7 @@
     /** @returns {Promise<ReadableStreamReadResult<R>>} */
     read() {
       try {
-        webidl.assertBranded(this, ReadableStreamDefaultReader.prototype);
+        webidl.assertBranded(this, ReadableStreamDefaultReaderPrototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -4586,7 +4590,7 @@
 
     /** @returns {void} */
     releaseLock() {
-      webidl.assertBranded(this, ReadableStreamDefaultReader.prototype);
+      webidl.assertBranded(this, ReadableStreamDefaultReaderPrototype);
       if (this[_stream] === undefined) {
         return;
       }
@@ -4595,7 +4599,7 @@
 
     get closed() {
       try {
-        webidl.assertBranded(this, ReadableStreamDefaultReader.prototype);
+        webidl.assertBranded(this, ReadableStreamDefaultReaderPrototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -4608,7 +4612,7 @@
      */
     cancel(reason = undefined) {
       try {
-        webidl.assertBranded(this, ReadableStreamDefaultReader.prototype);
+        webidl.assertBranded(this, ReadableStreamDefaultReaderPrototype);
         if (reason !== undefined) {
           reason = webidl.converters.any(reason);
         }
@@ -4630,6 +4634,8 @@
   }
 
   webidl.configurePrototype(ReadableStreamDefaultReader);
+  const ReadableStreamDefaultReaderPrototype =
+    ReadableStreamDefaultReader.prototype;
 
   /** @template R */
   class ReadableStreamBYOBReader {
@@ -4658,7 +4664,7 @@
      */
     read(view) {
       try {
-        webidl.assertBranded(this, ReadableStreamBYOBReader.prototype);
+        webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
         const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
         view = webidl.converters.ArrayBufferView(view, {
           prefix,
@@ -4708,7 +4714,7 @@
 
     /** @returns {void} */
     releaseLock() {
-      webidl.assertBranded(this, ReadableStreamBYOBReader.prototype);
+      webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       if (this[_stream] === undefined) {
         return;
       }
@@ -4717,7 +4723,7 @@
 
     get closed() {
       try {
-        webidl.assertBranded(this, ReadableStreamBYOBReader.prototype);
+        webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -4730,7 +4736,7 @@
      */
     cancel(reason = undefined) {
       try {
-        webidl.assertBranded(this, ReadableStreamBYOBReader.prototype);
+        webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
         if (reason !== undefined) {
           reason = webidl.converters.any(reason);
         }
@@ -4752,6 +4758,7 @@
   }
 
   webidl.configurePrototype(ReadableStreamBYOBReader);
+  const ReadableStreamBYOBReaderPrototype = ReadableStreamBYOBReader.prototype;
 
   class ReadableStreamBYOBRequest {
     /** @type {ReadableByteStreamController} */
@@ -4761,7 +4768,7 @@
 
     /** @returns {ArrayBufferView | null} */
     get view() {
-      webidl.assertBranded(this, ReadableStreamBYOBRequest.prototype);
+      webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
       return this[_view];
     }
 
@@ -4770,7 +4777,7 @@
     }
 
     respond(bytesWritten) {
-      webidl.assertBranded(this, ReadableStreamBYOBRequest.prototype);
+      webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
       const prefix =
         "Failed to execute 'respond' on 'ReadableStreamBYOBRequest'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -4794,7 +4801,7 @@
     }
 
     respondWithNewView(view) {
-      webidl.assertBranded(this, ReadableStreamBYOBRequest.prototype);
+      webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
       const prefix =
         "Failed to execute 'respondWithNewView' on 'ReadableStreamBYOBRequest'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -4816,6 +4823,8 @@
   }
 
   webidl.configurePrototype(ReadableStreamBYOBRequest);
+  const ReadableStreamBYOBRequestPrototype =
+    ReadableStreamBYOBRequest.prototype;
 
   class ReadableByteStreamController {
     /** @type {number | undefined} */
@@ -4851,19 +4860,19 @@
 
     /** @returns {ReadableStreamBYOBRequest | null} */
     get byobRequest() {
-      webidl.assertBranded(this, ReadableByteStreamController.prototype);
+      webidl.assertBranded(this, ReadableByteStreamControllerPrototype);
       return readableByteStreamControllerGetBYOBRequest(this);
     }
 
     /** @returns {number | null} */
     get desiredSize() {
-      webidl.assertBranded(this, ReadableByteStreamController.prototype);
+      webidl.assertBranded(this, ReadableByteStreamControllerPrototype);
       return readableByteStreamControllerGetDesiredSize(this);
     }
 
     /** @returns {void} */
     close() {
-      webidl.assertBranded(this, ReadableByteStreamController.prototype);
+      webidl.assertBranded(this, ReadableByteStreamControllerPrototype);
       if (this[_closeRequested] === true) {
         throw new TypeError("Closed already requested.");
       }
@@ -4880,7 +4889,7 @@
      * @returns {void}
      */
     enqueue(chunk) {
-      webidl.assertBranded(this, ReadableByteStreamController.prototype);
+      webidl.assertBranded(this, ReadableByteStreamControllerPrototype);
       const prefix =
         "Failed to execute 'enqueue' on 'ReadableByteStreamController'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -4920,7 +4929,7 @@
      * @returns {void}
      */
     error(e = undefined) {
-      webidl.assertBranded(this, ReadableByteStreamController.prototype);
+      webidl.assertBranded(this, ReadableByteStreamControllerPrototype);
       if (e !== undefined) {
         e = webidl.converters.any(e);
       }
@@ -5000,6 +5009,8 @@
   }
 
   webidl.configurePrototype(ReadableByteStreamController);
+  const ReadableByteStreamControllerPrototype =
+    ReadableByteStreamController.prototype;
 
   /** @template R */
   class ReadableStreamDefaultController {
@@ -5032,13 +5043,13 @@
 
     /** @returns {number | null} */
     get desiredSize() {
-      webidl.assertBranded(this, ReadableStreamDefaultController.prototype);
+      webidl.assertBranded(this, ReadableStreamDefaultControllerPrototype);
       return readableStreamDefaultControllerGetDesiredSize(this);
     }
 
     /** @returns {void} */
     close() {
-      webidl.assertBranded(this, ReadableStreamDefaultController.prototype);
+      webidl.assertBranded(this, ReadableStreamDefaultControllerPrototype);
       if (readableStreamDefaultControllerCanCloseOrEnqueue(this) === false) {
         throw new TypeError("The stream controller cannot close or enqueue.");
       }
@@ -5050,7 +5061,7 @@
      * @returns {void}
      */
     enqueue(chunk = undefined) {
-      webidl.assertBranded(this, ReadableStreamDefaultController.prototype);
+      webidl.assertBranded(this, ReadableStreamDefaultControllerPrototype);
       if (chunk !== undefined) {
         chunk = webidl.converters.any(chunk);
       }
@@ -5065,7 +5076,7 @@
      * @returns {void}
      */
     error(e = undefined) {
-      webidl.assertBranded(this, ReadableStreamDefaultController.prototype);
+      webidl.assertBranded(this, ReadableStreamDefaultControllerPrototype);
       if (e !== undefined) {
         e = webidl.converters.any(e);
       }
@@ -5121,6 +5132,8 @@
   }
 
   webidl.configurePrototype(ReadableStreamDefaultController);
+  const ReadableStreamDefaultControllerPrototype =
+    ReadableStreamDefaultController.prototype;
 
   /**
    * @template I
@@ -5222,13 +5235,13 @@
 
     /** @returns {ReadableStream<O>} */
     get readable() {
-      webidl.assertBranded(this, TransformStream.prototype);
+      webidl.assertBranded(this, TransformStreamPrototype);
       return this[_readable];
     }
 
     /** @returns {WritableStream<I>} */
     get writable() {
-      webidl.assertBranded(this, TransformStream.prototype);
+      webidl.assertBranded(this, TransformStreamPrototype);
       return this[_writable];
     }
 
@@ -5240,6 +5253,7 @@
   }
 
   webidl.configurePrototype(TransformStream);
+  const TransformStreamPrototype = TransformStream.prototype;
 
   /** @template O */
   class TransformStreamDefaultController {
@@ -5289,7 +5303,7 @@
 
     /** @returns {void} */
     terminate() {
-      webidl.assertBranded(this, TransformStreamDefaultController.prototype);
+      webidl.assertBranded(this, TransformStreamDefaultControllerPrototype);
       transformStreamDefaultControllerTerminate(this);
     }
 
@@ -5306,6 +5320,8 @@
   }
 
   webidl.configurePrototype(TransformStreamDefaultController);
+  const TransformStreamDefaultControllerPrototype =
+    TransformStreamDefaultController.prototype;
 
   /** @template W */
   class WritableStream {
@@ -5375,7 +5391,7 @@
 
     /** @returns {boolean} */
     get locked() {
-      webidl.assertBranded(this, WritableStream.prototype);
+      webidl.assertBranded(this, WritableStreamPrototype);
       return isWritableStreamLocked(this);
     }
 
@@ -5385,7 +5401,7 @@
      */
     abort(reason = undefined) {
       try {
-        webidl.assertBranded(this, WritableStream.prototype);
+        webidl.assertBranded(this, WritableStreamPrototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -5405,7 +5421,7 @@
     /** @returns {Promise<void>} */
     close() {
       try {
-        webidl.assertBranded(this, WritableStream.prototype);
+        webidl.assertBranded(this, WritableStreamPrototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -5426,7 +5442,7 @@
 
     /** @returns {WritableStreamDefaultWriter<W>} */
     getWriter() {
-      webidl.assertBranded(this, WritableStream.prototype);
+      webidl.assertBranded(this, WritableStreamPrototype);
       return acquireWritableStreamDefaultWriter(this);
     }
 
@@ -5436,6 +5452,7 @@
   }
 
   webidl.configurePrototype(WritableStream);
+  const WritableStreamPrototype = WritableStream.prototype;
 
   /** @template W */
   class WritableStreamDefaultWriter {
@@ -5465,7 +5482,7 @@
     /** @returns {Promise<void>} */
     get closed() {
       try {
-        webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
+        webidl.assertBranded(this, WritableStreamDefaultWriterPrototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -5474,7 +5491,7 @@
 
     /** @returns {number} */
     get desiredSize() {
-      webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
+      webidl.assertBranded(this, WritableStreamDefaultWriterPrototype);
       if (this[_stream] === undefined) {
         throw new TypeError(
           "A writable stream is not associated with the writer.",
@@ -5486,7 +5503,7 @@
     /** @returns {Promise<void>} */
     get ready() {
       try {
-        webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
+        webidl.assertBranded(this, WritableStreamDefaultWriterPrototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -5499,7 +5516,7 @@
      */
     abort(reason = undefined) {
       try {
-        webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
+        webidl.assertBranded(this, WritableStreamDefaultWriterPrototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -5517,7 +5534,7 @@
     /** @returns {Promise<void>} */
     close() {
       try {
-        webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
+        webidl.assertBranded(this, WritableStreamDefaultWriterPrototype);
       } catch (err) {
         return PromiseReject(err);
       }
@@ -5537,7 +5554,7 @@
 
     /** @returns {void} */
     releaseLock() {
-      webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
+      webidl.assertBranded(this, WritableStreamDefaultWriterPrototype);
       const stream = this[_stream];
       if (stream === undefined) {
         return;
@@ -5552,7 +5569,7 @@
      */
     write(chunk = undefined) {
       try {
-        webidl.assertBranded(this, WritableStreamDefaultWriter.prototype);
+        webidl.assertBranded(this, WritableStreamDefaultWriterPrototype);
         if (chunk !== undefined) {
           chunk = webidl.converters.any(chunk);
         }
@@ -5584,6 +5601,8 @@
   }
 
   webidl.configurePrototype(WritableStreamDefaultWriter);
+  const WritableStreamDefaultWriterPrototype =
+    WritableStreamDefaultWriter.prototype;
 
   /** @template W */
   class WritableStreamDefaultController {
@@ -5609,7 +5628,7 @@
     [_signal];
 
     get signal() {
-      webidl.assertBranded(this, WritableStreamDefaultController.prototype);
+      webidl.assertBranded(this, WritableStreamDefaultControllerPrototype);
       return this[_signal];
     }
 
@@ -5622,7 +5641,7 @@
      * @returns {void}
      */
     error(e = undefined) {
-      webidl.assertBranded(this, WritableStreamDefaultController.prototype);
+      webidl.assertBranded(this, WritableStreamDefaultControllerPrototype);
       if (e !== undefined) {
         e = webidl.converters.any(e);
       }
@@ -5660,6 +5679,8 @@
   }
 
   webidl.configurePrototype(WritableStreamDefaultController);
+  const WritableStreamDefaultControllerPrototype =
+    WritableStreamDefaultController.prototype;
 
   /**
    * @param {ReadableStream} stream

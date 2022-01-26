@@ -60,19 +60,19 @@
 
     /** @returns {string} */
     get encoding() {
-      webidl.assertBranded(this, TextDecoder.prototype);
+      webidl.assertBranded(this, TextDecoderPrototype);
       return this.#encoding;
     }
 
     /** @returns {boolean} */
     get fatal() {
-      webidl.assertBranded(this, TextDecoder.prototype);
+      webidl.assertBranded(this, TextDecoderPrototype);
       return this.#fatal;
     }
 
     /** @returns {boolean} */
     get ignoreBOM() {
-      webidl.assertBranded(this, TextDecoder.prototype);
+      webidl.assertBranded(this, TextDecoderPrototype);
       return this.#ignoreBOM;
     }
 
@@ -81,7 +81,7 @@
      * @param {TextDecodeOptions} options
      */
     decode(input = new Uint8Array(), options = {}) {
-      webidl.assertBranded(this, TextDecoder.prototype);
+      webidl.assertBranded(this, TextDecoderPrototype);
       const prefix = "Failed to execute 'decode' on 'TextDecoder'";
       if (input !== undefined) {
         input = webidl.converters.BufferSource(input, {
@@ -146,6 +146,7 @@
   }
 
   webidl.configurePrototype(TextDecoder);
+  const TextDecoderPrototype = TextDecoder.prototype;
 
   class TextEncoder {
     constructor() {
@@ -154,7 +155,7 @@
 
     /** @returns {string} */
     get encoding() {
-      webidl.assertBranded(this, TextEncoder.prototype);
+      webidl.assertBranded(this, TextEncoderPrototype);
       return "utf-8";
     }
 
@@ -163,7 +164,7 @@
      * @returns {Uint8Array}
      */
     encode(input = "") {
-      webidl.assertBranded(this, TextEncoder.prototype);
+      webidl.assertBranded(this, TextEncoderPrototype);
       const prefix = "Failed to execute 'encode' on 'TextEncoder'";
       // The WebIDL type of `input` is `USVString`, but `core.encode` already
       // converts lone surrogates to the replacement character.
@@ -180,7 +181,7 @@
      * @returns {TextEncoderEncodeIntoResult}
      */
     encodeInto(source, destination) {
-      webidl.assertBranded(this, TextEncoder.prototype);
+      webidl.assertBranded(this, TextEncoderPrototype);
       const prefix = "Failed to execute 'encodeInto' on 'TextEncoder'";
       // The WebIDL type of `source` is `USVString`, but the ops bindings
       // already convert lone surrogates to the replacement character.
@@ -198,6 +199,7 @@
   }
 
   webidl.configurePrototype(TextEncoder);
+  const TextEncoderPrototype = TextEncoder.prototype;
 
   class TextDecoderStream {
     /** @type {TextDecoder} */
@@ -254,36 +256,37 @@
 
     /** @returns {string} */
     get encoding() {
-      webidl.assertBranded(this, TextDecoderStream.prototype);
+      webidl.assertBranded(this, TextDecoderStreamPrototype);
       return this.#decoder.encoding;
     }
 
     /** @returns {boolean} */
     get fatal() {
-      webidl.assertBranded(this, TextDecoderStream.prototype);
+      webidl.assertBranded(this, TextDecoderStreamPrototype);
       return this.#decoder.fatal;
     }
 
     /** @returns {boolean} */
     get ignoreBOM() {
-      webidl.assertBranded(this, TextDecoderStream.prototype);
+      webidl.assertBranded(this, TextDecoderStreamPrototype);
       return this.#decoder.ignoreBOM;
     }
 
     /** @returns {ReadableStream<string>} */
     get readable() {
-      webidl.assertBranded(this, TextDecoderStream.prototype);
+      webidl.assertBranded(this, TextDecoderStreamPrototype);
       return this.#transform.readable;
     }
 
     /** @returns {WritableStream<BufferSource>} */
     get writable() {
-      webidl.assertBranded(this, TextDecoderStream.prototype);
+      webidl.assertBranded(this, TextDecoderStreamPrototype);
       return this.#transform.writable;
     }
   }
 
   webidl.configurePrototype(TextDecoderStream);
+  const TextDecoderStreamPrototype = TextDecoderStream.prototype;
 
   class TextEncoderStream {
     /** @type {string | null} */
@@ -338,24 +341,25 @@
 
     /** @returns {string} */
     get encoding() {
-      webidl.assertBranded(this, TextEncoderStream.prototype);
+      webidl.assertBranded(this, TextEncoderStreamPrototype);
       return "utf-8";
     }
 
     /** @returns {ReadableStream<Uint8Array>} */
     get readable() {
-      webidl.assertBranded(this, TextEncoderStream.prototype);
+      webidl.assertBranded(this, TextEncoderStreamPrototype);
       return this.#transform.readable;
     }
 
     /** @returns {WritableStream<string>} */
     get writable() {
-      webidl.assertBranded(this, TextEncoderStream.prototype);
+      webidl.assertBranded(this, TextEncoderStreamPrototype);
       return this.#transform.writable;
     }
   }
 
   webidl.configurePrototype(TextEncoderStream);
+  const TextEncoderStreamPrototype = TextEncoderStream.prototype;
 
   webidl.converters.TextDecoderOptions = webidl.createDictionaryConverter(
     "TextDecoderOptions",
