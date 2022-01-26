@@ -167,6 +167,12 @@ itest!(ops_sanitizer_nexttick {
   output: "test/ops_sanitizer_nexttick.out",
 });
 
+itest!(resource_sanitizer {
+  args: "test --allow-read test/resource_sanitizer.ts",
+  exit_code: 1,
+  output: "test/resource_sanitizer.out",
+});
+
 itest!(exit_sanitizer {
   args: "test test/exit_sanitizer.ts",
   output: "test/exit_sanitizer.out",

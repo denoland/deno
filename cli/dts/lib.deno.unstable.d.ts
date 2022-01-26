@@ -953,7 +953,7 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
-  /** *UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * SleepSync puts the main thread to sleep synchronously for a given amount of
    * time in milliseconds.
