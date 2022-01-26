@@ -37,11 +37,13 @@ impl EditorHelper {
   pub fn get_global_lexical_scope_names(&self) -> Vec<String> {
     let evaluate_response = self
       .sync_sender
-      .post_message(inspector_structures::Methods::RuntimeGlobalLexicalScopeNames(
-        inspector_structures::runtime::GlobalLexicalScopeNamesArgs {
-          execution_context_id: Some(self.context_id),
-        },
-      ))
+      .post_message(
+        inspector_structures::Methods::RuntimeGlobalLexicalScopeNames(
+          inspector_structures::runtime::GlobalLexicalScopeNamesArgs {
+            execution_context_id: Some(self.context_id),
+          },
+        ),
+      )
       .unwrap();
     let evaluate_response: inspector_structures::runtime::GlobalLexicalScopeNamesResponse = serde_json::from_value(evaluate_response).unwrap();
     evaluate_response.names

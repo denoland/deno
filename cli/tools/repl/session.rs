@@ -377,25 +377,27 @@ impl ReplSession {
     expression: &str,
   ) -> Result<inspector_structures::runtime::EvaluateResponse, AnyError> {
     self
-      .post_message_with_event_loop(inspector_structures::Methods::RuntimeEvaluate(
-        inspector_structures::runtime::EvaluateArgs {
-          expression: expression.to_string(),
-          object_group: None,
-          include_command_line_api: None,
-          silent: None,
-          context_id: Some(self.context_id),
-          return_by_value: None,
-          generate_preview: None,
-          user_gesture: None,
-          await_promise: None,
-          throw_on_side_effect: None,
-          timeout: None,
-          disable_breaks: None,
-          repl_mode: Some(true),
-          allow_unsafe_eval_blocked_by_csp: None,
-          unique_context_id: None,
-        },
-      ))
+      .post_message_with_event_loop(
+        inspector_structures::Methods::RuntimeEvaluate(
+          inspector_structures::runtime::EvaluateArgs {
+            expression: expression.to_string(),
+            object_group: None,
+            include_command_line_api: None,
+            silent: None,
+            context_id: Some(self.context_id),
+            return_by_value: None,
+            generate_preview: None,
+            user_gesture: None,
+            await_promise: None,
+            throw_on_side_effect: None,
+            timeout: None,
+            disable_breaks: None,
+            repl_mode: Some(true),
+            allow_unsafe_eval_blocked_by_csp: None,
+            unique_context_id: None,
+          },
+        ),
+      )
       .await
       .and_then(|res| serde_json::from_value(res).map_err(|e| e.into()))
   }
