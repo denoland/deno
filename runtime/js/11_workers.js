@@ -5,6 +5,7 @@
   const core = window.Deno.core;
   const {
     Error,
+    ObjectPrototypeIsPrototypeOf,
     StringPrototypeStartsWith,
     String,
     SymbolIterator,
@@ -199,7 +200,7 @@
         const event = new MessageEvent("message", {
           cancelable: false,
           data: message,
-          ports: transferables.filter((t) => t instanceof MessagePort),
+          ports: transferables.filter((t) => ObjectPrototypeIsPrototypeOf(MessagePort, t)),
         });
         this.dispatchEvent(event);
       }

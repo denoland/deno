@@ -16,6 +16,7 @@ delete Object.prototype.__proto__;
     ObjectDefineProperty,
     ObjectDefineProperties,
     ObjectFreeze,
+    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     PromiseResolve,
     Symbol,
@@ -142,7 +143,7 @@ delete Object.prototype.__proto__;
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transferables.filter((t) => t instanceof MessagePort),
+        ports: transferables.filter((t) => ObjectPrototypeIsPrototypeOf(MessagePort, t)),
       });
 
       try {

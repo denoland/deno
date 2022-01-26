@@ -3,11 +3,12 @@
 
 ((window) => {
   const {
-    StringPrototypeReplace,
-    TypeError,
-    Promise,
     decodeURIComponent,
     Error,
+    ObjectPrototypeIsPrototypeOf,
+    Promise,
+    StringPrototypeReplace,
+    TypeError,
   } = window.__bootstrap.primordials;
   const { build } = window.__bootstrap.build;
   const { URL } = window.__bootstrap.url;
@@ -93,7 +94,7 @@
   }
 
   function pathFromURL(pathOrUrl) {
-    if (pathOrUrl instanceof URL) {
+    if (ObjectPrototypeIsPrototypeOf(URL, pathOrUrl)) {
       if (pathOrUrl.protocol != "file:") {
         throw new TypeError("Must be a file URL.");
       }
