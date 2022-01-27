@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use crate::cdp;
+use crate::colors;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
@@ -44,7 +44,8 @@ impl EditorHelper {
         }),
       )
       .unwrap();
-    let evaluate_response: cdp::GlobalLexicalScopeNamesResponse = serde_json::from_value(evaluate_response).unwrap();
+    let evaluate_response: cdp::GlobalLexicalScopeNamesResponse =
+      serde_json::from_value(evaluate_response).unwrap();
     evaluate_response.names
   }
 
@@ -109,10 +110,7 @@ impl EditorHelper {
     )
   }
 
-  fn evaluate_expression(
-    &self,
-    expr: &str,
-  ) -> Option<cdp::EvaluateResponse> {
+  fn evaluate_expression(&self, expr: &str) -> Option<cdp::EvaluateResponse> {
     let evaluate_response = self
       .sync_sender
       .post_message(

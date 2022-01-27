@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
 use crate::cdp;
+use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
