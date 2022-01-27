@@ -391,10 +391,9 @@
     }
   }
 
-  mixinBody(Response, _body, _mimeType);
-
   webidl.configurePrototype(Response);
   const ResponsePrototype = Response.prototype;
+  mixinBody(ResponsePrototype, _body, _mimeType);
 
   webidl.converters["Response"] = webidl.createInterfaceConverter(
     "Response",

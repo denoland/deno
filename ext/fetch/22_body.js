@@ -229,12 +229,12 @@
   }
 
   /**
-   * @param {any} class_
+   * @param {any} prototype
    * @param {symbol} bodySymbol
    * @param {symbol} mimeTypeSymbol
    * @returns {void}
    */
-  function mixinBody(class_, bodySymbol, mimeTypeSymbol) {
+  function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
     function consumeBody(object) {
       if (object[bodySymbol] !== null) {
         return object[bodySymbol].consume();
@@ -249,7 +249,7 @@
          * @returns {ReadableStream<Uint8Array> | null}
          */
         get() {
-          webidl.assertBranded(this, class_.prototype);
+          webidl.assertBranded(this, prototype);
           if (this[bodySymbol] === null) {
             return null;
           } else {
@@ -264,7 +264,7 @@
          * @returns {boolean}
          */
         get() {
-          webidl.assertBranded(this, class_.prototype);
+          webidl.assertBranded(this, prototype);
           if (this[bodySymbol] !== null) {
             return this[bodySymbol].consumed();
           }
@@ -276,7 +276,7 @@
       arrayBuffer: {
         /** @returns {Promise<ArrayBuffer>} */
         value: async function arrayBuffer() {
-          webidl.assertBranded(this, class_.prototype);
+          webidl.assertBranded(this, prototype);
           const body = await consumeBody(this);
           return packageData(body, "ArrayBuffer");
         },
@@ -287,7 +287,7 @@
       blob: {
         /** @returns {Promise<Blob>} */
         value: async function blob() {
-          webidl.assertBranded(this, class_.prototype);
+          webidl.assertBranded(this, prototype);
           const body = await consumeBody(this);
           return packageData(body, "Blob", this[mimeTypeSymbol]);
         },
@@ -298,7 +298,7 @@
       formData: {
         /** @returns {Promise<FormData>} */
         value: async function formData() {
-          webidl.assertBranded(this, class_.prototype);
+          webidl.assertBranded(this, prototype);
           const body = await consumeBody(this);
           return packageData(body, "FormData", this[mimeTypeSymbol]);
         },
@@ -309,7 +309,7 @@
       json: {
         /** @returns {Promise<any>} */
         value: async function json() {
-          webidl.assertBranded(this, class_.prototype);
+          webidl.assertBranded(this, prototype);
           const body = await consumeBody(this);
           return packageData(body, "JSON");
         },
@@ -320,7 +320,7 @@
       text: {
         /** @returns {Promise<string>} */
         value: async function text() {
-          webidl.assertBranded(this, class_.prototype);
+          webidl.assertBranded(this, prototype);
           const body = await consumeBody(this);
           return packageData(body, "text");
         },
@@ -329,7 +329,7 @@
         enumerable: true,
       },
     };
-    return ObjectDefineProperties(class_.prototype, mixin);
+    return ObjectDefineProperties(prototype, mixin);
   }
 
   /**
