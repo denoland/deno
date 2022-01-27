@@ -75,7 +75,11 @@ impl ReplSession {
     let mut session = worker.create_inspector_session().await;
 
     worker
-      .with_event_loop(session.post_message("Runtime.enable", ()).boxed_local())
+      .with_event_loop(
+        session
+          .post_message::<()>("Runtime.enable", None)
+          .boxed_local(),
+      )
       .await?;
 
     // Enabling the runtime domain will always send trigger one executionContextCreated for each
@@ -126,7 +130,7 @@ impl ReplSession {
   pub async fn post_message_with_event_loop<T: serde::Serialize>(
     &mut self,
     method: &str,
-    params: T,
+    params: Option<T>,
   ) -> Result<Value, AnyError> {
     self
       .worker
@@ -238,7 +242,7 @@ impl ReplSession {
   ) -> Result<(), AnyError> {
     self.post_message_with_event_loop(
       "Runtime.callFunctionOn",
-      cdp::CallFunctionOnArgs {
+      Some(cdp::CallFunctionOnArgs {
         function_declaration: "function (object) { Deno[Deno.internal].lastThrownError = object; }".to_string(),
         object_id: None,
         arguments: Some(vec![error.into()]),
@@ -250,7 +254,7 @@ impl ReplSession {
         execution_context_id: Some(self.context_id),
         object_group: None,
         throw_on_side_effect: None
-      },
+      }),
     ).await?;
     Ok(())
   }
@@ -262,7 +266,7 @@ impl ReplSession {
     self
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
-        cdp::CallFunctionOnArgs {
+        Some(cdp::CallFunctionOnArgs {
           function_declaration:
             "function (object) { Deno[Deno.internal].lastEvalResult = object; }"
               .to_string(),
@@ -276,7 +280,7 @@ impl ReplSession {
           execution_context_id: Some(self.context_id),
           object_group: None,
           throw_on_side_effect: None,
-        },
+        }),
       )
       .await?;
     Ok(())
@@ -291,7 +295,7 @@ impl ReplSession {
     // Deno.inspectArgs.
     let inspect_response = self.post_message_with_event_loop(
       "Runtime.callFunctionOn",
-      cdp::CallFunctionOnArgs {
+      Some(cdp::CallFunctionOnArgs {
         function_declaration: r#"function (object) {
           try {
             return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
@@ -309,7 +313,7 @@ impl ReplSession {
         execution_context_id: Some(self.context_id),
         object_group: None,
         throw_on_side_effect: None
-      },
+      }),
     ).await?;
 
     let response: cdp::CallFunctionOnResponse =
@@ -371,7 +375,7 @@ impl ReplSession {
     self
       .post_message_with_event_loop(
         "Runtime.evaluate",
-        cdp::EvaluateArgs {
+        Some(cdp::EvaluateArgs {
           expression: expression.to_string(),
           object_group: None,
           include_command_line_api: None,
@@ -387,7 +391,7 @@ impl ReplSession {
           repl_mode: Some(true),
           allow_unsafe_eval_blocked_by_csp: None,
           unique_context_id: None,
-        },
+        }),
       )
       .await
       .and_then(|res| serde_json::from_value(res).map_err(|e| e.into()))

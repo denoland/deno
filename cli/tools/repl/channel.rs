@@ -35,8 +35,14 @@ pub fn rustyline_channel(
 }
 
 pub enum RustylineSyncMessage {
-  PostMessage { method: String, params: Value },
-  LspCompletions { line_text: String, position: usize },
+  PostMessage {
+    method: String,
+    params: Option<Value>,
+  },
+  LspCompletions {
+    line_text: String,
+    position: usize,
+  },
 }
 
 pub enum RustylineSyncResponse {
@@ -53,14 +59,16 @@ impl RustylineSyncMessageSender {
   pub fn post_message<T: serde::Serialize>(
     &self,
     method: &str,
-    params: T,
+    params: Option<T>,
   ) -> Result<Value, AnyError> {
     if let Err(err) =
       self
         .message_tx
         .blocking_send(RustylineSyncMessage::PostMessage {
           method: method.to_string(),
-          params: serde_json::to_value(params)?,
+          params: params
+            .map(|params| serde_json::to_value(params))
+            .transpose()?,
         })
     {
       Err(anyhow!("{}", err))

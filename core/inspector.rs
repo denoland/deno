@@ -652,7 +652,7 @@ impl LocalInspectorSession {
   pub async fn post_message<T: serde::Serialize>(
     &mut self,
     method: &str,
-    params: T,
+    params: Option<T>,
   ) -> Result<serde_json::Value, Error> {
     let id = self.next_message_id;
     self.next_message_id += 1;
