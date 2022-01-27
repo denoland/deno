@@ -32,6 +32,7 @@
     PromisePrototypeThen,
     PromiseReject,
     PromiseResolve,
+    SafeArrayIterator,
     Set,
     SetPrototypeEntries,
     SetPrototypeForEach,
@@ -542,7 +543,9 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return `${this.constructor.name} ${inspect([...this.values()])}`;
+      return `${this.constructor.name} ${
+        inspect([...new SafeArrayIterator(this.values())])
+      }`;
     }
   }
 
@@ -1922,7 +1925,7 @@
           const { err } = core.opSync("op_webgpu_buffer_unmap", {
             bufferRid,
             mappedRid,
-          }, ...(write ? [new Uint8Array(buffer)] : []));
+          }, ...new SafeArrayIterator(write ? [new Uint8Array(buffer)] : []));
           device.pushError(err);
           if (err) return;
         }

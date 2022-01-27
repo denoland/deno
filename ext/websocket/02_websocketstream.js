@@ -17,6 +17,7 @@
     ObjectPrototypeIsPrototypeOf,
     PromisePrototypeCatch,
     PromisePrototypeThen,
+    SafeArrayIterator,
     Set,
     StringPrototypeEndsWith,
     StringPrototypeToLowerCase,
@@ -144,7 +145,9 @@
               ? ArrayPrototypeJoin(options.protocols, ", ")
               : "",
             cancelHandle: cancelRid,
-            headers: [...new Headers(options.headers).entries()],
+            headers: [
+              ...new SafeArrayIterator(new Headers(options.headers).entries()),
+            ],
           }),
           (create) => {
             options.signal?.[remove](abort);

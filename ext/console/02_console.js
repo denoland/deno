@@ -53,6 +53,8 @@
     RegExpPrototype,
     RegExpPrototypeTest,
     RegExpPrototypeToString,
+    SafeArrayIterator,
+    SafeSet,
     SetPrototype,
     SetPrototypeEntries,
     Symbol,
@@ -1871,11 +1873,14 @@
       const [first, ...rest] = args;
 
       if (typeof first === "string") {
-        this.error(`Assertion failed: ${first}`, ...rest);
+        this.error(
+          `Assertion failed: ${first}`,
+          ...new SafeArrayIterator(rest),
+        );
         return;
       }
 
-      this.error(`Assertion failed:`, ...args);
+      this.error(`Assertion failed:`, ...new SafeArrayIterator(args));
     };
 
     count = (label = "default") => {
@@ -1927,7 +1932,7 @@
       const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
 
       if (isSet) {
-        resultData = [...data];
+        resultData = [...new SafeSet(data)];
       } else if (isMap) {
         let idx = 0;
         resultData = {};
@@ -1981,12 +1986,16 @@
 
       const headerKeys = ObjectKeys(objectValues);
       const bodyValues = ObjectValues(objectValues);
+      const headerProps = properties ||
+        [
+          ...new SafeArrayIterator(headerKeys),
+          !isMap && hasPrimitives && valuesKey,
+        ];
       const header = ArrayPrototypeFilter([
         indexKey,
-        ...(properties ||
-          [...headerKeys, !isMap && hasPrimitives && valuesKey]),
+        ...new SafeArrayIterator(headerProps),
       ], Boolean);
-      const body = [indexKeys, ...bodyValues, values];
+      const body = [indexKeys, ...new SafeArrayIterator(bodyValues), values];
 
       toTable(header, body);
     };
@@ -2013,7 +2022,7 @@
       const startTime = MapPrototypeGet(timerMap, label);
       const duration = DateNow() - startTime;
 
-      this.info(`${label}: ${duration}ms`, ...args);
+      this.info(`${label}: ${duration}ms`, ...new SafeArrayIterator(args));
     };
 
     timeEnd = (label = "default") => {
@@ -2033,7 +2042,7 @@
 
     group = (...label) => {
       if (label.length > 0) {
-        this.log(...label);
+        this.log(...new SafeArrayIterator(label));
       }
       this.indentLevel += 2;
     };
