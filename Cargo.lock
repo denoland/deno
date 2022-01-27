@@ -720,7 +720,7 @@ dependencies = [
  "clap_complete",
  "clap_complete_fig",
  "data-url",
- "deno_ast",
+ "deno_ast 0.10.0",
  "deno_bench_util",
  "deno_broadcast_channel",
  "deno_console",
@@ -790,6 +790,20 @@ name = "deno_ast"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e81ceec755f9e4e270e8d7ef4ade1921eddc1717dea092c726b088f9c074721b"
+dependencies = [
+ "dprint-swc-ecma-ast-view",
+ "serde",
+ "swc_atoms",
+ "swc_common",
+ "swc_ecmascript",
+ "text_lines",
+]
+
+[[package]]
+name = "deno_ast"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a2780a628fd2fd52c81ef3f9d2bda0609a662b9e4f85623c29051c277363f65"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -882,11 +896,10 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d5bc1673e30b11fee3149036359a7c96e487ad5a6b4a1d3bb996b88b3fc3340"
+source = "git+https://github.com/kitsonk/deno_doc?branch=feat_expose_module_new#a988060ca9f345df025ca26a12362c8e7ad84a73"
 dependencies = [
  "cfg-if 1.0.0",
- "deno_ast",
+ "deno_ast 0.10.0",
  "deno_graph",
  "futures",
  "lazy_static",
@@ -927,14 +940,13 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84490a0e4e1ce0088b00e9cf191a6e181b3f4489ecebcb7ca7325a3e8ec5a323"
+version = "0.21.0"
+source = "git+https://github.com/kitsonk/deno_graph?branch=feat_expose_module_new#375ba6c81c8fa71f494c27166d1f83e396673557"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
  "data-url",
- "deno_ast",
+ "deno_ast 0.10.0",
  "futures",
  "lazy_static",
  "parking_lot",
@@ -968,7 +980,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6cf1715d924e6fdf45847868b31742ed305fb6270747c6046dc3c19f67c0d2f5"
 dependencies = [
  "anyhow",
- "deno_ast",
+ "deno_ast 0.9.0",
  "derive_more",
  "if_chain",
  "log",
@@ -1244,7 +1256,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3e9b87d22638bc08075c827ae568e02b07fbf262142db90895383bac3f5a67e"
 dependencies = [
  "anyhow",
- "deno_ast",
+ "deno_ast 0.9.0",
  "dprint-core",
  "parking_lot_core",
  "rustc-hash",

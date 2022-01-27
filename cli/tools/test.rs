@@ -15,6 +15,7 @@ use crate::flags::TestFlags;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
+use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::located_script_name;
 use crate::lockfile;
@@ -992,13 +993,6 @@ async fn fetch_specifiers_with_test_mode(
   }
 
   Ok(specifiers_with_mode)
-}
-
-fn contains_specifier(
-  v: &[(ModuleSpecifier, ModuleKind)],
-  specifier: &ModuleSpecifier,
-) -> bool {
-  v.iter().any(|(s, _)| s == specifier)
 }
 
 pub async fn run_tests(

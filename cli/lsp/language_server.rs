@@ -8,6 +8,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_graph::Resolved;
 use import_map::ImportMap;
 use log::error;
 use log::info;
@@ -1058,8 +1059,7 @@ impl Inner {
         .get_code()
         .map(|s| self.documents.get(s))
         .flatten()
-        .map(|d| d.maybe_types_dependency())
-        .flatten();
+        .map(|d| d.maybe_types_dependency());
       let value = match (&dep.maybe_code, &dep.maybe_type, &dep_maybe_types_dependency) {
         (Some(code_dep), Some(type_dep), None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",

@@ -6,6 +6,7 @@ use crate::errors::get_error_class_name;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use deno_graph::source::ResolveResponse;
 use deno_graph::Dependency;
 use deno_graph::MediaType;
 use deno_graph::Module;
@@ -20,6 +21,29 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
+
+// TODO(@kitsonk): remove when ResolveResponse::to_result() is available
+pub(crate) fn resolve_response_to_result(
+  response: ResolveResponse,
+) -> Result<ModuleSpecifier, AnyError> {
+  match response {
+    ResolveResponse::Amd(specifier)
+    | ResolveResponse::CommonJs(specifier)
+    | ResolveResponse::Esm(specifier)
+    | ResolveResponse::Script(specifier)
+    | ResolveResponse::Specifier(specifier)
+    | ResolveResponse::SystemJs(specifier)
+    | ResolveResponse::Umd(specifier) => Ok(specifier),
+    ResolveResponse::Err(err) => Err(err),
+  }
+}
+
+pub(crate) fn contains_specifier(
+  v: &[(ModuleSpecifier, ModuleKind)],
+  specifier: &ModuleSpecifier,
+) -> bool {
+  v.iter().any(|(s, _)| s == specifier)
+}
 
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
@@ -152,7 +176,7 @@ impl GraphData {
     let mut result = HashMap::<&'a ModuleSpecifier, &'a ModuleEntry>::new();
     let mut seen = HashSet::<&ModuleSpecifier>::new();
     let mut visiting = VecDeque::<&ModuleSpecifier>::new();
-    for root in roots {
+    for (root, _) in roots {
       seen.insert(root);
       visiting.push_back(root);
     }
@@ -333,7 +357,7 @@ impl GraphData {
           }
         }
         ModuleEntry::Error(error) => {
-          if !roots.contains(specifier) {
+          if !contains_specifier(roots, specifier) {
             if let Some(range) = self.referrer_map.get(specifier) {
               if !range.specifier.as_str().contains("$deno") {
                 let message = error.to_string();

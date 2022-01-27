@@ -9,6 +9,7 @@ use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::fs_util::specifier_to_file_path;
+use crate::graph_util::resolve_response_to_result;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::resolver::ImportMapResolver;
@@ -24,6 +25,7 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolveResponse;
 use deno_graph::Module;
+use deno_graph::Resolved;
 use lspower::lsp;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
@@ -214,58 +216,6 @@ impl AssetOrDocument {
   }
 }
 
-// TODO(@kitsonk) expose the synthetic module from deno_graph
-#[derive(Debug)]
-struct SyntheticModule {
-  dependencies: BTreeMap<String, deno_graph::Resolved>,
-  specifier: ModuleSpecifier,
-}
-
-impl SyntheticModule {
-  pub fn new(
-    specifier: ModuleSpecifier,
-    dependencies: Vec<(String, Option<lsp::Range>)>,
-    maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
-  ) -> Self {
-    let dependencies = dependencies
-      .iter()
-      .map(|(dep, maybe_range)| {
-        let range = to_deno_graph_range(&specifier, maybe_range.as_ref());
-        let result = if let Some(resolver) = maybe_resolver {
-          resolver.resolve(dep, &specifier).map_err(|err| {
-            if let Some(specifier_error) =
-              err.downcast_ref::<deno_graph::SpecifierError>()
-            {
-              deno_graph::ResolutionError::InvalidSpecifier(
-                specifier_error.clone(),
-                range.clone(),
-              )
-            } else {
-              deno_graph::ResolutionError::ResolverError(
-                Arc::new(err),
-                dep.to_string(),
-                range.clone(),
-              )
-            }
-          })
-        } else {
-          deno_core::resolve_import(dep, specifier.as_str()).map_err(|err| {
-            deno_graph::ResolutionError::ResolverError(
-              Arc::new(err.into()),
-              dep.to_string(),
-              range.clone(),
-            )
-          })
-        };
-        (dep.to_string(), Some(result.map(|s| (s, range))))
-      })
-      .collect();
-    Self {
-      dependencies,
-      specifier,
-    }
-  }
-}
 #[derive(Debug, Clone)]
 struct DocumentInner {
   /// contains the last-known-good set of dependencies from parsing the module
@@ -300,16 +250,14 @@ impl Document {
     // we only ever do `Document::new` on on disk resources that are supposed to
     // be diagnosable, unlike `Document::open`, so it is safe to unconditionally
     // parse the module.
-    let maybe_module = match deno_graph::parse_module(
+    let maybe_module = Some(deno_graph::parse_module(
       &specifier,
       maybe_headers,
       content.clone(),
+      Some(&deno_graph::ModuleKind::Esm),
       maybe_resolver,
       Some(&parser),
-    ) {
-      Ok(m) => m.to_maybe_es_module().map(Ok),
-      Err(err) => Some(Err(err)),
-    };
+    ));
     let dependencies = if let Some(Ok(module)) = &maybe_module {
       Arc::new(module.dependencies.clone())
     } else {
@@ -341,16 +289,14 @@ impl Document {
     let maybe_headers = language_id.as_headers();
     let parser = SourceParser::default();
     let maybe_module = if language_id.is_diagnosable() {
-      match deno_graph::parse_module(
+      Some(deno_graph::parse_module(
         &specifier,
         maybe_headers,
         content.clone(),
+        Some(&deno_graph::ModuleKind::Esm),
         maybe_resolver,
         Some(&parser),
-      ) {
-        Ok(m) => m.to_maybe_es_module().map(Ok),
-        Err(err) => Some(Err(err)),
-      }
+      ))
     } else {
       None
     };
@@ -412,16 +358,14 @@ impl Document {
         .map(|li| li.as_headers())
         .flatten();
       let parser = SourceParser::default();
-      match deno_graph::parse_module(
+      Some(deno_graph::parse_module(
         &self.0.specifier,
         maybe_headers,
         content.clone(),
+        Some(&deno_graph::ModuleKind::Esm),
         maybe_resolver,
         Some(&parser),
-      ) {
-        Ok(m) => m.to_maybe_es_module().map(Ok),
-        Err(err) => Some(Err(err)),
-      }
+      ))
     } else {
       None
     };
@@ -505,10 +449,19 @@ impl Document {
   }
 
   pub fn maybe_types_dependency(&self) -> deno_graph::Resolved {
-    let module_result = self.0.maybe_module.as_ref()?;
-    let module = module_result.as_ref().ok()?;
-    let (_, maybe_dep) = module.maybe_types_dependency.as_ref()?;
-    maybe_dep.clone()
+    let module_result = match self.0.maybe_module.as_ref() {
+      Some(module_result) => module_result,
+      _ => return deno_graph::Resolved::None,
+    };
+    let module = match module_result.as_ref() {
+      Ok(module) => module,
+      Err(_) => return deno_graph::Resolved::None,
+    };
+    if let Some((_, maybe_dep)) = module.maybe_types_dependency.as_ref() {
+      maybe_dep.clone()
+    } else {
+      deno_graph::Resolved::None
+    }
   }
 
   pub fn media_type(&self) -> MediaType {
@@ -533,11 +486,11 @@ impl Document {
   pub fn maybe_parsed_source(
     &self,
   ) -> Option<Result<deno_ast::ParsedSource, deno_graph::ModuleGraphError>> {
-    self.maybe_module().map(|r| {
-      r.as_ref()
-        .map(|m| m.parsed_source.clone())
-        .map_err(|err| err.clone())
-    })
+    let module_result = self.maybe_module()?;
+    match module_result {
+      Ok(module) => Some(Ok(module.maybe_parsed_source.clone()?)),
+      Err(err) => Some(Err(err.clone())),
+    }
   }
 
   pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
@@ -577,14 +530,9 @@ impl Document {
   }
 }
 
-pub(crate) fn to_hover_text(
-  result: &Result<
-    (ModuleSpecifier, deno_graph::Range),
-    deno_graph::ResolutionError,
-  >,
-) -> String {
+pub(crate) fn to_hover_text(result: &Resolved) -> String {
   match result {
-    Ok((specifier, _)) => match specifier.scheme() {
+    Resolved::Ok { specifier, .. } => match specifier.scheme() {
       "data" => "_(a data url)_".to_string(),
       "blob" => "_(a blob url)_".to_string(),
       _ => format!(
@@ -594,7 +542,8 @@ pub(crate) fn to_hover_text(
       )
       .replace('@', "&#8203;@"),
     },
-    Err(_) => "_[errored]_".to_string(),
+    Resolved::Err(_) => "_[errored]_".to_string(),
+    Resolved::None => "".to_string(),
   }
 }
 
@@ -803,7 +752,7 @@ pub(crate) struct Documents {
   file_system_docs: Arc<Mutex<FileSystemDocuments>>,
   /// Any imports to the context supplied by configuration files. This is like
   /// the imports into the a module graph in CLI.
-  imports: Arc<HashMap<ModuleSpecifier, SyntheticModule>>,
+  imports: Arc<HashMap<ModuleSpecifier, Module>>,
   /// The optional import map that should be used when resolving dependencies.
   maybe_import_map: Option<ImportMapResolver>,
   /// The optional JSX resolver, which is used when JSX imports are configured.
@@ -914,10 +863,7 @@ impl Documents {
   ) -> bool {
     let maybe_resolver = self.get_maybe_resolver();
     let maybe_specifier = if let Some(resolver) = maybe_resolver {
-      matches!(
-        resolver.resolve(specifier, referrer),
-        ResolveResponse::Ok { .. }
-      )
+      resolve_response_to_result(resolver.resolve(specifier, referrer)).ok()
     } else {
       deno_core::resolve_import(specifier, referrer.as_str()).ok()
     };
@@ -1047,14 +993,14 @@ impl Documents {
           results.push(None);
         }
       } else if let Some(dep) = dependencies.get(&specifier) {
-        if let Some(Ok((specifier, _))) = &dep.maybe_type {
+        if let Resolved::Ok { specifier, .. } = &dep.maybe_type {
           results.push(self.resolve_dependency(specifier));
-        } else if let Some(Ok((specifier, _))) = &dep.maybe_code {
+        } else if let Resolved::Ok { specifier, .. } = &dep.maybe_code {
           results.push(self.resolve_dependency(specifier));
         } else {
           results.push(None);
         }
-      } else if let Some(Some(Ok((specifier, _)))) =
+      } else if let Some(Resolved::Ok { specifier, .. }) =
         self.resolve_imports_dependency(&specifier)
       {
         // clone here to avoid double borrow of self
@@ -1125,9 +1071,7 @@ impl Documents {
         imports
           .into_iter()
           .map(|(referrer, dependencies)| {
-            let dependencies =
-              dependencies.into_iter().map(|s| (s, None)).collect();
-            let module = SyntheticModule::new(
+            let module = Module::new_from_type_imports(
               referrer.clone(),
               dependencies,
               self.get_maybe_resolver(),
@@ -1171,7 +1115,9 @@ impl Documents {
               .insert(specifier.clone());
           }
         }
-        if let Some((_, Some(Ok((dep, _))))) = &module.maybe_types_dependency {
+        if let Some((_, Resolved::Ok { specifier: dep, .. })) =
+          &module.maybe_types_dependency
+        {
           dependents_map
             .entry(dep.clone())
             .or_default()
@@ -1202,12 +1148,10 @@ impl Documents {
       .map(|m| {
         m.maybe_types_dependency
           .as_ref()
-          .map(|(_, o)| o.as_ref().map(|r| r.as_ref().ok()).flatten())
-          .flatten()
+          .map(|(_, resolved)| resolved.clone())
       })
-      .flatten()
-      .cloned();
-    if let Some((specifier, _)) = maybe_types_dependency {
+      .flatten();
+    if let Some(Resolved::Ok { specifier, .. }) = maybe_types_dependency {
       self.resolve_dependency(&specifier)
     } else {
       let media_type = doc.media_type();
@@ -1225,7 +1169,7 @@ impl Documents {
     for module in self.imports.values() {
       let maybe_dep = module.dependencies.get(specifier);
       if maybe_dep.is_some() {
-        return maybe_dep;
+        return maybe_dep.map(|d| &d.maybe_type);
       }
     }
     None

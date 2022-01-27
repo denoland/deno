@@ -13,6 +13,7 @@ use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
 use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::resolve_response_to_result;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::http_cache;
@@ -42,7 +43,6 @@ use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
-use deno_graph::source::ResolveResponse;
 use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -476,16 +476,7 @@ impl ProcState {
       };
     if let Some(resolver) = &maybe_resolver {
       // TODO(@kitsonk): convert to `.to_result()` when available upstream
-      match resolver.resolve(specifier, &referrer) {
-        ResolveResponse::Amd(specifier)
-        | ResolveResponse::CommonJs(specifier)
-        | ResolveResponse::Esm(specifier)
-        | ResolveResponse::Script(specifier)
-        | ResolveResponse::Specifier(specifier)
-        | ResolveResponse::SystemJs(specifier)
-        | ResolveResponse::Umd(specifier) => Ok(specifier),
-        ResolveResponse::Err(err) => Err(err),
-      }
+      resolve_response_to_result(resolver.resolve(specifier, &referrer))
     } else {
       deno_core::resolve_import(specifier, referrer.as_str())
         .map_err(|err| err.into())
