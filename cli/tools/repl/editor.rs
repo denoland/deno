@@ -39,9 +39,9 @@ impl EditorHelper {
       .sync_sender
       .post_message(
         "Runtime.globalLexicalScopeNames",
-        Some(cdp::GlobalLexicalScopeNamesArgs {
+        cdp::GlobalLexicalScopeNamesArgs {
           execution_context_id: Some(self.context_id),
-        }),
+        },
       )
       .unwrap();
     let evaluate_response: cdp::GlobalLexicalScopeNamesResponse =
@@ -90,13 +90,13 @@ impl EditorHelper {
       .sync_sender
       .post_message(
         "Runtime.getProperties",
-        Some(cdp::GetPropertiesArgs {
+        cdp::GetPropertiesArgs {
           object_id,
           own_properties: None,
           accessor_properties_only: None,
           generate_preview: None,
           non_indexed_properties_only: None,
-        }),
+        },
       )
       .ok()?;
     let get_properties_response: cdp::GetPropertiesResponse =
@@ -115,7 +115,7 @@ impl EditorHelper {
       .sync_sender
       .post_message(
         "Runtime.evaluate",
-        Some(cdp::EvaluateArgs {
+        cdp::EvaluateArgs {
           expression: expr.to_string(),
           object_group: None,
           include_command_line_api: None,
@@ -131,7 +131,7 @@ impl EditorHelper {
           repl_mode: None,
           allow_unsafe_eval_blocked_by_csp: None,
           unique_context_id: None,
-        }),
+        },
       )
       .ok()?;
     let evaluate_response: cdp::EvaluateResponse =
