@@ -33,7 +33,6 @@
     MapPrototypeHas,
     MapPrototypeGet,
     MapPrototypeSet,
-    ObjectPrototypeIsPrototypeOf,
     RangeError,
     RegExp,
     RegExpPrototypeTest,
@@ -298,7 +297,7 @@
      * @returns {"basic" | "cors" | "default" | "error" | "opaque" | "opaqueredirect"}
      */
     get type() {
-      webidl.assertBranded(this, ResponsePrototype);
+      webidl.assertBranded(this, Response);
       return this[_response].type;
     }
 
@@ -306,7 +305,7 @@
      * @returns {string}
      */
     get url() {
-      webidl.assertBranded(this, ResponsePrototype);
+      webidl.assertBranded(this, Response);
       const url = this[_response].url();
       if (url === null) return "";
       const newUrl = new URL(url);
@@ -318,7 +317,7 @@
      * @returns {boolean}
      */
     get redirected() {
-      webidl.assertBranded(this, ResponsePrototype);
+      webidl.assertBranded(this, Response);
       return this[_response].urlList.length > 1;
     }
 
@@ -326,7 +325,7 @@
      * @returns {number}
      */
     get status() {
-      webidl.assertBranded(this, ResponsePrototype);
+      webidl.assertBranded(this, Response);
       return this[_response].status;
     }
 
@@ -334,7 +333,7 @@
      * @returns {boolean}
      */
     get ok() {
-      webidl.assertBranded(this, ResponsePrototype);
+      webidl.assertBranded(this, Response);
       const status = this[_response].status;
       return status >= 200 && status <= 299;
     }
@@ -343,7 +342,7 @@
      * @returns {string}
      */
     get statusText() {
-      webidl.assertBranded(this, ResponsePrototype);
+      webidl.assertBranded(this, Response);
       return this[_response].statusMessage;
     }
 
@@ -351,7 +350,7 @@
      * @returns {Headers}
      */
     get headers() {
-      webidl.assertBranded(this, ResponsePrototype);
+      webidl.assertBranded(this, Response);
       return this[_headers];
     }
 
@@ -359,7 +358,7 @@
      * @returns {Response}
      */
     clone() {
-      webidl.assertBranded(this, ResponsePrototype);
+      webidl.assertBranded(this, Response);
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
@@ -376,7 +375,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(ResponsePrototype, this),
+        evaluate: this instanceof Response,
         keys: [
           "body",
           "bodyUsed",
@@ -391,13 +390,13 @@
     }
   }
 
+  mixinBody(Response, _body, _mimeType);
+
   webidl.configurePrototype(Response);
-  const ResponsePrototype = Response.prototype;
-  mixinBody(ResponsePrototype, _body, _mimeType);
 
   webidl.converters["Response"] = webidl.createInterfaceConverter(
     "Response",
-    ResponsePrototype,
+    Response,
   );
   webidl.converters["ResponseInit"] = webidl.createDictionaryConverter(
     "ResponseInit",
@@ -458,7 +457,6 @@
 
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.Response = Response;
-  window.__bootstrap.fetch.ResponsePrototype = ResponsePrototype;
   window.__bootstrap.fetch.newInnerResponse = newInnerResponse;
   window.__bootstrap.fetch.toInnerResponse = toInnerResponse;
   window.__bootstrap.fetch.fromInnerResponse = fromInnerResponse;

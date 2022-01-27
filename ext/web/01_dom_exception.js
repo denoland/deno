@@ -16,7 +16,6 @@
     ErrorPrototype,
     ObjectDefineProperty,
     ObjectEntries,
-    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     SymbolFor,
   } = window.__bootstrap.primordials;
@@ -127,7 +126,7 @@
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      if (ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this)) {
+      if (this instanceof DOMException) {
         return `DOMException: ${this.#message}`;
       } else {
         return inspect(consoleInternal.createFilteredInspectProxy({
@@ -146,7 +145,6 @@
   ObjectSetPrototypeOf(DOMException.prototype, ErrorPrototype);
 
   webidl.configurePrototype(DOMException);
-  const DOMExceptionPrototype = DOMException.prototype;
 
   for (
     const [key, value] of ObjectEntries({

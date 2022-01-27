@@ -16,7 +16,6 @@
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayBufferIsView,
-    ObjectPrototypeIsPrototypeOf,
     PromiseReject,
     PromiseResolve,
     StringPrototypeCharCodeAt,
@@ -60,19 +59,19 @@
 
     /** @returns {string} */
     get encoding() {
-      webidl.assertBranded(this, TextDecoderPrototype);
+      webidl.assertBranded(this, TextDecoder);
       return this.#encoding;
     }
 
     /** @returns {boolean} */
     get fatal() {
-      webidl.assertBranded(this, TextDecoderPrototype);
+      webidl.assertBranded(this, TextDecoder);
       return this.#fatal;
     }
 
     /** @returns {boolean} */
     get ignoreBOM() {
-      webidl.assertBranded(this, TextDecoderPrototype);
+      webidl.assertBranded(this, TextDecoder);
       return this.#ignoreBOM;
     }
 
@@ -81,7 +80,7 @@
      * @param {TextDecodeOptions} options
      */
     decode(input = new Uint8Array(), options = {}) {
-      webidl.assertBranded(this, TextDecoderPrototype);
+      webidl.assertBranded(this, TextDecoder);
       const prefix = "Failed to execute 'decode' on 'TextDecoder'";
       if (input !== undefined) {
         input = webidl.converters.BufferSource(input, {
@@ -120,12 +119,7 @@
           // If the buffer is detached, just create a new empty Uint8Array.
           input = new Uint8Array();
         }
-        if (
-          ObjectPrototypeIsPrototypeOf(
-            SharedArrayBuffer.prototype,
-            input.buffer,
-          )
-        ) {
+        if (input.buffer instanceof SharedArrayBuffer) {
           // We clone the data into a non-shared ArrayBuffer so we can pass it
           // to Rust.
           // `input` is now a Uint8Array, and calling the TypedArray constructor
@@ -146,7 +140,6 @@
   }
 
   webidl.configurePrototype(TextDecoder);
-  const TextDecoderPrototype = TextDecoder.prototype;
 
   class TextEncoder {
     constructor() {
@@ -155,7 +148,7 @@
 
     /** @returns {string} */
     get encoding() {
-      webidl.assertBranded(this, TextEncoderPrototype);
+      webidl.assertBranded(this, TextEncoder);
       return "utf-8";
     }
 
@@ -164,7 +157,7 @@
      * @returns {Uint8Array}
      */
     encode(input = "") {
-      webidl.assertBranded(this, TextEncoderPrototype);
+      webidl.assertBranded(this, TextEncoder);
       const prefix = "Failed to execute 'encode' on 'TextEncoder'";
       // The WebIDL type of `input` is `USVString`, but `core.encode` already
       // converts lone surrogates to the replacement character.
@@ -181,7 +174,7 @@
      * @returns {TextEncoderEncodeIntoResult}
      */
     encodeInto(source, destination) {
-      webidl.assertBranded(this, TextEncoderPrototype);
+      webidl.assertBranded(this, TextEncoder);
       const prefix = "Failed to execute 'encodeInto' on 'TextEncoder'";
       // The WebIDL type of `source` is `USVString`, but the ops bindings
       // already convert lone surrogates to the replacement character.
@@ -199,7 +192,6 @@
   }
 
   webidl.configurePrototype(TextEncoder);
-  const TextEncoderPrototype = TextEncoder.prototype;
 
   class TextDecoderStream {
     /** @type {TextDecoder} */
@@ -256,37 +248,36 @@
 
     /** @returns {string} */
     get encoding() {
-      webidl.assertBranded(this, TextDecoderStreamPrototype);
+      webidl.assertBranded(this, TextDecoderStream);
       return this.#decoder.encoding;
     }
 
     /** @returns {boolean} */
     get fatal() {
-      webidl.assertBranded(this, TextDecoderStreamPrototype);
+      webidl.assertBranded(this, TextDecoderStream);
       return this.#decoder.fatal;
     }
 
     /** @returns {boolean} */
     get ignoreBOM() {
-      webidl.assertBranded(this, TextDecoderStreamPrototype);
+      webidl.assertBranded(this, TextDecoderStream);
       return this.#decoder.ignoreBOM;
     }
 
     /** @returns {ReadableStream<string>} */
     get readable() {
-      webidl.assertBranded(this, TextDecoderStreamPrototype);
+      webidl.assertBranded(this, TextDecoderStream);
       return this.#transform.readable;
     }
 
     /** @returns {WritableStream<BufferSource>} */
     get writable() {
-      webidl.assertBranded(this, TextDecoderStreamPrototype);
+      webidl.assertBranded(this, TextDecoderStream);
       return this.#transform.writable;
     }
   }
 
   webidl.configurePrototype(TextDecoderStream);
-  const TextDecoderStreamPrototype = TextDecoderStream.prototype;
 
   class TextEncoderStream {
     /** @type {string | null} */
@@ -341,25 +332,24 @@
 
     /** @returns {string} */
     get encoding() {
-      webidl.assertBranded(this, TextEncoderStreamPrototype);
+      webidl.assertBranded(this, TextEncoderStream);
       return "utf-8";
     }
 
     /** @returns {ReadableStream<Uint8Array>} */
     get readable() {
-      webidl.assertBranded(this, TextEncoderStreamPrototype);
+      webidl.assertBranded(this, TextEncoderStream);
       return this.#transform.readable;
     }
 
     /** @returns {WritableStream<string>} */
     get writable() {
-      webidl.assertBranded(this, TextEncoderStreamPrototype);
+      webidl.assertBranded(this, TextEncoderStream);
       return this.#transform.writable;
     }
   }
 
   webidl.configurePrototype(TextEncoderStream);
-  const TextEncoderStreamPrototype = TextEncoderStream.prototype;
 
   webidl.converters.TextDecoderOptions = webidl.createDictionaryConverter(
     "TextDecoderOptions",

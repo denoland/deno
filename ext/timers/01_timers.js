@@ -16,7 +16,6 @@
     // deno-lint-ignore camelcase
     NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
-    ObjectPrototypeIsPrototypeOf,
     SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -288,7 +287,7 @@
         }
       },
       (err) => {
-        if (ObjectPrototypeIsPrototypeOf(core.InterruptedPrototype, err)) {
+        if (err instanceof core.Interrupted) {
           // The timer was cancelled.
           removeFromScheduledTimers(timerObject);
         } else {

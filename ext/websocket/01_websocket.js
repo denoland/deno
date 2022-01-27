@@ -10,31 +10,29 @@
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
   const { DOMException } = window.__bootstrap.domException;
   const { defineEventHandler } = window.__bootstrap.event;
-  const { Blob, BlobPrototype } = globalThis.__bootstrap.file;
+  const { Blob } = globalThis.__bootstrap.file;
   const {
-    ArrayBufferPrototype,
+    ArrayBuffer,
     ArrayBufferIsView,
     ArrayPrototypeJoin,
-    ArrayPrototypeMap,
-    ArrayPrototypeSome,
     DataView,
     ErrorPrototypeToString,
-    ObjectDefineProperties,
-    ObjectPrototypeIsPrototypeOf,
-    PromisePrototypeThen,
-    RegExpPrototypeTest,
     Set,
-    String,
-    StringPrototypeEndsWith,
-    StringPrototypeToLowerCase,
     Symbol,
-    SymbolIterator,
+    String,
+    StringPrototypeToLowerCase,
+    StringPrototypeEndsWith,
+    RegExpPrototypeTest,
+    ObjectDefineProperties,
+    ArrayPrototypeMap,
+    ArrayPrototypeSome,
+    PromisePrototypeThen,
   } = window.__bootstrap.primordials;
 
   webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
     // Union for (sequence<DOMString> or DOMString)
     if (webidl.type(V) === "Object" && V !== null) {
-      if (V[SymbolIterator] !== undefined) {
+      if (V[Symbol.iterator] !== undefined) {
         return webidl.converters["sequence<DOMString>"](V, opts);
       }
     }
@@ -43,15 +41,12 @@
 
   webidl.converters["WebSocketSend"] = (V, opts) => {
     // Union for (Blob or ArrayBufferView or ArrayBuffer or USVString)
-    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
+    if (V instanceof Blob) {
       return webidl.converters["Blob"](V, opts);
     }
     if (typeof V === "object") {
       // TODO(littledivy): use primordial for SharedArrayBuffer
-      if (
-        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-      ) {
+      if (V instanceof ArrayBuffer || V instanceof SharedArrayBuffer) {
         return webidl.converters["ArrayBuffer"](V, opts);
       }
       if (ArrayBufferIsView(V)) {
@@ -84,52 +79,52 @@
 
     [_readyState] = CONNECTING;
     get readyState() {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       return this[_readyState];
     }
 
     get CONNECTING() {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       return CONNECTING;
     }
     get OPEN() {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       return OPEN;
     }
     get CLOSING() {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       return CLOSING;
     }
     get CLOSED() {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       return CLOSED;
     }
 
     [_extensions] = "";
     get extensions() {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       return this[_extensions];
     }
 
     [_protocol] = "";
     get protocol() {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       return this[_protocol];
     }
 
     [_url] = "";
     get url() {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       return this[_url];
     }
 
     [_binaryType] = "blob";
     get binaryType() {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       return this[_binaryType];
     }
     set binaryType(value) {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       value = webidl.converters.DOMString(value, {
         prefix: "Failed to set 'binaryType' on 'WebSocket'",
       });
@@ -140,7 +135,7 @@
 
     [_bufferedAmount] = 0;
     get bufferedAmount() {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       return this[_bufferedAmount];
     }
 
@@ -272,7 +267,7 @@
     }
 
     send(data) {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       const prefix = "Failed to execute 'send' on 'WebSocket'";
 
       webidl.requiredArguments(arguments.length, 1, {
@@ -300,14 +295,14 @@
         );
       };
 
-      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
+      if (data instanceof Blob) {
         PromisePrototypeThen(
           data.slice().arrayBuffer(),
           (ab) => sendTypedArray(new DataView(ab)),
         );
       } else if (ArrayBufferIsView(data)) {
         sendTypedArray(data);
-      } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
+      } else if (data instanceof ArrayBuffer) {
         sendTypedArray(new DataView(data));
       } else {
         const string = String(data);
@@ -326,7 +321,7 @@
     }
 
     close(code = undefined, reason = undefined) {
-      webidl.assertBranded(this, WebSocketPrototype);
+      webidl.assertBranded(this, WebSocket);
       const prefix = "Failed to execute 'close' on 'WebSocket'";
 
       if (code !== undefined) {
@@ -519,7 +514,6 @@
   defineEventHandler(WebSocket.prototype, "open");
 
   webidl.configurePrototype(WebSocket);
-  const WebSocketPrototype = WebSocket.prototype;
 
   window.__bootstrap.webSocket = {
     WebSocket,

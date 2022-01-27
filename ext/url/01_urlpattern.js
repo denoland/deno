@@ -85,42 +85,42 @@
     }
 
     get protocol() {
-      webidl.assertBranded(this, URLPatternPrototype);
+      webidl.assertBranded(this, URLPattern);
       return this[_components].protocol.patternString;
     }
 
     get username() {
-      webidl.assertBranded(this, URLPatternPrototype);
+      webidl.assertBranded(this, URLPattern);
       return this[_components].username.patternString;
     }
 
     get password() {
-      webidl.assertBranded(this, URLPatternPrototype);
+      webidl.assertBranded(this, URLPattern);
       return this[_components].password.patternString;
     }
 
     get hostname() {
-      webidl.assertBranded(this, URLPatternPrototype);
+      webidl.assertBranded(this, URLPattern);
       return this[_components].hostname.patternString;
     }
 
     get port() {
-      webidl.assertBranded(this, URLPatternPrototype);
+      webidl.assertBranded(this, URLPattern);
       return this[_components].port.patternString;
     }
 
     get pathname() {
-      webidl.assertBranded(this, URLPatternPrototype);
+      webidl.assertBranded(this, URLPattern);
       return this[_components].pathname.patternString;
     }
 
     get search() {
-      webidl.assertBranded(this, URLPatternPrototype);
+      webidl.assertBranded(this, URLPattern);
       return this[_components].search.patternString;
     }
 
     get hash() {
-      webidl.assertBranded(this, URLPatternPrototype);
+      webidl.assertBranded(this, URLPattern);
       return this[_components].hash.patternString;
     }
 
@@ -130,7 +130,7 @@
      * @returns {boolean}
      */
     test(input, baseURL = undefined) {
-      webidl.assertBranded(this, URLPatternPrototype);
+      webidl.assertBranded(this, URLPattern);
       const prefix = "Failed to execute 'test' on 'URLPattern'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       input = webidl.converters.URLPatternInput(input, {
@@ -170,7 +170,7 @@
      * @returns {URLPatternResult | null}
      */
     exec(input, baseURL = undefined) {
-      webidl.assertBranded(this, URLPatternPrototype);
+      webidl.assertBranded(this, URLPattern);
       const prefix = "Failed to execute 'exec' on 'URLPattern'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       input = webidl.converters.URLPatternInput(input, {
@@ -241,7 +241,6 @@
   }
 
   webidl.configurePrototype(URLPattern);
-  const URLPatternPrototype = URLPattern.prototype;
 
   webidl.converters.URLPatternInit = webidl
     .createDictionaryConverter("URLPatternInit", [

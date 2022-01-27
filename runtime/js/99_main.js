@@ -16,7 +16,6 @@ delete Object.prototype.__proto__;
     ObjectDefineProperty,
     ObjectDefineProperties,
     ObjectFreeze,
-    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     PromiseResolve,
     Symbol,
@@ -143,9 +142,7 @@ delete Object.prototype.__proto__;
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transferables.filter((t) =>
-          ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t)
-        ),
+        ports: transferables.filter((t) => t instanceof MessagePort),
       });
 
       try {
@@ -314,7 +311,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, NavigatorPrototype);
+        webidl.assertBranded(this, Navigator);
         return webgpu.gpu;
       },
     },
@@ -322,12 +319,11 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, NavigatorPrototype);
+        webidl.assertBranded(this, Navigator);
         return numCpus;
       },
     },
   });
-  const NavigatorPrototype = Navigator.prototype;
 
   class WorkerNavigator {
     constructor() {
@@ -346,7 +342,7 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, WorkerNavigatorPrototype);
+        webidl.assertBranded(this, WorkerNavigator);
         return webgpu.gpu;
       },
     },
@@ -354,12 +350,11 @@ delete Object.prototype.__proto__;
       configurable: true,
       enumerable: true,
       get() {
-        webidl.assertBranded(this, WorkerNavigatorPrototype);
+        webidl.assertBranded(this, WorkerNavigator);
         return numCpus;
       },
     },
   });
-  const WorkerNavigatorPrototype = WorkerNavigator.prototype;
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {

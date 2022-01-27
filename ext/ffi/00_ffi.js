@@ -5,11 +5,10 @@
   const core = window.Deno.core;
   const __bootstrap = window.__bootstrap;
   const {
-    ArrayBufferPrototype,
+    ArrayBuffer,
     Uint8Array,
     BigInt,
     Number,
-    ObjectPrototypeIsPrototypeOf,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -142,7 +141,6 @@
       return this.value;
     }
   }
-  const UnsafePointerPrototype = UnsafePointer.prototype;
 
   function prepareArgs(types, args) {
     const parameters = [];
@@ -154,12 +152,12 @@
 
       if (type === "pointer") {
         if (
-          ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, arg?.buffer) &&
+          arg?.buffer instanceof ArrayBuffer &&
           arg.byteLength !== undefined
         ) {
           parameters.push(buffers.length);
           buffers.push(arg);
-        } else if (ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, arg)) {
+        } else if (arg instanceof UnsafePointer) {
           parameters.push(packU64(arg.value));
           buffers.push(undefined);
         } else if (arg === null) {

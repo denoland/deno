@@ -11,7 +11,7 @@
 ((window) => {
   const core = window.Deno.core;
   const {
-    ArrayBufferPrototype,
+    ArrayBuffer,
     ArrayBufferIsView,
     ArrayPrototypeForEach,
     ArrayPrototypePush,
@@ -20,6 +20,7 @@
     BigInt,
     BigIntAsIntN,
     BigIntAsUintN,
+    DataView,
     Float32Array,
     Float64Array,
     FunctionPrototypeBind,
@@ -49,7 +50,6 @@
     ObjectGetOwnPropertyDescriptors,
     ObjectGetPrototypeOf,
     ObjectPrototypeHasOwnProperty,
-    ObjectPrototypeIsPrototypeOf,
     ObjectIs,
     PromisePrototypeThen,
     PromiseReject,
@@ -434,11 +434,11 @@
   }
 
   function isNonSharedArrayBuffer(V) {
-    return ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V);
+    return V instanceof ArrayBuffer;
   }
 
   function isSharedArrayBuffer(V) {
-    return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V);
+    return V instanceof SharedArrayBuffer;
   }
 
   converters.ArrayBuffer = (V, opts = {}) => {
@@ -457,7 +457,7 @@
   };
 
   converters.DataView = (V, opts = {}) => {
-    if (!(ObjectPrototypeIsPrototypeOf(DataViewPrototype, V))) {
+    if (!(V instanceof DataView)) {
       throw makeException(TypeError, "is not a DataView", opts);
     }
 
@@ -862,7 +862,7 @@
 
   function createInterfaceConverter(name, prototype) {
     return (V, opts) => {
-      if (!ObjectPrototypeIsPrototypeOf(prototype, V) || V[brand] !== brand) {
+      if (!(V instanceof prototype) || V[brand] !== brand) {
         throw makeException(TypeError, `is not of type ${name}.`, opts);
       }
       return V;
@@ -877,9 +877,7 @@
   }
 
   function assertBranded(self, prototype) {
-    if (
-      !ObjectPrototypeIsPrototypeOf(prototype, self) || self[brand] !== brand
-    ) {
+    if (!(self instanceof prototype) || self[brand] !== brand) {
       throw new TypeError("Illegal invocation");
     }
   }
@@ -946,7 +944,7 @@
     }
 
     function entries() {
-      assertBranded(this, prototype.prototype);
+      assertBranded(this, prototype);
       return createDefaultIterator(this, "key+value");
     }
 
@@ -965,7 +963,7 @@
       },
       keys: {
         value: function keys() {
-          assertBranded(this, prototype.prototype);
+          assertBranded(this, prototype);
           return createDefaultIterator(this, "key");
         },
         writable: true,
@@ -974,7 +972,7 @@
       },
       values: {
         value: function values() {
-          assertBranded(this, prototype.prototype);
+          assertBranded(this, prototype);
           return createDefaultIterator(this, "value");
         },
         writable: true,
@@ -983,7 +981,7 @@
       },
       forEach: {
         value: function forEach(idlCallback, thisArg = undefined) {
-          assertBranded(this, prototype.prototype);
+          assertBranded(this, prototype);
           const prefix = `Failed to execute 'forEach' on '${name}'`;
           requiredArguments(arguments.length, 1, { prefix });
           idlCallback = converters["Function"](idlCallback, {

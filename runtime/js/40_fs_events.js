@@ -3,10 +3,9 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { BadResourcePrototype, InterruptedPrototype } = core;
+  const { errors } = window.__bootstrap.errors;
   const {
     ArrayIsArray,
-    ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
     SymbolAsyncIterator,
   } = window.__bootstrap.primordials;
@@ -29,11 +28,9 @@
           ? { value, done: false }
           : { value: undefined, done: true };
       } catch (error) {
-        if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+        if (error instanceof errors.BadResource) {
           return { value: undefined, done: true };
-        } else if (
-          ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)
-        ) {
+        } else if (error instanceof errors.Interrupted) {
           return { value: undefined, done: true };
         }
         throw error;

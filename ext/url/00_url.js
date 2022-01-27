@@ -134,7 +134,7 @@
      * @param {string} value
      */
     append(name, value) {
-      webidl.assertBranded(this, URLSearchParamsPrototype);
+      webidl.assertBranded(this, URLSearchParams);
       const prefix = "Failed to execute 'append' on 'URLSearchParams'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       name = webidl.converters.USVString(name, {
@@ -153,7 +153,7 @@
      * @param {string} name
      */
     delete(name) {
-      webidl.assertBranded(this, URLSearchParamsPrototype);
+      webidl.assertBranded(this, URLSearchParams);
       const prefix = "Failed to execute 'append' on 'URLSearchParams'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       name = webidl.converters.USVString(name, {
@@ -177,7 +177,7 @@
      * @returns {string[]}
      */
     getAll(name) {
-      webidl.assertBranded(this, URLSearchParamsPrototype);
+      webidl.assertBranded(this, URLSearchParams);
       const prefix = "Failed to execute 'getAll' on 'URLSearchParams'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       name = webidl.converters.USVString(name, {
@@ -198,7 +198,7 @@
      * @return {string | null}
      */
     get(name) {
-      webidl.assertBranded(this, URLSearchParamsPrototype);
+      webidl.assertBranded(this, URLSearchParams);
       const prefix = "Failed to execute 'get' on 'URLSearchParams'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       name = webidl.converters.USVString(name, {
@@ -218,7 +218,7 @@
      * @return {boolean}
      */
     has(name) {
-      webidl.assertBranded(this, URLSearchParamsPrototype);
+      webidl.assertBranded(this, URLSearchParams);
       const prefix = "Failed to execute 'has' on 'URLSearchParams'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       name = webidl.converters.USVString(name, {
@@ -233,7 +233,7 @@
      * @param {string} value
      */
     set(name, value) {
-      webidl.assertBranded(this, URLSearchParamsPrototype);
+      webidl.assertBranded(this, URLSearchParams);
       const prefix = "Failed to execute 'set' on 'URLSearchParams'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       name = webidl.converters.USVString(name, {
@@ -276,7 +276,7 @@
     }
 
     sort() {
-      webidl.assertBranded(this, URLSearchParamsPrototype);
+      webidl.assertBranded(this, URLSearchParams);
       ArrayPrototypeSort(
         this[_list],
         (a, b) => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1),
@@ -288,7 +288,7 @@
      * @return {string}
      */
     toString() {
-      webidl.assertBranded(this, URLSearchParamsPrototype);
+      webidl.assertBranded(this, URLSearchParams);
       return core.opSync("op_url_stringify_search_params", this[_list]);
     }
   }
@@ -296,7 +296,6 @@
   webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
 
   webidl.configurePrototype(URLSearchParams);
-  const URLSearchParamsPrototype = URLSearchParams.prototype;
 
   const _url = Symbol("url");
 
@@ -351,13 +350,13 @@
 
     /** @return {string} */
     get hash() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].hash;
     }
 
     /** @param {string} value */
     set hash(value) {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'hash' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -373,13 +372,13 @@
 
     /** @return {string} */
     get host() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].host;
     }
 
     /** @param {string} value */
     set host(value) {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'host' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -395,13 +394,13 @@
 
     /** @return {string} */
     get hostname() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].hostname;
     }
 
     /** @param {string} value */
     set hostname(value) {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'hostname' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -417,13 +416,13 @@
 
     /** @return {string} */
     get href() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].href;
     }
 
     /** @param {string} value */
     set href(value) {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'href' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -436,19 +435,19 @@
 
     /** @return {string} */
     get origin() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].origin;
     }
 
     /** @return {string} */
     get password() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].password;
     }
 
     /** @param {string} value */
     set password(value) {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'password' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -464,13 +463,13 @@
 
     /** @return {string} */
     get pathname() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].pathname;
     }
 
     /** @param {string} value */
     set pathname(value) {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'pathname' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -486,13 +485,13 @@
 
     /** @return {string} */
     get port() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].port;
     }
 
     /** @param {string} value */
     set port(value) {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'port' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -508,13 +507,13 @@
 
     /** @return {string} */
     get protocol() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].protocol;
     }
 
     /** @param {string} value */
     set protocol(value) {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'protocol' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -530,13 +529,13 @@
 
     /** @return {string} */
     get search() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].search;
     }
 
     /** @param {string} value */
     set search(value) {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'search' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -553,13 +552,13 @@
 
     /** @return {string} */
     get username() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].username;
     }
 
     /** @param {string} value */
     set username(value) {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'username' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       value = webidl.converters.DOMString(value, {
@@ -584,19 +583,18 @@
 
     /** @return {string} */
     toString() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].href;
     }
 
     /** @return {string} */
     toJSON() {
-      webidl.assertBranded(this, URLPrototype);
+      webidl.assertBranded(this, URL);
       return this[_url].href;
     }
   }
 
   webidl.configurePrototype(URL);
-  const URLPrototype = URL.prototype;
 
   /**
    * This function implements application/x-www-form-urlencoded parsing.
@@ -624,9 +622,7 @@
 
   window.__bootstrap.url = {
     URL,
-    URLPrototype,
     URLSearchParams,
-    URLSearchParamsPrototype,
     parseUrlEncoded,
   };
 })(this);

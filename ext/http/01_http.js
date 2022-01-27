@@ -5,9 +5,8 @@
   const webidl = window.__bootstrap.webidl;
   const { InnerBody } = window.__bootstrap.fetchBody;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
-  const { BlobPrototype } = window.__bootstrap.file;
   const {
-    ResponsePrototype,
+    Response,
     fromInnerRequest,
     toInnerResponse,
     newInnerRequest,
@@ -15,9 +14,8 @@
     fromInnerResponse,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
-  const { BadResourcePrototype, InterruptedPrototype } = core;
-  const { ReadableStream, ReadableStreamPrototype } =
-    window.__bootstrap.streams;
+  const { BadResource, Interrupted } = core;
+  const { ReadableStream } = window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
   const {
     WebSocket,
@@ -34,8 +32,7 @@
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
     ArrayPrototypeSome,
-    ObjectPrototypeIsPrototypeOf,
-    PromisePrototype,
+    Promise,
     Set,
     SetPrototypeAdd,
     SetPrototypeDelete,
@@ -49,7 +46,6 @@
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
-    Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
   const connErrorSymbol = Symbol("connError");
@@ -85,8 +81,8 @@
         // those with it.
         this[connErrorSymbol] = error;
         if (
-          ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) ||
-          ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error) ||
+          error instanceof BadResource ||
+          error instanceof Interrupted ||
           StringPrototypeIncludes(error.message, "connection closed")
         ) {
           return null;
@@ -162,11 +158,11 @@
   function createRespondWith(httpConn, streamRid) {
     return async function respondWith(resp) {
       try {
-        if (ObjectPrototypeIsPrototypeOf(PromisePrototype, resp)) {
+        if (resp instanceof Promise) {
           resp = await resp;
         }
 
-        if (!(ObjectPrototypeIsPrototypeOf(ResponsePrototype, resp))) {
+        if (!(resp instanceof Response)) {
           throw new TypeError(
             "First argument to respondWith must be a Response or a promise resolving to a Response.",
           );
@@ -183,18 +179,10 @@
           if (innerResp.body.unusable()) {
             throw new TypeError("Body is unusable.");
           }
-          if (
-            ObjectPrototypeIsPrototypeOf(
-              ReadableStreamPrototype,
-              innerResp.body.streamOrStatic,
-            )
-          ) {
+          if (innerResp.body.streamOrStatic instanceof ReadableStream) {
             if (
               innerResp.body.length === null ||
-              ObjectPrototypeIsPrototypeOf(
-                BlobPrototype,
-                innerResp.body.source,
-              )
+              innerResp.body.source instanceof Blob
             ) {
               respBody = innerResp.body.stream;
             } else {
@@ -216,8 +204,7 @@
           respBody = new Uint8Array(0);
         }
         const isStreamingResponseBody = !(
-          typeof respBody === "string" ||
-          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
+          typeof respBody === "string" || respBody instanceof Uint8Array
         );
 
         try {
@@ -228,34 +215,25 @@
           );
         } catch (error) {
           const connError = httpConn[connErrorSymbol];
-          if (
-            ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
-            connError != null
-          ) {
+          if (error instanceof BadResource && connError != null) {
             // deno-lint-ignore no-ex-assign
             error = new connError.constructor(connError.message);
           }
-          if (
-            respBody !== null &&
-            ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, respBody)
-          ) {
+          if (respBody !== null && respBody instanceof ReadableStream) {
             await respBody.cancel(error);
           }
           throw error;
         }
 
         if (isStreamingResponseBody) {
-          if (
-            respBody === null ||
-            !ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, respBody)
-          ) {
+          if (respBody === null || !(respBody instanceof ReadableStream)) {
             throw new TypeError("Unreachable");
           }
           const reader = respBody.getReader();
           while (true) {
             const { value, done } = await reader.read();
             if (done) break;
-            if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
+            if (!(value instanceof Uint8Array)) {
               await reader.cancel(new TypeError("Value not a Uint8Array"));
               break;
             }
@@ -263,10 +241,7 @@
               await core.opAsync("op_http_write", streamRid, value);
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
-              if (
-                ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
-                connError != null
-              ) {
+              if (error instanceof BadResource && connError != null) {
                 // deno-lint-ignore no-ex-assign
                 error = new connError.constructor(connError.message);
               }
