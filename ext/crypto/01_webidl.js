@@ -9,11 +9,7 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { CryptoKey } = window.__bootstrap.crypto;
-  const {
-    ArrayBufferIsView,
-    ArrayBufferPrototype,
-    ObjectPrototypeIsPrototypeOf,
-  } = window.__bootstrap.primordials;
+  const { ArrayBufferIsView, ArrayBuffer } = window.__bootstrap.primordials;
 
   webidl.converters.AlgorithmIdentifier = (V, opts) => {
     // Union for (object or DOMString)
@@ -25,10 +21,7 @@
 
   webidl.converters["BufferSource or JsonWebKey"] = (V, opts) => {
     // Union for (BufferSource or JsonWebKey)
-    if (
-      ArrayBufferIsView(V) ||
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V)
-    ) {
+    if (ArrayBufferIsView(V) || V instanceof ArrayBuffer) {
       return webidl.converters.BufferSource(V, opts);
     }
     return webidl.converters.JsonWebKey(V, opts);
@@ -467,7 +460,7 @@
 
   webidl.converters.CryptoKey = webidl.createInterfaceConverter(
     "CryptoKey",
-    CryptoKey.prototype,
+    CryptoKey,
   );
 
   const dictCryptoKeyPair = [

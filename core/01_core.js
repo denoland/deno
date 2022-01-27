@@ -195,7 +195,6 @@
       this.name = "BadResource";
     }
   }
-  const BadResourcePrototype = BadResource.prototype;
 
   class Interrupted extends Error {
     constructor(msg) {
@@ -203,7 +202,6 @@
       this.name = "Interrupted";
     }
   }
-  const InterruptedPrototype = Interrupted.prototype;
 
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
@@ -223,9 +221,7 @@
     opresolve,
     syncOpsCache,
     BadResource,
-    BadResourcePrototype,
     Interrupted,
-    InterruptedPrototype,
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

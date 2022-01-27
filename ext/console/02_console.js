@@ -10,13 +10,12 @@
   const {
     ArrayBufferIsView,
     isNaN,
-    DataViewPrototype,
-    DatePrototype,
+    DataView,
+    Date,
     DateNow,
     DatePrototypeGetTime,
     DatePrototypeToISOString,
     Boolean,
-    BooleanPrototype,
     BooleanPrototypeToString,
     ObjectKeys,
     ObjectCreate,
@@ -28,11 +27,9 @@
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertySymbols,
     ObjectPrototypeHasOwnProperty,
-    ObjectPrototypeIsPrototypeOf,
     ObjectPrototypePropertyIsEnumerable,
-    PromisePrototype,
+    Promise,
     String,
-    StringPrototype,
     StringPrototypeRepeat,
     StringPrototypeReplace,
     StringPrototypeReplaceAll,
@@ -50,13 +47,11 @@
     TypeError,
     NumberParseInt,
     RegExp,
-    RegExpPrototype,
     RegExpPrototypeTest,
     RegExpPrototypeToString,
-    SetPrototype,
+    Set,
     SetPrototypeEntries,
     Symbol,
-    SymbolPrototype,
     SymbolPrototypeToString,
     SymbolPrototypeValueOf,
     SymbolToStringTag,
@@ -78,7 +73,6 @@
     ArrayPrototypeFind,
     FunctionPrototypeBind,
     Map,
-    MapPrototype,
     MapPrototypeHas,
     MapPrototypeGet,
     MapPrototypeSet,
@@ -86,7 +80,6 @@
     MapPrototypeEntries,
     MapPrototypeForEach,
     Error,
-    ErrorPrototype,
     ErrorCaptureStackTrace,
     MathAbs,
     MathMax,
@@ -95,17 +88,16 @@
     MathRound,
     MathFloor,
     Number,
-    NumberPrototype,
     NumberPrototypeToString,
     NumberPrototypeValueOf,
-    BigIntPrototype,
+    BigInt,
     BigIntPrototypeToString,
     Proxy,
     ReflectGet,
     ReflectGetOwnPropertyDescriptor,
     ReflectGetPrototypeOf,
-    WeakMapPrototype,
-    WeakSetPrototype,
+    WeakMap,
+    WeakSet,
   } = window.__bootstrap.primordials;
 
   function isInvalidDate(x) {
@@ -134,8 +126,7 @@
   // Forked from Node's lib/internal/cli_table.js
 
   function isTypedArray(x) {
-    return ArrayBufferIsView(x) &&
-      !ObjectPrototypeIsPrototypeOf(DataViewPrototype, x);
+    return ArrayBufferIsView(x) && !(x instanceof DataView);
   }
 
   const tableChars = {
@@ -897,8 +888,7 @@
 
     let err = value;
     while (
-      ObjectPrototypeIsPrototypeOf(ErrorPrototype, err.cause) &&
-      err.cause !== value &&
+      err.cause instanceof Error && err.cause !== value &&
       !ArrayPrototypeIncludes(causes, err.cause) // circular check
     ) {
       ArrayPrototypePush(causes, err.cause);
@@ -1170,33 +1160,33 @@
       // namespace is always enabled.
       return String(value[privateCustomInspect](inspect));
     }
-    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
+    if (value instanceof Error) {
       return inspectError(value);
     } else if (ArrayIsArray(value)) {
       return inspectArray(value, level, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(NumberPrototype, value)) {
+    } else if (value instanceof Number) {
       return inspectNumberObject(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(BigIntPrototype, value)) {
+    } else if (value instanceof BigInt) {
       return inspectBigIntObject(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(BooleanPrototype, value)) {
+    } else if (value instanceof Boolean) {
       return inspectBooleanObject(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(StringPrototype, value)) {
+    } else if (value instanceof String) {
       return inspectStringObject(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(SymbolPrototype, value)) {
+    } else if (value instanceof Symbol) {
       return inspectSymbolObject(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(PromisePrototype, value)) {
+    } else if (value instanceof Promise) {
       return inspectPromise(value, level, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) {
+    } else if (value instanceof RegExp) {
       return inspectRegExp(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
+    } else if (value instanceof Date) {
       return inspectDate(value, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
+    } else if (value instanceof Set) {
       return inspectSet(value, level, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(MapPrototype, value)) {
+    } else if (value instanceof Map) {
       return inspectMap(value, level, inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(WeakSetPrototype, value)) {
+    } else if (value instanceof WeakSet) {
       return inspectWeakSet(inspectOptions);
-    } else if (ObjectPrototypeIsPrototypeOf(WeakMapPrototype, value)) {
+    } else if (value instanceof WeakMap) {
       return inspectWeakMap(inspectOptions);
     } else if (isTypedArray(value)) {
       return inspectTypedArray(
@@ -1921,14 +1911,14 @@
       const toTable = (header, body) => this.log(cliTable(header, body));
 
       let resultData;
-      const isSet = ObjectPrototypeIsPrototypeOf(SetPrototype, data);
-      const isMap = ObjectPrototypeIsPrototypeOf(MapPrototype, data);
+      const isSet = data instanceof Set;
+      const isMap = data instanceof Map;
       const valuesKey = "Values";
       const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
 
-      if (isSet) {
+      if (data instanceof Set) {
         resultData = [...data];
-      } else if (isMap) {
+      } else if (data instanceof Map) {
         let idx = 0;
         resultData = {};
 

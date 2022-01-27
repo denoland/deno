@@ -16,35 +16,23 @@
   const core = window.Deno.core;
   const webidl = globalThis.__bootstrap.webidl;
   const { parseUrlEncoded } = globalThis.__bootstrap.url;
-  const { URLSearchParamsPrototype } = globalThis.__bootstrap.url;
-  const {
-    parseFormData,
-    formDataFromEntries,
-    formDataToBlob,
-    FormDataPrototype,
-  } = globalThis.__bootstrap.formData;
+  const { parseFormData, formDataFromEntries, formDataToBlob } =
+    globalThis.__bootstrap.formData;
   const mimesniff = globalThis.__bootstrap.mimesniff;
-  const { BlobPrototype } = globalThis.__bootstrap.file;
+  const { isReadableStreamDisturbed, errorReadableStream, createProxy } =
+    globalThis.__bootstrap.streams;
   const {
-    isReadableStreamDisturbed,
-    errorReadableStream,
-    createProxy,
-    ReadableStreamPrototype,
-  } = globalThis.__bootstrap.streams;
-  const {
-    ArrayBufferPrototype,
+    ArrayBuffer,
     ArrayBufferIsView,
     ArrayPrototypePush,
     ArrayPrototypeMap,
     JSONParse,
     ObjectDefineProperties,
-    ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
     TypedArrayPrototypeSet,
     TypedArrayPrototypeSlice,
     TypeError,
     Uint8Array,
-    Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
   /**
@@ -78,12 +66,7 @@
     }
 
     get stream() {
-      if (
-        !ObjectPrototypeIsPrototypeOf(
-          ReadableStreamPrototype,
-          this.streamOrStatic,
-        )
-      ) {
+      if (!(this.streamOrStatic instanceof ReadableStream)) {
         const { body, consumed } = this.streamOrStatic;
         if (consumed) {
           this.streamOrStatic = new ReadableStream();
@@ -105,12 +88,7 @@
      * @returns {boolean}
      */
     unusable() {
-      if (
-        ObjectPrototypeIsPrototypeOf(
-          ReadableStreamPrototype,
-          this.streamOrStatic,
-        )
-      ) {
+      if (this.streamOrStatic instanceof ReadableStream) {
         return this.streamOrStatic.locked ||
           isReadableStreamDisturbed(this.streamOrStatic);
       }
@@ -121,12 +99,7 @@
      * @returns {boolean}
      */
     consumed() {
-      if (
-        ObjectPrototypeIsPrototypeOf(
-          ReadableStreamPrototype,
-          this.streamOrStatic,
-        )
-      ) {
+      if (this.streamOrStatic instanceof ReadableStream) {
         return isReadableStreamDisturbed(this.streamOrStatic);
       }
       return this.streamOrStatic.consumed;
@@ -138,12 +111,7 @@
      */
     async consume() {
       if (this.unusable()) throw new TypeError("Body already consumed.");
-      if (
-        ObjectPrototypeIsPrototypeOf(
-          ReadableStreamPrototype,
-          this.streamOrStatic,
-        )
-      ) {
+      if (this.streamOrStatic instanceof ReadableStream) {
         const reader = this.stream.getReader();
         /** @type {Uint8Array[]} */
         const chunks = [];
@@ -168,12 +136,7 @@
     }
 
     cancel(error) {
-      if (
-        ObjectPrototypeIsPrototypeOf(
-          ReadableStreamPrototype,
-          this.streamOrStatic,
-        )
-      ) {
+      if (this.streamOrStatic instanceof ReadableStream) {
         this.streamOrStatic.cancel(error);
       } else {
         this.streamOrStatic.consumed = true;
@@ -181,12 +144,7 @@
     }
 
     error(error) {
-      if (
-        ObjectPrototypeIsPrototypeOf(
-          ReadableStreamPrototype,
-          this.streamOrStatic,
-        )
-      ) {
+      if (this.streamOrStatic instanceof ReadableStream) {
         errorReadableStream(this.streamOrStatic, error);
       } else {
         this.streamOrStatic.consumed = true;
@@ -210,12 +168,7 @@
      */
     createProxy() {
       let proxyStreamOrStatic;
-      if (
-        ObjectPrototypeIsPrototypeOf(
-          ReadableStreamPrototype,
-          this.streamOrStatic,
-        )
-      ) {
+      if (this.streamOrStatic instanceof ReadableStream) {
         proxyStreamOrStatic = createProxy(this.streamOrStatic);
       } else {
         proxyStreamOrStatic = { ...this.streamOrStatic };
@@ -329,7 +282,7 @@
         enumerable: true,
       },
     };
-    return ObjectDefineProperties(prototype, mixin);
+    return ObjectDefineProperties(prototype.prototype, mixin);
   }
 
   /**
@@ -388,21 +341,18 @@
     let source = null;
     let length = null;
     let contentType = null;
-    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, object)) {
+    if (object instanceof Blob) {
       stream = object.stream();
       source = object;
       length = object.size;
       if (object.type.length !== 0) {
         contentType = object.type;
       }
-    } else if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, object)) {
+    } else if (object instanceof Uint8Array) {
       // Fast(er) path for common case of Uint8Array
       const copy = TypedArrayPrototypeSlice(object, 0, object.byteLength);
       source = copy;
-    } else if (
-      ArrayBufferIsView(object) ||
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, object)
-    ) {
+    } else if (ArrayBufferIsView(object) || object instanceof ArrayBuffer) {
       const u8 = ArrayBufferIsView(object)
         ? new Uint8Array(
           object.buffer,
@@ -412,28 +362,26 @@
         : new Uint8Array(object);
       const copy = TypedArrayPrototypeSlice(u8, 0, u8.byteLength);
       source = copy;
-    } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, object)) {
+    } else if (object instanceof FormData) {
       const res = formDataToBlob(object);
       stream = res.stream();
       source = res;
       length = res.size;
       contentType = res.type;
-    } else if (
-      ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, object)
-    ) {
+    } else if (object instanceof URLSearchParams) {
       // TODO(@satyarohith): not sure what primordial here.
       source = object.toString();
       contentType = "application/x-www-form-urlencoded;charset=UTF-8";
     } else if (typeof object === "string") {
       source = object;
       contentType = "text/plain;charset=UTF-8";
-    } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
+    } else if (object instanceof ReadableStream) {
       stream = object;
       if (object.locked || isReadableStreamDisturbed(object)) {
         throw new TypeError("ReadableStream is locked or disturbed");
       }
     }
-    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, source)) {
+    if (source instanceof Uint8Array) {
       stream = { body: source, consumed: false };
       length = source.byteLength;
     } else if (typeof source === "string") {
@@ -451,22 +399,19 @@
 
   webidl.converters["BodyInit_DOMString"] = (V, opts) => {
     // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
-    if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, V)) {
+    if (V instanceof ReadableStream) {
       // TODO(lucacasonato): ReadableStream is not branded
       return V;
-    } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
+    } else if (V instanceof Blob) {
       return webidl.converters["Blob"](V, opts);
-    } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, V)) {
+    } else if (V instanceof FormData) {
       return webidl.converters["FormData"](V, opts);
-    } else if (ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, V)) {
+    } else if (V instanceof URLSearchParams) {
       // TODO(lucacasonato): URLSearchParams is not branded
       return V;
     }
     if (typeof V === "object") {
-      if (
-        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-      ) {
+      if (V instanceof ArrayBuffer || V instanceof SharedArrayBuffer) {
         return webidl.converters["ArrayBuffer"](V, opts);
       }
       if (ArrayBufferIsView(V)) {

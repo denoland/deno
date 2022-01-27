@@ -15,7 +15,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const {
-    ArrayBufferPrototype,
+    ArrayBuffer,
     ArrayBufferPrototypeSlice,
     ArrayBufferIsView,
     ArrayPrototypePush,
@@ -23,7 +23,6 @@
     DatePrototypeGetTime,
     MathMax,
     MathMin,
-    ObjectPrototypeIsPrototypeOf,
     RegExpPrototypeTest,
     StringPrototypeCharAt,
     StringPrototypeToLowerCase,
@@ -110,7 +109,7 @@
     const processedParts = [];
     let size = 0;
     for (const element of parts) {
-      if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, element)) {
+      if (element instanceof ArrayBuffer) {
         const chunk = new Uint8Array(ArrayBufferPrototypeSlice(element, 0));
         ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
         size += element.byteLength;
@@ -122,7 +121,7 @@
         );
         size += element.byteLength;
         ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
-      } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, element)) {
+      } else if (element instanceof Blob) {
         ArrayPrototypePush(processedParts, element);
         size += element.size;
       } else if (typeof element === "string") {
@@ -158,7 +157,7 @@
    */
   function getParts(blob, bag = []) {
     for (const part of blob[_parts]) {
-      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, part)) {
+      if (part instanceof Blob) {
         getParts(part, bag);
       } else {
         ArrayPrototypePush(bag, part._id);
@@ -205,13 +204,13 @@
 
     /** @returns {number} */
     get size() {
-      webidl.assertBranded(this, BlobPrototype);
+      webidl.assertBranded(this, Blob);
       return this[_size];
     }
 
     /** @returns {string} */
     get type() {
-      webidl.assertBranded(this, BlobPrototype);
+      webidl.assertBranded(this, Blob);
       return this[_type];
     }
 
@@ -222,7 +221,7 @@
      * @returns {Blob}
      */
     slice(start = undefined, end = undefined, contentType = undefined) {
-      webidl.assertBranded(this, BlobPrototype);
+      webidl.assertBranded(this, Blob);
       const prefix = "Failed to execute 'slice' on 'Blob'";
       if (start !== undefined) {
         start = webidl.converters["long long"](start, {
@@ -317,7 +316,7 @@
      * @returns {ReadableStream<Uint8Array>}
      */
     stream() {
-      webidl.assertBranded(this, BlobPrototype);
+      webidl.assertBranded(this, Blob);
       const partIterator = toIterator(this[_parts]);
       const stream = new ReadableStream({
         type: "bytes",
@@ -339,7 +338,7 @@
      * @returns {Promise<string>}
      */
     async text() {
-      webidl.assertBranded(this, BlobPrototype);
+      webidl.assertBranded(this, Blob);
       const buffer = await this.arrayBuffer();
       return core.decode(new Uint8Array(buffer));
     }
@@ -348,7 +347,7 @@
      * @returns {Promise<ArrayBuffer>}
      */
     async arrayBuffer() {
-      webidl.assertBranded(this, BlobPrototype);
+      webidl.assertBranded(this, Blob);
       const stream = this.stream();
       const bytes = new Uint8Array(this.size);
       let offset = 0;
@@ -362,7 +361,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(BlobPrototype, this),
+        evaluate: this instanceof Blob,
         keys: [
           "size",
           "type",
@@ -372,22 +371,15 @@
   }
 
   webidl.configurePrototype(Blob);
-  const BlobPrototype = Blob.prototype;
 
-  webidl.converters["Blob"] = webidl.createInterfaceConverter(
-    "Blob",
-    Blob.prototype,
-  );
+  webidl.converters["Blob"] = webidl.createInterfaceConverter("Blob", Blob);
   webidl.converters["BlobPart"] = (V, opts) => {
     // Union for ((ArrayBuffer or ArrayBufferView) or Blob or USVString)
     if (typeof V == "object") {
-      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
+      if (V instanceof Blob) {
         return webidl.converters["Blob"](V, opts);
       }
-      if (
-        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-        ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-      ) {
+      if (V instanceof ArrayBuffer || V instanceof SharedArrayBuffer) {
         return webidl.converters["ArrayBuffer"](V, opts);
       }
       if (ArrayBufferIsView(V)) {
@@ -466,19 +458,18 @@
 
     /** @returns {string} */
     get name() {
-      webidl.assertBranded(this, FilePrototype);
+      webidl.assertBranded(this, File);
       return this[_Name];
     }
 
     /** @returns {number} */
     get lastModified() {
-      webidl.assertBranded(this, FilePrototype);
+      webidl.assertBranded(this, File);
       return this[_LastModified];
     }
   }
 
   webidl.configurePrototype(File);
-  const FilePrototype = File.prototype;
 
   webidl.converters["FilePropertyBag"] = webidl.createDictionaryConverter(
     "FilePropertyBag",
@@ -602,8 +593,6 @@
     blobFromObjectUrl,
     getParts,
     Blob,
-    BlobPrototype,
     File,
-    FilePrototype,
   };
 })(this);
