@@ -28,7 +28,7 @@
     return core.opSync("op_network_interfaces");
   }
 
-  function getuid() {
+  function getUid() {
     return core.opSync("op_getuid");
   }
 
@@ -92,7 +92,7 @@
     env,
     execPath,
     exit,
-    getuid,
+    getUid,
     hostname,
     loadavg,
     networkInterfaces,

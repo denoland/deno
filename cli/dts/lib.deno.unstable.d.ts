@@ -138,12 +138,12 @@ declare namespace Deno {
    * Returns the user id of the process on POSIX platforms. Returns null on windows.
    *
    * ```ts
-   * console.log(Deno.getuid());
+   * console.log(Deno.getUid());
    * ```
    *
    * Requires `allow-env` permission.
    */
-  export function getuid(): number | null;
+  export function getUid(): number | null;
 
   /** All possible types for interfacing with foreign functions */
   export type NativeType =

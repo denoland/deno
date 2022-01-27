@@ -203,11 +203,11 @@ Deno.test({ permissions: { env: true } }, function systemMemoryInfo() {
   assert(info.swapFree >= 0);
 });
 
-Deno.test({ permissions: { env: true } }, function getuid() {
+Deno.test({ permissions: { env: true } }, function getUid() {
   if (Deno.build.os === "windows") {
-    assertEquals(Deno.getuid(), null);
+    assertEquals(Deno.getUid(), null);
   } else {
-    const uid = Deno.getuid();
+    const uid = Deno.getUid();
     assert(typeof uid === "number");
     assert(uid > 0);
   }
