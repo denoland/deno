@@ -30,21 +30,20 @@ jobs:
             job: test
             profile: release
             use_sysroot: false
-            container: quay.io/pypa/manylinux2014_x86_64
+            container: quay.io/pypa/manylinux_2_24_x86_64
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: bench
             profile: release
             use_sysroot: false
-            container: quay.io/pypa/manylinux2014_x86_64
+            container: quay.io/pypa/manylinux_2_24_x86_64
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: test
             profile: debug
-            container: quay.io/pypa/manylinux2014_x86_64
+            container: quay.io/pypa/manylinux_2_24_x86_64
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: lint
             profile: debug
-            container: quay.io/pypa/manylinux2014_x86_64
-
+            container: quay.io/pypa/manylinux_2_24_x86_64
       # Always run main branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
       # e.g. a flaky test.
