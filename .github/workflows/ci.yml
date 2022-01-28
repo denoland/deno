@@ -93,7 +93,7 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu')
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain none -y
-          echo "::add-path::$HOME/.cargo/bin"
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Rust
