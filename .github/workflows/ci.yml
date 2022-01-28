@@ -30,19 +30,16 @@ jobs:
             profile: release
             use_sysroot: true
             container: quay.io/pypa/manylinux2014_x86_64
-
-            - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: bench
             profile: release
             use_sysroot: true
             container: quay.io/pypa/manylinux2014_x86_64
-
-            - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: test
             profile: debug
             container: quay.io/pypa/manylinux2014_x86_64
-
-            - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: lint
             profile: debug
             container: quay.io/pypa/manylinux2014_x86_64
