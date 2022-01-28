@@ -59,6 +59,7 @@ jobs:
       RUSTC_FORCE_INCREMENTAL: 1
     
     container:
+      if: startsWith(matrix.os, 'ubuntu')
       image: ${{ matrix.container }}
 
     steps:
