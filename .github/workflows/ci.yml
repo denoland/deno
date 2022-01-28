@@ -91,7 +91,7 @@ jobs:
       
       - name: Install rustup (container)
         if: startsWith(matrix.os, 'ubuntu')
-        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain none -y
 
       - uses: dtolnay/rust-toolchain@stable
 
