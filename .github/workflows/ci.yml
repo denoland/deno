@@ -88,6 +88,10 @@ jobs:
           mkdir -p target/release
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
+      
+      - name: Install rustup (container)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
       - uses: dtolnay/rust-toolchain@stable
 
