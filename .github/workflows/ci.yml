@@ -95,10 +95,6 @@ jobs:
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install Rust
-        uses: hecrj/setup-rust-action@v1
-        with:
-          rust-version: 1.58.0
       - name: Install clippy and rustfmt
         if: matrix.job == 'lint'
         run: |
