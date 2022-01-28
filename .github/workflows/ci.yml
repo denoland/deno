@@ -345,7 +345,7 @@ jobs:
       - name: Build debug
         if: |
           (matrix.job == 'test' || matrix.job == 'bench') &&
-          matrix.profile == 'debug' && !matrix.use_sysroot
+          matrix.profile == 'debug'
         run: cargo build --locked --all-targets
 
       - name: Build fastci
@@ -357,7 +357,7 @@ jobs:
       - name: Build release
         if: |
           (matrix.job == 'test' || matrix.job == 'bench') &&
-          matrix.profile == 'release' && !matrix.use_sysroot &&
+          matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         run: cargo build --release --locked --all-targets
@@ -365,7 +365,7 @@ jobs:
       - name: Build release (in sysroot)
         if: |
           (matrix.job == 'test' || matrix.job == 'bench') &&
-          matrix.profile == 'release' && matrix.use_sysroot
+          matrix.profile == 'release'
         run: |
           sudo chroot /sysroot   \
                su -l "$(whoami)" \
@@ -427,8 +427,7 @@ jobs:
 
       - name: Test debug
         if: |
-          matrix.job == 'test' && matrix.profile == 'debug' &&
-          !matrix.use_sysroot && !startsWith(github.ref, 'refs/tags/')
+          matrix.job == 'test' && matrix.profile == 'debug' && !startsWith(github.ref, 'refs/tags/')
         run: |
           cargo test --locked --doc
           cargo test --locked
@@ -442,7 +441,6 @@ jobs:
       - name: Test release
         if: |
           matrix.job == 'test' && matrix.profile == 'release' &&
-          !matrix.use_sysroot &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         run: cargo test --release --locked
@@ -534,7 +532,7 @@ jobs:
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
 
       - name: Run benchmarks
-        if: matrix.job == 'bench' && !matrix.use_sysroot && !startsWith(github.ref, 'refs/tags/')
+        if: matrix.job == 'bench' && !startsWith(github.ref, 'refs/tags/')
         run: cargo bench --locked
 
       - name: Run benchmarks (in sysroot)
