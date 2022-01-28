@@ -444,16 +444,6 @@ jobs:
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         run: cargo test --release --locked
-
-      - name: Test release (in sysroot)
-        if: |
-          matrix.job == 'test' && matrix.profile == 'release' &&
-          matrix.use_sysroot && !startsWith(github.ref, 'refs/tags/')
-        run: |
-          sudo chroot /sysroot   \
-               su -l "$(whoami)" \
-                  -c "cargo test --release --locked"
-
       # Since all tests are skipped when we're building a tagged commit
       # this is a minimal check to ensure that binary is not corrupted
       - name: Check Deno Binary
