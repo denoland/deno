@@ -259,7 +259,7 @@ jobs:
         shell: bash
         run: |
           node -v
-          python --version
+          # python --version
           rustc --version
           cargo --version
           # Deno is installed when linting.
