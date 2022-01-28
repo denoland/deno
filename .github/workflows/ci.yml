@@ -57,6 +57,9 @@ jobs:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
       RUSTC_FORCE_INCREMENTAL: 1
+    
+    container:
+      image: ${{ matrix.container }}
 
     steps:
       - name: Configure git
