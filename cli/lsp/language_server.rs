@@ -1061,31 +1061,31 @@ impl Inner {
         .flatten()
         .map(|d| d.maybe_types_dependency());
       let value = match (&dep.maybe_code, &dep.maybe_type, &dep_maybe_types_dependency) {
-        (Some(code_dep), Some(type_dep), None) => format!(
-          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(code_dep),
-          to_hover_text(type_dep)
-        ),
-        (Some(code_dep), Some(type_dep), Some(types_dep)) => format!(
-          "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
-          to_hover_text(code_dep),
-          to_hover_text(types_dep),
-          to_hover_text(type_dep)
-        ),
-        (Some(code_dep), None, None) => format!(
+        (Resolved::None, Resolved::None, _) => unreachable!("{}", json!(params)),
+        (_, Resolved::None, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n",
-          to_hover_text(code_dep)
+          to_hover_text(&dep.maybe_code)
         ),
-        (Some(code_dep), None, Some(types_dep)) => format!(
+        (_, Resolved::None, Some(types_dep)) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(code_dep),
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type)
+        ),
+        (Resolved::None, _, _) => format!(
+          "**Resolved Dependency**\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_type)
+        ),
+        (_, _, None) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type)
+        ),
+        (_, _, Some(types_dep)) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type),
           to_hover_text(types_dep)
         ),
-        (None, Some(type_dep), _) => format!(
-          "**Resolved Dependency**\n\n**Types**: {}\n",
-          to_hover_text(type_dep)
-        ),
-        (None, None, _) => unreachable!("{}", json!(params)),
       };
       let value =
         if let Some(docs) = self.module_registries.get_hover(&dep).await {
@@ -2677,10 +2677,15 @@ impl Inner {
       params
         .uris
         .iter()
-        .map(|t| self.url_map.normalize_url(&t.uri))
+        .map(|t| {
+          (
+            self.url_map.normalize_url(&t.uri),
+            deno_graph::ModuleKind::Esm,
+          )
+        })
         .collect()
     } else {
-      vec![referrer.clone()]
+      vec![(referrer.clone(), deno_graph::ModuleKind::Esm)]
     };
 
     if self.maybe_cache_server.is_none() {

@@ -9,7 +9,6 @@ use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::fs_util::specifier_to_file_path;
-use crate::graph_util::resolve_response_to_result;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::resolver::ImportMapResolver;
@@ -863,7 +862,7 @@ impl Documents {
   ) -> bool {
     let maybe_resolver = self.get_maybe_resolver();
     let maybe_specifier = if let Some(resolver) = maybe_resolver {
-      resolve_response_to_result(resolver.resolve(specifier, referrer)).ok()
+      resolver.resolve(specifier, referrer).to_result().ok()
     } else {
       deno_core::resolve_import(specifier, referrer.as_str()).ok()
     };

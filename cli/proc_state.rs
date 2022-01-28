@@ -13,7 +13,6 @@ use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
 use crate::graph_util::graph_lock_or_exit;
-use crate::graph_util::resolve_response_to_result;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 use crate::http_cache;
@@ -475,8 +474,7 @@ impl ProcState {
         None
       };
     if let Some(resolver) = &maybe_resolver {
-      // TODO(@kitsonk): convert to `.to_result()` when available upstream
-      resolve_response_to_result(resolver.resolve(specifier, &referrer))
+      resolver.resolve(specifier, &referrer).to_result()
     } else {
       deno_core::resolve_import(specifier, referrer.as_str())
         .map_err(|err| err.into())
