@@ -134,9 +134,20 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       ValueType::ArrayBufferView => {
         v8::Local::<v8::ArrayBufferView>::try_from(self.input)
           .and_then(|view| {
-            magic::zero_copy_buf::ZeroCopyBuf::try_new(self.scope, view)
+            magic::zero_copy_buf::ZeroCopyBuf::try_from((
+              &mut *self.scope,
+              view,
+            ))
           })
-          .map_err(|_| Error::ExpectedInteger)
+          .map_err(|_| Error::ExpectedBuffer)
+          .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
+      }
+      ValueType::ArrayBuffer => {
+        v8::Local::<v8::ArrayBuffer>::try_from(self.input)
+          .and_then(|buffer| {
+            magic::zero_copy_buf::ZeroCopyBuf::try_from(buffer)
+          })
+          .map_err(|_| Error::ExpectedBuffer)
           .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
       }
     }
@@ -339,12 +350,20 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
 
     // Magic Buffer
     if name == magic::buffer::BUF_NAME {
-      let zero_copy_buf =
-        v8::Local::<v8::ArrayBufferView>::try_from(self.input)
+      let zero_copy_buf = match self.input.is_array_buffer() {
+        // ArrayBuffer
+        true => v8::Local::<v8::ArrayBuffer>::try_from(self.input)
+          .and_then(magic::zero_copy_buf::ZeroCopyBuf::try_from),
+        // maybe ArrayBufferView
+        false => v8::Local::<v8::ArrayBufferView>::try_from(self.input)
           .and_then(|view| {
-            magic::zero_copy_buf::ZeroCopyBuf::try_new(self.scope, view)
-          })
-          .map_err(|_| Error::ExpectedArray)?;
+            magic::zero_copy_buf::ZeroCopyBuf::try_from((
+              &mut *self.scope,
+              view,
+            ))
+          }),
+      }
+      .map_err(|_| Error::ExpectedBuffer)?;
       let data: [u8; 32] = unsafe { std::mem::transmute(zero_copy_buf) };
       return visitor.visit_bytes(&data);
     }

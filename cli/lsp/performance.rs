@@ -83,7 +83,7 @@ impl Default for Performance {
   fn default() -> Self {
     Self {
       counts: Default::default(),
-      max_size: 1_000,
+      max_size: 3_000,
       measures: Default::default(),
     }
   }

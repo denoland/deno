@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -102,6 +102,36 @@ declare namespace Deno {
     /** Unused swap memory */
     swapFree: number;
   }
+
+  /** The information of the network interface */
+  export interface NetworkInterfaceInfo {
+    /** The network interface name */
+    name: string;
+    /** The IP protocol version */
+    family: "IPv4" | "IPv6";
+    /** The IP address */
+    address: string;
+    /** The netmask */
+    netmask: string;
+    /** The IPv6 scope id or null */
+    scopeid: number | null;
+    /** The CIDR range */
+    cidr: string;
+    /** The MAC address */
+    mac: string;
+  }
+
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns an array of the network interface informations.
+   *
+   * ```ts
+   * console.log(Deno.networkInterfaces());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   */
+  export function networkInterfaces(): NetworkInterfaceInfo[];
 
   /** All possible types for interfacing with foreign functions */
   export type NativeType =
@@ -923,7 +953,7 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
-  /** *UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * SleepSync puts the main thread to sleep synchronously for a given amount of
    * time in milliseconds.
@@ -933,43 +963,6 @@ declare namespace Deno {
    * ```
    */
   export function sleepSync(millis: number): void;
-
-  /** **UNSTABLE**: New option, yet to be vetted. */
-  export interface TestContext {
-    /** Run a sub step of the parent test with a given name. Returns a promise
-     * that resolves to a boolean signifying if the step completed successfully.
-     * The returned promise never rejects unless the arguments are invalid.
-     * If the test was ignored, the promise returns `false`.
-     */
-    step(t: TestStepDefinition): Promise<boolean>;
-
-    /** Run a sub step of the parent test with a given name. Returns a promise
-     * that resolves to a boolean signifying if the step completed successfully.
-     * The returned promise never rejects unless the arguments are invalid.
-     * If the test was ignored, the promise returns `false`.
-     */
-    step(
-      name: string,
-      fn: (t: TestContext) => void | Promise<void>,
-    ): Promise<boolean>;
-  }
-
-  /** **UNSTABLE**: New option, yet to be vetted. */
-  export interface TestStepDefinition {
-    fn: (t: TestContext) => void | Promise<void>;
-    name: string;
-    ignore?: boolean;
-    /** Check that the number of async completed ops after the test is the same
-     * as number of dispatched ops. Defaults to true. */
-    sanitizeOps?: boolean;
-    /** Ensure the test case does not "leak" resources - ie. the resource table
-     * after the test has exactly the same contents as before the test. Defaults
-     * to true. */
-    sanitizeResources?: boolean;
-    /** Ensure the test case does not prematurely cause the process to exit,
-     * for example via a call to `Deno.exit`. Defaults to true. */
-    sanitizeExit?: boolean;
-  }
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *

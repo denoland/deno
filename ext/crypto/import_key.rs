@@ -3,14 +3,15 @@ use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::pkcs8::der::Decodable as Pkcs8Decodable;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
-use elliptic_curve::sec1::ToEncodedPoint;
-use p256::pkcs8::FromPrivateKey;
-use p256::pkcs8::ToPrivateKey;
+use ring::signature::EcdsaKeyPair;
 use rsa::pkcs1::UIntBytes;
+use rsa::pkcs8::AlgorithmIdentifier;
 use serde::Deserialize;
 use serde::Serialize;
 use spki::der::Encodable;
 
+use crate::ec_key::ECPrivateKey;
+use crate::key::CryptoNamedCurve;
 use crate::shared::*;
 use crate::OaepPrivateKeyParameters;
 use crate::PssPrivateKeyParameters;
@@ -191,6 +192,28 @@ fn import_key_rsa_jwk(
   }
 }
 
+fn validate_mask_gen(
+  mask_gen_algorithm: &AlgorithmIdentifier,
+  hash_algorithm: &AlgorithmIdentifier,
+) -> Result<(), deno_core::anyhow::Error> {
+  if mask_gen_algorithm.oid != ID_MFG1 {
+    return Err(not_supported_error("unsupported mask gen algorithm"));
+  }
+
+  let parameters = mask_gen_algorithm
+    .parameters_any()
+    .map_err(|_| not_supported_error("unsupported parameters"))?;
+  let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters)
+    .map_err(|_| not_supported_error("unsupported parameters"))?;
+
+  // The hash function on which MGF1 is based.
+  mgf1_hash_identifier
+    .assert_algorithm_oid(hash_algorithm.oid)
+    .map_err(|_| not_supported_error("unsupported parameters"))?;
+
+  Ok(())
+}
+
 fn import_key_rsassa(
   key_data: KeyData,
   hash: ShaHash,
@@ -359,12 +382,7 @@ fn import_key_rsapss(
             return Err(not_supported_error("unsupported hash algorithm"));
           }
 
-          // TODO(lucacasonato):
-          // If the parameters field of the maskGenAlgorithm field of params
-          // is not an instance of the HashAlgorithm ASN.1 type that is
-          // identical in content to the hashAlgorithm field of params,
-          // throw a NotSupportedError.
-
+          validate_mask_gen(&params.mask_gen_algorithm, &hash_alg)?;
           hash
         }
         _ => return Err(data_error("unsupported algorithm")),
@@ -439,16 +457,7 @@ fn import_key_rsapss(
             _ => return Err(data_error("unsupported hash algorithm")),
           };
 
-          if params.mask_gen_algorithm.oid != ID_MFG1 {
-            return Err(not_supported_error("unsupported mask gen algorithm"));
-          }
-
-          // TODO(lucacasonato):
-          // If the parameters field of the maskGenAlgorithm field of params
-          // is not an instance of the HashAlgorithm ASN.1 type that is
-          // identical in content to the hashAlgorithm field of params,
-          // throw a NotSupportedError.
-
+          validate_mask_gen(&params.mask_gen_algorithm, &hash_alg)?;
           hash
         }
         _ => return Err(data_error("unsupported algorithm")),
@@ -534,16 +543,7 @@ fn import_key_rsaoaep(
             _ => return Err(data_error("unsupported hash algorithm")),
           };
 
-          if params.mask_gen_algorithm.oid != ID_MFG1 {
-            return Err(not_supported_error("unsupported hash algorithm"));
-          }
-
-          // TODO(lucacasonato):
-          // If the parameters field of the maskGenAlgorithm field of params
-          // is not an instance of the HashAlgorithm ASN.1 type that is
-          // identical in content to the hashAlgorithm field of params,
-          // throw a NotSupportedError.
-
+          validate_mask_gen(&params.mask_gen_algorithm, &hash_alg)?;
           hash
         }
         _ => return Err(data_error("unsupported algorithm")),
@@ -617,17 +617,7 @@ fn import_key_rsaoaep(
             ID_SHA512_OID => Some(ShaHash::Sha512),
             _ => return Err(data_error("unsupported hash algorithm")),
           };
-
-          if params.mask_gen_algorithm.oid != ID_MFG1 {
-            return Err(not_supported_error("unsupported mask gen algorithm"));
-          }
-
-          // TODO(lucacasonato):
-          // If the parameters field of the maskGenAlgorithm field of params
-          // is not an instance of the HashAlgorithm ASN.1 type that is
-          // identical in content to the hashAlgorithm field of params,
-          // throw a NotSupportedError.
-
+          validate_mask_gen(&params.mask_gen_algorithm, &hash_alg)?;
           hash
         }
         _ => return Err(data_error("unsupported algorithm")),
@@ -721,65 +711,62 @@ fn import_key_ec_jwk(
       let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
 
       Ok(ImportKeyResult::Ec {
-        raw_data: RawKeyData::Public(point_bytes.to_vec().into()),
+        raw_data: RawKeyData::Public(point_bytes.into()),
       })
     }
     KeyData::JwkPrivateEc { d, x, y } => {
       let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
 
-      let secret_key_der = match named_curve {
+      jwt_b64_int_or_err!(private_d, &d, "invalid JWK private key");
+
+      let pkcs8_der = match named_curve {
         EcNamedCurve::P256 => {
           let d = decode_b64url_to_field_bytes::<p256::NistP256>(&d)?;
-          let secret_key = p256::SecretKey::from_bytes(&d)?;
-          ToPrivateKey::to_pkcs8_der(&secret_key).unwrap()
-        }
-        //@todo(sean) - build p384 secret key from jwk, when crate implements to_pkcs8_der
-        //Problem: p384 crate does not implement ProjectiveArithmetic
-        /*EcNamedCurve::P384 => {
-          let secret_key = p384::SecretKey::from_be_bytes(&d)?;
 
-          secret_key.to_pkcs8_der().unwrap()
-        }*/
-        _ => return Err(not_supported_error("Unsupported named curve")),
+          let pk =
+            ECPrivateKey::<p256::NistP256>::from_private_and_public_bytes(
+              d,
+              &point_bytes,
+            );
+
+          pk.to_pkcs8_der()?
+        }
+        EcNamedCurve::P384 => {
+          let d = decode_b64url_to_field_bytes::<p384::NistP384>(&d)?;
+
+          let pk =
+            ECPrivateKey::<p384::NistP384>::from_private_and_public_bytes(
+              d,
+              &point_bytes,
+            );
+
+          pk.to_pkcs8_der()?
+        }
+        EcNamedCurve::P521 => {
+          return Err(data_error("Unsupported named curve"))
+        }
       };
 
-      let oid =
-        <p256::NistP256 as p256::elliptic_curve::AlgorithmParameters>::OID;
+      // Import using ring, to validate key
+      let key_alg = match named_curve {
+        EcNamedCurve::P256 => CryptoNamedCurve::P256.try_into()?,
+        EcNamedCurve::P384 => CryptoNamedCurve::P256.try_into()?,
+        EcNamedCurve::P521 => {
+          return Err(data_error("Unsupported named curve"))
+        }
+      };
 
-      let pki = p256::pkcs8::PrivateKeyInfo::new(
-        p256::pkcs8::AlgorithmIdentifier {
-          oid,
-          parameters: None,
-        },
-        secret_key_der.as_ref(),
+      let _key_pair = EcdsaKeyPair::from_private_key_and_public_key(
+        key_alg,
+        private_d.as_bytes(),
+        point_bytes.as_ref(),
       );
 
-      let pki = p256::pkcs8::PrivateKeyInfo {
-        public_key: Some(&point_bytes),
-        ..pki
-      };
-
       Ok(ImportKeyResult::Ec {
-        raw_data: RawKeyData::Private(pki.private_key.to_vec().into()),
+        raw_data: RawKeyData::Private(pkcs8_der.as_ref().to_vec().into()),
       })
     }
     _ => unreachable!(),
-  }
-}
-
-pub struct ECParametersPkcs8 {
-  pub named_curve_alg: p256::pkcs8::der::asn1::ObjectIdentifier,
-}
-
-impl<'a> TryFrom<p256::pkcs8::der::asn1::Any<'a>> for ECParametersPkcs8 {
-  type Error = p256::pkcs8::der::Error;
-
-  fn try_from(
-    any: p256::pkcs8::der::asn1::Any<'a>,
-  ) -> p256::pkcs8::der::Result<ECParametersPkcs8> {
-    let x = any.oid()?;
-
-    Ok(Self { named_curve_alg: x })
   }
 }
 
@@ -833,70 +820,48 @@ fn import_key_ec(
       })
     }
     KeyData::Pkcs8(data) => {
-      // 2-3.
-      let pk_info = PrivateKeyInfo::from_der(&data)
-        .map_err(|e| data_error(e.to_string()))?;
+      // 2-7
+      // Deserialize PKCS8 - validate structure, extracts named_curve
+      let named_curve_alg = match named_curve {
+        EcNamedCurve::P256 => {
+          let pk = ECPrivateKey::<p256::NistP256>::try_from(data.as_ref())?;
 
-      // 4-5.
-      let alg = pk_info.algorithm.oid;
-      // id-ecPublicKey
-      if alg != elliptic_curve::ALGORITHM_OID {
-        return Err(data_error("unsupported algorithm"));
-      }
+          pk.named_curve_oid().unwrap()
+        }
+        EcNamedCurve::P384 => {
+          let pk = ECPrivateKey::<p384::NistP384>::try_from(data.as_ref())?;
 
-      // 5-7.
-      let params = ECParametersPkcs8::try_from(
-        pk_info
-          .algorithm
-          .parameters
-          .ok_or_else(|| data_error("malformed parameters"))?,
-      )
-      .map_err(|_| data_error("malformed parameters"))?;
+          pk.named_curve_oid().unwrap()
+        }
+        EcNamedCurve::P521 => {
+          return Err(data_error("Unsupported named curve"))
+        }
+      };
 
       // 8-9.
-      let pk_named_curve = match params.named_curve_alg {
+      let pk_named_curve = match named_curve_alg {
         // id-secp256r1
         ID_SECP256R1_OID => Some(EcNamedCurve::P256),
         // id-secp384r1
         ID_SECP384R1_OID => Some(EcNamedCurve::P384),
-        // id-secp384r1
+        // id-secp521r1
         ID_SECP521R1_OID => Some(EcNamedCurve::P521),
         _ => None,
       };
 
       // 10.
       if let Some(pk_named_curve) = pk_named_curve {
-        match pk_named_curve {
-          EcNamedCurve::P256 => {
-            let secret_key =
-              p256::SecretKey::from_pkcs8_der(&data).map_err(|_| {
-                data_error("invalid P-256 elliptic curve PKCS8 data")
-              })?;
-
-            let point =
-              secret_key.public_key().as_affine().to_encoded_point(false);
-
-            // 12 - not sure if this is correct.
-            if point.is_identity() {
-              return Err(data_error("Invalid key data"));
-            }
+        let signing_alg = match pk_named_curve {
+          EcNamedCurve::P256 => CryptoNamedCurve::P256.try_into()?,
+          EcNamedCurve::P384 => CryptoNamedCurve::P384.try_into()?,
+          EcNamedCurve::P521 => {
+            return Err(data_error("Unsupported named curve"))
           }
-          //@todo(sean) Validate P384 secret-key on import(pkcs8)
-          //Problem: Nist384 Curve from p384 crate does not implement ProjectiveArithmetic
-          //so cannot extract PublicKey from SecretKey.
-          /*EcNamedCurve::P384 => {
-            let secret_key =
-              p384::SecretKey::from_pkcs8_der(&data).unwrap();
+        };
 
-            let point =
-              secret_key.public_key().as_affine().to_encoded_point(false);
-            // 3.
-            if point.is_identity() {
-              return Err(type_error("Invalid key data".to_string()));
-            }
-          }*/
-          _ => return Err(data_error("Unsupported named curve")),
-        }
+        // deserialize pkcs8 using ring crate, to VALIDATE public key
+        let _private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &data)?;
+
         // 11.
         if named_curve != pk_named_curve {
           return Err(data_error("curve mismatch"));

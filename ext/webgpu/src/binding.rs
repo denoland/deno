@@ -5,8 +5,7 @@ use deno_core::ResourceId;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
-
-use crate::texture::{GpuTextureFormat, GpuTextureViewDimension};
+use std::convert::{TryFrom, TryInto};
 
 use super::error::WebGpuResult;
 
@@ -59,41 +58,14 @@ impl From<GpuBufferBindingType> for wgpu_types::BufferBindingType {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuSamplerBindingLayout {
-  r#type: GpuSamplerBindingType,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum GpuSamplerBindingType {
-  Filtering,
-  NonFiltering,
-  Comparison,
-}
-
-impl From<GpuSamplerBindingType> for wgpu_types::BindingType {
-  fn from(binding_type: GpuSamplerBindingType) -> Self {
-    match binding_type {
-      GpuSamplerBindingType::Filtering => wgpu_types::BindingType::Sampler {
-        filtering: true,
-        comparison: false,
-      },
-      GpuSamplerBindingType::NonFiltering => wgpu_types::BindingType::Sampler {
-        filtering: false,
-        comparison: false,
-      },
-      GpuSamplerBindingType::Comparison => wgpu_types::BindingType::Sampler {
-        filtering: true,
-        comparison: true,
-      },
-    }
-  }
+  r#type: wgpu_types::SamplerBindingType,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuTextureBindingLayout {
   sample_type: GpuTextureSampleType,
-  view_dimension: GpuTextureViewDimension,
+  view_dimension: wgpu_types::TextureViewDimension,
   multisampled: bool,
 }
 
@@ -127,8 +99,8 @@ impl From<GpuTextureSampleType> for wgpu_types::TextureSampleType {
 #[serde(rename_all = "camelCase")]
 struct GpuStorageTextureBindingLayout {
   access: GpuStorageTextureAccess,
-  format: GpuTextureFormat,
-  view_dimension: GpuTextureViewDimension,
+  format: wgpu_types::TextureFormat,
+  view_dimension: wgpu_types::TextureViewDimension,
 }
 
 #[derive(Deserialize)]
@@ -177,17 +149,19 @@ impl TryFrom<GpuBindingType> for wgpu_types::BindingType {
         has_dynamic_offset: buffer.has_dynamic_offset,
         min_binding_size: std::num::NonZeroU64::new(buffer.min_binding_size),
       },
-      GpuBindingType::Sampler(sampler) => sampler.r#type.into(),
+      GpuBindingType::Sampler(sampler) => {
+        wgpu_types::BindingType::Sampler(sampler.r#type)
+      }
       GpuBindingType::Texture(texture) => wgpu_types::BindingType::Texture {
         sample_type: texture.sample_type.into(),
-        view_dimension: texture.view_dimension.into(),
+        view_dimension: texture.view_dimension,
         multisampled: texture.multisampled,
       },
       GpuBindingType::StorageTexture(storage_texture) => {
         wgpu_types::BindingType::StorageTexture {
           access: storage_texture.access.into(),
-          format: storage_texture.format.try_into()?,
-          view_dimension: storage_texture.view_dimension.into(),
+          format: storage_texture.format,
+          view_dimension: storage_texture.view_dimension,
         }
       }
     };

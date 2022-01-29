@@ -14,6 +14,7 @@ use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::text;
 use super::text::LineIndex;
+use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::TsConfig;
@@ -26,6 +27,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op_sync;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -40,6 +42,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
+use log::error;
 use log::warn;
 use lspower::jsonrpc::Error as LspError;
 use lspower::jsonrpc::Result as LspResult;
@@ -187,48 +190,114 @@ impl AssetDocument {
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct Assets(HashMap<ModuleSpecifier, Option<AssetDocument>>);
+type AssetsMap = HashMap<ModuleSpecifier, Option<AssetDocument>>;
 
-impl Default for Assets {
+fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
+  let assets = tsc::STATIC_ASSETS
+    .iter()
+    .map(|(k, v)| {
+      let url_str = format!("asset:///{}", k);
+      let specifier = resolve_url(&url_str).unwrap();
+      let asset = AssetDocument::new(v);
+      (specifier, Some(asset))
+    })
+    .collect();
+  Arc::new(Mutex::new(assets))
+}
+
+/// Snapshot of Assets.
+#[derive(Debug, Clone)]
+pub struct AssetsSnapshot(Arc<Mutex<AssetsMap>>);
+
+impl Default for AssetsSnapshot {
   fn default() -> Self {
-    let assets = tsc::STATIC_ASSETS
-      .iter()
-      .map(|(k, v)| {
-        let url_str = format!("asset:///{}", k);
-        let specifier = resolve_url(&url_str).unwrap();
-        let asset = AssetDocument::new(v);
-        (specifier, Some(asset))
-      })
-      .collect();
-    Self(assets)
+    Self(new_assets_map())
   }
 }
 
-impl Assets {
+impl AssetsSnapshot {
   pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
-    self.0.contains_key(k)
+    self.0.lock().contains_key(k)
   }
 
-  pub fn get(&self, k: &ModuleSpecifier) -> Option<&Option<AssetDocument>> {
-    self.0.get(k)
-  }
-
-  pub fn insert(
-    &mut self,
-    k: ModuleSpecifier,
-    v: Option<AssetDocument>,
+  pub fn get_cached(
+    &self,
+    k: &ModuleSpecifier,
   ) -> Option<Option<AssetDocument>> {
-    self.0.insert(k, v)
+    self.0.lock().get(k).cloned()
+  }
+}
+
+/// Assets are never updated and so we can safely use this struct across
+/// multiple threads without needing to worry about race conditions.
+#[derive(Debug, Clone)]
+pub struct Assets {
+  ts_server: Arc<TsServer>,
+  assets: Arc<Mutex<AssetsMap>>,
+}
+
+impl Assets {
+  pub fn new(ts_server: Arc<TsServer>) -> Self {
+    Self {
+      ts_server,
+      assets: new_assets_map(),
+    }
+  }
+
+  pub fn snapshot(&self) -> AssetsSnapshot {
+    // it's ok to not make a complete copy for snapshotting purposes
+    // because assets are static
+    AssetsSnapshot(self.assets.clone())
+  }
+
+  pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
+    self.assets.lock().contains_key(k)
+  }
+
+  pub fn get_cached(
+    &self,
+    k: &ModuleSpecifier,
+  ) -> Option<Option<AssetDocument>> {
+    self.assets.lock().get(k).cloned()
+  }
+
+  pub(crate) async fn get(
+    &self,
+    specifier: &ModuleSpecifier,
+    // todo(dsherret): this shouldn't be a parameter, but instead retrieved via
+    // a constructor dependency
+    get_snapshot: impl Fn() -> Arc<StateSnapshot>,
+  ) -> LspResult<Option<AssetDocument>> {
+    // Race conditions are ok to happen here since the assets are static
+    if let Some(maybe_asset) = self.get_cached(specifier) {
+      Ok(maybe_asset)
+    } else {
+      let maybe_asset = get_asset(specifier, &self.ts_server, get_snapshot())
+        .await
+        .map_err(|err| {
+          error!("Error getting asset {}: {}", specifier, err);
+          LspError::internal_error()
+        })?;
+      // if another thread has inserted into the cache, return the asset
+      // that already exists in the cache so that we don't store duplicate
+      // assets in memory anywhere
+      let mut assets = self.assets.lock();
+      if let Some(maybe_asset) = assets.get(specifier) {
+        Ok(maybe_asset.clone())
+      } else {
+        assets.insert(specifier.clone(), maybe_asset.clone());
+        Ok(maybe_asset)
+      }
+    }
   }
 
   pub fn cache_navigation_tree(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     navigation_tree: Arc<NavigationTree>,
   ) -> Result<(), AnyError> {
-    let maybe_doc = self
-      .0
+    let mut assets = self.assets.lock();
+    let maybe_doc = assets
       .get_mut(specifier)
       .ok_or_else(|| anyhow!("Missing asset."))?;
     let doc = maybe_doc
@@ -242,7 +311,7 @@ impl Assets {
 /// Optionally returns an internal asset, first checking for any static assets
 /// in Rust, then checking any previously retrieved static assets from the
 /// isolate, and then finally, the tsc isolate itself.
-pub(crate) async fn get_asset(
+async fn get_asset(
   specifier: &ModuleSpecifier,
   ts_server: &TsServer,
   state_snapshot: Arc<StateSnapshot>,
@@ -646,7 +715,7 @@ impl DocumentSpan {
   pub(crate) async fn to_link(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = normalize_specifier(&self.file_name).ok()?;
     let target_asset_or_doc = language_server
@@ -923,7 +992,7 @@ impl ImplementationLocation {
   pub(crate) fn to_location(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> lsp::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
       .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
@@ -940,7 +1009,7 @@ impl ImplementationLocation {
   pub(crate) async fn to_link(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     self
       .document_span
@@ -967,7 +1036,7 @@ impl RenameLocations {
   pub(crate) async fn into_workspace_edit(
     self,
     new_name: &str,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<lsp::WorkspaceEdit, AnyError> {
     let mut text_document_edit_map: HashMap<Url, lsp::TextDocumentEdit> =
       HashMap::new();
@@ -1058,7 +1127,7 @@ impl DefinitionInfoAndBoundSpan {
   pub(crate) async fn to_definition(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Option<lsp::GotoDefinitionResponse> {
     if let Some(definitions) = &self.definitions {
       let mut location_links = Vec::<lsp::LocationLink>::new();
@@ -1137,7 +1206,7 @@ pub struct FileTextChanges {
 impl FileTextChanges {
   pub(crate) async fn to_text_document_edit(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
     let specifier = normalize_specifier(&self.file_name)?;
     let asset_or_doc =
@@ -1158,7 +1227,7 @@ impl FileTextChanges {
 
   pub(crate) async fn to_text_document_change_ops(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
     let specifier = normalize_specifier(&self.file_name)?;
@@ -1394,7 +1463,7 @@ pub struct RefactorEditInfo {
 impl RefactorEditInfo {
   pub(crate) async fn to_workspace_edit(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
     let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
     for edit in self.edits.iter() {
@@ -1460,12 +1529,11 @@ impl ReferenceEntry {
   pub(crate) fn to_location(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    url_map: &LspUrlMap,
   ) -> lsp::Location {
     let specifier = normalize_specifier(&self.document_span.file_name)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
-    let uri = language_server
-      .url_map
+    let uri = url_map
       .normalize_specifier(&specifier)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     lsp::Location {
@@ -1492,7 +1560,7 @@ pub struct CallHierarchyItem {
 impl CallHierarchyItem {
   pub(crate) async fn try_resolve_call_hierarchy_item(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
     let target_specifier = normalize_specifier(&self.file).ok()?;
@@ -1511,7 +1579,7 @@ impl CallHierarchyItem {
   pub(crate) fn to_call_hierarchy_item(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> lsp::CallHierarchyItem {
     let target_specifier = normalize_specifier(&self.file)
@@ -1593,7 +1661,7 @@ pub struct CallHierarchyIncomingCall {
 impl CallHierarchyIncomingCall {
   pub(crate) async fn try_resolve_call_hierarchy_incoming_call(
     &self,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
     let target_specifier = normalize_specifier(&self.from.file).ok()?;
@@ -1628,7 +1696,7 @@ impl CallHierarchyOutgoingCall {
   pub(crate) async fn try_resolve_call_hierarchy_outgoing_call(
     &self,
     line_index: Arc<LineIndex>,
-    language_server: &mut language_server::Inner,
+    language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
     let target_specifier = normalize_specifier(&self.to.file).ok()?;
@@ -2305,13 +2373,13 @@ struct SpecifierArgs {
 }
 
 fn op_exists(state: &mut State, args: SpecifierArgs) -> Result<bool, AnyError> {
-  let mark = state.performance.mark("op_exists", Some(&args));
+  // we don't measure the performance of op_exists anymore because as of TS 4.5
+  // it is noisy with all the checking for custom libs, that we can't see the
+  // forrest for the trees as well as it compounds any lsp performance
+  // challenges, opening a single document in the editor causes some 3k worth
+  // of op_exists requests... :omg:
   let specifier = state.normalize_specifier(args.specifier)?;
-  let result = state
-    .state_snapshot
-    .documents
-    .contains_specifier(&specifier);
-  state.performance.measure(mark);
+  let result = state.state_snapshot.documents.exists(&specifier);
   Ok(result)
 }
 
@@ -2376,7 +2444,8 @@ fn op_get_length(
 ) -> Result<usize, AnyError> {
   let mark = state.performance.mark("op_get_length", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let r = if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier)
+  let r = if let Some(Some(asset)) =
+    state.state_snapshot.assets.get_cached(&specifier)
   {
     Ok(asset.length())
   } else {
@@ -2406,16 +2475,16 @@ fn op_get_text(
 ) -> Result<String, AnyError> {
   let mark = state.performance.mark("op_get_text", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let content =
-    if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
-      content.text_str()
-    } else {
-      cache_snapshot(state, &specifier, args.version.clone())?;
-      state
-        .snapshots
-        .get(&(specifier, args.version.into()))
-        .unwrap()
-    };
+  let maybe_asset = state.state_snapshot.assets.get_cached(&specifier);
+  let content = if let Some(Some(content)) = &maybe_asset {
+    content.text_str()
+  } else {
+    cache_snapshot(state, &specifier, args.version.clone())?;
+    state
+      .snapshots
+      .get(&(specifier, args.version.into()))
+      .unwrap()
+  };
   state.performance.measure(mark);
   Ok(text::slice(content, args.start..args.end).to_string())
 }
@@ -2495,9 +2564,10 @@ fn op_script_version(
   state: &mut State,
   args: ScriptVersionArgs,
 ) -> Result<Option<String>, AnyError> {
-  let mark = state.performance.mark("op_script_version", Some(&args));
+  // this op is very "noisy" and measuring its performance is not useful, so we
+  // don't measure it uniquely anymore.
   let specifier = state.normalize_specifier(args.specifier)?;
-  let r = if specifier.scheme() == "asset" {
+  if specifier.scheme() == "asset" {
     if state.state_snapshot.assets.contains_key(&specifier) {
       Ok(Some("1".to_string()))
     } else {
@@ -2510,10 +2580,7 @@ fn op_script_version(
       .get(&specifier)
       .map(|d| d.script_version());
     Ok(script_version)
-  };
-
-  state.performance.measure(mark);
-  r
+  }
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
@@ -2559,7 +2626,6 @@ fn start(
   state_snapshot: &StateSnapshot,
 ) -> Result<(), AnyError> {
   let root_uri = state_snapshot
-    .config
     .root_uri
     .clone()
     .unwrap_or_else(|| Url::parse("cache:///").unwrap());

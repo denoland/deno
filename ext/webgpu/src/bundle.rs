@@ -9,9 +9,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::pipeline::GpuIndexFormat;
-use crate::texture::GpuTextureFormat;
-
 use super::error::WebGpuResult;
 
 struct WebGpuRenderBundleEncoder(
@@ -35,8 +32,8 @@ impl Resource for WebGpuRenderBundle {
 pub struct CreateRenderBundleEncoderArgs {
   device_rid: ResourceId,
   label: Option<String>,
-  color_formats: Vec<GpuTextureFormat>,
-  depth_stencil_format: Option<GpuTextureFormat>,
+  color_formats: Vec<wgpu_types::TextureFormat>,
+  depth_stencil_format: Option<wgpu_types::TextureFormat>,
   sample_count: u32,
   depth_read_only: bool,
   stencil_read_only: bool,
@@ -55,12 +52,12 @@ pub fn op_webgpu_create_render_bundle_encoder(
   let mut color_formats = vec![];
 
   for format in args.color_formats {
-    color_formats.push(format.try_into()?);
+    color_formats.push(format);
   }
 
   let depth_stencil = if let Some(format) = args.depth_stencil_format {
     Some(wgpu_types::RenderBundleDepthStencil {
-      format: format.try_into()?,
+      format,
       depth_read_only: args.depth_read_only,
       stencil_read_only: args.stencil_read_only,
     })
@@ -73,6 +70,7 @@ pub fn op_webgpu_create_render_bundle_encoder(
     color_formats: Cow::from(color_formats),
     sample_count: args.sample_count,
     depth_stencil,
+    multiview: None,
   };
 
   let res =
@@ -301,7 +299,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
 pub struct RenderBundleEncoderSetIndexBufferArgs {
   render_bundle_encoder_rid: ResourceId,
   buffer: ResourceId,
-  index_format: GpuIndexFormat,
+  index_format: wgpu_types::IndexFormat,
   offset: u64,
   size: u64,
 }
@@ -324,7 +322,7 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
     .borrow_mut()
     .set_index_buffer(
       buffer_resource.0,
-      args.index_format.into(),
+      args.index_format,
       args.offset,
       std::num::NonZeroU64::new(args.size),
     );

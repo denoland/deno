@@ -21,6 +21,7 @@ async function dlint() {
     ":!:cli/tests/testdata/038_checkjs.js",
     ":!:cli/tests/testdata/error_008_checkjs.js",
     ":!:cli/bench/node*.js",
+    ":!:cli/bench/testdata/express-router.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/dts/**",
     ":!:cli/tests/testdata/encoding/**",

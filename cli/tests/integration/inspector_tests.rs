@@ -909,3 +909,217 @@ async fn inspector_with_ts_files() {
   child.kill().unwrap();
   child.wait().unwrap();
 }
+
+#[tokio::test]
+async fn inspector_memory() {
+  let script = util::testdata_path().join("inspector/memory.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
+  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+    .await
+    .expect("Can't connect");
+  assert_eq!(response.status(), 101); // Switching protocols.
+
+  let (mut socket_tx, socket_rx) = socket.split();
+  let mut socket_rx = socket_rx
+    .map(|msg| msg.unwrap().to_string())
+    .filter(|msg| {
+      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+      futures::future::ready(pass)
+    })
+    .boxed_local();
+
+  assert_stderr_for_inspect_brk(&mut stderr_lines);
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[
+      r#"{"id":1,"method":"Runtime.enable"}"#,
+      r#"{"id":2,"method":"Debugger.enable"}"#,
+
+    ],
+    &mut socket_rx,
+    &[
+      r#"{"id":1,"result":{}}"#,
+      r#"{"id":2,"result":{"debuggerId":"#,
+    ],
+    &[
+      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+    ],
+  )
+  .await;
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[
+      r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#,
+      r#"{"id":4,"method":"HeapProfiler.enable"}"#,
+    ],
+    &mut socket_rx,
+    &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
+    &[r#"{"method":"Debugger.paused","#],
+  )
+  .await;
+
+  socket_tx
+    .send(
+      r#"{"id":5,"method":"Runtime.getHeapUsage", "params": {}}"#
+        .to_string()
+        .into(),
+    )
+    .await
+    .unwrap();
+  let msg = socket_rx.next().await.unwrap();
+  let json_msg: serde_json::Value = serde_json::from_str(&msg).unwrap();
+  assert_eq!(json_msg["id"].as_i64().unwrap(), 5);
+  let result = &json_msg["result"];
+  assert!(
+    result["usedSize"].as_i64().unwrap()
+      <= result["totalSize"].as_i64().unwrap()
+  );
+
+  socket_tx.send(
+    r#"{"id":6,"method":"HeapProfiler.takeHeapSnapshot","params": {"reportProgress": true, "treatGlobalObjectsAsRoots": true, "captureNumberValue": false}}"#
+      .to_string().into()
+  ).await.unwrap();
+
+  let mut progress_report_completed = false;
+  loop {
+    let msg = socket_rx.next().await.unwrap();
+
+    if !progress_report_completed
+      && msg.starts_with(
+        r#"{"method":"HeapProfiler.reportHeapSnapshotProgress","params""#,
+      )
+    {
+      let json_msg: serde_json::Value = serde_json::from_str(&msg).unwrap();
+      if let Some(finished) = json_msg["params"].get("finished") {
+        progress_report_completed = finished.as_bool().unwrap();
+      }
+      continue;
+    }
+
+    if msg.starts_with(r#"{"method":"HeapProfiler.reportHeapSnapshotProgress","params":{"done":"#,) {
+      continue;
+    }
+
+    if msg.starts_with(r#"{"id":6,"result":{}}"#) {
+      assert!(progress_report_completed);
+      break;
+    }
+  }
+
+  child.kill().unwrap();
+  child.wait().unwrap();
+}
+
+#[tokio::test]
+async fn inspector_profile() {
+  let script = util::testdata_path().join("inspector/memory.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
+  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+    .await
+    .expect("Can't connect");
+  assert_eq!(response.status(), 101); // Switching protocols.
+
+  let (mut socket_tx, socket_rx) = socket.split();
+  let mut socket_rx = socket_rx
+    .map(|msg| msg.unwrap().to_string())
+    .filter(|msg| {
+      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+      futures::future::ready(pass)
+    })
+    .boxed_local();
+
+  assert_stderr_for_inspect_brk(&mut stderr_lines);
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[
+      r#"{"id":1,"method":"Runtime.enable"}"#,
+      r#"{"id":2,"method":"Debugger.enable"}"#,
+
+    ],
+    &mut socket_rx,
+    &[
+      r#"{"id":1,"result":{}}"#,
+      r#"{"id":2,"result":{"debuggerId":"#,
+    ],
+    &[
+      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+    ],
+  )
+  .await;
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[
+      r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#,
+      r#"{"id":4,"method":"Profiler.enable"}"#,
+    ],
+    &mut socket_rx,
+    &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
+    &[r#"{"method":"Debugger.paused","#],
+  )
+  .await;
+
+  assert_inspector_messages(
+    &mut socket_tx,
+    &[
+      r#"{"id":5,"method":"Profiler.setSamplingInterval","params":{"interval": 100}}"#,
+      r#"{"id":6,"method":"Profiler.start","params":{}}"#,
+    ],
+    &mut socket_rx,
+    &[r#"{"id":5,"result":{}}"#, r#"{"id":6,"result":{}}"#],
+    &[],
+  )
+  .await;
+
+  tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+  socket_tx
+    .send(
+      r#"{"id":7,"method":"Profiler.stop", "params": {}}"#.to_string().into(),
+    )
+    .await
+    .unwrap();
+  let msg = socket_rx.next().await.unwrap();
+  let json_msg: serde_json::Value = serde_json::from_str(&msg).unwrap();
+  assert_eq!(json_msg["id"].as_i64().unwrap(), 7);
+  let result = &json_msg["result"];
+  let profile = &result["profile"];
+  assert!(
+    profile["startTime"].as_i64().unwrap()
+      < profile["endTime"].as_i64().unwrap()
+  );
+  profile["samples"].as_array().unwrap();
+  profile["nodes"].as_array().unwrap();
+
+  child.kill().unwrap();
+  child.wait().unwrap();
+}

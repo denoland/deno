@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-var
 
@@ -114,10 +114,6 @@ interface RsaOaepParams extends Algorithm {
 interface HmacImportParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
-}
-
-interface RsaHashedImportParams extends Algorithm {
-  hash: HashAlgorithmIdentifier;
 }
 
 interface EcKeyAlgorithm extends KeyAlgorithm {

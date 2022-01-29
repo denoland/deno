@@ -106,6 +106,35 @@ impl RawKeyData {
       _ => Err(type_error("expected secret key")),
     }
   }
+
+  pub fn as_ec_public_key_p256(&self) -> Result<p256::EncodedPoint, AnyError> {
+    match self {
+      RawKeyData::Public(data) => {
+        // public_key is a serialized EncodedPoint
+        p256::EncodedPoint::from_bytes(&data)
+          .map_err(|_| type_error("expected valid private EC key"))
+      }
+      _ => Err(type_error("expected private key")),
+    }
+  }
+
+  pub fn as_ec_public_key_p384(&self) -> Result<p384::EncodedPoint, AnyError> {
+    match self {
+      RawKeyData::Public(data) => {
+        // public_key is a serialized EncodedPoint
+        p384::EncodedPoint::from_bytes(&data)
+          .map_err(|_| type_error("expected valid private EC key"))
+      }
+      _ => Err(type_error("expected private key")),
+    }
+  }
+
+  pub fn as_ec_private_key(&self) -> Result<&[u8], AnyError> {
+    match self {
+      RawKeyData::Private(data) => Ok(data),
+      _ => Err(type_error("expected private key")),
+    }
+  }
 }
 
 pub fn data_error(msg: impl Into<Cow<'static, str>>) -> AnyError {
