@@ -1052,11 +1052,11 @@ These must be added to the path manually if required.")
 fn jupyter_subcommand<'a>() -> App<'a> {
   App::new("jupyter")
     .arg(
-      Arg::with_name("install")
+      Arg::new("install")
         .long("install")
     )
     .arg(
-      Arg::with_name("conn")
+      Arg::new("conn")
         .long("conn")
         .help("Path to JSON file describing connection parameters, provided by Jupyter")
         .takes_value(true)
@@ -4727,6 +4727,7 @@ mod tests {
     r.unwrap_err();
   }
 
+  #[test]
   fn test_config_path_args() {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
     assert_eq!(
