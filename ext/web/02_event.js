@@ -29,6 +29,7 @@
     ObjectCreate,
     ObjectDefineProperty,
     ObjectGetOwnPropertyDescriptor,
+    ObjectPrototypeIsPrototypeOf,
     ReflectDefineProperty,
     Symbol,
     SymbolFor,
@@ -174,7 +175,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Event,
+        evaluate: ObjectPrototypeIsPrototypeOf(Event.prototype, this),
         keys: EVENT_PROPS,
       }));
     }
@@ -1058,7 +1059,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof ErrorEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, this),
         keys: [
           ...EVENT_PROPS,
           "message",
@@ -1119,7 +1120,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof CloseEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(CloseEvent.prototype, this),
         keys: [
           ...EVENT_PROPS,
           "wasClean",
@@ -1151,7 +1152,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof MessageEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(MessageEvent.prototype, this),
         keys: [
           ...EVENT_PROPS,
           "data",
@@ -1184,7 +1185,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof CustomEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(CustomEvent.prototype, this),
         keys: [
           ...EVENT_PROPS,
           "detail",
@@ -1214,7 +1215,7 @@
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof ProgressEvent,
+        evaluate: ObjectPrototypeIsPrototypeOf(ProgressEvent.prototype, this),
         keys: [
           ...EVENT_PROPS,
           "lengthComputable",
@@ -1238,7 +1239,8 @@
 
       if (
         isSpecialErrorEventHandler &&
-        evt instanceof ErrorEvent && evt.type === "error"
+        ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, evt) &&
+        evt.type === "error"
       ) {
         const ret = FunctionPrototypeCall(
           wrappedHandler.handler,
