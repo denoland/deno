@@ -4,6 +4,7 @@ use super::analysis;
 use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents;
+use super::documents::Document;
 use super::documents::Documents;
 use super::language_server;
 use super::performance::Performance;
@@ -211,16 +212,16 @@ impl DiagnosticsServer {
 
                   let mark =
                     performance.mark("update_diagnostics_ts", None::<()>);
-                  let diagnostics =
-                    generate_ts_diagnostics(snapshot.clone(), &ts_server)
-                      .await
-                      .map_err(|err| {
-                        error!(
-                          "Error generating TypeScript diagnostics: {}",
-                          err
-                        );
-                      })
-                      .unwrap_or_default();
+                  let diagnostics = generate_ts_diagnostics(
+                    snapshot.clone(),
+                    &config,
+                    &ts_server,
+                  )
+                  .await
+                  .map_err(|err| {
+                    error!("Error generating TypeScript diagnostics: {}", err);
+                  })
+                  .unwrap_or_default();
 
                   if !token.is_cancelled() {
                     {
@@ -257,8 +258,8 @@ impl DiagnosticsServer {
                   let mark =
                     performance.mark("update_diagnostics_deps", None::<()>);
                   let diagnostics = generate_deps_diagnostics(
-                    snapshot.clone(),
-                    config.clone(),
+                    &snapshot,
+                    &config,
                     token.clone(),
                   )
                   .await;
@@ -439,48 +440,58 @@ async fn generate_lint_diagnostics(
       }
 
       let version = document.maybe_lsp_version();
-      let is_allowed = match &maybe_lint_config {
-        Some(lint_config) => {
-          lint_config.files.matches_specifier(document.specifier())
-        }
-        None => true,
-      };
-      let diagnostics = if is_allowed {
-        match document.maybe_parsed_source() {
-          Some(Ok(parsed_source)) => {
-            if let Ok(references) = analysis::get_lint_references(
-              &parsed_source,
-              maybe_lint_config.as_ref(),
-            ) {
-              references
-                .into_iter()
-                .map(|r| r.to_diagnostic())
-                .collect::<Vec<_>>()
-            } else {
-              Vec::new()
-            }
-          }
-          Some(Err(_)) => Vec::new(),
-          None => {
-            error!("Missing file contents for: {}", document.specifier());
-            Vec::new()
-          }
-        }
-      } else {
-        Vec::new()
-      };
       diagnostics_vec.push((
         document.specifier().clone(),
         version,
-        diagnostics,
+        generate_document_lint_diagnostics(
+          config,
+          &maybe_lint_config,
+          &document,
+        ),
       ));
     }
   }
   diagnostics_vec
 }
 
+fn generate_document_lint_diagnostics(
+  config: &ConfigSnapshot,
+  maybe_lint_config: &Option<LintConfig>,
+  document: &Document,
+) -> Vec<lsp::Diagnostic> {
+  if !config.specifier_enabled(document.specifier()) {
+    return Vec::new();
+  }
+  if let Some(lint_config) = &maybe_lint_config {
+    if !lint_config.files.matches_specifier(document.specifier()) {
+      return Vec::new();
+    }
+  }
+  match document.maybe_parsed_source() {
+    Some(Ok(parsed_source)) => {
+      if let Ok(references) = analysis::get_lint_references(
+        &parsed_source,
+        maybe_lint_config.as_ref(),
+      ) {
+        references
+          .into_iter()
+          .map(|r| r.to_diagnostic())
+          .collect::<Vec<_>>()
+      } else {
+        Vec::new()
+      }
+    }
+    Some(Err(_)) => Vec::new(),
+    None => {
+      error!("Missing file contents for: {}", document.specifier());
+      Vec::new()
+    }
+  }
+}
+
 async fn generate_ts_diagnostics(
   snapshot: Arc<language_server::StateSnapshot>,
+  config: &ConfigSnapshot,
   ts_server: &tsc::TsServer,
 ) -> Result<DiagnosticVec, AnyError> {
   let mut diagnostics_vec = Vec::new();
@@ -490,23 +501,41 @@ async fn generate_ts_diagnostics(
     .iter()
     .map(|d| d.specifier().clone())
     .collect::<Vec<_>>();
-  if !specifiers.is_empty() {
-    let req = tsc::RequestMethod::GetDiagnostics(specifiers);
-    let ts_diagnostics_map: TsDiagnosticsMap =
-      ts_server.request(snapshot.clone(), req).await?;
-    for (specifier_str, ts_diagnostics) in ts_diagnostics_map {
-      let specifier = resolve_url(&specifier_str)?;
-      let version = snapshot
-        .documents
-        .get(&specifier)
-        .map(|d| d.maybe_lsp_version())
-        .flatten();
-      diagnostics_vec.push((
-        specifier,
-        version,
-        ts_json_to_diagnostics(ts_diagnostics),
-      ));
-    }
+  let (enabled_specifiers, disabled_specifiers) = specifiers
+    .iter()
+    .cloned()
+    .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
+  let ts_diagnostics_map: TsDiagnosticsMap = if !enabled_specifiers.is_empty() {
+    let req = tsc::RequestMethod::GetDiagnostics(enabled_specifiers);
+    ts_server.request(snapshot.clone(), req).await?
+  } else {
+    Default::default()
+  };
+  for (specifier_str, ts_json_diagnostics) in ts_diagnostics_map {
+    let specifier = resolve_url(&specifier_str)?;
+    let version = snapshot
+      .documents
+      .get(&specifier)
+      .map(|d| d.maybe_lsp_version())
+      .flatten();
+    // check if the specifier is enabled again just in case TS returns us
+    // diagnostics for a disabled specifier
+    let ts_diagnostics = if config.specifier_enabled(&specifier) {
+      ts_json_to_diagnostics(ts_json_diagnostics)
+    } else {
+      Vec::new()
+    };
+    diagnostics_vec.push((specifier, version, ts_diagnostics));
+  }
+  // add an empty diagnostic publish for disabled specifiers in order
+  // to clear those diagnostics if they exist
+  for specifier in disabled_specifiers {
+    let version = snapshot
+      .documents
+      .get(&specifier)
+      .map(|d| d.maybe_lsp_version())
+      .flatten();
+    diagnostics_vec.push((specifier, version, Vec::new()));
   }
   Ok(diagnostics_vec)
 }
@@ -619,8 +648,8 @@ fn diagnose_dependency(
 /// Generate diagnostics for dependencies of a module, attempting to resolve
 /// dependencies on the local file system or in the DENO_DIR cache.
 async fn generate_deps_diagnostics(
-  snapshot: Arc<language_server::StateSnapshot>,
-  config: Arc<ConfigSnapshot>,
+  snapshot: &language_server::StateSnapshot,
+  config: &ConfigSnapshot,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let mut diagnostics_vec = Vec::new();
@@ -629,25 +658,24 @@ async fn generate_deps_diagnostics(
     if token.is_cancelled() {
       break;
     }
-    if !config.specifier_enabled(document.specifier()) {
-      continue;
-    }
     let mut diagnostics = Vec::new();
-    for (_, dependency) in document.dependencies() {
-      diagnose_dependency(
-        &mut diagnostics,
-        &snapshot.documents,
-        &dependency.maybe_code,
-        dependency.is_dynamic,
-        dependency.maybe_assert_type.as_deref(),
-      );
-      diagnose_dependency(
-        &mut diagnostics,
-        &snapshot.documents,
-        &dependency.maybe_type,
-        dependency.is_dynamic,
-        dependency.maybe_assert_type.as_deref(),
-      );
+    if config.specifier_enabled(document.specifier()) {
+      for (_, dependency) in document.dependencies() {
+        diagnose_dependency(
+          &mut diagnostics,
+          &snapshot.documents,
+          &dependency.maybe_code,
+          dependency.is_dynamic,
+          dependency.maybe_assert_type.as_deref(),
+        );
+        diagnose_dependency(
+          &mut diagnostics,
+          &snapshot.documents,
+          &dependency.maybe_type,
+          dependency.is_dynamic,
+          dependency.maybe_assert_type.as_deref(),
+        );
+      }
     }
     diagnostics_vec.push((
       document.specifier().clone(),
@@ -664,6 +692,7 @@ mod tests {
   use super::*;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
+  use crate::lsp::config::SpecifierSettings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
@@ -708,31 +737,95 @@ mod tests {
 
   fn setup(
     sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (StateSnapshot, PathBuf, ConfigSnapshot) {
+  ) -> (StateSnapshot, PathBuf) {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
     let state_snapshot = mock_state_snapshot(sources, &location);
-    let config = mock_config();
-    (state_snapshot, location, config)
+    (state_snapshot, location)
   }
 
   #[tokio::test]
-  async fn test_generate_lint_diagnostics() {
-    let (snapshot, _, config) = setup(&[(
+  async fn test_enabled_then_disabled_specifier() {
+    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
+    let (snapshot, _) = setup(&[(
       "file:///a.ts",
       r#"import * as b from "./b.ts";
-
-let a = "a";
-console.log(a);
+let a: any = "a";
+let c: number = "a";
 "#,
       1,
       LanguageId::TypeScript,
     )]);
-    let diagnostics =
-      generate_lint_diagnostics(&snapshot, &config, None, Default::default())
-        .await;
-    assert_eq!(diagnostics.len(), 1);
-    let (_, _, diagnostics) = &diagnostics[0];
-    assert_eq!(diagnostics.len(), 2);
+    let snapshot = Arc::new(snapshot);
+    let ts_server = TsServer::new(Default::default());
+
+    // test enabled
+    {
+      let enabled_config = mock_config();
+      let diagnostics = generate_lint_diagnostics(
+        &snapshot,
+        &enabled_config,
+        None,
+        Default::default(),
+      )
+      .await;
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
+      let diagnostics =
+        generate_ts_diagnostics(snapshot.clone(), &enabled_config, &ts_server)
+          .await
+          .unwrap();
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
+      let diagnostics = generate_deps_diagnostics(
+        &snapshot,
+        &enabled_config,
+        Default::default(),
+      )
+      .await;
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 1);
+    }
+
+    // now test disabled specifier
+    {
+      let mut disabled_config = mock_config();
+      disabled_config.settings.specifiers.insert(
+        specifier.clone(),
+        (
+          specifier.clone(),
+          SpecifierSettings {
+            enable: false,
+            code_lens: Default::default(),
+          },
+        ),
+      );
+
+      let diagnostics = generate_lint_diagnostics(
+        &snapshot,
+        &disabled_config,
+        None,
+        Default::default(),
+      )
+      .await;
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
+      let diagnostics =
+        generate_ts_diagnostics(snapshot.clone(), &disabled_config, &ts_server)
+          .await
+          .unwrap();
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
+      let diagnostics = generate_deps_diagnostics(
+        &snapshot,
+        &disabled_config,
+        Default::default(),
+      )
+      .await;
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
+    }
+  }
+
+  fn get_diagnostics_for_single(
+    diagnostic_vec: DiagnosticVec,
+  ) -> Vec<lsp::Diagnostic> {
+    assert_eq!(diagnostic_vec.len(), 1);
+    let (_, _, diagnostics) = diagnostic_vec.into_iter().next().unwrap();
+    diagnostics
   }
 }
