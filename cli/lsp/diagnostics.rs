@@ -258,8 +258,8 @@ impl DiagnosticsServer {
                   let mark =
                     performance.mark("update_diagnostics_deps", None::<()>);
                   let diagnostics = generate_deps_diagnostics(
-                    snapshot.clone(),
-                    config.clone(),
+                    &snapshot,
+                    &config,
                     token.clone(),
                   )
                   .await;
@@ -518,7 +518,8 @@ async fn generate_ts_diagnostics(
       .get(&specifier)
       .map(|d| d.maybe_lsp_version())
       .flatten();
-    // just in case TS returns us diagnostics for a disabled specifier
+    // check if the specifier is enabled again just in case TS returns us
+    // diagnostics for a disabled specifier
     let ts_diagnostics = if config.specifier_enabled(&specifier) {
       ts_json_to_diagnostics(ts_json_diagnostics)
     } else {
@@ -526,7 +527,8 @@ async fn generate_ts_diagnostics(
     };
     diagnostics_vec.push((specifier, version, ts_diagnostics));
   }
-  // add an empty diagnostic publish for disabled specifiers in order to clear the diagnostics
+  // add an empty diagnostic publish for disabled specifiers in order
+  // to clear those diagnostics if they exist
   for specifier in disabled_specifiers {
     let version = snapshot
       .documents
@@ -646,8 +648,8 @@ fn diagnose_dependency(
 /// Generate diagnostics for dependencies of a module, attempting to resolve
 /// dependencies on the local file system or in the DENO_DIR cache.
 async fn generate_deps_diagnostics(
-  snapshot: Arc<language_server::StateSnapshot>,
-  config: Arc<ConfigSnapshot>,
+  snapshot: &language_server::StateSnapshot,
+  config: &ConfigSnapshot,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let mut diagnostics_vec = Vec::new();
@@ -690,6 +692,7 @@ mod tests {
   use super::*;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
+  use crate::lsp::config::SpecifierSettings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
@@ -734,31 +737,95 @@ mod tests {
 
   fn setup(
     sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (StateSnapshot, PathBuf, ConfigSnapshot) {
+  ) -> (StateSnapshot, PathBuf) {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
     let state_snapshot = mock_state_snapshot(sources, &location);
-    let config = mock_config();
-    (state_snapshot, location, config)
+    (state_snapshot, location)
   }
 
   #[tokio::test]
-  async fn test_generate_lint_diagnostics() {
-    let (snapshot, _, config) = setup(&[(
+  async fn test_enabled_then_disabled_specifier() {
+    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
+    let (snapshot, _) = setup(&[(
       "file:///a.ts",
       r#"import * as b from "./b.ts";
-
-let a = "a";
-console.log(a);
+let a: any = "a";
+let c: number = "a";
 "#,
       1,
       LanguageId::TypeScript,
     )]);
-    let diagnostics =
-      generate_lint_diagnostics(&snapshot, &config, None, Default::default())
-        .await;
-    assert_eq!(diagnostics.len(), 1);
-    let (_, _, diagnostics) = &diagnostics[0];
-    assert_eq!(diagnostics.len(), 2);
+    let snapshot = Arc::new(snapshot);
+    let ts_server = TsServer::new(Default::default());
+
+    // test enabled
+    {
+      let enabled_config = mock_config();
+      let diagnostics = generate_lint_diagnostics(
+        &snapshot,
+        &enabled_config,
+        None,
+        Default::default(),
+      )
+      .await;
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
+      let diagnostics =
+        generate_ts_diagnostics(snapshot.clone(), &enabled_config, &ts_server)
+          .await
+          .unwrap();
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
+      let diagnostics = generate_deps_diagnostics(
+        &snapshot,
+        &enabled_config,
+        Default::default(),
+      )
+      .await;
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 1);
+    }
+
+    // now test disabled specifier
+    {
+      let mut disabled_config = mock_config();
+      disabled_config.settings.specifiers.insert(
+        specifier.clone(),
+        (
+          specifier.clone(),
+          SpecifierSettings {
+            enable: false,
+            code_lens: Default::default(),
+          },
+        ),
+      );
+
+      let diagnostics = generate_lint_diagnostics(
+        &snapshot,
+        &disabled_config,
+        None,
+        Default::default(),
+      )
+      .await;
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
+      let diagnostics =
+        generate_ts_diagnostics(snapshot.clone(), &disabled_config, &ts_server)
+          .await
+          .unwrap();
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
+      let diagnostics = generate_deps_diagnostics(
+        &snapshot,
+        &disabled_config,
+        Default::default(),
+      )
+      .await;
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
+    }
+  }
+
+  fn get_diagnostics_for_single(
+    diagnostic_vec: DiagnosticVec,
+  ) -> Vec<lsp::Diagnostic> {
+    assert_eq!(diagnostic_vec.len(), 1);
+    let (_, _, diagnostics) = diagnostic_vec.into_iter().next().unwrap();
+    diagnostics
   }
 }
