@@ -548,7 +548,7 @@ impl swc::bundler::Load for BundleLoader<'_> {
         if let Some(m) = self.graph.get(specifier) {
           let (fm, module) = transpile_module(
             specifier,
-            m.maybe_source.map(|s| s.as_str()).unwrap_or(""),
+            m.maybe_source.as_ref().map(|s| s.as_str()).unwrap_or(""),
             m.media_type,
             self.emit_options,
             self.cm.clone(),
@@ -802,7 +802,7 @@ pub(crate) fn emit(
     let needs_reload =
       options.reload && !options.reload_exclusions.contains(&module.specifier);
     let version = get_version(
-      module.maybe_source.map(|s| s.as_bytes()).unwrap(),
+      module.maybe_source.as_ref().map(|s| s.as_bytes()).unwrap(),
       &config_bytes,
     );
     let is_valid =
@@ -810,7 +810,7 @@ pub(crate) fn emit(
         .get(CacheType::Version, &module.specifier)
         .map_or(false, |v| {
           v == get_version(
-            module.maybe_source.map(|s| s.as_bytes()).unwrap(),
+            module.maybe_source.as_ref().map(|s| s.as_bytes()).unwrap(),
             &config_bytes,
           )
         });
@@ -819,6 +819,7 @@ pub(crate) fn emit(
     }
     let transpiled_source = module
       .maybe_parsed_source
+      .as_ref()
       .map(|ps| ps.transpile(&emit_options))
       .unwrap()?;
     emit_count += 1;
@@ -948,6 +949,7 @@ pub(crate) fn to_file_map(
             specifier.to_string(),
             module
               .maybe_source
+              .as_ref()
               .map(|s| s.to_string())
               .unwrap_or_else(|| "".to_string()),
           );

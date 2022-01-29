@@ -115,9 +115,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.52"
+version = "1.0.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84450d0b4a8bd1ba4144ce8ce718fbc5d071358b1e5384bace6536b3d1f2d5b3"
+checksum = "94a45b455c14666b85fc40a019e8ab9eb75e3a124e05494f5397122bc9eb06e0"
 
 [[package]]
 name = "arrayvec"
@@ -720,7 +720,7 @@ dependencies = [
  "clap_complete",
  "clap_complete_fig",
  "data-url",
- "deno_ast 0.10.0",
+ "deno_ast",
  "deno_bench_util",
  "deno_broadcast_channel",
  "deno_console",
@@ -783,20 +783,6 @@ dependencies = [
  "winapi 0.3.9",
  "winres",
  "zstd",
-]
-
-[[package]]
-name = "deno_ast"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e81ceec755f9e4e270e8d7ef4ade1921eddc1717dea092c726b088f9c074721b"
-dependencies = [
- "dprint-swc-ecma-ast-view",
- "serde",
- "swc_atoms",
- "swc_common",
- "swc_ecmascript",
- "text_lines",
 ]
 
 [[package]]
@@ -900,7 +886,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a37040708cc0c8f1f826073774ea4406bee735d8cb6aacd0b9891e27be7c13bd"
 dependencies = [
  "cfg-if 1.0.0",
- "deno_ast 0.10.0",
+ "deno_ast",
  "deno_graph",
  "futures",
  "lazy_static",
@@ -948,7 +934,7 @@ dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
  "data-url",
- "deno_ast 0.10.0",
+ "deno_ast",
  "futures",
  "lazy_static",
  "parking_lot",
@@ -977,12 +963,12 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.22.0"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cf1715d924e6fdf45847868b31742ed305fb6270747c6046dc3c19f67c0d2f5"
+checksum = "c838bbcaffd4143940068bea8eb5faa6de1ed8c3d3d0a63d8ed7319a967f47bd"
 dependencies = [
  "anyhow",
- "deno_ast 0.9.0",
+ "deno_ast",
  "derive_more",
  "if_chain",
  "log",
@@ -1216,9 +1202,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-core"
-version = "0.49.0"
+version = "0.49.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8113ac9998173de8fa4fcf6fc7fe80c15c93df290828afa060dbdbb84337afbf"
+checksum = "50bcbca32c5b922a8b4ededae420ca17aa7c1ac03131bebe7f78d682945e21a1"
 dependencies = [
  "anyhow",
  "bumpalo",
@@ -1253,12 +1239,12 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.62.0"
+version = "0.62.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3e9b87d22638bc08075c827ae568e02b07fbf262142db90895383bac3f5a67e"
+checksum = "312bd921ea751a303703123e2e26e28456abd6ae9ff42dce478e16f613154874"
 dependencies = [
  "anyhow",
- "deno_ast 0.9.0",
+ "deno_ast",
  "dprint-core",
  "parking_lot_core",
  "rustc-hash",
