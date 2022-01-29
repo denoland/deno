@@ -853,6 +853,15 @@
     "wrapKey_unwrapKey": {
       "wrapKey_unwrapKey.https.any.html": [
         "setup",
+        "Can wrap and unwrap ECDH private key keys using jwk and AES-CTR",
+        "Can wrap and unwrap ECDH private key keys as non-extractable using jwk and AES-CTR",
+        "Can unwrap ECDH private key non-extractable keys using jwk and AES-CTR",
+        "Can wrap and unwrap ECDH private key keys using jwk and AES-CBC",
+        "Can wrap and unwrap ECDH private key keys as non-extractable using jwk and AES-CBC",
+        "Can unwrap ECDH private key non-extractable keys using jwk and AES-CBC",
+        "Can wrap and unwrap ECDH private key keys using jwk and RSA-OAEP",
+        "Can wrap and unwrap ECDH private key keys as non-extractable using jwk and RSA-OAEP",
+        "Can unwrap ECDH private key non-extractable keys using jwk and RSA-OAEP",
         "Can wrap and unwrap AES-GCM keys as non-extractable using raw and AES-CTR",
         "Can wrap and unwrap AES-GCM keys as non-extractable using jwk and AES-CTR",
         "Can unwrap AES-GCM non-extractable keys using jwk and AES-CTR",
