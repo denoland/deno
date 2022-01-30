@@ -1327,8 +1327,11 @@
         bytes = new Uint8Array(exportedKey);
       } else {
         const jwk = JSONStringify(exportedKey);
-
-        bytes = new TextEncoder("utf-8").encode(jwk);
+        const ret = new Uint8Array(jwk.length);
+        for (let i = 0; i < jwk.length; i++) {
+          ret[i] = jwk.charCodeAt(i);
+        }
+        bytes = ret;
       }
 
       // 14-15.
@@ -1519,8 +1522,12 @@
       if (format !== "jwk") {
         bytes = key;
       } else {
-        const utf16 = String.fromCharCode.apply(null, new Uint16Array(key));
-        bytes = JSONParse(utf16);
+        let k = new Uint8Array(key);
+        let str = "";
+        for (var i = 0; i < k.length; i++) {
+          str += String.fromCharCode(k[i]);
+        }
+        bytes = JSONParse(str);
       }
 
       // 15.
