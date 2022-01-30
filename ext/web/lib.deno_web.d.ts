@@ -140,11 +140,22 @@ declare type EventListenerOrEventListenerObject =
   | EventListenerObject;
 
 interface AddEventListenerOptions extends EventListenerOptions {
+  /** A boolean value indicating that the listener should be invoked at most
+   * once after being added. If true, the listener would be automatically
+   * removed when invoked. */
   once?: boolean;
+  /** A boolean value that, if true, indicates that the function specified by
+   * listener will never call preventDefault(). If a passive listener does call
+   * preventDefault(), the user agent will do nothing other than generate a
+   * console warning. See Improving scrolling performance with passive
+   * listeners to learn more.  */
   passive?: boolean;
 }
 
 interface EventListenerOptions {
+  /** A boolean value indicating that events of this type will be dispatched to
+   * the registered listener before being dispatched to any EventTarget beneath
+   * it in the DOM tree. */
   capture?: boolean;
 }
 
