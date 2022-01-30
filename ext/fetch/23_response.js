@@ -153,6 +153,38 @@
     return resp;
   }
 
+  /**
+   * @param {Response} self
+   * @param {ResponseInit} init
+   * @returns {Response}
+   */
+  function fromInit(self, init) {
+    if (init.status < 200 || init.status > 599) {
+      throw new RangeError(
+        `The status provided (${init.status}) is outside the range [200, 599].`,
+      );
+    }
+
+    if (
+      init.statusText &&
+      !RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)
+    ) {
+      throw new TypeError("Status text is not valid.");
+    }
+
+    self[webidl.brand] = webidl.brand;
+    const response = newInnerResponse(init.status, init.statusText);
+    /** @type {InnerResponse} */
+    self[_response] = response;
+    /** @type {Headers} */
+    self[_headers] = headersFromHeaderList(response.headerList, "response");
+    if (init.headers) {
+      fillHeaders(self[_headers], init.headers);
+    }
+
+    return self;
+  }
+
   class Response {
     get [_mimeType]() {
       let charset = null;
@@ -215,11 +247,30 @@
      * @param {ResponseInit} init
      * @returns {Response}
      */
-    static json(value, init = {}) {
+    static json(value = null, init = {}) {
+      const prefix = "Failed to call 'Response.json'";
+      // TODO(@AaronO): ensure not undefined ?
       const body = JSONStringify(value);
-      const response = new Response(body, init);
-      response.headers.set("Content-Type", "application/json");
-      return response;
+      init = webidl.converters["ResponseInit_fast"](init, {
+        prefix,
+        context: "Argument 2",
+      });
+      const self = fromInit(webidl.createBranded(Response), init);
+
+      if (body !== undefined) {
+        if (nullBodyStatus(self[_response].status)) {
+          throw new TypeError(
+            "Response with null body status cannot have body",
+          );
+        }
+        const res = extractBody(body);
+        self[_response].body = res.body;
+        if (!self[_headers].has("content-type")) {
+          self[_headers].append("Content-Type", "application/json");
+        }
+      }
+
+      return self;
     }
 
     /**
@@ -269,37 +320,16 @@
         prefix,
         context: "Argument 2",
       });
+      fromInit(this, init);
 
-      if (init.status < 200 || init.status > 599) {
-        throw new RangeError(
-          `The status provided (${init.status}) is outside the range [200, 599].`,
-        );
-      }
-
-      if (
-        init.statusText &&
-        !RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)
-      ) {
-        throw new TypeError("Status text is not valid.");
-      }
-
-      this[webidl.brand] = webidl.brand;
-      const response = newInnerResponse(init.status, init.statusText);
-      /** @type {InnerResponse} */
-      this[_response] = response;
-      /** @type {Headers} */
-      this[_headers] = headersFromHeaderList(response.headerList, "response");
-      if (init.headers) {
-        fillHeaders(this[_headers], init.headers);
-      }
       if (body !== null) {
-        if (nullBodyStatus(response.status)) {
+        if (nullBodyStatus(this[_response].status)) {
           throw new TypeError(
             "Response with null body status cannot have body",
           );
         }
         const res = extractBody(body);
-        response.body = res.body;
+        this[_response].body = res.body;
         if (res.contentType !== null && !this[_headers].has("content-type")) {
           this[_headers].append("Content-Type", res.contentType);
         }
