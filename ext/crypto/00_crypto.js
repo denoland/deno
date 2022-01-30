@@ -28,6 +28,8 @@
     ObjectAssign,
     StringPrototypeToLowerCase,
     StringPrototypeToUpperCase,
+    StringPrototypeCharCodeAt,
+    StringFromCharCode,
     Symbol,
     SymbolFor,
     SyntaxError,
@@ -1328,7 +1330,7 @@
         const jwk = JSONStringify(exportedKey);
         const ret = new Uint8Array(jwk.length);
         for (let i = 0; i < jwk.length; i++) {
-          ret[i] = jwk.charCodeAt(i);
+          ret[i] = StringPrototypeCharCodeAt(jwk, i);
         }
         bytes = ret;
       }
@@ -1524,7 +1526,7 @@
         const k = new Uint8Array(key);
         let str = "";
         for (let i = 0; i < k.length; i++) {
-          str += String.fromCharCode(k[i]);
+          str += StringFromCharCode(k[i]);
         }
         bytes = JSONParse(str);
       }
