@@ -30,6 +30,7 @@
   const {
     ArrayPrototypeMap,
     ArrayPrototypePush,
+    JSONStringify,
     MapPrototypeHas,
     MapPrototypeGet,
     MapPrototypeSet,
@@ -206,6 +207,18 @@
         response[_response].headerList,
         "immutable",
       );
+      return response;
+    }
+
+    /**
+     * @param {any} value
+     * @param {ResponseInit} init
+     * @returns {Response}
+     */
+    static json(value, init = {}) {
+      const body = JSONStringify(value);
+      const response = new Response(body, init);
+      response.headers.set("Content-Type", "application/json");
       return response;
     }
 
