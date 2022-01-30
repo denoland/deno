@@ -1661,7 +1661,7 @@ Deno.test(async function testAesGcmTagLength() {
   );
 
   await assertRejects(async () => {
-    const decrypted = await crypto.subtle.decrypt(
+    await crypto.subtle.decrypt(
       { name: "AES-GCM", iv, tagLength: 96, additionalData: new Uint8Array() },
       key,
       encrypted,
