@@ -1519,9 +1519,8 @@
       if (format !== "jwk") {
         bytes = key;
       } else {
-        const utf8 = new TextDecoder("utf-8").decode(key);
-
-        bytes = JSONParse(utf8);
+        const utf16 = String.fromCharCode.apply(null, new Uint16Array(key));
+        bytes = JSONParse(utf16);
       }
 
       // 15.
