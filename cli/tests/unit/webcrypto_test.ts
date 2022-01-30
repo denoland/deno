@@ -1639,3 +1639,32 @@ Deno.test(async function testAESWrapKey() {
 
   assertEquals(new Uint8Array(hmacKeyBytes), new Uint8Array(unwrappedKeyBytes));
 });
+
+// https://github.com/denoland/deno/issues/13534
+Deno.test(async function testAesGcmTagLength() {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(32),
+    "AES-GCM",
+    false,
+    ["encrypt", "decrypt"],
+  );
+
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+
+  // encrypt won't fail, it will simply truncate the tag
+  // as expected.
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv, tagLength: 96, additionalData: new Uint8Array() },
+    key,
+    new Uint8Array(32),
+  );
+
+  await assertRejects(async () => {
+    await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv, tagLength: 96, additionalData: new Uint8Array() },
+      key,
+      encrypted,
+    );
+  });
+});
