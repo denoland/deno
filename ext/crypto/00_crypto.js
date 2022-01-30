@@ -12,7 +12,6 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
-  const { TextEncoder, TextDecoder } = window.__bootstrap.encoding;
 
   const {
     ArrayBuffer,
@@ -1522,7 +1521,7 @@
       if (format !== "jwk") {
         bytes = key;
       } else {
-        let k = new Uint8Array(key);
+        const k = new Uint8Array(key);
         let str = "";
         for (let i = 0; i < k.length; i++) {
           str += String.fromCharCode(k[i]);
