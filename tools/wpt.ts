@@ -367,7 +367,7 @@ async function update() {
 
   const currentExpectation = getExpectation();
 
-  for (const result of Object.values(resultTests)) {
+  for (const [path, result] of Object.entries(resultTests)) {
     const { passed, failed, testSucceeded } = result;
     let finalExpectation: boolean | string[];
     if (failed.length == 0 && testSucceeded) {
@@ -743,6 +743,10 @@ function partitionTests(tests: TestToRun[]): TestToRun[][] {
   for (const test of tests) {
     // Paths looks like: /fetch/corb/img-html-correctly-labeled.sub-ref.html
     const key = test.path.split("/")[1];
+    if (key === "WebCryptoAPI") { // run all WebCryptoAPI tests in parallel so they go faster
+      testsByKey[test.path] = [test];
+      continue;
+    }
     if (!(key in testsByKey)) {
       testsByKey[key] = [];
     }
