@@ -1524,7 +1524,7 @@
       } else {
         let k = new Uint8Array(key);
         let str = "";
-        for (var i = 0; i < k.length; i++) {
+        for (let i = 0; i < k.length; i++) {
           str += String.fromCharCode(k[i]);
         }
         bytes = JSONParse(str);
