@@ -101,13 +101,13 @@ impl EditorHelper {
       .ok()?;
     let get_properties_response: cdp::GetPropertiesResponse =
       serde_json::from_value(get_properties_response).ok()?;
-    Some(
-      get_properties_response
-        .result
-        .into_iter()
-        .map(|prop| prop.name)
-        .collect(),
-    )
+    let expr_properties = get_properties_response
+      .result
+      .into_iter()
+      .map(|prop| prop.name)
+      .collect();
+
+    Some(expr_properties)
   }
 
   fn evaluate_expression(&self, expr: &str) -> Option<cdp::EvaluateResponse> {

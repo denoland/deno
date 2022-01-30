@@ -146,8 +146,8 @@ pub struct GetPropertiesArgs {
 #[serde(rename_all = "camelCase")]
 pub struct GetPropertiesResponse {
   pub result: Vec<PropertyDescriptor>,
-  pub internal_properties: Vec<InternalPropertyDescriptor>,
-  pub private_properties: Vec<PrivatePropertyDescriptor>,
+  pub internal_properties: Option<Vec<InternalPropertyDescriptor>>,
+  pub private_properties: Option<Vec<PrivatePropertyDescriptor>>,
   pub exception_details: Option<ExceptionDetails>,
 }
 
