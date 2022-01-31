@@ -41,6 +41,7 @@ use deno_core::SharedArrayBufferStore;
 use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
+use deno_graph::source::ResolveResponse;
 use deno_graph::source::Loader;
 use deno_graph::ModuleKind;
 use deno_graph::Resolved;
@@ -497,6 +498,14 @@ impl ProcState {
       is_dynamic
     );
 
+    let mut needs_cjs_esm_translation = false;
+    if let Some(resolver) = &self.maybe_resolver {
+      if let Some(referrer) = maybe_referrer {
+        let response = resolver.resolve(specifier.as_str(), &referrer);
+        needs_cjs_esm_translation = matches!(response, ResolveResponse::CommonJs(_));
+      }
+    }
+
     let graph_data = self.graph_data.read();
     let found = graph_data.follow_redirect(&specifier);
     match graph_data.get(&found) {
@@ -508,7 +517,13 @@ impl ProcState {
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
-          | MediaType::Json => code.as_ref().clone(),
+          | MediaType::Json => {
+            if needs_cjs_esm_translation {
+              panic!("{} needs to be translated from CJS to ESM", specifier);
+            } else {
+              code.as_ref().clone()
+            }
+          },
           MediaType::Dts => "".to_string(),
           _ => {
             let emit_path = self
