@@ -1,1 +1,1 @@
-import "./imported.js";
+import "./imported.mjs";
