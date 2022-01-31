@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // Run with: deno run -A ./cli/bench/deno_common.js
 function benchSync(name, n, innerLoop) {
   const t1 = Date.now();
@@ -78,7 +78,7 @@ function benchRead128k() {
   return benchAsync(
     "read_128k",
     5e4,
-    () => Deno.readFile("./cli/bench/fixtures/128k.bin"),
+    () => Deno.readFile("./cli/bench/testdata/128k.bin"),
   );
 }
 

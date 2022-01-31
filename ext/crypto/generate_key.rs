@@ -1,11 +1,13 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::shared::*;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::rand_core::OsRng;
 use num_traits::FromPrimitive;
+use once_cell::sync::Lazy;
 use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
 use rsa::pkcs1::ToRsaPrivateKey;
@@ -13,13 +15,11 @@ use rsa::BigUint;
 use rsa::RsaPrivateKey;
 use serde::Deserialize;
 
-use crate::shared::*;
-
 // Allowlist for RSA public exponents.
-lazy_static::lazy_static! {
-  static ref PUB_EXPONENT_1: BigUint = BigUint::from_u64(3).unwrap();
-  static ref PUB_EXPONENT_2: BigUint = BigUint::from_u64(65537).unwrap();
-}
+static PUB_EXPONENT_1: Lazy<BigUint> =
+  Lazy::new(|| BigUint::from_u64(3).unwrap());
+static PUB_EXPONENT_2: Lazy<BigUint> =
+  Lazy::new(|| BigUint::from_u64(65537).unwrap());
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", tag = "algorithm")]
@@ -87,6 +87,7 @@ fn generate_key_ec(named_curve: EcNamedCurve) -> Result<Vec<u8>, AnyError> {
   let curve = match named_curve {
     EcNamedCurve::P256 => &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
     EcNamedCurve::P384 => &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING,
+    _ => return Err(not_supported_error("Unsupported named curve")),
   };
 
   let rng = ring::rand::SystemRandom::new();

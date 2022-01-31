@@ -1,10 +1,9 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
-use log::debug;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -12,6 +11,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+
+use super::logging::lsp_debug;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -71,18 +72,18 @@ impl From<PerformanceMark> for PerformanceMeasure {
 ///
 /// The structure will limit the size of measurements to the most recent 1000,
 /// and will roll off when that limit is reached.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Performance {
-  counts: Arc<Mutex<HashMap<String, u32>>>,
+  counts: Mutex<HashMap<String, u32>>,
   max_size: usize,
-  measures: Arc<Mutex<VecDeque<PerformanceMeasure>>>,
+  measures: Mutex<VecDeque<PerformanceMeasure>>,
 }
 
 impl Default for Performance {
   fn default() -> Self {
     Self {
       counts: Default::default(),
-      max_size: 1_000,
+      max_size: 3_000,
       measures: Default::default(),
     }
   }
@@ -156,7 +157,7 @@ impl Performance {
         "name": name,
       })
     };
-    debug!("{},", msg);
+    lsp_debug!("{},", msg);
     PerformanceMark {
       name: name.to_string(),
       count: *count,
@@ -169,7 +170,7 @@ impl Performance {
   /// measurement to the internal buffer.
   pub fn measure(&self, mark: PerformanceMark) -> Duration {
     let measure = PerformanceMeasure::from(mark);
-    debug!(
+    lsp_debug!(
       "{},",
       json!({
         "type": "measure",

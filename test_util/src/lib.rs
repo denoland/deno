@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
@@ -840,6 +840,15 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/v1/extensionless") => {
+      let mut res =
+        Response::new(Body::from(r#"export * from "/subdir/mod1.ts";"#));
+      res.headers_mut().insert(
+        "content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
     (_, "/subdir/no_js_ext@1.0.0") => {
       let mut res = Response::new(Body::from(
         r#"import { printHello } from "./mod2.ts";
@@ -912,6 +921,13 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/echo_accept") => {
+      let accept = req.headers().get("accept").map(|v| v.to_str().unwrap());
+      let res = Response::new(Body::from(
+        serde_json::json!({ "accept": accept }).to_string(),
+      ));
+      Ok(res)
+    }
     _ => {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
@@ -949,6 +965,7 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
   }
 }
 
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl std::marker::Send for HyperAcceptor<'_> {}
 
 async fn wrap_redirect_server() {

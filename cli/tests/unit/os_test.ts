@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -201,4 +201,14 @@ Deno.test({ permissions: { env: true } }, function systemMemoryInfo() {
   assert(info.cached >= 0);
   assert(info.swapTotal >= 0);
   assert(info.swapFree >= 0);
+});
+
+Deno.test({ permissions: { env: true } }, function getUid() {
+  if (Deno.build.os === "windows") {
+    assertEquals(Deno.getUid(), null);
+  } else {
+    const uid = Deno.getUid();
+    assert(typeof uid === "number");
+    assert(uid > 0);
+  }
 });

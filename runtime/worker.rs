@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::inspector_server::InspectorServer;
 use crate::js;
@@ -161,7 +161,11 @@ impl MainWorker {
     });
 
     if let Some(server) = options.maybe_inspector_server.clone() {
-      server.register_inspector(main_module.to_string(), &mut js_runtime);
+      server.register_inspector(
+        main_module.to_string(),
+        &mut js_runtime,
+        options.should_break_on_first_statement,
+      );
     }
 
     Self {
@@ -180,10 +184,10 @@ impl MainWorker {
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
   pub fn execute_script(
     &mut self,
-    name: &str,
+    script_name: &str,
     source_code: &str,
   ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(name, source_code)?;
+    self.js_runtime.execute_script(script_name, source_code)?;
     Ok(())
   }
 
@@ -229,6 +233,7 @@ impl MainWorker {
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     let id = self.preload_module(module_specifier, false).await?;
+    self.wait_for_inspector_session();
     self.evaluate_module(id).await
   }
 
@@ -299,6 +304,38 @@ impl MainWorker {
     let op_state = op_state_rc.borrow();
     let exit_code = op_state.borrow::<Arc<AtomicI32>>().load(Relaxed);
     exit_code
+  }
+
+  /// Dispatches "load" event to the JavaScript runtime.
+  ///
+  /// Does not poll event loop, and thus not await any of the "load" event handlers.
+  pub fn dispatch_load_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<(), AnyError> {
+    self.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('load'))",
+    )
+  }
+
+  /// Dispatches "unload" event to the JavaScript runtime.
+  ///
+  /// Does not poll event loop, and thus not await any of the "unload" event handlers.
+  pub fn dispatch_unload_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<(), AnyError> {
+    self.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('unload'))",
+    )
   }
 }
 

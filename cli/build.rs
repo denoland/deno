@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::custom_error;
 use deno_core::op_sync;
@@ -38,7 +38,30 @@ fn create_snapshot(
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &*snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
-  std::fs::write(&snapshot_path, snapshot_slice).unwrap();
+
+  let compressed_snapshot_with_size = {
+    let mut vec = vec![];
+
+    vec.extend_from_slice(
+      &u32::try_from(snapshot.len())
+        .expect("snapshot larger than 4gb")
+        .to_le_bytes(),
+    );
+
+    vec.extend_from_slice(
+      &zstd::block::compress(snapshot_slice, 22)
+        .expect("snapshot compression failed"),
+    );
+
+    vec
+  };
+
+  println!(
+    "Snapshot compressed size: {}",
+    compressed_snapshot_with_size.len()
+  );
+
+  std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
   println!("Snapshot written to: {} ", snapshot_path.display());
 }
 
@@ -59,7 +82,7 @@ fn create_compiler_snapshot(
   op_crate_libs.insert("deno.url", deno_url::get_declaration());
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
-  op_crate_libs.insert("deno.webgpu", deno_webgpu::get_declaration());
+  op_crate_libs.insert("deno.webgpu", deno_webgpu_get_declaration());
   op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
   op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
   op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
@@ -299,7 +322,7 @@ fn main() {
   );
   println!(
     "cargo:rustc-env=DENO_WEBGPU_LIB_PATH={}",
-    deno_webgpu::get_declaration().display()
+    deno_webgpu_get_declaration().display()
   );
   println!(
     "cargo:rustc-env=DENO_WEBSOCKET_LIB_PATH={}",
@@ -344,6 +367,11 @@ fn main() {
     ));
     res.compile().unwrap();
   }
+}
+
+fn deno_webgpu_get_declaration() -> PathBuf {
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+  manifest_dir.join("dts").join("lib.deno_webgpu.d.ts")
 }
 
 fn get_js_files(d: &str) -> Vec<PathBuf> {

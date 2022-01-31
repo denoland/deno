@@ -1,4 +1,9 @@
-import { assert, assertEquals, assertRejects } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertNotEquals,
+  assertRejects,
+} from "./test_util.ts";
 
 // https://github.com/denoland/deno/issues/11664
 Deno.test(async function testImportArrayBufferKey() {
@@ -608,6 +613,110 @@ Deno.test(async function testAesCbcEncryptDecrypt() {
   assertEquals(new Uint8Array(decrypted), new Uint8Array([1, 2, 3, 4, 5, 6]));
 });
 
+Deno.test(async function testAesCtrEncryptDecrypt() {
+  async function aesCtrRoundTrip(
+    key: CryptoKey,
+    counter: Uint8Array,
+    length: number,
+    plainText: Uint8Array,
+  ) {
+    const cipherText = await crypto.subtle.encrypt(
+      {
+        name: "AES-CTR",
+        counter,
+        length,
+      },
+      key,
+      plainText,
+    );
+
+    assert(cipherText instanceof ArrayBuffer);
+    assertEquals(cipherText.byteLength, plainText.byteLength);
+    assertNotEquals(new Uint8Array(cipherText), plainText);
+
+    const decryptedText = await crypto.subtle.decrypt(
+      {
+        name: "AES-CTR",
+        counter,
+        length,
+      },
+      key,
+      cipherText,
+    );
+
+    assert(decryptedText instanceof ArrayBuffer);
+    assertEquals(decryptedText.byteLength, plainText.byteLength);
+    assertEquals(new Uint8Array(decryptedText), plainText);
+  }
+  for (const keySize of [128, 192, 256]) {
+    const key = await crypto.subtle.generateKey(
+      { name: "AES-CTR", length: keySize },
+      true,
+      ["encrypt", "decrypt"],
+    ) as CryptoKey;
+
+    // test normal operation
+    for (const length of [128 /*, 64, 128 */]) {
+      const counter = await crypto.getRandomValues(new Uint8Array(16));
+
+      await aesCtrRoundTrip(
+        key,
+        counter,
+        length,
+        new Uint8Array([1, 2, 3, 4, 5, 6]),
+      );
+    }
+
+    // test counter-wrapping
+    for (const length of [32, 64, 128]) {
+      const plaintext1 = await crypto.getRandomValues(new Uint8Array(32));
+      const counter = new Uint8Array(16);
+
+      // fixed upper part
+      for (let off = 0; off < 16 - (length / 8); ++off) {
+        counter[off] = off;
+      }
+      const ciphertext1 = await crypto.subtle.encrypt(
+        {
+          name: "AES-CTR",
+          counter,
+          length,
+        },
+        key,
+        plaintext1,
+      );
+
+      // Set lower [length] counter bits to all '1's
+      for (let off = 16 - (length / 8); off < 16; ++off) {
+        counter[off] = 0xff;
+      }
+
+      // = [ 1 block of 0x00 + plaintext1 ]
+      const plaintext2 = new Uint8Array(48);
+      plaintext2.set(plaintext1, 16);
+
+      const ciphertext2 = await crypto.subtle.encrypt(
+        {
+          name: "AES-CTR",
+          counter,
+          length,
+        },
+        key,
+        plaintext2,
+      );
+
+      // If counter wrapped, 2nd block of ciphertext2 should be equal to 1st block of ciphertext1
+      // since ciphertext1 used counter = 0x00...00
+      // and ciphertext2 used counter = 0xFF..FF which should wrap to 0x00..00 without affecting
+      // higher bits
+      assertEquals(
+        new Uint8Array(ciphertext1),
+        new Uint8Array(ciphertext2).slice(16),
+      );
+    }
+  }
+});
+
 // TODO(@littledivy): Enable WPT when we have importKey support
 Deno.test(async function testECDH() {
   const namedCurve = "P-256";
@@ -1026,4 +1135,536 @@ Deno.test(async function testImportRsaJwk() {
       assertEquals(new Uint8Array(decrypted), plainText);
     }
   }
+});
+
+const jwtECKeys = {
+  "256": {
+    size: 256,
+    algo: "ES256",
+    publicJWK: {
+      kty: "EC",
+      crv: "P-256",
+      x: "0hCwpvnZ8BKGgFi0P6T0cQGFQ7ugDJJQ35JXwqyuXdE",
+      y: "zgN1UtSBRQzjm00QlXAbF1v6s0uObAmeGPHBmDWDYeg",
+    },
+    privateJWK: {
+      kty: "EC",
+      crv: "P-256",
+      x: "0hCwpvnZ8BKGgFi0P6T0cQGFQ7ugDJJQ35JXwqyuXdE",
+      y: "zgN1UtSBRQzjm00QlXAbF1v6s0uObAmeGPHBmDWDYeg",
+      d: "E9M6LVq_nPnrsh_4YNSu_m5W53eQ9N7ptAiE69M1ROo",
+    },
+  },
+  "384": {
+    size: 384,
+    algo: "ES384",
+    publicJWK: {
+      kty: "EC",
+      crv: "P-384",
+      x: "IZwU1mYXs27G2IVrOFtzp000T9iude8EZDXdpU47RL1fvevR0I3Wni19wdwhjLQ1",
+      y: "vSgTjMd4M3qEL2vWGyQOdCSfJGZ8KlgQp2v8KOAzX4imUB3sAZdtqFr7AIactqzo",
+    },
+    privateJWK: {
+      kty: "EC",
+      crv: "P-384",
+      x: "IZwU1mYXs27G2IVrOFtzp000T9iude8EZDXdpU47RL1fvevR0I3Wni19wdwhjLQ1",
+      y: "vSgTjMd4M3qEL2vWGyQOdCSfJGZ8KlgQp2v8KOAzX4imUB3sAZdtqFr7AIactqzo",
+      d: "RTe1mQeE08LSLpao-S-hqkku6HPldqQVguFEGDyYiNEOa560ztSyzEAS5KxeqEBz",
+    },
+  },
+};
+
+type JWK = Record<string, string>;
+
+function equalJwk(expected: JWK, got: JWK): boolean {
+  const fields = Object.keys(expected);
+
+  for (let i = 0; i < fields.length; i++) {
+    const fieldName = fields[i];
+
+    if (!(fieldName in got)) {
+      return false;
+    }
+    if (expected[fieldName] !== got[fieldName]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+Deno.test(async function testImportExportEcDsaJwk() {
+  const subtle = crypto.subtle;
+  assert(subtle);
+
+  for (
+    const [_key, keyData] of Object.entries(jwtECKeys)
+  ) {
+    const { publicJWK, privateJWK, algo } = keyData;
+
+    // 1. Test import EcDsa
+    const privateKeyECDSA = await subtle.importKey(
+      "jwk",
+      {
+        alg: algo,
+        ...privateJWK,
+        ext: true,
+        "key_ops": ["sign"],
+      },
+      { name: "ECDSA", namedCurve: privateJWK.crv },
+      true,
+      ["sign"],
+    );
+    const expPrivateKeyJWK = await subtle.exportKey(
+      "jwk",
+      privateKeyECDSA,
+    );
+    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));
+
+    const publicKeyECDSA = await subtle.importKey(
+      "jwk",
+      {
+        alg: algo,
+        ...publicJWK,
+        ext: true,
+        "key_ops": ["verify"],
+      },
+      { name: "ECDSA", namedCurve: publicJWK.crv },
+      true,
+      ["verify"],
+    );
+
+    const expPublicKeyJWK = await subtle.exportKey(
+      "jwk",
+      publicKeyECDSA,
+    );
+
+    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
+
+    const signatureECDSA = await subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      privateKeyECDSA,
+      new Uint8Array([1, 2, 3, 4]),
+    );
+
+    const verifyECDSA = await subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      publicKeyECDSA,
+      signatureECDSA,
+      new Uint8Array([1, 2, 3, 4]),
+    );
+    assert(verifyECDSA);
+  }
+});
+
+Deno.test(async function testImportEcDhJwk() {
+  const subtle = crypto.subtle;
+  assert(subtle);
+
+  for (
+    const [_key, jwkData] of Object.entries(jwtECKeys)
+  ) {
+    const { size, publicJWK, privateJWK } = jwkData;
+
+    // 1. Test import EcDsa
+    const privateKeyECDH = await subtle.importKey(
+      "jwk",
+      {
+        ...privateJWK,
+        ext: true,
+        "key_ops": ["deriveBits"],
+      },
+      { name: "ECDH", namedCurve: privateJWK.crv },
+      true,
+      ["deriveBits"],
+    );
+
+    const expPrivateKeyJWK = await subtle.exportKey(
+      "jwk",
+      privateKeyECDH,
+    );
+    assert(equalJwk(privateJWK, expPrivateKeyJWK as JWK));
+
+    const publicKeyECDH = await subtle.importKey(
+      "jwk",
+      {
+        ...publicJWK,
+        ext: true,
+        "key_ops": [],
+      },
+      { name: "ECDH", namedCurve: publicJWK.crv },
+      true,
+      [],
+    );
+    const expPublicKeyJWK = await subtle.exportKey(
+      "jwk",
+      publicKeyECDH,
+    );
+    assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
+
+    // deriveBits still not implemented for P384
+    if (size != 256) {
+      continue;
+    }
+
+    const derivedKey = await subtle.deriveBits(
+      {
+        name: "ECDH",
+        public: publicKeyECDH,
+      },
+      privateKeyECDH,
+      256,
+    );
+
+    assert(derivedKey instanceof ArrayBuffer);
+    assertEquals(derivedKey.byteLength, 256 / 8);
+  }
+});
+
+const ecTestKeys = {
+  "256": {
+    size: 256,
+    namedCurve: "P-256",
+    // deno-fmt-ignore
+    spki: new Uint8Array([
+      48, 89, 48, 19, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 8, 42, 134, 72, 206,
+      61, 3, 1, 7, 3, 66, 0, 4, 210, 16, 176, 166, 249, 217, 240, 18, 134, 128,
+      88, 180, 63, 164, 244, 113, 1, 133, 67, 187, 160, 12, 146, 80, 223, 146,
+      87, 194, 172, 174, 93, 209, 206, 3, 117, 82, 212, 129, 69, 12, 227, 155,
+      77, 16, 149, 112, 27, 23, 91, 250, 179, 75, 142, 108, 9, 158, 24, 241,
+      193, 152, 53, 131, 97, 232,
+    ]),
+    // deno-fmt-ignore
+    pkcs8: new Uint8Array([
+      48, 129, 135, 2, 1, 0, 48, 19, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 8, 42,
+      134, 72, 206, 61, 3, 1, 7, 4, 109, 48, 107, 2, 1, 1, 4, 32, 19, 211, 58,
+      45, 90, 191, 156, 249, 235, 178, 31, 248, 96, 212, 174, 254, 110, 86, 231,
+      119, 144, 244, 222, 233, 180, 8, 132, 235, 211, 53, 68, 234, 161, 68, 3,
+      66, 0, 4, 210, 16, 176, 166, 249, 217, 240, 18, 134, 128, 88, 180, 63,
+      164, 244, 113, 1, 133, 67, 187, 160, 12, 146, 80, 223, 146, 87, 194, 172,
+      174, 93, 209, 206, 3, 117, 82, 212, 129, 69, 12, 227, 155, 77, 16, 149,
+      112, 27, 23, 91, 250, 179, 75, 142, 108, 9, 158, 24, 241, 193, 152, 53,
+      131, 97, 232,
+    ]),
+  },
+};
+
+Deno.test(async function testImportEcSpkiPkcs8() {
+  const subtle = window.crypto.subtle;
+  assert(subtle);
+
+  for (
+    const [_key, keyData] of Object.entries(ecTestKeys)
+  ) {
+    const { namedCurve, spki, pkcs8 } = keyData;
+
+    const privateKeyECDSA = await subtle.importKey(
+      "pkcs8",
+      pkcs8,
+      { name: "ECDSA", namedCurve },
+      true,
+      ["sign"],
+    );
+
+    const expPrivateKeyPKCS8 = await subtle.exportKey(
+      "pkcs8",
+      privateKeyECDSA,
+    );
+
+    assertEquals(new Uint8Array(expPrivateKeyPKCS8), pkcs8);
+
+    const expPrivateKeyJWK = await subtle.exportKey(
+      "jwk",
+      privateKeyECDSA,
+    );
+
+    assertEquals(expPrivateKeyJWK.crv, namedCurve);
+
+    const publicKeyECDSA = await subtle.importKey(
+      "spki",
+      spki,
+      { name: "ECDSA", namedCurve },
+      true,
+      ["verify"],
+    );
+
+    const expPublicKeySPKI = await subtle.exportKey(
+      "spki",
+      publicKeyECDSA,
+    );
+
+    assertEquals(new Uint8Array(expPublicKeySPKI), spki);
+
+    const expPublicKeyJWK = await subtle.exportKey(
+      "jwk",
+      publicKeyECDSA,
+    );
+
+    assertEquals(expPublicKeyJWK.crv, namedCurve);
+
+    for (
+      const hash of [/*"SHA-1", */ "SHA-256", "SHA-384" /*"SHA-512"*/]
+    ) {
+      if (
+        (hash == "SHA-256" && namedCurve != "P-256") ||
+        (hash == "SHA-384" && namedCurve != "P-384")
+      ) {
+        continue;
+      }
+
+      const signatureECDSA = await subtle.sign(
+        { name: "ECDSA", hash },
+        privateKeyECDSA,
+        new Uint8Array([1, 2, 3, 4]),
+      );
+
+      const verifyECDSA = await subtle.verify(
+        { name: "ECDSA", hash },
+        publicKeyECDSA,
+        signatureECDSA,
+        new Uint8Array([1, 2, 3, 4]),
+      );
+      assert(verifyECDSA);
+    }
+  }
+});
+
+Deno.test(async function testAesGcmEncrypt() {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(16),
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+
+  // deno-fmt-ignore
+  const iv = new Uint8Array([0,1,2,3,4,5,6,7,8,9,10,11]);
+  const data = new Uint8Array([1, 2, 3]);
+
+  const cipherText = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv, additionalData: new Uint8Array() },
+    key,
+    data,
+  );
+
+  assert(cipherText instanceof ArrayBuffer);
+  assertEquals(cipherText.byteLength, 19);
+  assertEquals(
+    new Uint8Array(cipherText),
+    // deno-fmt-ignore
+    new Uint8Array([50,223,112,178,166,156,255,110,125,138,95,141,82,47,14,164,134,247,22]),
+  );
+
+  const plainText = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv, additionalData: new Uint8Array() },
+    key,
+    cipherText,
+  );
+  assert(plainText instanceof ArrayBuffer);
+  assertEquals(plainText.byteLength, 3);
+  assertEquals(new Uint8Array(plainText), data);
+});
+
+async function roundTripSecretJwk(
+  jwk: JsonWebKey,
+  algId: AlgorithmIdentifier | HmacImportParams,
+  ops: KeyUsage[],
+  validateKeys: (
+    key: CryptoKey,
+    originalJwk: JsonWebKey,
+    exportedJwk: JsonWebKey,
+  ) => void,
+) {
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    algId,
+    true,
+    ops,
+  );
+
+  assert(key instanceof CryptoKey);
+  assertEquals(key.type, "secret");
+
+  const exportedKey = await crypto.subtle.exportKey("jwk", key);
+
+  validateKeys(key, jwk, exportedKey);
+}
+
+Deno.test(async function testSecretJwkBase64Url() {
+  // Test 16bits with "overflow" in 3rd pos of 'quartet', no padding
+  const keyData = `{
+      "kty": "oct",
+      "k": "xxx",
+      "alg": "HS512",
+      "key_ops": ["sign", "verify"],
+      "ext": true
+    }`;
+
+  await roundTripSecretJwk(
+    JSON.parse(keyData),
+    { name: "HMAC", hash: "SHA-512" },
+    ["sign", "verify"],
+    (key, _orig, exp) => {
+      assertEquals((key.algorithm as HmacKeyAlgorithm).length, 16);
+
+      assertEquals(exp.k, "xxw");
+    },
+  );
+
+  // HMAC 128bits with base64url characters (-_)
+  await roundTripSecretJwk(
+    {
+      kty: "oct",
+      k: "HnZXRyDKn-_G5Fx4JWR1YA",
+      alg: "HS256",
+      "key_ops": ["sign", "verify"],
+      ext: true,
+    },
+    { name: "HMAC", hash: "SHA-256" },
+    ["sign", "verify"],
+    (key, orig, exp) => {
+      assertEquals((key.algorithm as HmacKeyAlgorithm).length, 128);
+
+      assertEquals(orig.k, exp.k);
+    },
+  );
+
+  // HMAC 104bits/(12+1) bytes with base64url characters (-_), padding and overflow in 2rd pos of "quartet"
+  await roundTripSecretJwk(
+    {
+      kty: "oct",
+      k: "a-_AlFa-2-OmEGa_-z==",
+      alg: "HS384",
+      "key_ops": ["sign", "verify"],
+      ext: true,
+    },
+    { name: "HMAC", hash: "SHA-384" },
+    ["sign", "verify"],
+    (key, _orig, exp) => {
+      assertEquals((key.algorithm as HmacKeyAlgorithm).length, 104);
+
+      assertEquals("a-_AlFa-2-OmEGa_-w", exp.k);
+    },
+  );
+
+  // AES-CBC 128bits with base64url characters (-_) no padding
+  await roundTripSecretJwk(
+    {
+      kty: "oct",
+      k: "_u3K_gEjRWf-7cr-ASNFZw",
+      alg: "A128CBC",
+      "key_ops": ["encrypt", "decrypt"],
+      ext: true,
+    },
+    { name: "AES-CBC" },
+    ["encrypt", "decrypt"],
+    (_key, orig, exp) => {
+      assertEquals(orig.k, exp.k);
+    },
+  );
+
+  // AES-CBC 128bits of '1' with padding chars
+  await roundTripSecretJwk(
+    {
+      kty: "oct",
+      k: "_____________________w==",
+      alg: "A128CBC",
+      "key_ops": ["encrypt", "decrypt"],
+      ext: true,
+    },
+    { name: "AES-CBC" },
+    ["encrypt", "decrypt"],
+    (_key, _orig, exp) => {
+      assertEquals(exp.k, "_____________________w");
+    },
+  );
+});
+
+Deno.test(async function testAESWrapKey() {
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "AES-KW",
+      length: 128,
+    },
+    true,
+    ["wrapKey", "unwrapKey"],
+  );
+
+  const hmacKey = await crypto.subtle.generateKey(
+    {
+      name: "HMAC",
+      hash: "SHA-256",
+      length: 128,
+    },
+    true,
+    ["sign"],
+  );
+
+  //round-trip
+  // wrap-unwrap-export compare
+  const wrappedKey = await crypto.subtle.wrapKey(
+    "raw",
+    hmacKey,
+    key,
+    {
+      name: "AES-KW",
+    },
+  );
+
+  assert(wrappedKey instanceof ArrayBuffer);
+  assertEquals(wrappedKey.byteLength, 16 + 8); // 8 = 'auth tag'
+
+  const unwrappedKey = await crypto.subtle.unwrapKey(
+    "raw",
+    wrappedKey,
+    key,
+    {
+      name: "AES-KW",
+    },
+    {
+      name: "HMAC",
+      hash: "SHA-256",
+    },
+    true,
+    ["sign"],
+  );
+
+  assert(unwrappedKey instanceof CryptoKey);
+  assertEquals((unwrappedKey.algorithm as HmacKeyAlgorithm).length, 128);
+
+  const hmacKeyBytes = await crypto.subtle.exportKey("raw", hmacKey);
+  const unwrappedKeyBytes = await crypto.subtle.exportKey("raw", unwrappedKey);
+
+  assertEquals(new Uint8Array(hmacKeyBytes), new Uint8Array(unwrappedKeyBytes));
+});
+
+// https://github.com/denoland/deno/issues/13534
+Deno.test(async function testAesGcmTagLength() {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(32),
+    "AES-GCM",
+    false,
+    ["encrypt", "decrypt"],
+  );
+
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+
+  // encrypt won't fail, it will simply truncate the tag
+  // as expected.
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv, tagLength: 96, additionalData: new Uint8Array() },
+    key,
+    new Uint8Array(32),
+  );
+
+  await assertRejects(async () => {
+    await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv, tagLength: 96, additionalData: new Uint8Array() },
+      key,
+      encrypted,
+    );
+  });
 });

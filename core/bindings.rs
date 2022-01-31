@@ -1,6 +1,10 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
+use crate::modules::get_module_type_from_assertions;
+use crate::modules::parse_import_assertions;
+use crate::modules::validate_import_assertions;
+use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
@@ -13,6 +17,7 @@ use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
 use log::debug;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
@@ -31,71 +36,71 @@ const UNDEFINED_OP_ID_MSG: &str =
 This error is often caused by a typo in an op name, or not calling
 JsRuntime::sync_ops_cache() after JsRuntime initialization.";
 
-lazy_static::lazy_static! {
-  pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
+pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
+  Lazy::new(|| {
     v8::ExternalReferences::new(&[
       v8::ExternalReference {
-        function: opcall_async.map_fn_to()
+        function: opcall_async.map_fn_to(),
       },
       v8::ExternalReference {
-        function: opcall_sync.map_fn_to()
+        function: opcall_sync.map_fn_to(),
       },
       v8::ExternalReference {
-        function: ref_op.map_fn_to()
+        function: ref_op.map_fn_to(),
       },
       v8::ExternalReference {
-        function: unref_op.map_fn_to()
+        function: unref_op.map_fn_to(),
       },
       v8::ExternalReference {
-        function: set_macrotask_callback.map_fn_to()
+        function: set_macrotask_callback.map_fn_to(),
       },
       v8::ExternalReference {
-        function: set_nexttick_callback.map_fn_to()
+        function: set_nexttick_callback.map_fn_to(),
       },
       v8::ExternalReference {
-        function: set_promise_reject_callback.map_fn_to()
+        function: set_promise_reject_callback.map_fn_to(),
       },
       v8::ExternalReference {
-        function: set_uncaught_exception_callback.map_fn_to()
+        function: set_uncaught_exception_callback.map_fn_to(),
       },
       v8::ExternalReference {
-        function: run_microtasks.map_fn_to()
+        function: run_microtasks.map_fn_to(),
       },
       v8::ExternalReference {
-        function: has_tick_scheduled.map_fn_to()
+        function: has_tick_scheduled.map_fn_to(),
       },
       v8::ExternalReference {
-        function: set_has_tick_scheduled.map_fn_to()
+        function: set_has_tick_scheduled.map_fn_to(),
       },
       v8::ExternalReference {
-        function: eval_context.map_fn_to()
+        function: eval_context.map_fn_to(),
       },
       v8::ExternalReference {
-        function: queue_microtask.map_fn_to()
+        function: queue_microtask.map_fn_to(),
       },
       v8::ExternalReference {
-        function: create_host_object.map_fn_to()
+        function: create_host_object.map_fn_to(),
       },
       v8::ExternalReference {
-        function: encode.map_fn_to()
+        function: encode.map_fn_to(),
       },
       v8::ExternalReference {
-        function: decode.map_fn_to()
+        function: decode.map_fn_to(),
       },
       v8::ExternalReference {
-        function: serialize.map_fn_to()
+        function: serialize.map_fn_to(),
       },
       v8::ExternalReference {
-        function: deserialize.map_fn_to()
+        function: deserialize.map_fn_to(),
       },
       v8::ExternalReference {
-        function: get_promise_details.map_fn_to()
+        function: get_promise_details.map_fn_to(),
       },
       v8::ExternalReference {
-        function: get_proxy_details.map_fn_to()
+        function: get_proxy_details.map_fn_to(),
       },
       v8::ExternalReference {
-        function: is_proxy.map_fn_to()
+        function: is_proxy.map_fn_to(),
       },
       v8::ExternalReference {
         function: memory_usage.map_fn_to(),
@@ -104,10 +109,10 @@ lazy_static::lazy_static! {
         function: call_console.map_fn_to(),
       },
       v8::ExternalReference {
-        function: set_wasm_streaming_callback.map_fn_to()
-      }
-    ]);
-}
+        function: set_wasm_streaming_callback.map_fn_to(),
+      },
+    ])
+  });
 
 pub fn script_origin<'a>(
   s: &mut v8::HandleScope<'a>,
@@ -243,7 +248,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
   referrer: v8::Local<v8::ScriptOrModule>,
   specifier: v8::Local<v8::String>,
-  _import_assertions: v8::Local<v8::FixedArray>,
+  import_assertions: v8::Local<v8::FixedArray>,
 ) -> *mut v8::Promise {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
@@ -267,6 +272,22 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
+  let assertions = parse_import_assertions(
+    scope,
+    import_assertions,
+    ImportAssertionsKind::DynamicImport,
+  );
+
+  {
+    let tc_scope = &mut v8::TryCatch::new(scope);
+    validate_import_assertions(tc_scope, &assertions);
+    if tc_scope.has_caught() {
+      let e = tc_scope.exception().unwrap();
+      resolver.reject(tc_scope, e);
+    }
+  }
+  let module_type = get_module_type_from_assertions(&assertions);
+
   let resolver_handle = v8::Global::new(scope, resolver);
   {
     let state_rc = JsRuntime::state(scope);
@@ -280,6 +301,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
       module_map_rc,
       &specifier_str,
       &referrer_name_str,
+      module_type,
       resolver_handle,
     );
     state_rc.borrow_mut().notify_new_dynamic_import();
@@ -294,13 +316,29 @@ pub extern "C" fn host_import_module_dynamically_callback(
                  _rv: v8::ReturnValue| {
     let arg = args.get(0);
     if is_instance_of_error(scope, arg) {
+      let e: crate::error::NativeJsError =
+        serde_v8::from_v8(scope, arg).unwrap();
+      let name = e.name.unwrap_or_else(|| "Error".to_string());
       let message = v8::Exception::create_message(scope, arg);
       if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
         let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
         let message_key = v8::String::new(scope, "message").unwrap();
         let message = arg.get(scope, message_key.into()).unwrap();
-        let exception =
-          v8::Exception::type_error(scope, message.try_into().unwrap());
+        let exception = match name.as_str() {
+          "RangeError" => {
+            v8::Exception::range_error(scope, message.try_into().unwrap())
+          }
+          "TypeError" => {
+            v8::Exception::type_error(scope, message.try_into().unwrap())
+          }
+          "SyntaxError" => {
+            v8::Exception::syntax_error(scope, message.try_into().unwrap())
+          }
+          "ReferenceError" => {
+            v8::Exception::reference_error(scope, message.try_into().unwrap())
+          }
+          _ => v8::Exception::error(scope, message.try_into().unwrap()),
+        };
         let code_key = v8::String::new(scope, "code").unwrap();
         let code_value =
           v8::String::new(scope, "ERR_MODULE_NOT_FOUND").unwrap();
@@ -1311,7 +1349,7 @@ fn create_host_object(
 pub fn module_resolve_callback<'s>(
   context: v8::Local<'s, v8::Context>,
   specifier: v8::Local<'s, v8::String>,
-  _import_assertions: v8::Local<'s, v8::FixedArray>,
+  import_assertions: v8::Local<'s, v8::FixedArray>,
   referrer: v8::Local<'s, v8::Module>,
 ) -> Option<v8::Local<'s, v8::Module>> {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
@@ -1328,8 +1366,17 @@ pub fn module_resolve_callback<'s>(
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  let maybe_module =
-    module_map.resolve_callback(scope, &specifier_str, &referrer_name);
+  let assertions = parse_import_assertions(
+    scope,
+    import_assertions,
+    ImportAssertionsKind::StaticImport,
+  );
+  let maybe_module = module_map.resolve_callback(
+    scope,
+    &specifier_str,
+    &referrer_name,
+    assertions,
+  );
   if let Some(module) = maybe_module {
     return Some(module);
   }

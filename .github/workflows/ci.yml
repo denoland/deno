@@ -81,10 +81,7 @@ jobs:
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
 
-      - name: Install Rust
-        uses: hecrj/setup-rust-action@v1
-        with:
-          rust-version: 1.57.0
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Install clippy and rustfmt
         if: matrix.job == 'lint'
@@ -262,7 +259,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: 2-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 3-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -278,7 +275,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            2-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            3-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -294,7 +291,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            2-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            3-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
@@ -517,7 +514,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         env:
-          WPT_FYI_USER: ${{ secrets.WPT_FYI_USER }}
+          WPT_FYI_USER: deno
           WPT_FYI_PW: ${{ secrets.WPT_FYI_PW }}
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
         run: |
