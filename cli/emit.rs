@@ -314,8 +314,15 @@ fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
   ])
 }
 
-/// Determine if a given media type is emittable or not.
-pub(crate) fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
+/// Determine if a given module kind and media type is emittable or not.
+pub(crate) fn is_emittable(
+  kind: &ModuleKind,
+  media_type: &MediaType,
+  include_js: bool,
+) -> bool {
+  if matches!(kind, ModuleKind::Synthetic) {
+    return false;
+  }
   match &media_type {
     MediaType::TypeScript
     | MediaType::Mts
@@ -796,7 +803,7 @@ pub(crate) fn emit(
   let mut file_count = 0_u32;
   for module in graph.modules() {
     file_count += 1;
-    if !is_emittable(&module.media_type, include_js) {
+    if !is_emittable(&module.kind, &module.media_type, include_js) {
       continue;
     }
     let needs_reload =
@@ -1043,16 +1050,29 @@ mod tests {
 
   #[test]
   fn test_is_emittable() {
-    assert!(is_emittable(&MediaType::TypeScript, false));
-    assert!(!is_emittable(&MediaType::Dts, false));
-    assert!(!is_emittable(&MediaType::Dcts, false));
-    assert!(!is_emittable(&MediaType::Dmts, false));
-    assert!(is_emittable(&MediaType::Tsx, false));
-    assert!(!is_emittable(&MediaType::JavaScript, false));
-    assert!(!is_emittable(&MediaType::Cjs, false));
-    assert!(!is_emittable(&MediaType::Mjs, false));
-    assert!(is_emittable(&MediaType::JavaScript, true));
-    assert!(is_emittable(&MediaType::Jsx, false));
-    assert!(!is_emittable(&MediaType::Json, false));
+    assert!(is_emittable(
+      &ModuleKind::Esm,
+      &MediaType::TypeScript,
+      false
+    ));
+    assert!(!is_emittable(
+      &ModuleKind::Synthetic,
+      &MediaType::TypeScript,
+      false
+    ));
+    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Dts, false));
+    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Dcts, false));
+    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Dmts, false));
+    assert!(is_emittable(&ModuleKind::Esm, &MediaType::Tsx, false));
+    assert!(!is_emittable(
+      &ModuleKind::Esm,
+      &MediaType::JavaScript,
+      false
+    ));
+    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Cjs, false));
+    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Mjs, false));
+    assert!(is_emittable(&ModuleKind::Esm, &MediaType::JavaScript, true));
+    assert!(is_emittable(&ModuleKind::Esm, &MediaType::Jsx, false));
+    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Json, false));
   }
 }
