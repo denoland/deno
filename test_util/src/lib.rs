@@ -840,6 +840,15 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/v1/extensionless") => {
+      let mut res =
+        Response::new(Body::from(r#"export * from "/subdir/mod1.ts";"#));
+      res.headers_mut().insert(
+        "content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
     (_, "/subdir/no_js_ext@1.0.0") => {
       let mut res = Response::new(Body::from(
         r#"import { printHello } from "./mod2.ts";
