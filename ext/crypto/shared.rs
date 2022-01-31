@@ -133,7 +133,7 @@ impl RawKeyData {
         p384::EncodedPoint::from_bytes(&data)
           .map_err(|_| type_error("expected valid public EC key"))
       }
-      _ => Err(type_error("expected public key")),
+      _ => Err(type_error("expected public key data")),
     }
   }
 
