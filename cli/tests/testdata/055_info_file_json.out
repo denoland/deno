@@ -55,7 +55,7 @@
     },
     {
       "kind": "esm",
-      "local": "[WILDCARD]subdir/print_hello.ts",
+      "local": "[WILDCARD]print_hello.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
       "specifier": "file://[WILDCARD]/subdir/print_hello.ts"
@@ -80,7 +80,7 @@
         }
       ],
       "kind": "esm",
-      "local": "[WILDCARD]subdir/subdir2/mod2.ts",
+      "local": "[WILDCARD]mod2.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
       "specifier": "file://[WILDCARD]/subdir/subdir2/mod2.ts"
