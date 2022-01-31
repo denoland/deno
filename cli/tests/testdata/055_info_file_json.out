@@ -48,7 +48,7 @@
         }
       ],
       "kind": "esm",
-      "local": "[WILDCARD]subdir/mod1.ts",
+      "local": "[WILDCARD]mod1.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
       "specifier": "file://[WILDCARD]/subdir/mod1.ts"
