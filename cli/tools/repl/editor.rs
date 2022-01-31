@@ -74,9 +74,7 @@ impl EditorHelper {
   }
 
   fn get_expression_type(&self, expr: &str) -> Option<String> {
-    self
-      .evaluate_expression(expr)
-      .map(|res| res.result.kind.to_string())
+    self.evaluate_expression(expr).map(|res| res.result.kind)
   }
 
   fn get_object_expr_properties(
