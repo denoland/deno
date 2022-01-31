@@ -146,8 +146,8 @@ pub struct GetPropertiesArgs {
 #[serde(rename_all = "camelCase")]
 pub struct GetPropertiesResponse {
   pub result: Vec<PropertyDescriptor>,
-  pub internal_properties: Vec<InternalPropertyDescriptor>,
-  pub private_properties: Vec<PrivatePropertyDescriptor>,
+  pub internal_properties: Option<Vec<InternalPropertyDescriptor>>,
+  pub private_properties: Option<Vec<PrivatePropertyDescriptor>>,
   pub exception_details: Option<ExceptionDetails>,
 }
 
@@ -240,55 +240,10 @@ pub struct SetAsyncCallStackDepthArgs {
 /// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-RemoteObject
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum RemoteObjectType {
-  Object,
-  Function,
-  Undefined,
-  String,
-  Number,
-  Boolean,
-  Symbol,
-  Bigint,
-}
-
-impl std::fmt::Display for RemoteObjectType {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.write_str(&format!("{:?}", self).to_lowercase())
-  }
-}
-
-/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-RemoteObject
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum RemoteObjectSubType {
-  Array,
-  Null,
-  Node,
-  Regexp,
-  Date,
-  Map,
-  Set,
-  Weakmap,
-  Weakset,
-  Iterator,
-  Generator,
-  Error,
-  Proxy,
-  Promise,
-  Typedarray,
-  Arraybuffer,
-  Dataview,
-  Webassemblymemory,
-  Wasmvalue,
-}
-
-/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-RemoteObject
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RemoteObject {
   #[serde(rename = "type")]
-  pub kind: RemoteObjectType,
-  pub subtype: Option<RemoteObjectSubType>,
+  pub kind: String,
+  pub subtype: Option<String>,
   pub class_name: Option<String>,
   pub value: Option<Value>,
   pub unserializable_value: Option<UnserializableValue>,
@@ -303,8 +258,8 @@ pub struct RemoteObject {
 #[serde(rename_all = "camelCase")]
 pub struct ObjectPreview {
   #[serde(rename = "type")]
-  pub kind: RemoteObjectType,
-  pub subtype: Option<RemoteObjectSubType>,
+  pub kind: String,
+  pub subtype: Option<String>,
   pub description: Option<String>,
   pub overflow: bool,
   pub properties: Vec<PropertyPreview>,
@@ -317,25 +272,10 @@ pub struct ObjectPreview {
 pub struct PropertyPreview {
   pub name: String,
   #[serde(rename = "type")]
-  pub kind: PropertyPreviewType,
+  pub kind: String,
   pub value: Option<String>,
   pub value_preview: Option<ObjectPreview>,
-  pub subtype: Option<RemoteObjectSubType>,
-}
-
-/// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-PropertyPreview
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum PropertyPreviewType {
-  Object,
-  Function,
-  Undefined,
-  String,
-  Number,
-  Boolean,
-  Symbol,
-  Accessor,
-  Bigint,
+  pub subtype: Option<String>,
 }
 
 /// https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-EntryPreview
