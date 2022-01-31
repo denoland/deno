@@ -256,7 +256,7 @@ fn op_getuid(
   _: (),
   _: (),
 ) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.getuid");
+  super::check_unstable(state, "Deno.getUid");
   state.borrow_mut::<Permissions>().env.check_all()?;
   Ok(None)
 }
