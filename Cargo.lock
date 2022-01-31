@@ -720,7 +720,7 @@ dependencies = [
  "clap_complete",
  "clap_complete_fig",
  "data-url",
- "deno_ast",
+ "deno_ast 0.10.0",
  "deno_bench_util",
  "deno_broadcast_channel",
  "deno_console",
@@ -787,6 +787,23 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e81ceec755f9e4e270e8d7ef4ade1921eddc1717dea092c726b088f9c074721b"
+dependencies = [
+ "anyhow",
+ "base64 0.13.0",
+ "data-url",
+ "serde",
+ "swc_atoms",
+ "swc_common",
+ "swc_ecmascript",
+ "text_lines",
+ "url",
+]
+
+[[package]]
+name = "deno_ast"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a2780a628fd2fd52c81ef3f9d2bda0609a662b9e4f85623c29051c277363f65"
@@ -835,7 +852,7 @@ name = "deno_core"
 version = "0.117.0"
 dependencies = [
  "anyhow",
- "deno_ast",
+ "deno_ast 0.9.0",
  "futures",
  "indexmap",
  "libc",
@@ -887,7 +904,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a37040708cc0c8f1f826073774ea4406bee735d8cb6aacd0b9891e27be7c13bd"
 dependencies = [
  "cfg-if 1.0.0",
- "deno_ast",
+ "deno_ast 0.10.0",
  "deno_graph",
  "futures",
  "lazy_static",
@@ -935,7 +952,7 @@ dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
  "data-url",
- "deno_ast",
+ "deno_ast 0.10.0",
  "futures",
  "lazy_static",
  "parking_lot",
@@ -969,7 +986,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c838bbcaffd4143940068bea8eb5faa6de1ed8c3d3d0a63d8ed7319a967f47bd"
 dependencies = [
  "anyhow",
- "deno_ast",
+ "deno_ast 0.10.0",
  "derive_more",
  "if_chain",
  "log",
@@ -1245,7 +1262,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "312bd921ea751a303703123e2e26e28456abd6ae9ff42dce478e16f613154874"
 dependencies = [
  "anyhow",
- "deno_ast",
+ "deno_ast 0.10.0",
  "dprint-core",
  "parking_lot_core",
  "rustc-hash",
