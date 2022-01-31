@@ -5,7 +5,7 @@
   const core = window.__bootstrap.core;
   const {
     TypeError,
-    JSONStringify
+    JSONStringify,
   } = window.__bootstrap.primordials;
   const jupyter = {};
 
