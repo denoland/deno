@@ -4,7 +4,6 @@
 //!
 //! It will only transpile, not typecheck (like Deno's `--no-check` flag).
 
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 
@@ -93,16 +92,20 @@ impl ModuleLoader for TypescriptModuleLoader {
 }
 
 fn main() -> Result<(), Error> {
+  let args: Vec<String> = std::env::args().collect();
+  if args.len() < 2 {
+    println!("Usage: target/examples/debug/ts_module_loader <path_to_module>");
+    std::process::exit(1);
+  }
+  let main_url = args[1].clone();
+  println!("Run {}", main_url);
+
   let mut js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(Rc::new(TypescriptModuleLoader)),
     ..Default::default()
   });
 
-  let main_module = {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("examples/ts_module_loader.ts");
-    resolve_path(path.to_str().unwrap())?
-  };
+  let main_module = resolve_path(&main_url)?;
 
   let future = async move {
     let mod_id = js_runtime.load_main_module(&main_module, None).await?;
