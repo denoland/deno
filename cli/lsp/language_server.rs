@@ -1060,32 +1060,37 @@ impl Inner {
         .map(|s| self.documents.get(s))
         .flatten()
         .map(|d| d.maybe_types_dependency());
-      let value = match (&dep.maybe_code, &dep.maybe_type, &dep_maybe_types_dependency) {
-        (Resolved::None, Resolved::None, _) => unreachable!("{}", json!(params)),
-        (_, Resolved::None, None) => format!(
-          "**Resolved Dependency**\n\n**Code**: {}\n",
-          to_hover_text(&dep.maybe_code)
-        ),
-        (_, Resolved::None, Some(types_dep)) => format!(
+      let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
+        (false, false, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
           to_hover_text(&dep.maybe_code),
           to_hover_text(&dep.maybe_type)
         ),
-        (Resolved::None, _, _) => format!(
-          "**Resolved Dependency**\n\n**Types**: {}\n",
-          to_hover_text(&dep.maybe_type)
-        ),
-        (_, _, None) => format!(
-          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(&dep.maybe_code),
-          to_hover_text(&dep.maybe_type)
-        ),
-        (_, _, Some(types_dep)) => format!(
+        (false, false, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
           to_hover_text(&dep.maybe_code),
           to_hover_text(&dep.maybe_type),
           to_hover_text(types_dep)
         ),
+        (false, false, Some(_)) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type)
+        ),
+        (false, true, Some(types_dep)) if !types_dep.is_none() => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(types_dep)
+        ),
+        (false, true, _) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n",
+          to_hover_text(&dep.maybe_code)
+        ),
+        (true, false, _) => format!(
+          "**Resolved Dependency**\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_type)
+        ),
+        (true, true, _) => unreachable!("{}", json!(params)),
       };
       let value =
         if let Some(docs) = self.module_registries.get_hover(&dep).await {

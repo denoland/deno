@@ -542,7 +542,7 @@ pub(crate) fn to_hover_text(result: &Resolved) -> String {
       .replace('@', "&#8203;@"),
     },
     Resolved::Err(_) => "_[errored]_".to_string(),
-    Resolved::None => "".to_string(),
+    Resolved::None => "_[missing]_".to_string(),
   }
 }
 
