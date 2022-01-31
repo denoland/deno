@@ -445,7 +445,9 @@ interface ReadableStreamBYOBReader {
   releaseLock(): void;
 }
 
-interface ReadableStreamBYOBRequest<V extends ArrayBufferView> {
+interface ReadableStreamBYOBRequest<
+  V extends ArrayBufferView = ArrayBufferView,
+> {
   readonly view: V | null;
   respond(bytesWritten: number): void;
   respondWithNewView(view: V): void;
@@ -467,11 +469,13 @@ declare var ReadableStreamReader: {
   new (): ReadableStreamReader;
 };
 
-interface ReadableByteStreamControllerCallback<V extends ArrayBufferView> {
+interface ReadableByteStreamControllerCallback<
+  V extends ArrayBufferView = ArrayBufferView,
+> {
   (controller: ReadableByteStreamController<V>): void | PromiseLike<void>;
 }
 
-interface UnderlyingByteSource<V extends ArrayBufferView> {
+interface UnderlyingByteSource<V extends ArrayBufferView = ArrayBufferView> {
   autoAllocateChunkSize?: number;
   cancel?: ReadableStreamErrorCallback;
   pull?: ReadableByteStreamControllerCallback<V>;
@@ -526,7 +530,9 @@ interface ReadableByteStreamController<
 
 declare var ReadableByteStreamController: {
   prototype: ReadableByteStreamController;
-  new <V extends ArrayBufferView>(): ReadableByteStreamController<V>;
+  new <
+    V extends ArrayBufferView = ArrayBufferView,
+  >(): ReadableByteStreamController<V>;
 };
 
 interface PipeOptions {
