@@ -15,7 +15,7 @@
   const { TextEncoder, TextDecoder } = window.__bootstrap.encoding;
 
   const {
-    ArrayBufferPrototype,
+    ArrayBuffer,
     ArrayBufferIsView,
     ArrayPrototypeEvery,
     ArrayPrototypeFind,
@@ -869,7 +869,7 @@
       if (format !== "jwk") {
         if (
           ArrayBufferIsView(keyData) ||
-          ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, keyData)
+          keyData instanceof ArrayBuffer
         ) {
           keyData = copyBuffer(keyData);
         } else {
@@ -878,7 +878,7 @@
       } else {
         if (
           ArrayBufferIsView(keyData) ||
-          ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, keyData)
+          keyData instanceof ArrayBuffer
         ) {
           throw new TypeError("keyData is not a JsonWebKey");
         }
