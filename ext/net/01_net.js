@@ -95,6 +95,14 @@
     closeWrite() {
       return shutdown(this.rid);
     }
+
+    setNoDelay(nodelay = true) {
+      return core.opSync("op_set_nodelay", this.rid, nodelay);
+    }
+
+    setKeepAlive(keepalive = true) {
+      return core.opSync("op_set_keepalive", this.rid, keepalive);
+    }
   }
 
   class Listener {
