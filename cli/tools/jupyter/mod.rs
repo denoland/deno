@@ -505,24 +505,24 @@ impl Kernel {
       .evaluate_line_with_object_wrapping(&exec_request_content.code)
       .await?;
 
-    let result = if let Some(exception_details) = output.value.exception_details
-    {
-      let exception = exception_details.exception.unwrap();
-      let stack_trace: Vec<String> = exception
-        .description
+    let result = if output.value["exceptionDetails"].is_object() {
+      let stack_trace: Vec<String> = output.value["exceptionDetails"]
+        ["exception"]["description"]
+        .as_str()
         .unwrap()
         .split('\n')
         .map(|s| s.to_string())
         .collect();
       ExecResult::Error(ExecError {
         // TODO(apowers313) this could probably use smarter unwrapping -- for example, someone may throw non-object
-        err_name: exception.class_name.unwrap(),
+        err_name: output.value["exceptionDetails"]["exception"]["className"]
+          .to_string(),
         err_value: stack_trace.first().unwrap().to_string(),
         // output.value["exceptionDetails"]["stackTrace"]["callFrames"]
         stack_trace,
       })
     } else {
-      ExecResult::Ok(output.value.result.value.unwrap())
+      ExecResult::Ok(output.value["result"].clone())
     };
 
     match result {
