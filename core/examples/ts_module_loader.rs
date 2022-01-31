@@ -66,7 +66,7 @@ impl ModuleLoader for TypescriptModuleLoader {
       };
 
       let code = std::fs::read_to_string(&path)?;
-      let code = if do_transpile {
+      let code = if should_transpile {
         let parsed = deno_ast::parse_module(ParseParams {
           specifier: module_specifier.to_string(),
           source: SourceTextInfo::from_string(code),
