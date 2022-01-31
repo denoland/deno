@@ -108,11 +108,11 @@
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
     kill: __bootstrap.process.kill,
+    addSignalListener: __bootstrap.signals.addSignalListener,
+    removeSignalListener: __bootstrap.signals.removeSignalListener,
   };
 
   __bootstrap.denoNsUnstable = {
-    addSignalListener: __bootstrap.signals.addSignalListener,
-    removeSignalListener: __bootstrap.signals.removeSignalListener,
     emit: __bootstrap.compilerApi.emit,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
