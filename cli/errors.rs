@@ -48,8 +48,8 @@ pub(crate) fn get_module_graph_error_class(
 
 fn get_resolution_error_class(err: &ResolutionError) -> &'static str {
   match err {
-    ResolutionError::ResolverError(err, _, _) => {
-      get_error_class_name(err.as_ref())
+    ResolutionError::ResolverError { error, .. } => {
+      get_error_class_name(error.as_ref())
     }
     _ => "TypeError",
   }

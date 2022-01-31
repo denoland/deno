@@ -45,11 +45,11 @@ winapi = "=0.3.9"
 winres = "=0.1.11"
 
 [dependencies]
-deno_ast = { version = "0.9.0", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
+deno_ast = { version = "0.10.0", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
 deno_core = { version = "0.117.0", path = "../core" }
-deno_doc = "0.26.0"
-deno_graph = "0.18.0"
-deno_lint = { version = "0.22.0", features = ["docs"] }
+deno_doc = "0.28.0"
+deno_graph = "0.21.1"
+deno_lint = { version = "0.23.0", features = ["docs"] }
 deno_runtime = { version = "0.43.0", path = "../runtime" }
 
 atty = "=0.2.14"
@@ -63,7 +63,7 @@ data-url = "=0.1.1"
 dissimilar = "=1.0.2"
 dprint-plugin-json = "=0.14.0"
 dprint-plugin-markdown = "=0.12.1"
-dprint-plugin-typescript = "=0.62.0"
+dprint-plugin-typescript = "=0.62.1"
 encoding_rs = "=0.8.29"
 env_logger = "=0.8.4"
 fancy-regex = "=0.7.1"

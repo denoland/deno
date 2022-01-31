@@ -24,6 +24,7 @@ use deno_core::serde_json::Value;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use serde::Serialize;
@@ -207,9 +208,9 @@ async fn op_emit(
       .as_ref()
       .map(|imr| imr.as_resolver())
   };
-  let roots = vec![resolve_url_or_path(&root_specifier)?];
+  let roots = vec![(resolve_url_or_path(&root_specifier)?, ModuleKind::Esm)];
   let maybe_imports =
-    to_maybe_imports(&roots[0], args.compiler_options.as_ref());
+    to_maybe_imports(&roots[0].0, args.compiler_options.as_ref());
   let graph = Arc::new(
     deno_graph::create_graph(
       roots,

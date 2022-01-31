@@ -8,6 +8,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_graph::Resolved;
 use import_map::ImportMap;
 use log::error;
 use log::info;
@@ -1058,34 +1059,38 @@ impl Inner {
         .get_code()
         .map(|s| self.documents.get(s))
         .flatten()
-        .map(|d| d.maybe_types_dependency())
-        .flatten();
-      let value = match (&dep.maybe_code, &dep.maybe_type, &dep_maybe_types_dependency) {
-        (Some(code_dep), Some(type_dep), None) => format!(
+        .map(|d| d.maybe_types_dependency());
+      let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
+        (false, false, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(code_dep),
-          to_hover_text(type_dep)
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type)
         ),
-        (Some(code_dep), Some(type_dep), Some(types_dep)) => format!(
+        (false, false, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
-          to_hover_text(code_dep),
-          to_hover_text(types_dep),
-          to_hover_text(type_dep)
-        ),
-        (Some(code_dep), None, None) => format!(
-          "**Resolved Dependency**\n\n**Code**: {}\n",
-          to_hover_text(code_dep)
-        ),
-        (Some(code_dep), None, Some(types_dep)) => format!(
-          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(code_dep),
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type),
           to_hover_text(types_dep)
         ),
-        (None, Some(type_dep), _) => format!(
-          "**Resolved Dependency**\n\n**Types**: {}\n",
-          to_hover_text(type_dep)
+        (false, false, Some(_)) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type)
         ),
-        (None, None, _) => unreachable!("{}", json!(params)),
+        (false, true, Some(types_dep)) if !types_dep.is_none() => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(types_dep)
+        ),
+        (false, true, _) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n",
+          to_hover_text(&dep.maybe_code)
+        ),
+        (true, false, _) => format!(
+          "**Resolved Dependency**\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_type)
+        ),
+        (true, true, _) => unreachable!("{}", json!(params)),
       };
       let value =
         if let Some(docs) = self.module_registries.get_hover(&dep).await {
@@ -2677,10 +2682,15 @@ impl Inner {
       params
         .uris
         .iter()
-        .map(|t| self.url_map.normalize_url(&t.uri))
+        .map(|t| {
+          (
+            self.url_map.normalize_url(&t.uri),
+            deno_graph::ModuleKind::Esm,
+          )
+        })
         .collect()
     } else {
-      vec![referrer.clone()]
+      vec![(referrer.clone(), deno_graph::ModuleKind::Esm)]
     };
 
     if self.maybe_cache_server.is_none() {
