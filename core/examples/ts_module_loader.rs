@@ -49,7 +49,7 @@ impl ModuleLoader for TypescriptModuleLoader {
         .map_err(|_| anyhow!("Only file: URLs are supported."))?;
 
       let media_type = MediaType::from(&path);
-      let (module_type, do_transpile) = match MediaType::from(&path) {
+      let (module_type, should_transpile) = match MediaType::from(&path) {
         MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
           (ModuleType::JavaScript, false)
         }
