@@ -83,7 +83,6 @@ fn node_resolve(
   referrer: &str,
   cwd: &std::path::Path,
 ) -> Result<ResolveResponse, AnyError> {
-  // TODO(@bartlomieju): This should return a `ResolveResponse`
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
   if let Some(resolved) = crate::compat::try_resolve_builtin_module(specifier) {
@@ -130,7 +129,9 @@ fn node_resolve(
   let conditions = DEFAULT_CONDITIONS;
   let url = module_resolve(specifier, &parent_url, conditions)?;
 
-  let resolve_response = if url.as_str().ends_with(".js") {
+  let resolve_response = if url.as_str().starts_with("http") {
+    ResolveResponse::Esm(url)
+  } else if url.as_str().ends_with(".js") {
     let package_config = get_package_scope_config(&url)?;
     if package_config.typ == "module" {
       ResolveResponse::Esm(url)
