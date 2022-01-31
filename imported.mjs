@@ -5,3 +5,4 @@ const mod = require("./imported.js");
 export default mod;
 export const foo = mod.foo;
 export const bar = mod.bar;
+export const fizz = mod.fizz;
