@@ -4,6 +4,8 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::ZeroCopyBuf;
+use elliptic_curve::sec1::ToEncodedPoint;
+use p256::pkcs8::FromPrivateKey;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::ToRsaPublicKey;
 use rsa::RsaPrivateKey;
@@ -112,9 +114,15 @@ impl RawKeyData {
       RawKeyData::Public(data) => {
         // public_key is a serialized EncodedPoint
         p256::EncodedPoint::from_bytes(&data)
-          .map_err(|_| type_error("expected valid private EC key"))
+          .map_err(|_| type_error("expected valid public EC key"))
       }
-      _ => Err(type_error("expected private key")),
+      RawKeyData::Private(data) => {
+        let signing_key = p256::SecretKey::from_pkcs8_der(data)
+          .map_err(|_| type_error("expected valid private EC key"))?;
+        Ok(signing_key.public_key().to_encoded_point(false))
+      }
+      // Should never reach here.
+      RawKeyData::Secret(_) => unreachable!(),
     }
   }
 
@@ -123,9 +131,9 @@ impl RawKeyData {
       RawKeyData::Public(data) => {
         // public_key is a serialized EncodedPoint
         p384::EncodedPoint::from_bytes(&data)
-          .map_err(|_| type_error("expected valid private EC key"))
+          .map_err(|_| type_error("expected valid public EC key"))
       }
-      _ => Err(type_error("expected private key")),
+      _ => Err(type_error("expected public key")),
     }
   }
 
