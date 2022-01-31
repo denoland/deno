@@ -2,7 +2,6 @@
 
 mod auth_tokens;
 mod cache;
-mod cdp;
 mod checksum;
 mod compat;
 mod config_file;
