@@ -649,10 +649,10 @@ impl LocalInspectorSession {
     self.notification_queue.split_off(0)
   }
 
-  pub async fn post_message<T: serde::Serialize>(
+  pub async fn post_message(
     &mut self,
     method: &str,
-    params: Option<T>,
+    params: Option<serde_json::Value>,
   ) -> Result<serde_json::Value, Error> {
     let id = self.next_message_id;
     self.next_message_id += 1;

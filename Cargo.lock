@@ -835,6 +835,7 @@ name = "deno_core"
 version = "0.117.0"
 dependencies = [
  "anyhow",
+ "deno_ast",
  "futures",
  "indexmap",
  "libc",

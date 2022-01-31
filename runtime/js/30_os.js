@@ -28,6 +28,10 @@
     return core.opSync("op_network_interfaces");
   }
 
+  function getUid() {
+    return core.opSync("op_getuid");
+  }
+
   // This is an internal only method used by the test harness to override the
   // behavior of exit when the exit sanitizer is enabled.
   let exitHandler = null;
@@ -87,12 +91,13 @@
   window.__bootstrap.os = {
     env,
     execPath,
-    setExitHandler,
     exit,
-    osRelease,
-    systemMemoryInfo,
+    getUid,
     hostname,
     loadavg,
     networkInterfaces,
+    osRelease,
+    setExitHandler,
+    systemMemoryInfo,
   };
 })(this);
