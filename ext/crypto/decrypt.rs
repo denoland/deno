@@ -295,10 +295,19 @@ fn decrypt_aes_gcm(
     return Err(type_error("iv length not equal to 12"));
   }
 
+  // The `aes_gcm` crate only supports 128 bits tag length.
+  //
+  // Note that encryption won't fail, it instead truncates the tag
+  // to the specified tag length as specified in the spec.
+  if tag_length != 128 {
+    return Err(type_error("tag length not equal to 128"));
+  }
+
   let nonce = Nonce::from_slice(&iv);
 
   let sep = data.len() - (tag_length / 8);
   let tag = &data[sep..];
+
   // The actual ciphertext, called plaintext because it is reused in place.
   let mut plaintext = data[..sep].to_vec();
   match length {
