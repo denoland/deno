@@ -108,11 +108,11 @@
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
     kill: __bootstrap.process.kill,
+    addSignalListener: __bootstrap.signals.addSignalListener,
+    removeSignalListener: __bootstrap.signals.removeSignalListener,
   };
 
   __bootstrap.denoNsUnstable = {
-    addSignalListener: __bootstrap.signals.addSignalListener,
-    removeSignalListener: __bootstrap.signals.removeSignalListener,
     emit: __bootstrap.compilerApi.emit,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
@@ -121,6 +121,8 @@
     hostname: __bootstrap.os.hostname,
     osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
+    networkInterfaces: __bootstrap.os.networkInterfaces,
+    getUid: __bootstrap.os.getUid,
     applySourceMap: __bootstrap.errorStack.opApplySourceMap,
     formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
     sleepSync: __bootstrap.timers.sleepSync,

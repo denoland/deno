@@ -103,6 +103,48 @@ declare namespace Deno {
     swapFree: number;
   }
 
+  /** The information of the network interface */
+  export interface NetworkInterfaceInfo {
+    /** The network interface name */
+    name: string;
+    /** The IP protocol version */
+    family: "IPv4" | "IPv6";
+    /** The IP address */
+    address: string;
+    /** The netmask */
+    netmask: string;
+    /** The IPv6 scope id or null */
+    scopeid: number | null;
+    /** The CIDR range */
+    cidr: string;
+    /** The MAC address */
+    mac: string;
+  }
+
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns an array of the network interface informations.
+   *
+   * ```ts
+   * console.log(Deno.networkInterfaces());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   */
+  export function networkInterfaces(): NetworkInterfaceInfo[];
+
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns the user id of the process on POSIX platforms. Returns null on windows.
+   *
+   * ```ts
+   * console.log(Deno.getUid());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   */
+  export function getUid(): number | null;
+
   /** All possible types for interfacing with foreign functions */
   export type NativeType =
     | "void"
@@ -711,40 +753,6 @@ declare namespace Deno {
    */
   export function applySourceMap(location: Location): Location;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Registers the given function as a listener of the given signal event.
-   *
-   * ```ts
-   * Deno.addSignalListener("SIGTERM", () => {
-   *   console.log("SIGTERM!")
-   * });
-   * ```
-   *
-   * NOTE: This functionality is not yet implemented on Windows.
-   */
-  export function addSignalListener(signal: Signal, handler: () => void): void;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Removes the given signal listener that has been registered with
-   * Deno.addSignalListener.
-   *
-   * ```ts
-   * const listener = () => {
-   *   console.log("SIGTERM!")
-   * };
-   * Deno.addSignalListener("SIGTERM", listener);
-   * Deno.removeSignalListener("SIGTERM", listener);
-   * ```
-   *
-   * NOTE: This functionality is not yet implemented on Windows.
-   */
-  export function removeSignalListener(
-    signal: Signal,
-    handler: () => void,
-  ): void;
-
   export type SetRawOptions = {
     cbreak: boolean;
   };
@@ -923,7 +931,7 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
-  /** *UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * SleepSync puts the main thread to sleep synchronously for a given amount of
    * time in milliseconds.

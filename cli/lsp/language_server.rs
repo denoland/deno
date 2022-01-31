@@ -36,7 +36,6 @@ use super::config::Config;
 use super::config::ConfigSnapshot;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
-use super::diagnostics::DiagnosticSource;
 use super::diagnostics::DiagnosticsServer;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
@@ -149,7 +148,7 @@ impl Inner {
     let documents = Documents::new(&location);
     let performance = Arc::new(Performance::default());
     let ts_server = Arc::new(TsServer::new(performance.clone()));
-    let config = Config::new(client.clone());
+    let config = Config::new();
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
       performance.clone(),
@@ -742,17 +741,12 @@ impl Inner {
     Ok(())
   }
 
-  async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
+  async fn did_open(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    params: DidOpenTextDocumentParams,
+  ) {
     let mark = self.performance.mark("did_open", Some(&params));
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
-
-    if let Err(err) = self
-      .config
-      .update_specifier_settings(&specifier, &params.text_document.uri)
-      .await
-    {
-      error!("Error updating specifier settings: {}", err);
-    }
 
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents opening, as they don't need to
@@ -786,7 +780,7 @@ impl Inner {
     if document.is_diagnosable() {
       self
         .diagnostics_server
-        .invalidate(self.documents.dependents(&specifier))
+        .invalidate(self.documents.dependents(specifier))
         .await;
       if let Err(err) = self.diagnostics_server.update() {
         error!("{}", err);
@@ -846,31 +840,12 @@ impl Inner {
 
   async fn did_change_configuration(
     &mut self,
+    client_workspace_config: Option<Value>,
     params: DidChangeConfigurationParams,
   ) {
-    let mark = self
-      .performance
-      .mark("did_change_configuration", Some(&params));
-
     let maybe_config =
       if self.config.client_capabilities.workspace_configuration {
-        let config_response = self
-          .client
-          .configuration(vec![ConfigurationItem {
-            scope_uri: None,
-            section: Some(SETTINGS_SECTION.to_string()),
-          }])
-          .await;
-        if let Err(err) = self.config.update_all_settings().await {
-          error!("Cannot request updating all settings: {}", err);
-        }
-        match config_response {
-          Ok(value_vec) => value_vec.get(0).cloned(),
-          Err(err) => {
-            error!("Error getting workspace configuration: {}", err);
-            None
-          }
-        }
+        client_workspace_config
       } else {
         params
           .settings
@@ -909,8 +884,6 @@ impl Inner {
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
     );
-
-    self.performance.measure(mark);
   }
 
   async fn did_change_watched_files(
@@ -1198,7 +1171,7 @@ impl Inner {
       let mut code_actions = CodeActionCollection::default();
       let file_diagnostics = self
         .diagnostics_server
-        .get(&specifier, DiagnosticSource::TypeScript)
+        .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version())
         .await;
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
@@ -2377,7 +2350,39 @@ impl lspower::LanguageServer for LanguageServer {
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
-    self.0.lock().await.did_open(params).await
+    let (client, uri, specifier, had_specifier_settings) = {
+      let mut inner = self.0.lock().await;
+      let client = inner.client.clone();
+      let uri = params.text_document.uri.clone();
+      let specifier = inner.url_map.normalize_url(&uri);
+      inner.did_open(&specifier, params).await;
+      let has_specifier_settings =
+        inner.config.has_specifier_settings(&specifier);
+      (client, uri, specifier, has_specifier_settings)
+    };
+
+    // retrieve the specifier settings outside the lock if
+    // they haven't been asked for yet on its own time
+    if !had_specifier_settings {
+      let language_server = self.clone();
+      tokio::spawn(async move {
+        let response = client.specifier_configuration(&uri).await;
+        match response {
+          Ok(specifier_settings) => {
+            // now update the config
+            let mut inner = language_server.0.lock().await;
+            inner.config.set_specifier_settings(
+              specifier,
+              uri,
+              specifier_settings,
+            );
+          }
+          Err(err) => {
+            error!("{}", err);
+          }
+        }
+      });
+    }
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -2397,7 +2402,83 @@ impl lspower::LanguageServer for LanguageServer {
     &self,
     params: DidChangeConfigurationParams,
   ) {
-    self.0.lock().await.did_change_configuration(params).await
+    let (has_workspace_capability, client, specifiers, mark) = {
+      let inner = self.0.lock().await;
+      let mark = inner
+        .performance
+        .mark("did_change_configuration", Some(&params));
+
+      let specifiers =
+        if inner.config.client_capabilities.workspace_configuration {
+          Some(inner.config.get_specifiers_with_client_uris())
+        } else {
+          None
+        };
+      (
+        inner.config.client_capabilities.workspace_configuration,
+        inner.client.clone(),
+        specifiers,
+        mark,
+      )
+    };
+
+    // start retreiving all the specifiers' settings outside the lock on its own time
+    if let Some(specifiers) = specifiers {
+      let language_server = self.clone();
+      let client = client.clone();
+      tokio::spawn(async move {
+        if let Ok(configs) = client
+          .specifier_configurations(
+            specifiers.iter().map(|(s)| s.client_uri.clone()).collect(),
+          )
+          .await
+        {
+          let mut inner = language_server.0.lock().await;
+          for (i, value) in configs.into_iter().enumerate() {
+            match value {
+              Ok(specifier_settings) => {
+                let entry = specifiers[i].clone();
+                inner.config.set_specifier_settings(
+                  entry.specifier,
+                  entry.client_uri,
+                  specifier_settings,
+                );
+              }
+              Err(err) => {
+                error!("{}", err);
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // Get the configuration from the client outside of the lock
+    // in order to prevent potential deadlocking scenarios where
+    // the server holds a lock and calls into the client, which
+    // calls into the server which deadlocks acquiring the lock.
+    // There is a gap here between when the configuration is
+    // received and acquiring the lock, but most likely there
+    // won't be any racing here.
+    let client_workspace_config = if has_workspace_capability {
+      let config_response = client.workspace_configuration().await;
+      match config_response {
+        Ok(value) => Some(value),
+        Err(err) => {
+          error!("{}", err);
+          None
+        }
+      }
+    } else {
+      None
+    };
+
+    // now update the inner state
+    let mut inner = self.0.lock().await;
+    inner
+      .did_change_configuration(client_workspace_config, params)
+      .await;
+    inner.performance.measure(mark);
   }
 
   async fn did_change_watched_files(

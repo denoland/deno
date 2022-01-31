@@ -14,7 +14,6 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::rc::Rc;
 pub use wgpu_core;
 pub use wgpu_types;
@@ -125,15 +124,11 @@ pub fn init(unstable: bool) -> Extension {
     .build()
 }
 
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webgpu.d.ts")
-}
-
 fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   let mut return_features: Vec<&'static str> = vec![];
 
-  if features.contains(wgpu_types::Features::DEPTH_CLAMPING) {
-    return_features.push("depth-clamping");
+  if features.contains(wgpu_types::Features::DEPTH_CLIP_CONTROL) {
+    return_features.push("depth-clip-control");
   }
   if features.contains(wgpu_types::Features::PIPELINE_STATISTICS_QUERY) {
     return_features.push("pipeline-statistics-query");
@@ -141,8 +136,17 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_BC) {
     return_features.push("texture-compression-bc");
   }
+  if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ETC2) {
+    return_features.push("texture-compression-etc2");
+  }
+  if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ASTC_LDR) {
+    return_features.push("texture-compression-astc");
+  }
   if features.contains(wgpu_types::Features::TIMESTAMP_QUERY) {
     return_features.push("timestamp-query");
+  }
+  if features.contains(wgpu_types::Features::INDIRECT_FIRST_INSTANCE) {
+    return_features.push("indirect-first-instance");
   }
 
   // extended from spec
@@ -158,12 +162,16 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   if features.contains(wgpu_types::Features::STORAGE_RESOURCE_BINDING_ARRAY) {
     return_features.push("storage-resource-binding-array");
   }
-  if features.contains(wgpu_types::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING) {
-    return_features.push("sampled-texture-and-storage-buffer-array-non-uniform-indexing");
-  }
-  if features.contains(wgpu_types::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING) {
-    return_features.push("uniform-buffer-and-storage-buffer-texture-non-uniform-indexing");
-  }
+  if features.contains(
+        wgpu_types::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+    ) {
+        return_features.push("sampled-texture-and-storage-buffer-array-non-uniform-indexing");
+    }
+  if features.contains(
+        wgpu_types::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
+    ) {
+        return_features.push("uniform-buffer-and-storage-buffer-texture-non-uniform-indexing");
+    }
   if features.contains(wgpu_types::Features::UNSIZED_BINDING_ARRAY) {
     return_features.push("unsized-binding-array");
   }
@@ -178,15 +186,6 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   }
   if features.contains(wgpu_types::Features::ADDRESS_MODE_CLAMP_TO_BORDER) {
     return_features.push("address-mode-clamp-to-border");
-  }
-  if features.contains(wgpu_types::Features::NON_FILL_POLYGON_MODE) {
-    return_features.push("non-fill-polygon-mode");
-  }
-  if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ETC2) {
-    return_features.push("texture-compression-etc2");
-  }
-  if features.contains(wgpu_types::Features::TEXTURE_COMPRESSION_ASTC_LDR) {
-    return_features.push("texture-compression-astc-ldr");
   }
   if features
     .contains(wgpu_types::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
@@ -206,7 +205,7 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
     return_features.push("vertex-writable-storage");
   }
   if features.contains(wgpu_types::Features::CLEAR_COMMANDS) {
-    return_features.push("clear-commands");
+    return_features.push("clear-texture");
   }
   if features.contains(wgpu_types::Features::SPIRV_SHADER_PASSTHROUGH) {
     return_features.push("spirv-shader-passthrough");
@@ -219,27 +218,10 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum GpuPowerPreference {
-  LowPower,
-  HighPerformance,
-}
-
-impl From<GpuPowerPreference> for wgpu_types::PowerPreference {
-  fn from(value: GpuPowerPreference) -> wgpu_types::PowerPreference {
-    match value {
-      GpuPowerPreference::LowPower => wgpu_types::PowerPreference::LowPower,
-      GpuPowerPreference::HighPerformance => {
-        wgpu_types::PowerPreference::HighPerformance
-      }
-    }
-  }
-}
-
-#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequestAdapterArgs {
-  power_preference: Option<GpuPowerPreference>,
+  power_preference: Option<wgpu_types::PowerPreference>,
+  force_fallback_adapter: bool,
 }
 
 #[derive(Serialize)]
@@ -266,31 +248,35 @@ pub async fn op_webgpu_request_adapter(
 ) -> Result<GpuAdapterDeviceOrErr, AnyError> {
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
+  let backends = std::env::var("DENO_WEBGPU_BACKEND")
+    .ok()
+    .map_or_else(wgpu_types::Backends::all, |s| {
+      wgpu_core::instance::parse_backends_from_comma_list(&s)
+    });
   let instance = if let Some(instance) = state.try_borrow::<Instance>() {
     instance
   } else {
     state.put(wgpu_core::hub::Global::new(
       "webgpu",
       wgpu_core::hub::IdentityManagerFactory,
-      wgpu_types::Backends::PRIMARY,
+      backends,
     ));
     state.borrow::<Instance>()
   };
 
   let descriptor = wgpu_core::instance::RequestAdapterOptions {
     power_preference: match args.power_preference {
-      Some(power_preference) => power_preference.into(),
+      Some(power_preference) => power_preference,
       None => PowerPreference::default(),
     },
-    // TODO(lucacasonato): respect forceFallbackAdapter
+    force_fallback_adapter: args.force_fallback_adapter,
     compatible_surface: None, // windowless
   };
   let res = instance.request_adapter(
     &descriptor,
-    wgpu_core::instance::AdapterInputs::Mask(
-      wgpu_types::Backends::PRIMARY,
-      |_| std::marker::PhantomData,
-    ),
+    wgpu_core::instance::AdapterInputs::Mask(backends, |_| {
+      std::marker::PhantomData
+    }),
   );
 
   let adapter = match res {
@@ -321,114 +307,11 @@ pub async fn op_webgpu_request_adapter(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GpuLimits {
-  max_texture_dimension_1d: Option<u32>,
-  max_texture_dimension_2d: Option<u32>,
-  max_texture_dimension_3d: Option<u32>,
-  max_texture_array_layers: Option<u32>,
-  max_bind_groups: Option<u32>,
-  max_dynamic_uniform_buffers_per_pipeline_layout: Option<u32>,
-  max_dynamic_storage_buffers_per_pipeline_layout: Option<u32>,
-  max_sampled_textures_per_shader_stage: Option<u32>,
-  max_samplers_per_shader_stage: Option<u32>,
-  max_storage_buffers_per_shader_stage: Option<u32>,
-  max_storage_textures_per_shader_stage: Option<u32>,
-  max_uniform_buffers_per_shader_stage: Option<u32>,
-  max_uniform_buffer_binding_size: Option<u32>, // TODO(@crowlkats): u64
-  max_storage_buffer_binding_size: Option<u32>, // TODO(@crowlkats): u64
-  // min_uniform_buffer_offset_alignment: Option<u32>,
-  // min_storage_buffer_offset_alignment: Option<u32>,
-  max_vertex_buffers: Option<u32>,
-  max_vertex_attributes: Option<u32>,
-  max_vertex_buffer_array_stride: Option<u32>,
-  // max_inter_stage_shader_components: Option<u32>,
-  // max_compute_workgroup_storage_size: Option<u32>,
-  // max_compute_invocations_per_workgroup: Option<u32>,
-  // max_compute_workgroup_size_x: Option<u32>,
-  // max_compute_workgroup_size_y: Option<u32>,
-  // max_compute_workgroup_size_z: Option<u32>,
-  // max_compute_workgroups_per_dimension: Option<u32>,
-}
-
-impl From<GpuLimits> for wgpu_types::Limits {
-  fn from(limits: GpuLimits) -> wgpu_types::Limits {
-    wgpu_types::Limits {
-      max_texture_dimension_1d: limits.max_texture_dimension_1d.unwrap_or(8192),
-      max_texture_dimension_2d: limits.max_texture_dimension_2d.unwrap_or(8192),
-      max_texture_dimension_3d: limits.max_texture_dimension_3d.unwrap_or(2048),
-      max_texture_array_layers: limits.max_texture_array_layers.unwrap_or(2048),
-      max_bind_groups: limits.max_bind_groups.unwrap_or(4),
-      max_dynamic_uniform_buffers_per_pipeline_layout: limits
-        .max_dynamic_uniform_buffers_per_pipeline_layout
-        .unwrap_or(8),
-      max_dynamic_storage_buffers_per_pipeline_layout: limits
-        .max_dynamic_storage_buffers_per_pipeline_layout
-        .unwrap_or(4),
-      max_sampled_textures_per_shader_stage: limits
-        .max_sampled_textures_per_shader_stage
-        .unwrap_or(16),
-      max_samplers_per_shader_stage: limits
-        .max_samplers_per_shader_stage
-        .unwrap_or(16),
-      max_storage_buffers_per_shader_stage: limits
-        .max_storage_buffers_per_shader_stage
-        .unwrap_or(4),
-      max_storage_textures_per_shader_stage: limits
-        .max_storage_textures_per_shader_stage
-        .unwrap_or(4),
-      max_uniform_buffers_per_shader_stage: limits
-        .max_uniform_buffers_per_shader_stage
-        .unwrap_or(12),
-      max_uniform_buffer_binding_size: limits
-        .max_uniform_buffer_binding_size
-        .unwrap_or(16384),
-      max_storage_buffer_binding_size: limits
-        .max_storage_buffer_binding_size
-        .unwrap_or(134217728),
-      // min_uniform_buffer_offset_alignment: limits
-      //   .min_uniform_buffer_offset_alignment
-      //   .unwrap_or(default),
-      // min_storage_buffer_offset_alignment: limits
-      //   .min_storage_buffer_offset_alignment
-      //   .unwrap_or(default),
-      max_vertex_buffers: limits.max_vertex_buffers.unwrap_or(8),
-      max_vertex_attributes: limits.max_vertex_attributes.unwrap_or(16),
-      max_vertex_buffer_array_stride: limits
-        .max_vertex_buffer_array_stride
-        .unwrap_or(2048),
-      // max_inter_stage_shader_components: limits
-      //   .max_inter_stage_shader_components
-      //   .unwrap_or(default),
-      // max_compute_workgroup_storage_size: limits
-      //   .max_compute_workgroup_storage_size
-      //   .unwrap_or(default),
-      // max_compute_invocations_per_workgroup: limits
-      //    .max_compute_invocations_per_workgroup
-      //    .unwrap_or(default),
-      // max_compute_workgroup_size_x: limits
-      //    .max_compute_workgroup_size_x
-      //    .unwrap_or(default),
-      // max_compute_workgroup_size_y: limits
-      //    .max_compute_workgroup_size_y
-      //    .unwrap_or(default),
-      // max_compute_workgroup_size_z: limits
-      //    .max_compute_workgroup_size_z
-      //    .unwrap_or(default),
-      // max_compute_workgroups_per_dimension: limits
-      //    .max_compute_workgroups_per_dimension
-      //    .unwrap_or(default),
-      max_push_constant_size: 0,
-    }
-  }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RequestDeviceArgs {
   adapter_rid: ResourceId,
   label: Option<String>,
   required_features: Option<GpuRequiredFeatures>,
-  required_limits: Option<GpuLimits>,
+  required_limits: Option<wgpu_types::Limits>,
 }
 
 #[derive(Deserialize)]
@@ -437,101 +320,120 @@ pub struct GpuRequiredFeatures(HashSet<String>);
 impl From<GpuRequiredFeatures> for wgpu_types::Features {
   fn from(required_features: GpuRequiredFeatures) -> wgpu_types::Features {
     let mut features: wgpu_types::Features = wgpu_types::Features::empty();
-
-    if required_features.0.contains("depth-clamping") {
-      features.set(wgpu_types::Features::DEPTH_CLAMPING, true);
-    }
-    if required_features.0.contains("pipeline-statistics-query") {
-      features.set(wgpu_types::Features::PIPELINE_STATISTICS_QUERY, true);
-    }
-    if required_features.0.contains("texture-compression-bc") {
-      features.set(wgpu_types::Features::TEXTURE_COMPRESSION_BC, true);
-    }
-    if required_features.0.contains("timestamp-query") {
-      features.set(wgpu_types::Features::TIMESTAMP_QUERY, true);
-    }
+    features.set(
+      wgpu_types::Features::DEPTH_CLIP_CONTROL,
+      required_features.0.contains("depth-clip-control"),
+    );
+    features.set(
+      wgpu_types::Features::PIPELINE_STATISTICS_QUERY,
+      required_features.0.contains("pipeline-statistics-query"),
+    );
+    features.set(
+      wgpu_types::Features::TEXTURE_COMPRESSION_BC,
+      required_features.0.contains("texture-compression-bc"),
+    );
+    features.set(
+      wgpu_types::Features::TEXTURE_COMPRESSION_ETC2,
+      required_features.0.contains("texture-compression-etc2"),
+    );
+    features.set(
+      wgpu_types::Features::TEXTURE_COMPRESSION_ASTC_LDR,
+      required_features.0.contains("texture-compression-astc"),
+    );
+    features.set(
+      wgpu_types::Features::TIMESTAMP_QUERY,
+      required_features.0.contains("timestamp-query"),
+    );
+    features.set(
+      wgpu_types::Features::INDIRECT_FIRST_INSTANCE,
+      required_features.0.contains("indirect-first-instance"),
+    );
 
     // extended from spec
-    if required_features.0.contains("mappable-primary-buffers") {
-      features.set(wgpu_types::Features::MAPPABLE_PRIMARY_BUFFERS, true);
-    }
-    if required_features.0.contains("texture-binding-array") {
-      features.set(wgpu_types::Features::TEXTURE_BINDING_ARRAY, true);
-    }
-    if required_features.0.contains("buffer-binding-array") {
-      features.set(wgpu_types::Features::BUFFER_BINDING_ARRAY, true);
-    }
-    if required_features
-      .0
-      .contains("storage-resource-binding-array")
-    {
-      features.set(wgpu_types::Features::STORAGE_RESOURCE_BINDING_ARRAY, true);
-    }
-    if required_features
-      .0
-      .contains("sampled-texture-and-storage-buffer-array-non-uniform-indexing")
-    {
-      features.set(wgpu_types::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING, true);
-    }
-    if required_features.0.contains(
-      "uniform-buffer-and-storage-buffer-texture-non-uniform-indexing",
-    ) {
-      features.set(wgpu_types::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING, true);
-    }
-    if required_features.0.contains("unsized-binding-array") {
-      features.set(wgpu_types::Features::UNSIZED_BINDING_ARRAY, true);
-    }
-    if required_features.0.contains("multi-draw-indirect") {
-      features.set(wgpu_types::Features::MULTI_DRAW_INDIRECT, true);
-    }
-    if required_features.0.contains("multi-draw-indirect-count") {
-      features.set(wgpu_types::Features::MULTI_DRAW_INDIRECT_COUNT, true);
-    }
-    if required_features.0.contains("push-constants") {
-      features.set(wgpu_types::Features::PUSH_CONSTANTS, true);
-    }
-    if required_features.0.contains("address-mode-clamp-to-border") {
-      features.set(wgpu_types::Features::ADDRESS_MODE_CLAMP_TO_BORDER, true);
-    }
-    if required_features.0.contains("non-fill-polygon-mode") {
-      features.set(wgpu_types::Features::NON_FILL_POLYGON_MODE, true);
-    }
-    if required_features.0.contains("texture-compression-etc2") {
-      features.set(wgpu_types::Features::TEXTURE_COMPRESSION_ETC2, true);
-    }
-    if required_features.0.contains("texture-compression-astc-ldr") {
-      features.set(wgpu_types::Features::TEXTURE_COMPRESSION_ASTC_LDR, true);
-    }
-    if required_features
-      .0
-      .contains("texture-adapter-specific-format-features")
-    {
-      features.set(
-        wgpu_types::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
-        true,
-      );
-    }
-    if required_features.0.contains("shader-float64") {
-      features.set(wgpu_types::Features::SHADER_FLOAT64, true);
-    }
-    if required_features.0.contains("vertex-attribute-64bit") {
-      features.set(wgpu_types::Features::VERTEX_ATTRIBUTE_64BIT, true);
-    }
-    if required_features.0.contains("conservative-rasterization") {
-      features.set(wgpu_types::Features::CONSERVATIVE_RASTERIZATION, true);
-    }
-    if required_features.0.contains("vertex-writable-storage") {
-      features.set(wgpu_types::Features::VERTEX_WRITABLE_STORAGE, true);
-    }
-    if required_features.0.contains("clear-commands") {
-      features.set(wgpu_types::Features::CLEAR_COMMANDS, true);
-    }
-    if required_features.0.contains("spirv-shader-passthrough") {
-      features.set(wgpu_types::Features::SPIRV_SHADER_PASSTHROUGH, true);
-    }
-    if required_features.0.contains("shader-primitive-index") {
-      features.set(wgpu_types::Features::SHADER_PRIMITIVE_INDEX, true);
-    }
+    features.set(
+      wgpu_types::Features::MAPPABLE_PRIMARY_BUFFERS,
+      required_features.0.contains("mappable-primary-buffers"),
+    );
+    features.set(
+      wgpu_types::Features::TEXTURE_BINDING_ARRAY,
+      required_features.0.contains("texture-binding-array"),
+    );
+    features.set(
+      wgpu_types::Features::BUFFER_BINDING_ARRAY,
+      required_features.0.contains("buffer-binding-array"),
+    );
+    features.set(
+      wgpu_types::Features::STORAGE_RESOURCE_BINDING_ARRAY,
+      required_features
+        .0
+        .contains("storage-resource-binding-array"),
+    );
+    features.set(
+            wgpu_types::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+            required_features
+                .0
+                .contains("sampled-texture-and-storage-buffer-array-non-uniform-indexing"),
+        );
+    features.set(
+            wgpu_types::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
+            required_features
+                .0
+                .contains("uniform-buffer-and-storage-buffer-texture-non-uniform-indexing"),
+        );
+    features.set(
+      wgpu_types::Features::UNSIZED_BINDING_ARRAY,
+      required_features.0.contains("unsized-binding-array"),
+    );
+    features.set(
+      wgpu_types::Features::MULTI_DRAW_INDIRECT,
+      required_features.0.contains("multi-draw-indirect"),
+    );
+    features.set(
+      wgpu_types::Features::MULTI_DRAW_INDIRECT_COUNT,
+      required_features.0.contains("multi-draw-indirect-count"),
+    );
+    features.set(
+      wgpu_types::Features::PUSH_CONSTANTS,
+      required_features.0.contains("push-constants"),
+    );
+    features.set(
+      wgpu_types::Features::ADDRESS_MODE_CLAMP_TO_BORDER,
+      required_features.0.contains("address-mode-clamp-to-border"),
+    );
+    features.set(
+      wgpu_types::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+      required_features
+        .0
+        .contains("texture-adapter-specific-format-features"),
+    );
+    features.set(
+      wgpu_types::Features::SHADER_FLOAT64,
+      required_features.0.contains("shader-float64"),
+    );
+    features.set(
+      wgpu_types::Features::VERTEX_ATTRIBUTE_64BIT,
+      required_features.0.contains("vertex-attribute-64bit"),
+    );
+    features.set(
+      wgpu_types::Features::CONSERVATIVE_RASTERIZATION,
+      required_features.0.contains("conservative-rasterization"),
+    );
+    features.set(
+      wgpu_types::Features::VERTEX_WRITABLE_STORAGE,
+      required_features.0.contains("vertex-writable-storage"),
+    );
+    features.set(
+      wgpu_types::Features::CLEAR_COMMANDS,
+      required_features.0.contains("clear-commands"),
+    );
+    features.set(
+      wgpu_types::Features::SPIRV_SHADER_PASSTHROUGH,
+      required_features.0.contains("spirv-shader-passthrough"),
+    );
+    features.set(
+      wgpu_types::Features::SHADER_PRIMITIVE_INDEX,
+      required_features.0.contains("shader-primitive-index"),
+    );
 
     features
   }
@@ -776,6 +678,10 @@ fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
       ),
     ),
     (
+      "op_webgpu_command_encoder_clear_buffer",
+      op_sync(command_encoder::op_webgpu_command_encoder_clear_buffer),
+    ),
+    (
       "op_webgpu_command_encoder_push_debug_group",
       op_sync(command_encoder::op_webgpu_command_encoder_push_debug_group),
     ),
@@ -894,6 +800,22 @@ fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
     (
       "op_webgpu_compute_pass_dispatch_indirect",
       op_sync(compute_pass::op_webgpu_compute_pass_dispatch_indirect),
+    ),
+    (
+      "op_webgpu_compute_pass_begin_pipeline_statistics_query",
+      op_sync(
+        compute_pass::op_webgpu_compute_pass_begin_pipeline_statistics_query,
+      ),
+    ),
+    (
+      "op_webgpu_compute_pass_end_pipeline_statistics_query",
+      op_sync(
+        compute_pass::op_webgpu_compute_pass_end_pipeline_statistics_query,
+      ),
+    ),
+    (
+      "op_webgpu_compute_pass_write_timestamp",
+      op_sync(compute_pass::op_webgpu_compute_pass_write_timestamp),
     ),
     (
       "op_webgpu_compute_pass_end_pass",

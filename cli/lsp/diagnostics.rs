@@ -4,6 +4,7 @@ use super::analysis;
 use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents;
+use super::documents::Document;
 use super::documents::Documents;
 use super::language_server;
 use super::performance::Performance;
@@ -32,73 +33,67 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio::time::Duration;
 use tokio::time::Instant;
+use tokio_util::sync::CancellationToken;
 
 pub type DiagnosticRecord =
   (ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>);
 pub type DiagnosticVec = Vec<DiagnosticRecord>;
+type DiagnosticMap =
+  HashMap<ModuleSpecifier, (Option<i32>, Vec<lsp::Diagnostic>)>;
 type TsDiagnosticsMap = HashMap<String, Vec<diagnostics::Diagnostic>>;
+type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp::Diagnostic>>;
 
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub(crate) enum DiagnosticSource {
-  Deno,
-  DenoLint,
-  TypeScript,
+#[derive(Clone)]
+struct DiagnosticsPublisher {
+  client: Client,
+  all_diagnostics:
+    Arc<Mutex<HashMap<ModuleSpecifier, DiagnosticsByVersionMap>>>,
 }
 
-#[derive(Debug, Default)]
-struct DiagnosticCollection {
-  map: HashMap<(ModuleSpecifier, DiagnosticSource), Vec<lsp::Diagnostic>>,
-  versions: HashMap<ModuleSpecifier, HashMap<DiagnosticSource, i32>>,
-  changes: HashSet<ModuleSpecifier>,
-}
-
-impl DiagnosticCollection {
-  pub fn get(
-    &self,
-    specifier: &ModuleSpecifier,
-    source: DiagnosticSource,
-  ) -> impl Iterator<Item = &lsp::Diagnostic> {
-    self
-      .map
-      .get(&(specifier.clone(), source))
-      .into_iter()
-      .flatten()
-  }
-
-  pub fn get_version(
-    &self,
-    specifier: &ModuleSpecifier,
-    source: &DiagnosticSource,
-  ) -> Option<i32> {
-    let source_version = self.versions.get(specifier)?;
-    source_version.get(source).cloned()
-  }
-
-  pub fn set(&mut self, source: DiagnosticSource, record: DiagnosticRecord) {
-    let (specifier, maybe_version, diagnostics) = record;
-    self
-      .map
-      .insert((specifier.clone(), source.clone()), diagnostics);
-    if let Some(version) = maybe_version {
-      let source_version = self.versions.entry(specifier.clone()).or_default();
-      source_version.insert(source, version);
+impl DiagnosticsPublisher {
+  pub fn new(client: Client) -> Self {
+    Self {
+      client,
+      all_diagnostics: Default::default(),
     }
-    self.changes.insert(specifier);
   }
 
-  pub fn take_changes(&mut self) -> Option<HashSet<ModuleSpecifier>> {
-    if self.changes.is_empty() {
-      None
-    } else {
-      Some(mem::take(&mut self.changes))
+  pub async fn publish(
+    &self,
+    diagnostics: DiagnosticVec,
+    token: &CancellationToken,
+  ) {
+    let mut all_diagnostics = self.all_diagnostics.lock().await;
+    for (specifier, version, diagnostics) in diagnostics {
+      if token.is_cancelled() {
+        return;
+      }
+
+      // the versions of all the published diagnostics should be the same, but just
+      // in case they're not keep track of that
+      let diagnostics_by_version =
+        all_diagnostics.entry(specifier.clone()).or_default();
+      let mut version_diagnostics =
+        diagnostics_by_version.entry(version).or_default();
+      version_diagnostics.extend(diagnostics);
+
+      self
+        .client
+        .publish_diagnostics(specifier, version_diagnostics.clone(), version)
+        .await;
     }
+  }
+
+  pub async fn clear(&self) {
+    let mut all_diagnostics = self.all_diagnostics.lock().await;
+    all_diagnostics.clear();
   }
 }
 
 #[derive(Debug)]
 pub(crate) struct DiagnosticsServer {
   channel: Option<mpsc::UnboundedSender<()>>,
-  collection: Arc<Mutex<DiagnosticCollection>>,
+  ts_diagnostics: Arc<Mutex<DiagnosticMap>>,
   client: Client,
   performance: Arc<Performance>,
   ts_server: Arc<TsServer>,
@@ -112,37 +107,40 @@ impl DiagnosticsServer {
   ) -> Self {
     DiagnosticsServer {
       channel: Default::default(),
-      collection: Default::default(),
+      ts_diagnostics: Default::default(),
       client,
       performance,
       ts_server,
     }
   }
 
-  pub(crate) async fn get(
+  pub(crate) async fn get_ts_diagnostics(
     &self,
     specifier: &ModuleSpecifier,
-    source: DiagnosticSource,
+    document_version: Option<i32>,
   ) -> Vec<lsp::Diagnostic> {
-    self
-      .collection
-      .lock()
-      .await
-      .get(specifier, source)
-      .cloned()
-      .collect()
+    let ts_diagnostics = self.ts_diagnostics.lock().await;
+    if let Some((diagnostics_doc_version, diagnostics)) =
+      ts_diagnostics.get(specifier)
+    {
+      // only get the diagnostics if they're up to date
+      if document_version == *diagnostics_doc_version {
+        return diagnostics.clone();
+      }
+    }
+    Vec::new()
   }
 
   pub(crate) async fn invalidate(&self, specifiers: Vec<ModuleSpecifier>) {
-    let mut collection = self.collection.lock().await;
+    let mut ts_diagnostics = self.ts_diagnostics.lock().await;
     for specifier in &specifiers {
-      collection.versions.remove(specifier);
+      ts_diagnostics.remove(specifier);
     }
   }
 
   pub(crate) async fn invalidate_all(&self) {
-    let mut collection = self.collection.lock().await;
-    collection.versions.clear();
+    let mut ts_diagnostics = self.ts_diagnostics.lock().await;
+    ts_diagnostics.clear();
   }
 
   pub(crate) fn start(
@@ -151,49 +149,30 @@ impl DiagnosticsServer {
   ) {
     let (tx, mut rx) = mpsc::unbounded_channel::<()>();
     self.channel = Some(tx);
-    let collection = self.collection.clone();
     let client = self.client.clone();
     let performance = self.performance.clone();
+    let stored_ts_diagnostics = self.ts_diagnostics.clone();
     let ts_server = self.ts_server.clone();
 
     let _join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
 
       runtime.block_on(async {
-        // Debounce timer delay. 150ms between keystrokes is about 45 WPM, so we
-        // want something that is longer than that, but not too long to
-        // introduce detectable UI delay; 200ms is a decent compromise.
-        const DELAY: Duration = Duration::from_millis(200);
-        // If the debounce timer isn't active, it will be set to expire "never",
-        // which is actually just 1 year in the future.
-        const NEVER: Duration = Duration::from_secs(365 * 24 * 60 * 60);
-
-        // A flag that is set whenever something has changed that requires the
-        // diagnostics collection to be updated.
-        let mut dirty = false;
-
-        let debounce_timer = sleep(NEVER);
-        tokio::pin!(debounce_timer);
+        let mut token = CancellationToken::new();
+        let mut ts_handle: Option<tokio::task::JoinHandle<()>> = None;
+        let mut lint_handle: Option<tokio::task::JoinHandle<()>> = None;
+        let mut deps_handle: Option<tokio::task::JoinHandle<()>> = None;
+        let diagnostics_publisher = DiagnosticsPublisher::new(client.clone());
 
         loop {
-          // "race" the next message off the rx queue or the debounce timer.
-          // The debounce timer gets reset every time a message comes off the
-          // queue. When the debounce timer expires, a snapshot of the most
-          // up-to-date state is used to produce diagnostics.
-          tokio::select! {
-            maybe_request = rx.recv() => {
-              match maybe_request {
-                // channel has closed
-                None => break,
-                Some(_) => {
-                  dirty = true;
-                  debounce_timer.as_mut().reset(Instant::now() + DELAY);
-                }
-              }
-            }
-            _ = debounce_timer.as_mut(), if dirty => {
-              dirty = false;
-              debounce_timer.as_mut().reset(Instant::now() + NEVER);
+          match rx.recv().await {
+            // channel has closed
+            None => break,
+            Some(()) => {
+              // cancel the previous run
+              token.cancel();
+              token = CancellationToken::new();
+              diagnostics_publisher.clear().await;
 
               let (snapshot, config, maybe_lint_config) = {
                 let language_server = language_server.lock().await;
@@ -203,15 +182,124 @@ impl DiagnosticsServer {
                   language_server.maybe_lint_config.clone(),
                 )
               };
-              update_diagnostics(
-                &client,
-                collection.clone(),
-                snapshot,
-                config,
-                maybe_lint_config,
-                &ts_server,
-                performance.clone(),
-              ).await;
+
+              let previous_ts_handle = ts_handle.take();
+              ts_handle = Some(tokio::spawn({
+                let performance = performance.clone();
+                let diagnostics_publisher = diagnostics_publisher.clone();
+                let ts_server = ts_server.clone();
+                let token = token.clone();
+                let stored_ts_diagnostics = stored_ts_diagnostics.clone();
+                let snapshot = snapshot.clone();
+                let config = config.clone();
+                async move {
+                  if let Some(previous_handle) = previous_ts_handle {
+                    // Wait on the previous run to complete in order to prevent
+                    // multiple threads queueing up a lot of tsc requests.
+                    // Do not race this with cancellation because we want a
+                    // chain of events to wait for all the previous diagnostics to complete
+                    previous_handle.await;
+                  }
+
+                  // Debounce timer delay. 150ms between keystrokes is about 45 WPM, so we
+                  // want something that is longer than that, but not too long to
+                  // introduce detectable UI delay; 200ms is a decent compromise.
+                  const DELAY: Duration = Duration::from_millis(200);
+                  tokio::select! {
+                    _ = token.cancelled() => { return; }
+                    _ = tokio::time::sleep(DELAY) => {}
+                  };
+
+                  let mark =
+                    performance.mark("update_diagnostics_ts", None::<()>);
+                  let diagnostics = generate_ts_diagnostics(
+                    snapshot.clone(),
+                    &config,
+                    &ts_server,
+                  )
+                  .await
+                  .map_err(|err| {
+                    error!("Error generating TypeScript diagnostics: {}", err);
+                  })
+                  .unwrap_or_default();
+
+                  if !token.is_cancelled() {
+                    {
+                      let mut stored_ts_diagnostics =
+                        stored_ts_diagnostics.lock().await;
+                      *stored_ts_diagnostics = diagnostics
+                        .iter()
+                        .map(|(specifier, version, diagnostics)| {
+                          (specifier.clone(), (*version, diagnostics.clone()))
+                        })
+                        .collect();
+                    }
+
+                    diagnostics_publisher.publish(diagnostics, &token).await;
+
+                    if !token.is_cancelled() {
+                      performance.measure(mark);
+                    }
+                  }
+                }
+              }));
+
+              let previous_deps_handle = deps_handle.take();
+              deps_handle = Some(tokio::spawn({
+                let performance = performance.clone();
+                let diagnostics_publisher = diagnostics_publisher.clone();
+                let token = token.clone();
+                let snapshot = snapshot.clone();
+                let config = config.clone();
+                async move {
+                  if let Some(previous_handle) = previous_deps_handle {
+                    previous_handle.await;
+                  }
+                  let mark =
+                    performance.mark("update_diagnostics_deps", None::<()>);
+                  let diagnostics = generate_deps_diagnostics(
+                    &snapshot,
+                    &config,
+                    token.clone(),
+                  )
+                  .await;
+
+                  diagnostics_publisher.publish(diagnostics, &token).await;
+
+                  if !token.is_cancelled() {
+                    performance.measure(mark);
+                  }
+                }
+              }));
+
+              let previous_lint_handle = lint_handle.take();
+              lint_handle = Some(tokio::spawn({
+                let performance = performance.clone();
+                let diagnostics_publisher = diagnostics_publisher.clone();
+                let token = token.clone();
+                let snapshot = snapshot.clone();
+                let config = config.clone();
+                async move {
+                  if let Some(previous_handle) = previous_lint_handle {
+                    previous_handle.await;
+                  }
+                  let mark =
+                    performance.mark("update_diagnostics_lint", None::<()>);
+                  let diagnostics = generate_lint_diagnostics(
+                    &snapshot,
+                    &config,
+                    maybe_lint_config,
+                    token.clone(),
+                  )
+                  .await;
+
+                  diagnostics_publisher.publish(diagnostics, &token).await;
+
+                  if !token.is_cancelled() {
+                    performance.measure(mark);
+                  }
+                }
+              }));
             }
           }
         }
@@ -336,108 +424,118 @@ fn ts_json_to_diagnostics(
 
 async fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
-  collection: Arc<Mutex<DiagnosticCollection>>,
   config: &ConfigSnapshot,
   maybe_lint_config: Option<LintConfig>,
-) -> Result<DiagnosticVec, AnyError> {
+  token: CancellationToken,
+) -> DiagnosticVec {
   let documents = snapshot.documents.documents(true, true);
   let workspace_settings = config.settings.workspace.clone();
 
-  tokio::task::spawn(async move {
-    let mut diagnostics_vec = Vec::new();
-    if workspace_settings.lint {
-      for document in documents {
-        let version = document.maybe_lsp_version();
-        let current_version = collection
-          .lock()
-          .await
-          .get_version(document.specifier(), &DiagnosticSource::DenoLint);
-        if version != current_version {
-          let is_allowed = match &maybe_lint_config {
-            Some(lint_config) => {
-              lint_config.files.matches_specifier(document.specifier())
-            }
-            None => true,
-          };
-          let diagnostics = if is_allowed {
-            match document.maybe_parsed_source() {
-              Some(Ok(parsed_source)) => {
-                if let Ok(references) = analysis::get_lint_references(
-                  &parsed_source,
-                  maybe_lint_config.as_ref(),
-                ) {
-                  references
-                    .into_iter()
-                    .map(|r| r.to_diagnostic())
-                    .collect::<Vec<_>>()
-                } else {
-                  Vec::new()
-                }
-              }
-              Some(Err(_)) => Vec::new(),
-              None => {
-                error!("Missing file contents for: {}", document.specifier());
-                Vec::new()
-              }
-            }
-          } else {
-            Vec::new()
-          };
-          diagnostics_vec.push((
-            document.specifier().clone(),
-            version,
-            diagnostics,
-          ));
-        }
+  let mut diagnostics_vec = Vec::new();
+  if workspace_settings.lint {
+    for document in documents {
+      // exit early if cancelled
+      if token.is_cancelled() {
+        break;
+      }
+
+      let version = document.maybe_lsp_version();
+      diagnostics_vec.push((
+        document.specifier().clone(),
+        version,
+        generate_document_lint_diagnostics(
+          config,
+          &maybe_lint_config,
+          &document,
+        ),
+      ));
+    }
+  }
+  diagnostics_vec
+}
+
+fn generate_document_lint_diagnostics(
+  config: &ConfigSnapshot,
+  maybe_lint_config: &Option<LintConfig>,
+  document: &Document,
+) -> Vec<lsp::Diagnostic> {
+  if !config.specifier_enabled(document.specifier()) {
+    return Vec::new();
+  }
+  if let Some(lint_config) = &maybe_lint_config {
+    if !lint_config.files.matches_specifier(document.specifier()) {
+      return Vec::new();
+    }
+  }
+  match document.maybe_parsed_source() {
+    Some(Ok(parsed_source)) => {
+      if let Ok(references) = analysis::get_lint_references(
+        &parsed_source,
+        maybe_lint_config.as_ref(),
+      ) {
+        references
+          .into_iter()
+          .map(|r| r.to_diagnostic())
+          .collect::<Vec<_>>()
+      } else {
+        Vec::new()
       }
     }
-    Ok(diagnostics_vec)
-  })
-  .await
-  .unwrap()
+    Some(Err(_)) => Vec::new(),
+    None => {
+      error!("Missing file contents for: {}", document.specifier());
+      Vec::new()
+    }
+  }
 }
 
 async fn generate_ts_diagnostics(
   snapshot: Arc<language_server::StateSnapshot>,
-  collection: Arc<Mutex<DiagnosticCollection>>,
+  config: &ConfigSnapshot,
   ts_server: &tsc::TsServer,
 ) -> Result<DiagnosticVec, AnyError> {
   let mut diagnostics_vec = Vec::new();
-  let specifiers: Vec<ModuleSpecifier> = {
-    let collection = collection.lock().await;
-    snapshot
-      .documents
-      .documents(true, true)
-      .iter()
-      .filter_map(|d| {
-        let version = d.maybe_lsp_version();
-        let current_version =
-          collection.get_version(d.specifier(), &DiagnosticSource::TypeScript);
-        if version != current_version {
-          Some(d.specifier().clone())
-        } else {
-          None
-        }
-      })
-      .collect()
+  let specifiers = snapshot
+    .documents
+    .documents(true, true)
+    .iter()
+    .map(|d| d.specifier().clone())
+    .collect::<Vec<_>>();
+  let (enabled_specifiers, disabled_specifiers) = specifiers
+    .iter()
+    .cloned()
+    .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
+  let ts_diagnostics_map: TsDiagnosticsMap = if !enabled_specifiers.is_empty() {
+    let req = tsc::RequestMethod::GetDiagnostics(enabled_specifiers);
+    ts_server.request(snapshot.clone(), req).await?
+  } else {
+    Default::default()
   };
-  if !specifiers.is_empty() {
-    let req = tsc::RequestMethod::GetDiagnostics(specifiers);
-    let ts_diagnostics_map: TsDiagnosticsMap =
-      ts_server.request(snapshot.clone(), req).await?;
-    for (specifier_str, ts_diagnostics) in ts_diagnostics_map {
-      let specifier = resolve_url(&specifier_str)?;
-      let version = snapshot
-        .documents
-        .get(&specifier)
-        .map(|d| d.maybe_lsp_version())
-        .flatten();
-      diagnostics_vec.push((
-        specifier,
-        version,
-        ts_json_to_diagnostics(ts_diagnostics),
-      ));
-    }
+  for (specifier_str, ts_json_diagnostics) in ts_diagnostics_map {
+    let specifier = resolve_url(&specifier_str)?;
+    let version = snapshot
+      .documents
+      .get(&specifier)
+      .map(|d| d.maybe_lsp_version())
+      .flatten();
+    // check if the specifier is enabled again just in case TS returns us
+    // diagnostics for a disabled specifier
+    let ts_diagnostics = if config.specifier_enabled(&specifier) {
+      ts_json_to_diagnostics(ts_json_diagnostics)
+    } else {
+      Vec::new()
+    };
+    diagnostics_vec.push((specifier, version, ts_diagnostics));
+  }
+  // add an empty diagnostic publish for disabled specifiers in order
+  // to clear those diagnostics if they exist
+  for specifier in disabled_specifiers {
+    let version = snapshot
+      .documents
+      .get(&specifier)
+      .map(|d| d.maybe_lsp_version())
+      .flatten();
+    diagnostics_vec.push((specifier, version, Vec::new()));
   }
   Ok(diagnostics_vec)
 }
@@ -550,170 +648,43 @@ fn diagnose_dependency(
 /// Generate diagnostics for dependencies of a module, attempting to resolve
 /// dependencies on the local file system or in the DENO_DIR cache.
 async fn generate_deps_diagnostics(
-  snapshot: Arc<language_server::StateSnapshot>,
-  config: Arc<ConfigSnapshot>,
-  collection: Arc<Mutex<DiagnosticCollection>>,
-) -> Result<DiagnosticVec, AnyError> {
-  tokio::task::spawn(async move {
-    let mut diagnostics_vec = Vec::new();
-
-    for document in snapshot.documents.documents(true, true) {
-      if !config.specifier_enabled(document.specifier()) {
-        continue;
-      }
-      let version = document.maybe_lsp_version();
-      let current_version = collection
-        .lock()
-        .await
-        .get_version(document.specifier(), &DiagnosticSource::Deno);
-      if version != current_version {
-        let mut diagnostics = Vec::new();
-        for (_, dependency) in document.dependencies() {
-          diagnose_dependency(
-            &mut diagnostics,
-            &snapshot.documents,
-            &dependency.maybe_code,
-            dependency.is_dynamic,
-            dependency.maybe_assert_type.as_deref(),
-          );
-          diagnose_dependency(
-            &mut diagnostics,
-            &snapshot.documents,
-            &dependency.maybe_type,
-            dependency.is_dynamic,
-            dependency.maybe_assert_type.as_deref(),
-          );
-        }
-        diagnostics_vec.push((
-          document.specifier().clone(),
-          version,
-          diagnostics,
-        ));
-      }
-    }
-
-    Ok(diagnostics_vec)
-  })
-  .await
-  .unwrap()
-}
-
-/// Publishes diagnostics to the client.
-async fn publish_diagnostics(
-  client: &Client,
-  collection: &mut DiagnosticCollection,
   snapshot: &language_server::StateSnapshot,
   config: &ConfigSnapshot,
-) {
-  if let Some(changes) = collection.take_changes() {
-    for specifier in changes {
-      let mut diagnostics: Vec<lsp::Diagnostic> =
-        if config.settings.workspace.lint {
-          collection
-            .get(&specifier, DiagnosticSource::DenoLint)
-            .cloned()
-            .collect()
-        } else {
-          Vec::new()
-        };
-      if config.specifier_enabled(&specifier) {
-        diagnostics.extend(
-          collection
-            .get(&specifier, DiagnosticSource::TypeScript)
-            .cloned(),
+  token: CancellationToken,
+) -> DiagnosticVec {
+  let mut diagnostics_vec = Vec::new();
+
+  for document in snapshot.documents.documents(true, true) {
+    if token.is_cancelled() {
+      break;
+    }
+    let mut diagnostics = Vec::new();
+    if config.specifier_enabled(document.specifier()) {
+      for (_, dependency) in document.dependencies() {
+        diagnose_dependency(
+          &mut diagnostics,
+          &snapshot.documents,
+          &dependency.maybe_code,
+          dependency.is_dynamic,
+          dependency.maybe_assert_type.as_deref(),
         );
-        diagnostics
-          .extend(collection.get(&specifier, DiagnosticSource::Deno).cloned());
+        diagnose_dependency(
+          &mut diagnostics,
+          &snapshot.documents,
+          &dependency.maybe_type,
+          dependency.is_dynamic,
+          dependency.maybe_assert_type.as_deref(),
+        );
       }
-      let version = snapshot
-        .documents
-        .get(&specifier)
-        .map(|d| d.maybe_lsp_version())
-        .flatten();
-      client
-        .publish_diagnostics(specifier.clone(), diagnostics, version)
-        .await;
     }
+    diagnostics_vec.push((
+      document.specifier().clone(),
+      document.maybe_lsp_version(),
+      diagnostics,
+    ));
   }
-}
 
-/// Updates diagnostics for any specifiers that don't have the correct version
-/// generated and publishes the diagnostics to the client.
-async fn update_diagnostics(
-  client: &Client,
-  collection: Arc<Mutex<DiagnosticCollection>>,
-  snapshot: Arc<language_server::StateSnapshot>,
-  config: Arc<ConfigSnapshot>,
-  maybe_lint_config: Option<LintConfig>,
-  ts_server: &tsc::TsServer,
-  performance: Arc<Performance>,
-) {
-  let mark = performance.mark("update_diagnostics", None::<()>);
-
-  let lint = async {
-    let mark = performance.mark("update_diagnostics_lint", None::<()>);
-    let collection = collection.clone();
-    let diagnostics = generate_lint_diagnostics(
-      &snapshot,
-      collection.clone(),
-      &config,
-      maybe_lint_config,
-    )
-    .await
-    .map_err(|err| {
-      error!("Error generating lint diagnostics: {}", err);
-    })
-    .unwrap_or_default();
-
-    let mut collection = collection.lock().await;
-    for diagnostic_record in diagnostics {
-      collection.set(DiagnosticSource::DenoLint, diagnostic_record);
-    }
-    publish_diagnostics(client, &mut collection, &snapshot, &config).await;
-    performance.measure(mark);
-  };
-
-  let ts = async {
-    let mark = performance.mark("update_diagnostics_ts", None::<()>);
-    let collection = collection.clone();
-    let diagnostics =
-      generate_ts_diagnostics(snapshot.clone(), collection.clone(), ts_server)
-        .await
-        .map_err(|err| {
-          error!("Error generating TypeScript diagnostics: {}", err);
-        })
-        .unwrap_or_default();
-    let mut collection = collection.lock().await;
-    for diagnostic_record in diagnostics {
-      collection.set(DiagnosticSource::TypeScript, diagnostic_record);
-    }
-    publish_diagnostics(client, &mut collection, &snapshot, &config).await;
-    performance.measure(mark);
-  };
-
-  let deps = async {
-    let mark = performance.mark("update_diagnostics_deps", None::<()>);
-    let collection = collection.clone();
-    let diagnostics = generate_deps_diagnostics(
-      snapshot.clone(),
-      config.clone(),
-      collection.clone(),
-    )
-    .await
-    .map_err(|err| {
-      error!("Error generating Deno diagnostics: {}", err);
-    })
-    .unwrap_or_default();
-    let mut collection = collection.lock().await;
-    for diagnostic_record in diagnostics {
-      collection.set(DiagnosticSource::Deno, diagnostic_record);
-    }
-    publish_diagnostics(client, &mut collection, &snapshot, &config).await;
-    performance.measure(mark);
-  };
-
-  tokio::join!(lint, ts, deps);
-  performance.measure(mark);
+  diagnostics_vec
 }
 
 #[cfg(test)]
@@ -721,6 +692,7 @@ mod tests {
   use super::*;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
+  use crate::lsp::config::SpecifierSettings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
@@ -765,38 +737,95 @@ mod tests {
 
   fn setup(
     sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (
-    StateSnapshot,
-    Arc<Mutex<DiagnosticCollection>>,
-    PathBuf,
-    ConfigSnapshot,
-  ) {
+  ) -> (StateSnapshot, PathBuf) {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
     let state_snapshot = mock_state_snapshot(sources, &location);
-    let collection = Arc::new(Mutex::new(DiagnosticCollection::default()));
-    let config = mock_config();
-    (state_snapshot, collection, location, config)
+    (state_snapshot, location)
   }
 
   #[tokio::test]
-  async fn test_generate_lint_diagnostics() {
-    let (snapshot, collection, _, config) = setup(&[(
+  async fn test_enabled_then_disabled_specifier() {
+    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
+    let (snapshot, _) = setup(&[(
       "file:///a.ts",
       r#"import * as b from "./b.ts";
-
-let a = "a";
-console.log(a);
+let a: any = "a";
+let c: number = "a";
 "#,
       1,
       LanguageId::TypeScript,
     )]);
-    let result =
-      generate_lint_diagnostics(&snapshot, collection, &config, None).await;
-    assert!(result.is_ok());
-    let diagnostics = result.unwrap();
-    assert_eq!(diagnostics.len(), 1);
-    let (_, _, diagnostics) = &diagnostics[0];
-    assert_eq!(diagnostics.len(), 2);
+    let snapshot = Arc::new(snapshot);
+    let ts_server = TsServer::new(Default::default());
+
+    // test enabled
+    {
+      let enabled_config = mock_config();
+      let diagnostics = generate_lint_diagnostics(
+        &snapshot,
+        &enabled_config,
+        None,
+        Default::default(),
+      )
+      .await;
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
+      let diagnostics =
+        generate_ts_diagnostics(snapshot.clone(), &enabled_config, &ts_server)
+          .await
+          .unwrap();
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
+      let diagnostics = generate_deps_diagnostics(
+        &snapshot,
+        &enabled_config,
+        Default::default(),
+      )
+      .await;
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 1);
+    }
+
+    // now test disabled specifier
+    {
+      let mut disabled_config = mock_config();
+      disabled_config.settings.specifiers.insert(
+        specifier.clone(),
+        (
+          specifier.clone(),
+          SpecifierSettings {
+            enable: false,
+            code_lens: Default::default(),
+          },
+        ),
+      );
+
+      let diagnostics = generate_lint_diagnostics(
+        &snapshot,
+        &disabled_config,
+        None,
+        Default::default(),
+      )
+      .await;
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
+      let diagnostics =
+        generate_ts_diagnostics(snapshot.clone(), &disabled_config, &ts_server)
+          .await
+          .unwrap();
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
+      let diagnostics = generate_deps_diagnostics(
+        &snapshot,
+        &disabled_config,
+        Default::default(),
+      )
+      .await;
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
+    }
+  }
+
+  fn get_diagnostics_for_single(
+    diagnostic_vec: DiagnosticVec,
+  ) -> Vec<lsp::Diagnostic> {
+    assert_eq!(diagnostic_vec.len(), 1);
+    let (_, _, diagnostics) = diagnostic_vec.into_iter().next().unwrap();
+    diagnostics
   }
 }

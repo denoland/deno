@@ -2373,13 +2373,13 @@ struct SpecifierArgs {
 }
 
 fn op_exists(state: &mut State, args: SpecifierArgs) -> Result<bool, AnyError> {
-  let mark = state.performance.mark("op_exists", Some(&args));
+  // we don't measure the performance of op_exists anymore because as of TS 4.5
+  // it is noisy with all the checking for custom libs, that we can't see the
+  // forrest for the trees as well as it compounds any lsp performance
+  // challenges, opening a single document in the editor causes some 3k worth
+  // of op_exists requests... :omg:
   let specifier = state.normalize_specifier(args.specifier)?;
-  let result = state
-    .state_snapshot
-    .documents
-    .contains_specifier(&specifier);
-  state.performance.measure(mark);
+  let result = state.state_snapshot.documents.exists(&specifier);
   Ok(result)
 }
 
@@ -2564,9 +2564,10 @@ fn op_script_version(
   state: &mut State,
   args: ScriptVersionArgs,
 ) -> Result<Option<String>, AnyError> {
-  let mark = state.performance.mark("op_script_version", Some(&args));
+  // this op is very "noisy" and measuring its performance is not useful, so we
+  // don't measure it uniquely anymore.
   let specifier = state.normalize_specifier(args.specifier)?;
-  let r = if specifier.scheme() == "asset" {
+  if specifier.scheme() == "asset" {
     if state.state_snapshot.assets.contains_key(&specifier) {
       Ok(Some("1".to_string()))
     } else {
@@ -2579,10 +2580,7 @@ fn op_script_version(
       .get(&specifier)
       .map(|d| d.script_version());
     Ok(script_version)
-  };
-
-  state.performance.measure(mark);
-  r
+  }
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the

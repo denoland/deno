@@ -6,6 +6,14 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.18.1 / 2022.01.27
+
+- feat(unstable): add Deno.networkInterfaces (#13475)
+- fix(ext/crypto): duplicate RsaHashedImportParams types (#13466)
+- fix(lsp): respect DENO_CERT and other options related to TLS certs (#13467)
+- perf(lsp): improve some tsc op hot paths (#13473)
+- perf(lsp): independent diagnostic source publishes (#13427)
+
 ### 1.18.0 / 2022.01.20
 
 - feat: auto-discover config file (#13313)

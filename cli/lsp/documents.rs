@@ -719,14 +719,15 @@ struct FileSystemDocuments {
 }
 
 impl FileSystemDocuments {
-  /// Adds or updates a document by reading the document from the file system.
+  /// Adds or updates a document by reading the document from the file system
+  /// returning the document.
   fn refresh_document(
     &mut self,
     cache: &HttpCache,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
-    specifier: ModuleSpecifier,
+    specifier: &ModuleSpecifier,
   ) -> Option<Document> {
-    let path = get_document_path(cache, &specifier)?;
+    let path = get_document_path(cache, specifier)?;
     let fs_version = calculate_fs_version(&path)?;
     let bytes = fs::read(path).ok()?;
     let doc = if specifier.scheme() == "file" {
@@ -741,11 +742,11 @@ impl FileSystemDocuments {
         maybe_resolver,
       )
     } else {
-      let cache_filename = cache.get_cache_filename(&specifier)?;
+      let cache_filename = cache.get_cache_filename(specifier)?;
       let metadata = http_cache::Metadata::read(&cache_filename).ok()?;
       let maybe_content_type = metadata.headers.get("content-type").cloned();
       let maybe_headers = Some(&metadata.headers);
-      let (_, maybe_charset) = map_content_type(&specifier, maybe_content_type);
+      let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
       let content = Arc::new(get_source_from_bytes(bytes, maybe_charset).ok()?);
       Document::new(
         specifier.clone(),
@@ -756,7 +757,8 @@ impl FileSystemDocuments {
       )
     };
     self.dirty = true;
-    self.docs.insert(specifier, doc)
+    self.docs.insert(specifier.clone(), doc.clone());
+    Some(doc)
   }
 }
 
@@ -780,12 +782,7 @@ fn get_document_path(
   if specifier.scheme() == "file" {
     specifier_to_file_path(specifier).ok()
   } else {
-    let path = cache.get_cache_filename(specifier)?;
-    if path.is_file() {
-      Some(path)
-    } else {
-      None
-    }
+    cache.get_cache_filename(specifier)
   }
 }
 
@@ -921,15 +918,25 @@ impl Documents {
       deno_core::resolve_import(specifier, referrer.as_str()).ok()
     };
     if let Some(import_specifier) = maybe_specifier {
-      self.contains_specifier(&import_specifier)
+      self.exists(&import_specifier)
     } else {
       false
     }
   }
 
   /// Return `true` if the specifier can be resolved to a document.
-  pub fn contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
-    self.get(specifier).is_some()
+  pub fn exists(&self, specifier: &ModuleSpecifier) -> bool {
+    // keep this fast because it's used by op_exists, which is a hot path in tsc
+    let specifier = self.specifier_resolver.resolve(specifier);
+    if let Some(specifier) = specifier {
+      if self.open_docs.contains_key(&specifier) {
+        return true;
+      }
+      if let Some(path) = get_document_path(&self.cache, &specifier) {
+        return path.is_file();
+      }
+    }
+    false
   }
 
   /// Return an array of specifiers, if any, that are dependent upon the
@@ -959,20 +966,17 @@ impl Documents {
       let fs_version = get_document_path(&self.cache, &specifier)
         .map(|path| calculate_fs_version(&path))
         .flatten();
-      if file_system_docs
-        .docs
-        .get(&specifier)
-        .map(|d| d.fs_version().to_string())
-        != fs_version
-      {
+      let file_system_doc = file_system_docs.docs.get(&specifier);
+      if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
         // attempt to update the file on the file system
         file_system_docs.refresh_document(
           &self.cache,
           self.get_maybe_resolver(),
-          specifier.clone(),
-        );
+          &specifier,
+        )
+      } else {
+        file_system_doc.cloned()
       }
-      file_system_docs.docs.get(&specifier).cloned()
     }
   }
 

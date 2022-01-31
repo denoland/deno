@@ -809,3 +809,17 @@ declare function structuredClone(
   value: any,
   options?: StructuredSerializeOptions,
 ): any;
+
+declare class CompressionStream {
+  constructor(format: string);
+
+  readonly readable: ReadableStream<Uint8Array>;
+  readonly writable: WritableStream<Uint8Array>;
+}
+
+declare class DecompressionStream {
+  constructor(format: string);
+
+  readonly readable: ReadableStream<Uint8Array>;
+  readonly writable: WritableStream<Uint8Array>;
+}

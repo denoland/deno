@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::ModuleSpecifier;
+use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -9,6 +10,7 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use lspower::lsp;
 use pretty_assertions::assert_eq;
+use std::collections::HashSet;
 use std::fs;
 use tempfile::TempDir;
 use test_util::deno_exe_path;
@@ -17,10 +19,15 @@ use test_util::lsp::LspClient;
 use test_util::testdata_path;
 
 fn load_fixture(path: &str) -> Value {
-  let fixtures_path = testdata_path().join("lsp");
-  let path = fixtures_path.join(path);
-  let fixture_str = fs::read_to_string(path).unwrap();
-  serde_json::from_str(&fixture_str).unwrap()
+  load_fixture_as(path)
+}
+
+fn load_fixture_as<T>(path: &str) -> T
+where
+  T: DeserializeOwned,
+{
+  let fixture_str = load_fixture_str(path);
+  serde_json::from_str::<T>(&fixture_str).unwrap()
 }
 
 fn load_fixture_str(path: &str) -> String {
@@ -64,6 +71,11 @@ where
     )
     .unwrap();
 
+  read_diagnostics(client).0
+}
+
+fn read_diagnostics(client: &mut LspClient) -> CollectedDiagnostics {
+  // diagnostics come in batches of three unless they're cancelled
   let mut diagnostics = vec![];
   for _ in 0..3 {
     let (method, response) = client
@@ -72,8 +84,7 @@ where
     assert_eq!(method, "textDocument/publishDiagnostics");
     diagnostics.push(response.unwrap());
   }
-
-  diagnostics
+  CollectedDiagnostics(diagnostics)
 }
 
 fn shutdown(client: &mut LspClient) {
@@ -81,6 +92,125 @@ fn shutdown(client: &mut LspClient) {
     .write_request::<_, _, Value>("shutdown", json!(null))
     .unwrap();
   client.write_notification("exit", json!(null)).unwrap();
+}
+
+struct TestSession {
+  client: LspClient,
+  open_file_count: usize,
+}
+
+impl TestSession {
+  pub fn from_file(init_path: &str) -> Self {
+    Self::from_client(init(init_path))
+  }
+
+  pub fn from_client(client: LspClient) -> Self {
+    Self {
+      client,
+      open_file_count: 0,
+    }
+  }
+
+  pub fn did_open<V>(&mut self, params: V) -> CollectedDiagnostics
+  where
+    V: Serialize,
+  {
+    self
+      .client
+      .write_notification("textDocument/didOpen", params)
+      .unwrap();
+
+    let (id, method, _) = self.client.read_request::<Value>().unwrap();
+    assert_eq!(method, "workspace/configuration");
+    self
+      .client
+      .write_response(
+        id,
+        json!([{
+          "enable": true,
+          "codeLens": {
+            "test": true
+          }
+        }]),
+      )
+      .unwrap();
+
+    self.open_file_count += 1;
+    self.read_diagnostics()
+  }
+
+  pub fn read_diagnostics(&mut self) -> CollectedDiagnostics {
+    let mut all_diagnostics = Vec::new();
+    for _ in 0..self.open_file_count {
+      all_diagnostics.extend(read_diagnostics(&mut self.client).0);
+    }
+    CollectedDiagnostics(all_diagnostics)
+  }
+
+  pub fn shutdown_and_exit(&mut self) {
+    shutdown(&mut self.client);
+  }
+}
+
+#[derive(Debug, Clone)]
+struct CollectedDiagnostics(Vec<lsp::PublishDiagnosticsParams>);
+
+impl CollectedDiagnostics {
+  /// Gets the diagnostics that the editor will see after all the publishes.
+  pub fn viewed(&self) -> Vec<lsp::Diagnostic> {
+    self
+      .viewed_messages()
+      .into_iter()
+      .flat_map(|m| m.diagnostics)
+      .collect()
+  }
+
+  /// Gets the messages that the editor will see after all the publishes.
+  pub fn viewed_messages(&self) -> Vec<lsp::PublishDiagnosticsParams> {
+    // go over the publishes in reverse order in order to get
+    // the final messages that will be shown in the editor
+    let mut messages = Vec::new();
+    let mut had_specifier = HashSet::new();
+    for message in self.0.iter().rev() {
+      if had_specifier.insert(message.uri.clone()) {
+        messages.insert(0, message.clone());
+      }
+    }
+    messages
+  }
+
+  pub fn with_source(&self, source: &str) -> lsp::PublishDiagnosticsParams {
+    self
+      .viewed_messages()
+      .iter()
+      .find(|p| {
+        p.diagnostics
+          .iter()
+          .any(|d| d.source == Some(source.to_string()))
+      })
+      .map(ToOwned::to_owned)
+      .unwrap()
+  }
+
+  pub fn with_file_and_source(
+    &self,
+    specifier: &str,
+    source: &str,
+  ) -> lsp::PublishDiagnosticsParams {
+    let specifier = ModuleSpecifier::parse(specifier).unwrap();
+    self
+      .viewed_messages()
+      .iter()
+      .find(|p| {
+        p.uri == specifier
+          && p
+            .diagnostics
+            .iter()
+            .any(|d| d.source == Some(source.to_string()))
+      })
+      .map(ToOwned::to_owned)
+      .unwrap()
+  }
 }
 
 #[test]
@@ -361,7 +491,7 @@ fn lsp_import_assertions() {
     )
     .unwrap();
 
-  let mut diagnostics = did_open(
+  let diagnostics = CollectedDiagnostics(did_open(
     &mut client,
     json!({
       "textDocument": {
@@ -371,11 +501,14 @@ fn lsp_import_assertions() {
         "text": "import a from \"./test.json\";\n\nconsole.log(a);\n"
       }
     }),
-  );
+  ));
 
-  let last = diagnostics.pop().unwrap();
   assert_eq!(
-    json!(last.diagnostics),
+    json!(
+      diagnostics
+        .with_file_and_source("file:///a/a.ts", "deno")
+        .diagnostics
+    ),
     json!([
       {
         "range": {
@@ -2505,31 +2638,22 @@ fn lsp_code_actions() {
 
 #[test]
 fn lsp_code_actions_deno_cache() {
-  let mut client = init("initialize_params.json");
-  client
-    .write_notification("textDocument/didOpen", json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import * as a from \"https://deno.land/x/a/mod.ts\";\n\nconsole.log(a);\n"
-      }
-    }))
-    .unwrap();
-  let (id, method, _) = client.read_request::<Value>().unwrap();
-  assert_eq!(method, "workspace/configuration");
-  client
-    .write_response(id, json!([{ "enable": true }]))
-    .unwrap();
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, params) = client.read_notification().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  assert_eq!(params, Some(load_fixture("diagnostics_deno_deps.json")));
+  let mut session = TestSession::from_file("initialize_params.json");
+  let diagnostics = session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import * as a from \"https://deno.land/x/a/mod.ts\";\n\nconsole.log(a);\n"
+    }
+  }));
+  assert_eq!(
+    diagnostics.with_source("deno"),
+    load_fixture_as("diagnostics_deno_deps.json")
+  );
 
-  let (maybe_res, maybe_err) = client
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request(
       "textDocument/codeAction",
       load_fixture("code_action_params_cache.json"),
@@ -2540,36 +2664,31 @@ fn lsp_code_actions_deno_cache() {
     maybe_res,
     Some(load_fixture("code_action_response_cache.json"))
   );
-  shutdown(&mut client);
+  session.shutdown_and_exit();
 }
 
 #[test]
 fn lsp_code_actions_imports() {
-  let mut client = init("initialize_params.json");
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file00.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export const abc = \"abc\";\nexport const def = \"def\";\n"
-      }
-    }),
-  );
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file01.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "\nconsole.log(abc);\nconsole.log(def)\n"
-      }
-    }),
-  );
+  let mut session = TestSession::from_file("initialize_params.json");
+  session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file00.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export const abc = \"abc\";\nexport const def = \"def\";\n"
+    }
+  }));
+  session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file01.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "\nconsole.log(abc);\nconsole.log(def)\n"
+    }
+  }));
 
-  let (maybe_res, maybe_err) = client
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request(
       "textDocument/codeAction",
       load_fixture("code_action_params_imports.json"),
@@ -2580,7 +2699,8 @@ fn lsp_code_actions_imports() {
     maybe_res,
     Some(load_fixture("code_action_response_imports.json"))
   );
-  let (maybe_res, maybe_err) = client
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request(
       "codeAction/resolve",
       load_fixture("code_action_resolve_params_imports.json"),
@@ -2591,7 +2711,8 @@ fn lsp_code_actions_imports() {
     maybe_res,
     Some(load_fixture("code_action_resolve_response_imports.json"))
   );
-  shutdown(&mut client);
+
+  session.shutdown_and_exit();
 }
 
 #[test]
@@ -2707,10 +2828,7 @@ fn lsp_code_actions_deadlock() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  for _ in 0..3 {
-    let (method, _) = client.read_notification::<Value>().unwrap();
-    assert_eq!(method, "textDocument/publishDiagnostics");
-  }
+  read_diagnostics(&mut client);
   client
     .write_notification(
       "textDocument/didChange",
@@ -2818,12 +2936,8 @@ fn lsp_code_actions_deadlock() {
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
 
-  for _ in 0..3 {
-    let (method, _) = client.read_notification::<Value>().unwrap();
-    assert_eq!(method, "textDocument/publishDiagnostics");
-  }
+  read_diagnostics(&mut client);
 
-  assert!(client.queue_is_empty());
   shutdown(&mut client);
 }
 
@@ -3110,26 +3224,22 @@ fn lsp_cache_location() {
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
-
   client.write_notification("initialized", json!({})).unwrap();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file_01.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export const a = \"a\";\n",
-      }
-    }),
-  );
-  let diagnostics = did_open(
-    &mut client,
-    load_fixture("did_open_params_import_hover.json"),
-  );
-  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  assert_eq!(diagnostics.count(), 14);
-  let (maybe_res, maybe_err) = client
+  let mut session = TestSession::from_client(client);
+
+  session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file_01.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export const a = \"a\";\n",
+    }
+  }));
+  let diagnostics =
+    session.did_open(load_fixture("did_open_params_import_hover.json"));
+  assert_eq!(diagnostics.viewed().len(), 7);
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request::<_, _, Value>(
       "deno/cache",
       json!({
@@ -3142,7 +3252,8 @@ fn lsp_cache_location() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = client
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request(
       "textDocument/hover",
       json!({
@@ -3176,7 +3287,8 @@ fn lsp_cache_location() {
       }
     }))
   );
-  let (maybe_res, maybe_err) = client
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request::<_, _, Value>(
       "textDocument/hover",
       json!({
@@ -3213,7 +3325,7 @@ fn lsp_cache_location() {
   let cache_path = temp_dir.path().join(".cache");
   assert!(cache_path.is_dir());
   assert!(cache_path.join("gen").is_dir());
-  shutdown(&mut client);
+  session.shutdown_and_exit();
 }
 
 /// Sets the TLS root certificate on startup, which allows the LSP to connect to
@@ -3233,24 +3345,23 @@ fn lsp_tls_cert() {
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
-
   client.write_notification("initialized", json!({})).unwrap();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file_01.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export const a = \"a\";\n",
-      }
-    }),
-  );
+  let mut session = TestSession::from_client(client);
+
+  session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file_01.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export const a = \"a\";\n",
+    }
+  }));
   let diagnostics =
-    did_open(&mut client, load_fixture("did_open_params_tls_cert.json"));
-  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
-  assert_eq!(diagnostics.count(), 14);
-  let (maybe_res, maybe_err) = client
+    session.did_open(load_fixture("did_open_params_tls_cert.json"));
+  let diagnostics = diagnostics.viewed();
+  assert_eq!(diagnostics.len(), 7);
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request::<_, _, Value>(
       "deno/cache",
       json!({
@@ -3263,7 +3374,8 @@ fn lsp_tls_cert() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  let (maybe_res, maybe_err) = client
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request(
       "textDocument/hover",
       json!({
@@ -3297,7 +3409,8 @@ fn lsp_tls_cert() {
       }
     }))
   );
-  let (maybe_res, maybe_err) = client
+  let (maybe_res, maybe_err) = session
+    .client
     .write_request::<_, _, Value>(
       "textDocument/hover",
       json!({
@@ -3331,7 +3444,7 @@ fn lsp_tls_cert() {
       }
     }))
   );
-  shutdown(&mut client);
+  session.shutdown_and_exit();
 }
 
 #[test]
@@ -3366,17 +3479,10 @@ fn lsp_diagnostics_warn() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, maybe_params) = client
-    .read_notification::<lsp::PublishDiagnosticsParams>()
-    .unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
+  let diagnostics = read_diagnostics(&mut client);
   assert_eq!(
-    maybe_params,
-    Some(lsp::PublishDiagnosticsParams {
+    diagnostics.with_source("deno"),
+    lsp::PublishDiagnosticsParams {
       uri: Url::parse("file:///a/file.ts").unwrap(),
       diagnostics: vec![lsp::Diagnostic {
         range: lsp::Range {
@@ -3396,7 +3502,7 @@ fn lsp_diagnostics_warn() {
         ..Default::default()
       }],
       version: Some(1),
-    })
+    }
   );
   shutdown(&mut client);
 }
@@ -3485,58 +3591,40 @@ fn lsp_diagnostics_deno_types() {
     .unwrap();
   assert!(maybe_res.is_some());
   assert!(maybe_err.is_none());
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, maybe_params) = client
-    .read_notification::<lsp::PublishDiagnosticsParams>()
-    .unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  assert!(maybe_params.is_some());
-  let params = maybe_params.unwrap();
-  assert_eq!(params.diagnostics.len(), 5);
+  let diagnostics = read_diagnostics(&mut client);
+  assert_eq!(diagnostics.viewed().len(), 5);
   shutdown(&mut client);
 }
 
 #[test]
 fn lsp_diagnostics_refresh_dependents() {
-  let mut client = init("initialize_params.json");
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file_00.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export const a = \"a\";\n",
-      },
-    }),
-  );
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file_01.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "export * from \"./file_00.ts\";\n",
-      },
-    }),
-  );
-  let diagnostics = did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file_02.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import { a, b } from \"./file_01.ts\";\n\nconsole.log(a, b);\n"
-      }
-    }),
-  );
+  let mut session = TestSession::from_file("initialize_params.json");
+  session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file_00.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export const a = \"a\";\n",
+    },
+  }));
+  session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file_01.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export * from \"./file_00.ts\";\n",
+    },
+  }));
+  let diagnostics = session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file_02.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { a, b } from \"./file_01.ts\";\n\nconsole.log(a, b);\n"
+    }
+  }));
   assert_eq!(
-    json!(diagnostics[2]),
+    json!(diagnostics.with_file_and_source("file:///a/file_02.ts", "deno-ts")),
     json!({
       "uri": "file:///a/file_02.ts",
       "diagnostics": [
@@ -3560,7 +3648,10 @@ fn lsp_diagnostics_refresh_dependents() {
       "version": 1
     })
   );
-  client
+
+  // fix the code causing the diagnostic
+  session
+    .client
     .write_notification(
       "textDocument/didChange",
       json!({
@@ -3586,34 +3677,11 @@ fn lsp_diagnostics_refresh_dependents() {
       }),
     )
     .unwrap();
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  // ensure that the server publishes any inflight diagnostics
-  std::thread::sleep(std::time::Duration::from_millis(250));
-  client
-    .write_request::<_, _, Value>("shutdown", json!(null))
-    .unwrap();
-  client.write_notification("exit", json!(null)).unwrap();
+  let diagnostics = session.read_diagnostics();
+  assert_eq!(diagnostics.viewed().len(), 0); // no diagnostics now
 
-  let queue_len = client.queue_len();
-  assert!(!client.queue_is_empty());
-  for i in 0..queue_len {
-    let (method, maybe_params) = client
-      .read_notification::<lsp::PublishDiagnosticsParams>()
-      .unwrap();
-    assert_eq!(method, "textDocument/publishDiagnostics");
-    // the last 3 diagnostic publishes should be the clear of any diagnostics
-    if queue_len - i <= 3 {
-      assert!(maybe_params.is_some());
-      let params = maybe_params.unwrap();
-      assert_eq!(params.diagnostics, Vec::with_capacity(0));
-    }
-  }
-  assert!(client.queue_is_empty());
+  session.shutdown_and_exit();
+  assert_eq!(session.client.queue_len(), 0);
 }
 
 #[derive(Deserialize)]
@@ -3665,7 +3733,7 @@ fn lsp_performance() {
     .unwrap();
   assert!(maybe_err.is_none());
   if let Some(res) = maybe_res {
-    assert!(res.averages.len() >= 6);
+    assert_eq!(res.averages.len(), 13);
   } else {
     panic!("unexpected result");
   }
@@ -4344,20 +4412,16 @@ fn lsp_lint_with_config() {
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
+  let mut session = TestSession::from_client(client);
 
-  let diagnostics = did_open(&mut client, load_fixture("did_open_lint.json"));
-  let diagnostics = diagnostics
-    .into_iter()
-    .flat_map(|x| x.diagnostics)
-    .collect::<Vec<_>>();
-  assert_eq!(diagnostics.len(), 3);
-  for diagnostic in diagnostics {
-    assert_eq!(
-      diagnostic.code,
-      Some(lsp::NumberOrString::String("ban-untagged-todo".to_string()))
-    );
-  }
-  shutdown(&mut client);
+  let diagnostics = session.did_open(load_fixture("did_open_lint.json"));
+  let diagnostics = diagnostics.viewed();
+  assert_eq!(diagnostics.len(), 1);
+  assert_eq!(
+    diagnostics[0].code,
+    Some(lsp::NumberOrString::String("ban-untagged-todo".to_string()))
+  );
+  session.shutdown_and_exit();
 }
 
 #[test]

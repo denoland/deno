@@ -146,7 +146,7 @@ pub(crate) async fn get_import_completions(
     };
     let maybe_list = module_registries
       .get_completions(&text, offset, &range, |specifier| {
-        documents.contains_specifier(specifier)
+        documents.exists(specifier)
       })
       .await;
     let list = maybe_list.unwrap_or_else(|| lsp::CompletionList {
