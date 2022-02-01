@@ -225,7 +225,7 @@ Deno.test(function consoleTestStringifyCircular() {
   };
 
   nestedObj.o = circularObj;
-  const nestedObjExpected = `{
+  const nestedObjExpected = `<ref *1> {
   num: 1,
   bool: true,
   str: "a",
@@ -245,9 +245,9 @@ Deno.test(function consoleTestStringifyCircular() {
     method: [Function: method],
     un: undefined,
     nu: null,
-    nested: [Circular],
+    nested: [Circular *1],
     emptyObj: {},
-    arr: [ 1, "s", false, null, [Circular] ],
+    arr: [ 1, "s", false, null, [Circular *1] ],
     baseClass: Base { a: 1 }
   }
 }`;
@@ -350,7 +350,7 @@ Deno.test(function consoleTestStringifyCircular() {
         return Deno.inspect(this);
       },
     }),
-    "[Circular]",
+    "[Circular *1]",
   );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
@@ -392,14 +392,14 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   assertEquals(
     stringify({ f }),
     `{
-  f: [Function: f] {
+  f: [Function: f] <ref *1> {
     x: [Function],
     y: 3,
     z: [Function],
     b: [Function: bar],
     a: Map {},
-    s: [Circular],
-    t: [Function: t] { x: [Circular] }
+    s: [Circular *1],
+    t: [Function: t] { x: [Circular *1] }
   }
 }`,
   );

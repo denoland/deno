@@ -2092,6 +2092,7 @@
     value,
     inspectOptions = {},
   ) {
+    circular = undefined;
     return inspectValue(value, 0, {
       ...DEFAULT_INSPECT_OPTIONS,
       ...inspectOptions,
