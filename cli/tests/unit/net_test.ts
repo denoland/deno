@@ -238,6 +238,78 @@ Deno.test({ permissions: { net: true } }, async function netTcpDialListen() {
   conn.close();
 });
 
+Deno.test({ permissions: { net: true } }, async function netTcpSetNoDelay() {
+  const listener = Deno.listen({ port: 3500 });
+  listener.accept().then(
+    async (conn) => {
+      assert(conn.remoteAddr != null);
+      assert(conn.localAddr.transport === "tcp");
+      assertEquals(conn.localAddr.hostname, "127.0.0.1");
+      assertEquals(conn.localAddr.port, 3500);
+      await conn.write(new Uint8Array([1, 2, 3]));
+      conn.close();
+    },
+  );
+
+  const conn = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  conn.setNoDelay(true);
+  assert(conn.remoteAddr.transport === "tcp");
+  assertEquals(conn.remoteAddr.hostname, "127.0.0.1");
+  assertEquals(conn.remoteAddr.port, 3500);
+  assert(conn.localAddr != null);
+  const buf = new Uint8Array(1024);
+  const readResult = await conn.read(buf);
+  assertEquals(3, readResult);
+  assertEquals(1, buf[0]);
+  assertEquals(2, buf[1]);
+  assertEquals(3, buf[2]);
+  assert(conn.rid > 0);
+
+  assert(readResult !== null);
+
+  const readResult2 = await conn.read(buf);
+  assertEquals(readResult2, null);
+
+  listener.close();
+  conn.close();
+});
+
+Deno.test({ permissions: { net: true } }, async function netTcpSetKeepAlive() {
+  const listener = Deno.listen({ port: 3500 });
+  listener.accept().then(
+    async (conn) => {
+      assert(conn.remoteAddr != null);
+      assert(conn.localAddr.transport === "tcp");
+      assertEquals(conn.localAddr.hostname, "127.0.0.1");
+      assertEquals(conn.localAddr.port, 3500);
+      await conn.write(new Uint8Array([1, 2, 3]));
+      conn.close();
+    },
+  );
+
+  const conn = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  conn.setKeepAlive(true);
+  assert(conn.remoteAddr.transport === "tcp");
+  assertEquals(conn.remoteAddr.hostname, "127.0.0.1");
+  assertEquals(conn.remoteAddr.port, 3500);
+  assert(conn.localAddr != null);
+  const buf = new Uint8Array(1024);
+  const readResult = await conn.read(buf);
+  assertEquals(3, readResult);
+  assertEquals(1, buf[0]);
+  assertEquals(2, buf[1]);
+  assertEquals(3, buf[2]);
+  assert(conn.rid > 0);
+
+  assert(readResult !== null);
+
+  const readResult2 = await conn.read(buf);
+  assertEquals(readResult2, null);
+
+  listener.close();
+  conn.close();
+});
+
 Deno.test(
   {
     ignore: Deno.build.os === "windows",

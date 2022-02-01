@@ -108,7 +108,7 @@ impl ModuleLoader for CliModuleLoader {
 
     async move {
       ps.prepare_module_load(
-        vec![specifier],
+        vec![(specifier, deno_graph::ModuleKind::Esm)],
         is_dynamic,
         lib,
         root_permissions,

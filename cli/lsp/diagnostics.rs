@@ -20,6 +20,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_graph::Resolved;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
 use lspower::lsp;
@@ -547,13 +548,13 @@ fn resolution_error_as_code(
   use deno_graph::SpecifierError;
 
   match err {
-    ResolutionError::InvalidDowngrade(_, _) => {
+    ResolutionError::InvalidDowngrade { .. } => {
       lsp::NumberOrString::String("invalid-downgrade".to_string())
     }
-    ResolutionError::InvalidLocalImport(_, _) => {
+    ResolutionError::InvalidLocalImport { .. } => {
       lsp::NumberOrString::String("invalid-local-import".to_string())
     }
-    ResolutionError::InvalidSpecifier(err, _) => match err {
+    ResolutionError::InvalidSpecifier { error, .. } => match error {
       SpecifierError::ImportPrefixMissing(_, _) => {
         lsp::NumberOrString::String("import-prefix-missing".to_string())
       }
@@ -561,7 +562,7 @@ fn resolution_error_as_code(
         lsp::NumberOrString::String("invalid-url".to_string())
       }
     },
-    ResolutionError::ResolverError(_, _, _) => {
+    ResolutionError::ResolverError { .. } => {
       lsp::NumberOrString::String("resolver-error".to_string())
     }
   }
@@ -575,7 +576,9 @@ fn diagnose_dependency(
   maybe_assert_type: Option<&str>,
 ) {
   match resolved {
-    Some(Ok((specifier, range))) => {
+    Resolved::Ok {
+      specifier, range, ..
+    } => {
       if let Some(doc) = documents.get(specifier) {
         if let Some(message) = doc.maybe_warning() {
           diagnostics.push(lsp::Diagnostic {
@@ -633,7 +636,7 @@ fn diagnose_dependency(
         });
       }
     }
-    Some(Err(err)) => diagnostics.push(lsp::Diagnostic {
+    Resolved::Err(err) => diagnostics.push(lsp::Diagnostic {
       range: documents::to_lsp_range(err.range()),
       severity: Some(lsp::DiagnosticSeverity::ERROR),
       code: Some(resolution_error_as_code(err)),

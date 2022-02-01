@@ -697,7 +697,11 @@ impl FileFetcher {
   }
 
   pub fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
-    if specifier.scheme() == "file" {
+    // TODO(@kitsonk) fix when deno_graph does not query cache for synthetic
+    // modules
+    if specifier.scheme() == "flags" {
+      None
+    } else if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
     } else {
       self.http_cache.get_cache_filename(specifier)

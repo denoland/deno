@@ -25,6 +25,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpFn;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
+use deno_graph::Resolved;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -513,8 +514,12 @@ fn op_resolve(state: &mut State, args: ResolveArgs) -> Result<Value, AnyError> {
       let referrer = graph_data.follow_redirect(&referrer);
       let resolved_dep = match graph_data.get(&referrer) {
         Some(ModuleEntry::Module { dependencies, .. }) => {
-          dependencies.get(specifier).and_then(|d| {
-            d.maybe_type.as_ref().or_else(|| d.maybe_code.as_ref())
+          dependencies.get(specifier).map(|d| {
+            if matches!(d.maybe_type, Resolved::Ok { .. }) {
+              &d.maybe_type
+            } else {
+              &d.maybe_code
+            }
           })
         }
         Some(ModuleEntry::Configuration { dependencies }) => {
@@ -523,7 +528,7 @@ fn op_resolve(state: &mut State, args: ResolveArgs) -> Result<Value, AnyError> {
         _ => None,
       };
       let maybe_result = match resolved_dep {
-        Some(Ok((specifier, _))) => {
+        Some(Resolved::Ok { specifier, .. }) => {
           let specifier = graph_data.follow_redirect(specifier);
           match graph_data.get(&specifier) {
             Some(ModuleEntry::Module {
@@ -531,8 +536,8 @@ fn op_resolve(state: &mut State, args: ResolveArgs) -> Result<Value, AnyError> {
               maybe_types,
               ..
             }) => match maybe_types {
-              Some(Ok((types, _))) => {
-                let types = graph_data.follow_redirect(types);
+              Some(Resolved::Ok { specifier, .. }) => {
+                let types = graph_data.follow_redirect(specifier);
                 match graph_data.get(&types) {
                   Some(ModuleEntry::Module { media_type, .. }) => {
                     Some((types, media_type))
@@ -698,6 +703,7 @@ mod tests {
   use crate::diagnostics::DiagnosticCategory;
   use crate::emit::Stats;
   use deno_core::futures::future;
+  use deno_graph::ModuleKind;
   use std::fs;
 
   #[derive(Debug, Default)]
@@ -741,7 +747,7 @@ mod tests {
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let graph = deno_graph::create_graph(
-      vec![specifier],
+      vec![(specifier, ModuleKind::Esm)],
       false,
       None,
       &mut loader,
@@ -768,7 +774,7 @@ mod tests {
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
     let graph = deno_graph::create_graph(
-      vec![specifier.clone()],
+      vec![(specifier.clone(), ModuleKind::Esm)],
       false,
       None,
       &mut loader,

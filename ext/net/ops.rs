@@ -55,6 +55,8 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
     ("op_dgram_recv", op_async(op_dgram_recv)),
     ("op_dgram_send", op_async(op_dgram_send::<P>)),
     ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
+    ("op_set_nodelay", op_sync(op_set_nodelay::<P>)),
+    ("op_set_keepalive", op_sync(op_set_keepalive::<P>)),
   ]
 }
 
@@ -665,6 +667,26 @@ where
   Ok(results)
 }
 
+pub fn op_set_nodelay<NP>(
+  state: &mut OpState,
+  rid: ResourceId,
+  nodelay: bool,
+) -> Result<(), AnyError> {
+  let resource: Rc<TcpStreamResource> =
+    state.resource_table.get::<TcpStreamResource>(rid)?;
+  resource.set_nodelay(nodelay)
+}
+
+pub fn op_set_keepalive<NP>(
+  state: &mut OpState,
+  rid: ResourceId,
+  keepalive: bool,
+) -> Result<(), AnyError> {
+  let resource: Rc<TcpStreamResource> =
+    state.resource_table.get::<TcpStreamResource>(rid)?;
+  resource.set_keepalive(keepalive)
+}
+
 fn rdata_to_return_record(
   ty: RecordType,
 ) -> impl Fn(&RData) -> Option<DnsReturnRecord> {
@@ -717,8 +739,13 @@ fn rdata_to_return_record(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::Extension;
+  use deno_core::JsRuntime;
+  use deno_core::RuntimeOptions;
+  use socket2::SockRef;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
+  use std::path::Path;
   use trust_dns_proto::rr::rdata::mx::MX;
   use trust_dns_proto::rr::rdata::srv::SRV;
   use trust_dns_proto::rr::rdata::txt::TXT;
@@ -809,5 +836,102 @@ mod tests {
         "ã\u{81}\u{82}".to_string(),
       ]))
     );
+  }
+
+  struct TestPermission {}
+
+  impl NetPermissions for TestPermission {
+    fn check_net<T: AsRef<str>>(
+      &mut self,
+      _host: &(T, Option<u16>),
+    ) -> Result<(), AnyError> {
+      Ok(())
+    }
+
+    fn check_read(&mut self, _p: &Path) -> Result<(), AnyError> {
+      Ok(())
+    }
+
+    fn check_write(&mut self, _p: &Path) -> Result<(), AnyError> {
+      Ok(())
+    }
+  }
+
+  #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+  async fn tcp_set_no_delay() {
+    let set_nodelay = Box::new(|state: &mut OpState, rid| {
+      op_set_nodelay::<TestPermission>(state, rid, true).unwrap();
+    });
+    let test_fn = Box::new(|socket: SockRef| {
+      assert!(socket.nodelay().unwrap());
+      assert!(!socket.keepalive().unwrap());
+    });
+    check_sockopt(String::from("127.0.0.1:4245"), set_nodelay, test_fn).await;
+  }
+
+  #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+  async fn tcp_set_keepalive() {
+    let set_keepalive = Box::new(|state: &mut OpState, rid| {
+      op_set_keepalive::<TestPermission>(state, rid, true).unwrap();
+    });
+    let test_fn = Box::new(|socket: SockRef| {
+      assert!(!socket.nodelay().unwrap());
+      assert!(socket.keepalive().unwrap());
+    });
+    check_sockopt(String::from("127.0.0.1:4246"), set_keepalive, test_fn).await;
+  }
+
+  async fn check_sockopt(
+    addr: String,
+    set_sockopt_fn: Box<dyn Fn(&mut OpState, u32)>,
+    test_fn: Box<dyn FnOnce(SockRef)>,
+  ) {
+    let clone_addr = addr.clone();
+    tokio::spawn(async move {
+      let listener = TcpListener::bind(addr).await.unwrap();
+      let _ = listener.accept().await;
+    });
+    let my_ext = Extension::builder()
+      .state(move |state| {
+        state.put(TestPermission {});
+        Ok(())
+      })
+      .build();
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![my_ext],
+      ..Default::default()
+    });
+
+    let conn_state = runtime.op_state();
+
+    let server_addr: Vec<&str> = clone_addr.split(':').collect();
+    let ip_args = IpListenArgs {
+      hostname: String::from(server_addr[0]),
+      port: server_addr[1].parse().unwrap(),
+    };
+    let connect_args = ConnectArgs {
+      transport: String::from("tcp"),
+      transport_args: ArgsEnum::Ip(ip_args),
+    };
+
+    let connect_fut =
+      op_net_connect::<TestPermission>(conn_state, connect_args, ());
+    let conn = connect_fut.await.unwrap();
+
+    let rid = conn.rid;
+    let state = runtime.op_state();
+    set_sockopt_fn(&mut state.borrow_mut(), rid);
+
+    let resource = state
+      .borrow_mut()
+      .resource_table
+      .get::<TcpStreamResource>(rid)
+      .unwrap();
+
+    let wr = resource.wr_borrow_mut().await;
+    let stream = wr.as_ref().as_ref();
+    let socket = socket2::SockRef::from(stream);
+    test_fn(socket);
   }
 }

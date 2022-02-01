@@ -21,7 +21,10 @@ use std::thread;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-type Request = (Vec<ModuleSpecifier>, oneshot::Sender<Result<(), AnyError>>);
+type Request = (
+  Vec<(ModuleSpecifier, deno_graph::ModuleKind)>,
+  oneshot::Sender<Result<(), AnyError>>,
+);
 
 /// A "server" that handles requests from the language server to cache modules
 /// in its own thread.
@@ -105,7 +108,7 @@ impl CacheServer {
   /// client.
   pub async fn cache(
     &self,
-    roots: Vec<ModuleSpecifier>,
+    roots: Vec<(ModuleSpecifier, deno_graph::ModuleKind)>,
   ) -> Result<(), AnyError> {
     let (tx, rx) = oneshot::channel::<Result<(), AnyError>>();
     if self.0.send((roots, tx)).is_err() {
