@@ -643,7 +643,7 @@
         if (ctxHas(value)) {
           return handleCircular(value);
         }
-        return inspectObject(value, level, inspectOptions, circular);
+        return inspectObject(value, level, inspectOptions);
       default:
         // Not implemented is red
         return red("[Not Implemented]");
