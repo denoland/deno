@@ -356,6 +356,17 @@ Deno.test(function consoleTestStringifyCircular() {
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
 });
 
+Deno.test(function consoleTestStringifyMultipleCircular() {
+  const y = { a: { b: {} }, foo: { bar: {} } };
+  y.a.b = y.a;
+  y.foo.bar = y.foo;
+  console.log(y);
+  assertEquals(
+    stringify(y),
+    "{ a: <ref *1> { b: [Circular *1] }, foo: <ref *2> { bar: [Circular *2] } }",
+  );
+});
+
 Deno.test(function consoleTestStringifyFunctionWithPrototypeRemoved() {
   const f = function f() {};
   Reflect.setPrototypeOf(f, null);
