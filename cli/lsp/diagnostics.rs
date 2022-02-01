@@ -6,6 +6,7 @@ use super::config::ConfigSnapshot;
 use super::documents;
 use super::documents::Document;
 use super::documents::Documents;
+use super::documents::MetadataKey;
 use super::language_server;
 use super::performance::Performance;
 use super::tsc;
@@ -579,8 +580,8 @@ fn diagnose_dependency(
     Resolved::Ok {
       specifier, range, ..
     } => {
-      if let Some(doc) = documents.get(specifier) {
-        if let Some(message) = doc.maybe_warning() {
+      if let Some(metadata) = documents.get_metadata(specifier) {
+        if let Some(message) = metadata.get(&MetadataKey::Warning).cloned() {
           diagnostics.push(lsp::Diagnostic {
             range: documents::to_lsp_range(range),
             severity: Some(lsp::DiagnosticSeverity::WARNING),
@@ -588,8 +589,10 @@ fn diagnose_dependency(
             source: Some("deno".to_string()),
             message,
             ..Default::default()
-          })
+          });
         }
+      }
+      if let Some(doc) = documents.get(specifier) {
         if doc.media_type() == MediaType::Json {
           match maybe_assert_type {
             // The module has the correct assertion type, no diagnostic

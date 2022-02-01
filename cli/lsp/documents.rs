@@ -226,7 +226,6 @@ struct DocumentInner {
   maybe_module:
     Option<Result<deno_graph::Module, deno_graph::ModuleGraphError>>,
   maybe_navigation_tree: Option<Arc<tsc::NavigationTree>>,
-  maybe_warning: Option<String>,
   specifier: ModuleSpecifier,
   text_info: SourceTextInfo,
 }
@@ -242,9 +241,6 @@ impl Document {
     content: Arc<String>,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
   ) -> Self {
-    let maybe_warning = maybe_headers
-      .map(|h| h.get("x-deno-warning").cloned())
-      .flatten();
     let parser = SourceParser::default();
     // we only ever do `Document::new` on on disk resources that are supposed to
     // be diagnosable, unlike `Document::open`, so it is safe to unconditionally
@@ -272,7 +268,6 @@ impl Document {
       maybe_lsp_version: None,
       maybe_module,
       maybe_navigation_tree: None,
-      maybe_warning,
       text_info,
       specifier,
     }))
@@ -314,7 +309,6 @@ impl Document {
       maybe_lsp_version: Some(version),
       maybe_module,
       maybe_navigation_tree: None,
-      maybe_warning: None,
       text_info: source,
       specifier,
     }))
@@ -496,10 +490,6 @@ impl Document {
     self.0.maybe_navigation_tree.clone()
   }
 
-  pub fn maybe_warning(&self) -> Option<String> {
-    self.0.maybe_warning.clone()
-  }
-
   pub fn dependencies(&self) -> Vec<(String, deno_graph::Dependency)> {
     self
       .0
@@ -527,6 +517,23 @@ impl Document {
         .map(|r| (s.clone(), dep.clone(), r.clone()))
     })
   }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub(crate) enum MetadataKey {
+  /// Represent the `x-deno-warning` header associated with the document
+  Warning,
+}
+
+/// Populate the metadata map based on the supplied headers
+fn parse_metadata(
+  headers: &HashMap<String, String>,
+) -> HashMap<MetadataKey, String> {
+  let mut metadata = HashMap::new();
+  if let Some(warning) = headers.get("x-deno-warning").cloned() {
+    metadata.insert(MetadataKey::Warning, warning);
+  }
+  metadata
 }
 
 pub(crate) fn to_hover_text(result: &Resolved) -> String {
@@ -664,6 +671,7 @@ impl SpecifierResolver {
 #[derive(Debug, Default)]
 struct FileSystemDocuments {
   docs: HashMap<ModuleSpecifier, Document>,
+  metadata: HashMap<ModuleSpecifier, Arc<HashMap<MetadataKey, String>>>,
   dirty: bool,
 }
 
@@ -692,10 +700,12 @@ impl FileSystemDocuments {
       )
     } else {
       let cache_filename = cache.get_cache_filename(specifier)?;
-      let metadata = http_cache::Metadata::read(&cache_filename).ok()?;
-      let maybe_content_type = metadata.headers.get("content-type").cloned();
-      let maybe_headers = Some(&metadata.headers);
-      let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
+      let specifier_metadata =
+        http_cache::Metadata::read(&cache_filename).ok()?;
+      let maybe_content_type =
+        specifier_metadata.headers.get("content-type").cloned();
+      let maybe_headers = Some(&specifier_metadata.headers);
+      let (_, maybe_charset) = map_content_type(&specifier, maybe_content_type);
       let content = Arc::new(get_source_from_bytes(bytes, maybe_charset).ok()?);
       Document::new(
         specifier.clone(),
@@ -706,8 +716,26 @@ impl FileSystemDocuments {
       )
     };
     self.dirty = true;
+    self.metadata.remove(specifier);
     self.docs.insert(specifier.clone(), doc.clone());
     Some(doc)
+  }
+
+  /// Adds or updates a metadata related to a specifier from the file system
+  /// cache.
+  fn refresh_metadata(
+    &mut self,
+    cache: &HttpCache,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Arc<HashMap<MetadataKey, String>>> {
+    if specifier.scheme() == "file" {
+      return None;
+    }
+    let cache_filename = cache.get_cache_filename(specifier)?;
+    let specifier_metadata =
+      http_cache::Metadata::read(&cache_filename).ok()?;
+    let metadata = parse_metadata(&specifier_metadata.headers);
+    self.metadata.insert(specifier.clone(), Arc::new(metadata))
   }
 }
 
@@ -906,8 +934,8 @@ impl Documents {
   }
 
   /// Return a document for the specifier.
-  pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
-    let specifier = self.specifier_resolver.resolve(specifier)?;
+  pub fn get(&self, original_specifier: &ModuleSpecifier) -> Option<Document> {
+    let specifier = self.specifier_resolver.resolve(original_specifier)?;
     if let Some(document) = self.open_docs.get(&specifier) {
       Some(document.clone())
     } else {
@@ -917,6 +945,10 @@ impl Documents {
         .flatten();
       let file_system_doc = file_system_docs.docs.get(&specifier);
       if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
+        file_system_docs.refresh_metadata(&self.cache, &specifier);
+        if original_specifier != &specifier {
+          file_system_docs.refresh_metadata(&self.cache, original_specifier);
+        }
         // attempt to update the file on the file system
         file_system_docs.refresh_document(
           &self.cache,
@@ -927,6 +959,23 @@ impl Documents {
         file_system_doc.cloned()
       }
     }
+  }
+
+  /// Return the meta data associated with the specifier. Unlike the `get()`
+  /// method, redirects of the supplied specifier will not be followed.
+  pub fn get_metadata(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Arc<HashMap<MetadataKey, String>>> {
+    if specifier.scheme() == "file" {
+      return None;
+    }
+    let mut file_system_docs = self.file_system_docs.lock();
+    let path = get_document_path(&self.cache, specifier)?;
+    if !file_system_docs.metadata.contains_key(specifier) {
+      file_system_docs.refresh_metadata(&self.cache, specifier);
+    }
+    file_system_docs.metadata.get(specifier).cloned()
   }
 
   /// Return a vector of documents that are contained in the document store,
