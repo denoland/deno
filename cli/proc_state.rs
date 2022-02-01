@@ -519,7 +519,26 @@ impl ProcState {
           | MediaType::Mjs
           | MediaType::Json => {
             if needs_cjs_esm_translation {
-              panic!("{} needs to be translated from CJS to ESM", specifier);
+              let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
+                specifier: specifier.to_string(),
+                source: deno_ast::SourceTextInfo::new(code.clone()),
+                media_type: *media_type,
+                capture_tokens: true,
+                scope_analysis: false,
+                maybe_syntax: None,
+              })?;
+              let analysis = parsed_source.analyze_cjs();
+              let mut source = vec![
+                r#"import { createRequire } from "node:module";"#.to_string(),
+                r#"const require = createRequire(import.meta.url);"#.to_string(),
+              ];
+              source.push(format!("const mod = require(\"{}\");", specifier.to_file_path().unwrap().to_str().unwrap()));
+              source.push("export default mod".to_string());
+              for export in analysis.exports {
+                source.push(format!("export const {} = mod.{}", export, export));
+              }
+
+              source.join("\n").to_string()
             } else {
               code.as_ref().clone()
             }
