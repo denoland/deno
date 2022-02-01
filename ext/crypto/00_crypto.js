@@ -12,7 +12,6 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
-  const { TextEncoder, TextDecoder } = window.__bootstrap.encoding;
 
   const {
     ArrayBuffer,
@@ -29,6 +28,8 @@
     ObjectAssign,
     StringPrototypeToLowerCase,
     StringPrototypeToUpperCase,
+    StringPrototypeCharCodeAt,
+    StringFromCharCode,
     Symbol,
     SymbolFor,
     SyntaxError,
@@ -1327,8 +1328,11 @@
         bytes = new Uint8Array(exportedKey);
       } else {
         const jwk = JSONStringify(exportedKey);
-
-        bytes = new TextEncoder("utf-8").encode(jwk);
+        const ret = new Uint8Array(jwk.length);
+        for (let i = 0; i < jwk.length; i++) {
+          ret[i] = StringPrototypeCharCodeAt(jwk, i);
+        }
+        bytes = ret;
       }
 
       // 14-15.
@@ -1519,9 +1523,12 @@
       if (format !== "jwk") {
         bytes = key;
       } else {
-        const utf8 = new TextDecoder("utf-8").decode(key);
-
-        bytes = JSONParse(utf8);
+        const k = new Uint8Array(key);
+        let str = "";
+        for (let i = 0; i < k.length; i++) {
+          str += StringFromCharCode(k[i]);
+        }
+        bytes = JSONParse(str);
       }
 
       // 15.
