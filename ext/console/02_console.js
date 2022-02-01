@@ -586,12 +586,12 @@
     let index = 1;
     if (circular === undefined) {
       circular = new Map();
-      circular.set(value, index);
+      MapPrototypeSet(circular, value, index);
     } else {
-      index = circular.get(value);
+      index = MapPrototypeGet(circular, value);
       if (index === undefined) {
         index = circular.size + 1;
-        circular.set(value, index);
+        MapPrototypeSet(circular, value, index);
       }
     }
     // Circular string is cyan
@@ -917,22 +917,24 @@
     const refMap = new Map();
     for (const cause of causes) {
       if (circular !== undefined) {
-        const index = circular.get(cause);
+        const index = MapPrototypeGet(circular, cause);
         if (index !== undefined) {
-          refMap.set(cause, cyan(`<ref *${index}> `));
+          MapPrototypeSet(refMap, cause, cyan(`<ref *${index}> `));
         }
       }
     }
     ArrayPrototypeShift(causes);
 
-    return (refMap.get(value) ?? "") + value.stack + ArrayPrototypeJoin(
-      ArrayPrototypeMap(
-        causes,
-        (cause) =>
-          "\nCaused by " + (refMap.get(cause) ?? "") + (cause?.stack ?? cause),
-      ),
-      "",
-    );
+    return (MapPrototypeGet(refMap, value) ?? "") + value.stack +
+      ArrayPrototypeJoin(
+        ArrayPrototypeMap(
+          causes,
+          (cause) =>
+            "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
+            (cause?.stack ?? cause),
+        ),
+        "",
+      );
   }
 
   function inspectStringObject(value, inspectOptions) {
@@ -1167,7 +1169,7 @@
     }
 
     if (circular !== undefined) {
-      const index = circular.get(value);
+      const index = MapPrototypeGet(circular, value);
       if (index !== undefined) {
         baseString = cyan(`<ref *${index}> `) + baseString;
       }
