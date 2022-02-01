@@ -14,7 +14,7 @@
   const { DOMException } = window.__bootstrap.domException;
 
   const {
-    ArrayBuffer,
+    ArrayBufferPrototype,
     ArrayBufferIsView,
     ArrayPrototypeEvery,
     ArrayPrototypeFind,
@@ -870,7 +870,7 @@
       if (format !== "jwk") {
         if (
           ArrayBufferIsView(keyData) ||
-          keyData instanceof ArrayBuffer
+          ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, keyData)
         ) {
           keyData = copyBuffer(keyData);
         } else {
@@ -879,7 +879,7 @@
       } else {
         if (
           ArrayBufferIsView(keyData) ||
-          keyData instanceof ArrayBuffer
+          ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, keyData)
         ) {
           throw new TypeError("keyData is not a JsonWebKey");
         }
