@@ -53,17 +53,18 @@
     }
 
     get readable() {
-      webidl.assertBranded(this, CompressionStream);
+      webidl.assertBranded(this, CompressionStreamPrototype);
       return this.#transform.readable;
     }
 
     get writable() {
-      webidl.assertBranded(this, CompressionStream);
+      webidl.assertBranded(this, CompressionStreamPrototype);
       return this.#transform.writable;
     }
   }
 
   webidl.configurePrototype(CompressionStream);
+  const CompressionStreamPrototype = CompressionStream.prototype;
 
   class DecompressionStream {
     #transform;
@@ -98,12 +99,12 @@
     }
 
     get readable() {
-      webidl.assertBranded(this, DecompressionStream);
+      webidl.assertBranded(this, DecompressionStreamPrototype);
       return this.#transform.readable;
     }
 
     get writable() {
-      webidl.assertBranded(this, DecompressionStream);
+      webidl.assertBranded(this, DecompressionStreamPrototype);
       return this.#transform.writable;
     }
   }
@@ -115,6 +116,7 @@
   }
 
   webidl.configurePrototype(DecompressionStream);
+  const DecompressionStreamPrototype = DecompressionStream.prototype;
 
   window.__bootstrap.compression = {
     CompressionStream,
