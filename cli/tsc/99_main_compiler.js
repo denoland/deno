@@ -255,7 +255,7 @@ delete Object.prototype.__proto__;
    * @implements {ts.CancellationToken}
    */
   class ThrottledCancellationToken {
-    #lastCheckTimeMs = Date.now();
+    #lastCheckTimeMs = 0;
 
     isCancellationRequested() {
       const timeMs = Date.now();

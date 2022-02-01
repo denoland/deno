@@ -843,4 +843,27 @@ let c: number = "a";
     let (_, _, diagnostics) = diagnostic_vec.into_iter().next().unwrap();
     diagnostics
   }
+
+  #[tokio::test]
+  async fn test_cancelled_ts_diagnostics_request() {
+    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
+    let (snapshot, _) = setup(&[(
+      "file:///a.ts",
+      r#"export let a: string = 5;"#,
+      1,
+      LanguageId::TypeScript,
+    )]);
+    let snapshot = Arc::new(snapshot);
+    let ts_server = TsServer::new(Default::default());
+
+    let config = mock_config();
+    let token = CancellationToken::new();
+    token.cancel();
+    let diagnostics =
+      generate_ts_diagnostics(snapshot.clone(), &config, &ts_server, token)
+        .await
+        .unwrap();
+    // should be none because it's cancelled
+    assert_eq!(diagnostics.len(), 0);
+  }
 }
