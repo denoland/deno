@@ -579,6 +579,7 @@
     }
     return entries;
   }
+  let circular;
 
   function _inspectValue(
     value,
@@ -597,6 +598,22 @@
     const bold = maybeColor(colors.bold, inspectOptions);
     const red = maybeColor(colors.red, inspectOptions);
 
+    function handleCircular(value) {
+      let index = 1;
+      if (circular === undefined) {
+        circular = new Map();
+        circular.set(value, index);
+      } else {
+        index = circular.get(value);
+        if (index === undefined) {
+          index = circular.size + 1;
+          circular.set(value, index);
+        }
+      }
+      // Circular string is cyan
+      return cyan(`[Circular *${index}]`);
+    }
+
     switch (typeof value) {
       case "string":
         return green(quoteString(value));
@@ -614,7 +631,7 @@
       case "function": // Function string is cyan
         if (ctxHas(value)) {
           // Circular string is cyan
-          return cyan("[Circular]");
+          return handleCircular(value);
         }
 
         return inspectFunction(value, level, inspectOptions);
@@ -624,10 +641,9 @@
         }
 
         if (ctxHas(value)) {
-          // Circular string is cyan
-          return cyan("[Circular]");
+          return handleCircular(value);
         }
-        return inspectObject(value, level, inspectOptions);
+        return inspectObject(value, level, inspectOptions, circular);
       default:
         // Not implemented is red
         return red("[Not Implemented]");
@@ -884,6 +900,7 @@
   }
 
   function inspectError(value) {
+    // TODO(@crowlKats): use circular system
     const causes = [];
 
     let err = value;
@@ -1132,6 +1149,13 @@
 
     if (shouldShowDisplayName) {
       baseString = `${displayName} ${baseString}`;
+    }
+
+    if (circular !== undefined) {
+      const index = circular?.get(value);
+      if (index !== undefined) {
+        baseString = cyan(`<ref *${index}> `) + baseString;
+      }
     }
 
     return baseString;
@@ -1650,6 +1674,8 @@
   }
 
   function inspectArgs(args, inspectOptions = {}) {
+    circular = undefined;
+
     const noColor = colors.getNoColor();
     const rInspectOptions = { ...DEFAULT_INSPECT_OPTIONS, ...inspectOptions };
     const first = args[0];
