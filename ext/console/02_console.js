@@ -67,6 +67,7 @@
     ArrayPrototypePop,
     ArrayPrototypeSort,
     ArrayPrototypeSlice,
+    ArrayPrototypeShift,
     ArrayPrototypeIncludes,
     ArrayPrototypeFill,
     ArrayPrototypeFilter,
@@ -579,7 +580,23 @@
     }
     return entries;
   }
+
   let circular;
+  function handleCircular(value, cyan) {
+    let index = 1;
+    if (circular === undefined) {
+      circular = new Map();
+      circular.set(value, index);
+    } else {
+      index = circular.get(value);
+      if (index === undefined) {
+        index = circular.size + 1;
+        circular.set(value, index);
+      }
+    }
+    // Circular string is cyan
+    return cyan(`[Circular *${index}]`);
+  }
 
   function _inspectValue(
     value,
@@ -598,22 +615,6 @@
     const bold = maybeColor(colors.bold, inspectOptions);
     const red = maybeColor(colors.red, inspectOptions);
 
-    function handleCircular(value) {
-      let index = 1;
-      if (circular === undefined) {
-        circular = new Map();
-        circular.set(value, index);
-      } else {
-        index = circular.get(value);
-        if (index === undefined) {
-          index = circular.size + 1;
-          circular.set(value, index);
-        }
-      }
-      // Circular string is cyan
-      return cyan(`[Circular *${index}]`);
-    }
-
     switch (typeof value) {
       case "string":
         return green(quoteString(value));
@@ -631,7 +632,7 @@
       case "function": // Function string is cyan
         if (ctxHas(value)) {
           // Circular string is cyan
-          return handleCircular(value);
+          return handleCircular(value, cyan);
         }
 
         return inspectFunction(value, level, inspectOptions);
@@ -641,7 +642,7 @@
         }
 
         if (ctxHas(value)) {
-          return handleCircular(value);
+          return handleCircular(value, cyan);
         }
         return inspectObject(value, level, inspectOptions);
       default:
@@ -899,25 +900,39 @@
     return red(RegExpPrototypeToString(value)); // RegExps are red
   }
 
-  function inspectError(value) {
-    // TODO(@crowlKats): use circular system
-    const causes = [];
+  function inspectError(value, cyan) {
+    const causes = [value];
 
     let err = value;
-    while (
-      err.cause instanceof Error && err.cause !== value &&
-      !ArrayPrototypeIncludes(causes, err.cause) // circular check
-    ) {
-      ArrayPrototypePush(causes, err.cause);
-      err = err.cause;
+    while (err.cause) {
+      if (ArrayPrototypeIncludes(causes, err.cause)) {
+        ArrayPrototypePush(causes, handleCircular(err.cause, cyan));
+        break;
+      } else {
+        ArrayPrototypePush(causes, err.cause);
+        err = err.cause;
+      }
     }
 
-    return `${value.stack}${
-      ArrayPrototypeJoin(
-        ArrayPrototypeMap(causes, (cause) => `\nCaused by ${cause.stack}`),
-        "",
-      )
-    }`;
+    const refMap = new Map();
+    for (const cause of causes) {
+      if (circular !== undefined) {
+        const index = circular.get(cause);
+        if (index !== undefined) {
+          refMap.set(cause, cyan(`<ref *${index}> `));
+        }
+      }
+    }
+    ArrayPrototypeShift(causes);
+
+    return (refMap.get(value) ?? "") + value.stack + ArrayPrototypeJoin(
+      ArrayPrototypeMap(
+        causes,
+        (cause) =>
+          "\nCaused by " + (refMap.get(cause) ?? "") + (cause?.stack ?? cause),
+      ),
+      "",
+    );
   }
 
   function inspectStringObject(value, inspectOptions) {
@@ -1152,7 +1167,7 @@
     }
 
     if (circular !== undefined) {
-      const index = circular?.get(value);
+      const index = circular.get(value);
       if (index !== undefined) {
         baseString = cyan(`<ref *${index}> `) + baseString;
       }
@@ -1185,7 +1200,7 @@
       return String(value[privateCustomInspect](inspect));
     }
     if (value instanceof Error) {
-      return inspectError(value);
+      return inspectError(value, maybeColor(colors.cyan, inspectOptions));
     } else if (ArrayIsArray(value)) {
       return inspectArray(value, level, inspectOptions);
     } else if (value instanceof Number) {
