@@ -41,8 +41,8 @@ use deno_core::SharedArrayBufferStore;
 use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
-use deno_graph::source::ResolveResponse;
 use deno_graph::source::Loader;
+use deno_graph::source::ResolveResponse;
 use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -502,7 +502,8 @@ impl ProcState {
     if let Some(resolver) = &self.maybe_resolver {
       if let Some(referrer) = maybe_referrer {
         let response = resolver.resolve(specifier.as_str(), &referrer);
-        needs_cjs_esm_translation = matches!(response, ResolveResponse::CommonJs(_));
+        needs_cjs_esm_translation =
+          matches!(response, ResolveResponse::CommonJs(_));
       }
     }
 
@@ -519,30 +520,45 @@ impl ProcState {
           | MediaType::Mjs
           | MediaType::Json => {
             if needs_cjs_esm_translation {
-              let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
-                specifier: specifier.to_string(),
-                source: deno_ast::SourceTextInfo::new(code.clone()),
-                media_type: *media_type,
-                capture_tokens: true,
-                scope_analysis: false,
-                maybe_syntax: None,
-              })?;
+              let parsed_source =
+                deno_ast::parse_script(deno_ast::ParseParams {
+                  specifier: specifier.to_string(),
+                  source: deno_ast::SourceTextInfo::new(code.clone()),
+                  media_type: *media_type,
+                  capture_tokens: true,
+                  scope_analysis: false,
+                  maybe_syntax: None,
+                })?;
               let analysis = parsed_source.analyze_cjs();
               let mut source = vec![
                 r#"import { createRequire } from "node:module";"#.to_string(),
-                r#"const require = createRequire(import.meta.url);"#.to_string(),
+                r#"const require = createRequire(import.meta.url);"#
+                  .to_string(),
               ];
-              source.push(format!("const mod = require(\"{}\");", specifier.to_file_path().unwrap().to_str().unwrap()));
+              source.push(format!(
+                "const mod = require(\"{}\");",
+                specifier.to_file_path().unwrap().to_str().unwrap()
+              ));
               source.push("export default mod".to_string());
-              for export in analysis.exports {
-                source.push(format!("export const {} = mod.{}", export, export));
+              for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
+                // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
+                // but it might not be necessary here since our analysis is more detailed? 
+                source
+                  .push(format!("export const {} = mod.{}", export, export));
               }
-
+              // TODO(bartlomieju): handle reexports
+              for (idx, reexport) in analysis.reexports.iter().enumerate() {
+                // source.push(format!(
+                //   "const reexport{} = require(\"{}\");",
+                //   idx, reexport
+                // ));
+                source.push(format!("throw new Error('Unhandled reexport {}')", reexport));
+              }
               source.join("\n").to_string()
             } else {
               code.as_ref().clone()
             }
-          },
+          }
           MediaType::Dts => "".to_string(),
           _ => {
             let emit_path = self

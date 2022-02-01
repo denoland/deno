@@ -1,5 +1,5 @@
 module.exports = {
-    fizz: "FIZZ",
+  fizz: "FIZZ",
 };
 
 module.exports.buzz = require("./reexports2.js");
