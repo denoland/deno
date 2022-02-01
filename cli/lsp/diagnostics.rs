@@ -217,6 +217,7 @@ impl DiagnosticsServer {
                     snapshot.clone(),
                     &config,
                     &ts_server,
+                    token.clone(),
                   )
                   .await
                   .map_err(|err| {
@@ -494,6 +495,7 @@ async fn generate_ts_diagnostics(
   snapshot: Arc<language_server::StateSnapshot>,
   config: &ConfigSnapshot,
   ts_server: &tsc::TsServer,
+  token: CancellationToken,
 ) -> Result<DiagnosticVec, AnyError> {
   let mut diagnostics_vec = Vec::new();
   let specifiers = snapshot
@@ -508,7 +510,9 @@ async fn generate_ts_diagnostics(
     .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
   let ts_diagnostics_map: TsDiagnosticsMap = if !enabled_specifiers.is_empty() {
     let req = tsc::RequestMethod::GetDiagnostics(enabled_specifiers);
-    ts_server.request(snapshot.clone(), req).await?
+    ts_server
+      .request_with_cancellation(snapshot.clone(), req, token)
+      .await?
   } else {
     Default::default()
   };
@@ -773,10 +777,14 @@ let c: number = "a";
       )
       .await;
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
-      let diagnostics =
-        generate_ts_diagnostics(snapshot.clone(), &enabled_config, &ts_server)
-          .await
-          .unwrap();
+      let diagnostics = generate_ts_diagnostics(
+        snapshot.clone(),
+        &enabled_config,
+        &ts_server,
+        Default::default(),
+      )
+      .await
+      .unwrap();
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
       let diagnostics = generate_deps_diagnostics(
         &snapshot,
@@ -809,10 +817,14 @@ let c: number = "a";
       )
       .await;
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
-      let diagnostics =
-        generate_ts_diagnostics(snapshot.clone(), &disabled_config, &ts_server)
-          .await
-          .unwrap();
+      let diagnostics = generate_ts_diagnostics(
+        snapshot.clone(),
+        &disabled_config,
+        &ts_server,
+        Default::default(),
+      )
+      .await
+      .unwrap();
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
       let diagnostics = generate_deps_diagnostics(
         &snapshot,

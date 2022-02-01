@@ -698,6 +698,10 @@ delete Object.prototype.__proto__;
           /** @type {Record<string, any[]>} */
           const diagnosticMap = {};
           for (const specifier of request.specifiers) {
+            if (core.opSync("op_is_cancelled", {})) {
+              break;
+            }
+
             diagnosticMap[specifier] = fromTypeScriptDiagnostic([
               ...languageService.getSemanticDiagnostics(specifier),
               ...languageService.getSuggestionDiagnostics(specifier),
