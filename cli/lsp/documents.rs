@@ -705,7 +705,7 @@ impl FileSystemDocuments {
       let maybe_content_type =
         specifier_metadata.headers.get("content-type").cloned();
       let maybe_headers = Some(&specifier_metadata.headers);
-      let (_, maybe_charset) = map_content_type(&specifier, maybe_content_type);
+      let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
       let content = Arc::new(get_source_from_bytes(bytes, maybe_charset).ok()?);
       Document::new(
         specifier.clone(),
