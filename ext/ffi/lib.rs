@@ -711,33 +711,32 @@ unsafe extern "C" fn deno_ffi_callback(
   let repr = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
   let vals = std::slice::from_raw_parts(args, cif.nargs as usize);
 
-  let params: Vec<v8::Local<v8::Value>> = repr
-    .iter()
-    .zip(vals)
-    .map(|(&repr, &val)| {
-      let value = match (*repr).type_ as _ {
-        FFI_TYPE_INT => serde_v8::to_v8(info.scope, *(val as *const i32)),
-        FFI_TYPE_FLOAT => serde_v8::to_v8(info.scope, *(val as *const f32)),
-        FFI_TYPE_DOUBLE => serde_v8::to_v8(info.scope, *(val as *const f64)),
-        FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-          serde_v8::to_v8(info.scope, U32x2::from((val as *const u8) as u64))
-        }
-        FFI_TYPE_SINT8 => serde_v8::to_v8(info.scope, *(val as *const i8)),
-        FFI_TYPE_UINT8 => serde_v8::to_v8(info.scope, *(val as *const u8)),
-        FFI_TYPE_SINT16 => serde_v8::to_v8(info.scope, *(val as *const i16)),
-        FFI_TYPE_UINT16 => serde_v8::to_v8(info.scope, *(val as *const u16)),
-        FFI_TYPE_SINT32 => serde_v8::to_v8(info.scope, *(val as *const i32)),
-        FFI_TYPE_UINT32 => serde_v8::to_v8(info.scope, *(val as *const u32)),
-        FFI_TYPE_SINT64 => serde_v8::to_v8(info.scope, *(val as *const i64)),
-        FFI_TYPE_UINT64 => serde_v8::to_v8(info.scope, *(val as *const u64)),
-        FFI_TYPE_VOID => serde_v8::to_v8(info.scope, ()),
-        _ => {
-          panic!("Unsupported parameter type")
-        }
-      };
-      value.expect("Unable to serialize callback parameter.")
-    })
-    .collect();
+  let mut params: Vec<v8::Local<v8::Value>> = vec![];
+
+  for (&repr, &val) in repr.iter().zip(vals) {
+    let value = match (*repr).type_ as _ {
+      FFI_TYPE_INT => serde_v8::to_v8(info.scope, *(val as *const i32)),
+      FFI_TYPE_FLOAT => serde_v8::to_v8(info.scope, *(val as *const f32)),
+      FFI_TYPE_DOUBLE => serde_v8::to_v8(info.scope, *(val as *const f64)),
+      FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
+        let ptr = U32x2::from(*(val as *const u64));
+        serde_v8::to_v8(info.scope, ptr)
+      }
+      FFI_TYPE_SINT8 => serde_v8::to_v8(info.scope, *(val as *const i8)),
+      FFI_TYPE_UINT8 => serde_v8::to_v8(info.scope, *(val as *const u8)),
+      FFI_TYPE_SINT16 => serde_v8::to_v8(info.scope, *(val as *const i16)),
+      FFI_TYPE_UINT16 => serde_v8::to_v8(info.scope, *(val as *const u16)),
+      FFI_TYPE_SINT32 => serde_v8::to_v8(info.scope, *(val as *const i32)),
+      FFI_TYPE_UINT32 => serde_v8::to_v8(info.scope, *(val as *const u32)),
+      FFI_TYPE_SINT64 => serde_v8::to_v8(info.scope, *(val as *const i64)),
+      FFI_TYPE_UINT64 => serde_v8::to_v8(info.scope, *(val as *const u64)),
+      FFI_TYPE_VOID => serde_v8::to_v8(info.scope, ()),
+      _ => {
+        panic!("Unsupported parameter type")
+      }
+    };
+    params.push(value.expect("Unable to serialize callback parameter."));
+  }
 
   let recv = v8::undefined(info.scope);
   let value = match info.cb.call(info.scope, recv.into(), &params) {

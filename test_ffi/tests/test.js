@@ -158,8 +158,8 @@ console.log(dylib.symbols.add_f64(123.123, 456.789));
 // test callbacks
 dylib.symbols.add_callback((a, b, ptr) => {
   const view = new Deno.UnsafePointerView(ptr);
-  // const str = view.getCString();
-  // console.log(str);
+  const str = view.getCString();
+  console.log(str);
   console.log("[js] callback called");
   return a + b;
 });
