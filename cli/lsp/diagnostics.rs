@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
+use super::cache;
 use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents;
@@ -217,6 +218,7 @@ impl DiagnosticsServer {
                     snapshot.clone(),
                     &config,
                     &ts_server,
+                    token.clone(),
                   )
                   .await
                   .map_err(|err| {
@@ -494,6 +496,7 @@ async fn generate_ts_diagnostics(
   snapshot: Arc<language_server::StateSnapshot>,
   config: &ConfigSnapshot,
   ts_server: &tsc::TsServer,
+  token: CancellationToken,
 ) -> Result<DiagnosticVec, AnyError> {
   let mut diagnostics_vec = Vec::new();
   let specifiers = snapshot
@@ -508,7 +511,9 @@ async fn generate_ts_diagnostics(
     .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
   let ts_diagnostics_map: TsDiagnosticsMap = if !enabled_specifiers.is_empty() {
     let req = tsc::RequestMethod::GetDiagnostics(enabled_specifiers);
-    ts_server.request(snapshot.clone(), req).await?
+    ts_server
+      .request_with_cancellation(snapshot.clone(), req, token)
+      .await?
   } else {
     Default::default()
   };
@@ -571,6 +576,7 @@ fn resolution_error_as_code(
 fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   documents: &Documents,
+  cache_metadata: &cache::CacheMetadata,
   resolved: &deno_graph::Resolved,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
@@ -579,8 +585,10 @@ fn diagnose_dependency(
     Resolved::Ok {
       specifier, range, ..
     } => {
-      if let Some(doc) = documents.get(specifier) {
-        if let Some(message) = doc.maybe_warning() {
+      if let Some(metadata) = cache_metadata.get(specifier) {
+        if let Some(message) =
+          metadata.get(&cache::MetadataKey::Warning).cloned()
+        {
           diagnostics.push(lsp::Diagnostic {
             range: documents::to_lsp_range(range),
             severity: Some(lsp::DiagnosticSeverity::WARNING),
@@ -588,8 +596,10 @@ fn diagnose_dependency(
             source: Some("deno".to_string()),
             message,
             ..Default::default()
-          })
+          });
         }
+      }
+      if let Some(doc) = documents.get(specifier) {
         if doc.media_type() == MediaType::Json {
           match maybe_assert_type {
             // The module has the correct assertion type, no diagnostic
@@ -667,6 +677,7 @@ async fn generate_deps_diagnostics(
         diagnose_dependency(
           &mut diagnostics,
           &snapshot.documents,
+          &snapshot.cache_metadata,
           &dependency.maybe_code,
           dependency.is_dynamic,
           dependency.maybe_assert_type.as_deref(),
@@ -674,6 +685,7 @@ async fn generate_deps_diagnostics(
         diagnose_dependency(
           &mut diagnostics,
           &snapshot.documents,
+          &snapshot.cache_metadata,
           &dependency.maybe_type,
           dependency.is_dynamic,
           dependency.maybe_assert_type.as_deref(),
@@ -773,10 +785,14 @@ let c: number = "a";
       )
       .await;
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
-      let diagnostics =
-        generate_ts_diagnostics(snapshot.clone(), &enabled_config, &ts_server)
-          .await
-          .unwrap();
+      let diagnostics = generate_ts_diagnostics(
+        snapshot.clone(),
+        &enabled_config,
+        &ts_server,
+        Default::default(),
+      )
+      .await
+      .unwrap();
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
       let diagnostics = generate_deps_diagnostics(
         &snapshot,
@@ -809,10 +825,14 @@ let c: number = "a";
       )
       .await;
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
-      let diagnostics =
-        generate_ts_diagnostics(snapshot.clone(), &disabled_config, &ts_server)
-          .await
-          .unwrap();
+      let diagnostics = generate_ts_diagnostics(
+        snapshot.clone(),
+        &disabled_config,
+        &ts_server,
+        Default::default(),
+      )
+      .await
+      .unwrap();
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
       let diagnostics = generate_deps_diagnostics(
         &snapshot,
@@ -830,5 +850,28 @@ let c: number = "a";
     assert_eq!(diagnostic_vec.len(), 1);
     let (_, _, diagnostics) = diagnostic_vec.into_iter().next().unwrap();
     diagnostics
+  }
+
+  #[tokio::test]
+  async fn test_cancelled_ts_diagnostics_request() {
+    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
+    let (snapshot, _) = setup(&[(
+      "file:///a.ts",
+      r#"export let a: string = 5;"#,
+      1,
+      LanguageId::TypeScript,
+    )]);
+    let snapshot = Arc::new(snapshot);
+    let ts_server = TsServer::new(Default::default());
+
+    let config = mock_config();
+    let token = CancellationToken::new();
+    token.cancel();
+    let diagnostics =
+      generate_ts_diagnostics(snapshot.clone(), &config, &ts_server, token)
+        .await
+        .unwrap();
+    // should be none because it's cancelled
+    assert_eq!(diagnostics.len(), 0);
   }
 }
