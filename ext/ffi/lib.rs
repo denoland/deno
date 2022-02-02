@@ -533,19 +533,23 @@ impl FfiCallPtrArgs {
         .clone()
         .into_iter()
         .map(libffi::middle::Type::from),
-      self.def.result.into(),
+      self.def.result.clone().into(),
     );
 
     Symbol {
       cif,
       ptr,
       parameter_types: self.def.parameters.clone(),
-      result_type: self.def.result,
+      result_type: self.def.result.clone(),
     }
   }
 }
 
-fn ffi_call(args: FfiCallArgs, symbol: &Symbol, functions: Option<(&mut v8::HandleScope, v8::Local<v8::Function>)>) -> Result<Value, AnyError> {
+fn ffi_call(
+  args: FfiCallArgs,
+  symbol: &Symbol,
+  functions: Option<(&mut v8::HandleScope, v8::Local<v8::Function>)>,
+) -> Result<Value, AnyError> {
   let buffers: Vec<Option<&[u8]>> = args
     .buffers
     .iter()
@@ -556,7 +560,7 @@ fn ffi_call(args: FfiCallArgs, symbol: &Symbol, functions: Option<(&mut v8::Hand
 
   let mut native_values: Vec<NativeValue> = vec![];
 
-  for (&native_type, value) in symbol
+  for (native_type, value) in symbol
     .parameter_types
     .clone()
     .into_iter()
@@ -821,7 +825,7 @@ fn op_ffi_call_ptr(
   _: (),
 ) -> Result<Value, AnyError> {
   let symbol = args.get_symbol();
-  ffi_call(args.into(), &symbol)
+  ffi_call(args.into(), &symbol, None)
 }
 
 async fn op_ffi_call_ptr_nonblocking(
@@ -830,7 +834,7 @@ async fn op_ffi_call_ptr_nonblocking(
   _: (),
 ) -> Result<Value, AnyError> {
   let symbol = args.get_symbol();
-  tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol))
+  tokio::task::spawn_blocking(move || ffi_call(args.into(), &symbol, None))
     .await
     .unwrap()
 }

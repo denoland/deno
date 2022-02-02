@@ -162,9 +162,10 @@ declare namespace Deno {
     | "f64"
     | "pointer";
 
+  type NativeParameterType = NativeType | { function: Omit<ForeignFunction, "nonblocking"> };
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction<
-    Parameters extends readonly (NativeType | { function: Omit<ForeignFunction, "nonblocking"> })[] = readonly (NativeType | { function: Omit<ForeignFunction, "nonblocking"> })[],
+    Parameters extends readonly NativeParameterType[] = readonly NativeParameterType[],
     Result extends NativeType = NativeType,
     NonBlocking extends boolean = boolean,
   > {
@@ -197,7 +198,7 @@ declare namespace Deno {
     : unknown;
 
   /** Infers a foreign function parameter list. */
-  type StaticForeignFunctionParameters<T extends readonly NativeType[]> = [
+  type StaticForeignFunctionParameters<T extends readonly NativeParameterType[]> = [
     ...{
       [K in keyof T]: StaticForeignFunctionParameter<T[K]>;
     },
