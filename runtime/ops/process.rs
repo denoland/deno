@@ -251,13 +251,14 @@ fn op_run(
   };
 
   let ipc_rid = match ipc_parent {
+    #[cfg(unix)]
     Some(ipc_parent) => {
       let rid = state
         .resource_table
         .add(UnixStreamResource::new(ipc_parent.into_split()));
       Some(rid)
     }
-    None => None,
+    _ => None,
   };
 
   let child_resource = ChildResource {
