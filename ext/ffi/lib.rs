@@ -720,11 +720,16 @@ unsafe extern "C" fn deno_ffi_callback(
   args: *const *const c_void,
   info: &mut CallbackInfo,
 ) {
+  let scope = match info.scope.as_mut() {
+    Some(scope) => scope,
+    // TODO: Unwinding this is UB.
+    None => panic!("Scope is already dropped"),
+  };
+
   let result = result as *mut c_void;
   let repr = std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
   let vals = std::slice::from_raw_parts(args, cif.nargs as usize);
 
-  let scope = &mut info.scope.as_mut().unwrap();
   let mut params: Vec<v8::Local<v8::Value>> = vec![];
   for (&repr, &val) in repr.iter().zip(vals) {
     let value = match (*repr).type_ as _ {
