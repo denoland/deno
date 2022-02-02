@@ -27,7 +27,7 @@ use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
-use super::cache::CacheServer;
+use super::cache;
 use super::capabilities;
 use super::client::Client;
 use super::code_lens;
@@ -78,6 +78,7 @@ pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 #[derive(Debug, Default)]
 pub(crate) struct StateSnapshot {
   pub assets: AssetsSnapshot,
+  pub cache_metadata: cache::CacheMetadata,
   pub documents: Documents,
   pub root_uri: Option<Url>,
 }
@@ -87,6 +88,9 @@ pub(crate) struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
   /// are part of the TypeScript snapshot and have to be fetched out.
   assets: Assets,
+  /// A representation of metadata associated with specifiers in the DENO_DIR
+  /// which is used by the language server
+  cache_metadata: cache::CacheMetadata,
   /// The LSP client that this LSP server is connected to.
   pub(crate) client: Client,
   /// Configuration information.
@@ -103,7 +107,7 @@ pub(crate) struct Inner {
   /// options.
   maybe_cache_path: Option<PathBuf>,
   /// A lazily created "server" for handling cache requests.
-  maybe_cache_server: Option<CacheServer>,
+  maybe_cache_server: Option<cache::CacheServer>,
   /// An optional configuration file which has been specified in the client
   /// options.
   maybe_config_file: Option<ConfigFile>,
@@ -146,6 +150,7 @@ impl Inner {
     .expect("could not create module registries");
     let location = dir.root.join(CACHE_PATH);
     let documents = Documents::new(&location);
+    let cache_metadata = cache::CacheMetadata::new(&location);
     let performance = Arc::new(Performance::default());
     let ts_server = Arc::new(TsServer::new(performance.clone()));
     let config = Config::new();
@@ -158,6 +163,7 @@ impl Inner {
 
     Self {
       assets,
+      cache_metadata,
       client,
       config,
       diagnostics_server,
@@ -389,6 +395,7 @@ impl Inner {
   pub(crate) fn snapshot(&self) -> Arc<StateSnapshot> {
     Arc::new(StateSnapshot {
       assets: self.assets.snapshot(),
+      cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
       root_uri: self.root_uri.clone(),
     })
@@ -446,7 +453,9 @@ impl Inner {
         },
       )?;
       self.module_registries_location = module_registries_location;
-      self.documents.set_location(dir.root.join(CACHE_PATH));
+      let location = dir.root.join(CACHE_PATH);
+      self.documents.set_location(&location);
+      self.cache_metadata.set_location(&location);
       self.maybe_cache_path = maybe_cache_path;
     }
     Ok(())
@@ -2685,7 +2694,7 @@ impl Inner {
 
     if self.maybe_cache_server.is_none() {
       self.maybe_cache_server = Some(
-        CacheServer::new(
+        cache::CacheServer::new(
           self.maybe_cache_path.clone(),
           self.maybe_import_map.clone(),
           self.maybe_config_file.clone(),
