@@ -143,7 +143,6 @@
     }
   }
   const UnsafePointerPrototype = UnsafePointer.prototype;
-
   function prepareArgs(types, args) {
     const parameters = [];
     const buffers = [];
@@ -163,12 +162,12 @@
         parameters.push(i);
         const fnTypes = type.function.parameters;
         fn = (...args) => {
-          const ptrIndices = fnTypes.map((ty, i) => ty == "pointer" ? i : -1)
-            .filter((i) => i !== -1);
-          for (const ptrIndex of ptrIndices) {
-            args[ptrIndex] = new UnsafePointer(unpackU64(args[ptrIndex]));
+          for (let i = 0; i < fnTypes.length; i++) {
+            const ty = fnTypes[i];
+            if (ty === "pointer") {
+              args[i] = new UnsafePointer(unpackU64(args[i]));
+            }
           }
-
           return arg(...args);
         };
       } else if (type === "pointer") {
