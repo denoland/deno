@@ -1572,10 +1572,18 @@
       } else if (css.backgroundColor == "white") {
         ansi += `\x1b[47m`;
       } else {
-        const [r, g, b] = ArrayIsArray(css.backgroundColor)
-          ? css.backgroundColor
-          : parseCssColor(css.backgroundColor);
-        ansi += `\x1b[48;2;${r};${g};${b}m`;
+        if (ArrayIsArray(css.backgroundColor)) {
+          const [r, g, b] = css.backgroundColor;
+          ansi += `\x1b[48;2;${r};${g};${b}m`;
+        } else {
+          const parsed = parseCssColor(css.backgroundColor);
+          if (parsed !== null) {
+            const [r, g, b] = parsed;
+            ansi += `\x1b[48;2;${r};${g};${b}m`;
+          } else {
+            ansi += "\x1b[49m";
+          }
+        }
       }
     }
     if (!colorEquals(css.color, prevCss.color)) {
@@ -1598,10 +1606,18 @@
       } else if (css.color == "white") {
         ansi += `\x1b[37m`;
       } else {
-        const [r, g, b] = ArrayIsArray(css.color)
-          ? css.color
-          : parseCssColor(css.color);
-        ansi += `\x1b[38;2;${r};${g};${b}m`;
+        if (ArrayIsArray(css.color)) {
+          const [r, g, b] = css.color;
+          ansi += `\x1b[38;2;${r};${g};${b}m`;
+        } else {
+          const parsed = parseCssColor(css.color);
+          if (parsed !== null) {
+            const [r, g, b] = parsed;
+            ansi += `\x1b[38;2;${r};${g};${b}m`;
+          } else {
+            ansi += "\x1b[39m";
+          }
+        }
       }
     }
     if (css.fontWeight != prevCss.fontWeight) {
