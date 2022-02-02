@@ -22,10 +22,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::os::unix::prelude::AsRawFd;
-use std::os::unix::prelude::FromRawFd;
+
 use std::rc::Rc;
-use std::str::FromStr;
 use tokio::net::UnixStream;
 
 #[cfg(unix)]
@@ -35,9 +33,18 @@ use command_fds::FdMapping;
 #[cfg(unix)]
 use nix::fcntl::{fcntl, FdFlag, F_SETFD};
 #[cfg(unix)]
+use std::os::unix::prelude::AsRawFd;
+#[cfg(unix)]
+use std::os::unix::prelude::FromRawFd;
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
+#[cfg(unix)]
+use std::str::FromStr;
+
+#[cfg(not(unix))]
+use deno_core::error::not_supported;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -184,13 +191,20 @@ fn op_run(
 
   let (ipc_parent, _ipc_child) = if run_args.ipc {
     super::check_unstable(state, "Deno.run.ipc");
-    let (ipc_parent, ipc_child) = UnixStream::pair()?;
-    c.fd_mappings(vec![FdMapping {
-      child_fd: 3,
-      parent_fd: ipc_child.as_raw_fd(),
-    }])?;
-    c.env("DENO_IPC_FD", "3");
-    (Some(ipc_parent), Some(ipc_child))
+
+    #[cfg(unix)]
+    {
+      let (ipc_parent, ipc_child) = UnixStream::pair()?;
+      c.fd_mappings(vec![FdMapping {
+        child_fd: 3,
+        parent_fd: ipc_child.as_raw_fd(),
+      }])?;
+      c.env("DENO_IPC_FD", "3");
+      (Some(ipc_parent), Some(ipc_child))
+    }
+
+    #[cfg(not(unix))]
+    return Err(not_supported());
   } else {
     (None, None)
   };
