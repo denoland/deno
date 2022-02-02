@@ -548,7 +548,7 @@ impl FfiCallPtrArgs {
 fn ffi_call(
   args: FfiCallArgs,
   symbol: &Symbol,
-  functions: Option<(&mut v8::HandleScope, v8::Local<v8::Function>)>,
+  functions: Option<(&mut v8::HandleScope, Vec<v8::Local<v8::Function>>)>,
 ) -> Result<Value, AnyError> {
   let buffers: Vec<Option<&[u8]>> = args
     .buffers
@@ -556,9 +556,8 @@ fn ffi_call(
     .map(|buffer| buffer.as_ref().map(|buffer| &buffer[..]))
     .collect();
 
-  let mut fn_position: Option<usize> = None;
-
-  let mut native_values: Vec<NativeValue> = vec![];
+  let mut cb_offsets = Vec::new();
+  let mut native_values: Vec<NativeValue> = Vec::new();
 
   for (native_type, value) in symbol
     .parameter_types
@@ -586,7 +585,7 @@ fn ffi_call(
         if let Some(idx) = value.as_u64() {
           // Placeholder to reserve spot for the function `Arg`.
           let native_value = NativeValue { void_value: () };
-          fn_position = Some(idx as usize);
+          cb_offsets.push(idx as usize);
           native_values.push(native_value);
         }
       }
@@ -607,8 +606,13 @@ fn ffi_call(
     })
     .collect::<Vec<_>>();
 
-  if let Some(pos) = fn_position {
-    return Ok(call_symbol_cb(symbol, call_args, pos, functions.unwrap()));
+  if cb_offsets.len() > 0 {
+    return Ok(call_symbol_cb(
+      symbol,
+      call_args,
+      cb_offsets,
+      functions.unwrap(),
+    ));
   }
 
   Ok(call_symbol(symbol, call_args))
@@ -617,30 +621,36 @@ fn ffi_call(
 fn call_symbol_cb(
   symbol: &Symbol,
   mut call_args: Vec<Arg>,
-  position: usize,
-  func: (&mut v8::HandleScope, v8::Local<v8::Function>),
+  offsets: Vec<usize>,
+  func: (&mut v8::HandleScope, Vec<v8::Local<v8::Function>>),
 ) -> Value {
-  let (scope, cb) = func;
-  let signature = symbol.parameter_types.get(position).unwrap();
+  let (scope, cbs) = func;
 
-  let (mut info, cif) = match signature {
-    NativeType::Function {
-      ref parameters,
-      ref result,
-    } => (
-      CallbackInfo::new(scope, cb),
-      Cif::new(
-        parameters.iter().map(libffi::middle::Type::from),
-        libffi::middle::Type::from(*result.clone()),
+  for (cb, offset) in cbs.into_iter().zip(offsets) {
+    let cb_info = CallbackInfo::new(scope, cb);
+    let signature = &symbol.parameter_types[offset];
+
+    let (mut info, cif) = match signature {
+      NativeType::Function {
+        ref parameters,
+        ref result,
+      } => (
+        cb_info,
+        Cif::new(
+          parameters.iter().map(libffi::middle::Type::from),
+          libffi::middle::Type::from(*result.clone()),
+        ),
       ),
-    ),
-    _ => unreachable!(),
-  };
+      _ => unreachable!(),
+    };
 
-  let closure =
-    libffi::middle::Closure::new_mut(cif, deno_ffi_callback, &mut info);
-  call_args[position] = Arg::new(closure.code_ptr());
-  std::mem::forget(closure);
+    let closure =
+      libffi::middle::Closure::new_mut(cif, deno_ffi_callback, &mut info);
+    call_args[offset] = Arg::new(closure.code_ptr());
+    // So this is a bad API. We need to ensure that the destructor for the closure.
+    // Ideally, `code_ptr()` should consume the closure.
+    std::mem::forget(closure);
+  }
 
   call_symbol(symbol, call_args)
 }
@@ -821,7 +831,7 @@ fn op_ffi_call_cb(
   state: Rc<RefCell<deno_core::OpState>>,
   args: FfiCallArgs,
   scope: &mut v8::HandleScope,
-  cb: v8::Local<v8::Function>,
+  cb: Vec<v8::Local<v8::Function>>,
 ) -> Result<Value, AnyError> {
   let resource = state
     .borrow()

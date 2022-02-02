@@ -95,7 +95,7 @@ where
       Rc<RefCell<OpState>>,
       A,
       &mut v8::HandleScope,
-      v8::Local<v8::Function>,
+      Vec<v8::Local<v8::Function>>,
     ) -> Result<R, Error>
     + 'static,
   A: DeserializeOwned,
@@ -103,10 +103,18 @@ where
 {
   Box::new(move |state, payload| -> Op {
     let a = serde_v8::from_v8(payload.scope, payload.a);
-    let b = v8::Local::<v8::Function>::try_from(payload.b).unwrap();
+    let b = v8::Local::<v8::Array>::try_from(payload.b).unwrap();
+    let fns = (0..b.length())
+      .map(|i| {
+        v8::Local::<v8::Function>::try_from(
+          b.get_index(payload.scope, i).unwrap(),
+        )
+        .unwrap()
+      })
+      .collect();
     let result = a
       .map_err(Error::from)
-      .and_then(|a| op_fn(state.clone(), a, payload.scope, b));
+      .and_then(|a| op_fn(state.clone(), a, payload.scope, fns));
     Op::Sync(serialize_op_result(result, state))
   })
 }

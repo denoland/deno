@@ -146,7 +146,7 @@
   function prepareArgs(types, args) {
     const parameters = [];
     const buffers = [];
-    let fn = null;
+    const fn = [];
 
     for (let i = 0; i < types.length; i++) {
       const type = types[i];
@@ -161,7 +161,7 @@
 
         parameters.push(i);
         const fnTypes = type.function.parameters;
-        fn = (...args) => {
+        fn.push((...args) => {
           for (let i = 0; i < fnTypes.length; i++) {
             const ty = fnTypes[i];
             if (ty === "pointer") {
@@ -169,7 +169,7 @@
             }
           }
           return arg(...args);
-        };
+        });
       } else if (type === "pointer") {
         if (
           ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, arg?.buffer) &&
@@ -255,6 +255,12 @@
           const { parameters, buffers, fn } = prepareArgs(types, args);
 
           if (isNonBlocking) {
+            if (fn.length > 0) {
+              throw new Error(
+                "Callbacks are not thread-safe",
+              );
+            }
+
             const promise = core.opAsync("op_ffi_call_nonblocking", {
               rid: this.#rid,
               symbol,
@@ -271,8 +277,7 @@
             return promise;
           } else {
             let result;
-
-            if (fn !== null) {
+            if (fn.length > 0) {
               result = core.opSync("op_ffi_call_cb", {
                 rid: this.#rid,
                 symbol,
