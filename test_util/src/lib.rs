@@ -676,6 +676,18 @@ async fn main_server(
       *res.status_mut() = StatusCode::FOUND;
       Ok(res)
     }
+    (_, "/x_deno_warning.js") => {
+      let mut res = Response::new(Body::empty());
+      *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
+      res
+        .headers_mut()
+        .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
+      res.headers_mut().insert(
+        "location",
+        HeaderValue::from_bytes(b"/x_deno_warning_redirect.js").unwrap(),
+      );
+      Ok(res)
+    }
     (_, "/non_ascii_redirect") => {
       let mut res = Response::new(Body::empty());
       *res.status_mut() = StatusCode::MOVED_PERMANENTLY;
@@ -1322,16 +1334,6 @@ pub async fn run_all_servers() {
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
   let mut response = Response::new(Body::from(body));
 
-  if p.ends_with("/x_deno_warning.js") {
-    response.headers_mut().insert(
-      "Content-Type",
-      HeaderValue::from_static("application/javascript"),
-    );
-    response
-      .headers_mut()
-      .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
-    return response;
-  }
   if p.ends_with("/053_import_compression/brotli") {
     response
       .headers_mut()

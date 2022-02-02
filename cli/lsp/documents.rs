@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::cache::calculate_fs_version;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -226,7 +227,6 @@ struct DocumentInner {
   maybe_module:
     Option<Result<deno_graph::Module, deno_graph::ModuleGraphError>>,
   maybe_navigation_tree: Option<Arc<tsc::NavigationTree>>,
-  maybe_warning: Option<String>,
   specifier: ModuleSpecifier,
   text_info: SourceTextInfo,
 }
@@ -242,9 +242,6 @@ impl Document {
     content: Arc<String>,
     maybe_resolver: Option<&dyn deno_graph::source::Resolver>,
   ) -> Self {
-    let maybe_warning = maybe_headers
-      .map(|h| h.get("x-deno-warning").cloned())
-      .flatten();
     let parser = SourceParser::default();
     // we only ever do `Document::new` on on disk resources that are supposed to
     // be diagnosable, unlike `Document::open`, so it is safe to unconditionally
@@ -272,7 +269,6 @@ impl Document {
       maybe_lsp_version: None,
       maybe_module,
       maybe_navigation_tree: None,
-      maybe_warning,
       text_info,
       specifier,
     }))
@@ -314,7 +310,6 @@ impl Document {
       maybe_lsp_version: Some(version),
       maybe_module,
       maybe_navigation_tree: None,
-      maybe_warning: None,
       text_info: source,
       specifier,
     }))
@@ -494,10 +489,6 @@ impl Document {
 
   pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
     self.0.maybe_navigation_tree.clone()
-  }
-
-  pub fn maybe_warning(&self) -> Option<String> {
-    self.0.maybe_warning.clone()
   }
 
   pub fn dependencies(&self) -> Vec<(String, deno_graph::Dependency)> {
@@ -692,9 +683,11 @@ impl FileSystemDocuments {
       )
     } else {
       let cache_filename = cache.get_cache_filename(specifier)?;
-      let metadata = http_cache::Metadata::read(&cache_filename).ok()?;
-      let maybe_content_type = metadata.headers.get("content-type").cloned();
-      let maybe_headers = Some(&metadata.headers);
+      let specifier_metadata =
+        http_cache::Metadata::read(&cache_filename).ok()?;
+      let maybe_content_type =
+        specifier_metadata.headers.get("content-type").cloned();
+      let maybe_headers = Some(&specifier_metadata.headers);
       let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
       let content = Arc::new(get_source_from_bytes(bytes, maybe_charset).ok()?);
       Document::new(
@@ -708,19 +701,6 @@ impl FileSystemDocuments {
     self.dirty = true;
     self.docs.insert(specifier.clone(), doc.clone());
     Some(doc)
-  }
-}
-
-fn calculate_fs_version(path: &Path) -> Option<String> {
-  let metadata = fs::metadata(path).ok()?;
-  if let Ok(modified) = metadata.modified() {
-    if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
-      Some(n.as_millis().to_string())
-    } else {
-      Some("1".to_string())
-    }
-  } else {
-    Some("1".to_string())
   }
 }
 
@@ -906,8 +886,8 @@ impl Documents {
   }
 
   /// Return a document for the specifier.
-  pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Document> {
-    let specifier = self.specifier_resolver.resolve(specifier)?;
+  pub fn get(&self, original_specifier: &ModuleSpecifier) -> Option<Document> {
+    let specifier = self.specifier_resolver.resolve(original_specifier)?;
     if let Some(document) = self.open_docs.get(&specifier) {
       Some(document.clone())
     } else {
@@ -1013,10 +993,10 @@ impl Documents {
   }
 
   /// Update the location of the on disk cache for the document store.
-  pub fn set_location(&mut self, location: PathBuf) {
+  pub fn set_location(&mut self, location: &Path) {
     // TODO update resolved dependencies?
-    self.cache = HttpCache::new(&location);
-    self.specifier_resolver = Arc::new(SpecifierResolver::new(&location));
+    self.cache = HttpCache::new(location);
+    self.specifier_resolver = Arc::new(SpecifierResolver::new(location));
     self.dirty = true;
   }
 
