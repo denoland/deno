@@ -98,7 +98,7 @@
     }
 
     postMessage(message) {
-      webidl.assertBranded(this, BroadcastChannel);
+      webidl.assertBranded(this, BroadcastChannelPrototype);
 
       const prefix = "Failed to execute 'postMessage' on 'BroadcastChannel'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -121,7 +121,7 @@
     }
 
     close() {
-      webidl.assertBranded(this, BroadcastChannel);
+      webidl.assertBranded(this, BroadcastChannelPrototype);
       this[_closed] = true;
 
       const index = ArrayPrototypeIndexOf(channels, this);
@@ -134,6 +134,7 @@
 
   defineEventHandler(BroadcastChannel.prototype, "message");
   defineEventHandler(BroadcastChannel.prototype, "messageerror");
+  const BroadcastChannelPrototype = BroadcastChannel.prototype;
 
   window.__bootstrap.broadcastChannel = { BroadcastChannel };
 })(this);

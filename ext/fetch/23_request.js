@@ -26,7 +26,7 @@
     fillHeaders,
     getDecodeSplitHeader,
   } = window.__bootstrap.headers;
-  const { HttpClient } = window.__bootstrap.fetch;
+  const { HttpClientPrototype } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
   const {
     ArrayPrototypeMap,
@@ -36,6 +36,7 @@
     MapPrototypeGet,
     MapPrototypeSet,
     ObjectKeys,
+    ObjectPrototypeIsPrototypeOf,
     RegExpPrototypeTest,
     Symbol,
     SymbolFor,
@@ -241,7 +242,9 @@
         const parsedURL = new URL(input, baseURL);
         request = newInnerRequest("GET", parsedURL.href, [], null, true);
       } else { // 6.
-        if (!(input instanceof Request)) throw new TypeError("Unreachable");
+        if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
+          throw new TypeError("Unreachable");
+        }
         request = input[_request];
         signal = input[_signal];
       }
@@ -268,7 +271,10 @@
 
       // NOTE: non standard extension. This handles Deno.HttpClient parameter
       if (init.client !== undefined) {
-        if (init.client !== null && !(init.client instanceof HttpClient)) {
+        if (
+          init.client !== null &&
+          !ObjectPrototypeIsPrototypeOf(HttpClientPrototype, init.client)
+        ) {
           throw webidl.makeException(
             TypeError,
             "`client` must be a Deno.HttpClient",
@@ -312,7 +318,7 @@
 
       // 33.
       let inputBody = null;
-      if (input instanceof Request) {
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
         inputBody = input[_body];
       }
 
@@ -356,32 +362,32 @@
     }
 
     get method() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_request].method;
     }
 
     get url() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_request].url();
     }
 
     get headers() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_headers];
     }
 
     get redirect() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_request].redirectMode;
     }
 
     get signal() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       return this[_signal];
     }
 
     clone() {
-      webidl.assertBranded(this, Request);
+      webidl.assertBranded(this, RequestPrototype);
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
@@ -398,7 +404,7 @@
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Request,
+        evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
         keys: [
           "bodyUsed",
           "headers",
@@ -410,18 +416,18 @@
     }
   }
 
-  mixinBody(Request, _body, _mimeType);
-
   webidl.configurePrototype(Request);
+  const RequestPrototype = Request.prototype;
+  mixinBody(RequestPrototype, _body, _mimeType);
 
   webidl.converters["Request"] = webidl.createInterfaceConverter(
     "Request",
-    Request,
+    RequestPrototype,
   );
   webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
     // Union for (Request or USVString)
     if (typeof V == "object") {
-      if (V instanceof Request) {
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, V)) {
         return webidl.converters["Request"](V, opts);
       }
     }

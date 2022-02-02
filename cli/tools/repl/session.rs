@@ -1,13 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::cdp;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use deno_ast::DiagnosticsError;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
 use deno_runtime::worker::MainWorker;
@@ -59,7 +58,7 @@ impl std::fmt::Display for EvaluationOutput {
 
 struct TsEvaluateResponse {
   ts_code: String,
-  value: cdp::EvaluateResponse,
+  value: Value,
 }
 
 pub struct ReplSession {
@@ -76,9 +75,7 @@ impl ReplSession {
 
     worker
       .with_event_loop(
-        session
-          .post_message::<()>("Runtime.enable", None)
-          .boxed_local(),
+        session.post_message("Runtime.enable", None).boxed_local(),
       )
       .await?;
 
@@ -118,8 +115,9 @@ impl ReplSession {
     let closed = self
       .evaluate_expression("(this.closed)")
       .await?
-      .result
-      .value
+      .get("result")
+      .unwrap()
+      .get("value")
       .unwrap()
       .as_bool()
       .unwrap();
@@ -127,10 +125,10 @@ impl ReplSession {
     Ok(closed)
   }
 
-  pub async fn post_message_with_event_loop<T: serde::Serialize>(
+  pub async fn post_message_with_event_loop(
     &mut self,
     method: &str,
-    params: Option<T>,
+    params: Option<Value>,
   ) -> Result<Value, AnyError> {
     self
       .worker
@@ -158,24 +156,23 @@ impl ReplSession {
 
     match self.evaluate_line_with_object_wrapping(line).await {
       Ok(evaluate_response) => {
-        let cdp::EvaluateResponse {
-          result,
-          exception_details,
-        } = evaluate_response.value;
+        let evaluate_result = evaluate_response.value.get("result").unwrap();
+        let evaluate_exception_details =
+          evaluate_response.value.get("exceptionDetails");
 
-        if exception_details.is_some() {
-          self.set_last_thrown_error(&result).await?;
+        if evaluate_exception_details.is_some() {
+          self.set_last_thrown_error(evaluate_result).await?;
         } else {
           self
             .language_server
             .commit_text(&evaluate_response.ts_code)
             .await;
 
-          self.set_last_eval_result(&result).await?;
+          self.set_last_eval_result(evaluate_result).await?;
         }
 
-        let value = self.get_eval_value(&result).await?;
-        Ok(match exception_details {
+        let value = self.get_eval_value(evaluate_result).await?;
+        Ok(match evaluate_exception_details {
           Some(_) => EvaluationOutput::Error(format!("Uncaught {}", value)),
           None => EvaluationOutput::Value(value),
         })
@@ -227,7 +224,7 @@ impl ReplSession {
           .as_ref()
           .unwrap()
           .value
-          .exception_details
+          .get("exceptionDetails")
           .is_some())
     {
       self.evaluate_ts_expression(line).await
@@ -238,90 +235,66 @@ impl ReplSession {
 
   async fn set_last_thrown_error(
     &mut self,
-    error: &cdp::RemoteObject,
+    error: &Value,
   ) -> Result<(), AnyError> {
     self.post_message_with_event_loop(
       "Runtime.callFunctionOn",
-      Some(cdp::CallFunctionOnArgs {
-        function_declaration: "function (object) { Deno[Deno.internal].lastThrownError = object; }".to_string(),
-        object_id: None,
-        arguments: Some(vec![error.into()]),
-        silent: None,
-        return_by_value: None,
-        generate_preview: None,
-        user_gesture: None,
-        await_promise: None,
-        execution_context_id: Some(self.context_id),
-        object_group: None,
-        throw_on_side_effect: None
-      }),
+      Some(json!({
+        "executionContextId": self.context_id,
+        "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
+        "arguments": [
+          error,
+        ],
+      })),
     ).await?;
     Ok(())
   }
 
   async fn set_last_eval_result(
     &mut self,
-    evaluate_result: &cdp::RemoteObject,
+    evaluate_result: &Value,
   ) -> Result<(), AnyError> {
-    self
-      .post_message_with_event_loop(
-        "Runtime.callFunctionOn",
-        Some(cdp::CallFunctionOnArgs {
-          function_declaration:
-            "function (object) { Deno[Deno.internal].lastEvalResult = object; }"
-              .to_string(),
-          object_id: None,
-          arguments: Some(vec![evaluate_result.into()]),
-          silent: None,
-          return_by_value: None,
-          generate_preview: None,
-          user_gesture: None,
-          await_promise: None,
-          execution_context_id: Some(self.context_id),
-          object_group: None,
-          throw_on_side_effect: None,
-        }),
-      )
-      .await?;
+    self.post_message_with_event_loop(
+      "Runtime.callFunctionOn",
+      Some(json!({
+        "executionContextId": self.context_id,
+        "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
+        "arguments": [
+          evaluate_result,
+        ],
+      })),
+    ).await?;
     Ok(())
   }
 
   pub async fn get_eval_value(
     &mut self,
-    evaluate_result: &cdp::RemoteObject,
+    evaluate_result: &Value,
   ) -> Result<String, AnyError> {
     // TODO(caspervonb) we should investigate using previews here but to keep things
     // consistent with the previous implementation we just get the preview result from
     // Deno.inspectArgs.
     let inspect_response = self.post_message_with_event_loop(
       "Runtime.callFunctionOn",
-      Some(cdp::CallFunctionOnArgs {
-        function_declaration: r#"function (object) {
+      Some(json!({
+        "executionContextId": self.context_id,
+        "functionDeclaration": r#"function (object) {
           try {
             return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
           } catch (err) {
             return Deno[Deno.internal].inspectArgs(["%o", err]);
           }
-        }"#.to_string(),
-        object_id: None,
-        arguments: Some(vec![evaluate_result.into()]),
-        silent: None,
-        return_by_value: None,
-        generate_preview: None,
-        user_gesture: None,
-        await_promise: None,
-        execution_context_id: Some(self.context_id),
-        object_group: None,
-        throw_on_side_effect: None
-      }),
+        }"#,
+        "arguments": [
+          evaluate_result,
+        ],
+      })),
     ).await?;
 
-    let response: cdp::CallFunctionOnResponse =
-      serde_json::from_value(inspect_response)?;
-    let value = response.result.value.unwrap();
-    let s = value.as_str().unwrap();
+    let inspect_result = inspect_response.get("result").unwrap();
+    let value = inspect_result.get("value").unwrap().as_str().unwrap();
 
-    Ok(s.to_string())
+    Ok(value.to_string())
   }
 
   async fn evaluate_ts_expression(
@@ -371,29 +344,16 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<cdp::EvaluateResponse, AnyError> {
+  ) -> Result<Value, AnyError> {
     self
       .post_message_with_event_loop(
         "Runtime.evaluate",
-        Some(cdp::EvaluateArgs {
-          expression: expression.to_string(),
-          object_group: None,
-          include_command_line_api: None,
-          silent: None,
-          context_id: Some(self.context_id),
-          return_by_value: None,
-          generate_preview: None,
-          user_gesture: None,
-          await_promise: None,
-          throw_on_side_effect: None,
-          timeout: None,
-          disable_breaks: None,
-          repl_mode: Some(true),
-          allow_unsafe_eval_blocked_by_csp: None,
-          unique_context_id: None,
-        }),
+        Some(json!({
+          "expression": expression,
+          "contextId": self.context_id,
+          "replMode": true,
+        })),
       )
       .await
-      .and_then(|res| serde_json::from_value(res).map_err(|e| e.into()))
   }
 }

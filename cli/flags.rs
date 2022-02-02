@@ -254,6 +254,7 @@ pub struct Flags {
   pub v8_flags: Vec<String>,
   pub version: bool,
   pub watch: Option<Vec<PathBuf>>,
+  pub no_clear_screen: bool,
 }
 
 fn join_paths(allowlist: &[PathBuf], d: &str) -> String {
@@ -561,6 +562,7 @@ fn bundle_subcommand<'a>() -> App<'a> {
     .arg(Arg::new("source_file").takes_value(true).required(true))
     .arg(Arg::new("out_file").takes_value(true).required(false))
     .arg(watch_arg(false))
+    .arg(no_clear_screen_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -900,6 +902,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .required(false),
     )
     .arg(watch_arg(false))
+    .arg(no_clear_screen_arg())
     .arg(
       Arg::new("options-use-tabs")
         .long("options-use-tabs")
@@ -1169,6 +1172,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .required(false),
     )
     .arg(watch_arg(false))
+    .arg(no_clear_screen_arg())
 }
 
 fn repl_subcommand<'a>() -> App<'a> {
@@ -1191,6 +1195,7 @@ fn run_subcommand<'a>() -> App<'a> {
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk"),
     )
+    .arg(no_clear_screen_arg())
     .setting(AppSettings::TrailingVarArg)
     .arg(script_arg().required(true))
     .about("Run a JavaScript or TypeScript program")
@@ -1320,6 +1325,7 @@ fn test_subcommand<'a>() -> App<'a> {
         .conflicts_with("no-run")
         .conflicts_with("coverage"),
     )
+    .arg(no_clear_screen_arg())
     .arg(script_arg().last(true))
     .about("Run tests")
     .long_about(
@@ -1672,6 +1678,13 @@ Only local files from entry point module graph are watched.",
   }
 }
 
+fn no_clear_screen_arg<'a>() -> Arg<'a> {
+  Arg::new("no-clear-screen")
+    .requires("watch")
+    .long("no-clear-screen")
+    .help("Do not clear terminal screen when under watch mode")
+}
+
 fn no_check_arg<'a>() -> Arg<'a> {
   Arg::new("no-check")
     .takes_value(true)
@@ -1910,6 +1923,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
   watch_arg_parse(flags, matches, false);
+
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -2451,6 +2465,10 @@ fn watch_arg_parse(
   } else if matches.is_present("watch") {
     flags.watch = Some(vec![]);
   }
+
+  if matches.is_present("no-clear-screen") {
+    flags.no_clear_screen = true;
+  }
 }
 
 // TODO(ry) move this to utility module and add test.
@@ -2575,6 +2593,30 @@ mod tests {
           script: "script.ts".to_string(),
         }),
         watch: Some(vec![PathBuf::from("file1"), PathBuf::from("file2")]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_watch_with_no_clear_screen() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--watch",
+      "--no-clear-screen",
+      "script.ts"
+    ]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        watch: Some(vec![]),
+        no_clear_screen: true,
         ..Flags::default()
       }
     );
@@ -2813,6 +2855,28 @@ mod tests {
       }
     );
 
+    let r =
+      flags_from_vec(svec!["deno", "fmt", "--watch", "--no-clear-screen"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          ignore: vec![],
+          check: false,
+          files: vec![],
+          ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
+        }),
+        watch: Some(vec![]),
+        no_clear_screen: true,
+        ..Flags::default()
+      }
+    );
+
     let r = flags_from_vec(svec![
       "deno",
       "fmt",
@@ -2937,6 +3001,62 @@ mod tests {
           json: false,
           ignore: vec![],
         }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--watch",
+      "script_1.ts",
+      "script_2.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint(LintFlags {
+          files: vec![
+            PathBuf::from("script_1.ts"),
+            PathBuf::from("script_2.ts")
+          ],
+          rules: false,
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
+          json: false,
+          ignore: vec![],
+        }),
+        watch: Some(vec![]),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--watch",
+      "--no-clear-screen",
+      "script_1.ts",
+      "script_2.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint(LintFlags {
+          files: vec![
+            PathBuf::from("script_1.ts"),
+            PathBuf::from("script_2.ts")
+          ],
+          rules: false,
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
+          json: false,
+          ignore: vec![],
+        }),
+        watch: Some(vec![]),
+        no_clear_screen: true,
         ..Flags::default()
       }
     );
@@ -3606,6 +3726,29 @@ mod tests {
           out_file: None,
         }),
         watch: Some(vec![]),
+        ..Flags::default()
+      }
+    )
+  }
+
+  #[test]
+  fn bundle_watch_with_no_clear_screen() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "bundle",
+      "--watch",
+      "--no-clear-screen",
+      "source.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Bundle(BundleFlags {
+          source_file: "source.ts".to_string(),
+          out_file: None,
+        }),
+        watch: Some(vec![]),
+        no_clear_screen: true,
         ..Flags::default()
       }
     )
@@ -4372,6 +4515,31 @@ mod tests {
   }
 
   #[test]
+  fn test_watch_with_no_clear_screen() {
+    let r =
+      flags_from_vec(svec!["deno", "test", "--watch", "--no-clear-screen"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          shuffle: None,
+          include: None,
+          ignore: vec![],
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
+        }),
+        watch: Some(vec![]),
+        no_clear_screen: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn bundle_with_cafile() {
     let r = flags_from_vec(svec![
       "deno",
@@ -4675,5 +4843,15 @@ mod tests {
       flags.config_path_args(),
       vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")]
     );
+  }
+
+  #[test]
+  fn test_no_clear_watch_flag_without_watch_flag() {
+    let r = flags_from_vec(svec!["deno", "run", "--no-clear-screen", "foo.js"]);
+    assert!(r.is_err());
+    let error_message = r.unwrap_err().to_string();
+    assert!(&error_message
+      .contains("error: The following required arguments were not provided:"));
+    assert!(&error_message.contains("--watch=<FILES>..."));
   }
 }

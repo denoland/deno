@@ -133,6 +133,18 @@ declare namespace Deno {
    */
   export function networkInterfaces(): NetworkInterfaceInfo[];
 
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Returns the user id of the process on POSIX platforms. Returns null on windows.
+   *
+   * ```ts
+   * console.log(Deno.getUid());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   */
+  export function getUid(): number | null;
+
   /** All possible types for interfacing with foreign functions */
   export type NativeType =
     | "void"
@@ -740,40 +752,6 @@ declare namespace Deno {
    * ```
    */
   export function applySourceMap(location: Location): Location;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Registers the given function as a listener of the given signal event.
-   *
-   * ```ts
-   * Deno.addSignalListener("SIGTERM", () => {
-   *   console.log("SIGTERM!")
-   * });
-   * ```
-   *
-   * NOTE: This functionality is not yet implemented on Windows.
-   */
-  export function addSignalListener(signal: Signal, handler: () => void): void;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Removes the given signal listener that has been registered with
-   * Deno.addSignalListener.
-   *
-   * ```ts
-   * const listener = () => {
-   *   console.log("SIGTERM!")
-   * };
-   * Deno.addSignalListener("SIGTERM", listener);
-   * Deno.removeSignalListener("SIGTERM", listener);
-   * ```
-   *
-   * NOTE: This functionality is not yet implemented on Windows.
-   */
-  export function removeSignalListener(
-    signal: Signal,
-    handler: () => void,
-  ): void;
 
   export type SetRawOptions = {
     cbreak: boolean;

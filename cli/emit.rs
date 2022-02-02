@@ -49,6 +49,7 @@ use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
+use deno_graph::ModuleKind;
 use deno_graph::ResolutionError;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -269,7 +270,7 @@ pub(crate) fn get_ts_config(
 /// the emittable files in the roots, so they get type checked and optionally
 /// emitted, otherwise they would be ignored if only imported into JavaScript.
 fn get_tsc_roots(
-  roots: &[ModuleSpecifier],
+  roots: &[(ModuleSpecifier, ModuleKind)],
   graph_data: &GraphData,
   check_js: bool,
 ) -> Vec<(ModuleSpecifier, MediaType)> {
@@ -292,7 +293,7 @@ fn get_tsc_roots(
   } else {
     roots
       .iter()
-      .filter_map(|specifier| match graph_data.get(specifier) {
+      .filter_map(|(specifier, _)| match graph_data.get(specifier) {
         Some(ModuleEntry::Module { media_type, .. }) => {
           Some((specifier.clone(), *media_type))
         }
@@ -313,8 +314,15 @@ fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
   ])
 }
 
-/// Determine if a given media type is emittable or not.
-pub(crate) fn is_emittable(media_type: &MediaType, include_js: bool) -> bool {
+/// Determine if a given module kind and media type is emittable or not.
+pub(crate) fn is_emittable(
+  kind: &ModuleKind,
+  media_type: &MediaType,
+  include_js: bool,
+) -> bool {
+  if matches!(kind, ModuleKind::Synthetic) {
+    return false;
+  }
   match &media_type {
     MediaType::TypeScript
     | MediaType::Mts
@@ -366,7 +374,7 @@ pub(crate) struct CheckEmitResult {
 /// It is expected that it is determined if a check and/or emit is validated
 /// before the function is called.
 pub(crate) fn check_and_maybe_emit(
-  roots: &[ModuleSpecifier],
+  roots: &[(ModuleSpecifier, ModuleKind)],
   graph_data: Arc<RwLock<GraphData>>,
   cache: &mut dyn Cacher,
   options: CheckOptions,
@@ -387,7 +395,7 @@ pub(crate) fn check_and_maybe_emit(
   }
   let root_names = get_tsc_roots(roots, &segment_graph_data, check_js);
   if options.log_checks {
-    for root in roots {
+    for (root, _) in roots {
       let root_str = root.to_string();
       // `$deno` specifiers are internal, don't print them.
       if !root_str.contains("$deno") {
@@ -401,7 +409,7 @@ pub(crate) fn check_and_maybe_emit(
   let maybe_tsbuildinfo = if options.reload {
     None
   } else {
-    cache.get(CacheType::TypeScriptBuildInfo, &roots[0])
+    cache.get(CacheType::TypeScriptBuildInfo, &roots[0].0)
   };
   // to make tsc build info work, we need to consistently hash modules, so that
   // tsc can better determine if an emit is still valid or not, so we provide
@@ -442,7 +450,7 @@ pub(crate) fn check_and_maybe_emit(
     if let Some(info) = &response.maybe_tsbuildinfo {
       // while we retrieve the build info for just the first module, it can be
       // used for all the roots in the graph, so we will cache it for all roots
-      for root in roots {
+      for (root, _) in roots {
         cache.set(CacheType::TypeScriptBuildInfo, root, info.clone())?;
       }
     }
@@ -547,8 +555,8 @@ impl swc::bundler::Load for BundleLoader<'_> {
         if let Some(m) = self.graph.get(specifier) {
           let (fm, module) = transpile_module(
             specifier,
-            m.maybe_source().unwrap_or(""),
-            *m.media_type(),
+            m.maybe_source.as_ref().map(|s| s.as_str()).unwrap_or(""),
+            m.media_type,
             self.emit_options,
             self.cm.clone(),
           )?;
@@ -716,7 +724,7 @@ pub(crate) fn bundle(
     let mut entries = HashMap::new();
     entries.insert(
       "bundle".to_string(),
-      swc::common::FileName::Url(graph.roots[0].clone()),
+      swc::common::FileName::Url(graph.roots[0].0.clone()),
     );
     let output = bundler
       .bundle(entries)
@@ -795,21 +803,32 @@ pub(crate) fn emit(
   let mut file_count = 0_u32;
   for module in graph.modules() {
     file_count += 1;
-    if !is_emittable(&module.media_type, include_js) {
+    if !is_emittable(&module.kind, &module.media_type, include_js) {
       continue;
     }
     let needs_reload =
       options.reload && !options.reload_exclusions.contains(&module.specifier);
-    let version = get_version(module.source.as_bytes(), &config_bytes);
-    let is_valid = cache
-      .get(CacheType::Version, &module.specifier)
-      .map_or(false, |v| {
-        v == get_version(module.source.as_bytes(), &config_bytes)
-      });
+    let version = get_version(
+      module.maybe_source.as_ref().map(|s| s.as_bytes()).unwrap(),
+      &config_bytes,
+    );
+    let is_valid =
+      cache
+        .get(CacheType::Version, &module.specifier)
+        .map_or(false, |v| {
+          v == get_version(
+            module.maybe_source.as_ref().map(|s| s.as_bytes()).unwrap(),
+            &config_bytes,
+          )
+        });
     if is_valid && !needs_reload {
       continue;
     }
-    let transpiled_source = module.parsed_source.transpile(&emit_options)?;
+    let transpiled_source = module
+      .maybe_parsed_source
+      .as_ref()
+      .map(|ps| ps.transpile(&emit_options))
+      .unwrap()?;
     emit_count += 1;
     cache.set(CacheType::Emit, &module.specifier, transpiled_source.text)?;
     if let Some(map) = transpiled_source.source_map {
@@ -897,8 +916,8 @@ impl fmt::Display for GraphError {
       ModuleGraphError::ResolutionError(err) => {
         if matches!(
           err,
-          ResolutionError::InvalidDowngrade(_, _)
-            | ResolutionError::InvalidLocalImport(_, _)
+          ResolutionError::InvalidDowngrade { .. }
+            | ResolutionError::InvalidLocalImport { .. }
         ) {
           write!(f, "{}", err.to_string_with_range())
         } else {
@@ -918,7 +937,7 @@ pub(crate) fn to_file_map(
 ) -> HashMap<String, String> {
   let mut files = HashMap::new();
   for (_, result) in graph.specifiers().into_iter() {
-    if let Ok((specifier, media_type)) = result {
+    if let Ok((specifier, _, media_type)) = result {
       if let Some(emit) = cache.get(CacheType::Emit, &specifier) {
         files.insert(format!("{}.js", specifier), emit);
         if let Some(map) = cache.get(CacheType::SourceMap, &specifier) {
@@ -935,7 +954,11 @@ pub(crate) fn to_file_map(
         if let Some(module) = graph.get(&specifier) {
           files.insert(
             specifier.to_string(),
-            module.maybe_source().unwrap_or("").to_string(),
+            module
+              .maybe_source
+              .as_ref()
+              .map(|s| s.to_string())
+              .unwrap_or_else(|| "".to_string()),
           );
         }
       }
@@ -1027,16 +1050,29 @@ mod tests {
 
   #[test]
   fn test_is_emittable() {
-    assert!(is_emittable(&MediaType::TypeScript, false));
-    assert!(!is_emittable(&MediaType::Dts, false));
-    assert!(!is_emittable(&MediaType::Dcts, false));
-    assert!(!is_emittable(&MediaType::Dmts, false));
-    assert!(is_emittable(&MediaType::Tsx, false));
-    assert!(!is_emittable(&MediaType::JavaScript, false));
-    assert!(!is_emittable(&MediaType::Cjs, false));
-    assert!(!is_emittable(&MediaType::Mjs, false));
-    assert!(is_emittable(&MediaType::JavaScript, true));
-    assert!(is_emittable(&MediaType::Jsx, false));
-    assert!(!is_emittable(&MediaType::Json, false));
+    assert!(is_emittable(
+      &ModuleKind::Esm,
+      &MediaType::TypeScript,
+      false
+    ));
+    assert!(!is_emittable(
+      &ModuleKind::Synthetic,
+      &MediaType::TypeScript,
+      false
+    ));
+    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Dts, false));
+    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Dcts, false));
+    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Dmts, false));
+    assert!(is_emittable(&ModuleKind::Esm, &MediaType::Tsx, false));
+    assert!(!is_emittable(
+      &ModuleKind::Esm,
+      &MediaType::JavaScript,
+      false
+    ));
+    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Cjs, false));
+    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Mjs, false));
+    assert!(is_emittable(&ModuleKind::Esm, &MediaType::JavaScript, true));
+    assert!(is_emittable(&ModuleKind::Esm, &MediaType::Jsx, false));
+    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Json, false));
   }
 }

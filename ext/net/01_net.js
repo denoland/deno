@@ -3,8 +3,9 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { BadResource, Interrupted } = core;
+  const { BadResourcePrototype, InterruptedPrototype } = core;
   const {
+    ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
     SymbolAsyncIterator,
     Uint8Array,
@@ -95,6 +96,14 @@
     closeWrite() {
       return shutdown(this.rid);
     }
+
+    setNoDelay(nodelay = true) {
+      return core.opSync("op_set_nodelay", this.rid, nodelay);
+    }
+
+    setKeepAlive(keepalive = true) {
+      return core.opSync("op_set_keepalive", this.rid, keepalive);
+    }
   }
 
   class Listener {
@@ -124,7 +133,10 @@
       try {
         conn = await this.accept();
       } catch (error) {
-        if (error instanceof BadResource || error instanceof Interrupted) {
+        if (
+          ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) ||
+          ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)
+        ) {
           return { value: undefined, done: true };
         }
         throw error;
@@ -191,7 +203,10 @@
         try {
           yield await this.receive();
         } catch (err) {
-          if (err instanceof BadResource || err instanceof Interrupted) {
+          if (
+            ObjectPrototypeIsPrototypeOf(BadResourcePrototype, err) ||
+            ObjectPrototypeIsPrototypeOf(InterruptedPrototype, err)
+          ) {
             break;
           }
           throw err;

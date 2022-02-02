@@ -1488,6 +1488,12 @@ itest!(import_file_with_colon {
   http_server: true,
 });
 
+itest!(import_extensionless {
+  args: "run --quiet --reload import_extensionless.ts",
+  output: "import_extensionless.ts.out",
+  http_server: true,
+});
+
 itest!(classic_workers_event_loop {
   args:
     "run --enable-testing-features-do-not-use classic_workers_event_loop.js",
