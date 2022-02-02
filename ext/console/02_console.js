@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -10,12 +10,13 @@
   const {
     ArrayBufferIsView,
     isNaN,
-    DataView,
-    Date,
+    DataViewPrototype,
+    DatePrototype,
     DateNow,
     DatePrototypeGetTime,
     DatePrototypeToISOString,
     Boolean,
+    BooleanPrototype,
     BooleanPrototypeToString,
     ObjectKeys,
     ObjectCreate,
@@ -27,9 +28,11 @@
     ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertySymbols,
     ObjectPrototypeHasOwnProperty,
+    ObjectPrototypeIsPrototypeOf,
     ObjectPrototypePropertyIsEnumerable,
-    Promise,
+    PromisePrototype,
     String,
+    StringPrototype,
     StringPrototypeRepeat,
     StringPrototypeReplace,
     StringPrototypeReplaceAll,
@@ -47,11 +50,13 @@
     TypeError,
     NumberParseInt,
     RegExp,
+    RegExpPrototype,
     RegExpPrototypeTest,
     RegExpPrototypeToString,
-    Set,
+    SetPrototype,
     SetPrototypeEntries,
     Symbol,
+    SymbolPrototype,
     SymbolPrototypeToString,
     SymbolPrototypeValueOf,
     SymbolToStringTag,
@@ -73,6 +78,7 @@
     ArrayPrototypeFind,
     FunctionPrototypeBind,
     Map,
+    MapPrototype,
     MapPrototypeHas,
     MapPrototypeGet,
     MapPrototypeSet,
@@ -80,6 +86,7 @@
     MapPrototypeEntries,
     MapPrototypeForEach,
     Error,
+    ErrorPrototype,
     ErrorCaptureStackTrace,
     MathAbs,
     MathMax,
@@ -88,16 +95,17 @@
     MathRound,
     MathFloor,
     Number,
+    NumberPrototype,
     NumberPrototypeToString,
     NumberPrototypeValueOf,
-    BigInt,
+    BigIntPrototype,
     BigIntPrototypeToString,
     Proxy,
     ReflectGet,
     ReflectGetOwnPropertyDescriptor,
     ReflectGetPrototypeOf,
-    WeakMap,
-    WeakSet,
+    WeakMapPrototype,
+    WeakSetPrototype,
   } = window.__bootstrap.primordials;
 
   function isInvalidDate(x) {
@@ -126,7 +134,8 @@
   // Forked from Node's lib/internal/cli_table.js
 
   function isTypedArray(x) {
-    return ArrayBufferIsView(x) && !(x instanceof DataView);
+    return ArrayBufferIsView(x) &&
+      !ObjectPrototypeIsPrototypeOf(DataViewPrototype, x);
   }
 
   const tableChars = {
@@ -888,7 +897,8 @@
 
     let err = value;
     while (
-      err.cause instanceof Error && err.cause !== value &&
+      ObjectPrototypeIsPrototypeOf(ErrorPrototype, err.cause) &&
+      err.cause !== value &&
       !ArrayPrototypeIncludes(causes, err.cause) // circular check
     ) {
       ArrayPrototypePush(causes, err.cause);
@@ -1160,33 +1170,33 @@
       // namespace is always enabled.
       return String(value[privateCustomInspect](inspect));
     }
-    if (value instanceof Error) {
+    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, value)) {
       return inspectError(value);
     } else if (ArrayIsArray(value)) {
       return inspectArray(value, level, inspectOptions);
-    } else if (value instanceof Number) {
+    } else if (ObjectPrototypeIsPrototypeOf(NumberPrototype, value)) {
       return inspectNumberObject(value, inspectOptions);
-    } else if (value instanceof BigInt) {
+    } else if (ObjectPrototypeIsPrototypeOf(BigIntPrototype, value)) {
       return inspectBigIntObject(value, inspectOptions);
-    } else if (value instanceof Boolean) {
+    } else if (ObjectPrototypeIsPrototypeOf(BooleanPrototype, value)) {
       return inspectBooleanObject(value, inspectOptions);
-    } else if (value instanceof String) {
+    } else if (ObjectPrototypeIsPrototypeOf(StringPrototype, value)) {
       return inspectStringObject(value, inspectOptions);
-    } else if (value instanceof Symbol) {
+    } else if (ObjectPrototypeIsPrototypeOf(SymbolPrototype, value)) {
       return inspectSymbolObject(value, inspectOptions);
-    } else if (value instanceof Promise) {
+    } else if (ObjectPrototypeIsPrototypeOf(PromisePrototype, value)) {
       return inspectPromise(value, level, inspectOptions);
-    } else if (value instanceof RegExp) {
+    } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) {
       return inspectRegExp(value, inspectOptions);
-    } else if (value instanceof Date) {
+    } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
       return inspectDate(value, inspectOptions);
-    } else if (value instanceof Set) {
+    } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
       return inspectSet(value, level, inspectOptions);
-    } else if (value instanceof Map) {
+    } else if (ObjectPrototypeIsPrototypeOf(MapPrototype, value)) {
       return inspectMap(value, level, inspectOptions);
-    } else if (value instanceof WeakSet) {
+    } else if (ObjectPrototypeIsPrototypeOf(WeakSetPrototype, value)) {
       return inspectWeakSet(inspectOptions);
-    } else if (value instanceof WeakMap) {
+    } else if (ObjectPrototypeIsPrototypeOf(WeakMapPrototype, value)) {
       return inspectWeakMap(inspectOptions);
     } else if (isTypedArray(value)) {
       return inspectTypedArray(
@@ -1478,14 +1488,12 @@
 
     for (const [key, value] of rawEntries) {
       if (key == "background-color") {
-        const color = parseCssColor(value);
-        if (color != null) {
-          css.backgroundColor = color;
+        if (value != null) {
+          css.backgroundColor = value;
         }
       } else if (key == "color") {
-        const color = parseCssColor(value);
-        if (color != null) {
-          css.color = color;
+        if (value != null) {
+          css.color = value;
         }
       } else if (key == "font-weight") {
         if (value == "bold") {
@@ -1545,19 +1553,55 @@
     prevCss = prevCss ?? getDefaultCss();
     let ansi = "";
     if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
-      if (css.backgroundColor != null) {
-        const [r, g, b] = css.backgroundColor;
-        ansi += `\x1b[48;2;${r};${g};${b}m`;
-      } else {
+      if (css.backgroundColor == null) {
         ansi += "\x1b[49m";
+      } else if (css.backgroundColor == "black") {
+        ansi += `\x1b[40m`;
+      } else if (css.backgroundColor == "red") {
+        ansi += `\x1b[41m`;
+      } else if (css.backgroundColor == "green") {
+        ansi += `\x1b[42m`;
+      } else if (css.backgroundColor == "yellow") {
+        ansi += `\x1b[43m`;
+      } else if (css.backgroundColor == "blue") {
+        ansi += `\x1b[44m`;
+      } else if (css.backgroundColor == "magenta") {
+        ansi += `\x1b[45m`;
+      } else if (css.backgroundColor == "cyan") {
+        ansi += `\x1b[46m`;
+      } else if (css.backgroundColor == "white") {
+        ansi += `\x1b[47m`;
+      } else {
+        const [r, g, b] = ArrayIsArray(css.backgroundColor)
+          ? css.backgroundColor
+          : parseCssColor(css.backgroundColor);
+        ansi += `\x1b[48;2;${r};${g};${b}m`;
       }
     }
     if (!colorEquals(css.color, prevCss.color)) {
-      if (css.color != null) {
-        const [r, g, b] = css.color;
-        ansi += `\x1b[38;2;${r};${g};${b}m`;
-      } else {
+      if (css.color == null) {
         ansi += "\x1b[39m";
+      } else if (css.color == "black") {
+        ansi += `\x1b[30m`;
+      } else if (css.color == "red") {
+        ansi += `\x1b[31m`;
+      } else if (css.color == "green") {
+        ansi += `\x1b[32m`;
+      } else if (css.color == "yellow") {
+        ansi += `\x1b[33m`;
+      } else if (css.color == "blue") {
+        ansi += `\x1b[34m`;
+      } else if (css.color == "magenta") {
+        ansi += `\x1b[35m`;
+      } else if (css.color == "cyan") {
+        ansi += `\x1b[36m`;
+      } else if (css.color == "white") {
+        ansi += `\x1b[37m`;
+      } else {
+        const [r, g, b] = ArrayIsArray(css.color)
+          ? css.color
+          : parseCssColor(css.color);
+        ansi += `\x1b[38;2;${r};${g};${b}m`;
       }
     }
     if (css.fontWeight != prevCss.fontWeight) {
@@ -1616,7 +1660,7 @@
   }
 
   function inspectArgs(args, inspectOptions = {}) {
-    const noColor = globalThis.Deno?.noColor ?? true;
+    const noColor = colors.getNoColor();
     const rInspectOptions = { ...DEFAULT_INSPECT_OPTIONS, ...inspectOptions };
     const first = args[0];
     let a = 0;
@@ -1725,7 +1769,7 @@
   function getConsoleInspectOptions() {
     return {
       ...DEFAULT_INSPECT_OPTIONS,
-      colors: !(globalThis.Deno?.noColor ?? false),
+      colors: !colors.getNoColor(),
     };
   }
 
@@ -1877,14 +1921,14 @@
       const toTable = (header, body) => this.log(cliTable(header, body));
 
       let resultData;
-      const isSet = data instanceof Set;
-      const isMap = data instanceof Map;
+      const isSet = ObjectPrototypeIsPrototypeOf(SetPrototype, data);
+      const isMap = ObjectPrototypeIsPrototypeOf(MapPrototype, data);
       const valuesKey = "Values";
       const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
 
-      if (data instanceof Set) {
+      if (isSet) {
         resultData = [...data];
-      } else if (data instanceof Map) {
+      } else if (isMap) {
         let idx = 0;
         resultData = {};
 

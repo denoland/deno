@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache;
 use crate::config_file::IgnoredCompilerOptions;
@@ -7,6 +7,7 @@ use crate::emit;
 use crate::errors::get_error_class_name;
 use crate::flags;
 use crate::graph_util::graph_valid;
+use crate::proc_state::import_map_from_text;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -15,15 +16,16 @@ use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::op_async;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_graph;
+use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
-use import_map::ImportMap;
 use serde::Deserialize;
 use serde::Serialize;
 use std::cell::RefCell;
@@ -32,8 +34,10 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_async(rt, "op_emit", op_emit);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![("op_emit", op_async(op_emit))])
+    .build()
 }
 
 #[derive(Debug, Deserialize)]
@@ -171,8 +175,8 @@ async fn op_emit(
       .with_context(|| {
         format!("Bad URL (\"{}\") for import map.", import_map_str)
       })?;
-    let import_map = if let Some(value) = args.import_map {
-      ImportMap::from_json(import_map_specifier.as_str(), &value.to_string())?
+    let import_map_source = if let Some(value) = args.import_map {
+      Arc::new(value.to_string())
     } else {
       let file = ps
         .file_fetcher
@@ -184,8 +188,10 @@ async fn op_emit(
             import_map_specifier, e
           ))
         })?;
-      ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
+      file.source
     };
+    let import_map =
+      import_map_from_text(&import_map_specifier, &import_map_source)?;
     Some(ImportMapResolver::new(Arc::new(import_map)))
   } else if args.import_map.is_some() {
     return Err(generic_error("An importMap was specified, but no importMapPath was provided, which is required."));
@@ -202,9 +208,9 @@ async fn op_emit(
       .as_ref()
       .map(|imr| imr.as_resolver())
   };
-  let roots = vec![resolve_url_or_path(&root_specifier)?];
+  let roots = vec![(resolve_url_or_path(&root_specifier)?, ModuleKind::Esm)];
   let maybe_imports =
-    to_maybe_imports(&roots[0], args.compiler_options.as_ref());
+    to_maybe_imports(&roots[0].0, args.compiler_options.as_ref());
   let graph = Arc::new(
     deno_graph::create_graph(
       roots,
@@ -214,6 +220,7 @@ async fn op_emit(
       maybe_resolver,
       None,
       None,
+      None,
     )
     .await,
   );
@@ -221,7 +228,7 @@ async fn op_emit(
   // There are certain graph errors that we want to return as an error of an op,
   // versus something that gets returned as a diagnostic of the op, this is
   // handled here.
-  if let Err(err) = graph_valid(&graph, check) {
+  if let Err(err) = graph_valid(&graph, check, true) {
     if get_error_class_name(&err) == "PermissionDenied" {
       return Err(err);
     }
@@ -282,6 +289,7 @@ async fn op_emit(
       emit::BundleOptions {
         bundle_type: bundle.into(),
         ts_config,
+        emit_ignore_directives: true,
       },
     )?;
     let mut files = HashMap::new();

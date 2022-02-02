@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 /// FLAGS
 
 import { parse } from "../../test_util/std/flags/mod.ts";
@@ -12,10 +12,11 @@ export const {
   rebuild,
   ["--"]: rest,
   ["auto-config"]: autoConfig,
+  ["inspect-brk"]: inspectBrk,
   binary,
 } = parse(Deno.args, {
   "--": true,
-  boolean: ["quiet", "release", "no-interactive"],
+  boolean: ["quiet", "release", "no-interactive", "inspect-brk"],
   string: ["json", "wptreport", "binary"],
 });
 

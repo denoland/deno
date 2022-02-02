@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
@@ -1918,7 +1918,7 @@ fn permission_prompt(message: &str) -> bool {
       if success != TRUE {
         panic!(
           "Error flushing console input buffer: {}",
-          std::io::Error::last_os_error().to_string()
+          std::io::Error::last_os_error()
         )
       }
     }
@@ -1941,7 +1941,7 @@ fn permission_prompt(message: &str) -> bool {
       if success != TRUE {
         panic!(
           "Error emulating enter key press: {}",
-          std::io::Error::last_os_error().to_string()
+          std::io::Error::last_os_error()
         )
       }
     }
@@ -1954,7 +1954,7 @@ fn permission_prompt(message: &str) -> bool {
       if success != TRUE {
         panic!(
           "Error peeking console input buffer: {}",
-          std::io::Error::last_os_error().to_string()
+          std::io::Error::last_os_error()
         )
       }
       events_read == 0

@@ -1,14 +1,15 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const __bootstrap = window.__bootstrap;
   const {
-    ArrayBuffer,
+    ArrayBufferPrototype,
     Uint8Array,
     BigInt,
     Number,
+    ObjectPrototypeIsPrototypeOf,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -141,8 +142,9 @@
       return this.value;
     }
   }
+  const UnsafePointerPrototype = UnsafePointer.prototype;
 
-  function prepareParameters(args, types) {
+  function prepareArgs(types, args) {
     const parameters = [];
     const buffers = [];
     let fn = null;
@@ -171,12 +173,12 @@
         };
       } else if (type === "pointer") {
         if (
-          arg?.buffer instanceof ArrayBuffer &&
+          ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, arg?.buffer) &&
           arg.byteLength !== undefined
         ) {
           parameters.push(buffers.length);
           buffers.push(arg);
-        } else if (arg instanceof UnsafePointer) {
+        } else if (ObjectPrototypeIsPrototypeOf(UnsafePointerPrototype, arg)) {
           parameters.push(packU64(arg.value));
           buffers.push(undefined);
         } else if (arg === null) {
@@ -195,6 +197,50 @@
     return { parameters, buffers, fn };
   }
 
+  class UnsafeFnPointer {
+    pointer;
+    definition;
+
+    constructor(pointer, definition) {
+      this.pointer = pointer;
+      this.definition = definition;
+    }
+
+    call(...args) {
+      const { parameters, buffers } = prepareArgs(
+        this.definition.parameters,
+        args,
+      );
+      if (this.definition.nonblocking) {
+        const promise = core.opAsync("op_ffi_call_ptr_nonblocking", {
+          pointer: packU64(this.pointer.value),
+          def: this.definition,
+          parameters,
+          buffers,
+        });
+
+        if (this.definition.result === "pointer") {
+          return promise.then((value) => new UnsafePointer(unpackU64(value)));
+        }
+
+        return promise;
+      } else {
+        const result = core.opSync("op_ffi_call_ptr", {
+          pointer: packU64(this.pointer.value),
+          def: this.definition,
+          parameters,
+          buffers,
+        });
+
+        if (this.definition.result === "pointer") {
+          return new UnsafePointer(unpackU64(result));
+        }
+
+        return result;
+      }
+    }
+  }
+
   class DynamicLibrary {
     #rid;
     symbols = {};
@@ -207,7 +253,7 @@
         const types = symbols[symbol].parameters;
 
         this.symbols[symbol] = (...args) => {
-          const { parameters, buffers, fn } = prepareParameters(args, types);
+          const { parameters, buffers, fn } = prepareArgs(types, args);
 
           if (isNonBlocking) {
             const promise = core.opAsync("op_ffi_call_nonblocking", {
@@ -264,5 +310,10 @@
     return new DynamicLibrary(pathFromURL(path), symbols);
   }
 
-  window.__bootstrap.ffi = { dlopen, UnsafePointer, UnsafePointerView };
+  window.__bootstrap.ffi = {
+    dlopen,
+    UnsafePointer,
+    UnsafePointerView,
+    UnsafeFnPointer,
+  };
 })(this);

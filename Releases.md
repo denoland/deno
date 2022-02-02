@@ -6,6 +6,101 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.18.1 / 2022.01.27
+
+- feat(unstable): add Deno.networkInterfaces (#13475)
+- fix(ext/crypto): duplicate RsaHashedImportParams types (#13466)
+- fix(lsp): respect DENO_CERT and other options related to TLS certs (#13467)
+- perf(lsp): improve some tsc op hot paths (#13473)
+- perf(lsp): independent diagnostic source publishes (#13427)
+
+### 1.18.0 / 2022.01.20
+
+- feat: auto-discover config file (#13313)
+- feat: output `cause` on JS runtime errors (#13209)
+- feat: stabilize test steps API (#13400)
+- feat(cli, runtime): compress snapshots (#13320)
+- feat(cli): add ignore directives to bundled code (#13309)
+- feat(compat) preload Node.js built-in modules in global vars REPL (#13127)
+- feat(ext/crypto): implement AES-GCM decryption (#13319)
+- feat(ext/crypto): implement AES-GCM encryption (#13119)
+- feat(ext/crypto): implement AES-KW for wrapKey/unwrapKey (#13286)
+- feat(ext/crypto): implement pkcs8/JWK for P-384 curves (#13154)
+- feat(ext/crypto): implement pkcs8/spki/jwk exportKey for ECDSA and ECDH
+  (#13104)
+- feat(ext/crypto): JWK support for unwrapKey/wrapKey (#13261)
+- feat(ext/crypto): support AES-CTR encrypt/decrypt (#13177)
+- feat(ext/crypto): support importing raw EC keys (#13079)
+- feat(ext/ffi): infer symbol types (#13221)
+- feat(ext/ffi): support alias names for symbol definitions (#13090)
+- feat(ext/ffi): UnsafeFnPointer API (#13340)
+- feat(ext/websocket): add header support to WebSocketStream (#11887)
+- feat(ext/websocket): server automatically handle ping/pong for incoming
+  WebSocket (#13172)
+- feat(lsp): provide registry details on hover if present (#13294)
+- feat(runtime): add op_network_interfaces (#12964)
+- feat(serde_v8): deserialize ArrayBuffers (#13436)
+- feat(streams): reject pending reads when releasing reader (#13375)
+- feat(test): Add support for "deno test --compat" (#13235)
+- fix(cli): Don't strip shebangs from modules (#13220)
+- fix(cli): fix `deno install --prompt` (#13349)
+- fix(cli/dts): add NotSupported error type (#13432)
+- fix(ext/console): don't depend on globalThis present (#13387)
+- fix(ext/crypto): validate maskGenAlgorithm asn1 in importKey (#13421)
+- fix(ext/ffi): `pointer` type can accept `null` (#13335)
+- fix(fmt): markdown formatting should not remove backslashed backslash at start
+  of paragraph (#13429)
+- fix(lsp): better handling of registry config errors (#13418)
+- fix(runtime): don't crash when window is deleted (#13392)
+- fix(streams): update TypeError message for pending reads when releasing reader
+  (#13376)
+- fix(tsc): Add typings for `Intl.ListFormat` (#13301)
+
+### 1.17.3 / 2022.01.12
+
+- fix: Get lib.deno_core.d.ts to parse correctly (#13238)
+- fix: expose "Deno.memoryUsage()" in worker context (#13293)
+- fix: install shim with `--allow-all` should not output each permission
+  individually (#13325)
+- fix(compile): fix output flag behaviour on compile command (#13299)
+- fix(coverage): don't type check (#13324)
+- fix(coverage): merge coverage ranges (#13334)
+- fix(ext/web): handle no arguments in atob (#13341)
+- fix(serde_v8): support #[serde(default)] (#13300)
+
+### 1.17.2 / 2022.01.05
+
+- fix(cli): include JSON modules in bundle (#13188)
+- fix(core): inspector works if no "Runtime.runIfWaitingForDebugger" message is
+  sent (#13191)
+- fix(coverage): use only string byte indexes and 0-indexed line numbers
+  (#13190)
+- fix(doc): Make private types which show up in the rustdocs public (#13230)
+- fix(ext/console): map basic css color keywords to ansi (#13175)
+- fix(ext/crypto) - exportKey JWK for AES/HMAC must use base64url (#13264)
+- fix(ext/crypto) include AES-CTR for deriveKey (#13174)
+- fix(ext/crypto): use forgiving base64 encoding for JWK (#13240)
+- fix(ext/ffi): throw errors instead of panic (#13283)
+- fix(lsp): add code lens for tests just using named functions (#13218)
+- fix(lsp): better handling of folders in registry completions (#13250)
+- fix(lsp): handle repeating patterns in registry correctly (#13275)
+- fix(lsp): properly generate data URLs for completion items (#13246)
+- fix(signals): prevent panic when listening to forbidden signals (#13273)
+- fix: support `mts`, `cjs` & `cts` files for `deno test` & `deno fmt` (#13274)
+- fix: upgrade swc_ecmascript to 0.103 (#13284)
+
+### 1.17.1 / 2021.12.22
+
+- feat(lsp, unstable): add code lens for debugging tests (#13138)
+- feat(lsp, unstable): supply accept header when fetching registry config
+  (#13159)
+- fix: inspector prompts (#13123)
+- fix(coverage): Split sources by char index (#13114)
+- fix(ext/ffi): use `c_char` instead of `i8` for reading strings (#13118)
+- fix(ext/websocket): WebSocketStream don't error with "sending after closing"
+  when closing (#13134)
+- fix(repl): support assertions on import & export declarations (#13121)
+
 ### 1.17.0 / 2021.12.16
 
 - feat: add `--no-check=remote` flag (#12766)

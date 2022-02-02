@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -16,6 +16,7 @@
     // deno-lint-ignore camelcase
     NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
+    ObjectPrototypeIsPrototypeOf,
     SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -287,7 +288,7 @@
         }
       },
       (err) => {
-        if (err instanceof core.Interrupted) {
+        if (ObjectPrototypeIsPrototypeOf(core.InterruptedPrototype, err)) {
           // The timer was cancelled.
           removeFromScheduledTimers(timerObject);
         } else {

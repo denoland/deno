@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -418,10 +418,21 @@ Deno.test({
         "/b.ts": `export const b = "b";`,
       },
     });
+    const ignoreDirecives = [
+      "// deno-fmt-ignore-file",
+      "// deno-lint-ignore-file",
+      "// This code was bundled using `deno bundle` and it's not recommended to edit it manually",
+      "",
+      "",
+    ].join("\n");
     assert(diagnostics);
     assertEquals(diagnostics.length, 0);
     assertEquals(Object.keys(files).length, 2);
-    assert(files["deno:///bundle.js"].startsWith("(function() {\n"));
+    assert(
+      files["deno:///bundle.js"].startsWith(
+        ignoreDirecives + "(function() {\n",
+      ),
+    );
     assert(files["deno:///bundle.js"].endsWith("})();\n"));
     assert(files["deno:///bundle.js.map"]);
   },
@@ -514,7 +525,7 @@ Deno.test({
         code: 900001,
         start: null,
         end: null,
-        messageText: 'Cannot load module "file:///b.ts".',
+        messageText: 'Module not found "file:///b.ts".',
         messageChain: null,
         source: null,
         sourceLine: null,
@@ -524,7 +535,7 @@ Deno.test({
     ]);
     assert(
       Deno.formatDiagnostics(diagnostics).includes(
-        'Cannot load module "file:///b.ts".',
+        'Module not found "file:///b.ts".',
       ),
     );
   },

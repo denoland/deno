@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::emit::TypeLib;
 use crate::proc_state::ProcState;
@@ -6,7 +6,6 @@ use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
-use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -84,7 +83,6 @@ impl ModuleLoader for CliModuleLoader {
   fn prepare_load(
     &self,
     op_state: Rc<RefCell<OpState>>,
-    _load_id: ModuleLoadId,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
@@ -108,10 +106,9 @@ impl ModuleLoader for CliModuleLoader {
     };
     drop(state);
 
-    // TODO(bartlomieju): `prepare_module_load` should take `load_id` param
     async move {
       ps.prepare_module_load(
-        vec![specifier],
+        vec![(specifier, deno_graph::ModuleKind::Esm)],
         is_dynamic,
         lib,
         root_permissions,

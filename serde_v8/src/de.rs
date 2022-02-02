@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use serde::de::{self, Visitor};
 use serde::Deserialize;
 
@@ -134,9 +134,20 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       ValueType::ArrayBufferView => {
         v8::Local::<v8::ArrayBufferView>::try_from(self.input)
           .and_then(|view| {
-            magic::zero_copy_buf::ZeroCopyBuf::try_new(self.scope, view)
+            magic::zero_copy_buf::ZeroCopyBuf::try_from((
+              &mut *self.scope,
+              view,
+            ))
           })
-          .map_err(|_| Error::ExpectedInteger)
+          .map_err(|_| Error::ExpectedBuffer)
+          .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
+      }
+      ValueType::ArrayBuffer => {
+        v8::Local::<v8::ArrayBuffer>::try_from(self.input)
+          .and_then(|buffer| {
+            magic::zero_copy_buf::ZeroCopyBuf::try_from(buffer)
+          })
+          .map_err(|_| Error::ExpectedBuffer)
           .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
       }
     }
@@ -339,12 +350,20 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
 
     // Magic Buffer
     if name == magic::buffer::BUF_NAME {
-      let zero_copy_buf =
-        v8::Local::<v8::ArrayBufferView>::try_from(self.input)
+      let zero_copy_buf = match self.input.is_array_buffer() {
+        // ArrayBuffer
+        true => v8::Local::<v8::ArrayBuffer>::try_from(self.input)
+          .and_then(magic::zero_copy_buf::ZeroCopyBuf::try_from),
+        // maybe ArrayBufferView
+        false => v8::Local::<v8::ArrayBufferView>::try_from(self.input)
           .and_then(|view| {
-            magic::zero_copy_buf::ZeroCopyBuf::try_new(self.scope, view)
-          })
-          .map_err(|_| Error::ExpectedArray)?;
+            magic::zero_copy_buf::ZeroCopyBuf::try_from((
+              &mut *self.scope,
+              view,
+            ))
+          }),
+      }
+      .map_err(|_| Error::ExpectedBuffer)?;
       let data: [u8; 32] = unsafe { std::mem::transmute(zero_copy_buf) };
       return visitor.visit_bytes(&data);
     }
@@ -375,7 +394,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     // Regular struct
     let obj = v8::Local::<v8::Object>::try_from(self.input)
       .map_err(|_| Error::ExpectedObject)?;
-    let map = ObjectAccess {
+    let struct_access = StructAccess {
       fields,
       obj,
       pos: 0,
@@ -383,7 +402,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       _cache: None,
     };
 
-    visitor.visit_map(map)
+    visitor.visit_seq(struct_access)
   }
 
   /// To be compatible with `serde-json`, we expect enums to be:
@@ -511,7 +530,7 @@ impl<'de> de::MapAccess<'de> for MapAccess<'_, '_, '_> {
   }
 }
 
-struct ObjectAccess<'a, 'b, 's> {
+struct StructAccess<'a, 'b, 's> {
   obj: v8::Local<'a, v8::Object>,
   scope: &'b mut v8::HandleScope<'s>,
   fields: &'static [&'static str],
@@ -519,57 +538,31 @@ struct ObjectAccess<'a, 'b, 's> {
   _cache: Option<&'b mut KeyCache>,
 }
 
-fn str_deserializer(s: &str) -> de::value::StrDeserializer<Error> {
-  de::IntoDeserializer::into_deserializer(s)
-}
-
-impl<'de, 'a, 'b, 's> de::MapAccess<'de> for ObjectAccess<'a, 'b, 's> {
+impl<'de> de::SeqAccess<'de> for StructAccess<'_, '_, '_> {
   type Error = Error;
 
-  fn next_key_seed<K: de::DeserializeSeed<'de>>(
+  fn next_element_seed<T: de::DeserializeSeed<'de>>(
     &mut self,
-    seed: K,
-  ) -> Result<Option<K::Value>> {
-    Ok(match self.fields.get(self.pos) {
-      Some(&field) => Some(seed.deserialize(str_deserializer(field))?),
-      None => None,
-    })
-  }
-
-  fn next_value_seed<V: de::DeserializeSeed<'de>>(
-    &mut self,
-    seed: V,
-  ) -> Result<V::Value> {
-    if self.pos >= self.fields.len() {
-      return Err(Error::LengthMismatch);
-    }
-    let field = self.fields[self.pos];
-    self.pos += 1;
-    let key = v8_struct_key(self.scope, field).into();
-    let v8_val = self.obj.get(self.scope, key).unwrap();
-    let mut deserializer = Deserializer::new(self.scope, v8_val, None);
-    seed.deserialize(&mut deserializer)
-  }
-
-  fn next_entry_seed<
-    K: de::DeserializeSeed<'de>,
-    V: de::DeserializeSeed<'de>,
-  >(
-    &mut self,
-    kseed: K,
-    vseed: V,
-  ) -> Result<Option<(K::Value, V::Value)>> {
+    seed: T,
+  ) -> Result<Option<T::Value>> {
     if self.pos >= self.fields.len() {
       return Ok(None);
     }
-    let field = self.fields[self.pos];
+
+    let pos = self.pos;
     self.pos += 1;
-    Ok(Some((kseed.deserialize(str_deserializer(field))?, {
-      let key = v8_struct_key(self.scope, field).into();
-      let v8_val = self.obj.get(self.scope, key).unwrap();
-      let mut deserializer = Deserializer::new(self.scope, v8_val, None);
-      vseed.deserialize(&mut deserializer)?
-    })))
+
+    let field = self.fields[pos];
+    let key = v8_struct_key(self.scope, field).into();
+    let val = self.obj.get(self.scope, key).unwrap();
+    let mut deserializer = Deserializer::new(self.scope, val, None);
+    match seed.deserialize(&mut deserializer) {
+      Ok(val) => Ok(Some(val)),
+      // Fallback to Ok(None) for #[serde(Default)] at cost of error quality ...
+      // TODO(@AaronO): double check that there's no better solution
+      Err(_) if val.is_undefined() => Ok(None),
+      Err(e) => Err(e),
+    }
   }
 }
 

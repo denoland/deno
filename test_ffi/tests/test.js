@@ -1,5 +1,7 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
+
+import { assertThrows } from "../../test_util/std/testing/asserts.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
 const [libPrefix, libSuffix] = {
@@ -12,14 +14,29 @@ const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 const resourcesPre = Deno.resources();
 
 // dlopen shouldn't panic
-try {
+assertThrows(() => {
   Deno.dlopen("cli/src/main.rs", {});
-} catch (_) {
-  console.log("dlopen doesn't panic");
-}
+});
+
+assertThrows(
+  () => {
+    Deno.dlopen(libPath, {
+      non_existent_symbol: {
+        parameters: [],
+        result: "void",
+      },
+    });
+  },
+  Error,
+  "Failed to register symbol non_existent_symbol",
+);
 
 const dylib = Deno.dlopen(libPath, {
-  "print_something": { parameters: [], result: "void" },
+  "printSomething": {
+    name: "print_something",
+    parameters: [],
+    result: "void",
+  },
   "print_buffer": { parameters: ["pointer", "usize"], result: "void" },
   "print_buffer2": {
     parameters: ["pointer", "usize", "pointer", "usize"],
@@ -36,7 +53,13 @@ const dylib = Deno.dlopen(libPath, {
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
   "fill_buffer": { parameters: ["u8", "pointer", "usize"], result: "void" },
-  "sleep_blocking": { parameters: ["u64"], result: "void", nonblocking: true },
+  "sleep_nonblocking": {
+    name: "sleep_blocking",
+    parameters: ["u64"],
+    result: "void",
+    nonblocking: true,
+  },
+  "sleep_blocking": { parameters: ["u64"], result: "void" },
   "nonblocking_buffer": {
     parameters: ["pointer", "usize"],
     result: "void",
@@ -51,9 +74,17 @@ const dylib = Deno.dlopen(libPath, {
     }],
     result: "void",
   },
+  "get_add_u32_ptr": {
+    parameters: [],
+    result: "pointer",
+  },
+  "get_sleep_blocking_ptr": {
+    parameters: [],
+    result: "pointer",
+  },
 });
 
-dylib.symbols.print_something();
+dylib.symbols.printSomething();
 const buffer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 const buffer2 = new Uint8Array([9, 10]);
 dylib.symbols.print_buffer(buffer, buffer.length);
@@ -83,7 +114,39 @@ console.log(stringPtrview.getCString(11));
 console.log(Boolean(dylib.symbols.is_null_ptr(ptr)));
 console.log(Boolean(dylib.symbols.is_null_ptr(null)));
 console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
+
+const addU32Ptr = dylib.symbols.get_add_u32_ptr();
+const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
+  parameters: ["u32", "u32"],
+  result: "u32",
+});
+console.log(addU32.call(123, 456));
+
+const sleepBlockingPtr = dylib.symbols.get_sleep_blocking_ptr();
+const sleepNonBlocking = new Deno.UnsafeFnPointer(sleepBlockingPtr, {
+  nonblocking: true,
+  parameters: ["u64"],
+  result: "void",
+});
+const before = performance.now();
+await sleepNonBlocking.call(100);
+console.log(performance.now() - before >= 100);
+
 console.log(dylib.symbols.add_u32(123, 456));
+assertThrows(
+  () => {
+    dylib.symbols.add_u32(-1, 100);
+  },
+  TypeError,
+  "Expected FFI argument to be an unsigned integer, but got Number(-1)",
+);
+assertThrows(
+  () => {
+    dylib.symbols.add_u32(null, 100);
+  },
+  TypeError,
+  "Expected FFI argument to be an unsigned integer, but got Null",
+);
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(123, 456));
 console.log(dylib.symbols.add_i64(123, 456));
@@ -141,8 +204,13 @@ dylib.symbols.nonblocking_buffer(buffer3, buffer3.length).then(() => {
 });
 await promise;
 
-const start = performance.now();
-dylib.symbols.sleep_blocking(100).then(() => {
+let start = performance.now();
+dylib.symbols.sleep_blocking(100);
+console.log("After sleep_blocking");
+console.log(performance.now() - start >= 100);
+
+start = performance.now();
+dylib.symbols.sleep_nonblocking(100).then(() => {
   console.log("After");
   console.log(performance.now() - start >= 100);
   // Close after task is complete.

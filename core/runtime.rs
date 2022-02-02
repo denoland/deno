@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
 use crate::error::attach_handle_to_error;
@@ -686,6 +686,42 @@ impl JsRuntime {
     scope.perform_microtask_checkpoint();
   }
 
+  pub fn poll_value(
+    &mut self,
+    global: &v8::Global<v8::Value>,
+    cx: &mut Context,
+  ) -> Poll<Result<v8::Global<v8::Value>, Error>> {
+    let state = self.poll_event_loop(cx, false);
+
+    let mut scope = self.handle_scope();
+    let local = v8::Local::<v8::Value>::new(&mut scope, global);
+
+    if let Ok(promise) = v8::Local::<v8::Promise>::try_from(local) {
+      match promise.state() {
+        v8::PromiseState::Pending => match state {
+          Poll::Ready(Ok(_)) => {
+            let msg = "Promise resolution is still pending but the event loop has already resolved.";
+            Poll::Ready(Err(generic_error(msg)))
+          }
+          Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+          Poll::Pending => Poll::Pending,
+        },
+        v8::PromiseState::Fulfilled => {
+          let value = promise.result(&mut scope);
+          let value_handle = v8::Global::new(&mut scope, value);
+          Poll::Ready(Ok(value_handle))
+        }
+        v8::PromiseState::Rejected => {
+          let exception = promise.result(&mut scope);
+          Poll::Ready(exception_to_err_result(&mut scope, exception, false))
+        }
+      }
+    } else {
+      let value_handle = v8::Global::new(&mut scope, local);
+      Poll::Ready(Ok(value_handle))
+    }
+  }
+
   /// Waits for the given value to resolve while polling the event loop.
   ///
   /// This future resolves when either the value is resolved or the event loop runs to
@@ -694,38 +730,7 @@ impl JsRuntime {
     &mut self,
     global: v8::Global<v8::Value>,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    poll_fn(|cx| {
-      let state = self.poll_event_loop(cx, false);
-
-      let mut scope = self.handle_scope();
-      let local = v8::Local::<v8::Value>::new(&mut scope, &global);
-
-      if let Ok(promise) = v8::Local::<v8::Promise>::try_from(local) {
-        match promise.state() {
-          v8::PromiseState::Pending => match state {
-            Poll::Ready(Ok(_)) => {
-              let msg = "Promise resolution is still pending but the event loop has already resolved.";
-              Poll::Ready(Err(generic_error(msg)))
-            },
-            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
-            Poll::Pending => Poll::Pending,
-          },
-          v8::PromiseState::Fulfilled => {
-            let value = promise.result(&mut scope);
-            let value_handle = v8::Global::new(&mut scope, value);
-            Poll::Ready(Ok(value_handle))
-          }
-          v8::PromiseState::Rejected => {
-            let exception = promise.result(&mut scope);
-            Poll::Ready(exception_to_err_result(&mut scope, exception, false))
-          }
-        }
-      } else {
-        let value_handle = v8::Global::new(&mut scope, local);
-        Poll::Ready(Ok(value_handle))
-      }
-    })
-    .await
+    poll_fn(|cx| self.poll_value(&global, cx)).await
   }
 
   /// Runs event loop to completion
@@ -1651,6 +1656,7 @@ pub mod tests {
     futures::executor::block_on(lazy(move |cx| f(cx)));
   }
 
+  #[derive(Copy, Clone)]
   enum Mode {
     Async,
     AsyncZeroCopy(bool),
@@ -1661,7 +1667,7 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  fn dispatch(rc_op_state: Rc<RefCell<OpState>>, payload: OpPayload) -> Op {
+  fn op_test(rc_op_state: Rc<RefCell<OpState>>, payload: OpPayload) -> Op {
     let rc_op_state2 = rc_op_state.clone();
     let op_state_ = rc_op_state2.borrow();
     let test_state = op_state_.borrow::<TestState>();
@@ -1687,15 +1693,21 @@ pub mod tests {
 
   fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
-    let mut runtime = JsRuntime::new(Default::default());
-    let op_state = runtime.op_state();
-    op_state.borrow_mut().put(TestState {
-      mode,
-      dispatch_count: dispatch_count.clone(),
+    let dispatch_count2 = dispatch_count.clone();
+    let ext = Extension::builder()
+      .ops(vec![("op_test", Box::new(op_test))])
+      .state(move |state| {
+        state.put(TestState {
+          mode,
+          dispatch_count: dispatch_count2.clone(),
+        });
+        Ok(())
+      })
+      .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
     });
-
-    runtime.register_op("op_test", dispatch);
-    runtime.sync_ops_cache();
 
     runtime
       .execute_script(
@@ -1853,6 +1865,51 @@ pub mod tests {
   }
 
   #[tokio::test]
+  async fn test_poll_value() {
+    run_in_task(|cx| {
+      let mut runtime = JsRuntime::new(Default::default());
+      let value_global = runtime
+        .execute_script("a.js", "Promise.resolve(1 + 2)")
+        .unwrap();
+      let v = runtime.poll_value(&value_global, cx);
+      {
+        let scope = &mut runtime.handle_scope();
+        assert!(
+          matches!(v, Poll::Ready(Ok(v)) if v.open(scope).integer_value(scope).unwrap() == 3)
+        );
+      }
+
+      let value_global = runtime
+        .execute_script(
+          "a.js",
+          "Promise.resolve(new Promise(resolve => resolve(2 + 2)))",
+        )
+        .unwrap();
+      let v = runtime.poll_value(&value_global, cx);
+      {
+        let scope = &mut runtime.handle_scope();
+        assert!(
+          matches!(v, Poll::Ready(Ok(v)) if v.open(scope).integer_value(scope).unwrap() == 4)
+        );
+      }
+
+      let value_global = runtime
+        .execute_script("a.js", "Promise.reject(new Error('fail'))")
+        .unwrap();
+      let v = runtime.poll_value(&value_global, cx);
+      assert!(
+        matches!(v, Poll::Ready(Err(e)) if e.downcast_ref::<JsError>().unwrap().message == "Uncaught Error: fail")
+      );
+
+      let value_global = runtime
+        .execute_script("a.js", "new Promise(resolve => {})")
+        .unwrap();
+      let v = runtime.poll_value(&value_global, cx);
+      matches!(v, Poll::Ready(Err(e)) if e.to_string() == "Promise resolution is still pending but the event loop has already resolved.");
+    });
+  }
+
+  #[tokio::test]
   async fn test_resolve_value() {
     let mut runtime = JsRuntime::new(Default::default());
     let value_global = runtime
@@ -1904,8 +1961,6 @@ pub mod tests {
   #[test]
   fn terminate_execution() {
     let (mut isolate, _dispatch_count) = setup(Mode::Async);
-    // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
-    // should not require a mutable reference to `struct rusty_v8::Isolate`.
     let v8_isolate_handle = isolate.v8_isolate().thread_safe_handle();
 
     let terminator_thread = std::thread::spawn(move || {
@@ -1943,8 +1998,6 @@ pub mod tests {
     let v8_isolate_handle = {
       // isolate is dropped at the end of this block
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
-      // TODO(piscisaureus): in rusty_v8, the `thread_safe_handle()` method
-      // should not require a mutable reference to `struct rusty_v8::Isolate`.
       runtime.v8_isolate().thread_safe_handle()
     };
 
@@ -2029,12 +2082,14 @@ pub mod tests {
     }
 
     run_in_task(|cx| {
+      let ext = Extension::builder()
+        .ops(vec![("op_err", op_sync(op_err))])
+        .build();
       let mut runtime = JsRuntime::new(RuntimeOptions {
+        extensions: vec![ext],
         get_error_class_fn: Some(&get_error_class_name),
         ..Default::default()
       });
-      runtime.register_op("op_err", op_sync(op_err));
-      runtime.sync_ops_cache();
       runtime
         .execute_script(
           "error_builder_test.js",

@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -50,6 +50,10 @@ declare namespace Deno {
     /** Shuts down (`shutdown(2)`) the write side of the connection. Most
      * callers should just use `close()`. */
     closeWrite(): Promise<void>;
+    /** Enable/disable the use of Nagle's algorithm. Defaults to true */
+    setNoDelay(nodelay?: boolean): void;
+    /** Enable/disable keep-alive functionality */
+    setKeepAlive(keepalive?: boolean): void;
   }
 
   // deno-lint-ignore no-empty-interface

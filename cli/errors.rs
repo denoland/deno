@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 //! There are many types of errors in Deno:
 //! - AnyError: a generic wrapper that can encapsulate any type of error.
@@ -34,20 +34,22 @@ pub(crate) fn get_module_graph_error_class(
 ) -> &'static str {
   match err {
     ModuleGraphError::LoadingErr(_, err) => get_error_class_name(err.as_ref()),
-    ModuleGraphError::InvalidSource(_, _) => "SyntaxError",
+    ModuleGraphError::InvalidSource(_, _)
+    | ModuleGraphError::InvalidTypeAssertion { .. } => "SyntaxError",
     ModuleGraphError::ParseErr(_, diagnostic) => {
       get_diagnostic_class(diagnostic)
     }
     ModuleGraphError::ResolutionError(err) => get_resolution_error_class(err),
-    ModuleGraphError::UnsupportedMediaType(_, _) => "TypeError",
+    ModuleGraphError::UnsupportedMediaType(_, _)
+    | ModuleGraphError::UnsupportedImportAssertionType(_, _) => "TypeError",
     ModuleGraphError::Missing(_) => "NotFound",
   }
 }
 
 fn get_resolution_error_class(err: &ResolutionError) -> &'static str {
   match err {
-    ResolutionError::ResolverError(err, _, _) => {
-      get_error_class_name(err.as_ref())
+    ResolutionError::ResolverError { error, .. } => {
+      get_error_class_name(error.as_ref())
     }
     _ => "TypeError",
   }

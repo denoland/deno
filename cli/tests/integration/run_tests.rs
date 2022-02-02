@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::url;
 use std::process::Command;
@@ -163,7 +163,7 @@ itest!(_035_cached_only_flag {
 
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
-  args: "run --reload --config 038_checkjs.tsconfig.json 038_checkjs.js",
+  args: "run --reload --config checkjs.tsconfig.json 038_checkjs.js",
   exit_code: 1,
   output: "038_checkjs.js.out",
 });
@@ -1488,6 +1488,12 @@ itest!(import_file_with_colon {
   http_server: true,
 });
 
+itest!(import_extensionless {
+  args: "run --quiet --reload import_extensionless.ts",
+  output: "import_extensionless.ts.out",
+  http_server: true,
+});
+
 itest!(classic_workers_event_loop {
   args:
     "run --enable-testing-features-do-not-use classic_workers_event_loop.js",
@@ -1584,7 +1590,7 @@ itest!(worker_close_in_wasm_reactions {
 });
 
 itest!(reference_types_error {
-  args: "run reference_types_error.js",
+  args: "run --config checkjs.tsconfig.json reference_types_error.js",
   output: "reference_types_error.js.out",
   exit_code: 1,
 });
@@ -1597,6 +1603,28 @@ itest!(reference_types_error_no_check {
 itest!(jsx_import_source_error {
   args: "run --config jsx/deno-jsx-error.jsonc jsx_import_source_no_pragma.tsx",
   output: "jsx_import_source_error.out",
+  exit_code: 1,
+});
+
+itest!(shebang_tsc {
+  args: "run --quiet shebang.ts",
+  output: "shebang.ts.out",
+});
+
+itest!(shebang_swc {
+  args: "run --quiet --no-check shebang.ts",
+  output: "shebang.ts.out",
+});
+
+itest!(shebang_with_json_imports_tsc {
+  args: "run --quiet import_assertions/json_with_shebang.ts",
+  output: "import_assertions/json_with_shebang.ts.out",
+  exit_code: 1,
+});
+
+itest!(shebang_with_json_imports_swc {
+  args: "run --quiet --no-check import_assertions/json_with_shebang.ts",
+  output: "import_assertions/json_with_shebang.ts.out",
   exit_code: 1,
 });
 
@@ -2456,4 +2484,14 @@ itest!(import_assertions_type_check {
   args: "run --allow-read import_assertions/type_check.ts",
   output: "import_assertions/type_check.out",
   exit_code: 1,
+});
+
+itest!(delete_window {
+  args: "run delete_window.js",
+  output_str: Some("true\n"),
+});
+
+itest!(colors_without_global_this {
+  args: "run colors_without_globalThis.js",
+  output_str: Some("true\n"),
 });

@@ -1,9 +1,9 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast::Location;
 use crate::cache;
 use crate::cache::CacherLoader;
 use crate::colors;
+use crate::compat;
 use crate::create_main_worker;
 use crate::emit;
 use crate::file_fetcher::File;
@@ -11,9 +11,11 @@ use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::flags::CheckFlag;
 use crate::flags::Flags;
+use crate::flags::TestFlags;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
+use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::located_script_name;
 use crate::lockfile;
@@ -32,9 +34,8 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
-use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
-use deno_graph::Module;
+use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
 use log::Level;
@@ -150,6 +151,15 @@ pub struct TestSummary {
   pub failures: Vec<(TestDescription, String)>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct TestSpecifierOptions {
+  compat_mode: bool,
+  concurrent_jobs: NonZeroUsize,
+  fail_fast: Option<NonZeroUsize>,
+  filter: Option<String>,
+  shuffle: Option<u64>,
+}
+
 impl TestSummary {
   fn new() -> TestSummary {
     TestSummary {
@@ -258,11 +268,7 @@ impl PrettyTestReporter {
       print!("{}", "  ".repeat(description.level));
     }
 
-    println!(
-      "{} {}",
-      status,
-      colors::gray(human_elapsed(elapsed.into())).to_string()
-    );
+    println!("{} {}", status, colors::gray(human_elapsed(elapsed.into())));
 
     if let Some(error_text) = result.error() {
       for line in error_text.lines() {
@@ -348,11 +354,7 @@ impl TestReporter for PrettyTestReporter {
       print!(" ");
     }
 
-    println!(
-      "{} {}",
-      status,
-      colors::gray(human_elapsed(elapsed.into())).to_string()
-    );
+    println!("{} {}", status, colors::gray(human_elapsed(elapsed.into())));
   }
 
   fn report_step_wait(&mut self, description: &TestStepDescription) {
@@ -448,21 +450,15 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  filter: Option<String>,
-  shuffle: Option<u64>,
   channel: Sender<TestEvent>,
+  options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let init_ops = |js_runtime: &mut JsRuntime| {
-    ops::testing::init(js_runtime);
-
-    js_runtime
-      .op_state()
-      .borrow_mut()
-      .put::<Sender<TestEvent>>(channel.clone());
-  };
-
-  let mut worker =
-    create_main_worker(&ps, specifier.clone(), permissions, Some(&init_ops));
+  let mut worker = create_main_worker(
+    &ps,
+    specifier.clone(),
+    permissions,
+    vec![ops::testing::init(channel.clone())],
+  );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     ps.coverage_dir
@@ -482,32 +478,44 @@ async fn test_specifier(
   // We only execute the specifier as a module if it is tagged with TestMode::Module or
   // TestMode::Both.
   if mode != TestMode::Documentation {
-    // We execute the module module as a side module so that import.meta.main is not set.
-    worker.execute_side_module(&specifier).await?;
+    if options.compat_mode {
+      worker.execute_side_module(&compat::GLOBAL_URL).await?;
+      worker.execute_side_module(&compat::MODULE_URL).await?;
+
+      let use_esm_loader = compat::check_if_should_use_esm_loader(&specifier)?;
+
+      if use_esm_loader {
+        worker.execute_side_module(&specifier).await?;
+      } else {
+        compat::load_cjs_module(
+          &mut worker.js_runtime,
+          &specifier.to_file_path().unwrap().display().to_string(),
+          false,
+        )?;
+        worker.run_event_loop(false).await?;
+      }
+    } else {
+      // We execute the module module as a side module so that import.meta.main is not set.
+      worker.execute_side_module(&specifier).await?;
+    }
   }
 
-  worker.js_runtime.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'));",
-  )?;
+  worker.dispatch_load_event(&located_script_name!())?;
 
   let test_result = worker.js_runtime.execute_script(
     &located_script_name!(),
     &format!(
       r#"Deno[Deno.internal].runTests({})"#,
       json!({
-        "filter": filter,
-        "shuffle": shuffle,
+        "filter": options.filter,
+        "shuffle": options.shuffle,
       }),
     ),
   )?;
 
   worker.js_runtime.resolve_value(test_result).await?;
 
-  worker.js_runtime.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'));",
-  )?;
+  worker.dispatch_unload_event(&located_script_name!())?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
@@ -519,9 +527,10 @@ async fn test_specifier(
 }
 
 fn extract_files_from_regex_blocks(
-  location: &Location,
+  specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
+  file_line_index: usize,
   blocks_regex: &Regex,
   lines_regex: &Regex,
 ) -> Result<Vec<File>, AnyError> {
@@ -578,9 +587,9 @@ fn extract_files_from_regex_blocks(
 
       let file_specifier = deno_core::resolve_url_or_path(&format!(
         "{}${}-{}{}",
-        location.specifier,
-        location.line + line_offset,
-        location.line + line_offset + line_count,
+        specifier,
+        file_line_index + line_offset + 1,
+        file_line_index + line_offset + line_count + 1,
         file_media_type.as_ts_extension(),
       ))
       .unwrap();
@@ -626,12 +635,11 @@ fn extract_files_from_source_comments(
       true
     })
     .flat_map(|comment| {
-      let location = Location::from_pos(&parsed_source, comment.span.lo);
-
       extract_files_from_regex_blocks(
-        &location,
+        specifier,
         &comment.text,
         media_type,
+        parsed_source.source().line_index(comment.span.lo),
         &blocks_regex,
         &lines_regex,
       )
@@ -647,19 +655,14 @@ fn extract_files_from_fenced_blocks(
   source: &str,
   media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
-  let location = Location {
-    specifier: specifier.to_string(),
-    line: 1,
-    col: 0,
-  };
-
   let blocks_regex = Regex::new(r"```([^\r\n]*)\r?\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
   extract_files_from_regex_blocks(
-    &location,
+    specifier,
     source,
     media_type,
+    /* file line index */ 0,
     &blocks_regex,
     &lines_regex,
   )
@@ -722,7 +725,7 @@ async fn check_specifiers(
   if !inline_files.is_empty() {
     let specifiers = inline_files
       .iter()
-      .map(|file| file.specifier.clone())
+      .map(|file| (file.specifier.clone(), ModuleKind::Esm))
       .collect();
 
     for file in inline_files {
@@ -744,7 +747,7 @@ async fn check_specifiers(
     .iter()
     .filter_map(|(specifier, mode)| {
       if *mode != TestMode::Documentation {
-        Some(specifier.clone())
+        Some((specifier.clone(), ModuleKind::Esm))
       } else {
         None
       }
@@ -769,13 +772,10 @@ async fn test_specifiers(
   ps: ProcState,
   permissions: Permissions,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
-  fail_fast: Option<NonZeroUsize>,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
+  options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let log_level = ps.flags.log_level;
-  let specifiers_with_mode = if let Some(seed) = shuffle {
+  let specifiers_with_mode = if let Some(seed) = options.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers_with_mode = specifiers_with_mode.clone();
     specifiers_with_mode.sort_by_key(|(specifier, _)| specifier.clone());
@@ -786,6 +786,8 @@ async fn test_specifiers(
   };
 
   let (sender, receiver) = channel::<TestEvent>();
+  let concurrent_jobs = options.concurrent_jobs;
+  let fail_fast = options.fail_fast;
 
   let join_handles =
     specifiers_with_mode.iter().map(move |(specifier, mode)| {
@@ -793,20 +795,13 @@ async fn test_specifiers(
       let permissions = permissions.clone();
       let specifier = specifier.clone();
       let mode = mode.clone();
-      let filter = filter.clone();
       let sender = sender.clone();
+      let options = options.clone();
 
       tokio::task::spawn_blocking(move || {
         let join_handle = std::thread::spawn(move || {
-          let future = test_specifier(
-            ps,
-            permissions,
-            specifier,
-            mode,
-            filter,
-            shuffle,
-            sender,
-          );
+          let future =
+            test_specifier(ps, permissions, specifier, mode, sender, options);
 
           run_basic(future)
         });
@@ -1000,30 +995,21 @@ async fn fetch_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
   flags: Flags,
-  include: Option<Vec<String>>,
-  ignore: Vec<PathBuf>,
-  doc: bool,
-  no_run: bool,
-  fail_fast: Option<NonZeroUsize>,
-  allow_none: bool,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     ps.clone(),
-    include.unwrap_or_else(|| vec![".".to_string()]),
-    ignore.clone(),
-    doc,
+    test_flags.include.unwrap_or_else(|| vec![".".to_string()]),
+    test_flags.ignore.clone(),
+    test_flags.doc,
   )
   .await?;
 
-  if !allow_none && specifiers_with_mode.is_empty() {
+  if !test_flags.allow_none && specifiers_with_mode.is_empty() {
     return Err(generic_error("No test modules found"));
   }
 
@@ -1041,7 +1027,7 @@ pub async fn run_tests(
   )
   .await?;
 
-  if no_run {
+  if test_flags.no_run {
     return Ok(());
   }
 
@@ -1049,27 +1035,22 @@ pub async fn run_tests(
     ps,
     permissions,
     specifiers_with_mode,
-    fail_fast,
-    filter,
-    shuffle,
-    concurrent_jobs,
+    TestSpecifierOptions {
+      compat_mode: flags.compat,
+      concurrent_jobs: test_flags.concurrent_jobs,
+      fail_fast: test_flags.fail_fast,
+      filter: test_flags.filter,
+      shuffle: test_flags.shuffle,
+    },
   )
   .await?;
 
   Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_tests_with_watch(
   flags: Flags,
-  include: Option<Vec<String>>,
-  ignore: Vec<PathBuf>,
-  doc: bool,
-  no_run: bool,
-  fail_fast: Option<NonZeroUsize>,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
@@ -1080,7 +1061,8 @@ pub async fn run_tests_with_watch(
     emit::TypeLib::DenoWindow
   };
 
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
+  let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
+  let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
   let no_check = ps.flags.check == CheckFlag::None;
 
@@ -1113,9 +1095,14 @@ pub async fn run_tests_with_watch(
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
+    let check_js = ps
+      .maybe_config_file
+      .as_ref()
+      .map(|cf| cf.get_check_js())
+      .unwrap_or(false);
 
     async move {
-      let test_modules = if doc {
+      let test_modules = if test_flags.doc {
         collect_specifiers(include.clone(), &ignore, is_supported_test_ext)
       } else {
         collect_specifiers(include.clone(), &ignore, is_supported_test_path)
@@ -1127,7 +1114,7 @@ pub async fn run_tests_with_watch(
       } else {
         test_modules
           .iter()
-          .filter_map(|url| deno_core::resolve_url(url.as_str()).ok())
+          .map(|url| (url.clone(), ModuleKind::Esm))
           .collect()
       };
       let maybe_imports = if let Some(result) = maybe_imports {
@@ -1143,16 +1130,20 @@ pub async fn run_tests_with_watch(
           .map(|im| im.as_resolver())
       };
       let graph = deno_graph::create_graph(
-        test_modules.clone(),
+        test_modules
+          .iter()
+          .map(|s| (s.clone(), ModuleKind::Esm))
+          .collect(),
         false,
         maybe_imports,
         cache.as_mut_loader(),
         maybe_resolver,
         maybe_locker,
         None,
+        None,
       )
       .await;
-      graph_valid(&graph, !no_check)?;
+      graph_valid(&graph, !no_check, check_js)?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in test_modules {
@@ -1164,7 +1155,7 @@ pub async fn run_tests_with_watch(
           output: &mut HashSet<&'a ModuleSpecifier>,
           no_check: bool,
         ) {
-          if let Some(Module::Es(module)) = maybe_module {
+          if let Some(module) = maybe_module {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {
@@ -1210,7 +1201,7 @@ pub async fn run_tests_with_watch(
             deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
           }) {
             if modules.contains(&&path) {
-              modules_to_reload.push(specifier);
+              modules_to_reload.push((specifier, ModuleKind::Esm));
               break;
             }
           }
@@ -1241,8 +1232,8 @@ pub async fn run_tests_with_watch(
     })
   };
 
-  let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-    let filter = filter.clone();
+  let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
+    let filter = test_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
     let lib = lib.clone();
@@ -1254,11 +1245,13 @@ pub async fn run_tests_with_watch(
         ps.clone(),
         include.clone(),
         ignore.clone(),
-        doc,
+        test_flags.doc,
       )
       .await?
       .iter()
-      .filter(|(specifier, _)| modules_to_reload.contains(specifier))
+      .filter(|(specifier, _)| {
+        contains_specifier(&modules_to_reload, specifier)
+      })
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
@@ -1270,7 +1263,7 @@ pub async fn run_tests_with_watch(
       )
       .await?;
 
-      if no_run {
+      if test_flags.no_run {
         return Ok(());
       }
 
@@ -1278,10 +1271,13 @@ pub async fn run_tests_with_watch(
         ps.clone(),
         permissions.clone(),
         specifiers_with_mode,
-        fail_fast,
-        filter.clone(),
-        shuffle,
-        concurrent_jobs,
+        TestSpecifierOptions {
+          compat_mode: flags.compat,
+          concurrent_jobs: test_flags.concurrent_jobs,
+          fail_fast: test_flags.fail_fast,
+          filter: filter.clone(),
+          shuffle: test_flags.shuffle,
+        },
       )
       .await?;
 
@@ -1289,7 +1285,15 @@ pub async fn run_tests_with_watch(
     }
   };
 
-  file_watcher::watch_func(resolver, operation, "Test").await?;
+  file_watcher::watch_func(
+    resolver,
+    operation,
+    file_watcher::PrintConfig {
+      job_name: "Test".to_string(),
+      clear_screen: !flags.no_clear_screen,
+    },
+  )
+  .await?;
 
   Ok(())
 }

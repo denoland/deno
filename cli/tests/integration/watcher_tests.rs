@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use flaky_test::flaky_test;
 use std::fs::write;
@@ -989,11 +989,59 @@ fn test_watch_module_graph_error_referrer() {
   assert_contains!(&line1, CLEAR_SCREEN);
   assert_contains!(&line1, "Process started");
   let line2 = stderr_lines.next().unwrap();
-  assert_contains!(&line2, "error: Cannot load module");
+  assert_contains!(&line2, "error: Module not found");
   assert_contains!(&line2, "nonexistent.js");
   let line3 = stderr_lines.next().unwrap();
   assert_contains!(&line3, "    at ");
   assert_contains!(&line3, "file_to_watch.js");
   wait_for("Process failed", &mut stderr_lines);
+  check_alive_then_kill(child);
+}
+
+#[test]
+fn watch_with_no_clear_screen_flag() {
+  let t = TempDir::new().unwrap();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  write(&file_to_watch, "export const foo = 0;").unwrap();
+
+  // choose deno run subcommand to test --no-clear-screen flag
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--no-clear-screen")
+    .arg("--unstable")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (_, mut stderr_lines) = child_lines(&mut child);
+
+  let next_line = stderr_lines.next().unwrap();
+
+  // no clear screen
+  assert!(!&next_line.contains(CLEAR_SCREEN));
+  assert_contains!(&next_line, "Process started");
+  assert_contains!(
+    stderr_lines.next().unwrap(),
+    "Process finished. Restarting on file change..."
+  );
+
+  // Change content of the file
+  write(&file_to_watch, "export const bar = 0;").unwrap();
+
+  let next_line = stderr_lines.next().unwrap();
+
+  // no clear screen
+  assert!(!&next_line.contains(CLEAR_SCREEN));
+
+  assert_contains!(&next_line, "Watcher File change detected! Restarting!");
+  assert_contains!(
+    stderr_lines.next().unwrap(),
+    "Process finished. Restarting on file change..."
+  );
+
   check_alive_then_kill(child);
 }
