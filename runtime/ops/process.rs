@@ -190,25 +190,25 @@ fn op_run(
     c.stderr(file);
   }
 
+  #[cfg(unix)]
   let (ipc_parent, _ipc_child) = if run_args.ipc {
     super::check_unstable(state, "Deno.run.ipc");
 
-    #[cfg(unix)]
-    {
-      let (ipc_parent, ipc_child) = UnixStream::pair()?;
-      c.fd_mappings(vec![FdMapping {
-        child_fd: 3,
-        parent_fd: ipc_child.as_raw_fd(),
-      }])?;
-      c.env("DENO_IPC_FD", "3");
-      (Some(ipc_parent), Some(ipc_child))
-    }
-
-    #[cfg(not(unix))]
-    return Err(not_supported());
+    let (ipc_parent, ipc_child) = UnixStream::pair()?;
+    c.fd_mappings(vec![FdMapping {
+      child_fd: 3,
+      parent_fd: ipc_child.as_raw_fd(),
+    }])?;
+    c.env("DENO_IPC_FD", "3");
+    (Some(ipc_parent), Some(ipc_child))
   } else {
     (None, None)
   };
+
+  #[cfg(not(unix))]
+  if run_args.ipc {
+    return Err(not_supported());
+  }
 
   // Convert std::process::Command to tokio::process::Command.
   let mut c = tokio::process::Command::from(c);
@@ -250,16 +250,15 @@ fn op_run(
     None => None,
   };
 
-  let ipc_rid = match ipc_parent {
-    #[cfg(unix)]
-    Some(ipc_parent) => {
-      let rid = state
-        .resource_table
-        .add(UnixStreamResource::new(ipc_parent.into_split()));
-      Some(rid)
-    }
-    _ => None,
-  };
+  #[cfg(unix)]
+  let ipc_rid = ipc_parent.map(|ipc_parent| {
+    state
+      .resource_table
+      .add(UnixStreamResource::new(ipc_parent.into_split()))
+  });
+
+  #[cfg(not(unix))]
+  let ipc_rid = None;
 
   let child_resource = ChildResource {
     child: AsyncRefCell::new(child),
