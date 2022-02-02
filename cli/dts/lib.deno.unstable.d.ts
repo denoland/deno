@@ -840,12 +840,19 @@ declare namespace Deno {
       clearEnv?: boolean;
       gid?: number;
       uid?: number;
+      ipc?: boolean;
     } = RunOptions & {
       clearEnv?: boolean;
       gid?: number;
       uid?: number;
+      ipc?: boolean;
     },
-  >(opt: T): Process<T>;
+  >(opt: T): Process<T> & {
+    readonly ipc: T["ipc"] extends true ? Conn : null;
+  };
+
+  /** Handle to Unix socket providing IPC with parent process. */
+  export const ipc: Conn | null;
 
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
    * necessary around the permissions required.

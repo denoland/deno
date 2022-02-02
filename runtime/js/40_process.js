@@ -5,6 +5,7 @@
   const core = window.Deno.core;
   const { File } = window.__bootstrap.files;
   const { readAll } = window.__bootstrap.io;
+  const { Conn } = window.__bootstrap.net;
   const { assert, pathFromURL } = window.__bootstrap.util;
   const {
     ArrayPrototypeMap,
@@ -55,6 +56,14 @@
 
       if (res.stderrRid && res.stderrRid > 0) {
         this.stderr = new File(res.stderrRid);
+      }
+
+      if (res.ipcRid && res.ipcRid > 0) {
+        this.ipc = new Conn(
+          res.ipcRid,
+          /* remoteAddr */ null,
+          /* localAddr */ null,
+        );
       }
     }
 
@@ -107,6 +116,7 @@
     stdout = "inherit",
     stderr = "inherit",
     stdin = "inherit",
+    ipc = false,
   }) {
     if (cmd[0] != null) {
       cmd[0] = pathFromURL(cmd[0]);
@@ -124,13 +134,22 @@
       stdinRid: isRid(stdin) ? stdin : 0,
       stdoutRid: isRid(stdout) ? stdout : 0,
       stderrRid: isRid(stderr) ? stderr : 0,
+      ipc,
     });
     return new Process(res);
+  }
+
+  function openIpc() {
+    const ipcRid = core.opSync("op_open_ipc");
+    return ipcRid != null
+      ? new Conn(ipcRid, /* remoteAdd */ null, /* localAddr */ null)
+      : null;
   }
 
   window.__bootstrap.process = {
     run,
     Process,
     kill: opKill,
+    openIpc,
   };
 })(this);

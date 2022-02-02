@@ -489,6 +489,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "command-fds"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce4fa2ae5d054372861b9746080bc3798227b79b62e27966f13f4d3a76e57013"
+dependencies = [
+ "nix",
+ "thiserror",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -996,6 +1006,7 @@ name = "deno_runtime"
 version = "0.43.0"
 dependencies = [
  "atty",
+ "command-fds",
  "deno_broadcast_channel",
  "deno_console",
  "deno_core",

@@ -17,13 +17,25 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_net::io::UnixStreamResource;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::os::unix::prelude::AsRawFd;
+use std::os::unix::prelude::FromRawFd;
 use std::rc::Rc;
-use tokio::process::Command;
+use std::str::FromStr;
+use tokio::net::UnixStream;
 
+#[cfg(unix)]
+use command_fds::CommandFdExt;
+#[cfg(unix)]
+use command_fds::FdMapping;
+#[cfg(unix)]
+use nix::fcntl::{fcntl, FdFlag, F_SETFD};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
@@ -33,6 +45,7 @@ pub fn init() -> Extension {
       ("op_run", op_sync(op_run)),
       ("op_run_status", op_async(op_run_status)),
       ("op_kill", op_sync(op_kill)),
+      ("op_open_ipc", op_sync(op_open_ipc)),
     ])
     .build()
 }
@@ -70,6 +83,7 @@ pub struct RunArgs {
   stdin: String,
   stdout: String,
   stderr: String,
+  ipc: bool,
   stdin_rid: ResourceId,
   stdout_rid: ResourceId,
   stderr_rid: ResourceId,
@@ -100,6 +114,7 @@ struct RunInfo {
   stdin_rid: Option<ResourceId>,
   stdout_rid: Option<ResourceId>,
   stderr_rid: Option<ResourceId>,
+  ipc_rid: Option<ResourceId>,
 }
 
 fn op_run(
@@ -112,7 +127,7 @@ fn op_run(
   let env = run_args.env;
   let cwd = run_args.cwd;
 
-  let mut c = Command::new(args.get(0).unwrap());
+  let mut c = std::process::Command::new(args.get(0).unwrap());
   (1..args.len()).for_each(|i| {
     let arg = args.get(i).unwrap();
     c.arg(arg);
@@ -167,6 +182,22 @@ fn op_run(
     c.stderr(file);
   }
 
+  let (ipc_parent, _ipc_child) = if run_args.ipc {
+    super::check_unstable(state, "Deno.run.ipc");
+    let (ipc_parent, ipc_child) = UnixStream::pair()?;
+    c.fd_mappings(vec![FdMapping {
+      child_fd: 3,
+      parent_fd: ipc_child.as_raw_fd(),
+    }])?;
+    c.env("DENO_IPC_FD", "3");
+    (Some(ipc_parent), Some(ipc_child))
+  } else {
+    (None, None)
+  };
+
+  // Convert std::process::Command to tokio::process::Command.
+  let mut c = tokio::process::Command::from(c);
+
   // We want to kill child when it's closed
   c.kill_on_drop(true);
 
@@ -204,6 +235,16 @@ fn op_run(
     None => None,
   };
 
+  let ipc_rid = match ipc_parent {
+    Some(ipc_parent) => {
+      let rid = state
+        .resource_table
+        .add(UnixStreamResource::new(ipc_parent.into_split()));
+      Some(rid)
+    }
+    None => None,
+  };
+
   let child_resource = ChildResource {
     child: AsyncRefCell::new(child),
   };
@@ -215,6 +256,7 @@ fn op_run(
     stdin_rid,
     stdout_rid,
     stderr_rid,
+    ipc_rid,
   })
 }
 
@@ -311,4 +353,38 @@ fn op_kill(
   state.borrow_mut::<Permissions>().run.check_all()?;
   kill(pid, &signal)?;
   Ok(())
+}
+
+/// Opens the IPC channel attached to FD 3, if any, and returns the rid.
+fn op_open_ipc(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<Option<ResourceId>, AnyError> {
+  #[cfg(unix)]
+  match std::env::var("DENO_IPC_FD") {
+    Ok(ipc_fd) => {
+      let ipc_fd = i32::from_str(&ipc_fd)?;
+
+      // Set the CLOEXEC flag on the `ipc_fd` file descriptor so child processes
+      // don't inherit it.
+      fcntl(ipc_fd, F_SETFD(FdFlag::FD_CLOEXEC))?;
+
+      let std_stream =
+        unsafe { std::os::unix::net::UnixStream::from_raw_fd(ipc_fd) };
+      let tokio_stream = UnixStream::from_std(std_stream)?;
+      let resource = UnixStreamResource::new(tokio_stream.into_split());
+      let rid = state.resource_table.add(resource);
+
+      // Clear the `DENO_IPC_FD` env var so we don't pass it on to child
+      // processes.
+      std::env::remove_var("DENO_IPC_FD");
+
+      Ok(Some(rid))
+    }
+    Err(_) => Ok(None),
+  }
+
+  #[cfg(not(unix))]
+  None
 }

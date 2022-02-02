@@ -534,6 +534,7 @@ delete Object.prototype.__proto__;
 
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
+    const openIpc = window.__bootstrap.process.openIpc;
 
     // Remove bootstrapping data from the global scope
     delete globalThis.__bootstrap;
@@ -602,6 +603,7 @@ delete Object.prototype.__proto__;
 
     if (unstableFlag) {
       ObjectAssign(finalDenoNs, denoNsUnstable);
+      ObjectDefineProperty(finalDenoNs, "ipc", util.readOnly(openIpc()));
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
