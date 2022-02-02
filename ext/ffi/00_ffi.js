@@ -11,6 +11,7 @@
     Number,
     ObjectPrototypeIsPrototypeOf,
     TypeError,
+    Error,
   } = window.__bootstrap.primordials;
 
   function unpackU64([hi, lo]) {
