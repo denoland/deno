@@ -1,12 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
+use super::cache;
 use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents;
 use super::documents::Document;
 use super::documents::Documents;
-use super::documents::MetadataKey;
 use super::language_server;
 use super::performance::Performance;
 use super::tsc;
@@ -572,6 +572,7 @@ fn resolution_error_as_code(
 fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   documents: &Documents,
+  cache_metadata: &cache::CacheMetadata,
   resolved: &deno_graph::Resolved,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
@@ -580,8 +581,10 @@ fn diagnose_dependency(
     Resolved::Ok {
       specifier, range, ..
     } => {
-      if let Some(metadata) = documents.get_metadata(specifier) {
-        if let Some(message) = metadata.get(&MetadataKey::Warning).cloned() {
+      if let Some(metadata) = cache_metadata.get(specifier) {
+        if let Some(message) =
+          metadata.get(&cache::MetadataKey::Warning).cloned()
+        {
           diagnostics.push(lsp::Diagnostic {
             range: documents::to_lsp_range(range),
             severity: Some(lsp::DiagnosticSeverity::WARNING),
@@ -670,6 +673,7 @@ async fn generate_deps_diagnostics(
         diagnose_dependency(
           &mut diagnostics,
           &snapshot.documents,
+          &snapshot.cache_metadata,
           &dependency.maybe_code,
           dependency.is_dynamic,
           dependency.maybe_assert_type.as_deref(),
@@ -677,6 +681,7 @@ async fn generate_deps_diagnostics(
         diagnose_dependency(
           &mut diagnostics,
           &snapshot.documents,
+          &snapshot.cache_metadata,
           &dependency.maybe_type,
           dependency.is_dynamic,
           dependency.maybe_assert_type.as_deref(),

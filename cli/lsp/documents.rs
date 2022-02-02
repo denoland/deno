@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::cache::calculate_fs_version;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -519,23 +520,6 @@ impl Document {
   }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub(crate) enum MetadataKey {
-  /// Represent the `x-deno-warning` header associated with the document
-  Warning,
-}
-
-/// Populate the metadata map based on the supplied headers
-fn parse_metadata(
-  headers: &HashMap<String, String>,
-) -> HashMap<MetadataKey, String> {
-  let mut metadata = HashMap::new();
-  if let Some(warning) = headers.get("x-deno-warning").cloned() {
-    metadata.insert(MetadataKey::Warning, warning);
-  }
-  metadata
-}
-
 pub(crate) fn to_hover_text(result: &Resolved) -> String {
   match result {
     Resolved::Ok { specifier, .. } => match specifier.scheme() {
@@ -671,7 +655,6 @@ impl SpecifierResolver {
 #[derive(Debug, Default)]
 struct FileSystemDocuments {
   docs: HashMap<ModuleSpecifier, Document>,
-  metadata: HashMap<ModuleSpecifier, Arc<HashMap<MetadataKey, String>>>,
   dirty: bool,
 }
 
@@ -716,39 +699,8 @@ impl FileSystemDocuments {
       )
     };
     self.dirty = true;
-    self.metadata.remove(specifier);
     self.docs.insert(specifier.clone(), doc.clone());
     Some(doc)
-  }
-
-  /// Adds or updates a metadata related to a specifier from the file system
-  /// cache.
-  fn refresh_metadata(
-    &mut self,
-    cache: &HttpCache,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Arc<HashMap<MetadataKey, String>>> {
-    if specifier.scheme() == "file" {
-      return None;
-    }
-    let cache_filename = cache.get_cache_filename(specifier)?;
-    let specifier_metadata =
-      http_cache::Metadata::read(&cache_filename).ok()?;
-    let metadata = parse_metadata(&specifier_metadata.headers);
-    self.metadata.insert(specifier.clone(), Arc::new(metadata))
-  }
-}
-
-fn calculate_fs_version(path: &Path) -> Option<String> {
-  let metadata = fs::metadata(path).ok()?;
-  if let Ok(modified) = metadata.modified() {
-    if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
-      Some(n.as_millis().to_string())
-    } else {
-      Some("1".to_string())
-    }
-  } else {
-    Some("1".to_string())
   }
 }
 
@@ -945,10 +897,6 @@ impl Documents {
         .flatten();
       let file_system_doc = file_system_docs.docs.get(&specifier);
       if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
-        file_system_docs.refresh_metadata(&self.cache, &specifier);
-        if original_specifier != &specifier {
-          file_system_docs.refresh_metadata(&self.cache, original_specifier);
-        }
         // attempt to update the file on the file system
         file_system_docs.refresh_document(
           &self.cache,
@@ -959,23 +907,6 @@ impl Documents {
         file_system_doc.cloned()
       }
     }
-  }
-
-  /// Return the meta data associated with the specifier. Unlike the `get()`
-  /// method, redirects of the supplied specifier will not be followed.
-  pub fn get_metadata(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Arc<HashMap<MetadataKey, String>>> {
-    if specifier.scheme() == "file" {
-      return None;
-    }
-    let mut file_system_docs = self.file_system_docs.lock();
-    let path = get_document_path(&self.cache, specifier)?;
-    if !file_system_docs.metadata.contains_key(specifier) {
-      file_system_docs.refresh_metadata(&self.cache, specifier);
-    }
-    file_system_docs.metadata.get(specifier).cloned()
   }
 
   /// Return a vector of documents that are contained in the document store,
@@ -1062,10 +993,10 @@ impl Documents {
   }
 
   /// Update the location of the on disk cache for the document store.
-  pub fn set_location(&mut self, location: PathBuf) {
+  pub fn set_location(&mut self, location: &Path) {
     // TODO update resolved dependencies?
-    self.cache = HttpCache::new(&location);
-    self.specifier_resolver = Arc::new(SpecifierResolver::new(&location));
+    self.cache = HttpCache::new(location);
+    self.specifier_resolver = Arc::new(SpecifierResolver::new(location));
     self.dirty = true;
   }
 
