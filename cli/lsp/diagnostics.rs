@@ -8,7 +8,7 @@ use super::documents;
 use super::documents::Document;
 use super::documents::Documents;
 use super::language_server;
-use super::language_server::LanguageServerSnapshot;
+use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
@@ -38,6 +38,8 @@ use tokio::time::Duration;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
+pub(crate) type SnapshotForDiagnostics =
+  (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);
 pub type DiagnosticRecord =
   (ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>);
 pub type DiagnosticVec = Vec<DiagnosticRecord>;
@@ -114,9 +116,9 @@ impl TsDiagnosticsStore {
     Vec::new()
   }
 
-  pub fn invalidate(&self, specifiers: Vec<ModuleSpecifier>) {
+  pub fn invalidate(&self, specifiers: &[ModuleSpecifier]) {
     let mut ts_diagnostics = self.0.lock();
-    for specifier in &specifiers {
+    for specifier in specifiers {
       ts_diagnostics.remove(specifier);
     }
   }
@@ -138,7 +140,7 @@ impl TsDiagnosticsStore {
 
 #[derive(Debug)]
 pub(crate) struct DiagnosticsServer {
-  channel: Option<mpsc::UnboundedSender<LanguageServerSnapshot>>,
+  channel: Option<mpsc::UnboundedSender<SnapshotForDiagnostics>>,
   ts_diagnostics: TsDiagnosticsStore,
   client: Client,
   performance: Arc<Performance>,
@@ -168,7 +170,7 @@ impl DiagnosticsServer {
     self.ts_diagnostics.get(specifier, document_version)
   }
 
-  pub(crate) fn invalidate(&self, specifiers: Vec<ModuleSpecifier>) {
+  pub(crate) fn invalidate(&self, specifiers: &[ModuleSpecifier]) {
     self.ts_diagnostics.invalidate(specifiers);
   }
 
@@ -177,7 +179,7 @@ impl DiagnosticsServer {
   }
 
   pub(crate) fn start(&mut self) {
-    let (tx, mut rx) = mpsc::unbounded_channel::<LanguageServerSnapshot>();
+    let (tx, mut rx) = mpsc::unbounded_channel::<SnapshotForDiagnostics>();
     self.channel = Some(tx);
     let client = self.client.clone();
     let performance = self.performance.clone();
@@ -321,7 +323,7 @@ impl DiagnosticsServer {
 
   pub(crate) fn update(
     &self,
-    message: LanguageServerSnapshot,
+    message: SnapshotForDiagnostics,
   ) -> Result<(), AnyError> {
     // todo(dsherret): instead of queuing up messages, it would be better to
     // instead only store the latest message (ex. maybe using a

@@ -41,6 +41,7 @@ use super::diagnostics::DiagnosticsServer;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
+use super::documents::Document;
 use super::documents::Documents;
 use super::documents::LanguageId;
 use super::logging::lsp_log;
@@ -83,9 +84,6 @@ pub(crate) struct StateSnapshot {
   pub documents: Documents,
   pub root_uri: Option<Url>,
 }
-
-pub(crate) type LanguageServerSnapshot =
-  (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);
 
 #[derive(Debug)]
 pub(crate) struct Inner {
@@ -758,15 +756,8 @@ impl Inner {
     &mut self,
     specifier: &ModuleSpecifier,
     params: DidOpenTextDocumentParams,
-  ) {
+  ) -> Document {
     let mark = self.performance.mark("did_open", Some(&params));
-
-    if params.text_document.uri.scheme() == "deno" {
-      // we can ignore virtual text documents opening, as they don't need to
-      // be tracked in memory, as they are static assets that won't change
-      // already managed by the language service
-      return;
-    }
     let language_id =
       params
         .text_document
@@ -790,18 +781,8 @@ impl Inner {
       content,
     );
 
-    if document.is_diagnosable() {
-      self
-        .diagnostics_server
-        .invalidate(self.documents.dependents(specifier));
-      if let Err(err) =
-        self.diagnostics_server.update(self.diagnostics_snapshot())
-      {
-        error!("{}", err);
-      }
-    }
-
     self.performance.measure(mark);
+    document
   }
 
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
@@ -816,12 +797,8 @@ impl Inner {
         if document.is_diagnosable() {
           self
             .diagnostics_server
-            .invalidate(self.documents.dependents(&specifier));
-          if let Err(err) =
-            self.diagnostics_server.update(self.diagnostics_snapshot())
-          {
-            error!("{}", err);
-          }
+            .invalidate(&self.documents.dependents(&specifier));
+          self.send_diagnostics_update();
         }
       }
       Err(err) => error!("{}", err),
@@ -845,12 +822,8 @@ impl Inner {
     if self.is_diagnosable(&specifier) {
       let mut specifiers = self.documents.dependents(&specifier);
       specifiers.push(specifier.clone());
-      self.diagnostics_server.invalidate(specifiers);
-      if let Err(err) =
-        self.diagnostics_server.update(self.diagnostics_snapshot())
-      {
-        error!("{}", err);
-      }
+      self.diagnostics_server.invalidate(&specifiers);
+      self.send_diagnostics_update();
     }
     self.performance.measure(mark);
   }
@@ -894,15 +867,13 @@ impl Inner {
     if let Err(err) = self.update_tsconfig().await {
       self.client.show_message(MessageType::WARNING, err).await;
     }
-    if let Err(err) =
-      self.diagnostics_server.update(self.diagnostics_snapshot())
-    {
-      error!("{}", err);
-    }
+
     self.documents.update_config(
       self.maybe_import_map.clone(),
       self.maybe_config_file.as_ref(),
     );
+
+    self.send_diagnostics_update();
   }
 
   async fn did_change_watched_files(
@@ -946,11 +917,7 @@ impl Inner {
         self.maybe_config_file.as_ref(),
       );
       self.diagnostics_server.invalidate_all();
-      if let Err(err) =
-        self.diagnostics_server.update(self.diagnostics_snapshot())
-      {
-        error!("Cannot update diagnostics: {}", err);
-      }
+      self.send_diagnostics_update();
     }
     self.performance.measure(mark);
   }
@@ -2353,12 +2320,15 @@ impl Inner {
     Ok(maybe_symbol_information)
   }
 
-  fn diagnostics_snapshot(&self) -> LanguageServerSnapshot {
-    (
+  fn send_diagnostics_update(&self) {
+    let snapshot = (
       self.snapshot(),
       self.config.snapshot(),
       self.maybe_lint_config.clone(),
-    )
+    );
+    if let Err(err) = self.diagnostics_server.update(snapshot) {
+      error!("Cannot update diagnostics: {}", err);
+    }
   }
 }
 
@@ -2382,14 +2352,29 @@ impl lspower::LanguageServer for LanguageServer {
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
+    if params.text_document.uri.scheme() == "deno" {
+      // we can ignore virtual text documents opening, as they don't need to
+      // be tracked in memory, as they are static assets that won't change
+      // already managed by the language service
+      return;
+    }
+
     let (client, uri, specifier, had_specifier_settings) = {
       let mut inner = self.0.lock().await;
       let client = inner.client.clone();
       let uri = params.text_document.uri.clone();
       let specifier = inner.url_map.normalize_url(&uri);
-      inner.did_open(&specifier, params).await;
+      let document = inner.did_open(&specifier, params).await;
       let has_specifier_settings =
         inner.config.has_specifier_settings(&specifier);
+      if document.is_diagnosable() {
+        let specifiers = inner.documents.dependents(&specifier);
+        inner.diagnostics_server.invalidate(&specifiers);
+        // don't send diagnotics yet if we don't have the specifier settings
+        if has_specifier_settings {
+          inner.send_diagnostics_update();
+        }
+      }
       (client, uri, specifier, has_specifier_settings)
     };
 
@@ -2399,12 +2384,12 @@ impl lspower::LanguageServer for LanguageServer {
       let language_server = self.clone();
       tokio::spawn(async move {
         let response = client.specifier_configuration(&uri).await;
+        let mut inner = language_server.0.lock().await;
         match response {
           Ok(specifier_settings) => {
-            // now update the config
-            let mut inner = language_server.0.lock().await;
+            // now update the config and send a diagnostics update
             inner.config.set_specifier_settings(
-              specifier,
+              specifier.clone(),
               uri,
               specifier_settings,
             );
@@ -2412,6 +2397,14 @@ impl lspower::LanguageServer for LanguageServer {
           Err(err) => {
             error!("{}", err);
           }
+        }
+        if inner
+          .documents
+          .get(&specifier)
+          .map(|d| d.is_diagnosable())
+          .unwrap_or(false)
+        {
+          inner.send_diagnostics_update();
         }
       });
     }
@@ -2740,15 +2733,9 @@ impl Inner {
 
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics
-    self.diagnostics_server.invalidate(vec![referrer]);
+    self.diagnostics_server.invalidate(&[referrer]);
+    self.send_diagnostics_update();
 
-    self
-      .diagnostics_server
-      .update(self.diagnostics_snapshot())
-      .map_err(|err| {
-        error!("{}", err);
-        LspError::internal_error()
-      })?;
     self.performance.measure(mark);
     Ok(Some(json!(true)))
   }
