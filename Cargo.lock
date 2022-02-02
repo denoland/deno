@@ -1215,25 +1215,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "dprint-core"
-version = "0.50.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a596556533e5739e71dfe105c8b4496c3eccaf5aa96d14b19db2fdf4157085a"
-dependencies = [
- "anyhow",
- "bumpalo",
- "rustc-hash",
- "serde",
-]
-
-[[package]]
 name = "dprint-plugin-json"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d7673b479d64372e60e344722789ed9c61ea1023e9a8a13c7da8e7d63b0f7dc"
 dependencies = [
  "anyhow",
- "dprint-core 0.49.1",
+ "dprint-core",
  "jsonc-parser",
  "serde",
  "text_lines",
@@ -1246,7 +1234,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00a8c4e905bf5c95dbcc6eab7d81a1d884f7fbd0e7f2fd99af0154692fabc8a8"
 dependencies = [
  "anyhow",
- "dprint-core 0.49.1",
+ "dprint-core",
  "pulldown-cmark",
  "regex",
  "serde",
