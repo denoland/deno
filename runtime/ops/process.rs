@@ -402,5 +402,5 @@ fn op_open_ipc(
   }
 
   #[cfg(not(unix))]
-  None
+  Ok(None)
 }
