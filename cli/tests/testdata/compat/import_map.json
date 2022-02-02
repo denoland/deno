@@ -1,5 +1,5 @@
 {
   "imports": {
-    "std/": "https://deno.land/std@0.122.0/"
+    "std/": "https://deno.land/std@0.123.0/"
   }
 }

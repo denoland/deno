@@ -8,6 +8,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_graph::Resolved;
 use import_map::ImportMap;
 use log::error;
 use log::info;
@@ -27,7 +28,7 @@ use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
-use super::cache::CacheServer;
+use super::cache;
 use super::capabilities;
 use super::client::Client;
 use super::code_lens;
@@ -78,6 +79,7 @@ pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 #[derive(Debug, Default)]
 pub(crate) struct StateSnapshot {
   pub assets: AssetsSnapshot,
+  pub cache_metadata: cache::CacheMetadata,
   pub documents: Documents,
   pub root_uri: Option<Url>,
 }
@@ -87,6 +89,9 @@ pub(crate) struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
   /// are part of the TypeScript snapshot and have to be fetched out.
   assets: Assets,
+  /// A representation of metadata associated with specifiers in the DENO_DIR
+  /// which is used by the language server
+  cache_metadata: cache::CacheMetadata,
   /// The LSP client that this LSP server is connected to.
   pub(crate) client: Client,
   /// Configuration information.
@@ -103,7 +108,7 @@ pub(crate) struct Inner {
   /// options.
   maybe_cache_path: Option<PathBuf>,
   /// A lazily created "server" for handling cache requests.
-  maybe_cache_server: Option<CacheServer>,
+  maybe_cache_server: Option<cache::CacheServer>,
   /// An optional configuration file which has been specified in the client
   /// options.
   maybe_config_file: Option<ConfigFile>,
@@ -146,6 +151,7 @@ impl Inner {
     .expect("could not create module registries");
     let location = dir.root.join(CACHE_PATH);
     let documents = Documents::new(&location);
+    let cache_metadata = cache::CacheMetadata::new(&location);
     let performance = Arc::new(Performance::default());
     let ts_server = Arc::new(TsServer::new(performance.clone()));
     let config = Config::new();
@@ -158,6 +164,7 @@ impl Inner {
 
     Self {
       assets,
+      cache_metadata,
       client,
       config,
       diagnostics_server,
@@ -389,6 +396,7 @@ impl Inner {
   pub(crate) fn snapshot(&self) -> Arc<StateSnapshot> {
     Arc::new(StateSnapshot {
       assets: self.assets.snapshot(),
+      cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
       root_uri: self.root_uri.clone(),
     })
@@ -446,7 +454,9 @@ impl Inner {
         },
       )?;
       self.module_registries_location = module_registries_location;
-      self.documents.set_location(dir.root.join(CACHE_PATH));
+      let location = dir.root.join(CACHE_PATH);
+      self.documents.set_location(&location);
+      self.cache_metadata.set_location(&location);
       self.maybe_cache_path = maybe_cache_path;
     }
     Ok(())
@@ -1058,34 +1068,38 @@ impl Inner {
         .get_code()
         .map(|s| self.documents.get(s))
         .flatten()
-        .map(|d| d.maybe_types_dependency())
-        .flatten();
-      let value = match (&dep.maybe_code, &dep.maybe_type, &dep_maybe_types_dependency) {
-        (Some(code_dep), Some(type_dep), None) => format!(
+        .map(|d| d.maybe_types_dependency());
+      let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
+        (false, false, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(code_dep),
-          to_hover_text(type_dep)
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type)
         ),
-        (Some(code_dep), Some(type_dep), Some(types_dep)) => format!(
+        (false, false, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
-          to_hover_text(code_dep),
-          to_hover_text(types_dep),
-          to_hover_text(type_dep)
-        ),
-        (Some(code_dep), None, None) => format!(
-          "**Resolved Dependency**\n\n**Code**: {}\n",
-          to_hover_text(code_dep)
-        ),
-        (Some(code_dep), None, Some(types_dep)) => format!(
-          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          to_hover_text(code_dep),
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type),
           to_hover_text(types_dep)
         ),
-        (None, Some(type_dep), _) => format!(
-          "**Resolved Dependency**\n\n**Types**: {}\n",
-          to_hover_text(type_dep)
+        (false, false, Some(_)) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(&dep.maybe_type)
         ),
-        (None, None, _) => unreachable!("{}", json!(params)),
+        (false, true, Some(types_dep)) if !types_dep.is_none() => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_code),
+          to_hover_text(types_dep)
+        ),
+        (false, true, _) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n",
+          to_hover_text(&dep.maybe_code)
+        ),
+        (true, false, _) => format!(
+          "**Resolved Dependency**\n\n**Types**: {}\n",
+          to_hover_text(&dep.maybe_type)
+        ),
+        (true, true, _) => unreachable!("{}", json!(params)),
       };
       let value =
         if let Some(docs) = self.module_registries.get_hover(&dep).await {
@@ -2677,15 +2691,20 @@ impl Inner {
       params
         .uris
         .iter()
-        .map(|t| self.url_map.normalize_url(&t.uri))
+        .map(|t| {
+          (
+            self.url_map.normalize_url(&t.uri),
+            deno_graph::ModuleKind::Esm,
+          )
+        })
         .collect()
     } else {
-      vec![referrer.clone()]
+      vec![(referrer.clone(), deno_graph::ModuleKind::Esm)]
     };
 
     if self.maybe_cache_server.is_none() {
       self.maybe_cache_server = Some(
-        CacheServer::new(
+        cache::CacheServer::new(
           self.maybe_cache_path.clone(),
           self.maybe_import_map.clone(),
           self.maybe_config_file.clone(),
