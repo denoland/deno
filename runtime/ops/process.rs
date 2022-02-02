@@ -17,19 +17,18 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_net::io::UnixStreamResource;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-
 use std::rc::Rc;
-use tokio::net::UnixStream;
 
 #[cfg(unix)]
 use command_fds::CommandFdExt;
 #[cfg(unix)]
 use command_fds::FdMapping;
+#[cfg(unix)]
+use deno_net::io::UnixStreamResource;
 #[cfg(unix)]
 use nix::fcntl::{fcntl, FdFlag, F_SETFD};
 #[cfg(unix)]
@@ -42,6 +41,8 @@ use std::os::unix::process::CommandExt;
 use std::os::unix::process::ExitStatusExt;
 #[cfg(unix)]
 use std::str::FromStr;
+#[cfg(unix)]
+use tokio::net::UnixStream;
 
 #[cfg(not(unix))]
 use deno_core::error::not_supported;
