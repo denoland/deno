@@ -8,6 +8,7 @@ use super::documents;
 use super::documents::Document;
 use super::documents::Documents;
 use super::language_server;
+use super::language_server::LanguageServerSnapshot;
 use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
@@ -92,10 +93,53 @@ impl DiagnosticsPublisher {
   }
 }
 
+#[derive(Clone, Default, Debug)]
+struct TsDiagnosticsStore(Arc<deno_core::parking_lot::Mutex<DiagnosticMap>>);
+
+impl TsDiagnosticsStore {
+  pub fn get(
+    &self,
+    specifier: &ModuleSpecifier,
+    document_version: Option<i32>,
+  ) -> Vec<lsp::Diagnostic> {
+    let ts_diagnostics = self.0.lock();
+    if let Some((diagnostics_doc_version, diagnostics)) =
+      ts_diagnostics.get(specifier)
+    {
+      // only get the diagnostics if they're up to date
+      if document_version == *diagnostics_doc_version {
+        return diagnostics.clone();
+      }
+    }
+    Vec::new()
+  }
+
+  pub fn invalidate(&self, specifiers: Vec<ModuleSpecifier>) {
+    let mut ts_diagnostics = self.0.lock();
+    for specifier in &specifiers {
+      ts_diagnostics.remove(specifier);
+    }
+  }
+
+  pub fn invalidate_all(&self) {
+    self.0.lock().clear();
+  }
+
+  fn update(&self, diagnostics: &DiagnosticVec) {
+    let mut stored_ts_diagnostics = self.0.lock();
+    *stored_ts_diagnostics = diagnostics
+      .iter()
+      .map(|(specifier, version, diagnostics)| {
+        (specifier.clone(), (*version, diagnostics.clone()))
+      })
+      .collect();
+  }
+}
+
 #[derive(Debug)]
 pub(crate) struct DiagnosticsServer {
-  channel: Option<mpsc::UnboundedSender<()>>,
-  ts_diagnostics: Arc<Mutex<DiagnosticMap>>,
+  channel: Option<mpsc::UnboundedSender<LanguageServerSnapshot>>,
+  ts_diagnostics: TsDiagnosticsStore,
   client: Client,
   performance: Arc<Performance>,
   ts_server: Arc<TsServer>,
@@ -116,44 +160,28 @@ impl DiagnosticsServer {
     }
   }
 
-  pub(crate) async fn get_ts_diagnostics(
+  pub(crate) fn get_ts_diagnostics(
     &self,
     specifier: &ModuleSpecifier,
     document_version: Option<i32>,
   ) -> Vec<lsp::Diagnostic> {
-    let ts_diagnostics = self.ts_diagnostics.lock().await;
-    if let Some((diagnostics_doc_version, diagnostics)) =
-      ts_diagnostics.get(specifier)
-    {
-      // only get the diagnostics if they're up to date
-      if document_version == *diagnostics_doc_version {
-        return diagnostics.clone();
-      }
-    }
-    Vec::new()
+    self.ts_diagnostics.get(specifier, document_version)
   }
 
-  pub(crate) async fn invalidate(&self, specifiers: Vec<ModuleSpecifier>) {
-    let mut ts_diagnostics = self.ts_diagnostics.lock().await;
-    for specifier in &specifiers {
-      ts_diagnostics.remove(specifier);
-    }
+  pub(crate) fn invalidate(&self, specifiers: Vec<ModuleSpecifier>) {
+    self.ts_diagnostics.invalidate(specifiers);
   }
 
-  pub(crate) async fn invalidate_all(&self) {
-    let mut ts_diagnostics = self.ts_diagnostics.lock().await;
-    ts_diagnostics.clear();
+  pub(crate) fn invalidate_all(&self) {
+    self.ts_diagnostics.invalidate_all();
   }
 
-  pub(crate) fn start(
-    &mut self,
-    language_server: Arc<Mutex<language_server::Inner>>,
-  ) {
-    let (tx, mut rx) = mpsc::unbounded_channel::<()>();
+  pub(crate) fn start(&mut self) {
+    let (tx, mut rx) = mpsc::unbounded_channel::<LanguageServerSnapshot>();
     self.channel = Some(tx);
     let client = self.client.clone();
     let performance = self.performance.clone();
-    let stored_ts_diagnostics = self.ts_diagnostics.clone();
+    let ts_diagnostics_store = self.ts_diagnostics.clone();
     let ts_server = self.ts_server.clone();
 
     let _join_handle = thread::spawn(move || {
@@ -170,20 +198,11 @@ impl DiagnosticsServer {
           match rx.recv().await {
             // channel has closed
             None => break,
-            Some(()) => {
+            Some((snapshot, config, maybe_lint_config)) => {
               // cancel the previous run
               token.cancel();
               token = CancellationToken::new();
               diagnostics_publisher.clear().await;
-
-              let (snapshot, config, maybe_lint_config) = {
-                let language_server = language_server.lock().await;
-                (
-                  language_server.snapshot(),
-                  language_server.config.snapshot(),
-                  language_server.maybe_lint_config.clone(),
-                )
-              };
 
               let previous_ts_handle = ts_handle.take();
               ts_handle = Some(tokio::spawn({
@@ -191,7 +210,7 @@ impl DiagnosticsServer {
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let ts_server = ts_server.clone();
                 let token = token.clone();
-                let stored_ts_diagnostics = stored_ts_diagnostics.clone();
+                let ts_diagnostics_store = ts_diagnostics_store.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
                 async move {
@@ -227,17 +246,7 @@ impl DiagnosticsServer {
                   .unwrap_or_default();
 
                   if !token.is_cancelled() {
-                    {
-                      let mut stored_ts_diagnostics =
-                        stored_ts_diagnostics.lock().await;
-                      *stored_ts_diagnostics = diagnostics
-                        .iter()
-                        .map(|(specifier, version, diagnostics)| {
-                          (specifier.clone(), (*version, diagnostics.clone()))
-                        })
-                        .collect();
-                    }
-
+                    ts_diagnostics_store.update(&diagnostics);
                     diagnostics_publisher.publish(diagnostics, &token).await;
 
                     if !token.is_cancelled() {
@@ -310,9 +319,15 @@ impl DiagnosticsServer {
     });
   }
 
-  pub(crate) fn update(&self) -> Result<(), AnyError> {
+  pub(crate) fn update(
+    &self,
+    message: LanguageServerSnapshot,
+  ) -> Result<(), AnyError> {
+    // todo(dsherret): instead of queuing up messages, it would be better to
+    // instead only store the latest message (ex. maybe using a
+    // tokio::sync::watch::channel)
     if let Some(tx) = &self.channel {
-      tx.send(()).map_err(|err| err.into())
+      tx.send(message).map_err(|err| err.into())
     } else {
       Err(anyhow!("diagnostics server not started"))
     }

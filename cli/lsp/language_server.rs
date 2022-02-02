@@ -84,6 +84,9 @@ pub(crate) struct StateSnapshot {
   pub root_uri: Option<Url>,
 }
 
+pub(crate) type LanguageServerSnapshot =
+  (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);
+
 #[derive(Debug)]
 pub(crate) struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
@@ -790,9 +793,10 @@ impl Inner {
     if document.is_diagnosable() {
       self
         .diagnostics_server
-        .invalidate(self.documents.dependents(specifier))
-        .await;
-      if let Err(err) = self.diagnostics_server.update() {
+        .invalidate(self.documents.dependents(specifier));
+      if let Err(err) =
+        self.diagnostics_server.update(self.diagnostics_snapshot())
+      {
         error!("{}", err);
       }
     }
@@ -812,9 +816,10 @@ impl Inner {
         if document.is_diagnosable() {
           self
             .diagnostics_server
-            .invalidate(self.documents.dependents(&specifier))
-            .await;
-          if let Err(err) = self.diagnostics_server.update() {
+            .invalidate(self.documents.dependents(&specifier));
+          if let Err(err) =
+            self.diagnostics_server.update(self.diagnostics_snapshot())
+          {
             error!("{}", err);
           }
         }
@@ -840,8 +845,10 @@ impl Inner {
     if self.is_diagnosable(&specifier) {
       let mut specifiers = self.documents.dependents(&specifier);
       specifiers.push(specifier.clone());
-      self.diagnostics_server.invalidate(specifiers).await;
-      if let Err(err) = self.diagnostics_server.update() {
+      self.diagnostics_server.invalidate(specifiers);
+      if let Err(err) =
+        self.diagnostics_server.update(self.diagnostics_snapshot())
+      {
         error!("{}", err);
       }
     }
@@ -887,7 +894,9 @@ impl Inner {
     if let Err(err) = self.update_tsconfig().await {
       self.client.show_message(MessageType::WARNING, err).await;
     }
-    if let Err(err) = self.diagnostics_server.update() {
+    if let Err(err) =
+      self.diagnostics_server.update(self.diagnostics_snapshot())
+    {
       error!("{}", err);
     }
     self.documents.update_config(
@@ -936,8 +945,10 @@ impl Inner {
         self.maybe_import_map.clone(),
         self.maybe_config_file.as_ref(),
       );
-      self.diagnostics_server.invalidate_all().await;
-      if let Err(err) = self.diagnostics_server.update() {
+      self.diagnostics_server.invalidate_all();
+      if let Err(err) =
+        self.diagnostics_server.update(self.diagnostics_snapshot())
+      {
         error!("Cannot update diagnostics: {}", err);
       }
     }
@@ -1185,8 +1196,7 @@ impl Inner {
       let mut code_actions = CodeActionCollection::default();
       let file_diagnostics = self
         .diagnostics_server
-        .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version())
-        .await;
+        .get_ts_diagnostics(&specifier, asset_or_doc.document_lsp_version());
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
           Some("deno-ts") => {
@@ -2342,6 +2352,14 @@ impl Inner {
     self.performance.measure(mark);
     Ok(maybe_symbol_information)
   }
+
+  fn diagnostics_snapshot(&self) -> LanguageServerSnapshot {
+    (
+      self.snapshot(),
+      self.config.snapshot(),
+      self.maybe_lint_config.clone(),
+    )
+  }
 }
 
 #[lspower::async_trait]
@@ -2351,7 +2369,7 @@ impl lspower::LanguageServer for LanguageServer {
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
     let mut language_server = self.0.lock().await;
-    language_server.diagnostics_server.start(self.0.clone());
+    language_server.diagnostics_server.start();
     language_server.initialize(params).await
   }
 
@@ -2722,12 +2740,15 @@ impl Inner {
 
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics
-    self.diagnostics_server.invalidate(vec![referrer]).await;
+    self.diagnostics_server.invalidate(vec![referrer]);
 
-    self.diagnostics_server.update().map_err(|err| {
-      error!("{}", err);
-      LspError::internal_error()
-    })?;
+    self
+      .diagnostics_server
+      .update(self.diagnostics_snapshot())
+      .map_err(|err| {
+        error!("{}", err);
+        LspError::internal_error()
+      })?;
     self.performance.measure(mark);
     Ok(Some(json!(true)))
   }
