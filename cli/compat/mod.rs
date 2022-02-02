@@ -137,6 +137,25 @@ pub(crate) fn add_global_require(
   Ok(())
 }
 
+pub(crate) fn resolve_cjs_module(
+  js_runtime: &mut JsRuntime,
+  referrer_mod: &str,
+  mod_to_resolve: &str,
+) -> Result<(), AnyError> {
+  let source_code = &format!(
+    r#"const CJSModule = require("module");
+    const referrerMod = require("{}");
+    const resolvedMod = CJSModule._resolveFilename("{}", referrerMod);
+    return resolvedMod;
+    "#,
+    escape_for_single_quote_string(referrer_mod),
+    escape_for_single_quote_string(mod_to_resolve),
+  );
+
+  js_runtime.execute_script(&located_script_name!(), source_code)?;
+  Ok(())
+}
+
 fn escape_for_single_quote_string(text: &str) -> String {
   text.replace(r"\", r"\\").replace("'", r"\'")
 }

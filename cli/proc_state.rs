@@ -343,6 +343,15 @@ impl ProcState {
       None,
     )
     .await;
+
+    for module in graph.modules() {
+      if module.kind == ModuleKind::CommonJs {
+        eprintln!("cjs module {}", module.specifier);
+        eprintln!("deps {:#?}", module.dependencies);
+        eprintln!("maybe source {:#?}", module.maybe_source);
+      }
+    }
+
     // If there was a locker, validate the integrity of all the modules in the
     // locker.
     graph_lock_or_exit(&graph);
@@ -540,9 +549,11 @@ impl ProcState {
                 specifier.to_file_path().unwrap().to_str().unwrap()
               ));
               source.push("export default mod".to_string());
-              for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
+              for export in
+                analysis.exports.iter().filter(|e| e.as_str() != "default")
+              {
                 // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
-                // but it might not be necessary here since our analysis is more detailed? 
+                // but it might not be necessary here since our analysis is more detailed?
                 source
                   .push(format!("export const {} = mod.{}", export, export));
               }
@@ -552,7 +563,10 @@ impl ProcState {
                 //   "const reexport{} = require(\"{}\");",
                 //   idx, reexport
                 // ));
-                source.push(format!("throw new Error('Unhandled reexport {}')", reexport));
+                source.push(format!(
+                  "throw new Error('Unhandled reexport {}')",
+                  reexport
+                ));
               }
               source.join("\n").to_string()
             } else {
@@ -700,4 +714,54 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
   } else {
     None
   }
+}
+
+fn translate_cjs_to_esm(
+  specifier: ModuleSpecifier,
+  // TODO(bartlomieju): could use `maybe_parsed_source` if available
+  code: String,
+  media_type: MediaType,
+) -> String {
+  let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
+    specifier: specifier.to_string(),
+    source: deno_ast::SourceTextInfo::new(code),
+    media_type,
+    capture_tokens: true,
+    scope_analysis: false,
+    maybe_syntax: None,
+  })?;
+  let analysis = parsed_source.analyze_cjs();
+  
+  // if there are reexports, handle them first
+
+  let mut source = vec![
+    r#"import { createRequire } from "node:module";"#.to_string(),
+    r#"const require = createRequire(import.meta.url);"#.to_string(),
+  ];
+  
+  source.push(format!(
+    "const mod = require(\"{}\");",
+    specifier.to_file_path().unwrap().to_str().unwrap()
+  ));
+  source.push("export default mod".to_string());
+  
+  for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
+    // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
+    // but it might not be necessary here since our analysis is more detailed?
+    source.push(format!("export const {} = mod.{}", export, export));
+  }
+  
+  // TODO(bartlomieju): handle reexports
+  for (idx, reexport) in analysis.reexports.iter().enumerate() {
+    // source.push(format!(
+    //   "const reexport{} = require(\"{}\");",
+    //   idx, reexport
+    // ));
+    source.push(format!(
+      "throw new Error('Unhandled reexport {}')",
+      reexport
+    ));
+  }
+  
+  source.join("\n").to_string()
 }
