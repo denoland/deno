@@ -606,7 +606,7 @@ fn ffi_call(
     })
     .collect::<Vec<_>>();
 
-  if cb_offsets.len() > 0 {
+  if !cb_offsets.is_empty() {
     return Ok(call_symbol_cb(
       symbol,
       call_args,
