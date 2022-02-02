@@ -403,7 +403,7 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   assertEquals(
     stringify({ f }),
     `{
-  f: [Function: f] <ref *1> {
+  f: <ref *1> [Function: f] {
     x: [Function],
     y: 3,
     z: [Function],

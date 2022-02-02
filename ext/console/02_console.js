@@ -332,11 +332,17 @@
     // If we didn't find any properties, we will just append an
     // empty suffix.
     let suffix = ``;
+    let refStr = "";
     if (
       ObjectKeys(value).length > 0 ||
       ObjectGetOwnPropertySymbols(value).length > 0
     ) {
-      const propString = inspectRawObject(value, level, inspectOptions);
+      const [propString, refIndex] = inspectRawObject(
+        value,
+        level,
+        inspectOptions,
+      );
+      refStr = refIndex;
       // Filter out the empty string for the case we only have
       // non-enumerable symbols.
       if (
@@ -349,9 +355,9 @@
 
     if (value.name && value.name !== "anonymous") {
       // from MDN spec
-      return cyan(`[${cstrName}: ${value.name}]`) + suffix;
+      return cyan(`${refStr}[${cstrName}: ${value.name}]`) + suffix;
     }
-    return cyan(`[${cstrName}]`) + suffix;
+    return cyan(`${refStr}[${cstrName}]`) + suffix;
   }
 
   function inspectIterable(
@@ -1026,7 +1032,7 @@
     const cyan = maybeColor(colors.cyan, inspectOptions);
 
     if (level >= inspectOptions.depth) {
-      return cyan("[Object]"); // wrappers are in cyan
+      return [cyan("[Object]"), ""]; // wrappers are in cyan
     }
 
     let baseString;
@@ -1168,14 +1174,15 @@
       baseString = `${displayName} ${baseString}`;
     }
 
+    let refIndex = "";
     if (circular !== undefined) {
       const index = MapPrototypeGet(circular, value);
       if (index !== undefined) {
-        baseString = cyan(`<ref *${index}> `) + baseString;
+        refIndex = `<ref *${index}> `;
       }
     }
 
-    return baseString;
+    return [baseString, refIndex];
   }
 
   function inspectObject(
@@ -1238,7 +1245,9 @@
       );
     } else {
       // Otherwise, default object formatting
-      return inspectRawObject(value, level, inspectOptions);
+      let [insp, refIndex] = inspectRawObject(value, level, inspectOptions);
+      insp = refIndex + insp;
+      return insp;
     }
   }
 
