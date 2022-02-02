@@ -349,32 +349,48 @@ struct EmitArgs {
   maybe_specifiers: Option<Vec<String>>,
 }
 
-fn op_emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
-  let v: EmitArgs = serde_json::from_value(args)
-    .context("Invalid request from JavaScript for \"op_emit\".")?;
-  match v.file_name.as_ref() {
-    "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(v.data),
-    _ => state.emitted_files.push(EmittedFile {
-      data: v.data,
-      maybe_specifiers: if let Some(specifiers) = &v.maybe_specifiers {
-        let specifiers = specifiers
-          .iter()
-          .map(|s| {
-            if let Some(data_specifier) = state.remapped_specifiers.get(s) {
-              data_specifier.clone()
-            } else if let Some(remapped_specifier) = state.root_map.get(s) {
-              remapped_specifier.clone()
-            } else {
-              normalize_specifier(s).unwrap()
-            }
-          })
-          .collect();
-        Some(specifiers)
+fn op_emit(state: &mut State, args: EmitArgs) -> Result<Value, AnyError> {
+  match args.file_name.as_ref() {
+    "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
+    _ => {
+      let media_type = MediaType::from(&args.file_name);
+      let media_type = if matches!(
+        media_type,
+        MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
+          | MediaType::Dts
+          | MediaType::Dmts
+          | MediaType::Dcts
+          | MediaType::SourceMap
+          | MediaType::TsBuildInfo
+      ) {
+        media_type
       } else {
-        None
-      },
-      media_type: MediaType::from(&v.file_name),
-    }),
+        MediaType::JavaScript
+      };
+      state.emitted_files.push(EmittedFile {
+        data: args.data,
+        maybe_specifiers: if let Some(specifiers) = &args.maybe_specifiers {
+          let specifiers = specifiers
+            .iter()
+            .map(|s| {
+              if let Some(data_specifier) = state.remapped_specifiers.get(s) {
+                data_specifier.clone()
+              } else if let Some(remapped_specifier) = state.root_map.get(s) {
+                remapped_specifier.clone()
+              } else {
+                normalize_specifier(s).unwrap()
+              }
+            })
+            .collect();
+          Some(specifiers)
+        } else {
+          None
+        },
+        media_type,
+      })
+    }
   }
 
   Ok(json!(true))
@@ -883,11 +899,11 @@ mod tests {
     let mut state = setup(None, None, None).await;
     let actual = op_emit(
       &mut state,
-      json!({
-        "data": "some file content",
-        "fileName": "cache:///some/file.js",
-        "maybeSpecifiers": ["file:///some/file.ts"]
-      }),
+      EmitArgs {
+        data: "some file content".to_string(),
+        file_name: "cache:///some/file.js".to_string(),
+        maybe_specifiers: Some(vec!["file:///some/file.ts".to_string()]),
+      },
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
@@ -907,14 +923,45 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_emit_strange_specifier() {
+    let mut state = setup(None, None, None).await;
+    let actual = op_emit(
+      &mut state,
+      EmitArgs {
+        data: "some file content".to_string(),
+        file_name: "deno:///some.file.ts?q=.json".to_string(),
+        maybe_specifiers: Some(
+          vec!["file:///some/file.ts?q=.json".to_string()],
+        ),
+      },
+    )
+    .expect("should have invoked op");
+    assert_eq!(actual, json!(true));
+    assert_eq!(state.emitted_files.len(), 1);
+    assert!(state.maybe_tsbuildinfo.is_none());
+    assert_eq!(
+      state.emitted_files[0],
+      EmittedFile {
+        data: "some file content".to_string(),
+        maybe_specifiers: Some(vec![resolve_url_or_path(
+          "file:///some/file.ts?q=.json"
+        )
+        .unwrap()]),
+        media_type: MediaType::JavaScript,
+      }
+    );
+  }
+
+  #[tokio::test]
   async fn test_emit_tsbuildinfo() {
     let mut state = setup(None, None, None).await;
     let actual = op_emit(
       &mut state,
-      json!({
-        "data": "some file content",
-        "fileName": "deno:///.tsbuildinfo",
-      }),
+      EmitArgs {
+        data: "some file content".to_string(),
+        file_name: "deno:///.tsbuildinfo".to_string(),
+        maybe_specifiers: None,
+      },
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
