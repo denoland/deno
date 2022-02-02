@@ -1875,11 +1875,15 @@ Deno.test(function inspectErrorCircular() {
   );
   assertStringIncludes(
     stripColor(Deno.inspect(error2)),
-    "Error: This is an error",
+    "<ref *1> Error: This is an error",
   );
   assertStringIncludes(
     stripColor(Deno.inspect(error2)),
     "Caused by Error: This is a cause error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error2)),
+    "Caused by [Circular *1]",
   );
 });
 
