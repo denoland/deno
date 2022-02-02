@@ -190,10 +190,12 @@ fn op_run(
     c.stderr(file);
   }
 
+  if run_args.ipc {
+    super::check_unstable(state, "Deno.run.ipc");
+  }
+
   #[cfg(unix)]
   let (ipc_parent, _ipc_child) = if run_args.ipc {
-    super::check_unstable(state, "Deno.run.ipc");
-
     let (ipc_parent, ipc_child) = UnixStream::pair()?;
     c.fd_mappings(vec![FdMapping {
       child_fd: 3,
