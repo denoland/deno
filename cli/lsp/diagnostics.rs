@@ -570,15 +570,21 @@ pub(crate) enum DenoDiagnostic {
   InvalidAssertType(String),
   /// A module requires an assertion type to be a valid import.
   NoAssertType,
-  ///
+  /// A remote module was not found in the cache.
   NoCache(ModuleSpecifier),
+  /// A blob module was not found in the cache.
   NoCacheBlob,
+  /// A data module was not found in the cache.
   NoCacheData(ModuleSpecifier),
+  /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
+  /// The specifier resolved to a remote specifier that was redirected to
+  /// another specifier.
   Redirect {
     from: ModuleSpecifier,
     to: ModuleSpecifier,
   },
+  /// An error occurred when resolving the specifier string.
   ResolutionError(deno_graph::ResolutionError),
 }
 
@@ -608,6 +614,8 @@ impl DenoDiagnostic {
     }
   }
 
+  /// A "static" method which for a diagnostic that originated from the
+  /// structure returns a code action which can resolve the diagnostic.
   pub(crate) fn get_code_action(
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
@@ -705,6 +713,8 @@ impl DenoDiagnostic {
     }
   }
 
+  /// Convert to an lsp Diagnostic when the range the diagnostic applies to is
+  /// provided.
   pub(crate) fn to_lsp_diagnostic(
     &self,
     range: &lsp::Range,
@@ -745,6 +755,8 @@ fn diagnose_dependency(
       specifier, range, ..
     } => {
       let range = documents::to_lsp_range(range);
+      // If the module is a remote module and has a `X-Deno-Warn` header, we
+      // want a warning diagnostic with that message.
       if let Some(metadata) = cache_metadata.get(specifier) {
         if let Some(message) =
           metadata.get(&cache::MetadataKey::Warning).cloned()
@@ -755,6 +767,9 @@ fn diagnose_dependency(
       }
       if let Some(doc) = documents.get(specifier) {
         let doc_specifier = doc.specifier();
+        // If the module was redirected, we want to issue an informational
+        // diagnostic that indicates this. This then allows us to issue a code
+        // action to replace the specifier with the final redirected one.
         if doc_specifier != specifier {
           diagnostics.push(
             DenoDiagnostic::Redirect {
@@ -783,6 +798,9 @@ fn diagnose_dependency(
           }
         }
       } else {
+        // When the document is not available, it means that it cannot be found
+        // in the cache or locally on the disk, so we want to issue a diagnostic
+        // about that.
         let deno_diagnostic = match specifier.scheme() {
           "file" => DenoDiagnostic::NoLocal(specifier.clone()),
           "data" => DenoDiagnostic::NoCacheData(specifier.clone()),
@@ -792,6 +810,8 @@ fn diagnose_dependency(
         diagnostics.push(deno_diagnostic.to_lsp_diagnostic(&range));
       }
     }
+    // The specifier resolution resulted in an error, so we want to issue a
+    // diagnostic for that.
     Resolved::Err(err) => diagnostics.push(
       DenoDiagnostic::ResolutionError(err.clone())
         .to_lsp_diagnostic(&documents::to_lsp_range(err.range())),
