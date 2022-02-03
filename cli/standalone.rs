@@ -103,9 +103,7 @@ pub async fn extract_standalone(
     .take(metadata_len)
     .read_to_string(&mut metadata)
     .await
-    .context(
-      "Failed to read source eszip_archive from the current executable",
-    )?;
+    .context("Failed to read metadata from the current executable")?;
 
   let mut metadata: Metadata = serde_json::from_str(&metadata).unwrap();
   metadata.argv.append(&mut args[1..].to_vec());
