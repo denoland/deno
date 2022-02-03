@@ -24,6 +24,7 @@ mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
+mod napi;
 mod ops;
 mod proc_state;
 mod resolver;

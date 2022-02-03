@@ -1,0 +1,16 @@
+[package]
+name = "napi_sym"
+version = "0.0.1"
+description = "proc macro for writing N-API symbols"
+readme = "../README.md"
+license = "MIT"
+edition = "2021"
+
+[lib]
+path = "./lib.rs"
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "1", features = ["full", "extra-traits"] }

@@ -752,6 +752,7 @@ dependencies = [
  "libc",
  "log",
  "lspower",
+ "napi_sym",
  "nix",
  "notify",
  "num_cpus",
@@ -856,6 +857,7 @@ dependencies = [
  "futures",
  "indexmap",
  "libc",
+ "libloading",
  "log",
  "once_cell",
  "parking_lot",
@@ -2404,6 +2406,15 @@ dependencies = [
  "serde",
  "spirv",
  "thiserror",
+]
+
+[[package]]
+name = "napi_sym"
+version = "0.0.1"
+dependencies = [
+ "proc-macro2 1.0.36",
+ "quote 1.0.14",
+ "syn 1.0.85",
 ]
 
 [[package]]

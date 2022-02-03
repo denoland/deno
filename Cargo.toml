@@ -5,6 +5,7 @@ resolver = "2"
 members = [
   "bench_util",
   "cli",
+  "cli/napi_sym",
   "core",
   "runtime",
   "serde_v8",

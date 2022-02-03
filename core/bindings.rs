@@ -30,6 +30,8 @@ use v8::MapFnTo;
 use v8::SharedArrayBuffer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
+// TODO(@littledivy): Rename ffs
+use crate::napi::dlopen_func;
 
 const UNDEFINED_OP_ID_MSG: &str =
   "invalid op id: received `undefined` instead of an integer.
@@ -110,6 +112,9 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       },
       v8::ExternalReference {
         function: set_wasm_streaming_callback.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: dlopen_func.map_fn_to(),
       },
     ])
   });
@@ -224,6 +229,8 @@ pub fn initialize_context<'s>(
     "setWasmStreamingCallback",
     set_wasm_streaming_callback,
   );
+  // Yes, N-API.
+  crate::napi::setup_napi(scope, core_val);
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
 

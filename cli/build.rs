@@ -290,6 +290,9 @@ fn main() {
     return;
   }
 
+  #[cfg(target_os = "macos")]
+  println!("cargo:rustc-link-arg=-rdynamic");
+
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 

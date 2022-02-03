@@ -51,6 +51,7 @@ deno_doc = "0.28.0"
 deno_graph = "0.21.1"
 deno_lint = { version = "0.23.0", features = ["docs"] }
 deno_runtime = { version = "0.43.0", path = "../runtime" }
+napi_sym = { path = "./napi_sym", version = "0.0.1" }
 
 atty = "=0.2.14"
 base64 = "=0.13.0"
