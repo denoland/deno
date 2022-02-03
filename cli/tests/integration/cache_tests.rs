@@ -1,8 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
-use tempfile::TempDir;
-use test_util as util;
 
 itest!(_036_import_map_fetch {
   args:
@@ -56,6 +54,9 @@ itest!(ignore_require {
 #[cfg(target_os = "linux")]
 #[test]
 fn relative_home_dir() {
+  use tempfile::TempDir;
+  use test_util as util;
+
   let deno_dir = TempDir::new_in(util::testdata_path()).unwrap();
   let path = deno_dir.path().strip_prefix(util::testdata_path()).unwrap();
 
