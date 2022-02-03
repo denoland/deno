@@ -69,6 +69,7 @@ fn basic() {
     Hello from rust!\n\
     [js] callback called\n\
     [rust] cb returned 69\n\
+    3\n\
     After sleep_blocking\n\
     true\n\
     Before\n\

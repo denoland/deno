@@ -49,6 +49,19 @@ pub extern "C" fn add_callback(cb: extern "C" fn(i32, i32, *const u8) -> i32) {
 }
 
 #[no_mangle]
+pub extern "C" fn chain_multiple_callbacks(
+  get_a: Option<extern "C" fn() -> i32>,
+  get_b: extern "C" fn() -> i32,
+  set_c: extern "C" fn(i32),
+) {
+  let a = (get_a.unwrap())();
+  assert_eq!(a, 1);
+  let b = get_b();
+  assert_eq!(b, 2);
+  set_c(a + b)
+}
+
+#[no_mangle]
 pub extern "C" fn add_u32(a: u32, b: u32) -> u32 {
   a + b
 }

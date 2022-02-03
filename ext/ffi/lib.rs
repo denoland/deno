@@ -629,7 +629,6 @@ fn call_symbol_cb(
   for (cb, offset) in cbs.into_iter().zip(offsets) {
     let cb_info = CallbackInfo::new(scope, cb);
     let signature = &symbol.parameter_types[offset];
-
     let (mut info, cif) = match signature {
       NativeType::Function {
         ref parameters,

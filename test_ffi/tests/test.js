@@ -74,6 +74,29 @@ const dylib = Deno.dlopen(libPath, {
     }],
     result: "void",
   },
+  "chain_multiple_callbacks": {
+    parameters: [
+      {
+        function: {
+          parameters: [],
+          result: "i32",
+        }
+      },
+      {
+        function: {
+          parameters: [],
+          result: "i32",
+        }
+      },
+      {
+        function: {
+          parameters: ["i32"],
+          result: "void",
+        }
+      }
+    ],
+    result: "void",
+  },
   "get_add_u32_ptr": {
     parameters: [],
     result: "pointer",
@@ -162,6 +185,17 @@ dylib.symbols.add_callback((a, b, ptr) => {
   console.log(str);
   console.log("[js] callback called");
   return a + b;
+});
+
+dylib.symbols.chain_multiple_callbacks(() => {
+  console.log("get a")
+  return 1;
+}, () => {
+  console.log("get b")
+  return 2;
+}, (c) => {
+  console.log("set c")
+  console.log(c);  
 });
 
 // test mutating sync calls
