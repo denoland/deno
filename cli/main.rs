@@ -390,13 +390,12 @@ async fn compile_command(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   ))?;
 
-  let graph =
-    create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?;
-
-  let graph = match Arc::try_unwrap(graph) {
-    Ok(graph) => graph,
-    _ => unreachable!(),
-  };
+  let graph = Arc::try_unwrap(
+    create_graph_and_maybe_check(module_specifier.clone(), &ps, debug).await?,
+  )
+  .map_err(|_| {
+    generic_error("There should only be one reference to ModuleGraph")
+  })?;
 
   let eszip = eszip::EszipV2::from_graph(graph, Default::default())?;
 
