@@ -1,6 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
+use tempfile::TempDir;
+use test_util as util;
 
 itest!(_036_import_map_fetch {
   args:
@@ -48,3 +50,30 @@ itest!(ignore_require {
   output_str: Some(""),
   exit_code: 0,
 });
+
+// This test only runs on linux, because it hardcodes the XDG_CACHE_HOME env var
+// which is only used on linux.
+#[cfg(target_os = "linux")]
+#[test]
+fn relative_home_dir() {
+  let deno_dir = TempDir::new_in(util::testdata_path()).unwrap();
+  let path = deno_dir.path().strip_prefix(util::testdata_path()).unwrap();
+
+  let mut deno_cmd = util::deno_cmd();
+  let output = deno_cmd
+    .current_dir(util::testdata_path())
+    .env("XDG_CACHE_HOME", path)
+    .env_remove("HOME")
+    .env_remove("DENO_DIR")
+    .arg("cache")
+    .arg("--reload")
+    .arg("--no-check")
+    .arg("002_hello.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"");
+}

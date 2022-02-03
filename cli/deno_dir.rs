@@ -25,10 +25,10 @@ impl DenoDir {
       // We use the OS cache dir because all files deno writes are cache files
       // Once that changes we need to start using different roots if DENO_DIR
       // is not set, and keep a single one if it is.
-      cache_dir.join("deno")
+      cache_dir.canonicalize()?.join("deno")
     } else if let Some(home_dir) = dirs::home_dir() {
       // fallback path
-      home_dir.join(".deno")
+      home_dir.canonicalize()?.join(".deno")
     } else {
       panic!("Could not set the Deno root directory")
     };
