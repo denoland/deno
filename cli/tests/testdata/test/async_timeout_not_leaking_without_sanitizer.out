@@ -1,0 +1,7 @@
+Check [WILDCARD]/testdata/test/async_timeout_not_leaking_without_sanitizer.ts
+running 2 tests from [WILDCARD]/testdata/test/async_timeout_not_leaking_without_sanitizer.ts
+test will not rely on sanitizeOps to sanitize the test's timeout ... ok ([WILDCARD])
+test will pass because the previous test can still clear its own timeout without sanitizeOps ... ok ([WILDCARD])
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

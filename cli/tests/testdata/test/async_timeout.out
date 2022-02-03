@@ -1,0 +1,21 @@
+Check [WILDCARD]/testdata/test/async_timeout.ts
+running 3 tests from [WILDCARD]/testdata/test/async_timeout.ts
+test test 1 ... ok ([WILDCARD])
+test test 2 ... FAILED ([WILDCARD])
+test test 3 ... ok ([WILDCARD])
+
+failures:
+
+test 2
+Error: Test took longer than the 5000ms timeout.
+    at deno:runtime/js/40_testing.js:1030:18
+    at Object.action (deno:ext/timers/01_timers.js:162:11)
+    at handleTimerMacrotask (deno:ext/timers/01_timers.js:79:12)
+
+failures:
+
+	test 2
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Test failed

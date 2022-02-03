@@ -54,7 +54,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { write: true } },
+  { permissions: { write: true }, timeout: null },
   async function metricsUpdatedIfNoResponseAsync() {
     const filename = Deno.makeTempDirSync() + "/test.txt";
 

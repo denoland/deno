@@ -742,7 +742,7 @@ Deno.test(async function testECDH() {
   assertEquals(derivedKey.byteLength, 256 / 8);
 });
 
-Deno.test(async function testWrapKey() {
+Deno.test({ timeout: null }, async function testWrapKey() {
   // Test wrapKey
   const key = await crypto.subtle.generateKey(
     {

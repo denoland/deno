@@ -7,7 +7,7 @@
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { metrics } = core;
   const { serializePermissions } = window.__bootstrap.permissions;
-  const { assert } = window.__bootstrap.util;
+  const { assert, isAsyncFunction } = window.__bootstrap.util;
   const {
     AggregateErrorPrototype,
     ArrayPrototypeFilter,
@@ -446,6 +446,7 @@ finishing test case.`;
       sanitizeResources: true,
       sanitizeExit: true,
       permissions: null,
+      timeout: 5000,
     };
 
     if (typeof nameOrFnOrOptions === "string") {
@@ -518,6 +519,7 @@ finishing test case.`;
       testDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
+    testDef.fn = wrapTestFnWithTimeout(testDef.fn, testDef.timeout);
     testDef.fn = wrapTestFnWithSanitizers(testDef.fn, testDef);
 
     if (testDef.permissions) {
@@ -1001,6 +1003,35 @@ finishing test case.`;
           }
         }
       },
+    };
+  }
+
+  /**
+   * @template T {Function}
+   * @param testFn {T}
+   * @param timeout {number}
+   * @returns {T}
+   */
+  function wrapTestFnWithTimeout(testFn, timeout) {
+    if (timeout === null || !isAsyncFunction(testFn)) return testFn;
+
+    return function testWithTimeout(...args) {
+      const runAndClearTimeout = async (timeoutHandle) => {
+        try {
+          await testFn(...args);
+        } finally {
+          clearTimeout(timeoutHandle);
+          await opSanitizerDelay();
+        }
+      };
+
+      return new Promise((resolve, reject) => {
+        const timeoutHandle = setTimeout(() => {
+          reject(new Error(`Test took longer than the ${timeout}ms timeout.`));
+        }, timeout);
+
+        runAndClearTimeout(timeoutHandle).then(resolve).catch(reject);
+      });
     };
   }
 

@@ -227,6 +227,18 @@ itest!(aggregate_error {
   output: "test/aggregate_error.out",
 });
 
+itest!(async_timeout {
+  args: "test test/async_timeout.ts",
+  exit_code: 1,
+  output: "test/async_timeout.out",
+});
+
+itest!(async_timeout_not_leaking_without_sanitizer {
+  args: "test test/async_timeout_not_leaking_without_sanitizer.ts",
+  exit_code: 0,
+  output: "test/async_timeout_not_leaking_without_sanitizer.out",
+});
+
 itest!(steps_passing_steps {
   args: "test test/steps/passing_steps.ts",
   exit_code: 0,

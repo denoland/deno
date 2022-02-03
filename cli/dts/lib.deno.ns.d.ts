@@ -157,6 +157,14 @@ declare namespace Deno {
     /** If at least one test has `only` set to true, only run tests that have
      * `only` set to true and fail the test suite. */
     only?: boolean;
+    /** Determines after how many millisseconds when the test should timeout.
+     *
+     * Please notice that Deno will not timeout tests during blocking synchronous
+     * operations.
+     *
+     * Defaults to 5000.
+     */
+    timeout?: number | null;
     /** Check that the number of async completed ops after the test is the same
      * as number of dispatched ops. Defaults to true. */
     sanitizeOps?: boolean;
@@ -362,6 +370,7 @@ declare namespace Deno {
   export function test(
     name: string,
     fn: (t: TestContext) => void | Promise<void>,
+    timeout?: number | null,
   ): void;
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -382,7 +391,10 @@ declare namespace Deno {
    * });
    * ```
    */
-  export function test(fn: (t: TestContext) => void | Promise<void>): void;
+  export function test(
+    fn: (t: TestContext) => void | Promise<void>,
+    timeout?: number | null,
+  ): void;
 
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module.

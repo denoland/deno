@@ -154,7 +154,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true }, timeout: null },
   async function readFileExtendedDuringRead() {
     // Write 128MB file
     const filename = Deno.makeTempDirSync() + "/test.txt";
