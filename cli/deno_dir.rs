@@ -28,11 +28,11 @@ impl DenoDir {
     } else {
       panic!("Could not set the Deno root directory")
     };
-    if root.is_absolute() {
+    let root = if root.is_absolute() {
       root
     } else {
       std::env::current_dir()?.join(root)
-    }
+    };
     assert!(root.is_absolute());
     let gen_path = root.join("gen");
 
