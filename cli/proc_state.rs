@@ -344,11 +344,20 @@ impl ProcState {
     )
     .await;
 
-    for module in graph.modules() {
-      if module.kind == ModuleKind::CommonJs {
-        eprintln!("cjs module {}", module.specifier);
-        eprintln!("deps {:#?}", module.dependencies);
-        eprintln!("maybe source {:#?}", module.maybe_source);
+    let needs_cjs_esm_translation = graph.modules().iter().find(|m| m.kind == ModuleKind::CommonJs);
+
+    if needs_cjs_esm_translation {
+      // TODO(bartlomieju): extremely inefficient to create a new worker, just
+      // to do CJS module resolution, but we currently don't have implementation
+      // of it in Rust
+      // TODO: create new MainWorker here
+
+      for module in graph.modules() {
+        if module.kind == ModuleKind::CommonJs {
+          eprintln!("cjs module {}", module.specifier);
+          eprintln!("deps {:#?}", module.dependencies);
+          eprintln!("maybe source {:#?}", module.maybe_source);
+        }
       }
     }
 
@@ -733,6 +742,10 @@ fn translate_cjs_to_esm(
   let analysis = parsed_source.analyze_cjs();
   
   // if there are reexports, handle them first
+  for (idx, reexport) in analysis.reexports.iter().enumerate() {
+    // first resolve relate reexport specifier
+
+  }
 
   let mut source = vec![
     r#"import { createRequire } from "node:module";"#.to_string(),
