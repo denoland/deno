@@ -162,6 +162,13 @@ pub struct UpgradeFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct VendorFlags {
+  pub entry_points: Vec<String>,
+  pub output_path: Option<PathBuf>,
+  pub force: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DenoSubcommand {
   Bundle(BundleFlags),
   Cache(CacheFlags),
@@ -181,6 +188,7 @@ pub enum DenoSubcommand {
   Test(TestFlags),
   Types,
   Upgrade(UpgradeFlags),
+  Vendor(VendorFlags),
 }
 
 impl Default for DenoSubcommand {
@@ -482,6 +490,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("lint", m)) => lint_parse(&mut flags, m),
     Some(("compile", m)) => compile_parse(&mut flags, m),
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
+    Some(("vendor", m)) => vendor_parse(&mut flags, m),
     _ => handle_repl_flags(&mut flags, ReplFlags { eval: None }),
   }
 
@@ -553,6 +562,7 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
+    .subcommand(vendor_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -1402,6 +1412,35 @@ update to a different location, use the --output flag
     .arg(ca_file_arg())
 }
 
+fn vendor_subcommand<'a>() -> App<'a> {
+  // todo(THIS PR): write tests for these once finalized
+  App::new("vendor")
+    .about("Vendor remote modules into a local directory")
+    .long_about("<TODO>")
+    .arg(
+      Arg::new("entry_points")
+        .takes_value(true)
+        .multiple_values(true)
+        .multiple_occurrences(true)
+        .required(true),
+    )
+    .arg(
+      Arg::new("output")
+        .long("output")
+        .help("The directory to output the vendored modules to")
+        .takes_value(true),
+    )
+    .arg(
+      Arg::new("force")
+        .long("force")
+        .short('f')
+        .help(
+          "Forcefully overwrite conflicting files in existing output directory",
+        )
+        .takes_value(false),
+    )
+}
+
 fn compile_args(app: App) -> App {
   app
     .arg(import_map_arg())
@@ -2218,6 +2257,17 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     version,
     output,
     ca_file,
+  });
+}
+
+fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
+    entry_points: matches
+      .values_of("entry_points")
+      .map(|p| p.map(ToString::to_string).collect())
+      .unwrap_or_default(),
+    output_path: matches.value_of("output").map(PathBuf::from),
+    force: matches.is_present("force"),
   });
 }
 

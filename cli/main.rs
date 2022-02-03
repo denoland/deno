@@ -57,6 +57,7 @@ use crate::flags::RunFlags;
 use crate::flags::TestFlags;
 use crate::flags::UninstallFlags;
 use crate::flags::UpgradeFlags;
+use crate::flags::VendorFlags;
 use crate::fmt_errors::PrettyJsError;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid;
@@ -1272,6 +1273,15 @@ async fn upgrade_command(
   Ok(0)
 }
 
+async fn vendor_command(
+  flags: Flags,
+  vendor_flags: VendorFlags,
+) -> Result<i32, AnyError> {
+  let ps = ProcState::build(flags).await?;
+  tools::vendor::vendor(ps, vendor_flags).await?;
+  Ok(0)
+}
+
 fn init_v8_flags(v8_flags: &[String]) {
   let v8_flags_includes_help = v8_flags
     .iter()
@@ -1349,6 +1359,9 @@ fn get_subcommand(
     DenoSubcommand::Types => types_command(flags).boxed_local(),
     DenoSubcommand::Upgrade(upgrade_flags) => {
       upgrade_command(flags, upgrade_flags).boxed_local()
+    }
+    DenoSubcommand::Vendor(vendor_flags) => {
+      vendor_command(flags, vendor_flags).boxed_local()
     }
   }
 }
