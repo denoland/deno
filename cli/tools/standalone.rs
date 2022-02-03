@@ -87,10 +87,12 @@ async fn download_base_binary(
 /// and magic trailer to the currently executing binary.
 pub fn create_standalone_binary(
   mut original_bin: Vec<u8>,
-  mut eszip_archive: Vec<u8>,
+  eszip: eszip::EszipV2,
   entrypoint: ModuleSpecifier,
   flags: Flags,
 ) -> Result<Vec<u8>, AnyError> {
+  let mut eszip_archive = eszip.into_bytes();
+
   let ca_data = match &flags.ca_file {
     Some(ca_file) => Some(read(ca_file)?),
     None => None,

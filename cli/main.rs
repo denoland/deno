@@ -399,8 +399,6 @@ async fn compile_command(
 
   let eszip = eszip::EszipV2::from_graph(graph, Default::default())?;
 
-  let source = eszip.into_bytes();
-
   info!(
     "{} {}",
     colors::green("Compile"),
@@ -414,7 +412,7 @@ async fn compile_command(
 
   let final_bin = tools::standalone::create_standalone_binary(
     original_binary,
-    source,
+    eszip,
     module_specifier.clone(),
     run_flags,
   )?;
