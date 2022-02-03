@@ -34,6 +34,7 @@ use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
+use deno_core::JsRuntime;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
@@ -344,7 +345,11 @@ impl ProcState {
     )
     .await;
 
-    let needs_cjs_esm_translation = graph.modules().iter().find(|m| m.kind == ModuleKind::CommonJs);
+    let needs_cjs_esm_translation = graph
+      .modules()
+      .iter()
+      .find(|m| m.kind == ModuleKind::CommonJs)
+      .is_some();
 
     if needs_cjs_esm_translation {
       // TODO(bartlomieju): extremely inefficient to create a new worker, just
@@ -635,6 +640,93 @@ impl ProcState {
       None
     }
   }
+
+  /// Translates given CJS module into ESM. This function will perform static
+  /// analysis on the file to find defined exports and reexports.
+  ///
+  /// For all discovered reexports the analysis will be performed recursively.
+  ///
+  /// If successful a source code for equivalent ES module is returned.
+  fn translate_cjs_to_esm(
+    &self,
+    js_runtime: &mut JsRuntime,
+    specifier: ModuleSpecifier,
+    // TODO(bartlomieju): could use `maybe_parsed_source` if available
+    code: String,
+    media_type: MediaType,
+  ) -> Result<String, AnyError> {
+    let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
+      specifier: specifier.to_string(),
+      source: deno_ast::SourceTextInfo::new(Arc::new(code)),
+      media_type,
+      capture_tokens: true,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })?;
+    let analysis = parsed_source.analyze_cjs();
+
+    // if there are reexports, handle them first
+    for (idx, reexport) in analysis.reexports.iter().enumerate() {
+      // Firstly, resolve relate reexport specifier
+      let resolved_reexport = compat::resolve_cjs_module(
+        js_runtime,
+        specifier.as_str(),
+        reexport.as_str(),
+      )?;
+      let reexport_specifier =
+        ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
+      // Secondly, read the source code from disk
+      let reexport_file = self.file_fetcher.get_source(&reexport_specifier).unwrap();
+      // Now perform analysis again
+
+      {
+        let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
+          specifier: resolved_reexport,
+          source: deno_ast::SourceTextInfo::new(reexport_file.source),
+          media_type: reexport_file.media_type,
+          capture_tokens: true,
+          scope_analysis: false,
+          maybe_syntax: None,
+        })?;
+        let analysis = parsed_source.analyze_cjs();
+
+        // And recurse again if there are reexports!
+      }
+
+      todo!()
+    }
+
+    let mut source = vec![
+      r#"import { createRequire } from "node:module";"#.to_string(),
+      r#"const require = createRequire(import.meta.url);"#.to_string(),
+    ];
+
+    source.push(format!(
+      "const mod = require(\"{}\");",
+      specifier.to_file_path().unwrap().to_str().unwrap()
+    ));
+    source.push("export default mod".to_string());
+
+    for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
+      // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
+      // but it might not be necessary here since our analysis is more detailed?
+      source.push(format!("export const {} = mod.{}", export, export));
+    }
+
+    // TODO(bartlomieju): handle reexports
+    for (idx, reexport) in analysis.reexports.iter().enumerate() {
+      // source.push(format!(
+      //   "const reexport{} = require(\"{}\");",
+      //   idx, reexport
+      // ));
+      source.push(format!(
+        "throw new Error('Unhandled reexport {}')",
+        reexport
+      ));
+    }
+
+    Ok(source.join("\n").to_string())
+  }
 }
 
 // TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
@@ -723,58 +815,4 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
   } else {
     None
   }
-}
-
-fn translate_cjs_to_esm(
-  specifier: ModuleSpecifier,
-  // TODO(bartlomieju): could use `maybe_parsed_source` if available
-  code: String,
-  media_type: MediaType,
-) -> String {
-  let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
-    specifier: specifier.to_string(),
-    source: deno_ast::SourceTextInfo::new(code),
-    media_type,
-    capture_tokens: true,
-    scope_analysis: false,
-    maybe_syntax: None,
-  })?;
-  let analysis = parsed_source.analyze_cjs();
-  
-  // if there are reexports, handle them first
-  for (idx, reexport) in analysis.reexports.iter().enumerate() {
-    // first resolve relate reexport specifier
-
-  }
-
-  let mut source = vec![
-    r#"import { createRequire } from "node:module";"#.to_string(),
-    r#"const require = createRequire(import.meta.url);"#.to_string(),
-  ];
-  
-  source.push(format!(
-    "const mod = require(\"{}\");",
-    specifier.to_file_path().unwrap().to_str().unwrap()
-  ));
-  source.push("export default mod".to_string());
-  
-  for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
-    // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
-    // but it might not be necessary here since our analysis is more detailed?
-    source.push(format!("export const {} = mod.{}", export, export));
-  }
-  
-  // TODO(bartlomieju): handle reexports
-  for (idx, reexport) in analysis.reexports.iter().enumerate() {
-    // source.push(format!(
-    //   "const reexport{} = require(\"{}\");",
-    //   idx, reexport
-    // ));
-    source.push(format!(
-      "throw new Error('Unhandled reexport {}')",
-      reexport
-    ));
-  }
-  
-  source.join("\n").to_string()
 }

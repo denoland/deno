@@ -1,1 +1,2 @@
-module.exports = "buzz";
+exports.buzz = "buzz";
+exports.fizz = "FIZZ";
