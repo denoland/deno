@@ -9,6 +9,8 @@
   const { writableStreamClose, Deferred } = window.__bootstrap.streams;
   const { DOMException } = window.__bootstrap.domException;
   const { add, remove } = window.__bootstrap.abortSignal;
+  const { headersFromHeaderList, headerListFromHeaders, fillHeaders } =
+    window.__bootstrap.headers;
 
   const {
     ArrayPrototypeJoin,
@@ -17,7 +19,6 @@
     ObjectPrototypeIsPrototypeOf,
     PromisePrototypeCatch,
     PromisePrototypeThen,
-    SafeArrayIterator,
     Set,
     StringPrototypeEndsWith,
     StringPrototypeToLowerCase,
@@ -122,6 +123,11 @@
         );
       }
 
+      const headers = headersFromHeaderList([], "request");
+      if (options.headers !== undefined) {
+        fillHeaders(headers, options.headers);
+      }
+
       const cancelRid = core.opSync(
         "op_ws_check_permission_and_cancel_handle",
         this[_url],
@@ -145,9 +151,7 @@
               ? ArrayPrototypeJoin(options.protocols, ", ")
               : "",
             cancelHandle: cancelRid,
-            headers: [
-              ...new SafeArrayIterator(new Headers(options.headers).entries()),
-            ],
+            headers: headerListFromHeaders,
           }),
           (create) => {
             options.signal?.[remove](abort);
