@@ -57,6 +57,11 @@ where
     .write_notification("textDocument/didOpen", params)
     .unwrap();
 
+  handle_configuration_request(client);
+  read_diagnostics(client).0
+}
+
+fn handle_configuration_request(client: &mut LspClient) {
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
@@ -70,8 +75,6 @@ where
       }]),
     )
     .unwrap();
-
-  read_diagnostics(client).0
 }
 
 fn read_diagnostics(client: &mut LspClient) -> CollectedDiagnostics {
@@ -490,6 +493,7 @@ fn lsp_import_assertions() {
       }),
     )
     .unwrap();
+  handle_configuration_request(&mut client);
 
   let diagnostics = CollectedDiagnostics(did_open(
     &mut client,

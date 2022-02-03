@@ -9,6 +9,7 @@
     ArrayPrototypeReverse,
     ArrayPrototypeSlice,
     ObjectKeys,
+    ObjectPrototypeIsPrototypeOf,
     Symbol,
     SymbolFor,
     TypeError,
@@ -127,22 +128,22 @@
     [_duration] = 0;
 
     get name() {
-      webidl.assertBranded(this, PerformanceEntry);
+      webidl.assertBranded(this, PerformanceEntryPrototype);
       return this[_name];
     }
 
     get entryType() {
-      webidl.assertBranded(this, PerformanceEntry);
+      webidl.assertBranded(this, PerformanceEntryPrototype);
       return this[_entryType];
     }
 
     get startTime() {
-      webidl.assertBranded(this, PerformanceEntry);
+      webidl.assertBranded(this, PerformanceEntryPrototype);
       return this[_startTime];
     }
 
     get duration() {
-      webidl.assertBranded(this, PerformanceEntry);
+      webidl.assertBranded(this, PerformanceEntryPrototype);
       return this[_duration];
     }
 
@@ -165,7 +166,7 @@
     }
 
     toJSON() {
-      webidl.assertBranded(this, PerformanceEntry);
+      webidl.assertBranded(this, PerformanceEntryPrototype);
       return {
         name: this[_name],
         entryType: this[_entryType],
@@ -177,7 +178,10 @@
     [customInspect](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof PerformanceEntry,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          PerformanceEntryPrototype,
+          this,
+        ),
         keys: [
           "name",
           "entryType",
@@ -188,18 +192,19 @@
     }
   }
   webidl.configurePrototype(PerformanceEntry);
+  const PerformanceEntryPrototype = PerformanceEntry.prototype;
 
   const _detail = Symbol("[[detail]]");
   class PerformanceMark extends PerformanceEntry {
     [_detail] = null;
 
     get detail() {
-      webidl.assertBranded(this, PerformanceMark);
+      webidl.assertBranded(this, PerformanceMarkPrototype);
       return this[_detail];
     }
 
     get entryType() {
-      webidl.assertBranded(this, PerformanceMark);
+      webidl.assertBranded(this, PerformanceMarkPrototype);
       return "mark";
     }
 
@@ -231,7 +236,7 @@
     }
 
     toJSON() {
-      webidl.assertBranded(this, PerformanceMark);
+      webidl.assertBranded(this, PerformanceMarkPrototype);
       return {
         name: this.name,
         entryType: this.entryType,
@@ -244,7 +249,7 @@
     [customInspect](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof PerformanceMark,
+        evaluate: ObjectPrototypeIsPrototypeOf(PerformanceMarkPrototype, this),
         keys: [
           "name",
           "entryType",
@@ -256,17 +261,17 @@
     }
   }
   webidl.configurePrototype(PerformanceMark);
-
+  const PerformanceMarkPrototype = PerformanceMark.prototype;
   class PerformanceMeasure extends PerformanceEntry {
     [_detail] = null;
 
     get detail() {
-      webidl.assertBranded(this, PerformanceMeasure);
+      webidl.assertBranded(this, PerformanceMeasurePrototype);
       return this[_detail];
     }
 
     get entryType() {
-      webidl.assertBranded(this, PerformanceMeasure);
+      webidl.assertBranded(this, PerformanceMeasurePrototype);
       return "measure";
     }
 
@@ -287,7 +292,7 @@
     }
 
     toJSON() {
-      webidl.assertBranded(this, PerformanceMeasure);
+      webidl.assertBranded(this, PerformanceMeasurePrototype);
       return {
         name: this.name,
         entryType: this.entryType,
@@ -300,7 +305,10 @@
     [customInspect](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof PerformanceMeasure,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          PerformanceMeasurePrototype,
+          this,
+        ),
         keys: [
           "name",
           "entryType",
@@ -312,14 +320,14 @@
     }
   }
   webidl.configurePrototype(PerformanceMeasure);
-
+  const PerformanceMeasurePrototype = PerformanceMeasure.prototype;
   class Performance {
     constructor() {
       webidl.illegalConstructor();
     }
 
     clearMarks(markName = undefined) {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, PerformancePrototype);
       if (markName !== undefined) {
         markName = webidl.converters.DOMString(markName, {
           prefix: "Failed to execute 'clearMarks' on 'Performance'",
@@ -339,7 +347,7 @@
     }
 
     clearMeasures(measureName = undefined) {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, PerformancePrototype);
       if (measureName !== undefined) {
         measureName = webidl.converters.DOMString(measureName, {
           prefix: "Failed to execute 'clearMeasures' on 'Performance'",
@@ -360,7 +368,7 @@
     }
 
     getEntries() {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, PerformancePrototype);
       return filterByNameType();
     }
 
@@ -368,7 +376,7 @@
       name,
       type = undefined,
     ) {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, PerformancePrototype);
       const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -388,7 +396,7 @@
     }
 
     getEntriesByType(type) {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, PerformancePrototype);
       const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -404,7 +412,7 @@
       markName,
       markOptions = {},
     ) {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, PerformancePrototype);
       const prefix = "Failed to execute 'mark' on 'Performance'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -432,7 +440,7 @@
       startOrMeasureOptions = {},
       endMark = undefined,
     ) {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, PerformancePrototype);
       const prefix = "Failed to execute 'measure' on 'Performance'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
@@ -531,24 +539,25 @@
     }
 
     now() {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, PerformancePrototype);
       return now();
     }
 
     toJSON() {
-      webidl.assertBranded(this, Performance);
+      webidl.assertBranded(this, PerformancePrototype);
       return {};
     }
 
     [customInspect](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
-        evaluate: this instanceof Performance,
+        evaluate: ObjectPrototypeIsPrototypeOf(PerformancePrototype, this),
         keys: [],
       }));
     }
   }
   webidl.configurePrototype(Performance);
+  const PerformancePrototype = Performance.prototype;
 
   window.__bootstrap.performance = {
     PerformanceEntry,

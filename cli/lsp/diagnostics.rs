@@ -1,12 +1,14 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
+use super::cache;
 use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents;
 use super::documents::Document;
 use super::documents::Documents;
 use super::language_server;
+use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
@@ -20,6 +22,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_graph::Resolved;
 use deno_runtime::tokio_util::create_basic_runtime;
 use log::error;
 use lspower::lsp;
@@ -35,6 +38,8 @@ use tokio::time::Duration;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
+pub(crate) type SnapshotForDiagnostics =
+  (Arc<StateSnapshot>, Arc<ConfigSnapshot>, Option<LintConfig>);
 pub type DiagnosticRecord =
   (ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>);
 pub type DiagnosticVec = Vec<DiagnosticRecord>;
@@ -90,10 +95,53 @@ impl DiagnosticsPublisher {
   }
 }
 
+#[derive(Clone, Default, Debug)]
+struct TsDiagnosticsStore(Arc<deno_core::parking_lot::Mutex<DiagnosticMap>>);
+
+impl TsDiagnosticsStore {
+  pub fn get(
+    &self,
+    specifier: &ModuleSpecifier,
+    document_version: Option<i32>,
+  ) -> Vec<lsp::Diagnostic> {
+    let ts_diagnostics = self.0.lock();
+    if let Some((diagnostics_doc_version, diagnostics)) =
+      ts_diagnostics.get(specifier)
+    {
+      // only get the diagnostics if they're up to date
+      if document_version == *diagnostics_doc_version {
+        return diagnostics.clone();
+      }
+    }
+    Vec::new()
+  }
+
+  pub fn invalidate(&self, specifiers: &[ModuleSpecifier]) {
+    let mut ts_diagnostics = self.0.lock();
+    for specifier in specifiers {
+      ts_diagnostics.remove(specifier);
+    }
+  }
+
+  pub fn invalidate_all(&self) {
+    self.0.lock().clear();
+  }
+
+  fn update(&self, diagnostics: &DiagnosticVec) {
+    let mut stored_ts_diagnostics = self.0.lock();
+    *stored_ts_diagnostics = diagnostics
+      .iter()
+      .map(|(specifier, version, diagnostics)| {
+        (specifier.clone(), (*version, diagnostics.clone()))
+      })
+      .collect();
+  }
+}
+
 #[derive(Debug)]
 pub(crate) struct DiagnosticsServer {
-  channel: Option<mpsc::UnboundedSender<()>>,
-  ts_diagnostics: Arc<Mutex<DiagnosticMap>>,
+  channel: Option<mpsc::UnboundedSender<SnapshotForDiagnostics>>,
+  ts_diagnostics: TsDiagnosticsStore,
   client: Client,
   performance: Arc<Performance>,
   ts_server: Arc<TsServer>,
@@ -114,44 +162,28 @@ impl DiagnosticsServer {
     }
   }
 
-  pub(crate) async fn get_ts_diagnostics(
+  pub(crate) fn get_ts_diagnostics(
     &self,
     specifier: &ModuleSpecifier,
     document_version: Option<i32>,
   ) -> Vec<lsp::Diagnostic> {
-    let ts_diagnostics = self.ts_diagnostics.lock().await;
-    if let Some((diagnostics_doc_version, diagnostics)) =
-      ts_diagnostics.get(specifier)
-    {
-      // only get the diagnostics if they're up to date
-      if document_version == *diagnostics_doc_version {
-        return diagnostics.clone();
-      }
-    }
-    Vec::new()
+    self.ts_diagnostics.get(specifier, document_version)
   }
 
-  pub(crate) async fn invalidate(&self, specifiers: Vec<ModuleSpecifier>) {
-    let mut ts_diagnostics = self.ts_diagnostics.lock().await;
-    for specifier in &specifiers {
-      ts_diagnostics.remove(specifier);
-    }
+  pub(crate) fn invalidate(&self, specifiers: &[ModuleSpecifier]) {
+    self.ts_diagnostics.invalidate(specifiers);
   }
 
-  pub(crate) async fn invalidate_all(&self) {
-    let mut ts_diagnostics = self.ts_diagnostics.lock().await;
-    ts_diagnostics.clear();
+  pub(crate) fn invalidate_all(&self) {
+    self.ts_diagnostics.invalidate_all();
   }
 
-  pub(crate) fn start(
-    &mut self,
-    language_server: Arc<Mutex<language_server::Inner>>,
-  ) {
-    let (tx, mut rx) = mpsc::unbounded_channel::<()>();
+  pub(crate) fn start(&mut self) {
+    let (tx, mut rx) = mpsc::unbounded_channel::<SnapshotForDiagnostics>();
     self.channel = Some(tx);
     let client = self.client.clone();
     let performance = self.performance.clone();
-    let stored_ts_diagnostics = self.ts_diagnostics.clone();
+    let ts_diagnostics_store = self.ts_diagnostics.clone();
     let ts_server = self.ts_server.clone();
 
     let _join_handle = thread::spawn(move || {
@@ -168,20 +200,11 @@ impl DiagnosticsServer {
           match rx.recv().await {
             // channel has closed
             None => break,
-            Some(()) => {
+            Some((snapshot, config, maybe_lint_config)) => {
               // cancel the previous run
               token.cancel();
               token = CancellationToken::new();
               diagnostics_publisher.clear().await;
-
-              let (snapshot, config, maybe_lint_config) = {
-                let language_server = language_server.lock().await;
-                (
-                  language_server.snapshot(),
-                  language_server.config.snapshot(),
-                  language_server.maybe_lint_config.clone(),
-                )
-              };
 
               let previous_ts_handle = ts_handle.take();
               ts_handle = Some(tokio::spawn({
@@ -189,7 +212,7 @@ impl DiagnosticsServer {
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let ts_server = ts_server.clone();
                 let token = token.clone();
-                let stored_ts_diagnostics = stored_ts_diagnostics.clone();
+                let ts_diagnostics_store = ts_diagnostics_store.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
                 async move {
@@ -216,6 +239,7 @@ impl DiagnosticsServer {
                     snapshot.clone(),
                     &config,
                     &ts_server,
+                    token.clone(),
                   )
                   .await
                   .map_err(|err| {
@@ -224,17 +248,7 @@ impl DiagnosticsServer {
                   .unwrap_or_default();
 
                   if !token.is_cancelled() {
-                    {
-                      let mut stored_ts_diagnostics =
-                        stored_ts_diagnostics.lock().await;
-                      *stored_ts_diagnostics = diagnostics
-                        .iter()
-                        .map(|(specifier, version, diagnostics)| {
-                          (specifier.clone(), (*version, diagnostics.clone()))
-                        })
-                        .collect();
-                    }
-
+                    ts_diagnostics_store.update(&diagnostics);
                     diagnostics_publisher.publish(diagnostics, &token).await;
 
                     if !token.is_cancelled() {
@@ -307,9 +321,15 @@ impl DiagnosticsServer {
     });
   }
 
-  pub(crate) fn update(&self) -> Result<(), AnyError> {
+  pub(crate) fn update(
+    &self,
+    message: SnapshotForDiagnostics,
+  ) -> Result<(), AnyError> {
+    // todo(dsherret): instead of queuing up messages, it would be better to
+    // instead only store the latest message (ex. maybe using a
+    // tokio::sync::watch::channel)
     if let Some(tx) = &self.channel {
-      tx.send(()).map_err(|err| err.into())
+      tx.send(message).map_err(|err| err.into())
     } else {
       Err(anyhow!("diagnostics server not started"))
     }
@@ -493,6 +513,7 @@ async fn generate_ts_diagnostics(
   snapshot: Arc<language_server::StateSnapshot>,
   config: &ConfigSnapshot,
   ts_server: &tsc::TsServer,
+  token: CancellationToken,
 ) -> Result<DiagnosticVec, AnyError> {
   let mut diagnostics_vec = Vec::new();
   let specifiers = snapshot
@@ -507,7 +528,9 @@ async fn generate_ts_diagnostics(
     .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
   let ts_diagnostics_map: TsDiagnosticsMap = if !enabled_specifiers.is_empty() {
     let req = tsc::RequestMethod::GetDiagnostics(enabled_specifiers);
-    ts_server.request(snapshot.clone(), req).await?
+    ts_server
+      .request_with_cancellation(snapshot.clone(), req, token)
+      .await?
   } else {
     Default::default()
   };
@@ -547,13 +570,13 @@ fn resolution_error_as_code(
   use deno_graph::SpecifierError;
 
   match err {
-    ResolutionError::InvalidDowngrade(_, _) => {
+    ResolutionError::InvalidDowngrade { .. } => {
       lsp::NumberOrString::String("invalid-downgrade".to_string())
     }
-    ResolutionError::InvalidLocalImport(_, _) => {
+    ResolutionError::InvalidLocalImport { .. } => {
       lsp::NumberOrString::String("invalid-local-import".to_string())
     }
-    ResolutionError::InvalidSpecifier(err, _) => match err {
+    ResolutionError::InvalidSpecifier { error, .. } => match error {
       SpecifierError::ImportPrefixMissing(_, _) => {
         lsp::NumberOrString::String("import-prefix-missing".to_string())
       }
@@ -561,7 +584,7 @@ fn resolution_error_as_code(
         lsp::NumberOrString::String("invalid-url".to_string())
       }
     },
-    ResolutionError::ResolverError(_, _, _) => {
+    ResolutionError::ResolverError { .. } => {
       lsp::NumberOrString::String("resolver-error".to_string())
     }
   }
@@ -570,14 +593,19 @@ fn resolution_error_as_code(
 fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   documents: &Documents,
+  cache_metadata: &cache::CacheMetadata,
   resolved: &deno_graph::Resolved,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
 ) {
   match resolved {
-    Some(Ok((specifier, range))) => {
-      if let Some(doc) = documents.get(specifier) {
-        if let Some(message) = doc.maybe_warning() {
+    Resolved::Ok {
+      specifier, range, ..
+    } => {
+      if let Some(metadata) = cache_metadata.get(specifier) {
+        if let Some(message) =
+          metadata.get(&cache::MetadataKey::Warning).cloned()
+        {
           diagnostics.push(lsp::Diagnostic {
             range: documents::to_lsp_range(range),
             severity: Some(lsp::DiagnosticSeverity::WARNING),
@@ -585,8 +613,10 @@ fn diagnose_dependency(
             source: Some("deno".to_string()),
             message,
             ..Default::default()
-          })
+          });
         }
+      }
+      if let Some(doc) = documents.get(specifier) {
         if doc.media_type() == MediaType::Json {
           match maybe_assert_type {
             // The module has the correct assertion type, no diagnostic
@@ -633,7 +663,7 @@ fn diagnose_dependency(
         });
       }
     }
-    Some(Err(err)) => diagnostics.push(lsp::Diagnostic {
+    Resolved::Err(err) => diagnostics.push(lsp::Diagnostic {
       range: documents::to_lsp_range(err.range()),
       severity: Some(lsp::DiagnosticSeverity::ERROR),
       code: Some(resolution_error_as_code(err)),
@@ -664,6 +694,7 @@ async fn generate_deps_diagnostics(
         diagnose_dependency(
           &mut diagnostics,
           &snapshot.documents,
+          &snapshot.cache_metadata,
           &dependency.maybe_code,
           dependency.is_dynamic,
           dependency.maybe_assert_type.as_deref(),
@@ -671,6 +702,7 @@ async fn generate_deps_diagnostics(
         diagnose_dependency(
           &mut diagnostics,
           &snapshot.documents,
+          &snapshot.cache_metadata,
           &dependency.maybe_type,
           dependency.is_dynamic,
           dependency.maybe_assert_type.as_deref(),
@@ -770,10 +802,14 @@ let c: number = "a";
       )
       .await;
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
-      let diagnostics =
-        generate_ts_diagnostics(snapshot.clone(), &enabled_config, &ts_server)
-          .await
-          .unwrap();
+      let diagnostics = generate_ts_diagnostics(
+        snapshot.clone(),
+        &enabled_config,
+        &ts_server,
+        Default::default(),
+      )
+      .await
+      .unwrap();
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
       let diagnostics = generate_deps_diagnostics(
         &snapshot,
@@ -806,10 +842,14 @@ let c: number = "a";
       )
       .await;
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
-      let diagnostics =
-        generate_ts_diagnostics(snapshot.clone(), &disabled_config, &ts_server)
-          .await
-          .unwrap();
+      let diagnostics = generate_ts_diagnostics(
+        snapshot.clone(),
+        &disabled_config,
+        &ts_server,
+        Default::default(),
+      )
+      .await
+      .unwrap();
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
       let diagnostics = generate_deps_diagnostics(
         &snapshot,
@@ -827,5 +867,28 @@ let c: number = "a";
     assert_eq!(diagnostic_vec.len(), 1);
     let (_, _, diagnostics) = diagnostic_vec.into_iter().next().unwrap();
     diagnostics
+  }
+
+  #[tokio::test]
+  async fn test_cancelled_ts_diagnostics_request() {
+    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
+    let (snapshot, _) = setup(&[(
+      "file:///a.ts",
+      r#"export let a: string = 5;"#,
+      1,
+      LanguageId::TypeScript,
+    )]);
+    let snapshot = Arc::new(snapshot);
+    let ts_server = TsServer::new(Default::default());
+
+    let config = mock_config();
+    let token = CancellationToken::new();
+    token.cancel();
+    let diagnostics =
+      generate_ts_diagnostics(snapshot.clone(), &config, &ts_server, token)
+        .await
+        .unwrap();
+    // should be none because it's cancelled
+    assert_eq!(diagnostics.len(), 0);
   }
 }

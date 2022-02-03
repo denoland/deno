@@ -23,6 +23,7 @@ use crate::resolver::JsxResolver;
 use crate::source_maps::SourceMapGetter;
 use crate::version;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -41,7 +42,8 @@ use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
-use deno_graph::MediaType;
+use deno_graph::ModuleKind;
+use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
@@ -252,7 +254,7 @@ impl ProcState {
   /// emits where necessary or report any module graph / type checking errors.
   pub(crate) async fn prepare_module_load(
     &self,
-    roots: Vec<ModuleSpecifier>,
+    roots: Vec<(ModuleSpecifier, ModuleKind)>,
     is_dynamic: bool,
     lib: emit::TypeLib,
     root_permissions: Permissions,
@@ -262,7 +264,7 @@ impl ProcState {
     // TODO(bartlomieju): this is very make-shift, is there an existing API
     // that we could include it like with "maybe_imports"?
     let roots = if self.flags.compat {
-      let mut r = vec![compat::GLOBAL_URL.clone()];
+      let mut r = vec![(compat::GLOBAL_URL.clone(), ModuleKind::Esm)];
       r.extend(roots);
       r
     } else {
@@ -438,21 +440,21 @@ impl ProcState {
       let graph_data = self.graph_data.read();
       let found_referrer = graph_data.follow_redirect(&referrer);
       let maybe_resolved = match graph_data.get(&found_referrer) {
-        Some(ModuleEntry::Module { dependencies, .. }) => dependencies
-          .get(specifier)
-          .and_then(|dep| dep.maybe_code.clone()),
+        Some(ModuleEntry::Module { dependencies, .. }) => {
+          dependencies.get(specifier).map(|d| &d.maybe_code)
+        }
         _ => None,
       };
 
       match maybe_resolved {
-        Some(Ok((specifier, _))) => return Ok(specifier),
-        Some(Err(err)) => {
+        Some(Resolved::Ok { specifier, .. }) => return Ok(specifier.clone()),
+        Some(Resolved::Err(err)) => {
           return Err(custom_error(
             "TypeError",
             format!("{}\n", err.to_string_with_range()),
           ))
         }
-        None => {}
+        Some(Resolved::None) | None => {}
       }
     }
 
@@ -472,7 +474,7 @@ impl ProcState {
         None
       };
     if let Some(resolver) = &maybe_resolver {
-      resolver.resolve(specifier, &referrer)
+      resolver.resolve(specifier, &referrer).to_result()
     } else {
       deno_core::resolve_import(specifier, referrer.as_str())
         .map_err(|err| err.into())
