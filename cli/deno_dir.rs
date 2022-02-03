@@ -16,11 +16,7 @@ pub struct DenoDir {
 impl DenoDir {
   pub fn new(maybe_custom_root: Option<PathBuf>) -> std::io::Result<Self> {
     let root: PathBuf = if let Some(root) = maybe_custom_root {
-      if root.is_absolute() {
-        root
-      } else {
-        std::env::current_dir()?.join(root)
-      }
+      root.canonicalize()?
     } else if let Some(cache_dir) = dirs::cache_dir() {
       // We use the OS cache dir because all files deno writes are cache files
       // Once that changes we need to start using different roots if DENO_DIR
