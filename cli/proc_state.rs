@@ -377,7 +377,7 @@ impl ProcState {
 
       for module in graph.modules() {
         if module.kind == ModuleKind::CommonJs {
-          eprintln!("cjs module {}", module.specifier);
+          // eprintln!("cjs module {}", module.specifier);
           // eprintln!("deps {:#?}", module.dependencies);
           // eprintln!("maybe source {:#?}", module.maybe_source);
           let translated_source = self.translate_cjs_to_esm(
@@ -387,7 +387,7 @@ impl ProcState {
             module.media_type,
           ).await?;
           let mut graph_data = self.graph_data.write();
-          eprintln!("adding translation {}", module.specifier);
+          // eprintln!("adding translation {}", module.specifier);
           graph_data.add_cjs_esm_translation(&module.specifier, translated_source);
         }
       }

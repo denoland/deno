@@ -145,7 +145,6 @@ pub(crate) async fn resolve_cjs_module(
   referrer_mod: &str,
   mod_to_resolve: &str,
 ) -> Result<String, AnyError> {
-  eprintln!("resolve_cjs_module {} {}", referrer_mod, mod_to_resolve);
   let source_code = &format!(
     r#"(async function resolveCjsModule(main) {{
       const CJSModule = await import("{}");
