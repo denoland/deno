@@ -16,7 +16,8 @@ path = "lib.rs"
 [dependencies]
 deno_core = { version = "0.117.0", path = "../../core" }
 dlopen = "0.1.8"
-libffi = "2.0.0"
+# libffi = "2.0.0"
+libffi = { path = "../../../libffi-rs/libffi-rs", version = "2.0.0" }
 serde = { version = "1.0.129", features = ["derive"] }
 tokio = { version = "1.10.1", features = ["full"] }
 

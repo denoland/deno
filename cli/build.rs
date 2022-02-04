@@ -290,7 +290,7 @@ fn main() {
     return;
   }
 
-  #[cfg(target_os = "macos")]
+  #[cfg(not(all(target_arch = "arm")))]
   println!("cargo:rustc-link-arg=-rdynamic");
 
   // To debug snapshot issues uncomment:
