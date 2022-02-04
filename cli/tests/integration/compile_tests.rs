@@ -177,41 +177,6 @@ fn standalone_error_module_with_imports() {
 }
 
 #[test]
-fn standalone_no_module_load() {
-  let dir = TempDir::new().expect("tempdir fail");
-  let exe = if cfg!(windows) {
-    dir.path().join("hello.exe")
-  } else {
-    dir.path().join("hello")
-  };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./standalone_import.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert_eq!(output.stdout, b"start\n");
-  let stderr_str = String::from_utf8(output.stderr).unwrap();
-  assert!(util::strip_ansi_codes(&stderr_str)
-    .contains("Self-contained binaries don't support module loading"));
-}
-
-#[test]
 fn standalone_load_datauri() {
   let dir = TempDir::new().expect("tempdir fail");
   let exe = if cfg!(windows) {
