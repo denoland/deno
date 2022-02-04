@@ -348,14 +348,12 @@ impl ProcState {
     let needs_cjs_esm_translation = graph
       .modules()
       .iter()
-      .find(|m| m.kind == ModuleKind::CommonJs)
-      .is_some();
+      .any(|m| m.kind == ModuleKind::CommonJs);
 
     if needs_cjs_esm_translation {
       // TODO(bartlomieju): extremely inefficient to create a new worker, just
       // to do CJS module resolution, but we currently don't have implementation
       // of it in Rust
-      // TODO: create new MainWorker here
       let mut worker = create_main_worker(
         self,
         deno_core::resolve_url_or_path("./$deno$cjs_esm_translation.ts")
@@ -378,9 +376,6 @@ impl ProcState {
 
       for module in graph.modules() {
         if module.kind == ModuleKind::CommonJs {
-          // eprintln!("cjs module {}", module.specifier);
-          // eprintln!("deps {:#?}", module.dependencies);
-          // eprintln!("maybe source {:#?}", module.maybe_source);
           let translated_source = self
             .translate_cjs_to_esm(
               &mut worker.js_runtime,
@@ -390,7 +385,6 @@ impl ProcState {
             )
             .await?;
           let mut graph_data = self.graph_data.write();
-          // eprintln!("adding translation {}", module.specifier);
           graph_data
             .add_cjs_esm_translation(&module.specifier, translated_source);
         }
@@ -717,7 +711,7 @@ impl ProcState {
       source.push(format!("export const {} = mod.{};", export, export));
     }
 
-    let translated_source = source.join("\n").to_string();
+    let translated_source = source.join("\n");
     Ok(translated_source)
   }
 }
