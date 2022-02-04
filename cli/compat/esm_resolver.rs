@@ -1218,7 +1218,7 @@ mod tests {
     let cwd = testdir("basic");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
     let expected =
-      Url::parse("https://deno.land/std@0.123.0/node/http.ts").unwrap();
+      Url::parse("https://deno.land/std@0.125.0/node/http.ts").unwrap();
 
     let actual = node_resolve("http", main.as_str(), &cwd).unwrap();
     assert!(matches!(actual, ResolveResponse::Esm(_)));
